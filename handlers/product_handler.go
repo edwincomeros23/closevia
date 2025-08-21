@@ -153,7 +153,26 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	location := c.Query("location", "")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
-	offset := (page - 1) * limit
+	// Support optional offset-based pagination (limit & offset)
+	if limit <= 0 {
+		limit = 20
+	}
+	offsetParam := c.Query("offset", "")
+	var offset int
+	if offsetParam != "" {
+		if o, err := strconv.Atoi(offsetParam); err == nil && o >= 0 {
+			offset = o
+			if limit > 0 {
+				page = (offset / limit) + 1
+			} else {
+				page = 1
+			}
+		} else {
+			offset = (page - 1) * limit
+		}
+	} else {
+		offset = (page - 1) * limit
+	}
 
 	// Build WHERE clause
 	whereClause := "WHERE 1=1"

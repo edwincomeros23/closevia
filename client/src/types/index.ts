@@ -88,6 +88,43 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
+export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered'
+
+export interface TradeItem {
+  id: number
+  trade_id: number
+  product_id: number
+  offered_by: 'buyer' | 'seller'
+  created_at: string
+}
+
+export interface Trade {
+  id: number
+  buyer_id: number
+  seller_id: number
+  target_product_id: number
+  status: TradeStatus
+  message?: string
+  created_at: string
+  updated_at: string
+  items: TradeItem[]
+  buyer_name?: string
+  seller_name?: string
+  product_title?: string
+}
+
+export interface TradeCreate {
+  target_product_id: number
+  offered_product_ids: number[]
+  message?: string
+}
+
+export interface TradeAction {
+  action: 'accept' | 'decline' | 'counter'
+  message?: string
+  counter_offered_product_ids?: number[]
+}
+
 export interface APIResponse<T = any> {
   success: boolean
   message?: string

@@ -28,8 +28,10 @@ import {
   StatNumber,
   StatHelpText,
   useToast,
+  IconButton,
+  Avatar,
 } from '@chakra-ui/react'
-import { AddIcon, EditIcon, DeleteIcon } from '@chakra-ui/icons'
+import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product, Order } from '../types'
@@ -103,7 +105,7 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <Container maxW="container.xl" py={8}>
+    <Container maxW="container.xl" py={8} bg="#FFFDF1" minH="100vh">
       <VStack spacing={8} align="stretch">
         {/* Header + Action in one row */}
         <Flex
@@ -122,16 +124,36 @@ const Dashboard: React.FC = () => {
           </Box>
 
           <Box>
-            <HStack spacing={4}>
+            <HStack spacing={3} align="center">
               <Button
                 as={RouterLink}
                 to="/add-product"
                 leftIcon={<AddIcon />}
                 colorScheme="brand"
                 size="lg"
+                bg="#FFFDF1"
+                _hover={{ bg: '#f7f4ea' }}
               >
                 Add New Product
               </Button>
+
+              <IconButton
+                aria-label="Notifications"
+                icon={<BellIcon />}
+                size="lg"
+                bg="#FFFDF1"
+                _hover={{ bg: '#f7f4ea' }}
+              />
+
+              <IconButton
+                aria-label="Settings"
+                icon={<SettingsIcon />}
+                size="lg"
+                bg="#FFFDF1"
+                _hover={{ bg: '#f7f4ea' }}
+              />
+
+              <Avatar name={user?.name || 'User'} size="sm" bg="#FFFDF1" />
             </HStack>
           </Box>
         </Flex>

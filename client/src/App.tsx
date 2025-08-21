@@ -12,10 +12,14 @@ import AddProduct from './pages/AddProduct'
 import EditProduct from './pages/EditProduct'
 import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
+import Trades from './pages/Trades'
+import Offers from './pages/Offers'
 import Profile from './pages/Profile'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProductProvider } from './contexts/ProductContext'
+import { RealtimeProvider } from './contexts/RealtimeContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import { MobileNavProvider } from './contexts/MobileNavContext'
 
 // Loading overlay component
 const LoadingOverlay: React.FC = () => {
@@ -76,7 +80,7 @@ const AppContent: React.FC = () => {
   return (
     <Box minH="100vh" bg="gray.50">
       <Sidebar />
-      <Box as="main" ml="70px">
+      <Box as="main" ml={{ base: 0, lg: '70px' }}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
@@ -130,6 +134,22 @@ const AppContent: React.FC = () => {
               </ProtectedRoute>
             } 
           />
+          <Route 
+            path="/trades" 
+            element={
+              <ProtectedRoute>
+                <Trades />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/offers" 
+            element={
+              <ProtectedRoute>
+                <Offers />
+              </ProtectedRoute>
+            } 
+          />
         </Routes>
       </Box>
     </Box>
@@ -141,9 +161,13 @@ function App() {
     <ChakraProvider theme={theme}>
       <AuthProvider>
         <ProductProvider>
-          <Router>
-            <AppContent />
-          </Router>
+          <MobileNavProvider>
+            <RealtimeProvider>
+              <Router>
+                <AppContent />
+              </Router>
+            </RealtimeProvider>
+          </MobileNavProvider>
         </ProductProvider>
       </AuthProvider>
     </ChakraProvider>

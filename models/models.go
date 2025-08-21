@@ -169,6 +169,45 @@ type Transaction struct {
 	PaymentDate time.Time `json:"payment_date"`
 }
 
+// Trade represents a barter trade proposal
+type Trade struct {
+	ID              int         `json:"id"`
+	BuyerID         int         `json:"buyer_id"`
+	SellerID        int         `json:"seller_id"`
+	TargetProductID int         `json:"target_product_id"`
+	Status          string      `json:"status" validate:"oneof=pending accepted declined countered"`
+	Message         string      `json:"message,omitempty"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	Items           []TradeItem `json:"items"`
+	BuyerName       string      `json:"buyer_name,omitempty"`
+	SellerName      string      `json:"seller_name,omitempty"`
+	ProductTitle    string      `json:"product_title,omitempty"`
+}
+
+// TradeItem represents an item offered in a trade
+type TradeItem struct {
+	ID        int       `json:"id"`
+	TradeID   int       `json:"trade_id"`
+	ProductID int       `json:"product_id"`
+	OfferedBy string    `json:"offered_by" validate:"oneof=buyer seller"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// TradeCreate represents payload to create a trade
+type TradeCreate struct {
+	TargetProductID   int    `json:"target_product_id" validate:"required"`
+	OfferedProductIDs []int  `json:"offered_product_ids" validate:"required,min=1,dive,gt=0"`
+	Message           string `json:"message"`
+}
+
+// TradeAction represents accept/decline/counter actions
+type TradeAction struct {
+	Action                   string `json:"action" validate:"required,oneof=accept decline counter"`
+	Message                  string `json:"message,omitempty"`
+	CounterOfferedProductIDs []int  `json:"counter_offered_product_ids,omitempty"`
+}
+
 // ChatConversation represents a conversation between a buyer and seller about a product
 type ChatConversation struct {
 	ID        int       `json:"id"`

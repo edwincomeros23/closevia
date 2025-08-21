@@ -32,7 +32,19 @@ type sseEvent struct {
 func (h *ChatHandler) Stream(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
-		return fiber.ErrUnauthorized
+		// Allow token via query for SSE clients that can't set headers
+		token := c.Query("token", "")
+		if token == "" {
+			return fiber.ErrUnauthorized
+		}
+		c.Request().Header.Set("Authorization", "Bearer "+token)
+		if err := middleware.AuthMiddleware()(c); err != nil {
+			return fiber.ErrUnauthorized
+		}
+		userID, ok = middleware.GetUserIDFromContext(c)
+		if !ok {
+			return fiber.ErrUnauthorized
+		}
 	}
 	c.Set("Content-Type", "text/event-stream")
 	c.Set("Cache-Control", "no-cache")
@@ -88,6 +100,11 @@ func publishToUser(userID int, evt sseEvent) {
 		default:
 		}
 	}
+}
+
+// Helper to publish notification event
+func publishNotification(userID int, message string) {
+	publishToUser(userID, sseEvent{Type: "notification", Data: fiber.Map{"message": message}})
 }
 
 // EnsureConversation creates or returns an existing conversation

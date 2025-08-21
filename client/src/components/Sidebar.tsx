@@ -7,7 +7,6 @@ import {
   Tooltip,
   useColorModeValue,
   Image,
-  useDisclosure,
   Drawer,
   DrawerOverlay,
   DrawerContent,
@@ -22,8 +21,12 @@ import {
   BellIcon,
   InfoIcon,
   SettingsIcon,
-  HamburgerIcon,
+  RepeatIcon,
 } from '@chakra-ui/icons'
+import { useMobileNav } from '../contexts/MobileNavContext'
+import { Badge as CBadge } from '@chakra-ui/react'
+import { useRealtime } from '../contexts/RealtimeContext'
+import { FaUserCircle } from 'react-icons/fa'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -31,32 +34,31 @@ const Sidebar: React.FC = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const iconColor = useColorModeValue('gray.600', 'gray.300')
   const activeIconColor = useColorModeValue('brand.500', 'brand.300')
-  const { isOpen, onOpen, onClose } = useDisclosure()
+  const { isOpen, onOpen, onClose } = useMobileNav()
+  const { offerCount, notificationCount } = useRealtime()
 
-  const navItems = [
+  // Separate items for desktop vs mobile to keep desktop unchanged
+  const desktopNavItems = [
     { icon: InfoIcon, label: 'Home', path: '/' },
     { icon: ViewIcon, label: 'Dashboard', path: '/dashboard' },
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
+    { icon: RepeatIcon, label: 'Offers', path: '/offers' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
     { icon: SettingsIcon, label: 'Settings', path: '/settings' },
+  ]
+
+  const mobileNavItems = [
+    { icon: InfoIcon, label: 'Home', path: '/' },
+    { icon: ViewIcon, label: 'Dashboard', path: '/dashboard' },
+    { icon: AddIcon, label: 'Add Product', path: '/add-product' },
+    { icon: RepeatIcon, label: 'Offers', path: '/offers' },
+    { icon: BellIcon, label: 'Notifications', path: '/notifications' },
+    { icon: SettingsIcon, label: 'Settings', path: '/settings' },
+    { icon: FaUserCircle, label: 'Profile', path: '/profile' },
   ]
   
   return (
     <>
-      {/* Mobile hamburger button - visible only on small screens */}
-      <IconButton
-        aria-label="Open menu"
-        icon={<HamburgerIcon />}
-        display={{ base: 'inline-flex', lg: 'none' }}
-        position="fixed"
-        left={2}
-        top={2}
-        zIndex={1100}
-        onClick={onOpen}
-        size="md"
-        variant="ghost"
-      />
-
       {/* Drawer for mobile */}
       <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
         <DrawerOverlay />
@@ -80,8 +82,9 @@ const Sidebar: React.FC = () => {
                 />
               </Box>
 
-              {navItems.map((item) => {
+              {mobileNavItems.map((item) => {
                 const Icon = item.icon
+                const needsSoftBg = item.label === 'Add Product' || item.label === 'Notifications' || item.label === 'Settings'
                 return (
                   <Button
                     key={item.path}
@@ -91,6 +94,8 @@ const Sidebar: React.FC = () => {
                     variant="ghost"
                     justifyContent="flex-start"
                     onClick={onClose}
+                    bg={needsSoftBg ? '#FFFDF1' : 'transparent'}
+                    _hover={{ bg: needsSoftBg ? '#FFFDF1' : 'gray.100' }}
                   >
                     {item.label}
                   </Button>
@@ -132,31 +137,39 @@ const Sidebar: React.FC = () => {
           </Box>
 
           {/* Navigation Items */}
-          {navItems.map((item) => {
+          {desktopNavItems.map((item) => {
             const isActive = location.pathname === item.path
             const Icon = item.icon
 
             return (
               <Tooltip key={item.path} label={item.label} placement="right" hasArrow>
-                <IconButton
-                  as={RouterLink}
-                  to={item.path}
-                  aria-label={item.label}
-                  icon={<Icon />}
-                  variant="ghost"
-                  size="lg"
-                  color={isActive ? activeIconColor : iconColor}
-                  bg={isActive ? 'brand.50' : 'transparent'}
-                  _hover={{
-                    bg: isActive ? 'brand.100' : 'gray.100',
-                    color: isActive ? activeIconColor : 'gray.700',
-                  }}
-                  _active={{
-                    bg: isActive ? 'brand.200' : 'gray.200',
-                  }}
-                  borderRadius="xl"
-                  transition="all 0.2s"
-                />
+                <Box position="relative" display="inline-block">
+                  <IconButton
+                    as={RouterLink}
+                    to={item.path}
+                    aria-label={item.label}
+                    icon={<Icon />}
+                    variant="ghost"
+                    size="lg"
+                    color={isActive ? activeIconColor : iconColor}
+                    bg={isActive ? 'brand.50' : 'transparent'}
+                    _hover={{
+                      bg: isActive ? 'brand.100' : 'gray.100',
+                      color: isActive ? activeIconColor : 'gray.700',
+                    }}
+                    _active={{
+                      bg: isActive ? 'brand.200' : 'gray.200',
+                    }}
+                    borderRadius="xl"
+                    transition="all 0.2s"
+                  />
+                  {(item.label === 'Offers' && offerCount > 0) && (
+                    <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="purple" borderRadius="full">{offerCount}</CBadge>
+                  )}
+                  {(item.label === 'Notifications' && notificationCount > 0) && (
+                    <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="red" borderRadius="full">{notificationCount}</CBadge>
+                  )}
+                </Box>
               </Tooltip>
             )
           })}

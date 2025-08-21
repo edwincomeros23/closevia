@@ -90,6 +90,8 @@ func main() {
 	productHandler := handlers.NewProductHandler()
 	orderHandler := handlers.NewOrderHandler()
 	chatHandler := handlers.NewChatHandler()
+	tradeHandler := handlers.NewTradeHandler()
+	notificationHandler := handlers.NewNotificationHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -128,6 +130,21 @@ func main() {
 	chat.Post("/messages", middleware.AuthMiddleware(), chatHandler.SendMessage)
 	chat.Post("/typing", middleware.AuthMiddleware(), chatHandler.Typing)
 	chat.Get("/stream", middleware.AuthMiddleware(), chatHandler.Stream)
+
+	// Trade routes
+	trades := api.Group("/trades")
+	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
+	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
+	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
+	trades.Get("/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeMessages)
+	trades.Post("/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeMessage)
+	trades.Get("/count", middleware.AuthMiddleware(), tradeHandler.CountTrades)
+
+	// Notifications routes
+	notifs := api.Group("/notifications")
+	notifs.Get("/", middleware.AuthMiddleware(), notificationHandler.GetNotifications)
+	notifs.Put("/:id/read", middleware.AuthMiddleware(), notificationHandler.MarkAsRead)
+	notifs.Put("/read-all", middleware.AuthMiddleware(), notificationHandler.MarkAllAsRead)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")

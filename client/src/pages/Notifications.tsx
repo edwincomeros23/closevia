@@ -26,9 +26,8 @@ import { api } from '../services/api'
 interface Notification {
   id: number
   user_id: number
-  title: string
   message: string
-  type: 'order' | 'product' | 'system'
+  type: string
   read: boolean
   created_at: string
   data?: any
@@ -54,33 +53,9 @@ const Notifications: React.FC = () => {
     try {
       setLoading(true)
       setError('')
-      
-      // For now, we'll create mock notifications since the backend doesn't have a notifications table
-      // In a real app, this would be: const response = await api.get('/api/notifications')
-      
-      // Mock notifications based on user's orders and products
-      const mockNotifications: Notification[] = [
-        {
-          id: 1,
-          user_id: user!.id,
-          title: 'Welcome to Clovia!',
-          message: 'Thank you for joining our barter community. Start by listing your first product!',
-          type: 'system',
-          read: false,
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 2,
-          user_id: user!.id,
-          title: 'New Feature Available',
-          message: 'Premium listings are now available to boost your product visibility.',
-          type: 'system',
-          read: true,
-          created_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-        },
-      ]
-      
-      setNotifications(mockNotifications)
+      const response = await api.get('/api/notifications')
+      const list: Notification[] = Array.isArray(response.data?.data) ? response.data.data : []
+      setNotifications(list)
     } catch (error: any) {
       setError(error.message || 'Failed to fetch notifications')
       toast({
@@ -97,7 +72,7 @@ const Notifications: React.FC = () => {
 
   const markAsRead = async (notificationId: number) => {
     try {
-      // In a real app: await api.put(`/api/notifications/${notificationId}/read`)
+      await api.put(`/api/notifications/${notificationId}/read`)
       setNotifications(prev => 
         prev.map(notif => 
           notif.id === notificationId ? { ...notif, read: true } : notif
@@ -116,7 +91,7 @@ const Notifications: React.FC = () => {
 
   const markAllAsRead = async () => {
     try {
-      // In a real app: await api.put('/api/notifications/read-all')
+      await api.put('/api/notifications/read-all')
       setNotifications(prev => 
         prev.map(notif => ({ ...notif, read: true }))
       )
@@ -144,6 +119,10 @@ const Notifications: React.FC = () => {
         return '📦'
       case 'product':
         return '🛍️'
+      case 'trade_offer':
+        return '🔄'
+      case 'trade_update':
+        return '🔁'
       case 'system':
         return '🔔'
       default:
@@ -157,6 +136,10 @@ const Notifications: React.FC = () => {
         return 'blue'
       case 'product':
         return 'green'
+      case 'trade_offer':
+        return 'purple'
+      case 'trade_update':
+        return 'orange'
       case 'system':
         return 'purple'
       default:
@@ -245,7 +228,7 @@ const Notifications: React.FC = () => {
                       <VStack align="start" spacing={1}>
                         <HStack spacing={2}>
                           <Text fontWeight="semibold" fontSize="md">
-                            {notification.title}
+                            {notification.type.replace('_', ' ').toUpperCase()}
                           </Text>
                           {!notification.read && (
                             <Badge colorScheme="red" size="sm">
@@ -265,9 +248,7 @@ const Notifications: React.FC = () => {
                 </CardHeader>
                 
                 <CardBody pt={0}>
-                  <Text color="gray.700" mb={4}>
-                    {notification.message}
-                  </Text>
+                  <Text color="gray.700" mb={4}>{notification.message}</Text>
                   
                   {!notification.read && (
                     <Button

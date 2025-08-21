@@ -6,7 +6,10 @@ interface ProductContextType {
   products: Product[]
   loading: boolean
   error: string | null
+  hasMore: boolean
+  isLoadingMore: boolean
   searchProducts: (filters: SearchFilters) => Promise<void>
+  loadMore: () => Promise<void>
   getProduct: (id: number) => Promise<Product | null>
   createProduct: (product: ProductCreate | FormData) => Promise<Product>
   updateProduct: (id: number, product: ProductUpdate) => Promise<void>
@@ -33,6 +36,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState<boolean>(true)
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [currentFilters, setCurrentFilters] = useState<SearchFilters | null>(null)
 
   // Helper function to ensure products is always an array
   const safeSetProducts = (newProducts: Product[] | null | undefined) => {
@@ -61,6 +68,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       console.log('Searching products with filters:', filters)
       setLoading(true)
       setError(null)
+      setCurrentFilters(filters)
       
       const params = new URLSearchParams()
       if (filters.keyword) params.append('keyword', filters.keyword)
@@ -72,8 +80,8 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
       if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
       if (filters.location) params.append('location', filters.location)
-      if (filters.page) params.append('page', filters.page.toString())
-      if (filters.limit) params.append('limit', filters.limit.toString())
+      params.append('page', (filters.page || 1).toString())
+      params.append('limit', (filters.limit || 10).toString())
 
       const response = await retryRequest(async () => {
         return await api.get(`/api/products?${params.toString()}`)
@@ -87,18 +95,28 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if (data && data.data && Array.isArray(data.data)) {
           console.log('Setting products from paginated response:', data.data.length)
           safeSetProducts(data.data)
+          // Update pagination state
+          setCurrentPage(data.page || 1)
+          const total = data.total || 0
+          const limit = data.limit || (filters.limit || 10)
+          const loaded = data.data.length
+          // If returned fewer than limit, we know there's no more
+          setHasMore(loaded >= limit && (data.page < (data.total_pages || Number.MAX_SAFE_INTEGER)))
         } else {
           console.log('No products in paginated response')
           safeSetProducts([])
+          setHasMore(false)
         }
       } else if (response.data && Array.isArray(response.data)) {
         // Direct array response
         console.log('Setting products from direct array response:', response.data.length)
         safeSetProducts(response.data)
+        setHasMore(false)
       } else {
         // Fallback to empty array
         console.log('No products found, setting empty array')
         safeSetProducts([])
+        setHasMore(false)
       }
     } catch (error: any) {
       console.error('Error fetching products:', error)
@@ -115,8 +133,62 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       
       setError(errorMessage)
       safeSetProducts([]) // Ensure products is always an array
+      setHasMore(false)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadMore = async () => {
+    if (loading || isLoadingMore || !hasMore) return
+    if (!currentFilters) return
+    try {
+      setIsLoadingMore(true)
+      const nextPage = (currentPage || 1) + 1
+
+      const params = new URLSearchParams()
+      const filters = currentFilters
+      if (filters.keyword) params.append('keyword', filters.keyword)
+      if (filters.min_price) params.append('min_price', filters.min_price.toString())
+      if (filters.max_price) params.append('max_price', filters.max_price.toString())
+      if (filters.premium !== undefined) params.append('premium', filters.premium.toString())
+      if (filters.status) params.append('status', filters.status)
+      if (filters.seller_id) params.append('seller_id', filters.seller_id.toString())
+      if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
+      if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
+      if (filters.location) params.append('location', filters.location)
+      params.append('page', nextPage.toString())
+      params.append('limit', (filters.limit || 10).toString())
+
+      const response = await retryRequest(async () => {
+        return await api.get(`/api/products?${params.toString()}`)
+      })
+
+      if (response.data && response.data.data) {
+        const data = response.data.data as PaginatedResponse<Product>
+        const newItems = Array.isArray(data?.data) ? data.data : []
+        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItems] : newItems))
+        setCurrentPage(data.page || nextPage)
+        const totalPages = data.total_pages || 0
+        if (totalPages > 0) {
+          setHasMore((data.page || nextPage) < totalPages)
+        } else {
+          // Fallback: if fewer than requested returned, no more
+          setHasMore(newItems.length >= (currentFilters.limit || 10))
+        }
+      } else if (response.data && Array.isArray(response.data)) {
+        const newItems = response.data as Product[]
+        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItems] : newItems))
+        setHasMore(newItems.length > 0)
+        setCurrentPage(nextPage)
+      } else {
+        setHasMore(false)
+      }
+    } catch (error) {
+      // On error do not change hasMore permanently; allow retry on next intersection
+      console.error('Error loading more products:', error)
+    } finally {
+      setIsLoadingMore(false)
     }
   }
 
@@ -233,7 +305,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     products: products || [], // Ensure products is never null
     loading,
     error,
+    hasMore,
+    isLoadingMore,
     searchProducts,
+    loadMore,
     getProduct,
     createProduct,
     updateProduct,

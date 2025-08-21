@@ -137,15 +137,55 @@ const ProductDetail: React.FC = () => {
       
           <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={0}>
             {/* Product Image */}
-            <Box>
+            <Box position="relative">
               <Image
                 src={getFirstImage(product.image_urls)}
                 alt={product.title}
                 w="full"
                 h="400px"
-                objectFit="cover"
+                objectFit="contain"   // prevents zooming & blurring
+                objectPosition="top"  // keeps the top side visible
                 fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                bg="gray.100"         // adds background so empty space looks clean
               />
+              {/* Minimal "Trade" overlay with optional owner text beside it */}
+              {(product.barter_only || (!product.allow_buying && !product.price)) && (
+                <Flex
+                  position="absolute"
+                  left={3}
+                  top={3}
+                  align="center"
+                  gap={2}
+                >
+                  <Box
+                    bg="green.600"
+                    color="white"
+                    px={2}
+                    py={1}
+                    borderRadius="md"
+                    fontSize="xs"
+                    fontWeight="semibold"
+                    boxShadow="sm"
+                  >
+                    Trade
+                  </Box>
+                  
+                  {/* Only show this text when the logged-in user owns the product */}
+                  {isOwner && (
+                    <Text
+                      bg="yellow.300"
+                      color="black"
+                      px={2}
+                      py={1}
+                      borderRadius="md"
+                      fontSize="xs"
+                      fontWeight="semibold"
+                    >
+                      This is your product listing
+                    </Text>
+                  )}
+                </Flex>
+              )}
             </Box>
 
             {/* Product Details */}
@@ -179,9 +219,29 @@ const ProductDetail: React.FC = () => {
                     </Badge>
                   </HStack>
 
-                  <Text color="gray.600" fontSize="lg" mt={3}>
-                    Listed by {product.seller_name}
-                  </Text>
+                  {/* Consolidated seller + dates block for better UX (responsive) */}
+                  <Flex
+                    mt={3}
+                    w="full"
+                    justify="space-between"
+                    align="center"
+                    flexDir={{ base: 'column', md: 'row' }}
+                  >
+                    <Box mb={{ base: 2, md: 0 }}>
+                      <Text color="gray.600" fontSize="lg">
+                        Listed by {product.seller_name}
+                      </Text>
+                    </Box>
+
+                    <VStack spacing={0} align={{ base: 'flex-start', md: 'flex-end' }}>
+                      <Text fontSize="sm" color="gray.500">
+                        Listed: {new Date(product.created_at).toLocaleDateString()}
+                      </Text>
+                      <Text fontSize="sm" color="gray.500">
+                        Last updated: {new Date(product.updated_at).toLocaleDateString()}
+                      </Text>
+                    </VStack>
+                  </Flex>
                 </Box>
 
                 <Divider />
@@ -198,32 +258,23 @@ const ProductDetail: React.FC = () => {
                 <Divider />
 
                 <Box>
-                  <Heading size="md" mb={3}>
-                    Product Details
-                  </Heading>
                   <VStack spacing={2} align="stretch">
                     <Flex justify="space-between">
-                      <Text color="gray.600">Status:</Text>
-                      <Badge
-                        colorScheme={product.status === 'available' ? 'green' : 'red'}
-                      >
-                        {product.status}
-                      </Badge>
                     </Flex>
-                    <Flex justify="space-between">
+                    {/* <Flex justify="space-between">
                       <Text color="gray.600">Listed:</Text>
                       <Text>{new Date(product.created_at).toLocaleDateString()}</Text>
                     </Flex>
                     <Flex justify="space-between">
                       <Text color="gray.600">Last Updated:</Text>
                       <Text>{new Date(product.updated_at).toLocaleDateString()}</Text>
-                    </Flex>
+                    </Flex> */}
                   </VStack>
                 </Box>
 
                 {/* Action Buttons */}
                 {!isOwner && product.status === 'available' && (
-                  <VStack spacing={4}>
+                  <VStack spacing={4} mt={-10} pb={-10} >
                     {product.allow_buying && product.price && !product.barter_only ? (
                       <>
                         <Button
@@ -241,20 +292,13 @@ const ProductDetail: React.FC = () => {
                         </Text>
                       </>
                     ) : (
-                      <Box textAlign="center" py={4}>
-                        <Text color="green.600" fontWeight="bold" fontSize="lg" mb={2}>
-                          Barter/Trade Only
-                        </Text>
-                        <Text color="gray.600" fontSize="sm">
-                          This item is only available for trade or barter. Contact the seller to arrange an exchange.
-                        </Text>
+                      <Box textAlign="center" py={2} >
                         <Button
                           colorScheme="green"
                           size="lg"
                           w="full"
-                          mt={4}
-                          onClick={() => {
-                            // You could implement a contact seller feature here
+                          mb={-10}
+                          onClick={() =>
                             toast({
                               title: 'Contact Seller',
                               description: 'Please contact the seller directly to arrange a trade.',
@@ -262,9 +306,9 @@ const ProductDetail: React.FC = () => {
                               duration: 3000,
                               isClosable: true,
                             })
-                          }}
+                          }
                         >
-                          Contact Seller for Trade
+                          Trade Offer
                         </Button>
                       </Box>
                     )}
@@ -272,10 +316,7 @@ const ProductDetail: React.FC = () => {
                 )}
 
                 {isOwner && (
-                  <VStack spacing={4}>
-                    <Text color="gray.600" textAlign="center">
-                      This is your product listing
-                    </Text>
+                  <VStack spacing={4} mt={-16}>
                     <HStack spacing={4} w="full">
                       <Button
                         variant="outline"

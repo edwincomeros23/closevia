@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Link as RouterLink, useLocation } from 'react-router-dom'
 import {
   Box,
@@ -38,12 +38,17 @@ import {
   ViewIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  AddIcon,
+  HamburgerIcon,
 } from '@chakra-ui/icons'
 import { FaUserCircle } from 'react-icons/fa'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
+import { useMobileNav } from '../contexts/MobileNavContext'
+import { api } from '../services/api'
+import { TradeCreate, Product as ProductType } from '../types'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -63,10 +68,11 @@ const useDebounce = (value: string, delay: number) => {
 }
 
 const Home: React.FC = () => {
-  const { products, loading, error, searchProducts } = useProducts()
+  const { products, loading, error, searchProducts, loadMore, hasMore, isLoadingMore } = useProducts()
   const { user } = useAuth()
   const location = useLocation()
   const { isOpen, onOpen, onClose } = useDisclosure()
+  const { onOpen: openMobileNav } = useMobileNav()
   
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
@@ -104,6 +110,23 @@ const Home: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
+
+  // Infinite scroll: IntersectionObserver for sentinel
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!sentinelRef.current) return
+    const el = sentinelRef.current
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0]
+      if (entry.isIntersecting) {
+        if (!loading && !isLoadingMore && hasMore) {
+          loadMore()
+        }
+      }
+    }, { root: null, rootMargin: '200px', threshold: 0 })
+    observer.observe(el)
+    return () => observer.unobserve(el)
+  }, [sentinelRef, loading, isLoadingMore, hasMore, loadMore])
 
   // Refetch on tab/window focus to keep feed fresh
   useEffect(() => {
@@ -154,18 +177,66 @@ const Home: React.FC = () => {
     setHasSearched(true)
   }
 
+  // Trade modal state
+  const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
+  const [userProducts, setUserProducts] = useState<ProductType[]>([])
+  const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([])
+  const [tradeMessage, setTradeMessage] = useState('')
+  const [submittingTrade, setSubmittingTrade] = useState(false)
+
+  const openTradeModal = async (productId: number) => {
+    setTradeTargetProductId(productId)
+    setSelectedOfferIds([])
+    setTradeMessage('')
+    if (user) {
+      try {
+        // Fetch user's products to offer
+        const res = await api.get(`/api/products/user/${user.id}?page=1&limit=50`)
+        const data = res.data?.data
+        setUserProducts(Array.isArray(data?.data) ? data.data : [])
+      } catch (e) {
+        setUserProducts([])
+      }
+      onOpen()
+    } else {
+      onOpen() // fallback to login modal if not authenticated
+    }
+  }
+
+  const toggleOfferSelection = (id: number) => {
+    setSelectedOfferIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  const submitTrade = async () => {
+    if (!tradeTargetProductId || selectedOfferIds.length === 0) {
+      toast({ title: 'Select items', description: 'Please select at least one of your items to offer.', status: 'warning' })
+      return
+    }
+    try {
+      setSubmittingTrade(true)
+      const payload: TradeCreate = {
+        target_product_id: tradeTargetProductId,
+        offered_product_ids: selectedOfferIds,
+        message: tradeMessage,
+      }
+      await api.post('/api/trades', payload)
+      toast({ title: 'Trade sent', description: 'Your trade offer was sent to the seller.', status: 'success' })
+      setTradeTargetProductId(null)
+      setSelectedOfferIds([])
+      setTradeMessage('')
+      onClose()
+    } catch (e: any) {
+      toast({ title: 'Failed', description: e?.response?.data?.error || 'Failed to send trade', status: 'error' })
+    } finally {
+      setSubmittingTrade(false)
+    }
+  }
+
   const handleTradeClick = (productId: number) => {
     if (!user) {
       onOpen() // Show login modal
     } else {
-      // Proceed with trade
-      toast({
-        title: 'Trade initiated!',
-        description: 'Contact the seller to arrange the trade.',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
+      openTradeModal(productId)
     }
   }
 
@@ -340,21 +411,21 @@ const Home: React.FC = () => {
   )
 
   return (
-    <Box minH="100vh" bg="#ffffff">
+    <Box minH="100vh" bg="#FFFDF1">
       {/* Sticky Search Header */}
       <Box
         position="sticky"
         top={0}
         zIndex={100}
-        bg="white"
+        bg="#FFFDF1"
         borderColor="gray.200"
         px={8}
         py={4}
       >
         <VStack spacing={4}>
           {/* Main Search Bar */}
-          <HStack w="full" maxW="6xl" mx="auto" spacing={4}>
-            <InputGroup size="lg">
+          <HStack w="full" maxW="6xl" mx="auto" spacing={3} wrap="wrap">
+            <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
               </InputLeftElement>
@@ -371,9 +442,29 @@ const Home: React.FC = () => {
                   boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
                 }}
               />
-            </InputGroup>
+            </InputGroup> 
 
-            {/* Profile button (replaces stray object) */}
+            {/* Toggle Filters icon (mobile inline, right side) */}
+            <IconButton
+              aria-label="Toggle filters"
+              icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
+              variant="outline"
+              size={{ base: 'md', md: 'lg' }}
+              onClick={() => setShowFilters(!showFilters)}
+              display={{ base: 'inline-flex', md: 'none' }}
+            />
+
+            {/* Mobile hamburger to open nav drawer (after filters icon) */}
+            <IconButton
+              aria-label="Open navigation"
+              icon={<HamburgerIcon />}
+              display={{ base: 'inline-flex', md: 'none' }}
+              size={{ base: 'md', md: 'lg' }}
+              variant="ghost"
+              onClick={openMobileNav}
+            />
+
+            {/* Profile button (desktop only) */}
             <IconButton
               as={RouterLink}
               to="/profile"
@@ -381,24 +472,29 @@ const Home: React.FC = () => {
               icon={<FaUserCircle />}
               variant="ghost"
               size="lg"
+              display={{ base: 'none', md: 'inline-flex' }}
             />
 
+            {/* Hidden on mobile to keep header compact */}
             <Button
               leftIcon={<SearchIcon />}
               colorScheme="brand"
               size="lg"
               onClick={handleSearch}
               px={8}
+              display={{ base: 'none', md: 'inline-flex' }}
             >
               Search
             </Button>
-            
+
+            {/* Desktop filters toggle at the end to keep desktop layout */}
             <IconButton
               aria-label="Toggle filters"
               icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
               variant="outline"
               size="lg"
               onClick={() => setShowFilters(!showFilters)}
+              display={{ base: 'none', md: 'inline-flex' }}
             />
           </HStack>
 
@@ -537,6 +633,14 @@ const Home: React.FC = () => {
             >
               {products.map(renderProductCard)}
             </Box>
+            {/* Sentinel for infinite scroll */}
+            <Box ref={sentinelRef} h="1px" />
+            {/* Subtle loading indicator for loading more */}
+            {isLoadingMore && (
+              <Center py={6}>
+                <Spinner size="md" color="brand.500" />
+              </Center>
+            )}
           </Box>
         )}
 
@@ -574,40 +678,94 @@ const Home: React.FC = () => {
       </Box>
 
       {/* Login Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} isCentered>
+      <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Sign in to Continue</ModalHeader>
+          <ModalHeader>{user ? 'Propose a Trade' : 'Sign in to Continue'}</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
-            <VStack spacing={4}>
-              <Text color="gray.600">
-                You need to be signed in to trade or purchase items.
-              </Text>
-              <HStack spacing={4} w="full">
-                <Button
-                  as={RouterLink}
-                  to="/login"
-                  colorScheme="brand"
-                  flex={1}
-                  onClick={onClose}
-                >
-                  Sign In
-                </Button>
-                <Button
-                  as={RouterLink}
-                  to="/register"
-                  variant="outline"
-                  flex={1}
-                  onClick={onClose}
-                >
-                  Sign Up
-                </Button>
-              </HStack>
-            </VStack>
+            {user ? (
+              <VStack spacing={4} align="stretch">
+                <Text fontWeight="semibold">Select your items to offer:</Text>
+                <Grid templateColumns="repeat(auto-fit, minmax(140px, 1fr))" gap={3}>
+                  {userProducts.map((p) => (
+                    <Box key={p.id} borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
+                      <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" />
+                      <Box p={2}>
+                        <Text fontSize="sm" noOfLines={2}>{p.title}</Text>
+                      </Box>
+                    </Box>
+                  ))}
+                </Grid>
+                <FormControl>
+                  <FormLabel fontSize="sm">Message (optional)</FormLabel>
+                  <Input placeholder="Add a note for the seller" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} />
+                </FormControl>
+                <HStack justify="flex-end">
+                  <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                  <Button colorScheme="brand" isLoading={submittingTrade} onClick={submitTrade} isDisabled={selectedOfferIds.length === 0}>Send Offer</Button>
+                </HStack>
+              </VStack>
+            ) : (
+              <VStack spacing={4}>
+                <Text color="gray.600">
+                  You need to be signed in to trade or purchase items.
+                </Text>
+                <HStack spacing={4} w="full">
+                  <Button
+                    as={RouterLink}
+                    to="/login"
+                    colorScheme="brand"
+                    flex={1}
+                    onClick={onClose}
+                  >
+                    Sign In
+                  </Button>
+                  <Button
+                    as={RouterLink}
+                    to="/register"
+                    variant="outline"
+                    flex={1}
+                    onClick={onClose}
+                  >
+                    Sign Up
+                  </Button>
+                </HStack>
+              </VStack>
+            )}
           </ModalBody>
         </ModalContent>
       </Modal>
+
+      {/* Floating Add Product FAB (bottom-right) - more visible with stronger shadows and border */}
+      <IconButton
+        as={RouterLink}
+        to="/add-product"
+        aria-label="Add product"
+        icon={<AddIcon />}
+        position="fixed"
+        bottom={12}
+        right={6}
+        // explicit size for a prominent FAB
+        h={14}
+        w={14}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        bgGradient="linear(to-br, brand.500, teal.400)"
+        color="white"
+        borderRadius="full"
+        borderWidth={2}
+        borderColor="white"
+        zIndex={200}
+        // layered shadow for depth
+        boxShadow="0 8px 30px rgba(16, 185, 129, 0.18), 0 4px 10px rgba(0,0,0,0.08)"
+        // interactive states
+        _hover={{ transform: 'translateY(-4px) scale(1.03)', boxShadow: '0 12px 40px rgba(16,185,129,0.22), 0 6px 16px rgba(0,0,0,0.12)' }}
+        _active={{ transform: 'translateY(-1px) scale(0.99)', boxShadow: '0 6px 20px rgba(16,185,129,0.16)' }}
+        _focus={{ boxShadow: '0 0 0 6px rgba(16,185,129,0.12)' }}
+        title="Add product"
+      />
     </Box>
   )
 }

@@ -143,6 +143,47 @@ func CreateTables() error {
 			FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
 			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		// Trades and trade items for barter system
+		`CREATE TABLE IF NOT EXISTS trades (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			buyer_id INT NOT NULL,
+			seller_id INT NOT NULL,
+			target_product_id INT NOT NULL,
+			status ENUM('pending','accepted','declined','countered') DEFAULT 'pending',
+			message TEXT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (target_product_id) REFERENCES products(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_items (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			product_id INT NOT NULL,
+			offered_by ENUM('buyer','seller') NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_messages (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			sender_id INT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS notifications (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			type VARCHAR(50) NOT NULL,
+			message VARCHAR(500) NOT NULL,
+			is_read BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
 	}
 
 	for _, query := range queries {
@@ -165,6 +206,16 @@ func CreateTables() error {
 		"CREATE INDEX IF NOT EXISTS idx_conversations_participants ON conversations(buyer_id, seller_id)",
 		"CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)",
 		"CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)",
+		"CREATE INDEX IF NOT EXISTS idx_trades_participants ON trades(buyer_id, seller_id)",
+		"CREATE INDEX IF NOT EXISTS idx_trades_target ON trades(target_product_id)",
+		"CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)",
+		"CREATE INDEX IF NOT EXISTS idx_trade_items_trade ON trade_items(trade_id)",
+		"CREATE INDEX IF NOT EXISTS idx_trade_items_product ON trade_items(product_id)",
+		"CREATE INDEX IF NOT EXISTS idx_trade_messages_trade ON trade_messages(trade_id)",
+		"CREATE INDEX IF NOT EXISTS idx_trade_messages_sender ON trade_messages(sender_id)",
+		"CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)",
+		"CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type)",
 	}
 
 	for _, query := range indexQueries {
