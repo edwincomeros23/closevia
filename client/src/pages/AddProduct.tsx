@@ -9,7 +9,6 @@ import {
   Button,
   Input,
   Textarea,
-  Select,
   Switch,
   FormControl,
   FormLabel,
@@ -27,7 +26,7 @@ import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon } from '@chakra-ui/
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { ProductCreate } from '../types'
-import { getImageUrl } from '../utils/imageUtils'
+
 
 const AddProduct: React.FC = () => {
   const navigate = useNavigate()
@@ -53,6 +52,8 @@ const AddProduct: React.FC = () => {
   
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  // page background color (applies to entire viewport)
+  const pageBg = '#FFFDF1'
 
   const steps = [
     { number: 1, title: 'Upload Photos', description: 'Add product images' },
@@ -191,6 +192,7 @@ const AddProduct: React.FC = () => {
               cursor="pointer"
               _hover={{ borderColor: 'brand.500' }}
               onClick={() => document.getElementById('image-upload')?.click()}
+              
             >
               <VStack spacing={4}>
                 <AddIcon boxSize={8} color="gray.400" />
@@ -414,67 +416,70 @@ const AddProduct: React.FC = () => {
   }
 
   return (
-    <Box p={8} maxW="4xl" mx="auto">
-      <VStack spacing={8} align="stretch">
-        {/* Header */}
-        <Box textAlign="center">
-          <Heading size="xl" color="brand.500" mb={2}>
-            Add New Product
-          </Heading>
-          <Text color="gray.600">
-            Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
-          </Text>
-        </Box>
+    // outer Box sets the viewport background color requested
+    <Box minH="100vh" bg={pageBg} py={8}>
+      <Box p={8} maxW="4xl" mx="auto">
+        <VStack spacing={8} align="stretch">
+          {/* Header */}
+          <Box textAlign="center">
+            <Heading size="xl" color="brand.500" mb={2}>
+              Add New Product
+            </Heading>
+            <Text color="gray.600">
+              Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
+            </Text>
+          </Box>
 
-        {/* Progress Bar */}
-        <Box>
-          <Progress
-            value={(currentStep / steps.length) * 100}
-            colorScheme="brand"
-            size="lg"
-            borderRadius="full"
-          />
-        </Box>
-
-        {/* Step Content */}
-        <Box bg={bgColor} p={8} borderRadius="lg" shadow="sm" border="1px" borderColor={borderColor}>
-          {renderStepContent()}
-        </Box>
-
-        {/* Navigation */}
-        <HStack justify="space-between">
-          <Button
-            leftIcon={<ArrowBackIcon />}
-            onClick={prevStep}
-            isDisabled={currentStep === 1}
-            variant="outline"
-          >
-            Previous
-          </Button>
-          
-          {currentStep < steps.length ? (
-            <Button
-              rightIcon={<ArrowForwardIcon />}
-              onClick={nextStep}
-              isDisabled={!canProceed()}
-              colorScheme="brand"
-            >
-              Next
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSubmit}
-              isLoading={isSubmitting}
-              loadingText="Posting..."
+          {/* Progress Bar */}
+          <Box>
+            <Progress
+              value={(currentStep / steps.length) * 100}
               colorScheme="brand"
               size="lg"
-              px={8}
+              borderRadius="full"
+            />
+          </Box>
+
+          {/* Step Content */}
+          <Box bg={bgColor} p={8} borderRadius="lg" shadow="sm" border="1px" borderColor={borderColor}>
+            {renderStepContent()}
+          </Box>
+
+          {/* Navigation */}
+          <HStack justify="space-between">
+            <Button
+              leftIcon={<ArrowBackIcon />}
+              onClick={prevStep}
+              isDisabled={currentStep === 1}
+              variant="outline"
             >
-              Post Product
+              Previous
             </Button>
-          )}
-        </HStack>
-      </VStack>
+            
+            {currentStep < steps.length ? (
+              <Button
+                rightIcon={<ArrowForwardIcon />}
+                onClick={nextStep}
+                isDisabled={!canProceed()}
+                colorScheme="brand"
+              >
+                Next
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSubmit}
+                isLoading={isSubmitting}
+                loadingText="Posting..."
+                colorScheme="brand"
+                size="lg"
+                px={8}
+              >
+                Post Product
+              </Button>
+            )}
+          </HStack>
+        </VStack>
+      </Box>
     </Box>
   )
 }

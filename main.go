@@ -107,10 +107,11 @@ func main() {
 
 	// Product routes
 	products := api.Group("/products")
-	products.Get("/", productHandler.GetProducts)             // Public route
-	products.Get("", productHandler.GetProducts)              // Support no trailing slash
-	products.Get("/:id", productHandler.GetProduct)           // Public route
-	products.Get("/user/:id", productHandler.GetUserProducts) // Public route
+	products.Get("/", productHandler.GetProducts)                      // Public route
+	products.Get("", productHandler.GetProducts)                       // Support no trailing slash
+	products.Get("/:id", productHandler.GetProduct)                    // Public route
+	products.Get("/user/:id", productHandler.GetUserProducts)          // Public route
+	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
 	products.Delete("/:id", middleware.AuthMiddleware(), productHandler.DeleteProduct)
@@ -136,8 +137,10 @@ func main() {
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
+	trades.Get("/:id", middleware.AuthMiddleware(), tradeHandler.GetTrade)
 	trades.Get("/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeMessages)
 	trades.Post("/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeMessage)
+	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
 	trades.Get("/count", middleware.AuthMiddleware(), tradeHandler.CountTrades)
 
 	// Notifications routes

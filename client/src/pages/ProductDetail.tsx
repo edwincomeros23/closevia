@@ -24,6 +24,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { Product } from '../types'
 import { api } from '../services/api'
 import { getFirstImage } from '../utils/imageUtils'
+import TradeModal from '../components/TradeModal'
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -33,6 +34,8 @@ const ProductDetail: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [purchasing, setPurchasing] = useState(false)
+  const [isTradeOpen, setIsTradeOpen] = useState(false)
+  const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
   
   const navigate = useNavigate()
   const toast = useToast()
@@ -101,6 +104,24 @@ const ProductDetail: React.FC = () => {
       })
     } finally {
       setPurchasing(false)
+    }
+  }
+
+  const openTrade = () => {
+    if (!user) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please log in to propose a trade',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
+    if (product) {
+      setTradeTargetProductId(product.id)
+      setIsTradeOpen(true)
     }
   }
 
@@ -298,15 +319,7 @@ const ProductDetail: React.FC = () => {
                           size="lg"
                           w="full"
                           mb={-10}
-                          onClick={() =>
-                            toast({
-                              title: 'Contact Seller',
-                              description: 'Please contact the seller directly to arrange a trade.',
-                              status: 'info',
-                              duration: 3000,
-                              isClosable: true,
-                            })
-                          }
+                          onClick={openTrade}
                         >
                           Trade Offer
                         </Button>
@@ -375,6 +388,7 @@ const ProductDetail: React.FC = () => {
           </HStack>
         </Box>
       </VStack>
+      <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
     </Container>
   )
 }

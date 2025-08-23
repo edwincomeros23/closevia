@@ -634,12 +634,17 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	}
 
 	// Get products (use image_urls)
+	active := c.Query("active", "") == "true"
+	where := "WHERE p.seller_id = ?"
+	if active {
+		where += " AND p.status = 'available'"
+	}
 	rows, err := h.db.Query(`
 		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.created_at, p.updated_at, u.name as seller_name
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
-		WHERE p.seller_id = ?
+		`+where+`
 		ORDER BY p.created_at DESC
 		LIMIT ? OFFSET ?
 	`, userID, limit, offset)
@@ -659,7 +664,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		var imageURLsJSONStr string
 		err := rows.Scan(&product.ID, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-			&product.CreatedAt, &product.UpdatedAt, &product.SellerName)
+			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName)
 		if err != nil {
 			continue
 		}

@@ -149,14 +149,24 @@ func CreateTables() error {
 			buyer_id INT NOT NULL,
 			seller_id INT NOT NULL,
 			target_product_id INT NOT NULL,
-			status ENUM('pending','accepted','declined','countered') DEFAULT 'pending',
+			status ENUM('pending','accepted','declined','countered','active','completed','cancelled') DEFAULT 'pending',
 			message TEXT NULL,
+			offered_cash_amount DECIMAL(10,2) NULL,
+			buyer_completed BOOLEAN DEFAULT FALSE,
+			seller_completed BOOLEAN DEFAULT FALSE,
+			completed_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (target_product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
+		// Backfill/alter for existing deployments (ignore errors if already applied)
+		`ALTER TABLE trades MODIFY status ENUM('pending','accepted','declined','countered','active','completed','cancelled') DEFAULT 'pending'`,
+		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS buyer_completed BOOLEAN DEFAULT FALSE`,
+		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS seller_completed BOOLEAN DEFAULT FALSE`,
+		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP NULL`,
+		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS offered_cash_amount DECIMAL(10,2) NULL`,
 		`CREATE TABLE IF NOT EXISTS trade_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			trade_id INT NOT NULL,
@@ -174,6 +184,18 @@ func CreateTables() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
 			FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		// Trade events history log
+		`CREATE TABLE IF NOT EXISTS trade_events (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			actor_id INT NULL,
+			from_status VARCHAR(32) NULL,
+			to_status VARCHAR(32) NULL,
+			note VARCHAR(500) NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS notifications (
 			id INT AUTO_INCREMENT PRIMARY KEY,

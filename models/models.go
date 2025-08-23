@@ -175,11 +175,15 @@ type Trade struct {
 	BuyerID         int         `json:"buyer_id"`
 	SellerID        int         `json:"seller_id"`
 	TargetProductID int         `json:"target_product_id"`
-	Status          string      `json:"status" validate:"oneof=pending accepted declined countered"`
+	Status          string      `json:"status" validate:"oneof=pending accepted declined countered active completed cancelled"`
 	Message         string      `json:"message,omitempty"`
+	OfferedCash     *float64    `json:"offered_cash_amount,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
 	Items           []TradeItem `json:"items"`
+	BuyerCompleted  bool        `json:"buyer_completed"`
+	SellerCompleted bool        `json:"seller_completed"`
+	CompletedAt     *time.Time  `json:"completed_at,omitempty"`
 	BuyerName       string      `json:"buyer_name,omitempty"`
 	SellerName      string      `json:"seller_name,omitempty"`
 	ProductTitle    string      `json:"product_title,omitempty"`
@@ -192,20 +196,26 @@ type TradeItem struct {
 	ProductID int       `json:"product_id"`
 	OfferedBy string    `json:"offered_by" validate:"oneof=buyer seller"`
 	CreatedAt time.Time `json:"created_at"`
+	// Denormalized product details for display
+	ProductTitle    string `json:"product_title,omitempty"`
+	ProductStatus   string `json:"product_status,omitempty"`
+	ProductImageURL string `json:"product_image_url,omitempty"`
 }
 
 // TradeCreate represents payload to create a trade
 type TradeCreate struct {
-	TargetProductID   int    `json:"target_product_id" validate:"required"`
-	OfferedProductIDs []int  `json:"offered_product_ids" validate:"required,min=1,dive,gt=0"`
-	Message           string `json:"message"`
+	TargetProductID   int      `json:"target_product_id" validate:"required"`
+	OfferedProductIDs []int    `json:"offered_product_ids" validate:"required,min=1,dive,gt=0"`
+	Message           string   `json:"message"`
+	OfferedCashAmount *float64 `json:"offered_cash_amount,omitempty"`
 }
 
 // TradeAction represents accept/decline/counter actions
 type TradeAction struct {
-	Action                   string `json:"action" validate:"required,oneof=accept decline counter"`
-	Message                  string `json:"message,omitempty"`
-	CounterOfferedProductIDs []int  `json:"counter_offered_product_ids,omitempty"`
+	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel"`
+	Message                  string   `json:"message,omitempty"`
+	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
+	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
 }
 
 // ChatConversation represents a conversation between a buyer and seller about a product

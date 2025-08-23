@@ -6,6 +6,7 @@ import {
   IconButton,
   Tooltip,
   useColorModeValue,
+  useColorMode,
   Image,
   Drawer,
   DrawerOverlay,
@@ -30,6 +31,8 @@ import { FaUserCircle } from 'react-icons/fa'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
+  const { colorMode } = useColorMode()
+  const logo = colorMode === 'dark' ? '/logo1.svg' : '/logo.svg'
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const iconColor = useColorModeValue('gray.600', 'gray.300')
@@ -44,7 +47,7 @@ const Sidebar: React.FC = () => {
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
     { icon: RepeatIcon, label: 'Offers', path: '/offers' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
-    { icon: SettingsIcon, label: 'Settings', path: '/settings' },
+    // Settings intentionally excluded here so we can render it at the bottom
   ]
 
   const mobileNavItems = [
@@ -64,22 +67,26 @@ const Sidebar: React.FC = () => {
         <DrawerOverlay />
         <DrawerContent>
           <DrawerCloseButton />
-          <DrawerHeader>Clovia</DrawerHeader>
+          <DrawerHeader display="flex" alignItems="center" gap={3}>
+            <Image
+              src={logo}
+              alt="Clovia"
+              w="35px"
+              h="35px"
+              objectFit="contain"
+              cursor="pointer"
+              onClick={() => {
+                window.location.href = '/'
+                onClose()
+              }}
+            />
+            <Box fontWeight="bold">Clovia</Box>
+          </DrawerHeader>
+
           <DrawerBody>
             <VStack spacing={4} align="stretch" mt={4}>
               <Box p={2}>
-                <Image
-                  src="/logo.svg"
-                  alt="Clovia"
-                  w="35px"
-                  h="35px"
-                  objectFit="contain"
-                  cursor="pointer"
-                  onClick={() => {
-                    window.location.href = '/'
-                    onClose()
-                  }}
-                />
+                {/* Logo removed from here (now in DrawerHeader) */}
               </Box>
 
               {mobileNavItems.map((item) => {
@@ -94,8 +101,8 @@ const Sidebar: React.FC = () => {
                     variant="ghost"
                     justifyContent="flex-start"
                     onClick={onClose}
-                    bg={needsSoftBg ? '#FFFDF1' : 'transparent'}
-                    _hover={{ bg: needsSoftBg ? '#FFFDF1' : 'gray.100' }}
+                    bg={needsSoftBg ? '#FFFFFF' : 'transparent'}
+                    _hover={{ bg: needsSoftBg ? '#FFFFFF' : 'gray.100' }}
                   >
                     {item.label}
                   </Button>
@@ -120,60 +127,81 @@ const Sidebar: React.FC = () => {
         py={4}
         display={{ base: 'none', lg: 'block' }} // hide on small screens
       >
-        <VStack spacing={5} align="center">
-          {/* Logo/Brand */}
-          <Box mb={8} p={2}>
-            <Image
-              src="/logo.svg"
-              alt="Clovia"
-              w="35px"
-              h="35px"
-              objectFit="contain"
-              cursor="pointer"
-              onClick={() => (window.location.href = '/')}
-              _hover={{ opacity: 0.8 }}
-              transition="opacity 0.2s"
-            />
+        {/* make sidebar a column with space-between: logo+nav on top, settings at bottom */}
+        <Box h="100%" display="flex" flexDirection="column" justifyContent="space-between" alignItems="center">
+          <VStack spacing={5} align="center" mt={2}>
+            {/* Logo/Brand */}
+            <Box mb={2} p={2}>
+              <Image
+                src={logo}
+                alt="Clovia"
+                w="35px"
+                h="35px"
+                objectFit="contain"
+                cursor="pointer"
+                onClick={() => (window.location.href = '/')}
+                _hover={{ opacity: 0.8 }}
+                transition="opacity 0.2s"
+              />
+            </Box>
+
+            {/* Navigation Items (exclude Settings) */}
+            {desktopNavItems.map((item) => {
+              const isActive = location.pathname === item.path
+              const Icon = item.icon
+              return (
+                <Tooltip key={item.path} label={item.label} placement="right" hasArrow>
+                  <Box position="relative" display="inline-block">
+                    <IconButton
+                      as={RouterLink}
+                      to={item.path}
+                      aria-label={item.label}
+                      icon={<Icon />}
+                      variant="ghost"
+                      size="lg"
+                      color={isActive ? activeIconColor : iconColor}
+                      bg={isActive ? 'brand.50' : 'transparent'}
+                      _hover={{
+                        bg: isActive ? 'brand.100' : 'gray.100',
+                        color: isActive ? activeIconColor : 'gray.700',
+                      }}
+                      _active={{
+                        bg: isActive ? 'brand.200' : 'gray.200',
+                      }}
+                      borderRadius="xl"
+                      transition="all 0.2s"
+                    />
+                    {(item.label === 'Offers' && offerCount > 0) && (
+                      <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="purple" borderRadius="full">{offerCount}</CBadge>
+                    )}
+                    {(item.label === 'Notifications' && notificationCount > 0) && (
+                      <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="red" borderRadius="full">{notificationCount}</CBadge>
+                    )}
+                  </Box>
+                </Tooltip>
+              )
+            })}
+          </VStack>
+
+          {/* Settings at the bottom */}
+          <Box mb={4}>
+            <Tooltip label="Settings" placement="right" hasArrow>
+              <IconButton
+                as={RouterLink}
+                to="/settings"
+                aria-label="Settings"
+                icon={<SettingsIcon />}
+                variant="ghost"
+                size="lg"
+                color={location.pathname === '/settings' ? activeIconColor : iconColor}
+                bg={location.pathname === '/settings' ? 'brand.50' : 'transparent'}
+                _hover={{ bg: location.pathname === '/settings' ? 'brand.100' : 'gray.100' }}
+                borderRadius="xl"
+                transition="all 0.2s"
+              />
+            </Tooltip>
           </Box>
-
-          {/* Navigation Items */}
-          {desktopNavItems.map((item) => {
-            const isActive = location.pathname === item.path
-            const Icon = item.icon
-
-            return (
-              <Tooltip key={item.path} label={item.label} placement="right" hasArrow>
-                <Box position="relative" display="inline-block">
-                  <IconButton
-                    as={RouterLink}
-                    to={item.path}
-                    aria-label={item.label}
-                    icon={<Icon />}
-                    variant="ghost"
-                    size="lg"
-                    color={isActive ? activeIconColor : iconColor}
-                    bg={isActive ? 'brand.50' : 'transparent'}
-                    _hover={{
-                      bg: isActive ? 'brand.100' : 'gray.100',
-                      color: isActive ? activeIconColor : 'gray.700',
-                    }}
-                    _active={{
-                      bg: isActive ? 'brand.200' : 'gray.200',
-                    }}
-                    borderRadius="xl"
-                    transition="all 0.2s"
-                  />
-                  {(item.label === 'Offers' && offerCount > 0) && (
-                    <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="purple" borderRadius="full">{offerCount}</CBadge>
-                  )}
-                  {(item.label === 'Notifications' && notificationCount > 0) && (
-                    <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="red" borderRadius="full">{notificationCount}</CBadge>
-                  )}
-                </Box>
-              </Tooltip>
-            )
-          })}
-        </VStack>
+        </Box>
       </Box>
     </>
   )

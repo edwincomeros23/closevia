@@ -88,7 +88,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered'
+export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'completed' | 'cancelled'
 
 export interface TradeItem {
   id: number
@@ -96,6 +96,9 @@ export interface TradeItem {
   product_id: number
   offered_by: 'buyer' | 'seller'
   created_at: string
+  product_title?: string
+  product_status?: 'available' | 'sold'
+  product_image_url?: string
 }
 
 export interface Trade {
@@ -105,24 +108,30 @@ export interface Trade {
   target_product_id: number
   status: TradeStatus
   message?: string
+  offered_cash_amount?: number | null
   created_at: string
   updated_at: string
   items: TradeItem[]
   buyer_name?: string
   seller_name?: string
   product_title?: string
+  buyer_completed?: boolean
+  seller_completed?: boolean
+  completed_at?: string | null
 }
 
 export interface TradeCreate {
   target_product_id: number
   offered_product_ids: number[]
   message?: string
+  offered_cash_amount?: number
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel'
   message?: string
   counter_offered_product_ids?: number[]
+  counter_offered_cash_amount?: number
 }
 
 export interface APIResponse<T = any> {

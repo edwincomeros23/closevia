@@ -20,16 +20,10 @@ import {
   Grid,
   GridItem,
   useDisclosure,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
-  FormControl,
-  FormLabel,
   InputGroup,
   InputLeftElement,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react'
 import { 
   SearchIcon, 
@@ -48,7 +42,7 @@ import { SearchFilters } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
-import { TradeCreate, Product as ProductType } from '../types'
+import TradeModal from '../components/TradeModal'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -179,57 +173,10 @@ const Home: React.FC = () => {
 
   // Trade modal state
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
-  const [userProducts, setUserProducts] = useState<ProductType[]>([])
-  const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([])
-  const [tradeMessage, setTradeMessage] = useState('')
-  const [submittingTrade, setSubmittingTrade] = useState(false)
 
   const openTradeModal = async (productId: number) => {
     setTradeTargetProductId(productId)
-    setSelectedOfferIds([])
-    setTradeMessage('')
-    if (user) {
-      try {
-        // Fetch user's products to offer
-        const res = await api.get(`/api/products/user/${user.id}?page=1&limit=50`)
-        const data = res.data?.data
-        setUserProducts(Array.isArray(data?.data) ? data.data : [])
-      } catch (e) {
-        setUserProducts([])
-      }
-      onOpen()
-    } else {
-      onOpen() // fallback to login modal if not authenticated
-    }
-  }
-
-  const toggleOfferSelection = (id: number) => {
-    setSelectedOfferIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }
-
-  const submitTrade = async () => {
-    if (!tradeTargetProductId || selectedOfferIds.length === 0) {
-      toast({ title: 'Select items', description: 'Please select at least one of your items to offer.', status: 'warning' })
-      return
-    }
-    try {
-      setSubmittingTrade(true)
-      const payload: TradeCreate = {
-        target_product_id: tradeTargetProductId,
-        offered_product_ids: selectedOfferIds,
-        message: tradeMessage,
-      }
-      await api.post('/api/trades', payload)
-      toast({ title: 'Trade sent', description: 'Your trade offer was sent to the seller.', status: 'success' })
-      setTradeTargetProductId(null)
-      setSelectedOfferIds([])
-      setTradeMessage('')
-      onClose()
-    } catch (e: any) {
-      toast({ title: 'Failed', description: e?.response?.data?.error || 'Failed to send trade', status: 'error' })
-    } finally {
-      setSubmittingTrade(false)
-    }
+    onOpen()
   }
 
   const handleTradeClick = (productId: number) => {
@@ -500,7 +447,7 @@ const Home: React.FC = () => {
 
           {/* Expandable Filters */}
           {showFilters && (
-            <Box w="full" maxW="4xl" mx="auto" bg="gray.50" p={4} rounded="lg">
+            <Box w="full" maxW="4xl" mx="auto" bg="white" p={4} rounded="lg">
               <Grid templateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap={4}>
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Price Range</FormLabel>
@@ -677,65 +624,7 @@ const Home: React.FC = () => {
         )}
       </Box>
 
-      {/* Login Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>{user ? 'Propose a Trade' : 'Sign in to Continue'}</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            {user ? (
-              <VStack spacing={4} align="stretch">
-                <Text fontWeight="semibold">Select your items to offer:</Text>
-                <Grid templateColumns="repeat(auto-fit, minmax(140px, 1fr))" gap={3}>
-                  {userProducts.map((p) => (
-                    <Box key={p.id} borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
-                      <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" />
-                      <Box p={2}>
-                        <Text fontSize="sm" noOfLines={2}>{p.title}</Text>
-                      </Box>
-                    </Box>
-                  ))}
-                </Grid>
-                <FormControl>
-                  <FormLabel fontSize="sm">Message (optional)</FormLabel>
-                  <Input placeholder="Add a note for the seller" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} />
-                </FormControl>
-                <HStack justify="flex-end">
-                  <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                  <Button colorScheme="brand" isLoading={submittingTrade} onClick={submitTrade} isDisabled={selectedOfferIds.length === 0}>Send Offer</Button>
-                </HStack>
-              </VStack>
-            ) : (
-              <VStack spacing={4}>
-                <Text color="gray.600">
-                  You need to be signed in to trade or purchase items.
-                </Text>
-                <HStack spacing={4} w="full">
-                  <Button
-                    as={RouterLink}
-                    to="/login"
-                    colorScheme="brand"
-                    flex={1}
-                    onClick={onClose}
-                  >
-                    Sign In
-                  </Button>
-                  <Button
-                    as={RouterLink}
-                    to="/register"
-                    variant="outline"
-                    flex={1}
-                    onClick={onClose}
-                  >
-                    Sign Up
-                  </Button>
-                </HStack>
-              </VStack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+      <TradeModal isOpen={isOpen} onClose={onClose} targetProductId={tradeTargetProductId} />
 
       {/* Floating Add Product FAB (bottom-right) - more visible with stronger shadows and border */}
       <IconButton
