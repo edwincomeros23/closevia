@@ -49,7 +49,7 @@ func main() {
 	app.Use(recover.New())
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:5173,http://localhost:3000",
+		AllowOrigins: "http://localhost:5173,http://localhost:5174,http://localhost:3000",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
@@ -92,6 +92,7 @@ func main() {
 	chatHandler := handlers.NewChatHandler()
 	tradeHandler := handlers.NewTradeHandler()
 	notificationHandler := handlers.NewNotificationHandler()
+	adminHandler := handlers.NewAdminHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -148,6 +149,10 @@ func main() {
 	notifs.Get("/", middleware.AuthMiddleware(), notificationHandler.GetNotifications)
 	notifs.Put("/:id/read", middleware.AuthMiddleware(), notificationHandler.MarkAsRead)
 	notifs.Put("/read-all", middleware.AuthMiddleware(), notificationHandler.MarkAllAsRead)
+
+	// Admin routes
+	admin := api.Group("/admin")
+	admin.Get("/stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminStats)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")
