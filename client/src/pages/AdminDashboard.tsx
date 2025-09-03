@@ -37,20 +37,7 @@ import {
   Grid,
   GridItem,
   Select,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
   Progress as ChakraProgress,
-  Divider,
-  useDisclosure,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
 } from '@chakra-ui/react';
 import { 
   LineChart, 
@@ -59,26 +46,16 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
+  ResponsiveContainer
 } from 'recharts';
 import { 
   FiShoppingBag, 
   FiStar, 
   FiTrendingUp, 
   FiRefreshCw, 
-  FiUser, 
   FiServer, 
   FiAlertTriangle,
-  FiCheckCircle,
-  FiClock,
   FiDollarSign,
-  FiBarChart3,
   FiUsers,
   FiEye,
   FiMessageCircle,
@@ -87,9 +64,7 @@ import {
   FiFileText,
   FiShield,
   FiHome,
-  FiSettings,
   FiCreditCard,
-  FiActivity
 } from 'react-icons/fi';
 import { api } from '../services/api';
 import { mockAdminStats, simulateApiDelay } from '../utils/mockData';

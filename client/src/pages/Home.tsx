@@ -16,9 +16,7 @@ import {
   Center,
   useToast,
   IconButton,
-  Tooltip,
   Grid,
-  GridItem,
   useDisclosure,
   InputGroup,
   InputLeftElement,
@@ -34,8 +32,8 @@ import {
   ChevronUpIcon,
   AddIcon,
   HamburgerIcon,
-  ArrowLeftIcon,    // added
-  ArrowRightIcon,   // added
+  ArrowLeftIcon,   
+  ArrowRightIcon,   
 } from '@chakra-ui/icons'
 import { FaUserCircle } from 'react-icons/fa'
 import { useProducts } from '../contexts/ProductContext'

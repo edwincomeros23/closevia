@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Box, Spinner, Center, Text, VStack } from '@chakra-ui/react';
+import { Spinner, Center, Text, VStack } from '@chakra-ui/react';
 
 interface AdminRouteProps {
   children: React.ReactNode;

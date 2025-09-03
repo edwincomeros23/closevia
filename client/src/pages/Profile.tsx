@@ -14,7 +14,6 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Divider,
   Badge,
   Avatar,
   SimpleGrid,
@@ -122,7 +121,6 @@ const Profile: React.FC = () => {
 
   const handleSaveProfile = async () => {
     try {
-      // In a real app: await api.put('/api/users/profile', editForm)
       toast({
         title: 'Success',
         description: 'Profile updated successfully',
