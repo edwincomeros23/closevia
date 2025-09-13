@@ -272,9 +272,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </Box>
             </HStack>
 
-            {/* Compact info row placed below requested/offered to save space */}
+
             <HStack spacing={3} mt={2} align="center" wrap="wrap">
-              {/* Cash on the left */}
               {effectiveTrade?.offered_cash_amount ? (
                 <Box borderWidth="1px" borderColor="green.200" bg="green.50" rounded="md" p={2} fontSize="sm" color="green.800" minW="120px">
                   <Text fontWeight="semibold" noOfLines={1}>Cash included</Text>
@@ -282,7 +281,6 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 </Box>
               ) : null}
 
-              {/* optional debug (small) */}
               {showDebug && (
                 <Box borderWidth="1px" borderColor="purple.200" bg="purple.50" rounded="md" p={2} fontSize="xs" color="purple.800" minW="140px">
                   <Text fontWeight="semibold" mb={1}>Debug</Text>
@@ -290,7 +288,6 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 </Box>
               )}
 
-              {/* Message on the right, wider */}
               {trade?.message && (
                 <Box borderWidth="1px" borderColor="gray.200" bg="gray.50" rounded="md" p={3} fontSize="sm" color="gray.800" flex="1 1 60%" minW="260px">
                   <Text fontWeight="semibold" noOfLines={1}>Message</Text>
@@ -317,7 +314,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </HStack>
             </HStack>
 
-            {/* Counter modal (replaces inline box) */}
+
             <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size="xl">
               <ModalOverlay />
               <ModalContent maxW="900px">

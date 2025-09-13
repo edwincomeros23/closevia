@@ -14,7 +14,6 @@ import {
   Card,
   CardBody,
   CardHeader,
-  Divider,
   Badge,
   Avatar,
   SimpleGrid,
@@ -87,12 +86,13 @@ const Profile: React.FC = () => {
       // Calculate stats
       const activeProducts = products.filter(p => p.status === 'available').length
       const soldProducts = products.filter(p => p.status === 'sold').length
+      const tradedProducts = products.filter(p => p.status === 'traded').length
       
       // Mock stats since we don't have orders in the current implementation
       const stats: UserStats = {
         totalProducts: products.length,
         activeProducts,
-        soldProducts,
+        soldProducts: soldProducts + tradedProducts, // Combine sold and traded for display
         totalOrders: 0, // Would come from orders API
         memberSince: user!.created_at,
       }
@@ -122,7 +122,6 @@ const Profile: React.FC = () => {
 
   const handleSaveProfile = async () => {
     try {
-      // In a real app: await api.put('/api/users/profile', editForm)
       toast({
         title: 'Success',
         description: 'Profile updated successfully',
@@ -298,7 +297,13 @@ const Profile: React.FC = () => {
                         </Text>
                       </VStack>
                       <Badge
-                        colorScheme={product.status === 'available' ? 'green' : 'red'}
+                        colorScheme={
+                          product.status === 'available' 
+                            ? 'green' 
+                            : product.status === 'traded' 
+                            ? 'blue' 
+                            : 'red'
+                        }
                       >
                         {product.status}
                       </Badge>

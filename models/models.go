@@ -75,6 +75,7 @@ type User struct {
 	Name         string    `json:"name" validate:"required,min=2,max=255"`
 	Email        string    `json:"email" validate:"required,email"`
 	PasswordHash string    `json:"-" validate:"required"`
+	Role         string    `json:"role" validate:"oneof=user admin"`
 	Verified     bool      `json:"verified"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -91,6 +92,7 @@ type UserRegister struct {
 	Name     string `json:"name" validate:"required,min=2,max=255"`
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=6"`
+	Role     string `json:"role" validate:"omitempty,oneof=user admin"`
 }
 
 // Product represents a product listing
@@ -104,7 +106,7 @@ type Product struct {
 	SellerID    int         `json:"seller_id"`
 	SellerName  string      `json:"seller_name,omitempty"`
 	Premium     bool        `json:"premium"`
-	Status      string      `json:"status" validate:"oneof=available sold"`
+	Status      string      `json:"status" validate:"oneof=available sold traded"`
 	AllowBuying bool        `json:"allow_buying"` // Whether buying is allowed
 	BarterOnly  bool        `json:"barter_only"`  // Whether it's barter only
 	Location    string      `json:"location,omitempty"`
@@ -131,7 +133,7 @@ type ProductUpdate struct {
 	Price       *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
 	ImageURLs   *StringArray `json:"image_urls,omitempty"`
 	Premium     *bool        `json:"premium,omitempty"`
-	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold"`
+	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded"`
 	AllowBuying *bool        `json:"allow_buying,omitempty"`
 	BarterOnly  *bool        `json:"barter_only,omitempty"`
 	Location    *string      `json:"location,omitempty"`
