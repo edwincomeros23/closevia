@@ -8,9 +8,9 @@ yarn-debug.log
 yarn-error.log
 
 # Env and secrets
-.env
-.env.local
-.env.*.local
+#.env
+#.env.local
+#.env.*.local
 
 # IDE / OS
 .vscode/

@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
-import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link } from '@chakra-ui/react'
+import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon } from '@chakra-ui/react'
+import { FaHandshake } from 'react-icons/fa'
 import { api } from '../services/api'
 import { Trade, TradeAction } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
 import OfferDetailsModal from '../components/OfferDetailsModal'
+import TradeCompletionModal from '../components/TradeCompletionModal'
 
 const Offers: React.FC = () => {
   const [incoming, setIncoming] = useState<Trade[]>([])
@@ -12,7 +14,14 @@ const Offers: React.FC = () => {
   const [sort, setSort] = useState<'newest' | 'oldest'>('newest')
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [completionModalOpen, setCompletionModalOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState(0)
+  const [currentUserId, setCurrentUserId] = useState<number | undefined>()
   const toast = useToast()
+  
+  const bgColor = useColorModeValue('#FEFEFE', 'gray.900')
+  const cardBg = useColorModeValue('#FDFDFD', 'gray.800')
+  const softAccent = useColorModeValue('#F8F9FA', 'gray.700')
 
   const fetchAll = async () => {
     try {
@@ -30,7 +39,14 @@ const Offers: React.FC = () => {
     }
   }
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { 
+    fetchAll()
+    // Get current user ID from localStorage or API
+    const userId = localStorage.getItem('userId')
+    if (userId) {
+      setCurrentUserId(parseInt(userId))
+    }
+  }, [])
 
   // Debug: inspect API structure for /api/trades
   useEffect(() => {
@@ -59,6 +75,11 @@ const Offers: React.FC = () => {
     } catch (e: any) {
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
+  }
+
+  const handleCompleteTradeClick = (trade: Trade) => {
+    setSelectedTrade(trade)
+    setCompletionModalOpen(true)
   }
 
   const sortList = (list: Trade[]) => {
@@ -232,40 +253,169 @@ const Offers: React.FC = () => {
   }
 
   return (
-    <Box px={8} py={6} bg="#FFFDF1">
-      <HStack justify="space-between" mb={4}>
-        <Heading size="md">Offers</Heading>
-        <HStack>
-          <Text fontSize="sm" color="gray.600">Sort:</Text>
-          <Select size="sm" value={sort} onChange={e => setSort(e.target.value as any)} w="160px">
-            <option value="newest">Newest</option>
-            <option value="oldest">Oldest</option>
-          </Select>
-        </HStack>
-      </HStack>
+    <Box minH="100vh" bg="#FFFDF1">
+      <Box px={8} py={20}>
+        <Slide direction="top" in={!loading} style={{ zIndex: 10 }}>
+          <HStack justify="space-between" mb={4} pl={24} mt={4}>
+            <Heading size="md" color="gray.700" fontWeight="semibold">
+              Trade Management
+            </Heading>
+            <HStack spacing={3} mt={2}>
+              <Text fontSize="sm" color="gray.500" fontWeight="medium">Sort:</Text>
+              <Select 
+                size="sm" 
+                value={sort} 
+                onChange={e => setSort(e.target.value as any)} 
+                w="140px"
+                bg={cardBg}
+                borderColor="gray.200"
+                borderRadius="md"
+                _hover={{ 
+                  borderColor: "gray.300",
+                  transform: "translateY(-1px)",
+                  boxShadow: "sm"
+                }}
+                _focus={{ 
+                  borderColor: "blue.300", 
+                  boxShadow: "0 0 0 1px rgba(66, 153, 225, 0.3)" 
+                }}
+                transition="all 0.2s ease"
+              >
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </Select>
+            </HStack>
+          </HStack>
+        </Slide>
 
-      <Tabs colorScheme="brand">
-        <TabList>
-          <Tab>Offers Received <Badge ml={2}>{incoming.filter(i => i.status === 'pending').length}</Badge></Tab>
-          <Tab>Offers Sent <Badge ml={2}>{outgoing.filter(i => i.status === 'pending').length}</Badge></Tab>
-          <Tab>In Progress</Tab>
-          <Tab>History</Tab>
-        </TabList>
-        <TabPanels>
-          <TabPanel>
-            <VStack spacing={4} align="stretch">
+        <Tabs 
+          colorScheme="blue" 
+          variant="soft-rounded" 
+          index={activeTab} 
+          onChange={setActiveTab}
+          bg={cardBg}
+          borderRadius="lg"
+          boxShadow="sm"
+          border="1px solid"
+          borderColor="gray.100"
+          overflow="hidden"
+        >
+          <TabList bg={softAccent} p={3} gap={2}>
+            <Tab 
+              _selected={{ 
+                bg: "blue.500", 
+                color: "white",
+                transform: "translateY(-1px)",
+                boxShadow: "sm"
+              }}
+              _hover={{ 
+                bg: "blue.50",
+                transform: "translateY(-1px)"
+              }}
+              transition="all 0.2s ease"
+              fontWeight="medium"
+              fontSize="sm"
+              borderRadius="md"
+              px={4}
+              py={2}
+            >
+              Offers Received 
+              <Badge ml={2} colorScheme="blue" variant="subtle" fontSize="xs">
+                {incoming.filter(i => i.status === 'pending').length}
+              </Badge>
+            </Tab>
+            <Tab 
+              _selected={{ 
+                bg: "blue.500", 
+                color: "white",
+                transform: "translateY(-1px)",
+                boxShadow: "sm"
+              }}
+              _hover={{ 
+                bg: "green.50",
+                transform: "translateY(-1px)"
+              }}
+              transition="all 0.2s ease"
+              fontWeight="medium"
+              fontSize="sm"
+              borderRadius="md"
+              px={4}
+              py={2}
+            >
+              Offers Sent 
+              <Badge ml={2} colorScheme="green" variant="subtle" fontSize="xs">
+                {outgoing.filter(i => i.status === 'pending').length}
+              </Badge>
+            </Tab>
+            <Tab 
+              _selected={{ 
+                bg: "blue.500", 
+                color: "white",
+                transform: "translateY(-1px)",
+                boxShadow: "sm"
+              }}
+              _hover={{ 
+                bg: "orange.50",
+                transform: "translateY(-1px)"
+              }}
+              transition="all 0.2s ease"
+              fontWeight="medium"
+              fontSize="sm"
+              borderRadius="md"
+              px={4}
+              py={2}
+            >
+              In Progress
+              <Badge ml={2} colorScheme="orange" variant="subtle" fontSize="xs">
+                {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').length}
+              </Badge>
+            </Tab>
+            <Tab 
+              _selected={{ 
+                bg: "blue.500", 
+                color: "white",
+                transform: "translateY(-1px)",
+                boxShadow: "sm"
+              }}
+              _hover={{ 
+                bg: "gray.50",
+                transform: "translateY(-1px)"
+              }}
+              transition="all 0.2s ease"
+              fontWeight="medium"
+              fontSize="sm"
+              borderRadius="md"
+              px={4}
+              py={2}
+            >
+              History
+              <Badge ml={2} colorScheme="gray" variant="subtle" fontSize="xs">
+                {historyItems.length}
+              </Badge>
+            </Tab>
+          </TabList>
+          <TabPanels bg={cardBg} p={5}>
+          <TabPanel p={0}>
+            <VStack spacing={3} align="stretch">
               {offersReceivedSorted.length === 0 ? (
-                <Text color="gray.500">No offers received.</Text>
+                <Text color="gray.500" textAlign="center" py={8}>No offers received.</Text>
               ) : offersReceivedSorted.map((t) => (
-                <Box
-                  key={t.id}
-                  bg="white"
-                  borderWidth="1px"
-                  borderColor="gray.200"
-                  rounded="md"
-                  p={4}
-                  position="relative" /* enable absolute positioning for actions */
-                >
+                <ScaleFade in={true} key={t.id}>
+                  <Box
+                    bg="white"
+                    borderWidth="1px"
+                    borderColor="gray.100"
+                    rounded="lg"
+                    p={5}
+                    position="relative"
+                    boxShadow="sm"
+                    _hover={{
+                      boxShadow: "md",
+                      transform: "translateY(-1px)",
+                      borderColor: "gray.200"
+                    }}
+                    transition="all 0.2s ease"
+                  >
                   {/* Top-right: status */}
                   <Box position="absolute" top={4} right={4}>
                     <Badge colorScheme={badgeColor(t.status)}>{t.status}</Badge>
@@ -281,105 +431,186 @@ const Offers: React.FC = () => {
                     </VStack>
                   </Box>
 
-                  {/* Actions positioned bottom-right */}
-                  <Box position="absolute" right={4} bottom={4}>
-                    <HStack spacing={2}>
-                      <Button size="sm" onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}>View</Button>
-                      <Button size="sm" colorScheme="green" onClick={() => updateTrade(t.id, { action: 'accept' })} isDisabled={t.status !== 'pending'}>Accept</Button>
-                      <Button size="sm" colorScheme="red" variant="outline" onClick={() => updateTrade(t.id, { action: 'decline' })} isDisabled={t.status !== 'pending'}>Decline</Button>
+                    {/* Actions positioned bottom-right */}
+                    <Box position="absolute" right={4} bottom={4}>
+                      <HStack spacing={2}>
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}
+                          _hover={{ bg: "gray.100" }}
+                        >
+                          View
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          colorScheme="green" 
+                          variant="solid"
+                          onClick={() => updateTrade(t.id, { action: 'accept' })} 
+                          isDisabled={t.status !== 'pending'}
+                          _hover={{ transform: "translateY(-1px)" }}
+                        >
+                          Accept
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          colorScheme="red" 
+                          variant="outline" 
+                          onClick={() => updateTrade(t.id, { action: 'decline' })} 
+                          isDisabled={t.status !== 'pending'}
+                          _hover={{ transform: "translateY(-1px)" }}
+                        >
+                          Decline
+                        </Button>
+                      </HStack>
+                    </Box>
+                  </Box>
+                </ScaleFade>
+              ))}
+            </VStack>
+          </TabPanel>
+          <TabPanel p={0}>
+            <VStack spacing={3} align="stretch">
+              {offersSentSorted.length === 0 ? (
+                <Text color="gray.500" textAlign="center" py={8}>No offers sent.</Text>
+              ) : offersSentSorted.map((t) => (
+                <ScaleFade in={true} key={t.id}>
+                  <Box 
+                    bg="white" 
+                    borderWidth="1px" 
+                    borderColor="gray.100" 
+                    rounded="lg" 
+                    p={5}
+                    boxShadow="sm"
+                    _hover={{
+                      boxShadow: "md",
+                      transform: "translateY(-1px)",
+                      borderColor: "gray.200"
+                    }}
+                    transition="all 0.2s ease"
+                  >
+                    <HStack justify="space-between" align="start">
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="semibold" color="gray.800">{t.product_title || `Product #${t.target_product_id}`}</Text>
+                        <Text fontSize="sm" color="gray.600">To: {t.seller_name || `User #${t.seller_id}`}</Text>
+                        <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
+                        {renderOfferedItems(t)}
+                      </VStack>
+                      <Badge colorScheme={badgeColor(t.status)} variant="subtle">{t.status}</Badge>
                     </HStack>
                   </Box>
-                </Box>
+                </ScaleFade>
               ))}
             </VStack>
           </TabPanel>
-          <TabPanel>
-            <VStack spacing={4} align="stretch">
-              {offersSentSorted.length === 0 ? (
-                <Text color="gray.500">No offers sent.</Text>
-              ) : offersSentSorted.map((t) => (
-                <Box key={t.id} bg="white" borderWidth="1px" borderColor="gray.200" rounded="md" p={4}>
-                  <HStack justify="space-between" align="start">
-                    <VStack align="start" spacing={1}>
-                      <Text fontWeight="semibold">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                      <Text fontSize="sm" color="gray.600">To: {t.seller_name || `User #${t.seller_id}`}</Text>
-                      <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
-                      {renderOfferedItems(t)}
-                    </VStack>
-                    <Badge colorScheme={badgeColor(t.status)}>{t.status}</Badge>
-                  </HStack>
-                </Box>
-              ))}
-            </VStack>
-          </TabPanel>
-          <TabPanel>
-            <VStack spacing={4} align="stretch">
+          <TabPanel p={0}>
+            <VStack spacing={3} align="stretch">
               {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').length === 0 ? (
-                <Text color="gray.500">No trades in progress.</Text>
+                <Text color="gray.500" textAlign="center" py={8}>No trades in progress.</Text>
               ) : incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').map((t) => (
-                <Box key={t.id} bg="white" borderWidth="1px" borderColor="gray.200" rounded="md" p={4} position="relative">
-                  {/* Top-right: status */}
-                  <Box position="absolute" top={4} right={4}>
-                    <Badge colorScheme={badgeColor(t.status)}>{t.status}</Badge>
-                  </Box>
+                <ScaleFade in={true} key={t.id}>
+                  <Box 
+                    bg="white" 
+                    borderWidth="1px" 
+                    borderColor="gray.100" 
+                    rounded="lg" 
+                    p={5} 
+                    position="relative"
+                    boxShadow="sm"
+                    _hover={{
+                      boxShadow: "md",
+                      transform: "translateY(-1px)",
+                      borderColor: "gray.200"
+                    }}
+                    transition="all 0.2s ease"
+                  >
+                    {/* Top-right: status */}
+                    <Box position="absolute" top={4} right={4}>
+                      <Badge colorScheme={badgeColor(t.status)} variant="subtle">{t.status}</Badge>
+                    </Box>
 
-                  {/* Left: details */}
-                  <Box pr="220px">
-                    <VStack align="start" spacing={1}>
-                      <Text fontWeight="semibold">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                      <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || `#${t.buyer_id}`} • Seller: {t.seller_name || `#${t.seller_id}`}</Text>
-                      {renderOfferedItems(t)}
-                    </VStack>
-                  </Box>
+                    {/* Left: details */}
+                    <Box pr="200px">
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="semibold" color="gray.800">{t.product_title || `Product #${t.target_product_id}`}</Text>
+                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || `#${t.buyer_id}`} • Seller: {t.seller_name || `#${t.seller_id}`}</Text>
+                        {renderOfferedItems(t)}
+                      </VStack>
+                    </Box>
 
-                  {/* Bottom-right actions: Complete button added */}
-                  <Box position="absolute" right={4} bottom={4}>
-                    <HStack spacing={2}>
+                    {/* Bottom-right actions: Complete button */}
+                    <Box position="absolute" right={4} bottom={4}>
                       <Button
                         size="sm"
-                        colorScheme="brand"
-                        onClick={() => updateTrade(t.id, { action: 'complete' })}
+                        colorScheme="blue"
+                        variant="solid"
+                        onClick={() => handleCompleteTradeClick(t)}
                         isDisabled={['completed', 'cancelled', 'declined'].includes(t.status)}
-                        title="Click to mark this trade complete. Backend will finalize when both parties confirm."
+                        title="Click to open trade completion modal"
+                        _hover={{ transform: "translateY(-1px)" }}
+                        leftIcon={<Icon as={FaHandshake} />}
                       >
-                        Complete trade
+                        Complete Trade
                       </Button>
-                    </HStack>
+                    </Box>
                   </Box>
-                </Box>
+                </ScaleFade>
               ))}
             </VStack>
           </TabPanel>
-          <TabPanel>
-            <VStack spacing={4} align="stretch">
+          <TabPanel p={0}>
+            <VStack spacing={3} align="stretch">
               {historyItems.length === 0 ? (
-                <Text color="gray.500">No history yet.</Text>
+                <Text color="gray.500" textAlign="center" py={8}>No history yet.</Text>
               ) : historyItems.map((t) => (
-                <Box key={t.id} bg="white" borderWidth="1px" borderColor="gray.200" rounded="md" p={4}>
-                  <HStack justify="space-between" align="start">
-                    <VStack align="start" spacing={1}>
-                      <Text fontWeight="semibold">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                      <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || `#${t.buyer_id}`} • Seller: {t.seller_name || `#${t.seller_id}`}</Text>
-                      {renderOfferedItems(t)}
-                      {/* source note for UX (where this history item originated) */}
-                      <Text fontSize="xs" color="gray.500" mt={1}>Source: {t.source}</Text>
-                    </VStack>
-                    <Badge colorScheme={badgeColor(t.status)}>{t.status}</Badge>
-                  </HStack>
-                </Box>
+                <ScaleFade in={true} key={t.id}>
+                  <Box 
+                    bg="white" 
+                    borderWidth="1px" 
+                    borderColor="gray.100" 
+                    rounded="lg" 
+                    p={5}
+                    boxShadow="sm"
+                    _hover={{
+                      boxShadow: "md",
+                      transform: "translateY(-1px)",
+                      borderColor: "gray.200"
+                    }}
+                    transition="all 0.2s ease"
+                  >
+                    <HStack justify="space-between" align="start">
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="semibold" color="gray.800">{t.product_title || `Product #${t.target_product_id}`}</Text>
+                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || `#${t.buyer_id}`} • Seller: {t.seller_name || `#${t.seller_id}`}</Text>
+                        {renderOfferedItems(t)}
+                        <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
+                      </VStack>
+                      <Badge colorScheme={badgeColor(t.status)} variant="subtle">{t.status}</Badge>
+                    </HStack>
+                  </Box>
+                </ScaleFade>
               ))}
             </VStack>
           </TabPanel>
         </TabPanels>
       </Tabs>
 
-      <OfferDetailsModal
-        trade={selectedTrade}
-        isOpen={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
-        onAccepted={fetchAll}
-        onDeclined={fetchAll}
-      />
+        <OfferDetailsModal
+          trade={selectedTrade}
+          isOpen={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+          onAccepted={fetchAll}
+          onDeclined={fetchAll}
+        />
+
+        <TradeCompletionModal
+          trade={selectedTrade}
+          isOpen={completionModalOpen}
+          onClose={() => setCompletionModalOpen(false)}
+          onCompleted={fetchAll}
+          currentUserId={currentUserId}
+        />
+      </Box>
     </Box>
   )
 }

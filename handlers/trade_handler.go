@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -32,7 +33,29 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
 	}
 	if payload.TargetProductID <= 0 || len(payload.OfferedProductIDs) == 0 {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "target_product_id and offered_product_ids are required"})
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs"})
+	}
+
+	// Check if target product is still available
+	var targetStatus string
+	err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+	}
+	if targetStatus != "available" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This product is no longer available for trading"})
+	}
+
+	// Check if offered products are still available
+	for _, productID := range payload.OfferedProductIDs {
+		var offeredStatus string
+		err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", productID).Scan(&offeredStatus)
+		if err != nil {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One of your offered products not found"})
+		}
+		if offeredStatus != "available" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "One of your offered products is no longer available"})
+		}
 	}
 
 	// Use a transaction to ensure trade and items are created together
@@ -241,14 +264,18 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 
 // UpdateTrade allows seller or buyer to accept, decline, or counter
 func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
+	log.Printf("=== TRADE UPDATE ENDPOINT CALLED ===")
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
+		log.Printf("User not authenticated in UpdateTrade")
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 	tradeID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		log.Printf("Invalid trade ID in UpdateTrade: %s", c.Params("id"))
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade id"})
 	}
+	log.Printf("UpdateTrade called: User %d, Trade %d", userID, tradeID)
 
 	// Fetch trade
 	var buyerID, sellerID int
@@ -262,8 +289,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 	var payload models.TradeAction
 	if err := c.BodyParser(&payload); err != nil {
+		log.Printf("Failed to parse request body: %v", err)
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
 	}
+	log.Printf("Trade action received: %s for trade %d", payload.Action, tradeID)
 
 	switch payload.Action {
 	case "accept":
@@ -326,18 +355,34 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, NULL, 'countered', ?)", tradeID, userID, payload.Message)
 		}
 	case "complete":
+		log.Printf("=== TRADE COMPLETION REQUEST ===")
+		log.Printf("User %d attempting to complete trade %d", userID, tradeID)
 		// Mark party completion; finalize when both complete
 		column := "buyer_completed"
 		if userID == sellerID {
 			column = "seller_completed"
 		}
+		log.Printf("Setting %s=TRUE for trade %d", column, tradeID)
 		_, err = h.db.Exec("UPDATE trades SET "+column+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
 		if err == nil {
+			log.Printf("Updated %s=TRUE for trade %d", column, tradeID)
 			// Check both flags
 			var bc, sc bool
 			_ = h.db.QueryRow("SELECT buyer_completed, seller_completed FROM trades WHERE id = ?", tradeID).Scan(&bc, &sc)
+			log.Printf("Trade %d completion status: buyer_completed=%t, seller_completed=%t", tradeID, bc, sc)
 			if bc && sc {
-				_, _ = h.db.Exec("UPDATE trades SET status='completed', completed_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
+				log.Printf("Both parties completed trade %d, starting completion process", tradeID)
+				// Complete the trade with transaction safety
+				err = h.completeTradeTransaction(tradeID)
+				if err != nil {
+					log.Printf("Failed to complete product trade: %v", err)
+					return c.Status(500).JSON(models.APIResponse{
+						Success: false,
+						Error:   "Failed to complete trade",
+					})
+				}
+				log.Printf("Trade %d completion process finished successfully", tradeID)
+				
 				publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "completed"}})
 				publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "completed"}})
 				_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, 'active', 'completed', ?)", tradeID, userID, payload.Message)
@@ -366,6 +411,160 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade updated"})
+}
+
+// completeTradeTransaction safely completes a trade and marks all products as sold
+func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
+	log.Printf("Starting trade completion for trade ID: %d", tradeID)
+	
+	tx, err := h.db.Begin()
+	if err != nil {
+		log.Printf("Failed to start transaction for trade %d: %v", tradeID, err)
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Lock the trade row to prevent concurrent completions
+	var currentStatus string
+	var targetProductID int
+	var buyerCompleted, sellerCompleted bool
+
+	err = tx.QueryRow(`
+		SELECT status, target_product_id, buyer_completed, seller_completed
+		FROM trades 
+		WHERE id = ? 
+		FOR UPDATE`, tradeID).Scan(&currentStatus, &targetProductID, &buyerCompleted, &sellerCompleted)
+	
+	if err != nil {
+		log.Printf("Trade %d not found: %v", tradeID, err)
+		return fmt.Errorf("trade not found: %w", err)
+	}
+
+	log.Printf("Trade %d status: %s, buyer_completed: %t, seller_completed: %t", tradeID, currentStatus, buyerCompleted, sellerCompleted)
+
+	// Verify both parties have completed
+	if !buyerCompleted || !sellerCompleted {
+		log.Printf("Trade %d: Both parties must complete - buyer: %t, seller: %t", tradeID, buyerCompleted, sellerCompleted)
+		return fmt.Errorf("both parties must complete the trade before finalizing")
+	}
+
+	// Get all offered products in this trade
+	rows, err := tx.Query(`
+		SELECT product_id 
+		FROM trade_items 
+		WHERE trade_id = ?`, tradeID)
+	
+	if err != nil {
+		log.Printf("Failed to get trade items for trade %d: %v", tradeID, err)
+		return fmt.Errorf("failed to get trade items: %w", err)
+	}
+	defer rows.Close()
+
+	var offeredProductIDs []int
+	for rows.Next() {
+		var productID int
+		if err := rows.Scan(&productID); err != nil {
+			log.Printf("Failed to scan product ID for trade %d: %v", tradeID, err)
+			return fmt.Errorf("failed to scan product ID: %w", err)
+		}
+		offeredProductIDs = append(offeredProductIDs, productID)
+	}
+
+	log.Printf("Trade %d: Target product: %d, Offered products: %v", tradeID, targetProductID, offeredProductIDs)
+
+	// Mark target product as sold with locking
+	err = h.markProductUnavailable(tx, targetProductID)
+	if err != nil {
+		log.Printf("Failed to mark target product %d as sold: %v", targetProductID, err)
+		return fmt.Errorf("failed to mark target product as sold: %w", err)
+	}
+
+	// Mark all offered products as sold
+	for _, productID := range offeredProductIDs {
+		err = h.markProductUnavailable(tx, productID)
+		if err != nil {
+			log.Printf("Failed to mark offered product %d as sold: %v", productID, err)
+			return fmt.Errorf("failed to mark offered product %d as sold: %w", productID, err)
+		}
+	}
+
+	// Update trade status to completed (but don't require status = 'active' since it might already be completed)
+	result, err := tx.Exec(`
+		UPDATE trades 
+		SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+		WHERE id = ?`, tradeID)
+	
+	if err != nil {
+		log.Printf("Failed to update trade %d status: %v", tradeID, err)
+		return fmt.Errorf("failed to update trade status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Failed to check trade update result for trade %d: %v", tradeID, err)
+		return fmt.Errorf("failed to check trade update result: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		log.Printf("Trade %d was already completed by another process", tradeID)
+		return fmt.Errorf("trade was already completed by another process")
+	}
+
+	log.Printf("Successfully completed trade %d and marked products as sold", tradeID)
+	return tx.Commit()
+}
+
+// markProductUnavailable marks a product as sold with row locking
+func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
+	log.Printf("Attempting to mark product %d as sold", productID)
+	
+	// Lock and verify product
+	var currentStatus string
+	
+	err := tx.QueryRow(`
+		SELECT status 
+		FROM products 
+		WHERE id = ? 
+		FOR UPDATE`, productID).Scan(&currentStatus)
+	
+	if err != nil {
+		log.Printf("Product %d not found: %v", productID, err)
+		return fmt.Errorf("product %d not found: %w", productID, err)
+	}
+
+	log.Printf("Product %d current status: %s", productID, currentStatus)
+
+	// Only update if product is available
+	if currentStatus != "available" {
+		log.Printf("Warning: Product %d is already sold/unavailable (status: %s), skipping", productID, currentStatus)
+		return nil // Don't fail the entire trade if one product is already sold
+	}
+
+	// Update product status to sold
+	result, err := tx.Exec(`
+		UPDATE products 
+		SET status = 'sold', updated_at = CURRENT_TIMESTAMP 
+		WHERE id = ? AND status = 'available'`,
+		productID)
+	
+	if err != nil {
+		log.Printf("Failed to update product %d status: %v", productID, err)
+		return fmt.Errorf("failed to update product %d status: %w", productID, err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Failed to check update result for product %d: %v", productID, err)
+		return fmt.Errorf("failed to check update result for product %d: %w", productID, err)
+	}
+
+	if rowsAffected == 0 {
+		log.Printf("Product %d was not updated - may have been modified by another transaction", productID)
+		return fmt.Errorf("product %d was modified by another transaction", productID)
+	}
+
+	log.Printf("Successfully marked product %d as sold", productID)
+	return nil
 }
 
 // GetTradeMessages returns messages for a trade
@@ -637,4 +836,142 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 	var count int
 	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades t "+where, args...).Scan(&count)
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": count}})
+}
+
+// CompleteTrade handles trade completion with rating and feedback
+func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	
+	tradeID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade id"})
+	}
+
+	var payload struct {
+		Rating   int    `json:"rating"`
+		Feedback string `json:"feedback"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	// Validate rating
+	if payload.Rating < 1 || payload.Rating > 5 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rating must be between 1 and 5"})
+	}
+
+	// Fetch trade and verify authorization
+	var buyerID, sellerID int
+	err = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
+	}
+	if userID != buyerID && userID != sellerID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
+	}
+
+	// Determine which columns to update based on user role
+	var ratingColumn, feedbackColumn, completedColumn string
+	if userID == buyerID {
+		ratingColumn = "buyer_rating"
+		feedbackColumn = "buyer_feedback"
+		completedColumn = "buyer_completed"
+	} else {
+		ratingColumn = "seller_rating"
+		feedbackColumn = "seller_feedback"
+		completedColumn = "seller_completed"
+	}
+
+	// Update the trade with rating, feedback, and completion status
+	_, err = h.db.Exec(
+		"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+		payload.Rating, payload.Feedback, tradeID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade completion"})
+	}
+
+	// Check if both parties have completed
+	var buyerCompleted, sellerCompleted bool
+	err = h.db.QueryRow("SELECT buyer_completed, seller_completed FROM trades WHERE id = ?", tradeID).Scan(&buyerCompleted, &sellerCompleted)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check completion status"})
+	}
+
+	// If both completed, finalize the trade
+	if buyerCompleted && sellerCompleted {
+		err = h.completeTradeTransaction(tradeID)
+		if err != nil {
+			log.Printf("Failed to complete trade transaction: %v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to finalize trade"})
+		}
+
+		// Notify both parties
+		publishToUser(buyerID, sseEvent{Type: "trade_completed", Data: fiber.Map{"trade_id": tradeID}})
+		publishToUser(sellerID, sseEvent{Type: "trade_completed", Data: fiber.Map{"trade_id": tradeID}})
+		
+		// Add notifications
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Trade completed successfully!")
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "Trade completed successfully!")
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Trade completion submitted successfully"})
+}
+
+// GetTradeCompletionStatus returns the completion status of a trade
+func (h *TradeHandler) GetTradeCompletionStatus(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	
+	tradeID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade id"})
+	}
+
+	// Fetch trade completion details
+	var buyerID, sellerID int
+	var buyerCompleted, sellerCompleted bool
+	var buyerRating, sellerRating sql.NullInt64
+	var buyerFeedback, sellerFeedback sql.NullString
+	
+	err = h.db.QueryRow(`
+		SELECT buyer_id, seller_id, buyer_completed, seller_completed, 
+		       buyer_rating, seller_rating, buyer_feedback, seller_feedback
+		FROM trades WHERE id = ?`, tradeID).Scan(
+		&buyerID, &sellerID, &buyerCompleted, &sellerCompleted,
+		&buyerRating, &sellerRating, &buyerFeedback, &sellerFeedback)
+	
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
+	}
+	
+	// Verify authorization
+	if userID != buyerID && userID != sellerID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
+	}
+
+	// Prepare response data
+	status := fiber.Map{
+		"buyer_completed":  buyerCompleted,
+		"seller_completed": sellerCompleted,
+	}
+
+	if buyerRating.Valid {
+		status["buyer_rating"] = int(buyerRating.Int64)
+	}
+	if sellerRating.Valid {
+		status["seller_rating"] = int(sellerRating.Int64)
+	}
+	if buyerFeedback.Valid {
+		status["buyer_feedback"] = buyerFeedback.String
+	}
+	if sellerFeedback.Valid {
+		status["seller_feedback"] = sellerFeedback.String
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: status})
 }
