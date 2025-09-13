@@ -34,7 +34,9 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           const res = await api.get(`/api/products/user/${user.id}?page=1&limit=50`)
           const data = res.data?.data
           const list: Product[] = Array.isArray(data?.data) ? data.data : []
-          setUserProducts(list)
+          // Filter out sold products from trade proposals
+          const availableProducts = list.filter(product => product.status === 'available')
+          setUserProducts(availableProducts)
         } catch (_) {
           setUserProducts([])
         }

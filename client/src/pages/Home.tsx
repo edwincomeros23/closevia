@@ -584,6 +584,7 @@ const Home: React.FC = () => {
                   >
                     <option value="available">Available</option>
                     <option value="sold">Sold</option>
+                    <option value="traded">Traded</option>
                   </Select>
                 </FormControl>
 
@@ -733,7 +734,9 @@ const Home: React.FC = () => {
                 columnGap: '1rem',
               }}
             >
-              {products.map(renderProductCard)}
+              {products
+                .filter((p) => p.status === 'available') // 
+                .map(renderProductCard)}
             </Box>
             {/* Sentinel for infinite scroll */}
             <Box ref={sentinelRef} h="1px" />

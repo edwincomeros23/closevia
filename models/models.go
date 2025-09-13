@@ -106,7 +106,7 @@ type Product struct {
 	SellerID    int         `json:"seller_id"`
 	SellerName  string      `json:"seller_name,omitempty"`
 	Premium     bool        `json:"premium"`
-	Status      string      `json:"status" validate:"oneof=available sold"`
+	Status      string      `json:"status" validate:"oneof=available sold traded"`
 	AllowBuying bool        `json:"allow_buying"` // Whether buying is allowed
 	BarterOnly  bool        `json:"barter_only"`  // Whether it's barter only
 	Location    string      `json:"location,omitempty"`
@@ -133,7 +133,7 @@ type ProductUpdate struct {
 	Price       *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
 	ImageURLs   *StringArray `json:"image_urls,omitempty"`
 	Premium     *bool        `json:"premium,omitempty"`
-	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold"`
+	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded"`
 	AllowBuying *bool        `json:"allow_buying,omitempty"`
 	BarterOnly  *bool        `json:"barter_only,omitempty"`
 	Location    *string      `json:"location,omitempty"`

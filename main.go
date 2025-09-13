@@ -143,6 +143,8 @@ func main() {
 	trades.Post("/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeMessage)
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
 	trades.Get("/count", middleware.AuthMiddleware(), tradeHandler.CountTrades)
+	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
+	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 
 	// Notifications routes
 	notifs := api.Group("/notifications")
