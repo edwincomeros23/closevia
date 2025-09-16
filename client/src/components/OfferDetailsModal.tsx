@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, VStack, HStack, Box, Image, Text, Badge, Button, Divider, Grid, useToast, ModalFooter } from '@chakra-ui/react'
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, VStack, HStack, Box, Image, Text, Badge, Button, Divider, Grid, useToast, ModalFooter, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter, useDisclosure } from '@chakra-ui/react'
 import { Trade, Product, TradeAction } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
@@ -121,8 +121,20 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }
 
   const decline = async () => {
-    // Do not immediately close; encourage counter option
-    setCounterOpen(true)
+    onDeclineOpen()
+  }
+
+  const confirmDecline = async () => {
+    if (!effectiveTrade) return
+    try {
+      await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'decline' } as TradeAction)
+      toast({ title: 'Offer declined', status: 'success' })
+      onDeclined()
+      onClose()
+      onDeclineClose()
+    } catch (e: any) {
+      toast({ title: 'Failed to decline', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    }
   }
 
   const openCounter = async () => {
@@ -148,6 +160,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
   const [cashDelta, setCashDelta] = useState<string>('')
   const [counterMsg, setCounterMsg] = useState<string>('')
+  const { isOpen: isDeclineOpen, onOpen: onDeclineOpen, onClose: onDeclineClose } = useDisclosure()
+  const cancelRef = React.useRef<HTMLButtonElement>(null)
 
   const submitCounter = async () => {
     if (!effectiveTrade) return
@@ -348,6 +362,38 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 </ModalFooter>
               </ModalContent>
             </Modal>
+
+            {/* Decline Confirmation Dialog */}
+            <AlertDialog
+              isOpen={isDeclineOpen}
+              leastDestructiveRef={cancelRef}
+              onClose={onDeclineClose}
+              isCentered
+            >
+              <AlertDialogOverlay>
+                <AlertDialogContent>
+                  <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                    Decline Trade Offer
+                  </AlertDialogHeader>
+                  <AlertDialogBody>
+                    Are you sure you want to decline this trade offer? This action cannot be undone.
+                    <br /><br />
+                    Consider sending a counter offer instead if you'd like to negotiate different terms.
+                  </AlertDialogBody>
+                  <AlertDialogFooter>
+                    <Button ref={cancelRef} onClick={onDeclineClose}>
+                      Cancel
+                    </Button>
+                    <Button colorScheme="red" onClick={confirmDecline} ml={3}>
+                      Decline Offer
+                    </Button>
+                    <Button colorScheme="blue" onClick={openCounter} ml={3}>
+                      Counter Instead
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialogOverlay>
+            </AlertDialog>
           </VStack>
         </ModalBody>
       </ModalContent>

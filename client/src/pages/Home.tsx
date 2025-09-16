@@ -43,6 +43,7 @@ import { getFirstImage } from '../utils/imageUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
+import { useRealtime } from '../contexts/RealtimeContext' // added import
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -67,6 +68,7 @@ const Home: React.FC = () => {
   const location = useLocation()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { onOpen: openMobileNav } = useMobileNav()
+  const { offerCount } = useRealtime() // added realtime usage
   
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
@@ -480,18 +482,7 @@ const Home: React.FC = () => {
               onClick={openMobileNav}
             />
 
-            {/* Profile button (desktop only) */}
-            <IconButton
-              as={RouterLink}
-              to="/profile"
-              aria-label="Profile"
-              icon={<FaUserCircle />}
-              variant="ghost"
-              size="lg"
-              display={{ base: 'none', md: 'inline-flex' }}
-            />
-
-            {/* Hidden on mobile to keep header compact */}
+            {/* Hidden on mobile to keep header compact: Search button (desktop only) */}
             <Button
               leftIcon={<SearchIcon />}
               colorScheme="brand"
@@ -510,6 +501,45 @@ const Home: React.FC = () => {
               variant="outline"
               size="lg"
               onClick={() => setShowFilters(!showFilters)}
+              display={{ base: 'none', md: 'inline-flex' }}
+            />
+
+            {/* Offers button (desktop only) - now placed to the right of Search */}
+            <Box position="relative" display={{ base: 'none', md: 'inline-block' }}>
+              <IconButton
+                as={RouterLink}
+                to="/offers"
+                aria-label="Offers"
+                icon={<RepeatIcon />}
+                variant="ghost"
+                size="lg"
+              />
+              {offerCount > 0 && (
+                <Badge
+                  position="absolute"
+                  /* push badge to the left side of the icon and vertically center it */
+                  left="-10px"
+                  top="50%"
+                  transform="translate(-100%, -50%)"
+                  colorScheme="purple"
+                  borderRadius="full"
+                  fontSize="0.65rem"
+                  px={2}
+                  py={0.5}
+                >
+                  {offerCount}
+                </Badge>
+              )}
+            </Box>
+
+            {/* Profile button (desktop only) - now to the right of Search */}
+            <IconButton
+              as={RouterLink}
+              to="/profile"
+              aria-label="Profile"
+              icon={<FaUserCircle />}
+              variant="ghost"
+              size="lg"
               display={{ base: 'none', md: 'inline-flex' }}
             />
           </HStack>

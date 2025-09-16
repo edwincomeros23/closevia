@@ -425,7 +425,7 @@ const Offers: React.FC = () => {
                   <Box pr="220px">
                     <VStack align="start" spacing={1}>
                       <Text fontWeight="semibold">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                      <Text fontSize="sm" color="gray.600">From: {t.buyer_name || `User #${t.buyer_id}`}</Text>
+                      <Text fontSize="sm" color="gray.600">From: <Text as="span" fontWeight="medium">{t.buyer_name || `User #${t.buyer_id}`}</Text></Text>
                       <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
                       {renderOfferedItems(t)}
                     </VStack>
@@ -492,7 +492,7 @@ const Offers: React.FC = () => {
                     <HStack justify="space-between" align="start">
                       <VStack align="start" spacing={2}>
                         <Text fontWeight="semibold" color="gray.800">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                        <Text fontSize="sm" color="gray.600">To: {t.seller_name || `User #${t.seller_id}`}</Text>
+                        <Text fontSize="sm" color="gray.600">To: <Text as="span" fontWeight="medium">{t.seller_name || `User #${t.seller_id}`}</Text></Text>
                         <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
                         {renderOfferedItems(t)}
                       </VStack>

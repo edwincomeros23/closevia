@@ -19,7 +19,8 @@ import {
   Divider,
   Icon,
   Flex,
-  Progress
+  Progress,
+  Checkbox
 } from '@chakra-ui/react'
 import { keyframes } from '@emotion/react'
 import { FaStar, FaHeart, FaThumbsUp, FaCheck, FaHandshake } from 'react-icons/fa'
@@ -62,6 +63,8 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   const [submitting, setSubmitting] = useState(false)
   const [hasSubmitted, setHasSubmitted] = useState(false)
   const [showCelebration, setShowCelebration] = useState(false)
+  const [policyAgreed, setPolicyAgreed] = useState(false)
+  const [showFinishButton, setShowFinishButton] = useState(false)
   const toast = useToast()
 
   const isUserBuyer = trade && currentUserId === trade.buyer_id
@@ -95,6 +98,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       // Check if both completed for celebration
       if (response.data.data.buyer_completed && response.data.data.seller_completed) {
         setShowCelebration(true)
+        setShowFinishButton(true)
       }
     } catch (error) {
       console.error('Failed to fetch completion status:', error)
@@ -124,6 +128,12 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       // Refresh status
       await fetchCompletionStatus()
       onCompleted()
+      
+      // Check if both parties completed after this submission
+      const updatedRes = await api.get(`/api/trades/${trade.id}/completion-status`)
+      if (updatedRes.data.data.buyer_completed && updatedRes.data.data.seller_completed) {
+        setShowFinishButton(true)
+      }
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -294,6 +304,19 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                     </Text>
                   </Box>
                   
+                  {/* Finish Button */}
+                  {showFinishButton && (
+                    <Button
+                      colorScheme="blue"
+                      size="lg"
+                      w="full"
+                      onClick={onClose}
+                      leftIcon={<FaCheck />}
+                    >
+                      Finish
+                    </Button>
+                  )}
+                  
                   {/* Show feedback if available */}
                   {(status?.buyer_feedback || status?.seller_feedback) && (
                     <VStack spacing={3} w="full">
@@ -371,14 +394,22 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                     isLoading={submitting}
                     loadingText="Confirming..."
                     leftIcon={<FaCheck />}
-                    isDisabled={rating === 0}
+                    isDisabled={rating === 0 || !policyAgreed}
                   >
                     Confirm Trade Completion
                   </Button>
                   
-                  <Text fontSize="xs" color="gray.500" textAlign="center">
-                    By confirming, you acknowledge that the trade has been completed successfully
-                  </Text>
+                  <HStack spacing={3} justify="center" align="start">
+                    <Checkbox 
+                      isChecked={policyAgreed} 
+                      onChange={(e) => setPolicyAgreed(e.target.checked)}
+                      colorScheme="green"
+                      size="sm"
+                    />
+                    <Text fontSize="xs" color="gray.500" textAlign="left" flex={1}>
+                      By confirming, you acknowledge that the trade has been completed successfully
+                    </Text>
+                  </HStack>
                 </VStack>
               )}
             </VStack>
