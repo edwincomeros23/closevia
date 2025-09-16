@@ -74,7 +74,8 @@ const Trades: React.FC = () => {
             <HStack justify="space-between" align="start">
               <VStack align="start" spacing={1}>
                 <Text fontWeight="semibold">Trade #{t.id}</Text>
-                <Text fontSize="sm" color="gray.600">Target Product ID: {t.target_product_id}</Text>
+                <Text fontSize="sm" color="gray.600">Product: {t.product_title || `#${t.target_product_id}`}</Text>
+                <Text fontSize="sm" color="gray.600">With: {t.buyer_name || t.seller_name || `User #${t.buyer_id}`}</Text>
                 <Text fontSize="sm" color="gray.600">Items offered: {t.items?.length || 0}</Text>
               </VStack>
               <Badge colorScheme={t.status === 'pending' ? 'yellow' : t.status === 'accepted' ? 'green' : t.status === 'declined' ? 'red' : 'purple'}>{t.status}</Badge>

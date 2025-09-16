@@ -96,7 +96,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
               <Text fontWeight="semibold">Select your items to offer:</Text>
               {/* Scrollable grid: shows 2 full rows + small peek of 3rd; scroll when overflowing */}
               <Box maxH="244px" overflowY="auto" pr={2}>
-                <Grid templateColumns="repeat(auto-fit, minmax(140px, 1fr))" gap={3} gridAutoRows="120px">
+                <Grid templateColumns="repeat(auto-fill, minmax(140px, 180px))" gap={3} gridAutoRows="120px" justifyContent="start">
                   {userProducts.map((p) => (
                     <Box key={p.id} minH="120px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
                       <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="50px" objectFit="cover" />
@@ -114,8 +114,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
               </FormControl>
 
               <FormControl>
-                <FormLabel fontSize="sm">Offer money (optional, USD)</FormLabel>
-                <Input type="number" placeholder="0.00" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} min={0} step="0.01" />
+                <FormLabel fontSize="sm">Offer money (optional, PHP)</FormLabel>
+                <Input type="number" placeholder="₱0.00" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} min={0} step="0.01" />
               </FormControl>
 
               <Divider />
@@ -165,12 +165,12 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
             <VStack spacing={4} align="stretch">
               <Box>
                 <Text fontWeight="semibold" mb={2}>Your Offer Summary</Text>
-                <HStack align="start" spacing={3} flexWrap="wrap">
+                <Grid templateColumns="repeat(auto-fill, minmax(180px, 220px))" gap={3} justifyContent="start">
                   {selectedProducts.length === 0 && !cashAmount && (
-                    <Text color="gray.500">No items selected.</Text>
+                    <Text color="gray.500" gridColumn="1 / -1">No items selected.</Text>
                   )}
                   {selectedProducts.map((p) => (
-                    <Box key={p.id} minW="200px" maxW="240px" borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
+                    <Box key={p.id} borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
                       <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" />
                       <Box p={2}>
                         <HStack justify="space-between">
@@ -181,15 +181,16 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                       </Box>
                     </Box>
                   ))}
-                </HStack>
+                </Grid>
                 {cashAmount && Number(cashAmount) > 0 && (
-                  <Text mt={2} fontSize="sm" color="green.700">Cash included: ${Number(cashAmount).toFixed(2)}</Text>
+                  <Text mt={2} fontSize="sm" color="green.700">Cash included: ₱{Number(cashAmount).toFixed(2)}</Text>
                 )}
-                {tradeMessage && (
-                  <Box mt={3} bg="gray.50" borderWidth="1px" borderColor="gray.200" rounded="md" p={2}>
-                    <Text fontSize="sm" color="gray.700">{tradeMessage}</Text>
-                  </Box>
-                )}
+
+                {/* Labeled message block: show message or a fallback so user sees what's being sent */}
+                <Box mt={3} bg="gray.50" borderWidth="1px" borderColor="gray.200" rounded="md" p={3}>
+                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Message</Text>
+                  <Text fontSize="sm" color="gray.700">{tradeMessage && tradeMessage.trim() ? tradeMessage : 'No message provided'}</Text>
+                </Box>
               </Box>
               <HStack justify="flex-end" spacing={3}>
                 <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>Back</Button>
