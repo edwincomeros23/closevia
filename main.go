@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	// Load environment variables
+	// Load environment variables for francistest connection
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using default values")
 	}

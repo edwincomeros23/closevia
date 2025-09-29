@@ -124,7 +124,8 @@ const Sidebar: React.FC = () => {
         top={0}
         h="100vh"
         w="70px"
-        bg={bgColor}
+        // bg={bgColor}
+        bg="black"
         borderRight="1px"
         borderColor={borderColor}
         zIndex={1000}
