@@ -17,10 +17,8 @@ import {
   Button,
 } from '@chakra-ui/react'
 import {
-  ViewIcon,
   AddIcon,
   BellIcon,
-  InfoIcon,
   SettingsIcon,
   RepeatIcon,
   StarIcon,
@@ -29,7 +27,8 @@ import { useMobileNav } from '../contexts/MobileNavContext'
 import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
-import { FaUserCircle } from 'react-icons/fa'
+import { FaUserCircle, FaHome } from 'react-icons/fa'
+import { FiGrid } from 'react-icons/fi'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -40,15 +39,14 @@ const Sidebar: React.FC = () => {
   const iconColor = useColorModeValue('gray.600', 'gray.300')
   const activeIconColor = useColorModeValue('brand.500', 'brand.300')
   const { isOpen, onOpen, onClose } = useMobileNav()
-  const { offerCount, notificationCount } = useRealtime()
+  const { notificationCount } = useRealtime()
   const { user } = useAuth()
-
+  
   // Separate items for desktop vs mobile to keep desktop unchanged
   const desktopNavItems = [
-    { icon: InfoIcon, label: 'Home', path: '/' },
-    { icon: ViewIcon, label: 'Dashboard', path: '/dashboard' },
+    { icon: FaHome, label: 'Home', path: '/' },
+    { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
-    { icon: RepeatIcon, label: 'Offers', path: '/offers' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
     // Add admin link only for admin users
     ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
@@ -56,10 +54,9 @@ const Sidebar: React.FC = () => {
   ]
 
   const mobileNavItems = [
-    { icon: InfoIcon, label: 'Home', path: '/' },
-    { icon: ViewIcon, label: 'Dashboard', path: '/dashboard' },
+    { icon: FaHome, label: 'Home', path: '/' },
+    { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
-    { icon: RepeatIcon, label: 'Offers', path: '/offers' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
     // Add admin link only for admin users
     ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
@@ -178,9 +175,6 @@ const Sidebar: React.FC = () => {
                       borderRadius="xl"
                       transition="all 0.2s"
                     />
-                    {(item.label === 'Offers' && offerCount > 0) && (
-                      <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="purple" borderRadius="full">{offerCount}</CBadge>
-                    )}
                     {(item.label === 'Notifications' && notificationCount > 0) && (
                       <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="red" borderRadius="full">{notificationCount}</CBadge>
                     )}
