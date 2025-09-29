@@ -57,6 +57,15 @@ func main() {
 	// Serve static files (uploads directory)
 	app.Static("/uploads", "./uploads")
 
+	
+	// Add after middleware setup
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Welcome to Clovia API",
+		})
+	})
+
 	// Health check
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
