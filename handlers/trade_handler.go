@@ -146,7 +146,6 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	direction := c.Query("direction", "")
 	where := "WHERE (t.buyer_id = ? OR t.seller_id = ?)"
 	args := []interface{}{userID, userID}
-
 	switch direction {
 	case "incoming":
 		where = "WHERE t.seller_id = ?"
