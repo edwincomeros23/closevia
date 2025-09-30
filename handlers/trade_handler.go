@@ -383,7 +383,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 					})
 				}
 				log.Printf("Trade %d completion process finished successfully", tradeID)
-				
+
 				publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "completed"}})
 				publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "completed"}})
 				_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, 'active', 'completed', ?)", tradeID, userID, payload.Message)
@@ -417,7 +417,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 // completeTradeTransaction safely completes a trade and marks all products as sold
 func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 	log.Printf("Starting trade completion for trade ID: %d", tradeID)
-	
+
 	tx, err := h.db.Begin()
 	if err != nil {
 		log.Printf("Failed to start transaction for trade %d: %v", tradeID, err)
@@ -435,7 +435,7 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 		FROM trades 
 		WHERE id = ? 
 		FOR UPDATE`, tradeID).Scan(&currentStatus, &targetProductID, &buyerCompleted, &sellerCompleted)
-	
+
 	if err != nil {
 		log.Printf("Trade %d not found: %v", tradeID, err)
 		return fmt.Errorf("trade not found: %w", err)
@@ -454,7 +454,7 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 		SELECT product_id 
 		FROM trade_items 
 		WHERE trade_id = ?`, tradeID)
-	
+
 	if err != nil {
 		log.Printf("Failed to get trade items for trade %d: %v", tradeID, err)
 		return fmt.Errorf("failed to get trade items: %w", err)
@@ -494,7 +494,7 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 		UPDATE trades 
 		SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
 		WHERE id = ?`, tradeID)
-	
+
 	if err != nil {
 		log.Printf("Failed to update trade %d status: %v", tradeID, err)
 		return fmt.Errorf("failed to update trade status: %w", err)
@@ -518,16 +518,16 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 // markProductUnavailable marks a product as sold with row locking
 func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 	log.Printf("Attempting to mark product %d as sold", productID)
-	
+
 	// Lock and verify product
 	var currentStatus string
-	
+
 	err := tx.QueryRow(`
 		SELECT status 
 		FROM products 
 		WHERE id = ? 
 		FOR UPDATE`, productID).Scan(&currentStatus)
-	
+
 	if err != nil {
 		log.Printf("Product %d not found: %v", productID, err)
 		return fmt.Errorf("product %d not found: %w", productID, err)
@@ -547,7 +547,7 @@ func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 		SET status = 'sold', updated_at = CURRENT_TIMESTAMP 
 		WHERE id = ? AND status = 'available'`,
 		productID)
-	
+
 	if err != nil {
 		log.Printf("Failed to update product %d status: %v", productID, err)
 		return fmt.Errorf("failed to update product %d status: %w", productID, err)
@@ -845,7 +845,7 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
-	
+
 	tradeID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade id"})
@@ -912,7 +912,7 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 		// Notify both parties
 		publishToUser(buyerID, sseEvent{Type: "trade_completed", Data: fiber.Map{"trade_id": tradeID}})
 		publishToUser(sellerID, sseEvent{Type: "trade_completed", Data: fiber.Map{"trade_id": tradeID}})
-		
+
 		// Add notifications
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Trade completed successfully!")
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "Trade completed successfully!")
@@ -927,7 +927,7 @@ func (h *TradeHandler) GetTradeCompletionStatus(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
-	
+
 	tradeID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade id"})
@@ -938,18 +938,18 @@ func (h *TradeHandler) GetTradeCompletionStatus(c *fiber.Ctx) error {
 	var buyerCompleted, sellerCompleted bool
 	var buyerRating, sellerRating sql.NullInt64
 	var buyerFeedback, sellerFeedback sql.NullString
-	
+
 	err = h.db.QueryRow(`
 		SELECT buyer_id, seller_id, buyer_completed, seller_completed, 
 		       buyer_rating, seller_rating, buyer_feedback, seller_feedback
 		FROM trades WHERE id = ?`, tradeID).Scan(
 		&buyerID, &sellerID, &buyerCompleted, &sellerCompleted,
 		&buyerRating, &sellerRating, &buyerFeedback, &sellerFeedback)
-	
+
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 	}
-	
+
 	// Verify authorization
 	if userID != buyerID && userID != sellerID {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})

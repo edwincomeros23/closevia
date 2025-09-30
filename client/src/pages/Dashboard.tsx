@@ -37,6 +37,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { Product, Order } from '../types'
 import { api } from '../services/api'
 import { getFirstImage } from '../utils/imageUtils'
+import { formatPHP } from '../utils/currency'
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth()
@@ -251,7 +252,7 @@ const Dashboard: React.FC = () => {
                           <CardBody pt={0}>
                             <Text fontSize="2xl" fontWeight="bold" color="brand.500">
                               {product.allow_buying && !product.barter_only && product.price
-                                ? `$${product.price.toFixed(2)}`
+                                ? formatPHP(product.price)
                                 : 'Barter Only'}
                             </Text>
                             <Badge
@@ -317,7 +318,7 @@ const Dashboard: React.FC = () => {
                                   {order.product?.title}
                                 </Text>
                                 <Text color="gray.600">
-                                  ${order.product?.price ? order.product.price.toFixed(2) : '0.00'}
+                                  {order.product?.price ? formatPHP(order.product.price) : formatPHP(0)}
                                 </Text>
                                 <Text fontSize="sm" color="gray.500">
                                   Ordered on {new Date(order.created_at).toLocaleDateString()}
