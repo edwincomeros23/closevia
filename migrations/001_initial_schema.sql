@@ -62,15 +62,15 @@ CREATE TABLE IF NOT EXISTS premium_listings (
 );
 
 -- Create indexes for better performance
-CREATE INDEX idx_products_seller ON products(seller_id);
-CREATE INDEX idx_products_status ON products(status);
-CREATE INDEX idx_products_premium ON products(premium);
-CREATE INDEX idx_orders_buyer ON orders(buyer_id);
-CREATE INDEX idx_orders_product ON orders(product_id);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_transactions_order ON transactions(order_id);
-CREATE INDEX idx_premium_listings_product ON premium_listings(product_id);
-CREATE INDEX idx_premium_listings_dates ON premium_listings(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_id);
+CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
+CREATE INDEX IF NOT EXISTS idx_products_premium ON products(premium);
+CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_orders_product ON orders(product_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_transactions_order ON transactions(order_id);
+CREATE INDEX IF NOT EXISTS idx_premium_listings_product ON premium_listings(product_id);
+CREATE INDEX IF NOT EXISTS idx_premium_listings_dates ON premium_listings(start_date, end_date);
 
 -- Insert sample data for testing
 INSERT INTO users (name, email, password_hash, verified) VALUES
