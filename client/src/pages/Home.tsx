@@ -40,6 +40,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
+import { formatPHP } from '../utils/currency'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
@@ -378,9 +379,9 @@ const Home: React.FC = () => {
         
         {/* Price and Seller Info */}
         <Flex justify="space-between" align="center" mb={3}>
-          {product.allow_buying && product.price && !product.barter_only ? (
+            {product.allow_buying && product.price && !product.barter_only ? (
             <Text fontSize="lg" fontWeight="bold" color="brand.500">
-              ${product.price.toFixed(2)}
+              {formatPHP(product.price)}
             </Text>
           ) : (
             <Text fontSize="sm" color="green.600" fontWeight="medium">
@@ -715,7 +716,7 @@ const Home: React.FC = () => {
                 h={i === slideIndex ? 3 : 2.5}
                 bg={i === slideIndex ? 'brand.500' : 'gray.300'}
                 borderRadius="full"
-                onClick={(e) => { e.stopPropagation(); setSlideIndex(i); scheduleResume(2000) }}
+                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); setSlideIndex(i); scheduleResume(2000) }}
               />
             ))}
           </HStack>

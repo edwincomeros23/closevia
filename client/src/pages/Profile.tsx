@@ -39,6 +39,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { api } from '../services/api'
 import { Product } from '../types'
+import { formatPHP } from '../utils/currency'
 
 interface UserStats {
   totalProducts: number
@@ -293,7 +294,7 @@ const Profile: React.FC = () => {
                       <VStack align="start" spacing={1}>
                         <Text fontWeight="semibold">{product.title}</Text>
                         <Text fontSize="sm" color="gray.600">
-                          ${product.price ? product.price.toFixed(2) : 'Barter only'}
+                          {product.price ? formatPHP(product.price) : 'Barter only'}
                         </Text>
                       </VStack>
                       <Badge
