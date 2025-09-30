@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, VStack, HStack, Box, Image, Text, Badge, Button, Divider, Grid, useToast, ModalFooter, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter, useDisclosure } from '@chakra-ui/react'
+import { formatPHP } from '../utils/currency'
 import { Trade, Product, TradeAction } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
@@ -73,7 +74,6 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       return false
     })
   }, [effectiveTrade])
-
   const offeredItemIds = useMemo(() => {
     const ids = buyerItems.map((i: any) => (i?.product_id ?? i?.productId))
     return ids
@@ -233,7 +233,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
           {!compact && <Text color="gray.600" mt={2} noOfLines={3}>{p.description}</Text>}
 
           {showPrice && (
-            <Text mt={2} fontWeight="bold" fontSize={priceFontSize}>${(p.price as number).toFixed(2)}</Text>
+            <Text mt={2} fontWeight="bold" fontSize={priceFontSize}>{formatPHP(p.price as number)}</Text>
           )}
 
           {/* Remove seller info in compact (offered) mode */}
@@ -291,7 +291,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               {effectiveTrade?.offered_cash_amount ? (
                 <Box borderWidth="1px" borderColor="green.200" bg="green.50" rounded="md" p={2} fontSize="sm" color="green.800" minW="120px">
                   <Text fontWeight="semibold" noOfLines={1}>Cash included</Text>
-                  <Text noOfLines={1} color="green.700">${Number(effectiveTrade.offered_cash_amount).toFixed(2)}</Text>
+                  <Text noOfLines={1} color="green.700">{formatPHP(Number(effectiveTrade.offered_cash_amount))}</Text>
                 </Box>
               ) : null}
 
@@ -347,7 +347,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                   </Grid>
                   <HStack mt={4} spacing={3} align="center">
                     <Box flex={1}>
-                      <Text fontSize="sm" color="gray.600" mb={1}>Additional cash requested (USD)</Text>
+                      <Text fontSize="sm" color="gray.600" mb={1}>Additional cash requested (PHP)</Text>
                       <input type="number" value={cashDelta} onChange={e => setCashDelta(e.target.value)} min={0} step={0.01 as any} style={{ width: '100%', padding: '8px', border: '1px solid #E2E8F0', borderRadius: 6 }} />
                     </Box>
                     <Box flex={2}>

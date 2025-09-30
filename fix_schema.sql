@@ -1,5 +1,5 @@
 -- Fix the products table schema to support unavailable status
-USE clovia;
+USE closevia;
 
 -- Update the status column to support 'unavailable'
 ALTER TABLE products MODIFY COLUMN status ENUM('available', 'sold', 'unavailable') DEFAULT 'available';

@@ -71,9 +71,20 @@ const EditProduct: React.FC = () => {
   }
 
   const handleInputChange = (field: keyof ProductUpdate, value: any) => {
-    // Special handling for image_urls: accept a string and convert to array
+    // Special handling for image_urls: accept a string (newline or comma separated) and convert to array
     if (field === 'image_urls') {
-      setFormData(prev => ({ ...prev, image_urls: value ? [value] : [] }))
+      if (typeof value === 'string') {
+        // Support one-per-line or comma-separated entries
+        const urls = value
+          .split(/\r?\n|,/) // split on newlines or commas
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 0)
+        setFormData(prev => ({ ...prev, image_urls: urls }))
+      } else if (Array.isArray(value)) {
+        setFormData(prev => ({ ...prev, image_urls: value }))
+      } else {
+        setFormData(prev => ({ ...prev, image_urls: [] }))
+      }
     } else {
       setFormData(prev => ({ ...prev, [field]: value }))
     }
@@ -215,15 +226,20 @@ const EditProduct: React.FC = () => {
               </FormControl>
 
               <FormControl>
-                <FormLabel>Image URL</FormLabel>
-                <Input
-                  value={formData.image_urls && formData.image_urls.length > 0 ? formData.image_urls[0] : (originalProduct.image_urls && originalProduct.image_urls[0])}
+                <FormLabel>Image URLs (one per line)</FormLabel>
+                <Textarea
+                  value={
+                    formData.image_urls && formData.image_urls.length > 0
+                      ? formData.image_urls.join('\n')
+                      : (originalProduct.image_urls && Array.isArray(originalProduct.image_urls) ? originalProduct.image_urls.join('\n') : '')
+                  }
                   onChange={(e) => handleInputChange('image_urls', e.target.value)}
-                  placeholder="https://example.com/image.jpg"
+                  placeholder={`https://example.com/image1.jpg\nhttps://example.com/image2.jpg`}
                   size="lg"
+                  rows={4}
                 />
                 <FormHelperText>
-                  Leave empty to keep current image
+                  Provide one image URL per line, or separate with commas. Leave empty to keep current images.
                 </FormHelperText>
               </FormControl>
 
