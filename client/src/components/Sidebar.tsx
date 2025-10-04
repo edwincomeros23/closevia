@@ -50,7 +50,6 @@ const Sidebar: React.FC = () => {
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
     // Add admin link only for admin users
     ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
-    // Settings intentionally excluded here so we can render it at the bottom
   ]
 
   const mobileNavItems = [
@@ -90,7 +89,6 @@ const Sidebar: React.FC = () => {
           <DrawerBody>
             <VStack spacing={4} align="stretch" mt={4}>
               <Box p={2}>
-                {/* Logo removed from here (now in DrawerHeader) */}
               </Box>
 
               {mobileNavItems.map((item) => {
@@ -105,7 +103,7 @@ const Sidebar: React.FC = () => {
                     variant="ghost"
                     justifyContent="flex-start"
                     onClick={onClose}
-                    bg={needsSoftBg ? '#FFFFFF' : 'transparent'}
+                    bg={needsSoftBg ? '#FFFFFF' : '#FFFFFF'}
                     _hover={{ bg: needsSoftBg ? '#FFFFFF' : 'gray.100' }}
                   >
                     {item.label}
@@ -124,14 +122,13 @@ const Sidebar: React.FC = () => {
         top={0}
         h="100vh"
         w="70px"
-        
         borderRight="1px"
         borderColor={borderColor}
         zIndex={1000}
         py={4}
+        bg="white"
         display={{ base: 'none', lg: 'block' }} // hide on small screens
       >
-        {/* make sidebar a column with space-between: logo+nav on top, settings at bottom */}
         <Box h="100%" display="flex" flexDirection="column" justifyContent="space-between" alignItems="center">
           <VStack spacing={5} align="center" mt={2}>
             {/* Logo/Brand */}
