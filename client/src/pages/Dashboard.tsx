@@ -37,6 +37,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { Product, Order } from '../types'
 import { api } from '../services/api'
 import { getFirstImage } from '../utils/imageUtils'
+import { formatPHP } from '../utils/currency'
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth()
