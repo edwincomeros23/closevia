@@ -23,7 +23,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product } from '../types'
 import { api } from '../services/api'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import TradeModal from '../components/TradeModal'
 
 const ProductDetail: React.FC = () => {
@@ -36,6 +36,7 @@ const ProductDetail: React.FC = () => {
   const [purchasing, setPurchasing] = useState(false)
   const [isTradeOpen, setIsTradeOpen] = useState(false)
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
+  const [selectedImage, setSelectedImage] = useState<string>('')
   
   const navigate = useNavigate()
   const toast = useToast()
@@ -53,6 +54,9 @@ const ProductDetail: React.FC = () => {
       const productData = await getProduct(parseInt(id!))
       if (productData) {
         setProduct(productData)
+        if (productData.image_urls && productData.image_urls.length > 0) {
+          setSelectedImage(getImageUrl(productData.image_urls[0]))
+        }
       } else {
         setError('Product not found')
       }
@@ -157,57 +161,45 @@ const ProductDetail: React.FC = () => {
         {/* Product Content */}
       
           <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={0}>
-            {/* Product Image */}
-            <Box position="relative">
-              <Image
-                src={getFirstImage(product.image_urls)}
-                alt={product.title}
-                w="full"
-                h="400px"
-                objectFit="contain"   // prevents zooming & blurring
-                objectPosition="top"  // keeps the top side visible
-                fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
-                bg="gray.100"         // adds background so empty space looks clean
-              />
-              {/* Minimal "Trade" overlay with optional owner text beside it */}
-              {(product.barter_only || (!product.allow_buying && !product.price)) && (
-                <Flex
-                  position="absolute"
-                  left={3}
-                  top={3}
-                  align="center"
-                  gap={2}
-                >
-                  <Box
-                    bg="green.600"
-                    color="white"
-                    px={2}
-                    py={1}
-                    borderRadius="md"
-                    fontSize="xs"
-                    fontWeight="semibold"
-                    boxShadow="sm"
-                  >
-                    Trade
-                  </Box>
-                  
-                  {/* Only show this text when the logged-in user owns the product */}
-                  {isOwner && (
-                    <Text
-                      bg="yellow.300"
-                      color="black"
-                      px={2}
-                      py={1}
-                      borderRadius="md"
-                      fontSize="xs"
-                      fontWeight="semibold"
+            {/* Product Image Gallery */}
+            <VStack spacing={4} align="stretch">
+              <Box position="relative" h="400px" bg="gray.100" rounded="md">
+                <Image
+                  src={selectedImage || getFirstImage(product.image_urls)}
+                  alt={product.title}
+                  w="full"
+                  h="full"
+                  objectFit="contain"
+                  fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                />
+              </Box>
+              {product.image_urls && product.image_urls.length > 1 && (
+                <HStack spacing={2} overflowX="auto">
+                  {product.image_urls.map((url, index) => (
+                    <Box
+                      key={index}
+                      as="button"
+                      w="80px"
+                      h="80px"
+                      p={1}
+                      border="2px solid"
+                      borderColor={selectedImage === getImageUrl(url) ? 'brand.500' : 'transparent'}
+                      rounded="md"
+                      onClick={() => setSelectedImage(getImageUrl(url))}
                     >
-                      This is your product listing
-                    </Text>
-                  )}
-                </Flex>
+                      <Image
+                        src={getImageUrl(url)}
+                        alt={`Thumbnail ${index + 1}`}
+                        w="full"
+                        h="full"
+                        objectFit="cover"
+                        fallbackSrc="https://via.placeholder.com/80x80"
+                      />
+                    </Box>
+                  ))}
+                </HStack>
               )}
-            </Box>
+            </VStack>
 
             {/* Product Details */}
             <Box p={8}>

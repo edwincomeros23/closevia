@@ -278,9 +278,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 	}
 	log.Printf("UpdateTrade called: User %d, Trade %d", userID, tradeID)
 
-	// Fetch trade
+	// Fetch trade details including current status
 	var buyerID, sellerID int
-	err = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID)
+	var currentStatus string
+	err = h.db.QueryRow("SELECT buyer_id, seller_id, status FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &currentStatus)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 	}
@@ -299,20 +300,16 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 	case "accept":
 		_, err = h.db.Exec("UPDATE trades SET status='accepted', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
 		if err == nil {
-			// Ensure chat exists and add system message
 			var pid int
 			_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&pid)
 			var productTitle string
 			_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productTitle)
 			convID, _ := ensureConversation(pid, buyerID, sellerID)
 			_, _, _ = saveMessage(convID, userID, "Trade accepted for "+productTitle+".")
-			// Mark as active post-accept
 			_, _ = h.db.Exec("UPDATE trades SET status='active' WHERE id = ?", tradeID)
-			// History
-			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, 'pending', 'accepted', ?)", tradeID, userID, payload.Message)
+			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'accepted', ?)", tradeID, userID, currentStatus, payload.Message)
 			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "accepted"}})
 			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "accepted"}})
-			// Notifications
 			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your trade offer was accepted: "+productTitle)
 			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "You accepted a trade offer: "+productTitle)
 		}
@@ -327,38 +324,60 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "declined"}})
 			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your trade offer was declined: "+productTitle)
 			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "You declined a trade offer: "+productTitle)
-			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, NULL, 'declined', ?)", tradeID, userID, payload.Message)
+			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'declined', ?)", tradeID, userID, currentStatus, payload.Message)
 		}
 	case "counter":
-		// Counter: set status countered and replace items with counter-offer from the countering party
-		// Note: We keep offered items as belonging to the original sender (buyer)
-		_, err = h.db.Exec("UPDATE trades SET status='countered', message=?, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.Message, tradeID)
-		if err == nil {
-			// If specific counter items supplied, replace buyer's items with provided set (still marked offered_by='buyer')
-			if len(payload.CounterOfferedProductIDs) > 0 {
-				_, _ = h.db.Exec("DELETE FROM trade_items WHERE trade_id = ?", tradeID)
-				for _, pid := range payload.CounterOfferedProductIDs {
-					_, _ = h.db.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, 'buyer')", tradeID, pid)
-				}
-			}
-			// If counter cash amount provided, set it
-			if payload.CounterOfferedCashAmount != nil {
-				_, _ = h.db.Exec("UPDATE trades SET offered_cash_amount=? WHERE id = ?", payload.CounterOfferedCashAmount, tradeID)
-			}
-			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "countered"}})
-			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "countered"}})
-			// Notify buyer about counter
-			var targetPid int
-			_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetPid)
-			var productTitle string
-			_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetPid).Scan(&productTitle)
-			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your trade offer was countered: "+productTitle)
-			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, NULL, 'countered', ?)", tradeID, userID, payload.Message)
+		tx, err := h.db.Begin()
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
 		}
+
+		// Determine who is countering
+		offeredBy := "buyer"
+		if userID == sellerID {
+			offeredBy = "seller"
+		}
+
+		// Replace items in the trade
+		if _, err := tx.Exec("DELETE FROM trade_items WHERE trade_id = ?", tradeID); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade items"})
+		}
+		for _, pid := range payload.CounterOfferedProductIDs {
+			var ownerID int
+			if err := tx.QueryRow("SELECT seller_id FROM products WHERE id = ?", pid).Scan(&ownerID); err != nil || ownerID != userID {
+				_ = tx.Rollback()
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You do not own product %d or it does not exist.", pid)})
+			}
+			if _, err := tx.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, ?)", tradeID, pid, offeredBy); err != nil {
+				_ = tx.Rollback()
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to add counter offer items"})
+			}
+		}
+
+		// Update trade status, message, and cash amount
+		if _, err := tx.Exec("UPDATE trades SET status='countered', message=?, offered_cash_amount=?, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.Message, payload.CounterOfferedCashAmount, tradeID); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade for counter offer"})
+		}
+
+		if err := tx.Commit(); err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit counter offer"})
+		}
+
+		// Notifications and events after successful transaction
+		publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "countered"}})
+		publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "countered"}})
+		var targetPid int
+		_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetPid)
+		var productTitle string
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetPid).Scan(&productTitle)
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your trade offer was countered: "+productTitle)
+		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'countered', ?)", tradeID, userID, currentStatus, payload.Message)
+
 	case "complete":
 		log.Printf("=== TRADE COMPLETION REQUEST ===")
 		log.Printf("User %d attempting to complete trade %d", userID, tradeID)
-		// Mark party completion; finalize when both complete
 		column := "buyer_completed"
 		if userID == sellerID {
 			column = "seller_completed"
@@ -367,23 +386,17 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		_, err = h.db.Exec("UPDATE trades SET "+column+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
 		if err == nil {
 			log.Printf("Updated %s=TRUE for trade %d", column, tradeID)
-			// Check both flags
 			var bc, sc bool
 			_ = h.db.QueryRow("SELECT buyer_completed, seller_completed FROM trades WHERE id = ?", tradeID).Scan(&bc, &sc)
 			log.Printf("Trade %d completion status: buyer_completed=%t, seller_completed=%t", tradeID, bc, sc)
 			if bc && sc {
 				log.Printf("Both parties completed trade %d, starting completion process", tradeID)
-				// Complete the trade with transaction safety
 				err = h.completeTradeTransaction(tradeID)
 				if err != nil {
 					log.Printf("Failed to complete product trade: %v", err)
-					return c.Status(500).JSON(models.APIResponse{
-						Success: false,
-						Error:   "Failed to complete trade",
-					})
+					return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to complete trade"})
 				}
 				log.Printf("Trade %d completion process finished successfully", tradeID)
-				
 				publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "completed"}})
 				publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "completed"}})
 				_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, 'active', 'completed', ?)", tradeID, userID, payload.Message)
@@ -396,12 +409,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			}
 		}
 	case "cancel":
-		// Allow cancel when active but not completed
 		_, err = h.db.Exec("UPDATE trades SET status='cancelled', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
 		if err == nil {
 			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "cancelled"}})
 			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "cancelled"}})
-			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, NULL, 'cancelled', ?)", tradeID, userID, payload.Message)
+			_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'cancelled', ?)", tradeID, userID, currentStatus, payload.Message)
 		}
 	default:
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
@@ -414,7 +426,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade updated"})
 }
 
-// completeTradeTransaction safely completes a trade and marks all products as sold
+// completeTradeTransaction safely completes a trade and marks all products as traded
 func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 	log.Printf("Starting trade completion for trade ID: %d", tradeID)
 	
@@ -473,23 +485,23 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 
 	log.Printf("Trade %d: Target product: %d, Offered products: %v", tradeID, targetProductID, offeredProductIDs)
 
-	// Mark target product as sold with locking
+	// Mark target product as traded with locking
 	err = h.markProductUnavailable(tx, targetProductID)
 	if err != nil {
-		log.Printf("Failed to mark target product %d as sold: %v", targetProductID, err)
-		return fmt.Errorf("failed to mark target product as sold: %w", err)
+		log.Printf("Failed to mark target product %d as traded: %v", targetProductID, err)
+		return fmt.Errorf("failed to mark target product as traded: %w", err)
 	}
 
-	// Mark all offered products as sold
+	// Mark all offered products as traded
 	for _, productID := range offeredProductIDs {
 		err = h.markProductUnavailable(tx, productID)
 		if err != nil {
-			log.Printf("Failed to mark offered product %d as sold: %v", productID, err)
-			return fmt.Errorf("failed to mark offered product %d as sold: %w", productID, err)
+			log.Printf("Failed to mark offered product %d as traded: %v", productID, err)
+			return fmt.Errorf("failed to mark offered product %d as traded: %w", productID, err)
 		}
 	}
 
-	// Update trade status to completed (but don't require status = 'active' since it might already be completed)
+	// Update trade status to completed
 	result, err := tx.Exec(`
 		UPDATE trades 
 		SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
@@ -511,13 +523,13 @@ func (h *TradeHandler) completeTradeTransaction(tradeID int) error {
 		return fmt.Errorf("trade was already completed by another process")
 	}
 
-	log.Printf("Successfully completed trade %d and marked products as sold", tradeID)
+	log.Printf("Successfully completed trade %d and marked products as traded", tradeID)
 	return tx.Commit()
 }
 
-// markProductUnavailable marks a product as sold with row locking
+// markProductUnavailable marks a product as traded with row locking
 func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
-	log.Printf("Attempting to mark product %d as sold", productID)
+	log.Printf("Attempting to mark product %d as traded", productID)
 	
 	// Lock and verify product
 	var currentStatus string
@@ -537,14 +549,14 @@ func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 
 	// Only update if product is available
 	if currentStatus != "available" {
-		log.Printf("Warning: Product %d is already sold/unavailable (status: %s), skipping", productID, currentStatus)
+		log.Printf("Warning: Product %d is already traded/unavailable (status: %s), skipping", productID, currentStatus)
 		return nil // Don't fail the entire trade if one product is already sold
 	}
 
-	// Update product status to sold
+	// Update product status to traded
 	result, err := tx.Exec(`
 		UPDATE products 
-		SET status = 'sold', updated_at = CURRENT_TIMESTAMP 
+		SET status = 'traded', updated_at = CURRENT_TIMESTAMP 
 		WHERE id = ? AND status = 'available'`,
 		productID)
 	
@@ -564,7 +576,7 @@ func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 		return fmt.Errorf("product %d was modified by another transaction", productID)
 	}
 
-	log.Printf("Successfully marked product %d as sold", productID)
+	log.Printf("Successfully marked product %d as traded", productID)
 	return nil
 }
 
