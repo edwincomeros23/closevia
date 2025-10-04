@@ -130,10 +130,19 @@ const Dashboard: React.FC = () => {
                 as={RouterLink}
                 to="/add-product"
                 leftIcon={<AddIcon />}
-                colorScheme="brand"
                 size="lg"
-                bg="#FFFDF1"
-                _hover={{ bg: '#f7f4ea' }}
+                color="white"
+                bg="#319795"
+                px={4}
+                py={2}
+                display="flex"
+                alignItems="center"
+                _hover={{
+                  bg: '#2A8280'
+                }}
+                _active={{
+                  bg: '#267E7C'
+                }}
               >
                 Add New Product
               </Button>
@@ -142,16 +151,20 @@ const Dashboard: React.FC = () => {
                 aria-label="Notifications"
                 icon={<BellIcon />}
                 size="lg"
-                bg="#FFFDF1"
-                _hover={{ bg: '#f7f4ea' }}
+                bg="#319795"
+                color="white"
+                _hover={{ bg: '#2A8280' }}
+                _active={{ bg: '#267E7C' }}
               />
 
               <IconButton
                 aria-label="Settings"
                 icon={<SettingsIcon />}
                 size="lg"
-                bg="#FFFDF1"
-                _hover={{ bg: '#f7f4ea' }}
+                bg="#319795"
+                color="white"
+                _hover={{ bg: '#2A8280' }}
+                _active={{ bg: '#267E7C' }}
               />
 
               <Avatar name={user?.name || 'User'} size="sm" bg="#FFFDF1" />
