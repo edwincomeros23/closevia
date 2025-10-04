@@ -637,7 +637,6 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box between header and main content (keeps same dimensions) */}
       <Box
-        /* slightly narrower on mobile and reduce horizontal padding on small screens */
         maxW={{ base: 'calc(100% - 32px)', md: '4xl', lg: '6xl', xl: '1160px' }}
         mx="auto"
         mb={4}
