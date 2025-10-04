@@ -131,8 +131,6 @@ const Dashboard: React.FC = () => {
                 leftIcon={<AddIcon />}
                 colorScheme="brand"
                 size="lg"
-                bg="#FFFDF1"
-                _hover={{ bg: '#f7f4ea' }}
               >
                 Add New Product
               </Button>
@@ -141,19 +139,17 @@ const Dashboard: React.FC = () => {
                 aria-label="Notifications"
                 icon={<BellIcon />}
                 size="lg"
-                bg="#FFFDF1"
-                _hover={{ bg: '#f7f4ea' }}
+                variant="ghost"
               />
 
               <IconButton
                 aria-label="Settings"
                 icon={<SettingsIcon />}
                 size="lg"
-                bg="#FFFDF1"
-                _hover={{ bg: '#f7f4ea' }}
+                variant="ghost"
               />
 
-              <Avatar name={user?.name || 'User'} size="sm" bg="#FFFDF1" />
+              <Avatar name={user?.name || 'User'} size="sm" />
             </HStack>
           </Box>
         </Flex>
@@ -251,7 +247,7 @@ const Dashboard: React.FC = () => {
                           <CardBody pt={0}>
                             <Text fontSize="2xl" fontWeight="bold" color="brand.500">
                               {product.allow_buying && !product.barter_only && product.price
-                                ? `$${product.price.toFixed(2)}`
+                                ? `₱${product.price.toFixed(2)}`
                                 : 'Barter Only'}
                             </Text>
                             <Badge
@@ -317,7 +313,7 @@ const Dashboard: React.FC = () => {
                                   {order.product?.title}
                                 </Text>
                                 <Text color="gray.600">
-                                  ${order.product?.price ? order.product.price.toFixed(2) : '0.00'}
+                                  ₱{order.product?.price ? order.product.price.toFixed(2) : '0.00'}
                                 </Text>
                                 <Text fontSize="sm" color="gray.500">
                                   Ordered on {new Date(order.created_at).toLocaleDateString()}

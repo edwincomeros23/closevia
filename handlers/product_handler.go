@@ -204,18 +204,20 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 	}
 
-	if status != "" {
-		whereClause += " AND p.status = ?"
-		args = append(args, status)
-	} else {
-		// Default to available items for general feed
-		whereClause += " AND p.status = 'available'"
-	}
-
+	// Only apply the default 'available' status filter if no specific seller is requested.
+	// This allows a user to see all of their own products (sold, traded, etc.).
 	if sellerIDStr != "" {
 		if sellerID, err := strconv.Atoi(sellerIDStr); err == nil {
 			whereClause += " AND p.seller_id = ?"
 			args = append(args, sellerID)
+		}
+	} else {
+		// For the general public feed, default to 'available' if no status is specified.
+		if status != "" {
+			whereClause += " AND p.status = ?"
+			args = append(args, status)
+		} else {
+			whereClause += " AND p.status = 'available'"
 		}
 	}
 
@@ -472,13 +474,20 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if user owns the product
+	// Check if user owns the product and get its current status
 	var sellerID int
-	err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", productID).Scan(&sellerID)
+	var currentStatus string
+	err = h.db.QueryRow("SELECT seller_id, status FROM products WHERE id = ?", productID).Scan(&sellerID, &currentStatus)
 	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Product not found",
+			})
+		}
+		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Product not found",
+			Error:   "Failed to retrieve product details",
 		})
 	}
 
@@ -494,6 +503,14 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Invalid request body",
+		})
+	}
+
+	// Prevent editing of products that are already sold or traded
+	if currentStatus == "sold" || currentStatus == "traded" {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Cannot edit a product that has been sold or traded",
 		})
 	}
 
@@ -517,7 +534,6 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	}
 
 	if updateData.ImageURLs != nil {
-		// use image_urls column name
 		query += ", image_urls = ?"
 		args = append(args, *updateData.ImageURLs)
 	}
@@ -530,6 +546,29 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	if updateData.Status != nil {
 		query += ", status = ?"
 		args = append(args, *updateData.Status)
+	}
+
+	if updateData.AllowBuying != nil {
+		query += ", allow_buying = ?"
+		args = append(args, *updateData.AllowBuying)
+	}
+
+	if updateData.BarterOnly != nil {
+		query += ", barter_only = ?"
+		args = append(args, *updateData.BarterOnly)
+	}
+
+	if updateData.Location != nil {
+		query += ", location = ?"
+		args = append(args, *updateData.Location)
+	}
+
+	// Do not proceed if no fields were updated
+	if len(args) == 0 {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Message: "No fields to update",
+		})
 	}
 
 	query += " WHERE id = ?"
