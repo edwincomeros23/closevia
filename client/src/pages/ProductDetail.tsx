@@ -18,6 +18,12 @@ import {
   Divider,
   SimpleGrid,
   useToast,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalBody,
+  IconButton,
+  ModalCloseButton,
 } from '@chakra-ui/react'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
@@ -25,6 +31,7 @@ import { Product } from '../types'
 import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import TradeModal from '../components/TradeModal'
+import { ArrowLeftIcon, ArrowRightIcon } from '@chakra-ui/icons'
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -46,6 +53,11 @@ const ProductDetail: React.FC = () => {
       fetchProduct()
     }
   }, [id])
+
+  // Reset selected image when product changes
+  useEffect(() => {
+    setSelectedImageIndex(0)
+  }, [product])
 
   const fetchProduct = async () => {
     try {
@@ -216,7 +228,7 @@ const ProductDetail: React.FC = () => {
                       color="brand.500"
                       textAlign="right"
                     >
-                      ${product.price ? product.price.toFixed(2) : '0.00'}
+                      {formatPHP(product.price ?? 0)}
                     </Text>
                   </Flex>
 
@@ -298,7 +310,7 @@ const ProductDetail: React.FC = () => {
                           isLoading={purchasing}
                           loadingText="Processing..."
                         >
-                          Buy Now - ${product.price.toFixed(2)}
+                          Buy Now - {formatPHP(product.price ?? 0)}
                         </Button>
                         <Text fontSize="sm" color="gray.500" textAlign="center">
                           Secure transaction • Fast delivery • Buyer protection
@@ -381,6 +393,47 @@ const ProductDetail: React.FC = () => {
         </Box>
       </VStack>
       <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
+      {/* Lightbox Modal */}
+      <Modal isOpen={isLightboxOpen} onClose={() => setIsLightboxOpen(false)} size="6xl" isCentered>
+        <ModalOverlay />
+        <ModalContent bg="transparent" boxShadow="none">
+          <ModalCloseButton color="white" />
+          <ModalBody p={0} display="flex" alignItems="center" justifyContent="center">
+            <Flex align="center" justify="center" w="100%">
+              <IconButton
+                aria-label="Previous"
+                icon={<ArrowLeftIcon />}
+                onClick={() => setSelectedImageIndex(i => Math.max(0, i - 1))}
+                mr={3}
+                colorScheme="blackAlpha"
+                variant="ghost"
+                size="lg"
+              />
+
+              <Box maxW="90%" maxH="80vh">
+                <Image
+                  src={getImageUrl(product.image_urls && product.image_urls.length ? product.image_urls[selectedImageIndex] : getFirstImage(product.image_urls))}
+                  alt={product.title}
+                  objectFit="contain"
+                  maxH="80vh"
+                  w="100%"
+                  bg="gray.900"
+                />
+              </Box>
+
+              <IconButton
+                aria-label="Next"
+                icon={<ArrowRightIcon />}
+                onClick={() => setSelectedImageIndex(i => Math.min((product.image_urls?.length || 1) - 1, i + 1))}
+                ml={3}
+                colorScheme="blackAlpha"
+                variant="ghost"
+                size="lg"
+              />
+            </Flex>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Container>
   )
 }
