@@ -65,6 +65,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   const [showCelebration, setShowCelebration] = useState(false)
   const [policyAgreed, setPolicyAgreed] = useState(false)
   const [showFinishButton, setShowFinishButton] = useState(false)
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false)
   const toast = useToast()
 
   const isUserBuyer = trade && currentUserId === trade.buyer_id
@@ -107,11 +108,23 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     }
   }
 
-  const handleSubmitCompletion = async () => {
+  const handleSubmitCompletion = () => {
+    if (!trade) return
+    setShowConfirmationModal(true)
+  }
+
+  const handleConfirmCompletion = async () => {
     if (!trade) return
     
     try {
       setSubmitting(true)
+      setShowConfirmationModal(false)
+      
+      console.log('Submitting trade completion:', {
+        tradeId: trade.id,
+        rating,
+        feedback: feedback.trim()
+      })
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim()
@@ -135,6 +148,9 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         setShowFinishButton(true)
       }
     } catch (error: any) {
+      console.error('Trade completion error:', error)
+      console.error('Error response:', error?.response?.data)
+      console.error('Error status:', error?.response?.status)
       toast({
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to submit completion',
@@ -143,6 +159,11 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleFinishTrade = () => {
+    onClose()
+    onCompleted()
   }
 
   const renderRatingStars = (currentRating: number, onRate?: (rating: number) => void) => (
@@ -218,6 +239,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   if (!trade) return null
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
       <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
       <ModalContent
@@ -310,7 +332,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                       colorScheme="blue"
                       size="lg"
                       w="full"
-                      onClick={onClose}
+                      onClick={handleFinishTrade}
                       leftIcon={<FaCheck />}
                     >
                       Finish
@@ -417,6 +439,55 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         </ModalBody>
       </ModalContent>
     </Modal>
+
+    {/* Compact Confirmation Modal */}
+    <Modal isOpen={showConfirmationModal} onClose={() => setShowConfirmationModal(false)} size="sm" isCentered>
+      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+      <ModalContent
+        bg="white"
+        borderRadius="xl"
+        boxShadow="xl"
+        mx={4}
+      >
+        <ModalBody p={6} textAlign="center">
+          <VStack spacing={4}>
+            <Icon as={FaHandshake} color="blue.500" boxSize={8} />
+            <VStack spacing={2}>
+              <Text fontWeight="bold" fontSize="lg" color="gray.800">
+                Confirm Trade Completion
+              </Text>
+              <Text fontSize="sm" color="gray.600" textAlign="center">
+                Are you sure you want to mark this trade as completed? This action cannot be undone.
+              </Text>
+            </VStack>
+            
+            <HStack spacing={3} w="full">
+              <Button
+                variant="outline"
+                size="md"
+                flex={1}
+                onClick={() => setShowConfirmationModal(false)}
+                isDisabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                colorScheme="green"
+                size="md"
+                flex={1}
+                onClick={handleConfirmCompletion}
+                isLoading={submitting}
+                loadingText="Confirming..."
+                leftIcon={<FaCheck />}
+              >
+                Confirm
+              </Button>
+            </HStack>
+          </VStack>
+        </ModalBody>
+      </ModalContent>
+    </Modal>
+    </>
   )
 }
 
