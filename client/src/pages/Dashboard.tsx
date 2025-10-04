@@ -250,12 +250,21 @@ const Dashboard: React.FC = () => {
                                 ? `₱${product.price.toFixed(2)}`
                                 : 'Barter Only'}
                             </Text>
-                            <Badge
-                              colorScheme={product.status === 'available' ? 'green' : 'red'}
-                              mt={2}
-                            >
-                              {product.status}
-                            </Badge>
+                            <HStack mt={2}>
+                              <Badge
+                                colorScheme={product.status === 'available' ? 'green' : 'red'}
+                              >
+                                {product.status}
+                              </Badge>
+                              {product.condition && (
+                                <Badge colorScheme="blue">{product.condition}</Badge>
+                              )}
+                            </HStack>
+                            {product.suggested_value > 0 && (
+                              <Text fontSize="sm" color="gray.600" mt={1}>
+                                {product.suggested_value} points
+                              </Text>
+                            )}
                           </CardBody>
                           <CardFooter>
                             <HStack spacing={2} w="full">
