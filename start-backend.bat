@@ -17,7 +17,7 @@ if not exist ".env" (
     if exist "env.example" (
         copy "env.example" ".env"
     ) else (
-        echo PORT=8080 > .env
+        echo PORT=4000 > .env
         echo DATABASE_URL=postgres://postgres:password@localhost:5432/clovia >> .env
         echo JWT_SECRET=your-secret-key >> .env
     )
@@ -26,8 +26,8 @@ if not exist ".env" (
 )
 
 echo 🌐 Starting backend server...
-echo 📊 Server will be available at: http://localhost:8080
-echo 🔐 API endpoints: http://localhost:8080/api
+echo 📊 Server will be available at: http://localhost:4000
+echo 🔐 API endpoints: http://localhost:4000/api
 echo.
 echo Press Ctrl+C to stop the server
 echo.
