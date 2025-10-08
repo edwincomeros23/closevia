@@ -44,7 +44,7 @@ const Sidebar: React.FC = () => {
   
   // Separate items for desktop vs mobile to keep desktop unchanged
   const desktopNavItems = [
-    { icon: FaHome, label: 'Home', path: '/' },
+    { icon: FaHome, label: 'Home', path: '/home' },
     { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
@@ -53,7 +53,7 @@ const Sidebar: React.FC = () => {
   ]
 
   const mobileNavItems = [
-    { icon: FaHome, label: 'Home', path: '/' },
+    { icon: FaHome, label: 'Home', path: '/home' },
     { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
