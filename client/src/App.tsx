@@ -3,6 +3,7 @@ import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text } from '@cha
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { theme } from './theme'
 import Sidebar from './components/Sidebar'
+import LandingPage from './pages/Landingpage'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -80,89 +81,97 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <Box minH="100vh" bg="gray.50">
-      <Sidebar />
-      <Box as="main" ml={{ base: 0, lg: '70px' }}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/products/:id" element={<ProductDetail />} />
-          <Route 
-            path="/dashboard" 
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/add-product" 
-            element={
-              <ProtectedRoute>
-                <AddProduct />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/edit-product/:id" 
-            element={
-              <ProtectedRoute>
-                <EditProduct />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/notifications" 
-            element={
-              <ProtectedRoute>
-                <Notifications />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/profile" 
-            element={
-              <ProtectedRoute>
-                <Profile />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/settings" 
-            element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/trades" 
-            element={
-              <ProtectedRoute>
-                <Trades />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/offers" 
-            element={
-              <ProtectedRoute>
-                <Offers />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/admin" 
-            element={
-              <AdminRoute>
-                <AdminDashboard />
-              </AdminRoute>
-            } 
-          />
-        </Routes>
-      </Box>
-    </Box>
+    <Routes>
+      {/* Landing page route - no sidebar or app layout */}
+      <Route path="/" element={<LandingPage />} />
+      
+      {/* App routes with sidebar and layout */}
+      <Route path="/*" element={
+        <Box minH="100vh" bg="gray.50">
+          <Sidebar />
+          <Box as="main" ml={{ base: 0, lg: '70px' }}>
+            <Routes>
+              <Route path="/home" element={<Home />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/products/:id" element={<ProductDetail />} />
+              <Route 
+                path="/dashboard" 
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/add-product" 
+                element={
+                  <ProtectedRoute>
+                    <AddProduct />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/edit-product/:id" 
+                element={
+                  <ProtectedRoute>
+                    <EditProduct />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/notifications" 
+                element={
+                  <ProtectedRoute>
+                    <Notifications />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/settings" 
+                element={
+                  <ProtectedRoute>
+                    <Settings />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/trades" 
+                element={
+                  <ProtectedRoute>
+                    <Trades />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/offers" 
+                element={
+                  <ProtectedRoute>
+                    <Offers />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin" 
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                } 
+              />
+            </Routes>
+          </Box>
+        </Box>
+      } />
+    </Routes>
   )
 }
 
