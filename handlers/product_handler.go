@@ -25,6 +25,24 @@ func NewProductHandler() *ProductHandler {
 	}
 }
 
+// Condition multipliers for calculating suggested value
+var conditionMultipliers = map[string]float64{
+	"New":      1.0,
+	"Like-New": 0.8,
+	"Used":     0.6,
+	"Fair":     0.4,
+}
+
+// calculateSuggestedValue calculates the value in points based on price and condition.
+func calculateSuggestedValue(price float64, condition string) int {
+	multiplier, ok := conditionMultipliers[condition]
+	if !ok {
+		multiplier = 0.5 // Default multiplier for unknown conditions
+	}
+	// Assuming 1 PHP = 1 point for simplicity, then apply multiplier
+	return int(price * multiplier)
+}
+
 // CreateProduct creates a new product
 func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -34,8 +52,6 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 			Error:   "User not authenticated",
 		})
 	}
-
-	// No need to call ParseMultipartForm; Fiber handles this internally
 
 	// Parse fields
 	title := c.FormValue("title")
@@ -52,6 +68,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	allowBuying := c.FormValue("allow_buying") == "true"
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
+	condition := c.FormValue("condition")
 
 	// Handle multiple file uploads
 	form, err := c.MultipartForm()
@@ -83,10 +100,13 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		insertPrice = *price
 	}
 
-	// Insert new product (use image_urls column)
+	// Calculate suggested value
+	suggestedValue := calculateSuggestedValue(insertPrice, condition)
+
+	// Insert new product
 	result, err := h.db.Exec(
-		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available",
+		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", condition, suggestedValue,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -99,37 +119,19 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Get the created product
 	var createdProduct models.Product
-	var priceNull sql.NullFloat64
-	var imageURLsJSONStr string
 	err = h.db.QueryRow(
-		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, created_at, updated_at FROM products WHERE id = ?",
+		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, created_at, updated_at FROM products WHERE id = ?",
 		productID,
-	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &priceNull,
-		&imageURLsJSONStr, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
+	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
+		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.CreatedAt, &createdProduct.UpdatedAt)
-
-	// Parse image URLs from JSON
-	if imageURLsJSONStr != "" {
-		var imageURLs []string
-		if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
-			createdProduct.ImageURLs = models.StringArray(imageURLs)
-		}
-	}
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to retrieve created product",
 		})
-	}
-
-	// Convert priceNull to *float64
-	if priceNull.Valid {
-		pv := priceNull.Float64
-		createdProduct.Price = &pv
-	} else {
-		createdProduct.Price = nil
 	}
 
 	return c.Status(201).JSON(models.APIResponse{
@@ -474,10 +476,9 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if user owns the product and get its current status
-	var sellerID int
-	var currentStatus string
-	err = h.db.QueryRow("SELECT seller_id, status FROM products WHERE id = ?", productID).Scan(&sellerID, &currentStatus)
+	// Check if user owns the product and get its current state
+	var p models.Product
+	err = h.db.QueryRow("SELECT seller_id, status, price, `condition` FROM products WHERE id = ?", productID).Scan(&p.SellerID, &p.Status, &p.Price, &p.Condition)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{
@@ -491,7 +492,7 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	if sellerID != userID {
+	if p.SellerID != userID {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "You can only update your own products",
@@ -507,7 +508,7 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	}
 
 	// Prevent editing of products that are already sold or traded
-	if currentStatus == "sold" || currentStatus == "traded" {
+	if p.Status == "sold" || p.Status == "traded" {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Cannot edit a product that has been sold or traded",
@@ -522,45 +523,63 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		query += ", title = ?"
 		args = append(args, *updateData.Title)
 	}
-
 	if updateData.Description != nil {
 		query += ", description = ?"
 		args = append(args, *updateData.Description)
 	}
-
 	if updateData.Price != nil {
 		query += ", price = ?"
 		args = append(args, *updateData.Price)
 	}
-
 	if updateData.ImageURLs != nil {
 		query += ", image_urls = ?"
 		args = append(args, *updateData.ImageURLs)
 	}
-
 	if updateData.Premium != nil {
 		query += ", premium = ?"
 		args = append(args, *updateData.Premium)
 	}
-
 	if updateData.Status != nil {
 		query += ", status = ?"
 		args = append(args, *updateData.Status)
 	}
-
 	if updateData.AllowBuying != nil {
 		query += ", allow_buying = ?"
 		args = append(args, *updateData.AllowBuying)
 	}
-
 	if updateData.BarterOnly != nil {
 		query += ", barter_only = ?"
 		args = append(args, *updateData.BarterOnly)
 	}
-
 	if updateData.Location != nil {
 		query += ", location = ?"
 		args = append(args, *updateData.Location)
+	}
+	if updateData.Condition != nil {
+		query += ", `condition` = ?"
+		args = append(args, *updateData.Condition)
+	}
+
+	// Recalculate suggested value if price or condition changed
+	if updateData.Price != nil || updateData.Condition != nil {
+		newPrice := p.Price
+		if updateData.Price != nil {
+			newPrice = updateData.Price
+		}
+
+		newCondition := p.Condition
+		if updateData.Condition != nil {
+			newCondition = *updateData.Condition
+		}
+
+		var priceValue float64
+		if newPrice != nil {
+			priceValue = *newPrice
+		}
+
+		newSuggestedValue := calculateSuggestedValue(priceValue, newCondition)
+		query += ", suggested_value = ?"
+		args = append(args, newSuggestedValue)
 	}
 
 	// Do not proceed if no fields were updated
