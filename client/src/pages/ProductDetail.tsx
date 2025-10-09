@@ -18,12 +18,6 @@ import {
   Divider,
   SimpleGrid,
   useToast,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalBody,
-  IconButton,
-  ModalCloseButton,
 } from '@chakra-ui/react'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
@@ -31,7 +25,7 @@ import { Product } from '../types'
 import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import TradeModal from '../components/TradeModal'
-import { ArrowLeftIcon, ArrowRightIcon } from '@chakra-ui/icons'
+import axios from 'axios';
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -54,11 +48,6 @@ const ProductDetail: React.FC = () => {
     }
   }, [id])
 
-  // Reset selected image when product changes
-  useEffect(() => {
-    setSelectedImageIndex(0)
-  }, [product])
-
   const fetchProduct = async () => {
     try {
       setLoading(true)
@@ -72,8 +61,14 @@ const ProductDetail: React.FC = () => {
       } else {
         setError('Product not found')
       }
-    } catch (error: any) {
-      setError(error.message || 'Failed to fetch product')
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.error || 'An unexpected error occurred');
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred');
+      }
     } finally {
       setLoading(false)
     }
@@ -110,10 +105,16 @@ const ProductDetail: React.FC = () => {
       
       // Redirect to dashboard to view the order
       navigate('/dashboard')
-    } catch (error: any) {
+    } catch (err: unknown) {
+      let description = 'Failed to place order';
+      if (axios.isAxiosError(err)) {
+        description = err.response?.data?.error || description;
+      } else if (err instanceof Error) {
+        description = err.message;
+      }
       toast({
         title: 'Purchase failed',
-        description: error.response?.data?.error || 'Failed to place order',
+        description,
         status: 'error',
         duration: 5000,
         isClosable: true,
@@ -228,7 +229,7 @@ const ProductDetail: React.FC = () => {
                       color="brand.500"
                       textAlign="right"
                     >
-                      {formatPHP(product.price ?? 0)}
+                      ₱{product.price ? product.price.toFixed(2) : '0.00'}
                     </Text>
                   </Flex>
 
@@ -242,7 +243,15 @@ const ProductDetail: React.FC = () => {
                     <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
                       {product.status}
                     </Badge>
+                    {product.condition && (
+                      <Badge colorScheme="blue">{product.condition}</Badge>
+                    )}
                   </HStack>
+                  {product.suggested_value > 0 && (
+                  <Text mt={2} color="gray.600" fontSize="sm">
+                    Suggested Value: {product.suggested_value} points
+                  </Text>
+                  )}
 
                   {/* Consolidated seller + dates block for better UX (responsive) */}
                   <Flex
@@ -310,7 +319,7 @@ const ProductDetail: React.FC = () => {
                           isLoading={purchasing}
                           loadingText="Processing..."
                         >
-                          Buy Now - {formatPHP(product.price ?? 0)}
+                          Buy Now - ₱{product.price.toFixed(2)}
                         </Button>
                         <Text fontSize="sm" color="gray.500" textAlign="center">
                           Secure transaction • Fast delivery • Buyer protection
@@ -393,47 +402,6 @@ const ProductDetail: React.FC = () => {
         </Box>
       </VStack>
       <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
-      {/* Lightbox Modal */}
-      <Modal isOpen={isLightboxOpen} onClose={() => setIsLightboxOpen(false)} size="6xl" isCentered>
-        <ModalOverlay />
-        <ModalContent bg="transparent" boxShadow="none">
-          <ModalCloseButton color="white" />
-          <ModalBody p={0} display="flex" alignItems="center" justifyContent="center">
-            <Flex align="center" justify="center" w="100%">
-              <IconButton
-                aria-label="Previous"
-                icon={<ArrowLeftIcon />}
-                onClick={() => setSelectedImageIndex(i => Math.max(0, i - 1))}
-                mr={3}
-                colorScheme="blackAlpha"
-                variant="ghost"
-                size="lg"
-              />
-
-              <Box maxW="90%" maxH="80vh">
-                <Image
-                  src={getImageUrl(product.image_urls && product.image_urls.length ? product.image_urls[selectedImageIndex] : getFirstImage(product.image_urls))}
-                  alt={product.title}
-                  objectFit="contain"
-                  maxH="80vh"
-                  w="100%"
-                  bg="gray.900"
-                />
-              </Box>
-
-              <IconButton
-                aria-label="Next"
-                icon={<ArrowRightIcon />}
-                onClick={() => setSelectedImageIndex(i => Math.min((product.image_urls?.length || 1) - 1, i + 1))}
-                ml={3}
-                colorScheme="blackAlpha"
-                variant="ghost"
-                size="lg"
-              />
-            </Flex>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
     </Container>
   )
 }

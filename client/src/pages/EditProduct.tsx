@@ -23,6 +23,7 @@ import {
   Spinner,
   Center,
   useToast,
+  Select,
 } from '@chakra-ui/react'
 import { useProducts } from '../contexts/ProductContext'
 import { ProductUpdate } from '../types'
@@ -56,12 +57,16 @@ const EditProduct: React.FC = () => {
       
       // Pre-fill form with current values
       setFormData({
-  title: product.title,
-  description: product.description,
-  price: product.price,
-  image_urls: product.image_urls || [],
-  premium: product.premium,
-  status: product.status,
+        title: product.title,
+        description: product.description,
+        price: product.price,
+        image_urls: product.image_urls || [],
+        premium: product.premium,
+        status: product.status,
+        condition: product.condition,
+        allow_buying: product.allow_buying,
+        barter_only: product.barter_only,
+        location: product.location,
       })
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to fetch product')
@@ -71,20 +76,9 @@ const EditProduct: React.FC = () => {
   }
 
   const handleInputChange = (field: keyof ProductUpdate, value: any) => {
-    // Special handling for image_urls: accept a string (newline or comma separated) and convert to array
+    // Special handling for image_urls: accept a string and convert to array
     if (field === 'image_urls') {
-      if (typeof value === 'string') {
-        // Support one-per-line or comma-separated entries
-        const urls = value
-          .split(/\r?\n|,/) // split on newlines or commas
-          .map((s: string) => s.trim())
-          .filter((s: string) => s.length > 0)
-        setFormData(prev => ({ ...prev, image_urls: urls }))
-      } else if (Array.isArray(value)) {
-        setFormData(prev => ({ ...prev, image_urls: value }))
-      } else {
-        setFormData(prev => ({ ...prev, image_urls: [] }))
-      }
+      setFormData(prev => ({ ...prev, image_urls: value ? [value] : [] }))
     } else {
       setFormData(prev => ({ ...prev, [field]: value }))
     }
@@ -206,7 +200,7 @@ const EditProduct: React.FC = () => {
               </FormControl>
 
               <FormControl>
-                <FormLabel>Price ($)</FormLabel>
+                <FormLabel>Price (PHP)</FormLabel>
                 <NumberInput
                   value={formData.price !== undefined ? formData.price : originalProduct.price}
                   onChange={(value) => handleInputChange('price', parseFloat(value) || 0)}
@@ -226,20 +220,33 @@ const EditProduct: React.FC = () => {
               </FormControl>
 
               <FormControl>
-                <FormLabel>Image URLs (one per line)</FormLabel>
-                <Textarea
-                  value={
-                    formData.image_urls && formData.image_urls.length > 0
-                      ? formData.image_urls.join('\n')
-                      : (originalProduct.image_urls && Array.isArray(originalProduct.image_urls) ? originalProduct.image_urls.join('\n') : '')
-                  }
-                  onChange={(e) => handleInputChange('image_urls', e.target.value)}
-                  placeholder={`https://example.com/image1.jpg\nhttps://example.com/image2.jpg`}
+                <FormLabel>Condition</FormLabel>
+                <Select
+                  value={formData.condition || ''}
+                  onChange={(e) => handleInputChange('condition', e.target.value)}
+                  placeholder="Select condition"
                   size="lg"
-                  rows={4}
+                >
+                  <option value="New">New</option>
+                  <option value="Like-New">Like-New</option>
+                  <option value="Used">Used</option>
+                  <option value="Fair">Fair</option>
+                </Select>
+                <FormHelperText>
+                  Leave empty to keep current condition
+                </FormHelperText>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Image URL</FormLabel>
+                <Input
+                  value={formData.image_urls && formData.image_urls.length > 0 ? formData.image_urls[0] : (originalProduct.image_urls && originalProduct.image_urls[0])}
+                  onChange={(e) => handleInputChange('image_urls', e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  size="lg"
                 />
                 <FormHelperText>
-                  Provide one image URL per line, or separate with commas. Leave empty to keep current images.
+                  Leave empty to keep current image
                 </FormHelperText>
               </FormControl>
 
