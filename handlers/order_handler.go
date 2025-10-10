@@ -53,6 +53,13 @@ func (h *OrderHandler) CreateOrder(c *fiber.Ctx) error {
 		})
 	}
 
+	if product.Status == "locked" {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "This product is currently locked in a trade and cannot be purchased.",
+		})
+	}
+
 	if product.Status != "available" {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,

@@ -11,6 +11,7 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
+	"github.com/xashathebest/clovia/services"
 )
 
 // ProductHandler handles product-related HTTP requests
@@ -100,13 +101,23 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		insertPrice = *price
 	}
 
+	// Appraise product based on title and description
+	appraisal := services.AppraiseProduct(title, description)
+	category := appraisal.Category
+
+	// If user did not specify a condition, use the appraised one
+	finalCondition := condition
+	if finalCondition == "" {
+		finalCondition = appraisal.Condition
+	}
+
 	// Calculate suggested value
-	suggestedValue := calculateSuggestedValue(insertPrice, condition)
+	suggestedValue := calculateSuggestedValue(insertPrice, finalCondition)
 
 	// Insert new product
 	result, err := h.db.Exec(
-		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", condition, suggestedValue,
+		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -120,12 +131,12 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Get the created product
 	var createdProduct models.Product
 	err = h.db.QueryRow(
-		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, created_at, updated_at FROM products WHERE id = ?",
+		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
 		productID,
 	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
 		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
