@@ -252,15 +252,24 @@ const Dashboard: React.FC = () => {
                             </Text>
                             <HStack mt={2}>
                               <Badge
-                                colorScheme={product.status === 'available' ? 'green' : 'red'}
+                                colorScheme={
+                                  product.status === 'available'
+                                    ? 'green'
+                                    : product.status === 'locked'
+                                    ? 'orange'
+                                    : 'red'
+                                }
                               >
                                 {product.status}
                               </Badge>
                               {product.condition && (
                                 <Badge colorScheme="blue">{product.condition}</Badge>
                               )}
+                              {product.category && (
+                                <Badge colorScheme="purple">{product.category}</Badge>
+                              )}
                             </HStack>
-                            {product.suggested_value > 0 && (
+                            {product.suggested_value && product.suggested_value > 0 && (
                               <Text fontSize="sm" color="gray.600" mt={1}>
                                 {product.suggested_value} points
                               </Text>

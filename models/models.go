@@ -106,12 +106,13 @@ type Product struct {
 	SellerID       int         `json:"seller_id"`
 	SellerName     string      `json:"seller_name,omitempty"`
 	Premium        bool        `json:"premium"`
-	Status         string      `json:"status" validate:"oneof=available sold traded"`
+	Status         string      `json:"status" validate:"oneof=available sold traded locked"`
 	AllowBuying    bool        `json:"allow_buying"` // Whether buying is allowed
 	BarterOnly     bool        `json:"barter_only"`  // Whether it's barter only
 	Location       string      `json:"location,omitempty"`
 	Condition      string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	SuggestedValue int         `json:"suggested_value,omitempty"`
+	Category       string      `json:"category,omitempty"`
 	CreatedAt      time.Time   `json:"created_at"`
 	UpdatedAt      time.Time   `json:"updated_at"`
 }
@@ -127,6 +128,7 @@ type ProductCreate struct {
 	BarterOnly  bool        `json:"barter_only"`
 	Location    string      `json:"location,omitempty"`
 	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category    string      `json:"category,omitempty"`
 }
 
 // ProductUpdate represents data for updating a product
@@ -141,6 +143,7 @@ type ProductUpdate struct {
 	BarterOnly  *bool        `json:"barter_only,omitempty"`
 	Location    *string      `json:"location,omitempty"`
 	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category    *string      `json:"category,omitempty"`
 }
 
 // Order represents an order

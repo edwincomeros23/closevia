@@ -240,14 +240,25 @@ const ProductDetail: React.FC = () => {
                         Premium Listing
                       </Badge>
                     )}
-                    <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
+                    <Badge
+                      colorScheme={
+                        product.status === 'available'
+                          ? 'green'
+                          : product.status === 'locked'
+                          ? 'orange'
+                          : 'red'
+                      }
+                    >
                       {product.status}
                     </Badge>
                     {product.condition && (
                       <Badge colorScheme="blue">{product.condition}</Badge>
                     )}
+                    {product.category && (
+                      <Badge colorScheme="purple">{product.category}</Badge>
+                    )}
                   </HStack>
-                  {product.suggested_value > 0 && (
+                  {product.suggested_value && product.suggested_value > 0 && (
                   <Text mt={2} color="gray.600" fontSize="sm">
                     Suggested Value: {product.suggested_value} points
                   </Text>
@@ -370,6 +381,13 @@ const ProductDetail: React.FC = () => {
                   <Box textAlign="center" py={4}>
                     <Text color="red.500" fontWeight="bold">
                       This product has been sold
+                    </Text>
+                  </Box>
+                )}
+                {product.status === 'locked' && (
+                  <Box textAlign="center" py={4}>
+                    <Text color="orange.500" fontWeight="bold">
+                      This item is currently reserved in a trade.
                     </Text>
                   </Box>
                 )}
