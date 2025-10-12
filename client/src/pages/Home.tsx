@@ -102,7 +102,7 @@ const Home: React.FC = () => {
 
   // Refetch when navigating back to Home route to ensure newest items appear
   useEffect(() => {
-    if (location.pathname === '/') {
+    if (location.pathname === '/home') {
       searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,7 +128,7 @@ const Home: React.FC = () => {
   // Refetch on tab/window focus to keep feed fresh
   useEffect(() => {
     const handleFocus = () => {
-      if (window.location.pathname === '/') {
+      if (window.location.pathname === '/home') {
         searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
       }
     }
@@ -637,7 +637,6 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box between header and main content (keeps same dimensions) */}
       <Box
-        /* slightly narrower on mobile and reduce horizontal padding on small screens */
         maxW={{ base: 'calc(100% - 32px)', md: '4xl', lg: '6xl', xl: '1160px' }}
         mx="auto"
         mb={4}

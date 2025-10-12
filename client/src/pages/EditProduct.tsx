@@ -267,14 +267,17 @@ const EditProduct: React.FC = () => {
 
               <FormControl>
                 <FormLabel>Status</FormLabel>
-                <Input
+                <Select
                   value={formData.status || originalProduct.status}
                   onChange={(e) => handleInputChange('status', e.target.value)}
-                  placeholder="available or sold"
+                  placeholder="Select status"
                   size="lg"
-                />
+                >
+                  <option value="available">Available</option>
+                  <option value="bartered">Bartered</option>
+                </Select>
                 <FormHelperText>
-                  Leave empty to keep current status
+                  Select the current status of your product
                 </FormHelperText>
               </FormControl>
 
