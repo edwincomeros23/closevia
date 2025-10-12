@@ -4,6 +4,7 @@ import {
   Box,
   Container,
   VStack,
+  HStack,
   Heading,
   FormControl,
   FormLabel,
@@ -17,12 +18,16 @@ import {
   InputRightElement,
   IconButton,
   useToast,
+  SimpleGrid,
 } from '@chakra-ui/react'
 import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 
 const Register: React.FC = () => {
-  const [name, setName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [middleInitial, setMiddleInitial] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -38,8 +43,8 @@ const Register: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!name || !email || !password || !confirmPassword) {
-      setError('Please fill in all fields')
+    if (!firstName || !lastName || !email || !password || !confirmPassword) {
+      setError('Please fill in all required fields')
       return
     }
 
@@ -53,10 +58,15 @@ const Register: React.FC = () => {
       return
     }
 
+    // Combine name fields for backend
+    const fullName = middleInitial 
+      ? `${firstName} ${middleInitial} ${lastName}`.trim()
+      : `${firstName} ${lastName}`.trim()
+
     try {
       setLoading(true)
       setError('')
-      await register(name, email, password)
+      await register(fullName, email, password)
       
       toast({
         title: 'Registration successful!',
@@ -75,111 +85,152 @@ const Register: React.FC = () => {
   }
 
   return (
-    <Container maxW="container.sm" py={8}>
-      <VStack spacing={8}>
-        <Box textAlign="center">
-          <Heading size="xl" color="brand.500" mb={2}>
-            Join Clovia
-          </Heading>
-          <Text color="gray.600">
-            Create your account to start buying and selling
-          </Text>
-        </Box>
+    <Box minH="100vh" bg="#FFFDF1" py={8}>
+      <Container maxW="container.sm">
+        <VStack spacing={8}>
+          <Box textAlign="center">
+            <Heading size="xl" color="brand.500" mb={2}>
+              Join Clovia
+            </Heading>
+            <Text color="gray.600">
+              Create your account to start buying and selling
+            </Text>
+          </Box>
 
-        <Box bg="white" p={8} rounded="lg" shadow="sm" w="full">
-          <form onSubmit={handleSubmit}>
-            <VStack spacing={6}>
-              {error && (
-                <Alert status="error">
-                  <AlertIcon />
-                  {error}
-                </Alert>
-              )}
+          <Box w="full" maxW="md">
+            <form onSubmit={handleSubmit}>
+              <VStack spacing={6}>
+                {error && (
+                  <Alert status="error">
+                    <AlertIcon />
+                    {error}
+                  </Alert>
+                )}
 
-              <FormControl isRequired>
-                <FormLabel>Full Name</FormLabel>
-                <Input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your full name"
-                  size="lg"
-                />
-              </FormControl>
-
-              <FormControl isRequired>
-                <FormLabel>Email</FormLabel>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  size="lg"
-                />
-              </FormControl>
-
-              <FormControl isRequired>
-                <FormLabel>Password</FormLabel>
-                <InputGroup size="lg">
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                  />
-                  <InputRightElement>
-                    <IconButton
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
-                      variant="ghost"
-                      onClick={() => setShowPassword(!showPassword)}
+                {/* Name Fields */}
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} w="full">
+                  <FormControl isRequired>
+                    <FormLabel fontSize="sm" fontWeight="medium">First Name</FormLabel>
+                    <Input
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="First name"
+                      size="lg"
                     />
-                  </InputRightElement>
-                </InputGroup>
-              </FormControl>
+                  </FormControl>
 
-              <FormControl isRequired>
-                <FormLabel>Confirm Password</FormLabel>
-                <InputGroup size="lg">
-                  <Input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm your password"
-                  />
-                  <InputRightElement>
-                    <IconButton
-                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                      icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
-                      variant="ghost"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  <FormControl>
+                    <FormLabel fontSize="sm" fontWeight="medium">Middle Initial</FormLabel>
+                    <Input
+                      type="text"
+                      value={middleInitial}
+                      onChange={(e) => setMiddleInitial(e.target.value)}
+                      placeholder="M.I."
+                      size="lg"
+                      maxLength={1}
                     />
-                  </InputRightElement>
-                </InputGroup>
-              </FormControl>
+                  </FormControl>
 
-              <Button
-                type="submit"
-                colorScheme="brand"
-                size="lg"
-                w="full"
-                isLoading={loading}
-                loadingText="Creating account..."
-              >
-                Create Account
-              </Button>
+                  <FormControl isRequired>
+                    <FormLabel fontSize="sm" fontWeight="medium">Last Name</FormLabel>
+                    <Input
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Last name"
+                      size="lg"
+                    />
+                  </FormControl>
+                </SimpleGrid>
 
-              <Text textAlign="center">
-                Already have an account?{' '}
-                <Link as={RouterLink} to="/login" color="brand.500">
-                  Sign in here
-                </Link>
-              </Text>
-            </VStack>
-          </form>
-        </Box>
-      </VStack>
-    </Container>
+                {/* Phone Number */}
+                <FormControl>
+                  <FormLabel fontSize="sm" fontWeight="medium">Phone Number</FormLabel>
+                  <Input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="Enter your phone number"
+                    size="lg"
+                  />
+                </FormControl>
+
+                <FormControl isRequired>
+                  <FormLabel fontSize="sm" fontWeight="medium">Email</FormLabel>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    size="lg"
+                  />
+                </FormControl>
+
+                <FormControl isRequired>
+                  <FormLabel fontSize="sm" fontWeight="medium">Password</FormLabel>
+                  <InputGroup size="lg">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                    />
+                    <InputRightElement>
+                      <IconButton
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
+                        variant="ghost"
+                        onClick={() => setShowPassword(!showPassword)}
+                      />
+                    </InputRightElement>
+                  </InputGroup>
+                </FormControl>
+
+                <FormControl isRequired>
+                  <FormLabel fontSize="sm" fontWeight="medium">Confirm Password</FormLabel>
+                  <InputGroup size="lg">
+                    <Input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm your password"
+                    />
+                    <InputRightElement>
+                      <IconButton
+                        aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                        icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
+                        variant="ghost"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      />
+                    </InputRightElement>
+                  </InputGroup>
+                </FormControl>
+
+                <Button
+                  type="submit"
+                  colorScheme="brand"
+                  size="lg"
+                  w="full"
+                  isLoading={loading}
+                  loadingText="Creating account..."
+                  mt={4}
+                >
+                  Create Account
+                </Button>
+
+                <Text textAlign="center" fontSize="sm">
+                  Already have an account?{' '}
+                  <Link as={RouterLink} to="/login" color="brand.500" fontWeight="medium">
+                    Sign in here
+                  </Link>
+                </Text>
+              </VStack>
+            </form>
+          </Box>
+        </VStack>
+      </Container>
+    </Box>
   )
 }
 

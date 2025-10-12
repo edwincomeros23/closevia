@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
-import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon } from '@chakra-ui/react'
-import { FaHandshake } from 'react-icons/fa'
+import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea } from '@chakra-ui/react'
+import { FaHandshake, FaTimes } from 'react-icons/fa'
 import { api } from '../services/api'
 import { Trade, TradeAction } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
@@ -15,8 +15,14 @@ const Offers: React.FC = () => {
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [completionModalOpen, setCompletionModalOpen] = useState(false)
+  const [cancelModalOpen, setCancelModalOpen] = useState(false)
+  const [tradeToCancel, setTradeToCancel] = useState<Trade | null>(null)
+  const [declineModalOpen, setDeclineModalOpen] = useState(false)
+  const [tradeToDecline, setTradeToDecline] = useState<Trade | null>(null)
+  const [declineFeedback, setDeclineFeedback] = useState('')
   const [activeTab, setActiveTab] = useState(0)
   const [currentUserId, setCurrentUserId] = useState<number | undefined>()
+  const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const toast = useToast()
   
   const bgColor = useColorModeValue('#FEFEFE', 'gray.900')
@@ -32,11 +38,65 @@ const Offers: React.FC = () => {
       ])
       setIncoming(Array.isArray(incRes.data?.data) ? incRes.data.data : [])
       setOutgoing(Array.isArray(outRes.data?.data) ? outRes.data.data : [])
+      
+      // Fetch product titles for all trades
+      await fetchProductTitles([...incRes.data?.data || [], ...outRes.data?.data || []])
     } catch (e: any) {
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
     } finally {
       setLoading(false)
     }
+  }
+
+  const fetchProductTitles = async (trades: Trade[]) => {
+    const productIds = new Set<number>()
+    
+    // Collect all unique product IDs from trades
+    trades.forEach(trade => {
+      if (trade.target_product_id) {
+        productIds.add(trade.target_product_id)
+      }
+      // Also collect from offered items
+      if (trade.items) {
+        trade.items.forEach((item: any) => {
+          const pid = item.product_id ?? item.productId
+          if (pid) {
+            productIds.add(Number(pid))
+          }
+        })
+      }
+    })
+
+    // Fetch titles for products we don't have yet
+    const titlesToFetch = Array.from(productIds).filter(id => !productTitles.has(id))
+    
+    if (titlesToFetch.length > 0) {
+      try {
+        const titlePromises = titlesToFetch.map(async (id) => {
+          try {
+            const response = await api.get(`/api/products/${id}`)
+            const title = response.data?.data?.title
+            return { id, title: title || 'Unnamed Item' }
+          } catch {
+            return { id, title: 'Unnamed Item' }
+          }
+        })
+        
+        const results = await Promise.all(titlePromises)
+        const newTitles = new Map(productTitles)
+        results.forEach(({ id, title }) => {
+          newTitles.set(id, title)
+        })
+        setProductTitles(newTitles)
+      } catch (error) {
+        console.error('Failed to fetch product titles:', error)
+      }
+    }
+  }
+
+  const getProductTitle = (productId: number, fallbackTitle?: string): string => {
+    if (fallbackTitle) return fallbackTitle
+    return productTitles.get(productId) || 'Unnamed Item'
   }
 
   useEffect(() => { 
@@ -80,6 +140,65 @@ const Offers: React.FC = () => {
   const handleCompleteTradeClick = (trade: Trade) => {
     setSelectedTrade(trade)
     setCompletionModalOpen(true)
+  }
+
+  const handleCancelTradeClick = (trade: Trade) => {
+    setTradeToCancel(trade)
+    setCancelModalOpen(true)
+  }
+
+  const handleConfirmCancel = async () => {
+    if (!tradeToCancel) return
+    
+    try {
+      await updateTrade(tradeToCancel.id, { action: 'cancel' })
+      setCancelModalOpen(false)
+      setTradeToCancel(null)
+      toast({
+        title: 'Offer cancelled',
+        description: 'The offer has been successfully cancelled',
+        status: 'success',
+        duration: 3000
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to cancel offer',
+        status: 'error'
+      })
+    }
+  }
+
+  const handleDeclineTradeClick = (trade: Trade) => {
+    setTradeToDecline(trade)
+    setDeclineFeedback('')
+    setDeclineModalOpen(true)
+  }
+
+  const handleConfirmDecline = async () => {
+    if (!tradeToDecline) return
+    
+    try {
+      await updateTrade(tradeToDecline.id, { 
+        action: 'decline',
+        message: declineFeedback.trim() || undefined
+      })
+      setDeclineModalOpen(false)
+      setTradeToDecline(null)
+      setDeclineFeedback('')
+      toast({
+        title: 'Offer declined',
+        description: 'The offer has been successfully declined',
+        status: 'success',
+        duration: 3000
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to decline offer',
+        status: 'error'
+      })
+    }
   }
 
   const sortList = (list: Trade[]) => {
@@ -204,7 +323,7 @@ const Offers: React.FC = () => {
     return (
       <Image
         src={img ?? ''}
-        alt={alt ?? `#${pid}`}
+        alt={alt ?? 'Product Image'}
         boxSize="40px"
         objectFit="cover"
         fallbackSrc="https://via.placeholder.com/40x40?text=?"
@@ -240,9 +359,9 @@ const Offers: React.FC = () => {
           return (
             <HStack key={it.id} spacing={2} borderWidth="1px" borderColor="gray.200" rounded="md" p={2} align="center">
               {/* Use ProductThumb: if pimg exists it's used, otherwise it will fetch product by id */}
-              <ProductThumb pid={Number(pid)} src={pimg} alt={ptitle || `#${pid}`} />
+              <ProductThumb pid={Number(pid)} src={pimg} alt={getProductTitle(Number(pid), ptitle)} />
               <VStack spacing={0} align="start">
-                <Link href={`/products/${pid}`} color="brand.600" fontSize="sm">{ptitle || `#${pid}`}</Link>
+                <Link href={`/products/${pid}`} color="brand.600" fontSize="sm">{getProductTitle(Number(pid), ptitle)}</Link>
                 <Text fontSize="xs" color="gray.500">{pstatus}</Text>
               </VStack>
             </HStack>
@@ -422,10 +541,10 @@ const Offers: React.FC = () => {
                   </Box>
 
                   {/* Left: details with extra right padding so content doesn't collide with absolute actions */}
-                  <Box pr="220px">
-                    <VStack align="start" spacing={1}>
-                      <Text fontWeight="semibold">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                      <Text fontSize="sm" color="gray.600">From: <Text as="span" fontWeight="medium">{t.buyer_name || `User #${t.buyer_id}`}</Text></Text>
+                  <Box pr="200px">
+                    <VStack align="start" spacing={2}>
+                      <Text fontWeight="semibold" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                      <Text fontSize="sm" color="gray.600">From: <Text as="span" fontWeight="medium">{t.buyer_name || 'Anonymous User'}</Text></Text>
                       <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
                       {renderOfferedItems(t)}
                     </VStack>
@@ -456,7 +575,7 @@ const Offers: React.FC = () => {
                           size="sm" 
                           colorScheme="red" 
                           variant="outline" 
-                          onClick={() => updateTrade(t.id, { action: 'decline' })} 
+                          onClick={() => handleDeclineTradeClick(t)} 
                           isDisabled={t.status !== 'pending'}
                           _hover={{ transform: "translateY(-1px)" }}
                         >
@@ -481,6 +600,7 @@ const Offers: React.FC = () => {
                     borderColor="gray.100" 
                     rounded="lg" 
                     p={5}
+                    position="relative"
                     boxShadow="sm"
                     _hover={{
                       boxShadow: "md",
@@ -489,15 +609,39 @@ const Offers: React.FC = () => {
                     }}
                     transition="all 0.2s ease"
                   >
-                    <HStack justify="space-between" align="start">
+                    {/* Top-right: status */}
+                    <Box position="absolute" top={4} right={4}>
+                      <Badge colorScheme={badgeColor(t.status)} variant="subtle">{t.status}</Badge>
+                    </Box>
+
+                    {/* Left: details with extra right padding so content doesn't collide with absolute actions */}
+                    <Box pr="180px">
                       <VStack align="start" spacing={2}>
-                        <Text fontWeight="semibold" color="gray.800">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                        <Text fontSize="sm" color="gray.600">To: <Text as="span" fontWeight="medium">{t.seller_name || `User #${t.seller_id}`}</Text></Text>
+                        <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <Text fontSize="sm" color="gray.600">To: <Text as="span" fontWeight="medium">{t.seller_name || 'Anonymous User'}</Text></Text>
                         <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
                         {renderOfferedItems(t)}
                       </VStack>
-                      <Badge colorScheme={badgeColor(t.status)} variant="subtle">{t.status}</Badge>
-                    </HStack>
+                    </Box>
+
+                    {/* Bottom-right actions: Cancel button for pending offers */}
+                    {t.status === 'pending' && (
+                      <Box position="absolute" right={4} bottom={4}>
+                        <Button
+                          size="sm"
+                          colorScheme="red"
+                          variant="outline"
+                          onClick={() => handleCancelTradeClick(t)}
+                          _hover={{ 
+                            bg: "red.50",
+                            transform: "translateY(-1px)"
+                          }}
+                          leftIcon={<Icon as={FaTimes} />}
+                        >
+                          Cancel Offer
+                        </Button>
+                      </Box>
+                    )}
                   </Box>
                 </ScaleFade>
               ))}
@@ -530,10 +674,10 @@ const Offers: React.FC = () => {
                     </Box>
 
                     {/* Left: details */}
-                    <Box pr="200px">
+                    <Box pr="180px">
                       <VStack align="start" spacing={2}>
-                        <Text fontWeight="semibold" color="gray.800">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || `#${t.buyer_id}`} • Seller: {t.seller_name || `#${t.seller_id}`}</Text>
+                        <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Seller: {t.seller_name || 'Anonymous User'}</Text>
                         {renderOfferedItems(t)}
                       </VStack>
                     </Box>
@@ -580,8 +724,8 @@ const Offers: React.FC = () => {
                   >
                     <HStack justify="space-between" align="start">
                       <VStack align="start" spacing={2}>
-                        <Text fontWeight="semibold" color="gray.800">{t.product_title || `Product #${t.target_product_id}`}</Text>
-                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || `#${t.buyer_id}`} • Seller: {t.seller_name || `#${t.seller_id}`}</Text>
+                        <Text fontWeight="semibold" color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Seller: {t.seller_name || 'Anonymous User'}</Text>
                         {renderOfferedItems(t)}
                         <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
                       </VStack>
@@ -610,6 +754,129 @@ const Offers: React.FC = () => {
           onCompleted={fetchAll}
           currentUserId={currentUserId}
         />
+
+        {/* Cancel Confirmation Modal */}
+        <Modal isOpen={cancelModalOpen} onClose={() => setCancelModalOpen(false)} size="sm" isCentered>
+          <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+          <ModalContent
+            bg="white"
+            borderRadius="xl"
+            boxShadow="xl"
+            mx={4}
+          >
+            <ModalCloseButton />
+            <ModalBody p={6} textAlign="center">
+              <VStack spacing={4}>
+                <Icon as={FaTimes} color="red.500" boxSize={8} />
+                <VStack spacing={2}>
+                  <Text fontWeight="bold" fontSize="lg" color="gray.800">
+                    Cancel Offer
+                  </Text>
+                  <Text fontSize="sm" color="gray.600" textAlign="center">
+                    Are you sure you want to cancel this offer? This action cannot be undone.
+                  </Text>
+                  {tradeToCancel && (
+                    <Text fontSize="xs" color="gray.500" mt={2}>
+                      Product: {getProductTitle(tradeToCancel.target_product_id, tradeToCancel.product_title)}
+                    </Text>
+                  )}
+                </VStack>
+                
+                <HStack spacing={3} w="full">
+                  <Button
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={() => setCancelModalOpen(false)}
+                  >
+                    Keep Offer
+                  </Button>
+                  <Button
+                    colorScheme="red"
+                    size="md"
+                    flex={1}
+                    onClick={handleConfirmCancel}
+                    leftIcon={<Icon as={FaTimes} />}
+                  >
+                    Cancel Offer
+                  </Button>
+                </HStack>
+              </VStack>
+            </ModalBody>
+          </ModalContent>
+        </Modal>
+
+        {/* Decline Confirmation Modal */}
+        <Modal isOpen={declineModalOpen} onClose={() => setDeclineModalOpen(false)} size="md" isCentered>
+          <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+          <ModalContent
+            bg="white"
+            borderRadius="xl"
+            boxShadow="xl"
+            mx={4}
+          >
+            <ModalCloseButton />
+            <ModalBody p={6}>
+              <VStack spacing={4} align="stretch">
+                <VStack spacing={2} textAlign="center">
+                  <Icon as={FaTimes} color="red.500" boxSize={6} />
+                  <Text fontWeight="bold" fontSize="lg" color="gray.800">
+                    Decline Offer
+                  </Text>
+                  <Text fontSize="sm" color="gray.600">
+                    Are you sure you want to decline this offer?
+                  </Text>
+                  {tradeToDecline && (
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      Product: {getProductTitle(tradeToDecline.target_product_id, tradeToDecline.product_title)}
+                    </Text>
+                  )}
+                </VStack>
+                
+                <VStack spacing={3} align="stretch">
+                  <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                    Feedback (Optional)
+                  </Text>
+                  <Textarea
+                    value={declineFeedback}
+                    onChange={(e) => setDeclineFeedback(e.target.value)}
+                    placeholder="Provide a reason for declining this offer (optional)..."
+                    resize="none"
+                    rows={3}
+                    fontSize="sm"
+                    _focus={{
+                      borderColor: "red.300",
+                      boxShadow: "0 0 0 1px rgba(245, 101, 101, 0.3)"
+                    }}
+                  />
+                  <Text fontSize="xs" color="gray.500">
+                    This feedback will be shared with the offer sender
+                  </Text>
+                </VStack>
+                
+                <HStack spacing={3} w="full">
+                  <Button
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={() => setDeclineModalOpen(false)}
+                  >
+                    Keep Offer
+                  </Button>
+                  <Button
+                    colorScheme="red"
+                    size="md"
+                    flex={1}
+                    onClick={handleConfirmDecline}
+                    leftIcon={<Icon as={FaTimes} />}
+                  >
+                    Decline Offer
+                  </Button>
+                </HStack>
+              </VStack>
+            </ModalBody>
+          </ModalContent>
+        </Modal>
       </Box>
     </Box>
   )
