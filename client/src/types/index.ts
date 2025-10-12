@@ -17,10 +17,13 @@ export interface Product {
   seller_id: number
   seller_name?: string
   premium: boolean
-  status: 'available' | 'sold' | 'traded'
+  status: 'available' | 'sold' | 'traded' | 'locked'
   allow_buying: boolean
   barter_only: boolean
   location?: string
+  condition?: string
+  suggested_value?: number
+  category?: string
   created_at: string
   updated_at: string
 }
@@ -45,6 +48,7 @@ export interface ProductCreate {
   allow_buying: boolean
   barter_only: boolean
   location?: string
+  condition: string
 }
 
 export interface ProductUpdate {
@@ -57,6 +61,7 @@ export interface ProductUpdate {
   allow_buying?: boolean
   barter_only?: boolean
   location?: string
+  condition?: string
 }
 
 export interface OrderCreate {

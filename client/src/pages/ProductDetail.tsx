@@ -18,21 +18,14 @@ import {
   Divider,
   SimpleGrid,
   useToast,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalBody,
-  IconButton,
-  ModalCloseButton,
 } from '@chakra-ui/react'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product } from '../types'
 import { api } from '../services/api'
-import { getFirstImage, getImageUrl } from '../utils/imageUtils'
-import { formatPHP } from '../utils/currency'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import TradeModal from '../components/TradeModal'
-import { ArrowLeftIcon, ArrowRightIcon } from '@chakra-ui/icons'
+import axios from 'axios';
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -44,8 +37,7 @@ const ProductDetail: React.FC = () => {
   const [purchasing, setPurchasing] = useState(false)
   const [isTradeOpen, setIsTradeOpen] = useState(false)
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0)
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<string>('')
   
   const navigate = useNavigate()
   const toast = useToast()
@@ -56,11 +48,6 @@ const ProductDetail: React.FC = () => {
     }
   }, [id])
 
-  // Reset selected image when product changes
-  useEffect(() => {
-    setSelectedImageIndex(0)
-  }, [product])
-
   const fetchProduct = async () => {
     try {
       setLoading(true)
@@ -68,11 +55,20 @@ const ProductDetail: React.FC = () => {
       const productData = await getProduct(parseInt(id!))
       if (productData) {
         setProduct(productData)
+        if (productData.image_urls && productData.image_urls.length > 0) {
+          setSelectedImage(getImageUrl(productData.image_urls[0]))
+        }
       } else {
         setError('Product not found')
       }
-    } catch (error: any) {
-      setError(error.message || 'Failed to fetch product')
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.error || 'An unexpected error occurred');
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred');
+      }
     } finally {
       setLoading(false)
     }
@@ -109,10 +105,16 @@ const ProductDetail: React.FC = () => {
       
       // Redirect to dashboard to view the order
       navigate('/dashboard')
-    } catch (error: any) {
+    } catch (err: unknown) {
+      let description = 'Failed to place order';
+      if (axios.isAxiosError(err)) {
+        description = err.response?.data?.error || description;
+      } else if (err instanceof Error) {
+        description = err.message;
+      }
       toast({
         title: 'Purchase failed',
-        description: error.response?.data?.error || 'Failed to place order',
+        description,
         status: 'error',
         duration: 5000,
         isClosable: true,
@@ -173,87 +175,44 @@ const ProductDetail: React.FC = () => {
       
           <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={0}>
             {/* Product Image Gallery */}
-            <Box>
-              <Box role="button" onClick={() => setIsLightboxOpen(true)}>
+            <VStack spacing={4} align="stretch">
+              <Box position="relative" h="400px" bg="gray.100" rounded="md">
                 <Image
-                  src={getImageUrl(product.image_urls && product.image_urls.length ? product.image_urls[selectedImageIndex] : getFirstImage(product.image_urls))}
+                  src={selectedImage || getFirstImage(product.image_urls)}
                   alt={product.title}
                   w="full"
-                  h="480px"
+                  h="full"
                   objectFit="contain"
-                  objectPosition="center"
-                  fallbackSrc="https://via.placeholder.com/800x600?text=No+Image"
-                  bg="gray.100"
+                  fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
                 />
               </Box>
-
-              {/* Thumbnails (show when there are multiple images) - moved below for clarity */}
               {product.image_urls && product.image_urls.length > 1 && (
-                <Box mt={3} px={2}>
-                  <HStack spacing={3} overflowX="auto" maxW="full">
-                    {product.image_urls.map((img: string, idx: number) => (
-                      <Box
-                        key={idx}
-                        as="button"
-                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); setSelectedImageIndex(idx) }}
-                        borderRadius="md"
-                        overflow="hidden"
-                        borderWidth={selectedImageIndex === idx ? '2px' : '1px'}
-                        borderColor={selectedImageIndex === idx ? 'brand.500' : 'gray.200'}
-                        boxShadow={selectedImageIndex === idx ? 'md' : 'sm'}
-                        bg="white"
-                        _focus={{ outline: 'none' }}
-                      >
-                        <Image
-                          src={getImageUrl(img)}
-                          alt={`thumb-${idx}`}
-                          boxSize={{ base: '56px', md: '72px' }}
-                          objectFit="cover"
-                        />
-                      </Box>
-                    ))}
-                  </HStack>
-                </Box>
-              )}
-              {/* Minimal "Trade" overlay with optional owner text beside it */}
-              {(product.barter_only || (!product.allow_buying && !product.price)) && (
-                <Flex
-                  position="absolute"
-                  left={3}
-                  top={3}
-                  align="center"
-                  gap={2}
-                >
-                  <Box
-                    bg="green.600"
-                    color="white"
-                    px={2}
-                    py={1}
-                    borderRadius="md"
-                    fontSize="xs"
-                    fontWeight="semibold"
-                    boxShadow="sm"
-                  >
-                    Trade
-                  </Box>
-                  
-                  {/* Only show this text when the logged-in user owns the product */}
-                  {isOwner && (
-                    <Text
-                      bg="yellow.300"
-                      color="black"
-                      px={2}
-                      py={1}
-                      borderRadius="md"
-                      fontSize="xs"
-                      fontWeight="semibold"
+                <HStack spacing={2} overflowX="auto">
+                  {product.image_urls.map((url, index) => (
+                    <Box
+                      key={index}
+                      as="button"
+                      w="80px"
+                      h="80px"
+                      p={1}
+                      border="2px solid"
+                      borderColor={selectedImage === getImageUrl(url) ? 'brand.500' : 'transparent'}
+                      rounded="md"
+                      onClick={() => setSelectedImage(getImageUrl(url))}
                     >
-                      This is your product listing
-                    </Text>
-                  )}
-                </Flex>
+                      <Image
+                        src={getImageUrl(url)}
+                        alt={`Thumbnail ${index + 1}`}
+                        w="full"
+                        h="full"
+                        objectFit="cover"
+                        fallbackSrc="https://via.placeholder.com/80x80"
+                      />
+                    </Box>
+                  ))}
+                </HStack>
               )}
-            </Box>
+            </VStack>
 
             {/* Product Details */}
             <Box p={8}>
@@ -270,7 +229,7 @@ const ProductDetail: React.FC = () => {
                       color="brand.500"
                       textAlign="right"
                     >
-                      {formatPHP(product.price ?? 0)}
+                      ₱{product.price ? product.price.toFixed(2) : '0.00'}
                     </Text>
                   </Flex>
 
@@ -281,10 +240,29 @@ const ProductDetail: React.FC = () => {
                         Premium Listing
                       </Badge>
                     )}
-                    <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
+                    <Badge
+                      colorScheme={
+                        product.status === 'available'
+                          ? 'green'
+                          : product.status === 'locked'
+                          ? 'orange'
+                          : 'red'
+                      }
+                    >
                       {product.status}
                     </Badge>
+                    {product.condition && (
+                      <Badge colorScheme="blue">{product.condition}</Badge>
+                    )}
+                    {product.category && (
+                      <Badge colorScheme="purple">{product.category}</Badge>
+                    )}
                   </HStack>
+                  {product.suggested_value && product.suggested_value > 0 && (
+                  <Text mt={2} color="gray.600" fontSize="sm">
+                    Suggested Value: {product.suggested_value} points
+                  </Text>
+                  )}
 
                   {/* Consolidated seller + dates block for better UX (responsive) */}
                   <Flex
@@ -352,7 +330,7 @@ const ProductDetail: React.FC = () => {
                           isLoading={purchasing}
                           loadingText="Processing..."
                         >
-                          Buy Now - {formatPHP(product.price ?? 0)}
+                          Buy Now - ₱{product.price.toFixed(2)}
                         </Button>
                         <Text fontSize="sm" color="gray.500" textAlign="center">
                           Secure transaction • Fast delivery • Buyer protection
@@ -406,6 +384,13 @@ const ProductDetail: React.FC = () => {
                     </Text>
                   </Box>
                 )}
+                {product.status === 'locked' && (
+                  <Box textAlign="center" py={4}>
+                    <Text color="orange.500" fontWeight="bold">
+                      This item is currently reserved in a trade.
+                    </Text>
+                  </Box>
+                )}
               </VStack>
             </Box>
           </SimpleGrid>
@@ -435,47 +420,6 @@ const ProductDetail: React.FC = () => {
         </Box>
       </VStack>
       <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
-      {/* Lightbox Modal */}
-      <Modal isOpen={isLightboxOpen} onClose={() => setIsLightboxOpen(false)} size="6xl" isCentered>
-        <ModalOverlay />
-        <ModalContent bg="transparent" boxShadow="none">
-          <ModalCloseButton color="white" />
-          <ModalBody p={0} display="flex" alignItems="center" justifyContent="center">
-            <Flex align="center" justify="center" w="100%">
-              <IconButton
-                aria-label="Previous"
-                icon={<ArrowLeftIcon />}
-                onClick={() => setSelectedImageIndex(i => Math.max(0, i - 1))}
-                mr={3}
-                colorScheme="blackAlpha"
-                variant="ghost"
-                size="lg"
-              />
-
-              <Box maxW="90%" maxH="80vh">
-                <Image
-                  src={getImageUrl(product.image_urls && product.image_urls.length ? product.image_urls[selectedImageIndex] : getFirstImage(product.image_urls))}
-                  alt={product.title}
-                  objectFit="contain"
-                  maxH="80vh"
-                  w="100%"
-                  bg="gray.900"
-                />
-              </Box>
-
-              <IconButton
-                aria-label="Next"
-                icon={<ArrowRightIcon />}
-                onClick={() => setSelectedImageIndex(i => Math.min((product.image_urls?.length || 1) - 1, i + 1))}
-                ml={3}
-                colorScheme="blackAlpha"
-                variant="ghost"
-                size="lg"
-              />
-            </Flex>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
     </Container>
   )
 }
