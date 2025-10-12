@@ -43,11 +43,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product, Order } from '../types'
 import { api } from '../services/api'
-
-=======
 import { FaHandshake } from 'react-icons/fa'
 import { formatPHP } from '../utils/currency'
-
 import { getFirstImage } from '../utils/imageUtils'
 
 const Dashboard: React.FC = () => {
