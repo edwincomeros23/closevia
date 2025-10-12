@@ -97,21 +97,24 @@ type UserRegister struct {
 
 // Product represents a product listing
 type Product struct {
-	ID          int         `json:"id"`
-	Title       string      `json:"title" validate:"required,min=2,max=255"`
-	Description string      `json:"description"`
-	Price       *float64    `json:"price,omitempty"`      // Optional for barter-only items
-	ImageURLs   StringArray `json:"image_urls,omitempty"` // Multiple images
-	ImageURL    string      `json:"image_url,omitempty"`  // Single image for compatibility
-	SellerID    int         `json:"seller_id"`
-	SellerName  string      `json:"seller_name,omitempty"`
-	Premium     bool        `json:"premium"`
-	Status      string      `json:"status" validate:"oneof=available sold traded"`
-	AllowBuying bool        `json:"allow_buying"` // Whether buying is allowed
-	BarterOnly  bool        `json:"barter_only"`  // Whether it's barter only
-	Location    string      `json:"location,omitempty"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID             int         `json:"id"`
+	Title          string      `json:"title" validate:"required,min=2,max=255"`
+	Description    string      `json:"description"`
+	Price          *float64    `json:"price,omitempty"`      // Optional for barter-only items
+	ImageURLs      StringArray `json:"image_urls,omitempty"` // Multiple images
+	ImageURL       string      `json:"image_url,omitempty"`  // Single image for compatibility
+	SellerID       int         `json:"seller_id"`
+	SellerName     string      `json:"seller_name,omitempty"`
+	Premium        bool        `json:"premium"`
+	Status         string      `json:"status" validate:"oneof=available sold traded locked"`
+	AllowBuying    bool        `json:"allow_buying"` // Whether buying is allowed
+	BarterOnly     bool        `json:"barter_only"`  // Whether it's barter only
+	Location       string      `json:"location,omitempty"`
+	Condition      string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	SuggestedValue int         `json:"suggested_value,omitempty"`
+	Category       string      `json:"category,omitempty"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 // ProductCreate represents data for creating a product
@@ -124,6 +127,8 @@ type ProductCreate struct {
 	AllowBuying bool        `json:"allow_buying"`
 	BarterOnly  bool        `json:"barter_only"`
 	Location    string      `json:"location,omitempty"`
+	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category    string      `json:"category,omitempty"`
 }
 
 // ProductUpdate represents data for updating a product
@@ -137,6 +142,8 @@ type ProductUpdate struct {
 	AllowBuying *bool        `json:"allow_buying,omitempty"`
 	BarterOnly  *bool        `json:"barter_only,omitempty"`
 	Location    *string      `json:"location,omitempty"`
+	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category    *string      `json:"category,omitempty"`
 }
 
 // Order represents an order

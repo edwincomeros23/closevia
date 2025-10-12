@@ -21,8 +21,8 @@ import {
   Center,
   useColorModeValue,
   Badge,
+  Select,
 } from '@chakra-ui/react'
-import { formatPHP } from '../utils/currency'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
@@ -45,6 +45,7 @@ const AddProduct: React.FC = () => {
     allow_buying: false,
     barter_only: true,
     location: '',
+    condition: 'Used', // Default value
   })
   
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -133,6 +134,7 @@ const AddProduct: React.FC = () => {
       if (formData.location) {
         formDataToSend.append('location', formData.location)
       }
+      formDataToSend.append('condition', formData.condition)
       
       // Append image files
       uploadedImages.forEach((file) => {
@@ -271,6 +273,21 @@ const AddProduct: React.FC = () => {
               <FormHelperText>Include condition, features, and what you're looking for in exchange</FormHelperText>
             </FormControl>
             
+            <FormControl isRequired>
+              <FormLabel>Condition</FormLabel>
+              <Select
+                placeholder="Select condition"
+                value={formData.condition}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('condition', e.target.value)}
+                size="lg"
+              >
+                <option value="New">New</option>
+                <option value="Like-New">Like-New</option>
+                <option value="Used">Used</option>
+                <option value="Fair">Fair</option>
+              </Select>
+            </FormControl>
+
             <FormControl>
               <FormLabel>Location</FormLabel>
               <Input
@@ -402,7 +419,7 @@ const AddProduct: React.FC = () => {
                   <HStack justify="space-between">
                     <Text fontWeight="semibold">Price:</Text>
                     <Text color="brand.500" fontWeight="bold">
-                      {formatPHP(formData.price)}
+                      ₱{formData.price.toFixed(2)}
                     </Text>
                   </HStack>
                 )}

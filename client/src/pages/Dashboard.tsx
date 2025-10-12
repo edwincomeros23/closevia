@@ -43,8 +43,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product, Order } from '../types'
 import { api } from '../services/api'
+
+=======
 import { FaHandshake } from 'react-icons/fa'
 import { formatPHP } from '../utils/currency'
+
 import { getFirstImage } from '../utils/imageUtils'
 
 const Dashboard: React.FC = () => {
@@ -457,18 +460,6 @@ const Dashboard: React.FC = () => {
                 to="/add-product"
                 leftIcon={<AddIcon />}
                 size="lg"
-                color="white"
-                bg="#319795"
-                px={4}
-                py={2}
-                display="flex"
-                alignItems="center"
-                _hover={{
-                  bg: '#2A8280'
-                }}
-                _active={{
-                  bg: '#267E7C'
-                }}
               >
                 Add New Product
               </Button>
@@ -478,66 +469,18 @@ const Dashboard: React.FC = () => {
                 aria-label="Notifications"
                 icon={<BellIcon />}
                 size="lg"
-                bg="#319795"
-                color="white"
-                _hover={{ bg: '#2A8280' }}
-                _active={{ bg: '#267E7C' }}
-                onClick={() => navigate('/notifications')}
-                />
-                {unreadNotifications > 0 && (
-                  <Badge
-                    position="absolute"
-                    top="-2px"
-                    right="-2px"
-                    bg="red.500"
-                    color="white"
-                    borderRadius="full"
-                    fontSize="xs"
-                    minW="18px"
-                    h="18px"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    fontWeight="bold"
-                  >
-                    {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                  </Badge>
-                )}
-              </Box>
+                variant="ghost"
+              />
 
               <Box position="relative">
               <IconButton
                   aria-label="Offers"
                   icon={<Icon as={FaHandshake} />}
                 size="lg"
-                bg="#319795"
-                color="white"
-                _hover={{ bg: '#2A8280' }}
-                _active={{ bg: '#267E7C' }}
-                onClick={() => navigate('/offers')}
-                />
-                {unreadOffers > 0 && (
-                  <Badge
-                    position="absolute"
-                    top="-2px"
-                    right="-2px"
-                    bg="orange.500"
-                    color="white"
-                    borderRadius="full"
-                    fontSize="xs"
-                    minW="18px"
-                    h="18px"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    fontWeight="bold"
-                  >
-                    {unreadOffers > 99 ? '99+' : unreadOffers}
-                  </Badge>
-                )}
-              </Box>
+                variant="ghost"
+              />
 
-              <Avatar name={user?.name || 'User'} size="sm" bg="#FFFDF1" />
+              <Avatar name={user?.name || 'User'} size="sm" />
             </HStack>
           </Box>
         </Flex>
@@ -632,10 +575,87 @@ const Dashboard: React.FC = () => {
                       </Button>
                     </Box>
                   ) : (
-                      <>
-                        <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
-                          {getPaginatedItems(userProducts, currentPage).map((product) => (
-                            <ProductCard key={product.id} product={product} showActions={true} />
+                    <SimpleGrid columns={{ base: 1, md: 2, lg: 5 }} spacing={6}>
+                      {userProducts.map((product) => (
+                        <Card key={product.id}>
+                          <Image
+                            src={getFirstImage(product.image_urls)}
+                            alt={product.title}
+                            w="full"
+                            h="auto"
+                            loading="lazy"
+                            fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                          />
+                          <CardHeader>
+                            <Flex justify="space-between" align="start">
+                              <Heading size="md" noOfLines={2}>
+                                {product.title}
+                              </Heading>
+                              {product.premium && (
+                                <Badge colorScheme="yellow">Premium</Badge>
+                              )}
+                            </Flex>
+                            <Text color="gray.600" noOfLines={2}>
+                              {product.description}
+                            </Text>
+                          </CardHeader>
+                          <CardBody pt={0}>
+                            <Text fontSize="2xl" fontWeight="bold" color="brand.500">
+                              {product.allow_buying && !product.barter_only && product.price
+                                ? `₱${product.price.toFixed(2)}`
+                                : 'Barter Only'}
+                            </Text>
+                            <HStack mt={2}>
+                              <Badge
+                                colorScheme={
+                                  product.status === 'available'
+                                    ? 'green'
+                                    : product.status === 'locked'
+                                    ? 'orange'
+                                    : 'red'
+                                }
+                              >
+                                {product.status}
+                              </Badge>
+                              {product.condition && (
+                                <Badge colorScheme="blue">{product.condition}</Badge>
+                              )}
+                              {product.category && (
+                                <Badge colorScheme="purple">{product.category}</Badge>
+                              )}
+                            </HStack>
+                            {product.suggested_value && product.suggested_value > 0 && (
+                              <Text fontSize="sm" color="gray.600" mt={1}>
+                                {product.suggested_value} points
+                              </Text>
+                            )}
+                          </CardBody>
+                          <CardFooter>
+                            <HStack spacing={2} w="full">
+                              <Button
+                                as={RouterLink}
+                                to={`/edit-product/${product.id}`}
+                                leftIcon={<EditIcon />}
+                                variant="outline"
+                                colorScheme="brand"
+                                size="sm"
+                                flex={1}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                leftIcon={<DeleteIcon />}
+                                variant="outline"
+                                colorScheme="red"
+                                size="sm"
+                                flex={1}
+                                onClick={() => handleDeleteProduct(product.id)}
+                              >
+                                Delete
+                              </Button>
+                            </HStack>
+                          </CardFooter>
+                        </Card>
                       ))}
                     </SimpleGrid>
                         <PaginationControls
@@ -681,21 +701,37 @@ const Dashboard: React.FC = () => {
                       </Text>
                     </Box>
                   ) : (
-                      <>
-                        <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
-                          {getPaginatedItems(tradedItems, tradedCurrentPage).map((product) => (
-                            <ProductCard key={product.id} product={product} showActions={false} />
-                          ))}
-                        </SimpleGrid>
-                        <PaginationControls
-                          currentPage={tradedCurrentPage}
-                          totalPages={getTotalPages(tradedItems)}
-                          onPageChange={setTradedCurrentPage}
-                          itemsCount={tradedItems.length}
-                        />
-                      </>
-                    )}
-                  </Box>
+                    <VStack spacing={4} align="stretch">
+                      {orders.map((order) => (
+                        <Card key={order.id}>
+                          <CardBody>
+                            <Flex justify="space-between" align="center">
+                              <VStack align="start" spacing={2}>
+                                <Text fontWeight="bold">
+                                  {order.product?.title}
+                                </Text>
+                                <Text color="gray.600">
+                                  ₱{order.product?.price ? order.product.price.toFixed(2) : '0.00'}
+                                </Text>
+                                <Text fontSize="sm" color="gray.500">
+                                  Ordered on {new Date(order.created_at).toLocaleDateString()}
+                                </Text>
+                              </VStack>
+                              <Badge
+                                colorScheme={
+                                  order.status === 'completed' ? 'green' :
+                                  order.status === 'cancelled' ? 'red' : 'yellow'
+                                }
+                                size="lg"
+                              >
+                                {order.status}
+                              </Badge>
+                            </Flex>
+                          </CardBody>
+                        </Card>
+                      ))}
+                    </VStack>
+                  )}
                 </VStack>
               </TabPanel>
             </TabPanels>
