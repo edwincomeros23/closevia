@@ -269,7 +269,19 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const updateProduct = async (id: number, product: ProductUpdate): Promise<void> => {
     try {
       setError(null)
-      await api.put(`/api/products/${id}`, product)
+      // Sanitize payload: do not send client-side data: URLs to the server
+      const payload: any = { ...product }
+      if (payload.image_urls && Array.isArray(payload.image_urls)) {
+        const nonData = payload.image_urls.filter((u: any) => typeof u === 'string' && !u.startsWith('data:'))
+        if (nonData.length > 0) {
+          payload.image_urls = nonData
+        } else {
+          // Remove image_urls entirely if only local previews were present
+          delete payload.image_urls
+        }
+      }
+
+      await api.put(`/api/products/${id}`, payload)
       safeSetProducts((products || []).map(p => p.id === id ? { ...p, ...product } : p))
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to update product')
