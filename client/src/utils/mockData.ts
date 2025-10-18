@@ -97,7 +97,9 @@ export const simulateApiDelay = (ms: number = 1000): Promise<void> => {
 };
 
 // Check if we're in development mode
-export const isDevelopment = process.env.NODE_ENV === 'development';
+// Vite exposes environment via import.meta.env
+// import.meta.env.DEV is true in development mode
+export const isDevelopment = typeof import.meta !== 'undefined' && (import.meta as any).env && ((import.meta as any).env.DEV === true || (import.meta as any).env.MODE === 'development')
 
 // Check if we should use mock data
 export const shouldUseMockData = (): boolean => {

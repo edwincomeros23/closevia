@@ -78,6 +78,9 @@ const Dashboard: React.FC = () => {
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [unreadOffers, setUnreadOffers] = useState(0)
   const toast = useToast()
+  // notifications state (handled on /notifications page)
+  // dev helper: when true, show multiple pages for testing even if there are no notifications
+  const DEV_SHOW_PAGES_ALWAYS = true
 
   useEffect(() => {
     if (user) {
@@ -486,7 +489,24 @@ const Dashboard: React.FC = () => {
                   icon={<BellIcon />}
                   size="lg"
                   variant="ghost"
+                  onClick={() => navigate('/notifications')}
                 />
+                {unreadNotifications > 0 && (
+                  <Box
+                    position="absolute"
+                    top="0"
+                    right="0"
+                    transform="translate(30%,-30%)"
+                    bg="red.500"
+                    color="white"
+                    fontSize="xs"
+                    px={2}
+                    py={0.5}
+                    borderRadius="full"
+                  >
+                    {unreadNotifications}
+                  </Box>
+                )}
               </Box>
 
               <Box position="relative">
@@ -760,6 +780,7 @@ const Dashboard: React.FC = () => {
 
         {/* Popup Modal System */}
         <PopupModal />
+      {/* Notifications are handled on their own page at /notifications */}
       </VStack>
     </Container>
   )
