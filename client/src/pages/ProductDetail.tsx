@@ -144,28 +144,33 @@ const ProductDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <Center h="50vh">
-        <Spinner size="xl" color="brand.500" />
-      </Center>
+      <Box bg="#FFFDF1" minH="100vh" w="100%">
+        <Center h="50vh">
+          <Spinner size="xl" color="brand.500" />
+        </Center>
+      </Box>
     )
   }
 
   if (error || !product) {
     return (
-      <Container maxW="container.md" py={8}>
-        <Alert status="error">
-          <AlertIcon />
-          {error || 'Product not found'}
-        </Alert>
-      </Container>
+      <Box bg="#FFFDF1" minH="100vh" w="100%">
+        <Container maxW="container.md" py={8}>
+          <Alert status="error">
+            <AlertIcon />
+            {error || 'Product not found'}
+          </Alert>
+        </Container>
+      </Box>
     )
   }
 
   const isOwner = user && user.id === product.seller_id
 
   return (
-    <Container maxW="container.xl" py={8}>
-      <VStack spacing={8} align="stretch"> 
+    <Box bg="#FFFDF1" minH="100vh" w="100%">
+      <Container maxW="container.xl" py={8}>
+        <VStack spacing={8} align="stretch"> 
          <Box bg="white" rounded="lg" shadow="sm" overflow="hidden">
         {/* Product Header */}
         <Box textAlign="center">
@@ -420,8 +425,9 @@ const ProductDetail: React.FC = () => {
         </Box>
       </VStack>
       <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
-    </Container>
-  )
+      </Container>
+    </Box>
+   )
 }
 
 export default ProductDetail

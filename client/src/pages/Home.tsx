@@ -443,7 +443,7 @@ const Home: React.FC = () => {
       >
         <VStack spacing={4}>
           {/* Main Search Bar */}
-          <HStack w="full" maxW="6xl" mx="auto" spacing={3} wrap="wrap">
+          <HStack w="full" maxW="8xl" mx="auto" spacing={3} wrap="wrap">
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -637,7 +637,7 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box between header and main content (keeps same dimensions) */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '4xl', lg: '6xl', xl: '1160px' }}
+        maxW={{ base: 'calc(100% - 32px)', md: '4xl', lg: '1160', xl: '1410px' }}
         mx="auto"
         mb={4}
         px={{ base: 2, md: 4 }}
