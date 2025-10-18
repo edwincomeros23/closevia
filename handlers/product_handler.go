@@ -441,11 +441,27 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		&product.AllowBuying, &product.BarterOnly, &product.Location,
 		&product.CreatedAt, &product.UpdatedAt, &product.SellerName)
 
-	// Parse image URLs from JSON
+	// Parse image URLs from JSON using defensive logic in models.StringArray
 	if imageURLsJSONStr != "" {
-		var imageURLs []string
-		if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
-			product.ImageURLs = models.StringArray(imageURLs)
+		var sa models.StringArray
+		if err := sa.UnmarshalJSON([]byte(imageURLsJSONStr)); err == nil {
+			// Filter out any excessively long entries (likely data URLs) and keep only valid-looking URLs
+			var cleaned []string
+			for _, u := range sa {
+				if u == "" {
+					continue
+				}
+				// Skip obvious data URLs that might have been accidentally stored
+				if len(u) > 10 && (len(u) > 2000 || (len(u) > 100 && (u[:5] == "data:" || u[:7] == "data:/"))) {
+					// log or ignore
+					continue
+				}
+				cleaned = append(cleaned, u)
+			}
+			product.ImageURLs = models.StringArray(cleaned)
+		} else {
+			// If unmarshalling fails, avoid returning an error to the client; set to empty
+			product.ImageURLs = models.StringArray{}
 		}
 	}
 
@@ -543,8 +559,26 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		args = append(args, *updateData.Price)
 	}
 	if updateData.ImageURLs != nil {
+		// Ensure we don't accidentally persist client-side data URLs or extremely large strings
+		var safeList []string
+		for _, u := range *updateData.ImageURLs {
+			if u == "" {
+				continue
+			}
+			if len(u) > 2000 {
+				// skip very large entries (likely data URLs)
+				continue
+			}
+			if len(u) > 10 && (u[:5] == "data:" || u[:7] == "data:/") {
+				// skip inline data URLs
+				continue
+			}
+			safeList = append(safeList, u)
+		}
+		// Marshal safeList to JSON string to store
+		imgJSON, _ := json.Marshal(safeList)
 		query += ", image_urls = ?"
-		args = append(args, *updateData.ImageURLs)
+		args = append(args, string(imgJSON))
 	}
 	if updateData.Premium != nil {
 		query += ", premium = ?"
