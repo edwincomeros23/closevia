@@ -38,23 +38,12 @@ import {
   Icon,
   Stack,
 } from '@chakra-ui/react'
-import {
-  AddIcon,
-  EditIcon,
-  DeleteIcon,
-  BellIcon,
-  SettingsIcon,
-  WarningIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CheckIcon,
-  CloseIcon,
-} from '@chakra-ui/icons'
-import { FaHandshake } from 'react-icons/fa'
+import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product, Order } from '../types'
 import { api } from '../services/api'
+import { FaHandshake } from 'react-icons/fa'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 
@@ -87,17 +76,17 @@ const Dashboard: React.FC = () => {
 
   const fetchUserData = async () => {
     if (!user) return
-
+    
     setLoading(true)
     try {
       // Fetch user products
       const productsResponse = await getUserProducts(user.id)
       const allProducts = productsResponse.data
-
+      
       // Separate available and traded items
-      const availableProducts = allProducts.filter((p) => p.status === 'available')
-      const tradedProducts = allProducts.filter((p) => p.status === 'traded' || p.status === 'sold')
-
+      const availableProducts = allProducts.filter(p => p.status === 'available')
+      const tradedProducts = allProducts.filter(p => p.status === 'traded' || p.status === 'sold')
+      
       setUserProducts(availableProducts)
       setTradedItems(tradedProducts)
 
@@ -145,19 +134,19 @@ const Dashboard: React.FC = () => {
       onConfirm: () => handleConfirmDelete(),
       onCancel: () => setPopupOpen(false),
       icon: WarningIcon,
-      confirmColorScheme: 'red',
+      confirmColorScheme: 'red'
     })
   }
 
   const handleConfirmDelete = async () => {
     if (!productToDelete) return
-
+    
     try {
       setDeleting(true)
       await deleteProduct(productToDelete.id)
-      setUserProducts((prev) => prev.filter((p) => p.id !== productToDelete.id))
-      setTradedItems((prev) => prev.filter((p) => p.id !== productToDelete.id))
-
+      setUserProducts(prev => prev.filter(p => p.id !== productToDelete.id))
+      setTradedItems(prev => prev.filter(p => p.id !== productToDelete.id))
+      
       setPopupOpen(false)
       showPopup({
         type: 'success',
@@ -166,11 +155,11 @@ const Dashboard: React.FC = () => {
         confirmText: 'OK',
         onConfirm: () => setPopupOpen(false),
         icon: CheckIcon,
-        confirmColorScheme: 'green',
+        confirmColorScheme: 'green'
       })
-
+      
       setProductToDelete(null)
-    } catch (error: any) {
+      } catch (error: any) {
       setPopupOpen(false)
       showPopup({
         type: 'error',
@@ -179,7 +168,7 @@ const Dashboard: React.FC = () => {
         confirmText: 'OK',
         onConfirm: () => setPopupOpen(false),
         icon: CloseIcon,
-        confirmColorScheme: 'red',
+        confirmColorScheme: 'red'
       })
     } finally {
       setDeleting(false)
@@ -197,12 +186,12 @@ const Dashboard: React.FC = () => {
     return Math.ceil(items.length / itemsPerPage)
   }
 
-  const PaginationControls = ({
-    currentPage,
-    totalPages,
-    onPageChange,
-    itemsCount,
-  }: {
+  const PaginationControls = ({ 
+    currentPage, 
+    totalPages, 
+    onPageChange, 
+    itemsCount 
+  }: { 
     currentPage: number
     totalPages: number
     onPageChange: (page: number) => void
@@ -222,7 +211,7 @@ const Dashboard: React.FC = () => {
         >
           Previous
         </Button>
-
+        
         <HStack spacing={1}>
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
             <Button
@@ -238,7 +227,7 @@ const Dashboard: React.FC = () => {
             </Button>
           ))}
         </HStack>
-
+        
         <Button
           size="sm"
           variant="outline"
@@ -254,109 +243,109 @@ const Dashboard: React.FC = () => {
   }
 
   // Reusable Product Card Component
-  const ProductCard = ({ product, showActions = true }: { product: Product; showActions?: boolean }) => {
+  const ProductCard = ({ product, showActions = true }: { product: Product, showActions?: boolean }) => {
     // Never show actions for traded/sold items
     const shouldShowActions = showActions && product.status !== 'traded' && product.status !== 'sold'
-
+    
     return (
-      <Card
-        key={product.id}
-        variant="outline"
-        _hover={{
-          shadow: 'md',
-          transform: 'translateY(-2px)',
-          transition: 'all 0.2s ease',
-        }}
-        transition="all 0.2s ease"
-      >
-        <Image
-          src={getFirstImage(product.image_urls)}
-          alt={product.title}
-          w="full"
-          h="120px"
-          borderRadius="lg"
-          objectFit="cover"
-          loading="lazy"
-          fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
-        />
-        <CardHeader pb={2}>
-          <Flex justify="space-between" align="start">
-            <Heading size="sm" noOfLines={2} flex={1} mr={2}>
-              {product.title}
-            </Heading>
-            {product.premium && (
-              <Badge colorScheme="yellow" variant="solid" fontSize="xs">
-                Premium
-              </Badge>
-            )}
-          </Flex>
-          <Text color="gray.600" noOfLines={2} fontSize="sm">
-            {product.description}
-          </Text>
-        </CardHeader>
-        <CardBody pt={0}>
-          <VStack spacing={2} align="stretch">
-            <HStack justify="space-between" align="center">
-              <Text fontSize="md" fontWeight="semibold" color="brand.500">
-                {product.allow_buying && !product.barter_only && product.price
-                  ? formatPHP(product.price)
-                  : ''}
-              </Text>
-            </HStack>
-            <HStack spacing={1} align="center" flexWrap="wrap">
-              <Badge
-                colorScheme={product.status === 'available' ? 'green' : 'orange'}
+    <Card 
+      key={product.id}
+      variant="outline"
+      _hover={{ 
+        shadow: "md",
+        transform: "translateY(-2px)",
+        transition: "all 0.2s ease"
+      }}
+      transition="all 0.2s ease"
+    >
+      <Image
+        src={getFirstImage(product.image_urls)}
+        alt={product.title}
+        w="full"
+        h="120px"
+        borderRadius="lg"
+        objectFit="cover"
+        loading="lazy"
+        fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+      />
+      <CardHeader pb={2}>
+        <Flex justify="space-between" align="start">
+          <Heading size="sm" noOfLines={2} flex={1} mr={2}>
+            {product.title}
+          </Heading>
+          {product.premium && (
+            <Badge colorScheme="yellow" variant="solid" fontSize="xs">
+              Premium
+            </Badge>
+          )}
+        </Flex>
+        <Text color="gray.600" noOfLines={2} fontSize="sm">
+          {product.description}
+        </Text>
+      </CardHeader>
+      <CardBody pt={0}>
+        <VStack spacing={2} align="stretch">
+          <HStack justify="space-between" align="center">
+            <Text fontSize="md" fontWeight="semibold" color="brand.500">
+              {product.allow_buying && !product.barter_only && product.price
+                ? formatPHP(product.price)
+                : ''}
+            </Text>
+          </HStack>
+          <HStack spacing={1} align="center" flexWrap="wrap">
+            <Badge
+              colorScheme={product.status === 'available' ? 'green' : 'orange'}
+              variant="subtle"
+              fontSize="2xs"
+              px={1.5}
+              py={0.5}
+              borderRadius="sm"
+            >
+              {product.status}
+            </Badge>
+            {product.barter_only && (
+              <Badge 
+                colorScheme="purple" 
                 variant="subtle"
                 fontSize="2xs"
                 px={1.5}
                 py={0.5}
                 borderRadius="sm"
               >
-                {product.status}
+                Barter Only
               </Badge>
-              {product.barter_only && (
-                <Badge
-                  colorScheme="purple"
-                  variant="subtle"
-                  fontSize="2xs"
-                  px={1.5}
-                  py={0.5}
-                  borderRadius="sm"
-                >
-                  Barter Only
-                </Badge>
-              )}
-            </HStack>
-          </VStack>
-        </CardBody>
-        {shouldShowActions && (
-          <CardFooter pt={0}>
-            <HStack spacing={2} w="full">
-              <Button
-                as={RouterLink}
-                to={`/edit-product/${product.id}`}
-                leftIcon={<EditIcon />}
-                variant="outline"
-                colorScheme="brand"
-                size="sm"
-                flex={1}
-              >
-                Edit
-              </Button>
-              <Button
-                leftIcon={<DeleteIcon />}
-                variant="outline"
-                colorScheme="red"
-                size="sm"
-                flex={1}
-                onClick={() => handleDeleteProductClick(product)}
-              >
-                Delete
-              </Button>
-            </HStack>
-          </CardFooter>
-        )}
-      </Card>
+            )}
+          </HStack>
+        </VStack>
+      </CardBody>
+      {shouldShowActions && (
+        <CardFooter pt={0}>
+          <HStack spacing={2} w="full">
+            <Button
+              as={RouterLink}
+              to={`/edit-product/${product.id}`}
+              leftIcon={<EditIcon />}
+              variant="outline"
+              colorScheme="brand"
+              size="sm"
+              flex={1}
+            >
+              Edit
+            </Button>
+            <Button
+              leftIcon={<DeleteIcon />}
+              variant="outline"
+              colorScheme="red"
+              size="sm"
+              flex={1}
+              onClick={() => handleDeleteProductClick(product)}
+            >
+              Delete
+            </Button>
+          </HStack>
+        </CardFooter>
+      )}
+    </Card>
     )
   }
 
@@ -366,27 +355,19 @@ const Dashboard: React.FC = () => {
 
     const getColorScheme = () => {
       switch (popupConfig.type) {
-        case 'success':
-          return 'green'
-        case 'warning':
-          return 'orange'
-        case 'error':
-          return 'red'
-        default:
-          return 'blue'
+        case 'success': return 'green'
+        case 'warning': return 'orange'
+        case 'error': return 'red'
+        default: return 'blue'
       }
     }
 
     const getIconColor = () => {
       switch (popupConfig.type) {
-        case 'success':
-          return 'green.500'
-        case 'warning':
-          return 'orange.500'
-        case 'error':
-          return 'red.500'
-        default:
-          return 'blue.500'
+        case 'success': return 'green.500'
+        case 'warning': return 'orange.500'
+        case 'error': return 'red.500'
+        default: return 'blue.500'
       }
     }
 
@@ -410,7 +391,7 @@ const Dashboard: React.FC = () => {
                   {popupConfig.message}
                 </Text>
               </VStack>
-
+              
               <HStack spacing={3} w="full">
                 {popupConfig.cancelText && (
                   <Button
@@ -451,60 +432,119 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <Container maxW="container.xl" py={8} bg="#FFFDF1" minH="100vh">
-      <VStack spacing={8} align="stretch">
-        {/* Header + Action in one row */}
-        <Flex
-          align="center"
-          justify="space-between"
-          rounded="lg"
-          flexWrap="wrap"
-        >
-          <Box textAlign="left" mr={4}>
-            <Heading size="md" color="brand.500" mb={2}>
-              Welcome, {user?.name}!
-            </Heading>
-            <Text color="gray.600">
-              Manage your products, orders, and profile
-            </Text>
-          </Box>
-
-          <Box>
-            <HStack spacing={3} align="center">
-              <Button
-                as={RouterLink}
-                to="/add-product"
-                leftIcon={<AddIcon />}
+    <Box bg="#FFFDF1" minH="100vh" w="100%">
+      <Container maxW="container.xl" py={8}>
+       <VStack spacing={8} align="stretch">
+         {/* Header + Action in one row */}
+         <Flex
+           align="center"
+           justify="space-between"
+           rounded="lg"
+           flexWrap="wrap"
+         >
+           <Box textAlign="left" mr={4}>
+             <Heading size="md" color="brand.500" mb={2}>
+               Welcome, {user?.name}!
+             </Heading>
+             <Text color="gray.600">
+               Manage your products, orders, and profile
+             </Text>
+           </Box>
+ 
+           <Box>
+             <HStack spacing={3} align="center">
+               <Button
+                 as={RouterLink}
+                 to="/add-product"
+                 leftIcon={<AddIcon />}
+                 size="lg"
+                 color="white"
+                 bg="#319795"
+                 px={4}
+                 py={2}
+                 display="flex"
+                 alignItems="center"
+                 _hover={{
+                   bg: '#2A8280'
+                 }}
+                 _active={{
+                   bg: '#267E7C'
+                 }}
+               >
+                 Add New Product
+               </Button>
+ 
+               <Box position="relative">
+               <IconButton
+                 aria-label="Notifications"
+                 icon={<BellIcon />}
+                 size="lg"
+                 bg="#319795"
+                 color="white"
+                 _hover={{ bg: '#2A8280' }}
+                 _active={{ bg: '#267E7C' }}
+                 onClick={() => navigate('/notifications')}
+                 />
+                 {unreadNotifications > 0 && (
+                   <Badge
+                     position="absolute"
+                     top="-2px"
+                     right="-2px"
+                     bg="red.500"
+                     color="white"
+                     borderRadius="full"
+                     fontSize="xs"
+                     minW="18px"
+                     h="18px"
+                     display="flex"
+                     alignItems="center"
+                     justifyContent="center"
+                     fontWeight="bold"
+                   >
+                     {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                   </Badge>
+                 )}
+               </Box>
+ 
+               <Box position="relative">
+               <IconButton
+                   aria-label="Offers"
+                   icon={<Icon as={FaHandshake} />}
                 size="lg"
-              >
-                Add New Product
-              </Button>
-
-              <Box position="relative">
-                <IconButton
-                  aria-label="Notifications"
-                  icon={<BellIcon />}
-                  size="lg"
-                  variant="ghost"
+                bg="#319795"
+                color="white"
+                _hover={{ bg: '#2A8280' }}
+                _active={{ bg: '#267E7C' }}
+                onClick={() => navigate('/offers')}
                 />
-              </Box>
-
-              <Box position="relative">
-                <IconButton
-                  aria-label="Offers"
-                  icon={<Icon as={FaHandshake} />}
-                  size="lg"
-                  variant="ghost"
-                />
-              </Box>
-
-              <Avatar name={user?.name || 'User'} size="sm" />
-            </HStack>
-          </Box>
-        </Flex>
-
-        {/* Stats */}
-        <SimpleGrid columns={{ base: 1, md: 4 }} spacing={6}>
+                {unreadOffers > 0 && (
+                  <Badge
+                    position="absolute"
+                    top="-2px"
+                    right="-2px"
+                    bg="orange.500"
+                    color="white"
+                    borderRadius="full"
+                    fontSize="xs"
+                    minW="18px"
+                    h="18px"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    fontWeight="bold"
+                  >
+                    {unreadOffers > 99 ? '99+' : unreadOffers}
+                  </Badge>
+                )}
+               </Box>
+ 
+              <Avatar name={user?.name || 'User'} size="sm" bg="white" />
+             </HStack>
+           </Box>
+         </Flex>
+ 
+         {/* Stats */}
+         <SimpleGrid columns={{ base: 1, md: 4 }} spacing={6}>
           <Card>
             <CardBody textAlign="center">
               <Stat>
@@ -514,7 +554,7 @@ const Dashboard: React.FC = () => {
               </Stat>
             </CardBody>
           </Card>
-
+          
           <Card>
             <CardBody textAlign="center">
               <Stat>
@@ -524,60 +564,60 @@ const Dashboard: React.FC = () => {
               </Stat>
             </CardBody>
           </Card>
-
+          
           <Card>
             <CardBody textAlign="center">
               <Stat>
                 <StatLabel>Premium Listings</StatLabel>
-                <StatNumber color="yellow.500">{userProducts.filter((p) => p.premium).length}</StatNumber>
+                <StatNumber color="yellow.500">{userProducts.filter(p => p.premium).length}</StatNumber>
                 <StatHelpText>Featured products</StatHelpText>
               </Stat>
             </CardBody>
           </Card>
-
-          <Card>
-            <CardBody textAlign="center">
-              <Stat>
-                <StatLabel>Total Items</StatLabel>
-                <StatNumber color="blue.500">{userProducts.length + tradedItems.length}</StatNumber>
-                <StatHelpText>All products</StatHelpText>
-              </Stat>
-            </CardBody>
-          </Card>
-        </SimpleGrid>
-
-        {/* Quick Actions */}
-
-        {/* Tabs */}
-        <Box bg="white" rounded="lg" shadow="sm">
-          <Tabs index={activeTab} onChange={setActiveTab}>
-            <TabList>
-              <Tab>My Products</Tab>
-              <Tab>My Traded/Bartered Items</Tab>
-            </TabList>
-
-            <TabPanels>
-              {/* Products Tab */}
-              <TabPanel>
-                <VStack spacing={6} align="stretch">
-                  {/* Available Items Section */}
-                  <Box>
-                    <HStack justify="space-between" align="center" mb={4}>
-                      <Heading size="md" color="green.600">
-                        Available Items ({userProducts.length})
-                  </Heading>
-                      <Badge colorScheme="green" variant="subtle" px={3} py={1}>
-                        Active Listings
-                      </Badge>
-                    </HStack>
-
+ 
+           <Card>
+             <CardBody textAlign="center">
+               <Stat>
+                 <StatLabel>Total Items</StatLabel>
+                 <StatNumber color="blue.500">{userProducts.length + tradedItems.length}</StatNumber>
+                 <StatHelpText>All products</StatHelpText>
+               </Stat>
+             </CardBody>
+           </Card>
+         </SimpleGrid>
+ 
+         {/* Quick Actions */}
+ 
+         {/* Tabs */}
+         <Box bg="white" rounded="lg" shadow="sm">
+           <Tabs index={activeTab} onChange={setActiveTab}>
+             <TabList>
+               <Tab>My Products</Tab>
+               <Tab>My Traded/Bartered Items</Tab>
+             </TabList>
+ 
+             <TabPanels>
+               {/* Products Tab */}
+               <TabPanel>
+                 <VStack spacing={6} align="stretch">
+                   {/* Available Items Section */}
+                   <Box>
+                     <HStack justify="space-between" align="center" mb={4}>
+                       <Heading size="md" color="green.600">
+                         Available Items ({userProducts.length})
+                   </Heading>
+                       <Badge colorScheme="green" variant="subtle" px={3} py={1}>
+                         Active Listings
+                       </Badge>
+                     </HStack>
+                  
                   {userProducts.length === 0 ? (
-                      <Box
-                        textAlign="center"
-                        py={8}
-                        bg="green.50"
-                        borderRadius="lg"
-                        border="1px dashed"
+                      <Box 
+                        textAlign="center" 
+                        py={8} 
+                        bg="green.50" 
+                        borderRadius="lg" 
+                        border="1px dashed" 
                         borderColor="green.200"
                       >
                       <Text color="gray.500" mb={4}>
@@ -593,176 +633,82 @@ const Dashboard: React.FC = () => {
                       </Button>
                     </Box>
                   ) : (
-                    <>
-                    <SimpleGrid columns={{ base: 1, md: 2, lg: 5 }} spacing={6}>
-                      {userProducts.map((product) => (
-                        <Card key={product.id}>
-                          <Image
-                            src={getFirstImage(product.image_urls)}
-                            alt={product.title}
-                            w="full"
-                            h="auto"
-                            loading="lazy"
-                            fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
-                          />
-                          <CardHeader>
-                            <Flex justify="space-between" align="start">
-                              <Heading size="md" noOfLines={2}>
-                                {product.title}
-                              </Heading>
-                              {product.premium && (
-                                <Badge colorScheme="yellow">Premium</Badge>
-                              )}
-                            </Flex>
-                            <Text color="gray.600" noOfLines={2}>
-                              {product.description}
-                            </Text>
-                          </CardHeader>
-                          <CardBody pt={0}>
-                            <Text fontSize="2xl" fontWeight="bold" color="brand.500">
-                              {product.allow_buying && !product.barter_only && product.price
-                                ? `₱${product.price.toFixed(2)}`
-                                : 'Barter Only'}
-                            </Text>
-                            <HStack mt={2}>
-                              <Badge
-                                colorScheme={
-                                  product.status === 'available'
-                                    ? 'green'
-                                    : product.status === 'locked'
-                                    ? 'orange'
-                                    : 'red'
-                                }
-                              >
-                                {product.status}
-                              </Badge>
-                              {product.condition && (
-                                <Badge colorScheme="blue">{product.condition}</Badge>
-                              )}
-                              {product.category && (
-                                <Badge colorScheme="purple">{product.category}</Badge>
-                              )}
-                            </HStack>
-                            {product.suggested_value && product.suggested_value > 0 && (
-                              <Text fontSize="sm" color="gray.600" mt={1}>
-                                {product.suggested_value} points
-                              </Text>
-                            )}
-                          </CardBody>
-                          <CardFooter>
-                            <HStack spacing={2} w="full">
-                              <Button
-                                as={RouterLink}
-                                to={`/edit-product/${product.id}`}
-                                leftIcon={<EditIcon />}
-                                variant="outline"
-                                colorScheme="brand"
-                                size="sm"
-                                flex={1}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                leftIcon={<DeleteIcon />}
-                                variant="outline"
-                                colorScheme="red"
-                                size="sm"
-                                flex={1}
-                                onClick={() => handleDeleteProductClick(product)}
-                              >
-                                Delete
-                              </Button>
-                            </HStack>
-                          </CardFooter>
-                        </Card>
+                      <>
+                        <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                          {getPaginatedItems(userProducts, currentPage).map((product) => (
+                            <ProductCard key={product.id} product={product} showActions={true} />
                       ))}
                     </SimpleGrid>
-                    <PaginationControls
-                      currentPage={currentPage}
-                      totalPages={getTotalPages(userProducts)}
-                      onPageChange={setCurrentPage}
-                      itemsCount={userProducts.length}
-                    />
-                    </>
-                  )}
-                  </Box>
-
-                </VStack>
-              </TabPanel>
-
-              {/* Traded/Bartered Items Tab */}
-              <TabPanel>
-                <VStack spacing={6} align="stretch">
-                  <Box>
-                    <HStack justify="space-between" align="center" mb={4}>
-                      <Heading size="md" color="blue.600">
-                        My Traded/Bartered Items ({tradedItems.length})
-                  </Heading>
-                      <Badge colorScheme="blue" variant="subtle" px={3} py={1}>
-                        Exchange History
-                      </Badge>
-                    </HStack>
-
-                    {tradedItems.length === 0 ? (
-                      <Box
-                        textAlign="center"
-                        py={12}
-                        bg="blue.50"
-                        borderRadius="lg"
-                        border="1px dashed"
-                        borderColor="blue.200"
-                      >
-                        <Text color="gray.500" fontSize="lg" mb={2}>
-                          No completed trades yet
-                        </Text>
-                        <Text color="gray.400" fontSize="sm">
-                          Start trading to see your exchange history here!
-                      </Text>
-                    </Box>
-                  ) : (
-                    <VStack spacing={4} align="stretch">
-                      {orders.map((order) => (
-                        <Card key={order.id}>
-                          <CardBody>
-                            <Flex justify="space-between" align="center">
-                              <VStack align="start" spacing={2}>
-                                <Text fontWeight="bold">
-                                  {order.product?.title}
-                                </Text>
-                                <Text color="gray.600">
-                                  ₱{order.product?.price ? order.product.price.toFixed(2) : '0.00'}
-                                </Text>
-                                <Text fontSize="sm" color="gray.500">
-                                  Ordered on {new Date(order.created_at).toLocaleDateString()}
-                                </Text>
-                              </VStack>
-                              <Badge
-                                colorScheme={
-                                  order.status === 'completed' ? 'green' :
-                                  order.status === 'cancelled' ? 'red' : 'yellow'
-                                }
-                                size="lg"
-                              >
-                                {order.status}
-                              </Badge>
-                            </Flex>
-                          </CardBody>
-                        </Card>
-                      ))}
-                    </VStack>
-                  )}
-                  </Box>
-                </VStack>
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
-        </Box>
-
-        {/* Popup Modal System */}
-        <PopupModal />
-      </VStack>
-    </Container>
-  )
-}
-
-export default Dashboard
+                        <PaginationControls
+                          currentPage={currentPage}
+                          totalPages={getTotalPages(userProducts)}
+                          onPageChange={setCurrentPage}
+                          itemsCount={userProducts.length}
+                        />
+                      </>
+                    )}
+                   </Box>
+ 
+                 </VStack>
+               </TabPanel>
+ 
+               {/* Traded/Bartered Items Tab */}
+               <TabPanel>
+                 <VStack spacing={6} align="stretch">
+                   <Box>
+                     <HStack justify="space-between" align="center" mb={4}>
+                       <Heading size="md" color="blue.600">
+                         My Traded/Bartered Items ({tradedItems.length})
+                   </Heading>
+                       <Badge colorScheme="blue" variant="subtle" px={3} py={1}>
+                         Exchange History
+                       </Badge>
+                     </HStack>
+                     
+                     {tradedItems.length === 0 ? (
+                       <Box 
+                         textAlign="center" 
+                         py={12} 
+                         bg="blue.50" 
+                         borderRadius="lg" 
+                         border="1px dashed" 
+                         borderColor="blue.200"
+                       >
+                         <Text color="gray.500" fontSize="lg" mb={2}>
+                           No completed trades yet
+                         </Text>
+                         <Text color="gray.400" fontSize="sm">
+                           Start trading to see your exchange history here!
+                       </Text>
+                     </Box>
+                   ) : (
+                       <>
+                         <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                           {getPaginatedItems(tradedItems, tradedCurrentPage).map((product) => (
+                             <ProductCard key={product.id} product={product} showActions={false} />
+                           ))}
+                         </SimpleGrid>
+                         <PaginationControls
+                           currentPage={tradedCurrentPage}
+                           totalPages={getTotalPages(tradedItems)}
+                           onPageChange={setTradedCurrentPage}
+                           itemsCount={tradedItems.length}
+                         />
+                       </>
+                     )}
+                   </Box>
+                 </VStack>
+               </TabPanel>
+             </TabPanels>
+           </Tabs>
+         </Box>
+ 
+         {/* Popup Modal System */}
+         <PopupModal />
+       </VStack>
+      </Container>
+    </Box>
+   )
+ }
+ 
+ export default Dashboard
