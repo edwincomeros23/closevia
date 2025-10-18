@@ -1,3 +1,5 @@
+import "@fontsource/prata/400.css";   // regular
+
 import React from 'react'
 import {
   Box, Container, VStack, Heading, Text, Button,
