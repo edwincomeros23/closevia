@@ -27,6 +27,145 @@ export const mockAdminStats = {
   total_offers: 45,
   completed_transactions: 23,
 
+  // Product Analytics
+  price_ranges: [
+    { range: '₱0 - ₱500', count: 45, percentage: 30.0 },
+    { range: '₱501 - ₱1,000', count: 38, percentage: 25.3 },
+    { range: '₱1,001 - ₱2,500', count: 27, percentage: 18.0 },
+    { range: '₱2,501 - ₱5,000', count: 22, percentage: 14.7 },
+    { range: '₱5,001+', count: 18, percentage: 12.0 },
+  ],
+  condition_distribution: [
+    { condition: 'New', count: 35, percentage: 23.3 },
+    { condition: 'Like-New', count: 42, percentage: 28.0 },
+    { condition: 'Used', count: 58, percentage: 38.7 },
+    { condition: 'Fair', count: 15, percentage: 10.0 },
+  ],
+  location_analytics: [
+    {
+      city: 'Manila',
+      count: 45,
+      meetup_spots: ['SM Mall of Asia', 'Greenbelt Mall', 'Robinsons Place', 'Ayala Center']
+    },
+    {
+      city: 'Quezon City',
+      count: 32,
+      meetup_spots: ['SM North EDSA', 'Trinoma Mall', 'Eastwood City', 'UP Diliman']
+    },
+    {
+      city: 'Makati',
+      count: 28,
+      meetup_spots: ['Glorietta', 'Power Plant Mall', 'Greenbelt', 'Ayala Avenue']
+    },
+    {
+      city: 'Taguig',
+      count: 25,
+      meetup_spots: ['BGC High Street', 'Market Market', 'SM Aura', 'Venice Grand Canal']
+    },
+    {
+      city: 'Pasig',
+      count: 20,
+      meetup_spots: ['Ortigas Center', 'Tiendesitas', 'Robinsons Galleria', 'Eastwood']
+    }
+  ],
+  category_analytics: [
+    { category: 'Electronics', count: 45, percentage: 30.0, color: 'blue' },
+    { category: 'Fashion', count: 38, percentage: 25.3, color: 'pink' },
+    { category: 'Home & Garden', count: 27, percentage: 18.0, color: 'green' },
+    { category: 'Sports', count: 22, percentage: 14.7, color: 'orange' },
+    { category: 'Books', count: 18, percentage: 12.0, color: 'purple' },
+  ],
+  recent_listings: [
+    {
+      id: 1001,
+      title: 'iPhone 13 Pro Max 256GB',
+      price: 45000,
+      condition: 'Like-New',
+      location: 'Manila',
+      category: 'Electronics',
+      created_at: '2025-01-15T14:30:00Z',
+      seller_name: 'John Doe',
+      status: 'available'
+    },
+    {
+      id: 1002,
+      title: 'Nike Air Jordan 1',
+      price: 8500,
+      condition: 'New',
+      location: 'Quezon City',
+      category: 'Fashion',
+      created_at: '2025-01-15T12:15:00Z',
+      seller_name: 'Jane Smith',
+      status: 'available'
+    },
+    {
+      id: 1003,
+      title: 'MacBook Pro M2 13-inch',
+      price: 75000,
+      condition: 'Used',
+      location: 'Makati',
+      category: 'Electronics',
+      created_at: '2025-01-15T10:45:00Z',
+      seller_name: 'Mike Johnson',
+      status: 'available'
+    },
+    {
+      id: 1004,
+      title: 'Vintage Leather Sofa',
+      price: 0,
+      condition: 'Fair',
+      location: 'Taguig',
+      category: 'Home & Garden',
+      created_at: '2025-01-15T09:20:00Z',
+      seller_name: 'Sarah Wilson',
+      status: 'available'
+    },
+    {
+      id: 1005,
+      title: 'Canon EOS R5 Camera',
+      price: 120000,
+      condition: 'Like-New',
+      location: 'Pasig',
+      category: 'Electronics',
+      created_at: '2025-01-15T08:10:00Z',
+      seller_name: 'David Brown',
+      status: 'available'
+    },
+    {
+      id: 1006,
+      title: 'Designer Handbag Collection',
+      price: 25000,
+      condition: 'New',
+      location: 'Manila',
+      category: 'Fashion',
+      created_at: '2025-01-15T07:30:00Z',
+      seller_name: 'Lisa Garcia',
+      status: 'available'
+    },
+    {
+      id: 1007,
+      title: 'Gaming PC Setup',
+      price: 0,
+      condition: 'Used',
+      location: 'Quezon City',
+      category: 'Electronics',
+      created_at: '2025-01-15T06:45:00Z',
+      seller_name: 'Alex Rodriguez',
+      status: 'available'
+    },
+    {
+      id: 1008,
+      title: 'Yoga Mat & Accessories',
+      price: 1200,
+      condition: 'Like-New',
+      location: 'Makati',
+      category: 'Sports',
+      created_at: '2025-01-15T05:15:00Z',
+      seller_name: 'Maria Santos',
+      status: 'available'
+    }
+  ],
+
   // Charts and Data
   top_categories: [
     { name: 'Electronics', count: 45, share: 30.0 },

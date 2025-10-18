@@ -304,3 +304,192 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 		},
 	})
 }
+
+// SaveProduct saves a product to user's watchlist
+func (h *UserHandler) SaveProduct(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+
+	var req struct {
+		ProductID int `json:"product_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid request body",
+		})
+	}
+
+	// Check if product exists
+	var productExists bool
+	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND deleted_at IS NULL)", req.ProductID).Scan(&productExists)
+	if err != nil || !productExists {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
+		})
+	}
+
+	// Check if already saved
+	var alreadySaved bool
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)", userID, req.ProductID).Scan(&alreadySaved)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to check saved status",
+		})
+	}
+
+	if alreadySaved {
+		return c.Status(409).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product already saved",
+		})
+	}
+
+	// Save the product
+	_, err = h.db.Exec("INSERT INTO saved_products (user_id, product_id, created_at) VALUES (?, ?, NOW())", userID, req.ProductID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to save product",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Product saved successfully",
+	})
+}
+
+// UnsaveProduct removes a product from user's watchlist
+func (h *UserHandler) UnsaveProduct(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	// Remove the saved product
+	result, err := h.db.Exec("DELETE FROM saved_products WHERE user_id = ? AND product_id = ?", userID, productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to remove saved product",
+		})
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Saved product not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Product removed from saved items",
+	})
+}
+
+// CheckSavedProduct checks if a product is saved by the user
+func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	var isSaved bool
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)", userID, productID).Scan(&isSaved)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to check saved status",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"isSaved": isSaved,
+		},
+	})
+}
+
+// GetSavedProducts gets all saved products for a user
+func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+	offset := (page - 1) * limit
+
+	// Get total count
+	var total int
+	err := h.db.QueryRow("SELECT COUNT(*) FROM saved_products WHERE user_id = ?", userID).Scan(&total)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get saved products count",
+		})
+	}
+
+	// Get saved products with product details
+	rows, err := h.db.Query(`
+		SELECT 
+			p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
+			p.premium, p.status, p.allow_buying, p.barter_only, p.location,
+			p.condition, p.suggested_value, p.category, p.created_at, p.updated_at,
+			u.name as seller_name,
+			sp.created_at as saved_at
+		FROM saved_products sp
+		JOIN products p ON p.id = sp.product_id
+		JOIN users u ON u.id = p.seller_id
+		WHERE sp.user_id = ? AND p.deleted_at IS NULL
+		ORDER BY sp.created_at DESC
+		LIMIT ? OFFSET ?
+	`, userID, limit, offset)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get saved products",
+		})
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		var savedAt string
+		err := rows.Scan(
+			&product.ID, &product.Title, &product.Description, &product.Price,
+			&product.ImageURLs, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&product.Condition, &product.SuggestedValue, &product.Category,
+			&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &savedAt,
+		)
+		if err != nil {
+			continue
+		}
+		products = append(products, product)
+	}
+
+	totalPages := (total + limit - 1) / limit
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: models.PaginatedResponse{
+			Data:       products,
+			Total:      total,
+			Page:       page,
+			Limit:      limit,
+			TotalPages: totalPages,
+		},
+	})
+}
