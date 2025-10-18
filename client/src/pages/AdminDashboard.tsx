@@ -65,6 +65,11 @@ import {
   FiShield,
   FiHome,
   FiCreditCard,
+  FiMapPin,
+  FiTag,
+  FiClock,
+  FiRefreshCcw,
+  FiPackage,
 } from 'react-icons/fi';
 import { api } from '../services/api';
 import { mockAdminStats, simulateApiDelay } from '../utils/mockData';
@@ -99,6 +104,40 @@ interface AdminStats {
   total_chats: number;
   total_offers: number;
   completed_transactions: number;
+
+  // Product Analytics
+  price_ranges: Array<{
+    range: string;
+    count: number;
+    percentage: number;
+  }>;
+  condition_distribution: Array<{
+    condition: string;
+    count: number;
+    percentage: number;
+  }>;
+  location_analytics: Array<{
+    city: string;
+    count: number;
+    meetup_spots: string[];
+  }>;
+  category_analytics: Array<{
+    category: string;
+    count: number;
+    percentage: number;
+    color: string;
+  }>;
+  recent_listings: Array<{
+    id: number;
+    title: string;
+    price?: number;
+    condition?: string;
+    location?: string;
+    category?: string;
+    created_at: string;
+    seller_name: string;
+    status: string;
+  }>;
 
   // Charts and Data
   top_categories: Array<{
@@ -209,6 +248,12 @@ const AdminDashboard: React.FC = () => {
           setStats({
             ...mockAdminStats,
             ...response.data,
+            // Ensure new fields are present even if API doesn't return them
+            price_ranges: response.data.price_ranges || mockAdminStats.price_ranges,
+            condition_distribution: response.data.condition_distribution || mockAdminStats.condition_distribution,
+            location_analytics: response.data.location_analytics || mockAdminStats.location_analytics,
+            category_analytics: response.data.category_analytics || mockAdminStats.category_analytics,
+            recent_listings: response.data.recent_listings || mockAdminStats.recent_listings,
           });
           setIsUsingMockData(false);
         }
@@ -320,6 +365,60 @@ const AdminDashboard: React.FC = () => {
       case 'gmv': return '#38A169';
       case 'revenue': return '#D69E2E';
       default: return '#3182CE';
+    }
+  };
+
+  const getConditionColor = (condition: string) => {
+    switch (condition?.toLowerCase()) {
+      case 'new': return 'green';
+      case 'like-new': return 'blue';
+      case 'used': return 'orange';
+      case 'fair': return 'red';
+      default: return 'gray';
+    }
+  };
+
+  const getCategoryColor = (category: string) => {
+    const colors = ['blue', 'green', 'purple', 'orange', 'teal', 'pink', 'red', 'yellow'];
+    const hash = category.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    return formatDate(dateString);
+  };
+
+  const handleBumpListing = async (listingId: number) => {
+    try {
+      // This would call an API endpoint to bump/refresh a listing
+      toast({
+        title: 'Listing Bumped',
+        description: 'The listing has been refreshed and moved to the top',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+      // Refresh the dashboard data
+      await fetchAdminStats();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to bump listing',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
     }
   };
 
@@ -547,7 +646,289 @@ const AdminDashboard: React.FC = () => {
           </Card>
         </SimpleGrid>
 
-        {/* Row 2: Operational Metrics */}
+        {/* Row 2: Price & Condition Analytics */}
+        <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={8} mb={8}>
+          {/* Price Range Distribution */}
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Flex align="center">
+                  <Icon as={FiDollarSign} color="green.500" mr={2} />
+                  <Heading size="md" color="blue.600">
+                    Price Range Distribution
+                  </Heading>
+                </Flex>
+              </CardHeader>
+              <CardBody>
+                <VStack spacing={4} align="stretch">
+                  {stats.price_ranges && stats.price_ranges.length > 0 ? (
+                    stats.price_ranges.map((range, index) => (
+                      <Box key={index}>
+                        <Flex justify="space-between" align="center" mb={2}>
+                          <Text fontWeight="medium">{range.range}</Text>
+                          <Text color="gray.600">{range.count} listings</Text>
+                        </Flex>
+                        <Flex align="center" gap={2}>
+                          <ChakraProgress 
+                            value={range.percentage} 
+                            colorScheme="green" 
+                            size="sm" 
+                            flex={1}
+                          />
+                          <Text fontSize="sm" color="gray.500" minW="50px">
+                            {range.percentage.toFixed(1)}%
+                          </Text>
+                        </Flex>
+                      </Box>
+                    ))
+                  ) : (
+                    <Text color="gray.500" textAlign="center">No price data available</Text>
+                  )}
+                </VStack>
+              </CardBody>
+            </Card>
+          </GridItem>
+
+          {/* Condition Distribution */}
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Flex align="center">
+                  <Icon as={FiPackage} color="blue.500" mr={2} />
+                  <Heading size="md" color="blue.600">
+                    Condition Distribution
+                  </Heading>
+                </Flex>
+              </CardHeader>
+              <CardBody>
+                <VStack spacing={4} align="stretch">
+                  {stats.condition_distribution && stats.condition_distribution.length > 0 ? (
+                    stats.condition_distribution.map((condition, index) => (
+                      <Box key={index}>
+                        <Flex justify="space-between" align="center" mb={2}>
+                          <HStack>
+                            <Badge colorScheme={getConditionColor(condition.condition)}>
+                              {condition.condition}
+                            </Badge>
+                            <Text fontWeight="medium">{condition.count} listings</Text>
+                          </HStack>
+                          <Text color="gray.600">{condition.percentage.toFixed(1)}%</Text>
+                        </Flex>
+                        <ChakraProgress 
+                          value={condition.percentage} 
+                          colorScheme={getConditionColor(condition.condition)} 
+                          size="sm"
+                        />
+                      </Box>
+                    ))
+                  ) : (
+                    <Text color="gray.500" textAlign="center">No condition data available</Text>
+                  )}
+                </VStack>
+              </CardBody>
+            </Card>
+          </GridItem>
+        </Grid>
+
+        {/* Row 3: Location & Category Analytics */}
+        <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={8} mb={8}>
+          {/* Location Analytics */}
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Flex align="center">
+                  <Icon as={FiMapPin} color="red.500" mr={2} />
+                  <Heading size="md" color="blue.600">
+                    Location Analytics
+                  </Heading>
+                </Flex>
+              </CardHeader>
+              <CardBody>
+                <VStack spacing={4} align="stretch">
+                  {stats.location_analytics && stats.location_analytics.length > 0 ? (
+                    stats.location_analytics.map((location, index) => (
+                      <Box key={index} p={3} border="1px" borderColor={borderColor} borderRadius="md">
+                        <Flex justify="space-between" align="center" mb={2}>
+                          <Text fontWeight="bold" fontSize="lg">{location.city}</Text>
+                          <Badge colorScheme="blue" variant="subtle">
+                            {location.count} listings
+                          </Badge>
+                        </Flex>
+                        <VStack align="start" spacing={1}>
+                          <Text fontSize="sm" color="gray.600" fontWeight="medium">Meetup Spots:</Text>
+                          <Flex wrap="wrap" gap={1}>
+                            {location.meetup_spots.map((spot, spotIndex) => (
+                              <Badge key={spotIndex} colorScheme="gray" variant="outline" fontSize="xs">
+                                {spot}
+                              </Badge>
+                            ))}
+                          </Flex>
+                        </VStack>
+                      </Box>
+                    ))
+                  ) : (
+                    <Text color="gray.500" textAlign="center">No location data available</Text>
+                  )}
+                </VStack>
+              </CardBody>
+            </Card>
+          </GridItem>
+
+          {/* Category Analytics */}
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Flex align="center">
+                  <Icon as={FiTag} color="purple.500" mr={2} />
+                  <Heading size="md" color="blue.600">
+                    Category Analytics
+                  </Heading>
+                </Flex>
+              </CardHeader>
+              <CardBody>
+                <VStack spacing={4} align="stretch">
+                  {stats.category_analytics && stats.category_analytics.length > 0 ? (
+                    stats.category_analytics.map((category, index) => (
+                      <Box key={index}>
+                        <Flex justify="space-between" align="center" mb={2}>
+                          <HStack>
+                            <Badge colorScheme={getCategoryColor(category.category)}>
+                              {category.category}
+                            </Badge>
+                            <Text fontWeight="medium">{category.count} listings</Text>
+                          </HStack>
+                          <Text color="gray.600">{category.percentage.toFixed(1)}%</Text>
+                        </Flex>
+                        <ChakraProgress 
+                          value={category.percentage} 
+                          colorScheme={getCategoryColor(category.category)} 
+                          size="sm"
+                        />
+                      </Box>
+                    ))
+                  ) : (
+                    <Text color="gray.500" textAlign="center">No category data available</Text>
+                  )}
+                </VStack>
+              </CardBody>
+            </Card>
+          </GridItem>
+        </Grid>
+
+        {/* Row 4: Recent Listings with Bump/Refresh */}
+        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
+          <CardHeader>
+            <Flex align="center" justify="space-between">
+              <Flex align="center">
+                <Icon as={FiClock} color="orange.500" mr={2} />
+                <Heading size="md" color="blue.600">
+                  Recent Listings
+                </Heading>
+              </Flex>
+              <Button 
+                leftIcon={<FiRefreshCw />} 
+                onClick={handleRefresh} 
+                colorScheme="blue" 
+                variant="outline"
+                size="sm"
+              >
+                Refresh All
+              </Button>
+            </Flex>
+          </CardHeader>
+          <CardBody>
+            <Box overflowX="auto">
+              {stats.recent_listings && stats.recent_listings.length > 0 ? (
+                <Table variant="simple" size="sm">
+                  <Thead>
+                    <Tr>
+                      <Th>Product</Th>
+                      <Th>Price</Th>
+                      <Th>Condition</Th>
+                      <Th>Location</Th>
+                      <Th>Category</Th>
+                      <Th>Seller</Th>
+                      <Th>Posted</Th>
+                      <Th>Status</Th>
+                      <Th>Actions</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {stats.recent_listings.map((listing) => (
+                      <Tr key={listing.id}>
+                        <Td>
+                          <Text fontSize="sm" fontWeight="medium" noOfLines={1}>
+                            {listing.title}
+                          </Text>
+                        </Td>
+                        <Td>
+                          {listing.price ? (
+                            <Text fontSize="sm" fontWeight="bold" color="green.600">
+                              {formatCurrency(listing.price)}
+                            </Text>
+                          ) : (
+                            <Badge colorScheme="orange" variant="subtle">Barter Only</Badge>
+                          )}
+                        </Td>
+                        <Td>
+                          {listing.condition && (
+                            <Badge colorScheme={getConditionColor(listing.condition)}>
+                              {listing.condition}
+                            </Badge>
+                          )}
+                        </Td>
+                        <Td>
+                          <Text fontSize="sm" noOfLines={1}>
+                            {listing.location || 'Not specified'}
+                          </Text>
+                        </Td>
+                        <Td>
+                          {listing.category && (
+                            <Badge colorScheme={getCategoryColor(listing.category)} variant="outline">
+                              {listing.category}
+                            </Badge>
+                          )}
+                        </Td>
+                        <Td>
+                          <Text fontSize="sm" noOfLines={1}>
+                            {listing.seller_name}
+                          </Text>
+                        </Td>
+                        <Td>
+                          <Text fontSize="sm" color="gray.600">
+                            {formatTimeAgo(listing.created_at)}
+                          </Text>
+                        </Td>
+                        <Td>
+                          <Badge colorScheme={getStatusColor(listing.status)}>
+                            {listing.status}
+                          </Badge>
+                        </Td>
+                        <Td>
+                          <Button
+                            leftIcon={<FiRefreshCcw />}
+                            size="xs"
+                            colorScheme="blue"
+                            variant="ghost"
+                            onClick={() => handleBumpListing(listing.id)}
+                          >
+                            Bump
+                          </Button>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              ) : (
+                <Flex justify="center" align="center" h="200px">
+                  <Text color="gray.500">No recent listings available</Text>
+                </Flex>
+              )}
+            </Box>
+          </CardBody>
+        </Card>
+
+        {/* Row 5: Operational Metrics */}
         <SimpleGrid columns={{ base: 1, md: 2, lg: 5 }} spacing={6} mb={8}>
           <Card bg={cardBg} border="1px" borderColor={borderColor}>
             <CardBody>

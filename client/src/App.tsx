@@ -16,6 +16,7 @@ import Settings from './pages/Settings'
 import Trades from './pages/Trades'
 import Offers from './pages/Offers'
 import Profile from './pages/Profile'
+import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProductProvider } from './contexts/ProductContext'
@@ -158,6 +159,10 @@ const AppContent: React.FC = () => {
                     <Offers />
                   </ProtectedRoute>
                 } 
+              />
+              <Route 
+                path="/saved-products" 
+                element={<SavedProducts />} 
               />
               <Route 
                 path="/admin" 
