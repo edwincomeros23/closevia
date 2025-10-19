@@ -67,6 +67,9 @@ const Dashboard: React.FC = () => {
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const [unreadOffers, setUnreadOffers] = useState(0)
   const toast = useToast()
+  // notifications state (handled on /notifications page)
+  // dev helper: when true, show multiple pages for testing even if there are no notifications
+  const DEV_SHOW_PAGES_ALWAYS = true
 
   useEffect(() => {
     if (user) {
@@ -511,6 +514,42 @@ const Dashboard: React.FC = () => {
                    aria-label="Offers"
                    icon={<Icon as={FaHandshake} />}
                 size="lg"
+              >
+                Add New Product
+              </Button>
+
+              <Box position="relative">
+                <IconButton
+                  aria-label="Notifications"
+                  icon={<BellIcon />}
+                  size="lg"
+                  variant="ghost"
+                  onClick={() => navigate('/notifications')}
+                />
+                {unreadNotifications > 0 && (
+                  <Box
+                    position="absolute"
+                    top="0"
+                    right="0"
+                    transform="translate(30%,-30%)"
+                    bg="red.500"
+                    color="white"
+                    fontSize="xs"
+                    px={2}
+                    py={0.5}
+                    borderRadius="full"
+                  >
+                    {unreadNotifications}
+                  </Box>
+                )}
+              </Box>
+
+              <Box position="relative">
+                <IconButton
+                  aria-label="Offers"
+                  icon={<Icon as={FaHandshake} />}
+                  size="lg"
+                  variant="ghost"
                 bg="#319795"
                 color="white"
                 _hover={{ bg: '#2A8280' }}
@@ -639,6 +678,96 @@ const Dashboard: React.FC = () => {
                             <ProductCard key={product.id} product={product} showActions={true} />
                       ))}
                     </SimpleGrid>
+                    <PaginationControls
+                      currentPage={currentPage}
+                      totalPages={getTotalPages(userProducts)}
+                      onPageChange={setCurrentPage}
+                      itemsCount={userProducts.length}
+                    />
+                    </>
+                  )}
+                  </Box>
+
+                </VStack>
+              </TabPanel>
+
+              {/* Traded/Bartered Items Tab */}
+              <TabPanel>
+                <VStack spacing={6} align="stretch">
+                  <Box>
+                    <HStack justify="space-between" align="center" mb={4}>
+                      <Heading size="md" color="blue.600">
+                        My Traded/Bartered Items ({tradedItems.length})
+                  </Heading>
+                      <Badge colorScheme="blue" variant="subtle" px={3} py={1}>
+                        Exchange History
+                      </Badge>
+                    </HStack>
+
+                    {tradedItems.length === 0 ? (
+                      <Box
+                        textAlign="center"
+                        py={12}
+                        bg="blue.50"
+                        borderRadius="lg"
+                        border="1px dashed"
+                        borderColor="blue.200"
+                      >
+                        <Text color="gray.500" fontSize="lg" mb={2}>
+                          No completed trades yet
+                        </Text>
+                        <Text color="gray.400" fontSize="sm">
+                          Start trading to see your exchange history here!
+                      </Text>
+                    </Box>
+                  ) : (
+                    <VStack spacing={4} align="stretch">
+                      {orders.map((order) => (
+                        <Card key={order.id}>
+                          <CardBody>
+                            <Flex justify="space-between" align="center">
+                              <VStack align="start" spacing={2}>
+                                <Text fontWeight="bold">
+                                  {order.product?.title}
+                                </Text>
+                                <Text color="gray.600">
+                                  ₱{order.product?.price ? order.product.price.toFixed(2) : '0.00'}
+                                </Text>
+                                <Text fontSize="sm" color="gray.500">
+                                  Ordered on {new Date(order.created_at).toLocaleDateString()}
+                                </Text>
+                              </VStack>
+                              <Badge
+                                colorScheme={
+                                  order.status === 'completed' ? 'green' :
+                                  order.status === 'cancelled' ? 'red' : 'yellow'
+                                }
+                                size="lg"
+                              >
+                                {order.status}
+                              </Badge>
+                            </Flex>
+                          </CardBody>
+                        </Card>
+                      ))}
+                    </VStack>
+                  )}
+                  </Box>
+                </VStack>
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </Box>
+
+        {/* Popup Modal System */}
+        <PopupModal />
+      {/* Notifications are handled on their own page at /notifications */}
+      </VStack>
+    </Container>
+  )
+}
+
+export default Dashboard
                         <PaginationControls
                           currentPage={currentPage}
                           totalPages={getTotalPages(userProducts)}
