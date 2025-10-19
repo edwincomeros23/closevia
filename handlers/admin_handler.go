@@ -332,6 +332,220 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		}
 	}
 
+	// ===== PRODUCT ANALYTICS =====
+
+	// Price Range Distribution
+	type PriceRange struct {
+		Range      string  `json:"range"`
+		Count      int     `json:"count"`
+		Percentage float64 `json:"percentage"`
+	}
+
+	priceRangeRows, err := h.db.Query(`
+		SELECT 
+			CASE 
+				WHEN price IS NULL OR price = 0 THEN 'Barter Only'
+				WHEN price <= 500 THEN '₱0 - ₱500'
+				WHEN price <= 1000 THEN '₱501 - ₱1,000'
+				WHEN price <= 2500 THEN '₱1,001 - ₱2,500'
+				WHEN price <= 5000 THEN '₱2,501 - ₱5,000'
+				ELSE '₱5,001+'
+			END as price_range,
+			COUNT(*) as count
+		FROM products 
+		WHERE status NOT IN ('sold', 'expired', 'draft') 
+		AND deleted_at IS NULL
+		GROUP BY price_range
+		ORDER BY count DESC
+	`)
+	if err != nil {
+		priceRangeRows = nil
+	}
+
+	var priceRanges []PriceRange
+	if priceRangeRows != nil {
+		defer priceRangeRows.Close()
+		for priceRangeRows.Next() {
+			var pr PriceRange
+			if err := priceRangeRows.Scan(&pr.Range, &pr.Count); err == nil {
+				if activeListings > 0 {
+					pr.Percentage = float64(pr.Count) / float64(activeListings) * 100
+				}
+				priceRanges = append(priceRanges, pr)
+			}
+		}
+	}
+
+	// Condition Distribution
+	type ConditionData struct {
+		Condition  string  `json:"condition"`
+		Count      int     `json:"count"`
+		Percentage float64 `json:"percentage"`
+	}
+
+	conditionRows, err := h.db.Query(`
+		SELECT 
+			COALESCE(condition, 'Not Specified') as condition,
+			COUNT(*) as count
+		FROM products 
+		WHERE status NOT IN ('sold', 'expired', 'draft') 
+		AND deleted_at IS NULL
+		GROUP BY condition
+		ORDER BY count DESC
+	`)
+	if err != nil {
+		conditionRows = nil
+	}
+
+	var conditionDistribution []ConditionData
+	if conditionRows != nil {
+		defer conditionRows.Close()
+		for conditionRows.Next() {
+			var cd ConditionData
+			if err := conditionRows.Scan(&cd.Condition, &cd.Count); err == nil {
+				if activeListings > 0 {
+					cd.Percentage = float64(cd.Count) / float64(activeListings) * 100
+				}
+				conditionDistribution = append(conditionDistribution, cd)
+			}
+		}
+	}
+
+	// Location Analytics
+	type LocationData struct {
+		City        string   `json:"city"`
+		Count       int      `json:"count"`
+		MeetupSpots []string `json:"meetup_spots"`
+	}
+
+	locationRows, err := h.db.Query(`
+		SELECT 
+			COALESCE(location, 'Not Specified') as location,
+			COUNT(*) as count
+		FROM products 
+		WHERE status NOT IN ('sold', 'expired', 'draft') 
+		AND deleted_at IS NULL
+		GROUP BY location
+		ORDER BY count DESC
+		LIMIT 10
+	`)
+	if err != nil {
+		locationRows = nil
+	}
+
+	var locationAnalytics []LocationData
+	if locationRows != nil {
+		defer locationRows.Close()
+		for locationRows.Next() {
+			var ld LocationData
+			if err := locationRows.Scan(&ld.City, &ld.Count); err == nil {
+				// Add some sample meetup spots based on city
+				switch ld.City {
+				case "Manila":
+					ld.MeetupSpots = []string{"SM Mall of Asia", "Greenbelt Mall", "Robinsons Place", "Ayala Center"}
+				case "Quezon City":
+					ld.MeetupSpots = []string{"SM North EDSA", "Trinoma Mall", "Eastwood City", "UP Diliman"}
+				case "Makati":
+					ld.MeetupSpots = []string{"Glorietta", "Power Plant Mall", "Greenbelt", "Ayala Avenue"}
+				case "Taguig":
+					ld.MeetupSpots = []string{"BGC High Street", "Market Market", "SM Aura", "Venice Grand Canal"}
+				case "Pasig":
+					ld.MeetupSpots = []string{"Ortigas Center", "Tiendesitas", "Robinsons Galleria", "Eastwood"}
+				default:
+					ld.MeetupSpots = []string{"City Center", "Main Mall", "Public Market"}
+				}
+				locationAnalytics = append(locationAnalytics, ld)
+			}
+		}
+	}
+
+	// Category Analytics
+	type CategoryAnalytics struct {
+		Category   string  `json:"category"`
+		Count      int     `json:"count"`
+		Percentage float64 `json:"percentage"`
+		Color      string  `json:"color"`
+	}
+
+	categoryAnalyticsRows, err := h.db.Query(`
+		SELECT 
+			COALESCE(category, 'Uncategorized') as category,
+			COUNT(*) as count
+		FROM products 
+		WHERE status NOT IN ('sold', 'expired', 'draft') 
+		AND deleted_at IS NULL
+		GROUP BY category
+		ORDER BY count DESC
+		LIMIT 10
+	`)
+	if err != nil {
+		categoryAnalyticsRows = nil
+	}
+
+	var categoryAnalytics []CategoryAnalytics
+	colors := []string{"blue", "green", "purple", "orange", "teal", "pink", "red", "yellow", "cyan", "indigo"}
+	if categoryAnalyticsRows != nil {
+		defer categoryAnalyticsRows.Close()
+		colorIndex := 0
+		for categoryAnalyticsRows.Next() {
+			var ca CategoryAnalytics
+			if err := categoryAnalyticsRows.Scan(&ca.Category, &ca.Count); err == nil {
+				if activeListings > 0 {
+					ca.Percentage = float64(ca.Count) / float64(activeListings) * 100
+				}
+				ca.Color = colors[colorIndex%len(colors)]
+				categoryAnalytics = append(categoryAnalytics, ca)
+				colorIndex++
+			}
+		}
+	}
+
+	// Recent Listings
+	type RecentListing struct {
+		ID         int       `json:"id"`
+		Title      string    `json:"title"`
+		Price      *float64  `json:"price"`
+		Condition  *string   `json:"condition"`
+		Location   *string   `json:"location"`
+		Category   *string   `json:"category"`
+		CreatedAt  time.Time `json:"created_at"`
+		SellerName string    `json:"seller_name"`
+		Status     string    `json:"status"`
+	}
+
+	recentListingsRows, err := h.db.Query(`
+		SELECT 
+			p.id,
+			p.title,
+			p.price,
+			p.condition,
+			p.location,
+			p.category,
+			p.created_at,
+			p.status,
+			u.name as seller_name
+		FROM products p
+		JOIN users u ON u.id = p.seller_id
+		WHERE p.status NOT IN ('sold', 'expired', 'draft') 
+		AND p.deleted_at IS NULL
+		ORDER BY p.created_at DESC
+		LIMIT 10
+	`)
+	if err != nil {
+		recentListingsRows = nil
+	}
+
+	var recentListings []RecentListing
+	if recentListingsRows != nil {
+		defer recentListingsRows.Close()
+		for recentListingsRows.Next() {
+			var rl RecentListing
+			if err := recentListingsRows.Scan(&rl.ID, &rl.Title, &rl.Price, &rl.Condition, &rl.Location, &rl.Category, &rl.CreatedAt, &rl.Status, &rl.SellerName); err == nil {
+				recentListings = append(recentListings, rl)
+			}
+		}
+	}
+
 	// ===== COMPILE ALL STATISTICS =====
 
 	stats := fiber.Map{
@@ -361,6 +575,13 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		"total_chats":            totalChats,
 		"total_offers":           totalOffers,
 		"completed_transactions": completedTransactions,
+
+		// Product Analytics
+		"price_ranges":           priceRanges,
+		"condition_distribution": conditionDistribution,
+		"location_analytics":     locationAnalytics,
+		"category_analytics":     categoryAnalytics,
+		"recent_listings":        recentListings,
 
 		// Charts and Data
 		"top_categories":        topCategories,
