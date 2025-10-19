@@ -36,70 +36,108 @@ import { useAuth } from '../contexts/AuthContext'
 import { Product } from '../types'
 import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
+
+interface SavedProductsResponse {
+  status: string;
+  data: {
+    data: Product[];
+    count?: number;
+  };
+}
 
 const SavedProducts: React.FC = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
+  
+  // Force redirect if not authenticated
+  useEffect(() => {
+    if (!user) {
+      navigate('/login', { state: { from: '/saved-products' } });
+    }
+  }, [user, navigate]);
+
   const [savedProducts, setSavedProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [removing, setRemoving] = useState<number | null>(null)
   
-  const navigate = useNavigate()
   const toast = useToast()
 
-  useEffect(() => {
-    if (user) {
-      fetchSavedProducts()
-    } else {
-      // For guest users, get from localStorage
-      fetchGuestSavedProducts()
-    }
-  }, [user])
-
-  const fetchSavedProducts = async () => {
+  const fetchSavedProducts = async (retryCount = 0) => {
     try {
       setLoading(true)
       setError('')
-      const response = await api.get('/api/users/saved-products')
-      setSavedProducts(response.data.data.data || [])
-    } catch (err: any) {
-      console.error('Failed to fetch saved products:', err)
-      setError(err.response?.data?.error || 'Failed to load saved products')
       
-      // Fallback to localStorage
-      fetchGuestSavedProducts()
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchGuestSavedProducts = async () => {
-    try {
-      setLoading(true)
-      const savedProductIds = JSON.parse(localStorage.getItem('savedProducts') || '[]')
-      
-      if (savedProductIds.length === 0) {
-        setSavedProducts([])
-        return
+      if (!user) {
+        throw new Error('Authentication required')
       }
 
-      // Fetch product details for each saved ID
-      const productPromises = savedProductIds.map(async (id: number) => {
-        try {
-          const response = await api.get(`/api/products/${id}`)
-          return response.data.data
-        } catch (error) {
-          console.error(`Failed to fetch product ${id}:`, error)
-          return null
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      console.log('Fetching saved products with token:', token.substring(0, 20) + '...')
+      
+      const response = await api.get<SavedProductsResponse>('/api/users/saved-products', {
+        timeout: 8000,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
         }
       })
 
-      const products = await Promise.all(productPromises)
-      setSavedProducts(products.filter(Boolean))
-    } catch (err) {
-      console.error('Failed to fetch guest saved products:', err)
-      setError('Failed to load saved products')
+      // Log full response for debugging
+      console.log('API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      })
+
+      // Validate response structure
+      if (!response.data || typeof response.data !== 'object') {
+        throw new Error('Invalid response format')
+      }
+
+      const products = response.data?.data?.data || []
+      
+      if (!Array.isArray(products)) {
+        throw new Error('Products data is not an array')
+      }
+
+      console.log(`Successfully fetched ${products.length} saved products`)
+      setSavedProducts(products)
+
+    } catch (err: any) {
+      const errorDetails = {
+        message: err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        responseData: err.response?.data,
+        stack: err.stack
+      }
+      
+      console.error('Saved products fetch error details:', errorDetails)
+
+      if (err.response?.status === 401) {
+        setError('Your session has expired. Please log in again.')
+        localStorage.removeItem('token') // Clear invalid token
+        return
+      }
+
+      if (err.response?.status === 500) {
+        if (retryCount < 2) {
+          console.log(`Retrying request (attempt ${retryCount + 1})...`)
+          const delay = Math.pow(2, retryCount) * 1000
+          await new Promise(resolve => setTimeout(resolve, delay))
+          return fetchSavedProducts(retryCount + 1)
+        }
+        setError('Server error. Please try again later.')
+      } else {
+        setError(err.response?.data?.message || err.message || 'Failed to load saved products')
+      }
     } finally {
       setLoading(false)
     }
@@ -112,12 +150,7 @@ const SavedProducts: React.FC = () => {
       if (user) {
         // Use API for logged-in users
         await api.delete(`/api/users/saved-products/${productId}`)
-      } else {
-        // Use localStorage for guest users
-        const savedProducts = JSON.parse(localStorage.getItem('savedProducts') || '[]')
-        const updatedSaved = savedProducts.filter((id: number) => id !== productId)
-        localStorage.setItem('savedProducts', JSON.stringify(updatedSaved))
-      }
+      } 
       
       // Update local state
       setSavedProducts(prev => prev.filter(p => p.id !== productId))
@@ -162,6 +195,12 @@ const SavedProducts: React.FC = () => {
     })
   }
 
+  useEffect(() => {
+    if (user) {
+      fetchSavedProducts()
+    }
+  }, [user])
+
   if (loading) {
     return (
       <Box bg="#FFFDF1" minH="100vh" w="100%">
@@ -190,7 +229,7 @@ const SavedProducts: React.FC = () => {
           </Alert>
           <Button 
             leftIcon={<FiRefreshCw />} 
-            onClick={user ? fetchSavedProducts : fetchGuestSavedProducts}
+            onClick={() => fetchSavedProducts()}
             mt={4}
             colorScheme="blue"
           >
@@ -227,7 +266,7 @@ const SavedProducts: React.FC = () => {
             
             <Button 
               leftIcon={<FiRefreshCw />} 
-              onClick={user ? fetchSavedProducts : fetchGuestSavedProducts}
+              onClick={() => fetchSavedProducts()}
               colorScheme="blue" 
               variant="outline"
               size="sm"

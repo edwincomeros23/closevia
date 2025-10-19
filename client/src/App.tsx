@@ -23,6 +23,7 @@ import { ProductProvider } from './contexts/ProductContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
+import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
 
 // Loading overlay component
@@ -162,7 +163,11 @@ const AppContent: React.FC = () => {
               />
               <Route 
                 path="/saved-products" 
-                element={<SavedProducts />} 
+                element={
+                  <PrivateRoute>
+                    <SavedProducts />
+                  </PrivateRoute>
+                } 
               />
               <Route 
                 path="/admin" 

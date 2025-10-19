@@ -10,6 +10,7 @@ import (
 func main() {
 	createAdminUser()
 }
+
 func createAdminUser() {
 	// Initialize database
 	if err := database.InitDatabase(); err != nil {
