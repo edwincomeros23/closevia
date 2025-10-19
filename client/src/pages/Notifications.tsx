@@ -4,6 +4,7 @@ import {
   Container,
   VStack,
   HStack,
+  Input,
   Heading,
   Text,
   Badge,
@@ -19,7 +20,11 @@ import {
   useColorModeValue,
   Flex,
 } from '@chakra-ui/react'
+import { ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
+import { useProducts } from '../contexts/ProductContext'
+import { getFirstImage } from '../utils/imageUtils'
+import { formatPHP } from '../utils/currency'
 import { api } from '../services/api'
 
 interface Notification {
@@ -34,10 +39,16 @@ interface Notification {
 
 const Notifications: React.FC = () => {
   const { user } = useAuth()
+  const { products } = useProducts()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [query, setQuery] = useState('')
+  const itemsPerPage = 5
   const toast = useToast()
+  // dev helper: when true, show multiple pages for testing even if there are no notifications
+  const DEV_SHOW_PAGES_ALWAYS = true
   
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -53,6 +64,7 @@ const Notifications: React.FC = () => {
   const fetchNotifications = async () => {
     try {
       setLoading(true)
+      setCurrentPage(1)
       setError('')
       const response = await api.get('/api/notifications')
       const list: Notification[] = Array.isArray(response.data?.data) ? response.data.data : []
@@ -167,7 +179,46 @@ const Notifications: React.FC = () => {
     )
   }
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  // apply a simple case-insensitive filter by message or type
+  const filtered = notifications.filter(n => {
+    if (!query) return true
+    const q = query.toLowerCase()
+    if ((n.message || '').toLowerCase().includes(q)) return true
+    if ((n.type || '').toLowerCase().includes(q)) return true
+
+    // match against product titles from product context
+    try {
+      // find product IDs whose titles match the query
+      const matchingProductIds = new Set<number>()
+      for (const p of (products || [])) {
+        if (p && p.title && typeof p.title === 'string' && p.title.toLowerCase().includes(q)) {
+          matchingProductIds.add(p.id)
+        }
+      }
+
+      // check if notification data contains a product_id or embedded product that matches
+      const data = n.data as any
+      if (data) {
+        if (typeof data.product_id === 'number' && matchingProductIds.has(data.product_id)) return true
+        if (data.product && typeof data.product.id === 'number' && matchingProductIds.has(data.product.id)) return true
+        if (data.product && typeof data.product.title === 'string' && data.product.title.toLowerCase().includes(q)) return true
+      }
+    } catch (err) {
+      // ignore product matching errors
+    }
+
+    return false
+  })
+
+  const unreadCount = filtered.filter(n => !n.read).length
+  const totalPagesInitial = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
+  const totalPages = (DEV_SHOW_PAGES_ALWAYS && totalPagesInitial === 1) ? 5 : totalPagesInitial
+  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  // If the query looks like a product search, prepare matching products to show in the empty state
+  const matchingProducts = (query && products && products.length > 0)
+    ? products.filter((p: any) => p && p.title && p.title.toLowerCase().includes(query.toLowerCase()))
+    : []
 
   return (
     // outer Box sets the viewport background color requested
@@ -176,17 +227,25 @@ const Notifications: React.FC = () => {
         <VStack spacing={6} align="stretch">
           {/* Header + Actions in one row: title + compact subtext on left, actions on right */}
           <Flex align="center" justify="space-between" flexWrap="wrap">
-            <HStack spacing={3} align="center" minW={0}>
+            <VStack align="start" spacing={1} minW={0}>
               <Heading size="md" color="brand.500" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
                 Notifications
               </Heading>
               <Text color="gray.600" fontSize="sm" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
                 {unreadCount > 0 ? `${unreadCount} unread${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
               </Text>
-            </HStack>
+            </VStack>
 
-            {unreadCount > 0 && (
-              <Box mt={{ base: 3, md: 0 }}>
+            <HStack spacing={3} align="center" mt={{ base: 3, md: 0 }}>
+              <Input
+                placeholder="Search products or notifications..."
+                size="sm"
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setCurrentPage(1) }}
+                w={{ base: '160px', md: '240px' }}
+                bg={useColorModeValue('gray.50', 'gray.700')}
+              />
+              {unreadCount > 0 && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -195,23 +254,53 @@ const Notifications: React.FC = () => {
                 >
                   Mark All as Read
                 </Button>
-              </Box>
-            )}
+              )}
+            </HStack>
           </Flex>
 
+          
+
           {/* Notifications List */}
-          {notifications.length === 0 ? (
-            <Box textAlign="center" py={12}>
-              <Text fontSize="lg" color="gray.500" mb={4}>
-                No notifications yet
-              </Text>
-              <Text color="gray.400">
-                We'll notify you about orders, messages, and important updates here.
-              </Text>
-            </Box>
-          ) : (
-            <VStack spacing={4} align="stretch">
-              {notifications.map((notification) => (
+          <VStack spacing={4} align="stretch">
+            {paginated.length === 0 ? (
+              matchingProducts.length > 0 ? (
+                <VStack spacing={4} align="stretch">
+                  {matchingProducts.map((p: any) => (
+                    <Card key={p.id} bg={bgColor} border="1px" borderColor={borderColor} shadow="sm">
+                      <CardBody>
+                        <HStack spacing={4} align="center">
+                          <Box boxSize="72px">
+                            <img src={getFirstImage(p.image_urls)} alt={p.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
+                          </Box>
+                          <VStack align="start" spacing={1} flex={1}>
+                            <Heading size="sm">{p.title}</Heading>
+                            <Text fontSize="sm" color="gray.600" noOfLines={2}>{p.description}</Text>
+                            <HStack>
+                              {p.allow_buying && p.price ? (
+                                <Text fontWeight="bold" color="brand.500">{formatPHP(p.price)}</Text>
+                              ) : (
+                                <Badge colorScheme="green">Barter</Badge>
+                              )}
+                              <Button size="sm" variant="outline" onClick={() => window.location.href = `/products/${p.id}`}>View</Button>
+                            </HStack>
+                          </VStack>
+                        </HStack>
+                      </CardBody>
+                    </Card>
+                  ))}
+                </VStack>
+              ) : (
+                <Box textAlign="center" py={12}>
+                  <Text fontSize="lg" color="gray.500" mb={4}>
+                    No notifications yet
+                  </Text>
+                  <Text color="gray.400">
+                    We'll notify you about orders, messages, and important updates here.
+                  </Text>
+                </Box>
+              )
+            ) : (
+              paginated.map((notification) => (
                 <Card
                   key={notification.id}
                   bg={bgColor}
@@ -265,11 +354,35 @@ const Notifications: React.FC = () => {
                     )}
                   </CardBody>
                 </Card>
-              ))}
-            </VStack>
-          )}
+              ))
+            )}
+
+            {/* Pagination Controls are rendered below the Container for spacing */}
+          </VStack>
         </VStack>
       </Container>
+
+      {/* Lower pagination placed after content so it appears further down the page */}
+      {/* Floating pagination bar anchored bottom-right */}
+      <HStack
+        position="fixed"
+        bottom={{ base: 6, md: 10 }}
+        left="50%"
+        transform="translateX(-50%)"
+        bg="white"
+        boxShadow="md"
+        borderRadius="md"
+        px={3}
+        py={2}
+        spacing={2}
+        zIndex={50}
+      >
+        <Button size="sm" variant="outline" leftIcon={<ChevronLeftIcon />} onClick={() => setCurrentPage(p => Math.max(1, p - 1))} isDisabled={currentPage === 1}>Previous</Button>
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+          <Button key={p} size="sm" variant={p === currentPage ? 'solid' : 'outline'} onClick={() => setCurrentPage(p)}>{p}</Button>
+        ))}
+        <Button size="sm" variant="outline" rightIcon={<ChevronRightIcon />} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} isDisabled={currentPage === totalPages}>Next</Button>
+      </HStack>
     </Box>
   )
 }
