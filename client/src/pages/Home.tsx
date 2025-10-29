@@ -92,6 +92,49 @@ const Home: React.FC = () => {
   
   const toast = useToast()
 
+  // Category pills state
+  const categories = [
+    'All',
+    'Bag',
+    'School Supply',
+    'Book',
+    'Electronic',
+    'Clothing',
+    'Shoe',
+    'Accessory',
+    'Home & Living',
+    'Toy',
+    'Beauty',
+  ]
+  const [selectedCategory, setSelectedCategory] = useState<string>('All')
+
+  // Category colors mapping
+  const categoryColors: { [key: string]: string } = {
+    'Bag': '#FFE5D0',
+    'School Supply': '#CFF6DA',
+    'Book': '#B9EEDC',
+    'Electronic': '#D8D8FA',
+    'Clothing': '#B8C5FF',
+    'Shoe': '#FAD8EB',
+    'Accessory': '#FADCB8',
+    'Home & Living': '#FFE5D0',
+    'Toy': '#CFF6DA',
+    'Beauty': '#B9EEDC',
+  }
+
+  const handleCategorySelect = (category: string) => {
+    setSelectedCategory(category)
+    if (category === 'All') {
+      setSearchTerm('')
+      setFilters(prev => ({ ...prev, keyword: '', page: 1 }))
+      setHasSearched(true)
+      return
+    }
+    setSearchTerm(category)
+    setFilters(prev => ({ ...prev, keyword: category, page: 1 }))
+    setHasSearched(true)
+  }
+
   // Load products immediately on component mount
   useEffect(() => {
   // Always fetch latest 10 available products on mount (default feed)
@@ -290,36 +333,34 @@ const Home: React.FC = () => {
     setHasSearched(false)
   }
 
-  // Pinterest-style masonry grid
+  // Product card with square image and fixed info area for uniform height
   const renderProductCard = (product: any) => (
     <Box
       key={product.id}
       bg="white"
-      rounded="2xl"
+      rounded="lg"
       shadow="sm"
+      borderWidth="1px"
+      borderColor="gray.100"
       overflow="hidden"
-      transition="all 0.3s ease"
-      display="inline-block"
+      transition="all 0.2s ease"
       w="full"
-      mb={6}
-      sx={{ breakInside: 'avoid', WebkitColumnBreakInside: 'avoid', pageBreakInside: 'avoid' }}
-      _hover={{ 
-        shadow: 'lg', 
-        transform: 'translateY(-4px)',
-        cursor: 'pointer'
-      }}
+      _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => window.location.href = `/products/${product.id}`}
     >
-      {/* Product Image */}
-      <Box position="relative">
+      {/* Square Product Image */}
+      <Box position="relative" w="full" pt="100%" overflow="hidden">
         <Image
           src={getFirstImage(product.image_urls)}
           alt={product.title}
-          w="full"
-          h="auto"
+          position="absolute"
+          top={0}
+          left={0}
+          w="100%"
+          h="100%"
           objectFit="cover"
           loading="lazy"
-          fallbackSrc="https://via.placeholder.com/300x400?text=No+Image"
+          fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
         />
         
         {/* Premium Badge */}
@@ -367,18 +408,18 @@ const Home: React.FC = () => {
         )}
       </Box>
 
-      {/* Product Info */}
-      <Box p={4}>
-        <Heading size="sm" noOfLines={2} mb={2} color="gray.800">
+      {/* Product Info (fixed height) */}
+      <Box p={4} display="flex" flexDirection="column" h={{ base: 180, md: 192 }} overflow="hidden">
+        <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
           {product.title}
         </Heading>
         
-        <Text color="gray.600" noOfLines={2} mb={3} fontSize="sm">
+        <Text color="gray.600" noOfLines={2} mb={3} fontSize="sm" flexShrink={0}>
           {product.description || 'No description available'}
         </Text>
         
         {/* Price and Seller Info */}
-        <Flex justify="space-between" align="center" mb={3}>
+        <Flex justify="space-between" align="center" mb={3} flexShrink={0}>
             {product.allow_buying && product.price && !product.barter_only ? (
             <Text fontSize="lg" fontWeight="bold" color="brand.500">
               {formatPHP(product.price)}
@@ -389,13 +430,20 @@ const Home: React.FC = () => {
             </Text>
           )}
           
-          <Text fontSize="xs" color="gray.500">
-            by {product.seller_name || 'Unknown'}
+          <Text
+            as={RouterLink}
+            to={`/users/${product.seller_id}`}
+            fontSize="xs"
+            color="blue.600"
+            _hover={{ textDecoration: 'underline' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            Listed by {product.seller_name || 'Unknown'}
           </Text>
         </Flex>
 
         {/* Action Buttons */}
-        <HStack spacing={2}>
+        <HStack spacing={2} mt="auto">
           <Button
             size="sm"
             variant="outline"
@@ -637,7 +685,7 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box between header and main content (keeps same dimensions) */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '4xl', lg: '1160', xl: '1410px' }}
+        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1160', xl: '1140px' }}
         mx="auto"
         mb={4}
         px={{ base: 2, md: 4 }}
@@ -645,7 +693,7 @@ const Home: React.FC = () => {
         <Box
           position="relative"
           overflow="hidden"
-          h={{ base: 28, md: 28, lg: 32 }}    /* keep same chakra size tokens as before */
+          h={{ base: 28, md: 28, lg: 32 }}   
           rounded="lg"
           border="1px"
           borderColor="gray.200"
@@ -721,8 +769,68 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
+      {/* Horizontal category pills under search bar */}
+      <Box px={{ base: 3, md: 7 }} py={3}>
+        <Box
+          w="full"
+          maxW="8xl"
+          mx="auto"
+          rounded="lg"
+          px={{ base: 0, md: 0 }}
+          py={{ base: 0, md: 0 }}
+        >
+          <HStack
+            spacing={{ base: 2, md: 2.5 }}
+            overflowX="auto"
+            whiteSpace="nowrap"
+            align="center"
+            pb={2}
+            sx={{
+              '::-webkit-scrollbar': { 
+                display: 'none',
+                height: '0px',
+              },
+              msOverflowStyle: 'none',
+              scrollbarWidth: 'none',
+              '&': {
+                scrollBehavior: 'smooth',
+              }
+            }}
+          >
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat
+              const bgColor = isSelected ? 'gray.200' : (categoryColors[cat] || 'gray.100')
+              
+              return (
+                <Box key={cat} flexShrink={0}>
+                  <Button
+                    size="sm"
+                    rounded="full"
+                    px={{ base: 4, md: 5 }}
+                    py={{ base: 2, md: 2.5 }}
+                    fontWeight="medium"
+                    variant="solid"
+                    bg={bgColor}
+                    _hover={{ 
+                      filter: 'brightness(0.85)',
+                      transform: 'scale(1.02)',
+                    }}
+                    color="gray.800"
+                    border={isSelected ? '2px solid' : '1px solid'}
+                    borderColor={isSelected ? 'gray.400' : 'transparent'}
+                    onClick={() => handleCategorySelect(cat)}
+                    transition="all 0.2s ease"
+                  >
+                    {cat}
+                  </Button>
+                </Box>
+              )
+            })}
+          </HStack>
+        </Box>
+      </Box>
       {/* Main Content */}
-      <Box px={{ base: 3, md: 8 }} py={6}>
+      <Box px={{ base: 3, md: 8 }} py={0}>
         {/* Loading State */}
         {loading && !products.length && (
           <Center h="50vh">
@@ -755,29 +863,39 @@ const Home: React.FC = () => {
           </Box>
         )}
 
-        {/* Products Grid - Pinterest Style */}
-        {!loading && products.length > 0 && (
-          <Box maxW={{ base: 'calc(100% - 12px)', md: '25xl' }} mx="auto" mt={-6} px={{ base: 1, md: 0 }}>
-            <Box
-              sx={{
-                columnCount: { base: 2, sm: 2, md: 2, lg: 3, xl: 4 },
-                columnGap: '1rem',
-              }}
-            >
-              {products
-                .filter((p) => p.status === 'available') // 
-                .map(renderProductCard)}
-            </Box>
-            {/* Sentinel for infinite scroll */}
-            <Box ref={sentinelRef} h="1px" />
-            {/* Subtle loading indicator for loading more */}
-            {isLoadingMore && (
-              <Center py={6}>
-                <Spinner size="md" color="brand.500" />
-              </Center>
-            )}
+     {/* Products Grid - Shopee/Lazada Style */}
+     {!loading && products.length > 0 && (
+  <Box
+    maxW={{ base: 'calc(100% - 12px)', md: '100%' }}
+    mx="auto"
+    mt={4}
+    px={{ base: 2, md: 4 }}
+  >
+    <Grid
+      templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)', xl: 'repeat(5, 1fr)' }}
+      gap={{ base: 3, md: 4 }}
+      alignItems="start"
+    >
+      {products
+        .filter((p) => p.status === 'available')
+        .map((product) => (
+          <Box key={product.id}>
+            {renderProductCard(product)}
           </Box>
-        )}
+        ))}
+    </Grid>
+
+    {/* Sentinel for infinite scroll */}
+    <Box ref={sentinelRef} h="1px" />
+
+    {/* Subtle loading indicator for loading more */}
+    {isLoadingMore && (
+      <Center py={6}>
+        <Spinner size="md" color="brand.500" />
+      </Center>
+    )}
+  </Box>
+)}
 
         {/* Empty State (single, correct location) */}
         {!loading && products.length === 0 && (

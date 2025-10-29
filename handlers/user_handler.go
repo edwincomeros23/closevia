@@ -23,6 +23,23 @@ func NewUserHandler() *UserHandler {
 	}
 }
 
+func nullableString(p *string) interface{} {
+	if p == nil {
+		return nil
+	}
+	if *p == "" {
+		return nil
+	}
+	return *p
+}
+
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // Register handles user registration
 func (h *UserHandler) Register(c *fiber.Ctx) error {
 	var user models.UserRegister
@@ -43,6 +60,20 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		})
 	}
 
+	// WMSU prioritization: enforce WMSU email for non-organization accounts
+	if user.IsOrganization == false {
+		if len(user.Email) < 15 || (len(user.Email) >= 15 && user.Email[len(user.Email)-14:] != "@wmsu.edu.ph") {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "WMSU students must register with their @wmsu.edu.ph email",
+			})
+		}
+		// Department required for WMSU emails
+		if user.Department == nil || *user.Department == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please select your department/college"})
+		}
+	}
+
 	// Hash password
 	hashedPassword, err := utils.HashPassword(user.Password)
 	if err != nil {
@@ -54,8 +85,9 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	// Insert new user
 	result, err := h.db.Exec(
-		"INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY())",
 		user.Name, user.Email, hashedPassword, user.Role,
+		user.IsOrganization, false, user.OrgName, user.OrgLogoURL, nullableString(user.Department), user.Bio,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -80,10 +112,16 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		Message: "User registered successfully",
 		Data: fiber.Map{
 			"user": models.User{
-				ID:       int(userID),
-				Name:     user.Name,
-				Email:    user.Email,
-				Verified: false,
+				ID:             int(userID),
+				Name:           user.Name,
+				Email:          user.Email,
+				Verified:       false,
+				IsOrganization: user.IsOrganization,
+				OrgVerified:    false,
+				OrgName:        user.OrgName,
+				OrgLogoURL:     user.OrgLogoURL,
+				Department:     derefString(user.Department),
+				Bio:            user.Bio,
 			},
 			"token": token,
 		},
@@ -235,9 +273,9 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 
 	var user models.User
 	err = h.db.QueryRow(
-		"SELECT id, name, verified, created_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Verified, &user.CreatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &user.Department, &user.Bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{

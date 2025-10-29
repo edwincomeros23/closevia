@@ -64,80 +64,79 @@ const SavedProducts: React.FC = () => {
   
   const toast = useToast()
 
-  const fetchSavedProducts = async (retryCount = 0) => {
+  const fetchSavedProducts = async (retryCount = 0): Promise<void> => {
+    setLoading(true)
+    setError('')
+
+    // Guard: must be logged-in and have token
+    if (!user) {
+      setLoading(false)
+      setError('Please log in to view your saved products.')
+      // Optional: redirect after a short delay
+      // navigate('/login', { state: { from: '/saved-products' } })
+      return
+    }
+
+    const token = localStorage.getItem('clovia_token') || localStorage.getItem('token') || ''
+    if (!token) {
+      setLoading(false)
+      setError('No authentication token found')
+      console.warn('❌ Saved products fetch failed:\nMessage: No authentication token found')
+      return
+    }
+
     try {
-      setLoading(true)
-      setError('')
-      
-      if (!user) {
-        throw new Error('Authentication required')
-      }
-
-      const token = localStorage.getItem('token')
-      if (!token) {
-        throw new Error('No authentication token found')
-      }
-
-      console.log('Fetching saved products with token:', token.substring(0, 20) + '...')
-      
       const response = await api.get<SavedProductsResponse>('/api/users/saved-products', {
-        timeout: 8000,
+        timeout: 12000,
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
+          Authorization: `Bearer ${token}`,
+        },
       })
 
-      // Log full response for debugging
-      console.log('API Response:', {
-        status: response.status,
-        statusText: response.statusText,
-        data: response.data
-      })
-
-      // Validate response structure
-      if (!response.data || typeof response.data !== 'object') {
-        throw new Error('Invalid response format')
-      }
-
-      const products = response.data?.data?.data || []
-      
+      const products = response?.data?.data?.data ?? []
       if (!Array.isArray(products)) {
-        throw new Error('Products data is not an array')
+        throw new Error('Invalid response: products is not an array')
       }
-
-      console.log(`Successfully fetched ${products.length} saved products`)
       setSavedProducts(products)
+    } catch (error: unknown) {
+      // Normalize error details
+      const axErr = (error as AxiosError) || ({} as AxiosError)
+      const msg = (axErr?.message as string) || 'Unknown error'
+      const status = axErr?.response?.status
+      const statusText = axErr?.response?.statusText
+      const resp = axErr?.response?.data
+      const stack = (error as any)?.stack
 
-    } catch (err: any) {
-      const errorDetails = {
-        message: err.message,
-        status: err.response?.status,
-        statusText: err.response?.statusText,
-        responseData: err.response?.data,
-        stack: err.stack
-      }
-      
-      console.error('Saved products fetch error details:', errorDetails)
+      // Structured console output
+      console.error(
+        `❌ Saved products fetch failed:\n` +
+        `Message: ${msg}\n` +
+        `Status: ${status ?? 'N/A'}\n` +
+        `StatusText: ${statusText ?? 'N/A'}\n` +
+        `Response: ${typeof resp === 'string' ? resp : JSON.stringify(resp)}\n` +
+        `Stack: ${stack ?? 'N/A'}`
+      )
 
-      if (err.response?.status === 401) {
+      if (status === 401) {
         setError('Your session has expired. Please log in again.')
-        localStorage.removeItem('token') // Clear invalid token
+        localStorage.removeItem('clovia_token')
+        localStorage.removeItem('token')
         return
       }
 
-      if (err.response?.status === 500) {
-        if (retryCount < 2) {
-          console.log(`Retrying request (attempt ${retryCount + 1})...`)
-          const delay = Math.pow(2, retryCount) * 1000
-          await new Promise(resolve => setTimeout(resolve, delay))
-          return fetchSavedProducts(retryCount + 1)
-        }
-        setError('Server error. Please try again later.')
-      } else {
-        setError(err.response?.data?.message || err.message || 'Failed to load saved products')
+      // Exponential backoff retry for transient server errors
+      if (status && status >= 500 && retryCount < 2) {
+        const delayMs = Math.pow(2, retryCount) * 1000
+        await new Promise((r) => setTimeout(r, delayMs))
+        return fetchSavedProducts(retryCount + 1)
       }
+
+      let uiMessage = msg
+      if (resp && typeof resp === 'object') {
+        const anyResp = resp as { error?: string; message?: string }
+        uiMessage = anyResp.error || anyResp.message || msg
+      }
+      setError(uiMessage)
     } finally {
       setLoading(false)
     }

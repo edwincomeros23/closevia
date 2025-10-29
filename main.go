@@ -13,6 +13,7 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/handlers"
 	"github.com/xashathebest/clovia/middleware"
+	"github.com/xashathebest/clovia/services"
 )
 
 func main() {
@@ -180,6 +181,8 @@ func main() {
 	}
 
 	// Start server
+	// Start background trade timeout scheduler
+	services.StartTradeTimeoutScheduler(database.DB)
 	log.Printf("Starting Clovia server on port %s", port)
 	log.Fatal(app.Listen(":" + port))
 }

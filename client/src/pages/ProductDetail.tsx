@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -513,7 +513,13 @@ const ProductDetail: React.FC = () => {
                     flexDir={{ base: 'column', md: 'row' }}
                   >
                     <Box mb={{ base: 2, md: 0 }}>
-                      <Text color="gray.600" fontSize="lg">
+                      <Text
+                        as={RouterLink}
+                        to={`/users/${product.seller_id}`}
+                        color="blue.600"
+                        fontSize="lg"
+                        _hover={{ textDecoration: 'underline' }}
+                      >
                         Listed by {product.seller_name}
                       </Text>
                     </Box>
@@ -643,7 +649,15 @@ const ProductDetail: React.FC = () => {
           </Heading>
           <HStack spacing={4}>
             <Box>
-              <Text fontWeight="bold">{product.seller_name}</Text>
+              <Text
+                as={RouterLink}
+                to={`/users/${product.seller_id}`}
+                fontWeight="bold"
+                color="blue.600"
+                _hover={{ textDecoration: 'underline' }}
+              >
+                {product.seller_name}
+              </Text>
               <Text color="gray.600" fontSize="sm">
                 Member since {new Date().getFullYear()}
               </Text>

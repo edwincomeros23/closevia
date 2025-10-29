@@ -4,6 +4,13 @@ export interface User {
   email: string
   role: string
   verified: boolean
+  is_organization?: boolean
+  org_verified?: boolean
+  org_name?: string
+  org_logo_url?: string
+  department?: string
+  bio?: string
+  badges?: number[]
   created_at: string
   updated_at: string
 }
@@ -94,7 +101,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'completed' | 'cancelled'
+export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled'
 
 export interface TradeItem {
   id: number

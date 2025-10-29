@@ -202,18 +202,43 @@ const Profile: React.FC = () => {
                 <Avatar
                   size="xl"
                   name={user.name}
+                  src={user.org_logo_url}
                   bg="brand.500"
                   color="white"
                 />
                 <VStack align="start" spacing={2} flex={1}>
                   <HStack justify="space-between" w="full">
                     <VStack align="start" spacing={1}>
-                      <Heading size="lg">{user.name}</Heading>
+                      <HStack spacing={3} flexWrap="wrap">
+                        <Heading size="lg">{user.name}</Heading>
+                        {user.is_organization && (
+                          <Badge colorScheme="purple">Organization Verified</Badge>
+                        )}
+                        {user.verified && !user.is_organization && (
+                          <Badge colorScheme="green">Verified</Badge>
+                        )}
+                        {Array.isArray(user.badges) && user.badges.map((id) => {
+                          const map: Record<number, {label: string; color: string}> = {
+                            1: { label: 'Top Trader', color: 'purple' },
+                            2: { label: 'Fast Responder', color: 'blue' },
+                            3: { label: 'Trusted Seller', color: 'green' },
+                            4: { label: 'Campus Verified', color: 'teal' },
+                          }
+                          const meta = map[id] || { label: `Badge #${id}`, color: 'gray' }
+                          return (
+                            <Badge key={id} colorScheme={meta.color}>{meta.label}</Badge>
+                          )
+                        })}
+                      </HStack>
                       <Text color="gray.600">{user.email}</Text>
+                      {user.department && (
+                        <Text color="gray.600">Department: {user.department}</Text>
+                      )}
+                      {user.bio && (
+                        <Text color="gray.700">{user.bio}</Text>
+                      )}
                       <HStack spacing={2}>
-                        <Badge colorScheme={user.verified ? 'green' : 'yellow'}>
-                          {user.verified ? 'Verified' : 'Unverified'}
-                        </Badge>
+                        {/* badges moved near name */}
                         <Text fontSize="sm" color="gray.500">
                           Member since {new Date(user.created_at).toLocaleDateString()}
                         </Text>
