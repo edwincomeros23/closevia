@@ -6,7 +6,7 @@ interface AuthContextType {
   user: User | null
   token: string | null
   login: (email: string, password: string) => Promise<void>
-  register: (name: string, email: string, password: string) => Promise<void>
+  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<void>
   logout: () => void
   loading: boolean
 }
@@ -103,9 +103,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }
 
-  const register = async (name: string, email: string, password: string) => {
+  const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => {
     try {
-      const response = await api.post('/api/auth/register', { name, email, password })
+      const response = await api.post('/api/auth/register', payload)
       const { token: newToken, user: userData } = response.data.data
       
       setToken(newToken)

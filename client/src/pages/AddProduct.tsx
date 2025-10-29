@@ -153,11 +153,23 @@ const AddProduct: React.FC = () => {
       
       navigate('/dashboard')
     } catch (error: any) {
+      console.error('Product creation error:', {
+        status: error.response?.status,
+        message: error.response?.data?.message,
+        data: error.response?.data,
+        fullError: error,
+      })
+      
+      const errorMessage = 
+        error.response?.data?.message || 
+        error.response?.data?.error || 
+        'Failed to create product. Please check all fields and try again.'
+      
       toast({
-        title: 'Error',
-        description: error.message || 'Failed to create product',
+        title: 'Error creating product',
+        description: errorMessage,
         status: 'error',
-        duration: 3000,
+        duration: 5000,
         isClosable: true,
       })
     } finally {
