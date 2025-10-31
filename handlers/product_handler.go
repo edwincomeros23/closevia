@@ -70,6 +70,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
+	// Optional category override from client
+	categoryOverride := c.FormValue("category")
 
 	// Handle multiple file uploads
 	form, err := c.MultipartForm()
@@ -80,6 +82,13 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		})
 	}
 	files := form.File["images"]
+	// Enforce maximum of 8 images per item
+	if len(files) > 8 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "You can upload up to 8 images per product",
+		})
+	}
 	var imagePaths []string
 	for _, file := range files {
 		savePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), file.Filename)
@@ -104,6 +113,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Appraise product based on title and description
 	appraisal := services.AppraiseProduct(title, description)
 	category := appraisal.Category
+	if categoryOverride != "" {
+		category = categoryOverride
+	}
 
 	// If user did not specify a condition, use the appraised one
 	finalCondition := condition
@@ -192,8 +204,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	var args []interface{}
 
 	if keyword != "" {
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ?)"
-		args = append(args, "%"+keyword+"%", "%"+keyword+"%")
+		// Broaden keyword search across product attributes and seller/org details
+		whereClause += " AND ("
+		whereClause += "p.title LIKE ? OR p.description LIKE ?"
+		whereClause += " OR p.location LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ?"
+		whereClause += " OR u.name LIKE ? OR u.org_name LIKE ? OR u.department LIKE ?"
+		whereClause += ")"
+		like := "%" + keyword + "%"
+		args = append(args, like, like, like, like, like, like, like, like)
 	}
 
 	if minPriceStr != "" {

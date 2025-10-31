@@ -39,13 +39,14 @@ const AddProduct: React.FC = () => {
   const [formData, setFormData] = useState<ProductCreate>({
     title: '',
     description: '',
-    price: undefined,
+    price: 0, // Changed from undefined to 0 (default for barter-only)
     image_urls: [],
     premium: false,
     allow_buying: false,
     barter_only: true,
     location: '',
-    condition: 'Used', // Default value
+    condition: 'Used',
+    category: 'General',
   })
   
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -68,7 +69,7 @@ const AddProduct: React.FC = () => {
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return
     
-    const newFiles = Array.from(files)
+    let newFiles = Array.from(files)
     const validFiles = newFiles.filter(file => file.type.startsWith('image/'))
     
     if (validFiles.length === 0) {
@@ -82,15 +83,28 @@ const AddProduct: React.FC = () => {
       return
     }
 
-    setUploadedImages(prev => [...prev, ...validFiles])
-    
-    // Create preview URLs
-    validFiles.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setImagePreviewUrls(prev => [...prev, e.target?.result as string])
+    // Enforce a maximum of 8 images overall
+    setUploadedImages(prev => {
+      const remainingSlots = Math.max(0, 8 - prev.length)
+      const filesToAdd = validFiles.slice(0, remainingSlots)
+      if (filesToAdd.length < validFiles.length) {
+        toast({
+          title: 'Image limit reached',
+          description: 'You can upload up to 8 images per product.',
+          status: 'warning',
+          duration: 3000,
+          isClosable: true,
+        })
       }
-      reader.readAsDataURL(file)
+      // Create preview URLs for the files we actually accept
+      filesToAdd.forEach(file => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          setImagePreviewUrls(prevUrls => [...prevUrls, e.target?.result as string])
+        }
+        reader.readAsDataURL(file)
+      })
+      return [...prev, ...filesToAdd]
     })
   }, [toast])
 
@@ -116,32 +130,100 @@ const AddProduct: React.FC = () => {
   }
 
   const handleSubmit = async () => {
-    if (!user) return
+    // Validation before submission
+    if (!formData.title.trim()) {
+      toast({
+        title: 'Missing title',
+        description: 'Please enter a product title',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+    
+    if (!formData.description.trim()) {
+      toast({
+        title: 'Missing description',
+        description: 'Please enter a product description',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+    
+    if (uploadedImages.length === 0) {
+      toast({
+        title: 'No images',
+        description: 'Please upload at least one product image',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    if (formData.allow_buying && (!formData.price || formData.price <= 0)) {
+      toast({
+        title: 'Invalid price',
+        description: 'Please enter a valid price if buying is allowed',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    // Validate file sizes (5MB per image)
+    const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+    for (const file of uploadedImages) {
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: 'File too large',
+          description: `${file.name} exceeds 5MB limit`,
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        })
+        return
+      }
+    }
     
     setIsSubmitting(true)
     
     try {
-      // Create FormData for file upload
       const formDataToSend = new FormData()
-      formDataToSend.append('title', formData.title)
-      formDataToSend.append('description', formData.description)
-      if (formData.price) {
-        formDataToSend.append('price', formData.price.toString())
-      }
-      formDataToSend.append('premium', formData.premium.toString())
-      formDataToSend.append('allow_buying', formData.allow_buying.toString())
-      formDataToSend.append('barter_only', formData.barter_only.toString())
-      if (formData.location) {
-        formDataToSend.append('location', formData.location)
-      }
-      formDataToSend.append('condition', formData.condition)
       
-      // Append image files
+      // Append fields in exact order backend expects
+      formDataToSend.append('title', formData.title.trim())
+      formDataToSend.append('description', formData.description.trim())
+      formDataToSend.append('price', String(formData.price || 0))
+      formDataToSend.append('premium', formData.premium ? '1' : '0')
+      formDataToSend.append('allow_buying', formData.allow_buying ? '1' : '0')
+      formDataToSend.append('barter_only', formData.barter_only ? '1' : '0')
+      formDataToSend.append('location', formData.location?.trim() || '')
+      formDataToSend.append('condition', formData.condition || 'Used')
+      formDataToSend.append('category', formData.category || 'General')
+      
+      // Append each image file
       uploadedImages.forEach((file) => {
         formDataToSend.append('images', file)
       })
+
+      // Log what we're sending
+      console.log('=== FORM DATA CONTENTS ===')
+      for (let [key, value] of formDataToSend.entries()) {
+        if (value instanceof File) {
+          console.log(`${key}: File - ${value.name} (${value.size} bytes, ${value.type})`)
+        } else {
+          console.log(`${key}: ${value}`)
+        }
+      }
+      console.log('========================')
       
-      await createProduct(formDataToSend)
+      const response = await createProduct(formDataToSend)
+      console.log('Product created successfully:', response)
       
       toast({
         title: 'Product created!',
@@ -153,23 +235,27 @@ const AddProduct: React.FC = () => {
       
       navigate('/dashboard')
     } catch (error: any) {
-      console.error('Product creation error:', {
-        status: error.response?.status,
-        message: error.response?.data?.message,
-        data: error.response?.data,
-        fullError: error,
-      })
+      console.error('=== PRODUCT CREATION ERROR ===')
+      console.error('HTTP Status:', error.response?.status)
+      console.error('Backend Response:', error.response?.data)
+      console.error('Backend Message:', error.response?.data?.error || error.response?.data?.message)
+      console.error('Request URL:', error.config?.url)
+      console.error('Request Headers:', error.config?.headers)
+      console.error('Full Error:', error.message)
+      console.error('=============================')
       
       const errorMessage = 
+        error.response?.data?.details ||
         error.response?.data?.message || 
         error.response?.data?.error || 
-        'Failed to create product. Please check all fields and try again.'
+        error.message ||
+        'Failed to create product. Please check the browser console for details.'
       
       toast({
         title: 'Error creating product',
         description: errorMessage,
         status: 'error',
-        duration: 5000,
+        duration: 6000,
         isClosable: true,
       })
     } finally {
@@ -301,6 +387,29 @@ const AddProduct: React.FC = () => {
             </FormControl>
 
             <FormControl>
+              <FormLabel>Category</FormLabel>
+              <Select
+                placeholder="Select category"
+                value={formData.category}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('category', e.target.value)}
+                size="lg"
+              >
+                <option value="General">General</option>
+                <option value="Electronics">Electronics</option>
+                <option value="Mobile Phones">Mobile Phones</option>
+                <option value="Computers">Computers</option>
+                <option value="Home Appliances">Home Appliances</option>
+                <option value="Fashion">Fashion</option>
+                <option value="Collectibles">Collectibles</option>
+                <option value="Sports">Sports</option>
+                <option value="Toys">Toys</option>
+                <option value="Books">Books</option>
+                <option value="Automotive">Automotive</option>
+                <option value="Other">Other</option>
+              </Select>
+            </FormControl>
+
+            <FormControl>
               <FormLabel>Location</FormLabel>
               <Input
                 placeholder="City, State (optional)"
@@ -378,8 +487,10 @@ const AddProduct: React.FC = () => {
                   type="number"
                   placeholder="0.00"
                   value={formData.price || ''}
-                  onChange={(e) => handleInputChange('price', e.target.value ? Number(e.target.value) : undefined)}
+                  onChange={(e) => handleInputChange('price', e.target.value ? Number(e.target.value) : 0)}
                   size="lg"
+                  min="0"
+                  step="0.01"
                 />
                 <FormHelperText>Set a fair price for your product</FormHelperText>
               </FormControl>
@@ -390,7 +501,7 @@ const AddProduct: React.FC = () => {
                     Barter Only
                   </Badge>
                   <Text color="gray.600">
-                    This product will only accept item exchanges
+                    This product will only accept item exchanges. Price set to ₱0.00
                   </Text>
                 </VStack>
               </Center>
