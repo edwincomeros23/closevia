@@ -56,6 +56,7 @@ export interface ProductCreate {
   barter_only: boolean
   location?: string
   condition: string
+  category?: string
 }
 
 export interface ProductUpdate {

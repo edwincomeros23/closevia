@@ -235,11 +235,17 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if (product.location) {
           formData.append('location', product.location)
         }
+        if ((product as any).condition) {
+          formData.append('condition', (product as any).condition)
+        }
+        if ((product as any).category) {
+          formData.append('category', (product as any).category as string)
+        }
         
         // Add images if they exist
         if (product.image_urls && product.image_urls.length > 0) {
           // Convert base64 data URLs to files
-          for (let i = 0; i < product.image_urls.length; i++) {
+          for (let i = 0; i < product.image_urls.length && i < 8; i++) {
             const imageUrl = product.image_urls[i]
             if (imageUrl.startsWith('data:image/')) {
               // Convert base64 to blob
