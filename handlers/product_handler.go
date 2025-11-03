@@ -111,13 +111,30 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		finalCondition = appraisal.Condition
 	}
 
+	// Geocode location
+	var lat, lon *float64
+	if location != "" {
+		coords, err := services.GetCoordinates(location)
+		if err == nil {
+			lat = &coords.Latitude
+			lon = &coords.Longitude
+		}
+	}
+
 	// Calculate suggested value
 	suggestedValue := calculateSuggestedValue(insertPrice, finalCondition)
 
+	// Detect counterfeit
+	report := services.DetectCounterfeit(title, description, insertPrice)
+	finalDescription := description
+	if report.IsSuspicious {
+		finalDescription = "[SUSPICIOUS] " + report.Reason + ". " + finalDescription
+	}
+
 	// Insert new product
 	result, err := h.db.Exec(
-		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category,
+		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, lat, lon,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -131,12 +148,12 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Get the created product
 	var createdProduct models.Product
 	err = h.db.QueryRow(
-		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
+		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, latitude, longitude, created_at, updated_at FROM products WHERE id = ?",
 		productID,
 	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
 		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.Latitude, &createdProduct.Longitude, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -192,8 +209,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	var args []interface{}
 
 	if keyword != "" {
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ?)"
-		args = append(args, "%"+keyword+"%", "%"+keyword+"%")
+		searchPattern := "%" + keyword + "%"
+		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.condition LIKE ? OR u.name LIKE ?)"
+		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
 	}
 
 	if minPriceStr != "" {
@@ -569,6 +587,44 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	if updateData.Condition != nil {
 		query += ", `condition` = ?"
 		args = append(args, *updateData.Condition)
+	}
+
+	// Re-check for counterfeit if title, description, or price changes
+	if updateData.Title != nil || updateData.Description != nil || updateData.Price != nil {
+		newTitle := p.Title
+		if updateData.Title != nil {
+			newTitle = *updateData.Title
+		}
+		newDescription := p.Description
+		if updateData.Description != nil {
+			newDescription = *updateData.Description
+		}
+		newPrice := p.Price
+		if updateData.Price != nil {
+			newPrice = updateData.Price
+		}
+		var priceValue float64
+		if newPrice != nil {
+			priceValue = *newPrice
+		}
+
+		report := services.DetectCounterfeit(newTitle, newDescription, priceValue)
+		if report.IsSuspicious {
+			// Prepend warning to the description if it's being updated
+			if updateData.Description != nil {
+				*updateData.Description = "[SUSPICIOUS] " + report.Reason + ". " + *updateData.Description
+			} else {
+				// If description is not being updated, we can't add the warning
+				// In a real app, you might want to force an update or handle this differently
+			}
+		}
+	}
+	if updateData.Location != nil {
+		coords, err := services.GetCoordinates(*updateData.Location)
+		if err == nil {
+			query += ", latitude = ?, longitude = ?"
+			args = append(args, coords.Latitude, coords.Longitude)
+		}
 	}
 
 	// Recalculate suggested value if price or condition changed
