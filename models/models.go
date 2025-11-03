@@ -77,6 +77,8 @@ type User struct {
 	PasswordHash string    `json:"-" validate:"required"`
 	Role         string    `json:"role" validate:"oneof=user admin"`
 	Verified     bool      `json:"verified"`
+	Latitude     *float64  `json:"latitude,omitempty"`
+	Longitude    *float64  `json:"longitude,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -113,6 +115,8 @@ type Product struct {
 	Condition      string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	SuggestedValue int         `json:"suggested_value,omitempty"`
 	Category       string      `json:"category,omitempty"`
+	Latitude       *float64    `json:"latitude,omitempty"`
+	Longitude      *float64    `json:"longitude,omitempty"`
 	CreatedAt      time.Time   `json:"created_at"`
 	UpdatedAt      time.Time   `json:"updated_at"`
 }
@@ -138,7 +142,7 @@ type ProductUpdate struct {
 	Price       *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
 	ImageURLs   *StringArray `json:"image_urls,omitempty"`
 	Premium     *bool        `json:"premium,omitempty"`
-	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded"`
+	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked"`
 	AllowBuying *bool        `json:"allow_buying,omitempty"`
 	BarterOnly  *bool        `json:"barter_only,omitempty"`
 	Location    *string      `json:"location,omitempty"`
