@@ -235,11 +235,17 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if (product.location) {
           formData.append('location', product.location)
         }
+        if ((product as any).condition) {
+          formData.append('condition', (product as any).condition)
+        }
+        if ((product as any).category) {
+          formData.append('category', (product as any).category as string)
+        }
         
         // Add images if they exist
         if (product.image_urls && product.image_urls.length > 0) {
           // Convert base64 data URLs to files
-          for (let i = 0; i < product.image_urls.length; i++) {
+          for (let i = 0; i < product.image_urls.length && i < 8; i++) {
             const imageUrl = product.image_urls[i]
             if (imageUrl.startsWith('data:image/')) {
               // Convert base64 to blob
@@ -269,7 +275,19 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const updateProduct = async (id: number, product: ProductUpdate): Promise<void> => {
     try {
       setError(null)
-      await api.put(`/api/products/${id}`, product)
+      // Sanitize payload: do not send client-side data: URLs to the server
+      const payload: any = { ...product }
+      if (payload.image_urls && Array.isArray(payload.image_urls)) {
+        const nonData = payload.image_urls.filter((u: any) => typeof u === 'string' && !u.startsWith('data:'))
+        if (nonData.length > 0) {
+          payload.image_urls = nonData
+        } else {
+          // Remove image_urls entirely if only local previews were present
+          delete payload.image_urls
+        }
+      }
+
+      await api.put(`/api/products/${id}`, payload)
       safeSetProducts((products || []).map(p => p.id === id ? { ...p, ...product } : p))
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to update product')

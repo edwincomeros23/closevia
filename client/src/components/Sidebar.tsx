@@ -28,7 +28,7 @@ import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
 import { FaUserCircle, FaHome } from 'react-icons/fa'
-import { FiGrid } from 'react-icons/fi'
+import { FiGrid, FiHeart } from 'react-icons/fi'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -47,6 +47,7 @@ const Sidebar: React.FC = () => {
     { icon: FaHome, label: 'Home', path: '/home' },
     { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
+    { icon: FiHeart, label: 'Saved', path: '/saved-products' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
     // Add admin link only for admin users
     ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
@@ -56,6 +57,7 @@ const Sidebar: React.FC = () => {
     { icon: FaHome, label: 'Home', path: '/home' },
     { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
     { icon: AddIcon, label: 'Add Product', path: '/add-product' },
+    { icon: FiHeart, label: 'Saved', path: '/saved-products' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
     // Add admin link only for admin users
     ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),

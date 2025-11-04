@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -18,7 +18,32 @@ import {
   Divider,
   SimpleGrid,
   useToast,
+  IconButton,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  useDisclosure,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  Input,
+  Tooltip,
 } from '@chakra-ui/react'
+import { 
+  FiHeart, 
+  FiShare2, 
+  FiCopy, 
+  FiFacebook, 
+  FiTwitter, 
+  FiInstagram,
+  FiMail,
+  FiMessageCircle,
+  FiBookmark
+} from 'react-icons/fi'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product } from '../types'
@@ -38,11 +63,12 @@ const ProductDetail: React.FC = () => {
   const [isTradeOpen, setIsTradeOpen] = useState(false)
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
   const [selectedImage, setSelectedImage] = useState<string>('')
-  const [wishlistCount, setWishlistCount] = useState(0)
-  const [isWishlisted, setIsWishlisted] = useState(false)
+  const [isSaved, setIsSaved] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   
   const navigate = useNavigate()
   const toast = useToast()
+  const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure()
 
   useEffect(() => {
     if (id) {
@@ -213,6 +239,176 @@ const ProductDetail: React.FC = () => {
     }
   }
 
+  // Check if product is saved on component mount
+  useEffect(() => {
+    if (product && user) {
+      checkSavedStatus()
+    } else if (product && !user) {
+      // Check localStorage for guest users
+      const savedProducts = JSON.parse(localStorage.getItem('savedProducts') || '[]')
+      setIsSaved(savedProducts.includes(product.id))
+    }
+  }, [product, user])
+
+  const checkSavedStatus = async () => {
+    if (!product || !user) return
+    
+    try {
+      const response = await api.get(`/api/users/saved-products/${product.id}`)
+      setIsSaved(response.data.data.isSaved)
+    } catch (error) {
+      console.log('API check failed, using localStorage fallback:', error)
+      // If API fails, check localStorage as fallback
+      const savedProducts = JSON.parse(localStorage.getItem('savedProducts') || '[]')
+      setIsSaved(savedProducts.includes(product.id))
+    }
+  }
+
+  const handleSaveToggle = async () => {
+    if (!product) return
+
+    if (!user) {
+      // For guest users, use localStorage
+      const savedProducts = JSON.parse(localStorage.getItem('savedProducts') || '[]')
+      if (isSaved) {
+        const updatedSaved = savedProducts.filter((id: number) => id !== product.id)
+        localStorage.setItem('savedProducts', JSON.stringify(updatedSaved))
+        setIsSaved(false)
+        toast({
+          title: 'Removed from saved',
+          description: 'Product removed from your saved items',
+          status: 'info',
+          duration: 2000,
+          isClosable: true,
+        })
+      } else {
+        savedProducts.push(product.id)
+        localStorage.setItem('savedProducts', JSON.stringify(savedProducts))
+        setIsSaved(true)
+        toast({
+          title: 'Saved to watchlist',
+          description: 'Product added to your saved items',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        })
+      }
+      return
+    }
+
+    // For logged-in users, use API
+    try {
+      setIsSaving(true)
+      if (isSaved) {
+        await api.delete(`/api/users/saved-products/${product.id}`)
+        setIsSaved(false)
+        toast({
+          title: 'Removed from saved',
+          description: 'Product removed from your saved items',
+          status: 'info',
+          duration: 2000,
+          isClosable: true,
+        })
+      } else {
+        await api.post(`/api/users/saved-products`, { product_id: product.id })
+        setIsSaved(true)
+        toast({
+          title: 'Saved to watchlist',
+          description: 'Product added to your saved items',
+          status: 'success',
+          duration: 2000,
+          isClosable: true,
+        })
+      }
+    } catch (error: any) {
+      console.error('Save/unsave error:', error)
+      let errorMessage = 'Failed to update saved status'
+      
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Product not found'
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Please log in to save products'
+      } else if (error.response?.status === 409) {
+        errorMessage = 'Product already saved'
+      }
+      
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleShare = () => {
+    onShareOpen()
+  }
+
+  const copyToClipboard = async () => {
+    const url = window.location.href
+    try {
+      await navigator.clipboard.writeText(url)
+      toast({
+        title: 'Link copied!',
+        description: 'Product link copied to clipboard',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      })
+    } catch (error) {
+      toast({
+        title: 'Copy failed',
+        description: 'Failed to copy link to clipboard',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    }
+  }
+
+  const shareToSocial = (platform: string) => {
+    const url = encodeURIComponent(window.location.href)
+    const title = encodeURIComponent(product?.title || 'Check out this product')
+    const description = encodeURIComponent(product?.description || '')
+
+    let shareUrl = ''
+    switch (platform) {
+      case 'facebook':
+        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`
+        break
+      case 'twitter':
+        shareUrl = `https://twitter.com/intent/tweet?url=${url}&text=${title}`
+        break
+      case 'instagram':
+        // Instagram doesn't support direct URL sharing, so we'll copy the link
+        copyToClipboard()
+        toast({
+          title: 'Instagram sharing',
+          description: 'Link copied! Paste it in your Instagram story or post',
+          status: 'info',
+          duration: 3000,
+          isClosable: true,
+        })
+        return
+      case 'email':
+        shareUrl = `mailto:?subject=${title}&body=${description}%0A%0A${url}`
+        break
+      case 'whatsapp':
+        shareUrl = `https://wa.me/?text=${title}%20${url}`
+        break
+    }
+
+    if (shareUrl) {
+      window.open(shareUrl, '_blank', 'width=600,height=400')
+    }
+  }
+
   if (loading) {
     return (
       <Box bg="#FFFDF1" minH="100vh" w="100%">
@@ -312,6 +508,43 @@ const ProductDetail: React.FC = () => {
                     </Text>
                   </Flex>
 
+                  {/* Save/Watch and Share buttons */}
+                  <Flex justify="space-between" align="center" mt={4}>
+                    <HStack spacing={2}>
+                      <Tooltip label={isSaved ? "Remove from saved" : "Save to watchlist"}>
+                        <IconButton
+                          aria-label={isSaved ? "Remove from saved" : "Save to watchlist"}
+                          icon={<FiHeart />}
+                          colorScheme={isSaved ? "red" : "gray"}
+                          variant={isSaved ? "solid" : "outline"}
+                          color={isSaved ? "white" : "red.500"}
+                          isLoading={isSaving}
+                          onClick={handleSaveToggle}
+                          size="md"
+                        />
+                      </Tooltip>
+                      <Text fontSize="sm" color="gray.600">
+                        {isSaved ? "Saved" : "Save"}
+                      </Text>
+                    </HStack>
+
+                    <HStack spacing={2}>
+                      <Tooltip label="Share this product">
+                        <IconButton
+                          aria-label="Share product"
+                          icon={<FiShare2 />}
+                          colorScheme="blue"
+                          variant="outline"
+                          onClick={handleShare}
+                          size="md"
+                        />
+                      </Tooltip>
+                      <Text fontSize="sm" color="gray.600">
+                        Share
+                      </Text>
+                    </HStack>
+                  </Flex>
+
                   {/* Premium + Status badges aligned together with gap 2 */}
                   <HStack spacing={2} mt={2} align="center">
                     {product.premium && (
@@ -352,7 +585,13 @@ const ProductDetail: React.FC = () => {
                     flexDir={{ base: 'column', md: 'row' }}
                   >
                     <Box mb={{ base: 2, md: 0 }}>
-                      <Text color="gray.600" fontSize="lg">
+                      <Text
+                        as={RouterLink}
+                        to={`/users/${product.seller_id}`}
+                        color="blue.600"
+                        fontSize="lg"
+                        _hover={{ textDecoration: 'underline' }}
+                      >
                         Listed by {product.seller_name}
                       </Text>
                     </Box>
@@ -494,7 +733,15 @@ const ProductDetail: React.FC = () => {
           </Heading>
           <HStack spacing={4}>
             <Box>
-              <Text fontWeight="bold">{product.seller_name}</Text>
+              <Text
+                as={RouterLink}
+                to={`/users/${product.seller_id}`}
+                fontWeight="bold"
+                color="blue.600"
+                _hover={{ textDecoration: 'underline' }}
+              >
+                {product.seller_name}
+              </Text>
               <Text color="gray.600" fontSize="sm">
                 Member since {new Date().getFullYear()}
               </Text>
@@ -511,6 +758,94 @@ const ProductDetail: React.FC = () => {
         </Box>
       </VStack>
       <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
+      
+      {/* Share Modal */}
+      <Modal isOpen={isShareOpen} onClose={onShareClose} size="md">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Share this product</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <VStack spacing={4} align="stretch">
+              {/* Copy Link */}
+              <Box>
+                <Text fontWeight="medium" mb={2}>Copy Link</Text>
+                <HStack>
+                  <Input
+                    value={window.location.href}
+                    readOnly
+                    size="sm"
+                    bg="gray.50"
+                  />
+                  <Button
+                    leftIcon={<FiCopy />}
+                    onClick={copyToClipboard}
+                    size="sm"
+                    colorScheme="blue"
+                  >
+                    Copy
+                  </Button>
+                </HStack>
+              </Box>
+
+              <Divider />
+
+              {/* Social Media Sharing */}
+              <Box>
+                <Text fontWeight="medium" mb={3}>Share on Social Media</Text>
+                <SimpleGrid columns={2} spacing={3}>
+                  <Button
+                    leftIcon={<FiFacebook />}
+                    colorScheme="blue"
+                    variant="outline"
+                    onClick={() => shareToSocial('facebook')}
+                    size="sm"
+                  >
+                    Facebook
+                  </Button>
+                  <Button
+                    leftIcon={<FiTwitter />}
+                    colorScheme="blue"
+                    variant="outline"
+                    onClick={() => shareToSocial('twitter')}
+                    size="sm"
+                  >
+                    Twitter
+                  </Button>
+                  <Button
+                    leftIcon={<FiInstagram />}
+                    colorScheme="pink"
+                    variant="outline"
+                    onClick={() => shareToSocial('instagram')}
+                    size="sm"
+                  >
+                    Instagram
+                  </Button>
+                  <Button
+                    leftIcon={<FiMessageCircle />}
+                    colorScheme="green"
+                    variant="outline"
+                    onClick={() => shareToSocial('whatsapp')}
+                    size="sm"
+                  >
+                    WhatsApp
+                  </Button>
+                  <Button
+                    leftIcon={<FiMail />}
+                    colorScheme="gray"
+                    variant="outline"
+                    onClick={() => shareToSocial('email')}
+                    size="sm"
+                    gridColumn="span 2"
+                  >
+                    Email
+                  </Button>
+                </SimpleGrid>
+              </Box>
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
       </Container>
     </Box>
    )
