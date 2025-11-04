@@ -86,11 +86,21 @@ func CreateTables() error {
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			title VARCHAR(255) NOT NULL,
 			description TEXT,
-			price DECIMAL(10,2) NOT NULL,
+			price DECIMAL(10,2),
+			image_urls JSON,
 			image_url VARCHAR(500),
 			seller_id INT NOT NULL,
 			premium BOOLEAN DEFAULT FALSE,
-			status ENUM('available', 'sold') DEFAULT 'available',
+			status ENUM('available', 'sold', 'traded', 'locked') DEFAULT 'available',
+			allow_buying BOOLEAN DEFAULT TRUE,
+			barter_only BOOLEAN DEFAULT FALSE,
+			location VARCHAR(255),
+			condition VARCHAR(50),
+			suggested_value INT,
+			category VARCHAR(100),
+			latitude FLOAT,
+			longitude FLOAT,
+			bidding_type ENUM('none', 'blind', 'open') DEFAULT 'none',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE
@@ -212,6 +222,25 @@ func CreateTables() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS comments (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			product_id INT NOT NULL,
+			user_id INT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS wishlists (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			product_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_wishlist_item (user_id, product_id)
+		)`,
 	}
 
 	for _, query := range queries {
@@ -244,6 +273,10 @@ func CreateTables() error {
 		"CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)",
 		"CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)",
 		"CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type)",
+		"CREATE INDEX IF NOT EXISTS idx_comments_product ON comments(product_id)",
+		"CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_wishlists_user ON wishlists(user_id)",
+		"CREATE INDEX IF NOT EXISTS idx_wishlists_product ON wishlists(product_id)",
 	}
 
 	for _, query := range indexQueries {
