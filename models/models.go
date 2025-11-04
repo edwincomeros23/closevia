@@ -95,6 +95,16 @@ func (a StringArray) Value() (driver.Value, error) {
 
 // User represents a user in the system
 type User struct {
+	ID           int       `json:"id"`
+	Name         string    `json:"name" validate:"required,min=2,max=255"`
+	Email        string    `json:"email" validate:"required,email"`
+	PasswordHash string    `json:"-" validate:"required"`
+	Role         string    `json:"role" validate:"oneof=user admin"`
+	Verified     bool      `json:"verified"`
+	Latitude     *float64  `json:"latitude,omitempty"`
+	Longitude    *float64  `json:"longitude,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 	ID             int       `json:"id"`
 	Name           string    `json:"name" validate:"required,min=2,max=255"`
 	Email          string    `json:"email" validate:"required,email"`
@@ -149,8 +159,12 @@ type Product struct {
 	Condition      string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	SuggestedValue int         `json:"suggested_value,omitempty"`
 	Category       string      `json:"category,omitempty"`
+	Latitude       *float64    `json:"latitude,omitempty"`
+	Longitude      *float64    `json:"longitude,omitempty"`
 	CreatedAt      time.Time   `json:"created_at"`
 	UpdatedAt      time.Time   `json:"updated_at"`
+	BiddingType    string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	WishlistCount  int         `json:"wishlist_count,omitempty"`
 }
 
 // ProductCreate represents data for creating a product
@@ -174,12 +188,13 @@ type ProductUpdate struct {
 	Price       *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
 	ImageURLs   *StringArray `json:"image_urls,omitempty"`
 	Premium     *bool        `json:"premium,omitempty"`
-	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded"`
+	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked"`
 	AllowBuying *bool        `json:"allow_buying,omitempty"`
 	BarterOnly  *bool        `json:"barter_only,omitempty"`
 	Location    *string      `json:"location,omitempty"`
 	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	Category    *string      `json:"category,omitempty"`
+	BiddingType *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
 }
 
 // Order represents an order
@@ -294,6 +309,26 @@ type PremiumListing struct {
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// Comment represents a comment on a product listing
+type Comment struct {
+	ID            int       `json:"id"`
+	ProductID     int       `json:"product_id"`
+	UserID        int       `json:"user_id"`
+	Content       string    `json:"content" validate:"required"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	CommenterName string    `json:"commenter_name,omitempty"`
+}
+
+// Wishlist represents a user's wishlist item
+type Wishlist struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	ProductID int       `json:"product_id"`
+	CreatedAt time.Time `json:"created_at"`
+	Product   *Product  `json:"product,omitempty"`
 }
 
 // SearchFilters represents search and filter parameters
