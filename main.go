@@ -103,6 +103,8 @@ func main() {
 	tradeHandler := handlers.NewTradeHandler()
 	notificationHandler := handlers.NewNotificationHandler()
 	adminHandler := handlers.NewAdminHandler()
+	commentHandler := handlers.NewCommentHandler()
+	wishlistHandler := handlers.NewWishlistHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -134,6 +136,8 @@ func main() {
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
 	products.Delete("/:id", middleware.AuthMiddleware(), productHandler.DeleteProduct)
+	products.Get("/:id/comments", commentHandler.GetComments)
+	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 
 	// Order routes (authentication required)
 	orders := api.Group("/orders")
@@ -173,6 +177,12 @@ func main() {
 	// Admin routes
 	admin := api.Group("/admin")
 	admin.Get("/stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminStats)
+
+	// Wishlist routes
+	wishlist := api.Group("/wishlist")
+	wishlist.Get("/", middleware.AuthMiddleware(), wishlistHandler.GetWishlist)
+	wishlist.Post("/", middleware.AuthMiddleware(), wishlistHandler.AddToWishlist)
+	wishlist.Delete("/:productId", middleware.AuthMiddleware(), wishlistHandler.RemoveFromWishlist)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")
