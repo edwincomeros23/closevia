@@ -16,12 +16,16 @@ import Settings from './pages/Settings'
 import Trades from './pages/Trades'
 import Offers from './pages/Offers'
 import Profile from './pages/Profile'
+import UserProfile from './pages/UserProfile'
+import ProductsList from './pages/ProductsList'
+import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProductProvider } from './contexts/ProductContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
+import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
 
 // Loading overlay component
@@ -95,6 +99,7 @@ const AppContent: React.FC = () => {
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/products/:id" element={<ProductDetail />} />
+              <Route path="/products" element={<ProductsList />} />
               <Route 
                 path="/dashboard" 
                 element={
@@ -135,6 +140,7 @@ const AppContent: React.FC = () => {
                   </ProtectedRoute>
                 } 
               />
+              <Route path="/users/:id" element={<UserProfile />} />
               <Route 
                 path="/settings" 
                 element={
@@ -157,6 +163,14 @@ const AppContent: React.FC = () => {
                   <ProtectedRoute>
                     <Offers />
                   </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/saved-products" 
+                element={
+                  <PrivateRoute>
+                    <SavedProducts />
+                  </PrivateRoute>
                 } 
               />
               <Route 

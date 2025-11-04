@@ -30,20 +30,38 @@ type sseEvent struct {
 
 // Stream provides an SSE stream for the authenticated user
 func (h *ChatHandler) Stream(c *fiber.Ctx) error {
+	// Try to get user ID from context first
 	userID, ok := middleware.GetUserIDFromContext(c)
+	
+	// If not in context, try to get from token query parameter
 	if !ok {
-		// Allow token via query for SSE clients that can't set headers
-		token := c.Query("token", "")
+		token := c.Query("token")
 		if token == "" {
-			return fiber.ErrUnauthorized
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"success": false,
+				"error":   "Missing authentication token",
+			})
 		}
+
+		// Set the token in the Authorization header
 		c.Request().Header.Set("Authorization", "Bearer "+token)
-		if err := middleware.AuthMiddleware()(c); err != nil {
-			return fiber.ErrUnauthorized
+		
+		// Validate the token
+		err := middleware.AuthMiddleware()(c)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"success": false,
+				"error":   "Invalid or expired token",
+			})
 		}
+
+		// Try to get user ID again after validation
 		userID, ok = middleware.GetUserIDFromContext(c)
 		if !ok {
-			return fiber.ErrUnauthorized
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"success": false,
+				"error":   "Failed to authenticate user",
+			})
 		}
 	}
 	c.Set("Content-Type", "text/event-stream")

@@ -23,6 +23,23 @@ func NewUserHandler() *UserHandler {
 	}
 }
 
+func nullableString(p *string) interface{} {
+	if p == nil {
+		return nil
+	}
+	if *p == "" {
+		return nil
+	}
+	return *p
+}
+
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // Register handles user registration
 func (h *UserHandler) Register(c *fiber.Ctx) error {
 	var user models.UserRegister
@@ -43,6 +60,20 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		})
 	}
 
+	// WMSU prioritization: enforce WMSU email for non-organization accounts
+	if user.IsOrganization == false {
+		if len(user.Email) < 15 || (len(user.Email) >= 15 && user.Email[len(user.Email)-14:] != "@wmsu.edu.ph") {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "WMSU students must register with their @wmsu.edu.ph email",
+			})
+		}
+		// Department required for WMSU emails
+		if user.Department == nil || *user.Department == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please select your department/college"})
+		}
+	}
+
 	// Hash password
 	hashedPassword, err := utils.HashPassword(user.Password)
 	if err != nil {
@@ -54,8 +85,9 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	// Insert new user
 	result, err := h.db.Exec(
-		"INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY())",
 		user.Name, user.Email, hashedPassword, user.Role,
+		user.IsOrganization, false, user.OrgName, user.OrgLogoURL, nullableString(user.Department), user.Bio,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -80,10 +112,16 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		Message: "User registered successfully",
 		Data: fiber.Map{
 			"user": models.User{
-				ID:       int(userID),
-				Name:     user.Name,
-				Email:    user.Email,
-				Verified: false,
+				ID:             int(userID),
+				Name:           user.Name,
+				Email:          user.Email,
+				Verified:       false,
+				IsOrganization: user.IsOrganization,
+				OrgVerified:    false,
+				OrgName:        user.OrgName,
+				OrgLogoURL:     user.OrgLogoURL,
+				Department:     derefString(user.Department),
+				Bio:            user.Bio,
 			},
 			"token": token,
 		},
@@ -235,9 +273,9 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 
 	var user models.User
 	err = h.db.QueryRow(
-		"SELECT id, name, verified, created_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Verified, &user.CreatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &user.Department, &user.Bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{
@@ -297,6 +335,195 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 		Success: true,
 		Data: models.PaginatedResponse{
 			Data:       users,
+			Total:      total,
+			Page:       page,
+			Limit:      limit,
+			TotalPages: totalPages,
+		},
+	})
+}
+
+// SaveProduct saves a product to user's watchlist
+func (h *UserHandler) SaveProduct(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+
+	var req struct {
+		ProductID int `json:"product_id"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid request body",
+		})
+	}
+
+	// Check if product exists
+	var productExists bool
+	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND deleted_at IS NULL)", req.ProductID).Scan(&productExists)
+	if err != nil || !productExists {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
+		})
+	}
+
+	// Check if already saved
+	var alreadySaved bool
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)", userID, req.ProductID).Scan(&alreadySaved)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to check saved status",
+		})
+	}
+
+	if alreadySaved {
+		return c.Status(409).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product already saved",
+		})
+	}
+
+	// Save the product
+	_, err = h.db.Exec("INSERT INTO saved_products (user_id, product_id, created_at) VALUES (?, ?, NOW())", userID, req.ProductID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to save product",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Product saved successfully",
+	})
+}
+
+// UnsaveProduct removes a product from user's watchlist
+func (h *UserHandler) UnsaveProduct(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	// Remove the saved product
+	result, err := h.db.Exec("DELETE FROM saved_products WHERE user_id = ? AND product_id = ?", userID, productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to remove saved product",
+		})
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Saved product not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Product removed from saved items",
+	})
+}
+
+// CheckSavedProduct checks if a product is saved by the user
+func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	var isSaved bool
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)", userID, productID).Scan(&isSaved)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to check saved status",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"isSaved": isSaved,
+		},
+	})
+}
+
+// GetSavedProducts gets all saved products for a user
+func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+	offset := (page - 1) * limit
+
+	// Get total count
+	var total int
+	err := h.db.QueryRow("SELECT COUNT(*) FROM saved_products WHERE user_id = ?", userID).Scan(&total)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get saved products count",
+		})
+	}
+
+	// Get saved products with product details
+	rows, err := h.db.Query(`
+		SELECT 
+			p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
+			p.premium, p.status, p.allow_buying, p.barter_only, p.location,
+			p.condition, p.suggested_value, p.category, p.created_at, p.updated_at,
+			u.name as seller_name,
+			sp.created_at as saved_at
+		FROM saved_products sp
+		JOIN products p ON p.id = sp.product_id
+		JOIN users u ON u.id = p.seller_id
+		WHERE sp.user_id = ? AND p.deleted_at IS NULL
+		ORDER BY sp.created_at DESC
+		LIMIT ? OFFSET ?
+	`, userID, limit, offset)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get saved products",
+		})
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		var savedAt string
+		err := rows.Scan(
+			&product.ID, &product.Title, &product.Description, &product.Price,
+			&product.ImageURLs, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&product.Condition, &product.SuggestedValue, &product.Category,
+			&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &savedAt,
+		)
+		if err != nil {
+			continue
+		}
+		products = append(products, product)
+	}
+
+	totalPages := (total + limit - 1) / limit
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: models.PaginatedResponse{
+			Data:       products,
 			Total:      total,
 			Page:       page,
 			Limit:      limit,

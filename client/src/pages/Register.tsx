@@ -34,6 +34,11 @@ const Register: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [isOrganization, setIsOrganization] = useState(false)
+  const [orgName, setOrgName] = useState('')
+  const [orgLogoUrl, setOrgLogoUrl] = useState('')
+  const [department, setDepartment] = useState('')
+  const [bio, setBio] = useState('')
   const [error, setError] = useState('')
   
   const { register } = useAuth()
@@ -63,10 +68,29 @@ const Register: React.FC = () => {
       ? `${firstName} ${middleInitial} ${lastName}`.trim()
       : `${firstName} ${lastName}`.trim()
 
+    // Enforce WMSU email for non-organization registrations
+    if (!isOrganization && !email.toLowerCase().endsWith('@wmsu.edu.ph')) {
+      setError('WMSU students must register with their @wmsu.edu.ph email')
+      return
+    }
+    if (!isOrganization && email.toLowerCase().endsWith('@wmsu.edu.ph') && !department) {
+      setError('Please select your department/college')
+      return
+    }
+
     try {
       setLoading(true)
       setError('')
-      await register(fullName, email, password)
+      await register({
+        name: fullName,
+        email,
+        password,
+        is_organization: isOrganization,
+        org_name: isOrganization ? orgName : undefined,
+        org_logo_url: isOrganization ? orgLogoUrl : undefined,
+        department: !isOrganization ? department : undefined,
+        bio: bio || undefined,
+      })
       
       toast({
         title: 'Registration successful!',
@@ -165,6 +189,44 @@ const Register: React.FC = () => {
                     placeholder="Enter your email"
                     size="lg"
                   />
+                </FormControl>
+
+                {/* Organization Toggle */}
+                <FormControl>
+                  <HStack justify="space-between">
+                    <FormLabel fontSize="sm" fontWeight="medium" mb={0}>Register as Organization</FormLabel>
+                    <Button size="sm" variant={isOrganization ? 'solid' : 'outline'} colorScheme="brand" onClick={() => setIsOrganization(!isOrganization)}>
+                      {isOrganization ? 'Organization' : 'Individual'}
+                    </Button>
+                  </HStack>
+                </FormControl>
+
+                {/* Organization Fields */}
+                {isOrganization && (
+                  <VStack w="full" spacing={4} align="stretch">
+                    <FormControl isRequired>
+                      <FormLabel fontSize="sm" fontWeight="medium">Organization Name</FormLabel>
+                      <Input value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="e.g., CCS Student Council" size="lg" />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel fontSize="sm" fontWeight="medium">Organization Logo URL</FormLabel>
+                      <Input value={orgLogoUrl} onChange={(e) => setOrgLogoUrl(e.target.value)} placeholder="https://..." size="lg" />
+                    </FormControl>
+                  </VStack>
+                )}
+
+                {/* WMSU Department for students */}
+                {!isOrganization && email.toLowerCase().endsWith('@wmsu.edu.ph') && (
+                  <FormControl isRequired>
+                    <FormLabel fontSize="sm" fontWeight="medium">Department / College</FormLabel>
+                    <Input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="e.g., CCS, COE, CTE" size="lg" />
+                  </FormControl>
+                )}
+
+                {/* Bio */}
+                <FormControl>
+                  <FormLabel fontSize="sm" fontWeight="medium">Short Bio</FormLabel>
+                  <Input value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Tell others about you or your org" size="lg" />
                 </FormControl>
 
                 <FormControl isRequired>

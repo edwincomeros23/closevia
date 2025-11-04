@@ -11,6 +11,30 @@ import (
 // StringArray is a custom type for scanning JSON arrays from SQL
 type StringArray []string
 
+// IntArray is a custom type for scanning JSON arrays of integers from SQL
+type IntArray []int
+
+// MarshalJSON ensures []int is marshalled as a JSON array
+func (a IntArray) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]int(a))
+}
+
+// Scan implements the sql.Scanner interface for []int
+func (a *IntArray) Scan(value interface{}) error {
+	if value == nil {
+		*a = IntArray{}
+		return nil
+	}
+	switch v := value.(type) {
+	case []byte:
+		return json.Unmarshal(v, a)
+	case string:
+		return json.Unmarshal([]byte(v), a)
+	default:
+		return errors.New("unsupported type for IntArray")
+	}
+}
+
 // UnmarshalJSON accepts either a JSON array, null, or a JSON-encoded string containing an array.
 func (a *StringArray) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
@@ -81,6 +105,21 @@ type User struct {
 	Longitude    *float64  `json:"longitude,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	ID             int       `json:"id"`
+	Name           string    `json:"name" validate:"required,min=2,max=255"`
+	Email          string    `json:"email" validate:"required,email"`
+	PasswordHash   string    `json:"-" validate:"required"`
+	Role           string    `json:"role" validate:"oneof=user admin"`
+	Verified       bool      `json:"verified"`
+	IsOrganization bool      `json:"is_organization"`
+	OrgVerified    bool      `json:"org_verified"`
+	OrgName        string    `json:"org_name,omitempty"`
+	OrgLogoURL     string    `json:"org_logo_url,omitempty"`
+	Department     string    `json:"department,omitempty"`
+	Bio            string    `json:"bio,omitempty"`
+	Badges         IntArray  `json:"badges,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // UserLogin represents login credentials
@@ -91,10 +130,15 @@ type UserLogin struct {
 
 // UserRegister represents registration data
 type UserRegister struct {
-	Name     string `json:"name" validate:"required,min=2,max=255"`
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=6"`
-	Role     string `json:"role" validate:"omitempty,oneof=user admin"`
+	Name           string  `json:"name" validate:"required,min=2,max=255"`
+	Email          string  `json:"email" validate:"required,email"`
+	Password       string  `json:"password" validate:"required,min=6"`
+	Role           string  `json:"role" validate:"omitempty,oneof=user admin"`
+	IsOrganization bool    `json:"is_organization"`
+	OrgName        string  `json:"org_name"`
+	OrgLogoURL     string  `json:"org_logo_url"`
+	Department     *string `json:"department"`
+	Bio            string  `json:"bio"`
 }
 
 // Product represents a product listing
@@ -191,7 +235,7 @@ type Trade struct {
 	BuyerID         int         `json:"buyer_id"`
 	SellerID        int         `json:"seller_id"`
 	TargetProductID int         `json:"target_product_id"`
-	Status          string      `json:"status" validate:"oneof=pending accepted declined countered active completed cancelled"`
+	Status          string      `json:"status" validate:"oneof=pending accepted declined countered active awaiting_confirmation completed auto_completed cancelled"`
 	Message         string      `json:"message,omitempty"`
 	OfferedCash     *float64    `json:"offered_cash_amount,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`
@@ -200,9 +244,13 @@ type Trade struct {
 	BuyerCompleted  bool        `json:"buyer_completed"`
 	SellerCompleted bool        `json:"seller_completed"`
 	CompletedAt     *time.Time  `json:"completed_at,omitempty"`
-	BuyerName       string      `json:"buyer_name,omitempty"`
-	SellerName      string      `json:"seller_name,omitempty"`
-	ProductTitle    string      `json:"product_title,omitempty"`
+	// Timeout-based completion fields
+	FirstCompletionAt         *time.Time `json:"first_completion_at,omitempty"`
+	AwaitingConfirmationSince *time.Time `json:"awaiting_confirmation_since,omitempty"`
+	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
+	BuyerName                 string     `json:"buyer_name,omitempty"`
+	SellerName                string     `json:"seller_name,omitempty"`
+	ProductTitle              string     `json:"product_title,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade
