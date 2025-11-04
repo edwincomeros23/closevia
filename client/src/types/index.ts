@@ -26,6 +26,7 @@ export interface Product {
   category?: string
   created_at: string
   updated_at: string
+  wishlist_count?: number;
 }
 
 export interface Order {
