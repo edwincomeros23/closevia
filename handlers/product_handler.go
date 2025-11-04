@@ -272,13 +272,19 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 
 	// Get total count
-	countQuery := "SELECT COUNT(*) FROM products p " + whereClause
+	// NOTE: join users table here because WHERE can reference u.* fields
+	countQuery := "SELECT COUNT(*) FROM products p LEFT JOIN users u ON p.seller_id = u.id " + whereClause
 	var total int
 	err := h.db.QueryRow(countQuery, args...).Scan(&total)
 	if err != nil {
+		// Enhanced debugging: print query and args
+		fmt.Println("❌ Count query failed!")
+		fmt.Println("Query:", countQuery)
+		fmt.Println("Args:", args)
+		fmt.Println("Error:", err.Error())
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to get product count",
+			Error:   "Failed to get product count: " + err.Error(),
 		})
 	}
 
