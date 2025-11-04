@@ -119,6 +119,8 @@ type Product struct {
 	Longitude      *float64    `json:"longitude,omitempty"`
 	CreatedAt      time.Time   `json:"created_at"`
 	UpdatedAt      time.Time   `json:"updated_at"`
+	BiddingType    string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	WishlistCount  int         `json:"wishlist_count,omitempty"`
 }
 
 // ProductCreate represents data for creating a product
@@ -148,6 +150,7 @@ type ProductUpdate struct {
 	Location    *string      `json:"location,omitempty"`
 	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	Category    *string      `json:"category,omitempty"`
+	BiddingType *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
 }
 
 // Order represents an order
@@ -258,6 +261,26 @@ type PremiumListing struct {
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// Comment represents a comment on a product listing
+type Comment struct {
+	ID            int       `json:"id"`
+	ProductID     int       `json:"product_id"`
+	UserID        int       `json:"user_id"`
+	Content       string    `json:"content" validate:"required"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	CommenterName string    `json:"commenter_name,omitempty"`
+}
+
+// Wishlist represents a user's wishlist item
+type Wishlist struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	ProductID int       `json:"product_id"`
+	CreatedAt time.Time `json:"created_at"`
+	Product   *Product  `json:"product,omitempty"`
 }
 
 // SearchFilters represents search and filter parameters

@@ -38,6 +38,8 @@ const ProductDetail: React.FC = () => {
   const [isTradeOpen, setIsTradeOpen] = useState(false)
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
   const [selectedImage, setSelectedImage] = useState<string>('')
+  const [wishlistCount, setWishlistCount] = useState(0)
+  const [isWishlisted, setIsWishlisted] = useState(false)
   
   const navigate = useNavigate()
   const toast = useToast()
@@ -47,6 +49,75 @@ const ProductDetail: React.FC = () => {
       fetchProduct()
     }
   }, [id])
+
+  useEffect(() => {
+    if (product && user) {
+      checkWishlistStatus();
+    }
+    if (product) {
+        setWishlistCount(product.wishlist_count || 0);
+    }
+  }, [product, user]);
+
+  const checkWishlistStatus = async () => {
+    if (!product || !user) return;
+    try {
+      const response = await api.get(`/api/products/${product.id}/wishlist/status`);
+      if (response.data.success) {
+        setIsWishlisted(response.data.data.is_wishlisted);
+      }
+    } catch (error) {
+      // Handle error
+    }
+  };
+
+  const handleWishlist = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "Please log in to wishlist this product",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      navigate("/login");
+      return;
+    }
+
+    if (!product) return;
+
+    try {
+      if (isWishlisted) {
+        await api.delete(`/api/products/${product.id}/wishlist`);
+        setWishlistCount(wishlistCount - 1);
+        setIsWishlisted(false);
+        toast({
+          title: "Removed from wishlist",
+          status: "success",
+          duration: 2000,
+          isClosable: true,
+        });
+      } else {
+        await api.post(`/api/products/${product.id}/wishlist`);
+        setWishlistCount(wishlistCount + 1);
+        setIsWishlisted(true);
+        toast({
+          title: "Added to wishlist",
+          status: "success",
+          duration: 2000,
+          isClosable: true,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Something went wrong. Please try again.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
 
   const fetchProduct = async () => {
     try {
@@ -225,9 +296,12 @@ const ProductDetail: React.FC = () => {
                 <Box>
                   {/* Title on the left, Price on the right (noticeable) */}
                   <Flex justify="space-between" align="center">
-                    <Heading size="lg" color="brand.500" mb={0}>
-                      {product.title}
-                    </Heading>
+                    <HStack>
+                      <Heading size="lg" color="brand.500" mb={0}>
+                        {product.title}
+                      </Heading>
+                      <Text color="gray.500">({wishlistCount} wants)</Text>
+                    </HStack>
                     <Text
                       fontSize={{ base: 'xl', md: '3xl' }}
                       fontWeight="extrabold"
@@ -326,7 +400,7 @@ const ProductDetail: React.FC = () => {
                 {!isOwner && product.status === 'available' && (
                   <VStack spacing={4} mt={-10} pb={-10} >
                     {product.allow_buying && product.price && !product.barter_only ? (
-                      <>
+                      <HStack spacing={4} w="full">
                         <Button
                           colorScheme="brand"
                           size="lg"
@@ -337,22 +411,34 @@ const ProductDetail: React.FC = () => {
                         >
                           Buy Now - ₱{product.price.toFixed(2)}
                         </Button>
-                        <Text fontSize="sm" color="gray.500" textAlign="center">
-                          Secure transaction • Fast delivery • Buyer protection
-                        </Text>
-                      </>
+                        <Button
+                          variant={isWishlisted ? "solid" : "outline"}
+                          colorScheme="pink"
+                          size="lg"
+                          onClick={handleWishlist}
+                        >
+                          {isWishlisted ? "Wanted" : "Want"}
+                        </Button>
+                      </HStack>
                     ) : (
-                      <Box textAlign="center" py={2} >
+                      <HStack spacing={4} w="full">
                         <Button
                           colorScheme="green"
                           size="lg"
                           w="full"
-                          mb={-10}
                           onClick={openTrade}
                         >
                           Trade Offer
                         </Button>
-                      </Box>
+                        <Button
+                          variant={isWishlisted ? "solid" : "outline"}
+                          colorScheme="pink"
+                          size="lg"
+                          onClick={handleWishlist}
+                        >
+                          {isWishlisted ? "Wanted" : "Want"}
+                        </Button>
+                      </HStack>
                     )}
                   </VStack>
                 )}
