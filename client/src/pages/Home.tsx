@@ -406,10 +406,62 @@ const Home: React.FC = () => {
             Sold
           </Badge>
         )}
+
+        {/* Location Badge - New */}
+        <Badge
+          position="absolute"
+          bottom={2}
+          left={2}
+          colorScheme="gray"
+          variant="solid"
+          borderRadius="full"
+          px={2}
+          bg="blackAlpha.600"
+          color="white"
+          fontSize="xs"
+        >
+          <Text as="span" mr={1}>📍</Text>
+          {product.distance || '1.2km nearby'}
+        </Badge>
       </Box>
 
       {/* Product Info (fixed height) */}
       <Box p={4} display="flex" flexDirection="column" h={{ base: 180, md: 192 }} overflow="hidden">
+        <Flex justify="space-between" align="center" mb={2}>
+          <HStack spacing={2}>
+            <Box
+              as={RouterLink}
+              to={`/users/${product.seller_id}`}
+              w={7}
+              h={7}
+              rounded="full"
+              bg="brand.500"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              flexShrink={0}
+              cursor="pointer"
+              _hover={{ opacity: 0.8 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Text fontSize="md" fontWeight="bold" color="white">
+                {(product.seller_name || 'U').charAt(0).toUpperCase()}
+              </Text>
+            </Box>
+            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
+              {product.seller_name || 'Unknown'}
+            </Text>
+          </HStack>
+          <Badge 
+            fontSize="xs" 
+            colorScheme="blue" 
+            flexShrink={0}
+            borderWidth="1px"
+          >
+            {product.condition || 'Used'}
+          </Badge>
+        </Flex>
+
         <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
           {product.title}
         </Heading>
@@ -417,30 +469,6 @@ const Home: React.FC = () => {
         <Text color="gray.600" noOfLines={2} mb={3} fontSize="sm" flexShrink={0}>
           {product.description || 'No description available'}
         </Text>
-        
-        {/* Price and Seller Info */}
-        <Flex justify="space-between" align="center" mb={3} flexShrink={0}>
-            {product.allow_buying && product.price && !product.barter_only ? (
-            <Text fontSize="lg" fontWeight="bold" color="brand.500">
-              {formatPHP(product.price)}
-            </Text>
-          ) : (
-            <Text fontSize="sm" color="green.600" fontWeight="medium">
-              Barter Only
-            </Text>
-          )}
-          
-          <Text
-            as={RouterLink}
-            to={`/users/${product.seller_id}`}
-            fontSize="xs"
-            color="blue.600"
-            _hover={{ textDecoration: 'underline' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            Listed by {product.seller_name || 'Unknown'}
-          </Text>
-        </Flex>
 
         {/* Action Buttons */}
         <HStack spacing={2} mt="auto">
@@ -581,10 +609,10 @@ const Home: React.FC = () => {
               )}
             </Box>
 
-            {/* Profile button (desktop only) - now to the right of Search */}
+            {/* Profile button (desktop only)  */}
             <IconButton
               as={RouterLink}
-              to="/profile"
+              to={user ? `/users/${user.id}` : '/profile'}
               aria-label="Profile"
               icon={<FaUserCircle />}
               variant="ghost"

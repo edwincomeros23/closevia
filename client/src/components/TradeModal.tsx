@@ -96,7 +96,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
               <Text fontWeight="semibold">Select your items to offer:</Text>
               {/* Scrollable grid: shows 2 full rows + small peek of 3rd; scroll when overflowing */}
               <Box maxH="244px" overflowY="auto" pr={2}>
-                <Grid templateColumns="repeat(auto-fill, minmax(140px, 180px))" gap={3} gridAutoRows="120px" justifyContent="start">
+                <Grid templateColumns="repeat(auto-fill, minmax(100px, 150px))" gap={3} gridAutoRows="120px" justifyContent="start">
                   {userProducts.map((p) => (
                     <Box key={p.id} minH="120px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
                       <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="50px" objectFit="cover" />

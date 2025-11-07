@@ -459,6 +459,27 @@ const ProductDetail: React.FC = () => {
                   objectFit="contain"
                   fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
                 />
+                <HStack position="absolute" top={3} left={3} spacing={2}>
+                  {product.premium && (
+                    <Badge colorScheme="orange" px={2} py={1} fontSize="sm">
+                      Premium Listing
+                    </Badge>
+                  )}
+                  <Badge
+                    colorScheme={
+                      product.status === 'available'
+                        ? 'teal'
+                        : product.status === 'locked'
+                        ? 'orange'
+                        : 'red'
+                    }
+                    px={2}
+                    py={1}
+                    fontSize="sm"
+                  >
+                    {product.status}
+                  </Badge>
+                </HStack>
               </Box>
               {product.image_urls && product.image_urls.length > 1 && (
                 <HStack spacing={2} overflowX="auto">
@@ -489,14 +510,15 @@ const ProductDetail: React.FC = () => {
             </VStack>
 
             {/* Product Details */}
-            <Box p={8}>
-              <VStack spacing={6} align="stretch">
+            <Box p={8} display="flex" flexDirection="column">
+              <VStack spacing={6} align="stretch" flex={1}>
                 <Box>
+
                   {/* Title on the left, Price on the right (noticeable) */}
                   <Flex justify="space-between" align="center">
                     <HStack>
                       <Heading size="lg" color="brand.500" mb={0}>
-                        {product.title}
+                        {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
                       </Heading>
                       <Text color="gray.500">({wishlistCount} wants)</Text>
                     </HStack>
@@ -511,7 +533,7 @@ const ProductDetail: React.FC = () => {
                   </Flex>
 
                   {/* Save/Watch and Share buttons */}
-                  <Flex justify="space-between" align="center" mt={4}>
+                  <Flex justify="space-between" align="center" gap={6} mt={4}>
                     <HStack spacing={2}>
                       <Tooltip label={isSaved ? "Remove from saved" : "Save to watchlist"}>
                         <IconButton
@@ -545,26 +567,19 @@ const ProductDetail: React.FC = () => {
                         Share
                       </Text>
                     </HStack>
+
+                    <VStack spacing={0} align="flex-end" ml="auto">
+                      <Text fontSize="sm" color="gray.500">
+                        Listed: {new Date(product.created_at).toLocaleDateString()}
+                      </Text>
+                      <Text fontSize="sm" color="gray.500">
+                        Last updated: {new Date(product.updated_at).toLocaleDateString()}
+                      </Text>
+                    </VStack>
                   </Flex>
 
                   {/* Premium + Status badges aligned together with gap 2 */}
-                  <HStack spacing={2} mt={2} align="center">
-                    {product.premium && (
-                      <Badge colorScheme="yellow" px={2}>
-                        Premium Listing
-                      </Badge>
-                    )}
-                    <Badge
-                      colorScheme={
-                        product.status === 'available'
-                          ? 'green'
-                          : product.status === 'locked'
-                          ? 'orange'
-                          : 'red'
-                      }
-                    >
-                      {product.status}
-                    </Badge>
+                  <HStack spacing={2}    align="center">
                     {product.condition && (
                       <Badge colorScheme="blue">{product.condition}</Badge>
                     )}
@@ -580,47 +595,31 @@ const ProductDetail: React.FC = () => {
 
                   {/* Consolidated seller + dates block for better UX (responsive) */}
                   <Flex
-                    mt={3}
                     w="full"
                     justify="space-between"
                     align="center"
                     flexDir={{ base: 'column', md: 'row' }}
                   >
-                    <Box mb={{ base: 2, md: 0 }}>
-                      <Text
-                        as={RouterLink}
-                        to={`/users/${product.seller_id}`}
-                        color="blue.600"
-                        fontSize="lg"
-                        _hover={{ textDecoration: 'underline' }}
-                      >
-                        Listed by {product.seller_name}
-                      </Text>
-                    </Box>
-
-                    <VStack spacing={0} align={{ base: 'flex-start', md: 'flex-end' }}>
-                      <Text fontSize="sm" color="gray.500">
-                        Listed: {new Date(product.created_at).toLocaleDateString()}
-                      </Text>
-                      <Text fontSize="sm" color="gray.500">
-                        Last updated: {new Date(product.updated_at).toLocaleDateString()}
-                      </Text>
-                    </VStack>
                   </Flex>
                 </Box>
 
                 <Divider />
 
                 <Box>
-                  <Heading size="md" mb={3}>
-                    Description
-                  </Heading>
+                  <Flex align="center" justify="space-between" mb={3}>
+                    <Heading size="md">
+                      Description
+                    </Heading>
+                    <Badge colorScheme="blue" fontSize="sm">
+                      {product.condition || 'Used'}
+                    </Badge>
+                  </Flex>
                   <Text color="gray.700" lineHeight="tall">
                     {product.description}
                   </Text>
                 </Box>
 
-                <Divider />
+     
 
                 <Box>
                   <VStack spacing={2} align="stretch">
@@ -636,10 +635,12 @@ const ProductDetail: React.FC = () => {
                     </Flex> */}
                   </VStack>
                 </Box>
+              </VStack>
 
-                {/* Action Buttons */}
+              {/* Action Buttons - Fixed at Bottom */}
+              <VStack spacing={4} mt={8} pt={6}>
                 {!isOwner && product.status === 'available' && (
-                  <VStack spacing={4} mt={-10} pb={-10} >
+                  <>
                     {product.allow_buying && product.price && !product.barter_only ? (
                       <HStack spacing={4} w="full">
                         <Button
@@ -653,12 +654,13 @@ const ProductDetail: React.FC = () => {
                           Buy Now - ₱{product.price.toFixed(2)}
                         </Button>
                         <Button
-                          variant={isWishlisted ? "solid" : "outline"}
-                          colorScheme="pink"
+                          variant="outline"
+                          colorScheme="blue"
                           size="lg"
-                          onClick={handleWishlist}
+                          leftIcon={<FiMessageCircle />}
+                          onClick={() => navigate(`/messages?seller_id=${product.seller_id}`)}
                         >
-                          {isWishlisted ? "Wanted" : "Want"}
+                          Chat
                         </Button>
                       </HStack>
                     ) : (
@@ -672,52 +674,51 @@ const ProductDetail: React.FC = () => {
                           Trade Offer
                         </Button>
                         <Button
-                          variant={isWishlisted ? "solid" : "outline"}
-                          colorScheme="pink"
+                          variant="outline"
+                          colorScheme="blue"
                           size="lg"
-                          onClick={handleWishlist}
+                          leftIcon={<FiMessageCircle />}
+                          onClick={() => navigate(`/messages?seller_id=${product.seller_id}`)}
                         >
-                          {isWishlisted ? "Wanted" : "Want"}
+                          Chat
                         </Button>
                       </HStack>
                     )}
-                  </VStack>
+                  </>
                 )}
 
                 {isOwner && (
-                  <VStack spacing={4} mt={-16}>
-                    <HStack spacing={4} w="full">
-                      <Button
-                        variant="outline"
-                        colorScheme="brand"
-                        size="lg"
-                        flex={1}
-                        onClick={() => navigate(`/edit-product/${product.id}`)}
-                      >
-                        Edit Product
-                      </Button>
-                      <Button
-                        variant="outline"
-                        colorScheme="brand"
-                        size="lg"
-                        flex={1}
-                        onClick={() => navigate('/dashboard')}
-                      >
-                        View Dashboard
-                      </Button>
-                    </HStack>
-                  </VStack>
+                  <HStack spacing={4} w="full">
+                    <Button
+                      variant="outline"
+                      colorScheme="brand"
+                      size="lg"
+                      flex={1}
+                      onClick={() => navigate(`/edit-product/${product.id}`)}
+                    >
+                      Edit Product
+                    </Button>
+                    <Button
+                      variant="outline"
+                      colorScheme="brand"
+                      size="lg"
+                      flex={1}
+                      onClick={() => navigate('/dashboard')}
+                    >
+                      View Dashboard
+                    </Button>
+                  </HStack>
                 )}
 
                 {product.status === 'sold' && (
-                  <Box textAlign="center" py={4}>
+                  <Box textAlign="center" py={4} w="full">
                     <Text color="red.500" fontWeight="bold">
                       This product has been sold
                     </Text>
                   </Box>
                 )}
                 {product.status === 'locked' && (
-                  <Box textAlign="center" py={4}>
+                  <Box textAlign="center" py={4} w="full">
                     <Text color="orange.500" fontWeight="bold">
                       This item is currently reserved in a trade.
                     </Text>
@@ -733,30 +734,246 @@ const ProductDetail: React.FC = () => {
           <Heading size="md" mb={4}>
             About the Seller
           </Heading>
-          <HStack spacing={4}>
-            <Box>
-              <Text
-                as={RouterLink}
-                to={`/users/${product.seller_id}`}
-                fontWeight="bold"
-                color="blue.600"
-                _hover={{ textDecoration: 'underline' }}
+          <Flex justify="space-between" align="stretch" gap={6}>
+            <HStack spacing={4} flex={1}>
+              <Box
+                w="60px"
+                h="60px"
+                rounded="full"
+                bg="red.500"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                flexShrink={0}
               >
-                {product.seller_name}
-              </Text>
-              <Text color="gray.600" fontSize="sm">
-                Member since {new Date().getFullYear()}
-              </Text>
-            </Box>
-            <Button
-              variant="outline"
-              colorScheme="brand"
-              size="sm"
-              onClick={() => navigate(`/products?seller_id=${product.seller_id}`)}
+                <Text fontSize="24px" fontWeight="bold" color="white">
+                  {product.seller_name.charAt(0).toUpperCase()}
+                </Text>
+              </Box>
+              <Box>
+                <Text
+                  as={RouterLink}
+                  to={`/users/${product.seller_id}`}
+                  fontWeight="bold"
+                  color="blue.600"
+                  _hover={{ textDecoration: 'underline' }}
+                >
+                  {product.seller_name}
+                </Text>
+                <Text color="gray.600" fontSize="sm">
+                  Member since {new Date().getFullYear()}
+                </Text>
+              </Box>
+            </HStack>
+
+            {/* Seller Stats */}
+            <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
+              <VStack spacing={1} align="center">
+                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="brand.500">
+                  4.8
+                </Text>
+                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
+                  Rating
+                </Text>
+              </VStack>
+              <VStack spacing={1} align="center">
+                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="green.500">
+                  98%
+                </Text>
+                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
+                  Positive
+                </Text>
+              </VStack>
+              <VStack spacing={1} align="center">
+                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="blue.500">
+                  247
+                </Text>
+                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
+                  Trades
+                </Text>
+              </VStack>
+              <VStack spacing={1} align="center">
+                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="purple.500">
+                  2hr
+                </Text>
+                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
+                  Avg Response
+                </Text>
+              </VStack>
+            </SimpleGrid>
+          </Flex>
+        </Box>
+
+        {/* Seller Products Section */}
+        <Box bg="white" p={6} rounded="lg" shadow="sm">
+          <Heading size="md" mb={6}>
+            Seller Products
+          </Heading>
+          <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={4}>
+            {/* Product Card 1 */}
+            <Box
+              borderWidth="1px"
+              borderRadius="lg"
+              overflow="hidden"
+              bg="white"
+              _hover={{ shadow: 'md', cursor: 'pointer' }}
+              transition="all 0.3s"
             >
-              View All Products
-            </Button>
-          </HStack>
+              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
+                <Image
+                  src="/uploads/1755585883998559300_Pink_Birkin_bag"
+                  alt="Product 1"
+                  w="full"
+                  h="full"
+                  objectFit="cover"
+                  fallbackSrc="/images/placeholder.jpg"
+                />
+                <Badge position="absolute" top={2} right={2} colorScheme="teal" fontSize="xs">
+                  available
+                </Badge>
+              </Box>
+              <Box p={3}>
+                <HStack justify="space-between" mb={2}>
+                  <Heading size="sm" noOfLines={1}>SAYGEXX</Heading>
+                  <Badge colorScheme="orange" fontSize="xs">
+                    Premium
+                  </Badge>
+                </HStack>
+                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
+                  asd
+                </Text>
+                <Text fontSize="sm" fontWeight="bold" color="brand.500">
+                  ₱150
+                </Text>
+                <Badge colorScheme="cyan" mt={2} fontSize="xs">
+                  Barter Only
+                </Badge>
+              </Box>
+            </Box>
+
+            {/* Product Card 2 */}
+            <Box
+              borderWidth="1px"
+              borderRadius="lg"
+              overflow="hidden"
+              bg="white"
+              _hover={{ shadow: 'md', cursor: 'pointer' }}
+              transition="all 0.3s"
+            >
+              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
+                <Image
+                  src="/uploads/1755585326243827700_image_"
+                  alt="Unli water baso"
+                  w="full"
+                  h="full"
+                  objectFit="cover"
+                  fallbackSrc="/images/placeholder.jpg"
+                />
+                <Badge position="absolute" top={2} right={2} colorScheme="teal" fontSize="xs">
+                  available
+                </Badge>
+              </Box>
+              <Box p={3}>
+                <HStack justify="space-between" mb={2}>
+                  <Heading size="sm" noOfLines={1}>Unli water baso</Heading>
+                  <Badge colorScheme="orange" fontSize="xs">
+                    Premium
+                  </Badge>
+                </HStack>
+                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
+                  it has endless water inside the baso
+                </Text>
+                <Text fontSize="sm" fontWeight="bold" color="brand.500" mb={2}>
+                  ₱0
+                </Text>
+                <Badge colorScheme="cyan" mt={2} fontSize="xs">
+                  Barter Only
+                </Badge>
+              </Box>
+            </Box>
+
+            {/* Product Card 3 */}
+            <Box
+              borderWidth="1px"
+              borderRadius="lg"
+              overflow="hidden"
+              bg="white"
+              _hover={{ shadow: 'md', cursor: 'pointer' }}
+              transition="all 0.3s"
+            >
+              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
+                <Image
+                  src="/uploads/1755590839905072000_ssdd.z"
+                  alt="Endless bag"
+                  w="full"
+                  h="full"
+                  objectFit="cover"
+                  fallbackSrc="/images/placeholder.jpg"
+                />
+                <Badge position="absolute" top={2} right={2} colorScheme="red" fontSize="xs">
+                  sold
+                </Badge>
+              </Box>
+              <Box p={3}>
+                <HStack justify="space-between" mb={2}>
+                  <Heading size="sm" noOfLines={1}>Endless bag</Heading>
+                  <Badge colorScheme="orange" fontSize="xs">
+                    Premium
+                  </Badge>
+                </HStack>
+                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
+                  you can put anything inside this bag
+                </Text>
+                <Text fontSize="sm" fontWeight="bold" color="brand.500" mb={2}>
+                  ₱0
+                </Text>
+                <Badge colorScheme="cyan" mt={2} fontSize="xs">
+                  Barter Only
+                </Badge>
+              </Box>
+            </Box>
+
+            {/* Product Card 4 */}
+            <Box
+              borderWidth="1px"
+              borderRadius="lg"
+              overflow="hidden"
+              bg="white"
+              _hover={{ shadow: 'md', cursor: 'pointer' }}
+              transition="all 0.3s"
+            >
+              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
+                <Image
+                  src="/uploads/1755600258252118900_images"
+                  alt="headphone made in ph"
+                  w="full"
+                  h="full"
+                  objectFit="cover"
+                  fallbackSrc="/images/placeholder.jpg"
+                />
+                <Badge position="absolute" top={2} right={2} colorScheme="red" fontSize="xs">
+                  sold
+                </Badge>
+              </Box>
+              <Box p={3}>
+                <HStack justify="space-between" mb={2}>
+                  <Heading size="sm" noOfLines={1}>headphone made in ph</Heading>
+                  <Badge colorScheme="orange" fontSize="xs">
+                    Premium
+                  </Badge>
+                </HStack>
+                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
+                  you can hear something you should not hear
+                </Text>
+                <Text fontSize="sm" fontWeight="bold" color="brand.500" mb={2}>
+                  ₱0
+                </Text>
+                <Badge colorScheme="cyan" mt={2} fontSize="xs">
+                  Barter Only
+                </Badge>
+              </Box>
+            </Box>
+          </SimpleGrid>
         </Box>
       </VStack>
       <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
