@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -90,9 +91,11 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		user.IsOrganization, false, user.OrgName, user.OrgLogoURL, nullableString(user.Department), user.Bio,
 	)
 	if err != nil {
+		// Log the actual error for debugging
+		fmt.Printf("❌ Error creating user: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to create user",
+			Error:   "Failed to create user: " + err.Error(),
 		})
 	}
 
