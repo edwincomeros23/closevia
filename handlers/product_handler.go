@@ -70,6 +70,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
+	biddingType := c.FormValue("bidding_type")
+	// Optional category override from client
+	categoryOverride := c.FormValue("category")
 
 	// Handle multiple file uploads
 	form, err := c.MultipartForm()
@@ -220,8 +223,17 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	var args []interface{}
 
 	if keyword != "" {
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ?)"
-		args = append(args, "%"+keyword+"%", "%"+keyword+"%")
+		// Broaden keyword search across product attributes and seller/org details
+		whereClause += " AND ("
+		whereClause += "p.title LIKE ? OR p.description LIKE ?"
+		whereClause += " OR p.location LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ?"
+		whereClause += " OR u.name LIKE ? OR u.org_name LIKE ? OR u.department LIKE ?"
+		whereClause += ")"
+		like := "%" + keyword + "%"
+		args = append(args, like, like, like, like, like, like, like, like)
+		searchPattern := "%" + keyword + "%"
+		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.condition LIKE ? OR u.name LIKE ?)"
+		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
 	}
 
 	if minPriceStr != "" {
@@ -472,14 +484,32 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		WHERE p.id = ?
 	`, productID).Scan(&product.ID, &product.Title, &product.Description, &priceNull,
 		&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
+		&product.AllowBuying, &product.BarterOnly, &locationNull,
+		&product.CreatedAt, &product.UpdatedAt, &sellerNameNull, &product.WishlistCount, &biddingTypeNull)
 		&product.AllowBuying, &product.BarterOnly, &product.Location,
 		&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &product.WishlistCount, &product.BiddingType)
 
-	// Parse image URLs from JSON
+	// Parse image URLs from JSON using defensive logic in models.StringArray
 	if imageURLsJSONStr != "" {
-		var imageURLs []string
-		if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
-			product.ImageURLs = models.StringArray(imageURLs)
+		var sa models.StringArray
+		if err := sa.UnmarshalJSON([]byte(imageURLsJSONStr)); err == nil {
+			// Filter out any excessively long entries (likely data URLs) and keep only valid-looking URLs
+			var cleaned []string
+			for _, u := range sa {
+				if u == "" {
+					continue
+				}
+				// Skip obvious data URLs that might have been accidentally stored
+				if len(u) > 10 && (len(u) > 2000 || (len(u) > 100 && (u[:5] == "data:" || u[:7] == "data:/"))) {
+					// log or ignore
+					continue
+				}
+				cleaned = append(cleaned, u)
+			}
+			product.ImageURLs = models.StringArray(cleaned)
+		} else {
+			// If unmarshalling fails, avoid returning an error to the client; set to empty
+			product.ImageURLs = models.StringArray{}
 		}
 	}
 
