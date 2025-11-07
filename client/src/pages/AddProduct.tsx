@@ -39,7 +39,7 @@ const AddProduct: React.FC = () => {
   const [formData, setFormData] = useState<ProductCreate>({
     title: '',
     description: '',
-    price: 0, // Changed from undefined to 0 (default for barter-only)
+    price: 0, 
     image_urls: [],
     premium: false,
     allow_buying: false,
@@ -265,7 +265,7 @@ const AddProduct: React.FC = () => {
 
   const canProceed = () => {
     switch (currentStep) {
-      case 1: return uploadedImages.length > 0
+      case 1: return uploadedImages.length >= 3
       case 2: return formData.title.trim() && formData.description.trim()
       case 3: return true // Barter options are always valid
       case 4: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
@@ -280,7 +280,7 @@ const AddProduct: React.FC = () => {
         return (
           <VStack spacing={6} align="stretch">
             <Text fontSize="lg" color="gray.600">
-              Upload photos of your product. First image will be the cover.
+              Upload at least 3 photos of your product. First image will be the cover.
             </Text>
             
             {/* Drag & Drop Area */}
@@ -301,7 +301,7 @@ const AddProduct: React.FC = () => {
                   Click to upload images or drag and drop
                 </Text>
                 <Text fontSize="sm" color="gray.500">
-                  PNG, JPG up to 10MB each
+                  PNG, JPG up to 5MB each (minimum 3 images required)
                 </Text>
               </VStack>
             </Box>
@@ -314,6 +314,25 @@ const AddProduct: React.FC = () => {
               onChange={(e) => handleImageUpload(e.target.files)}
               style={{ display: 'none' }}
             />
+            
+            {/* Image Count Status */}
+            <Box>
+              <HStack justify="space-between" mb={3}>
+                <Text fontWeight="semibold" color="gray.700">
+                  Images uploaded: {uploadedImages.length}/8
+                </Text>
+                {uploadedImages.length < 3 && (
+                  <Badge colorScheme="orange">
+                    Need {3 - uploadedImages.length} more image(s)
+                  </Badge>
+                )}
+                {uploadedImages.length >= 3 && (
+                  <Badge colorScheme="green">
+                    Ready to proceed
+                  </Badge>
+                )}
+              </HStack>
+            </Box>
             
             {/* Image Previews */}
             {uploadedImages.length > 0 && (

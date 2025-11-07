@@ -192,7 +192,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     <VStack spacing={3} flex={1} align="center">
       <Box position="relative">
         <Avatar
-          size="xl"
+          size="lg"
           name={name}
           bg={isCurrentUser ? 'brand.500' : 'gray.500'}
           color="white"
@@ -247,18 +247,24 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         borderRadius="xl"
         boxShadow="xl"
         mx={4}
-        mt={0}
+        mt={50}
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        minH="auto"
+        maxH="90vh"
       >
         
-        <ModalCloseButton color="white" />
+        <ModalCloseButton color="gray.600" position="absolute" top={4} right={4} />
         
-        <ModalBody p={6}>
+        <ModalBody p={6} w="full" display="flex" flexDirection="column" justifyContent="center" alignItems="center" overflowY="auto">
           {loading ? (
-            <Flex justify="center" py={8}>
+            <Flex justify="center" align="center" py={8} w="full">
               <Spinner size="lg" color="brand.500" />
             </Flex>
           ) : (
-            <VStack spacing={6}>
+            <VStack spacing={6} w="full" maxW="500px" justify="center" align="center">
               {/* Progress Indicator */}
               <Box w="full">
                 <Text fontSize="sm" color="gray.600" mb={2} textAlign="center">
@@ -389,6 +395,24 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                   <Text fontWeight="semibold" textAlign="center">
                     Please rate your experience and confirm completion
                   </Text>
+
+                  {/* Upload Transaction Photo */}
+                  <Box w="full" p={4} border="2px dashed" borderColor="gray.300" borderRadius="lg" textAlign="center">
+                    <VStack spacing={3}>
+                      <Icon as={FaHeart} boxSize={8} color="gray.400" />
+                      <VStack spacing={1}>
+                        <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                          Upload Photo of Transaction
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          Click to upload or drag and drop
+                        </Text>
+                      </VStack>
+                      <Button size="sm" colorScheme="brand" variant="outline">
+                        Choose File
+                      </Button>
+                    </VStack>
+                  </Box>
                   
                   <VStack spacing={3}>
                     <Text fontSize="sm" color="gray.600">Rate this trade:</Text>
@@ -489,6 +513,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     </Modal>
     </>
   )
+        
 }
 
 export default TradeCompletionModal
