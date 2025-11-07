@@ -65,9 +65,12 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 			price = &p
 		}
 	}
-	premium := c.FormValue("premium") == "true"
-	allowBuying := c.FormValue("allow_buying") == "true"
-	barterOnly := c.FormValue("barter_only") == "true"
+
+	// FIX: Parse booleans from "0"/"1" strings (not "true"/"false")
+	premium := c.FormValue("premium") == "1"
+	allowBuying := c.FormValue("allow_buying") == "1"
+	barterOnly := c.FormValue("barter_only") == "1"
+
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
 	biddingType := c.FormValue("bidding_type")
@@ -127,15 +130,19 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Calculate suggested value
 	suggestedValue := calculateSuggestedValue(insertPrice, finalCondition)
 
-	// Insert new product
+	// Insert new product with proper logging
+	fmt.Printf("🔍 Inserting product: title=%s, price=%.2f, premium=%v, allow_buying=%v, barter_only=%v, seller_id=%d\n",
+		title, insertPrice, premium, allowBuying, barterOnly, userID)
+
 	result, err := h.db.Exec(
 		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category, bidding_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, biddingType,
 	)
 	if err != nil {
+		fmt.Printf("❌ Database error: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to create product",
+			Error:   "Failed to create product: " + err.Error(),
 		})
 	}
 

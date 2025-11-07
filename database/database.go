@@ -95,7 +95,7 @@ func CreateTables() error {
 			allow_buying BOOLEAN DEFAULT TRUE,
 			barter_only BOOLEAN DEFAULT FALSE,
 			location VARCHAR(255),
-			condition VARCHAR(50),
+			` + "`" + `condition` + "`" + ` VARCHAR(50),
 			suggested_value INT,
 			category VARCHAR(100),
 			latitude FLOAT,
@@ -183,6 +183,7 @@ func CreateTables() error {
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS seller_rating INT NULL`,
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS buyer_feedback TEXT NULL`,
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS seller_feedback TEXT NULL`,
+		`ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url VARCHAR(500)`,
 		`CREATE TABLE IF NOT EXISTS trade_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			trade_id INT NOT NULL,
