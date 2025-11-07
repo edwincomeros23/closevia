@@ -80,6 +80,13 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		})
 	}
 	files := form.File["images"]
+	// Enforce maximum of 8 images per item
+	if len(files) > 8 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "You can upload up to 8 images per product",
+		})
+	}
 	var imagePaths []string
 	for _, file := range files {
 		savePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), file.Filename)
@@ -104,6 +111,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Appraise product based on title and description
 	appraisal := services.AppraiseProduct(title, description)
 	category := appraisal.Category
+	if categoryOverride != "" {
+		category = categoryOverride
+	}
 
 	// If user did not specify a condition, use the appraised one
 	finalCondition := condition
@@ -210,9 +220,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	var args []interface{}
 
 	if keyword != "" {
-		searchPattern := "%" + keyword + "%"
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.condition LIKE ? OR u.name LIKE ?)"
-		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
+		whereClause += " AND (p.title LIKE ? OR p.description LIKE ?)"
+		args = append(args, "%"+keyword+"%", "%"+keyword+"%")
 	}
 
 	if minPriceStr != "" {
@@ -463,8 +472,16 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		WHERE p.id = ?
 	`, productID).Scan(&product.ID, &product.Title, &product.Description, &priceNull,
 		&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-		&product.AllowBuying, &product.BarterOnly, &locationNull,
-		&product.CreatedAt, &product.UpdatedAt, &sellerNameNull, &product.WishlistCount, &biddingTypeNull)
+		&product.AllowBuying, &product.BarterOnly, &product.Location,
+		&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &product.WishlistCount, &product.BiddingType)
+
+	// Parse image URLs from JSON
+	if imageURLsJSONStr != "" {
+		var imageURLs []string
+		if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
+			product.ImageURLs = models.StringArray(imageURLs)
+		}
+	}
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -587,8 +604,26 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		args = append(args, *updateData.Price)
 	}
 	if updateData.ImageURLs != nil {
+		// Ensure we don't accidentally persist client-side data URLs or extremely large strings
+		var safeList []string
+		for _, u := range *updateData.ImageURLs {
+			if u == "" {
+				continue
+			}
+			if len(u) > 2000 {
+				// skip very large entries (likely data URLs)
+				continue
+			}
+			if len(u) > 10 && (u[:5] == "data:" || u[:7] == "data:/") {
+				// skip inline data URLs
+				continue
+			}
+			safeList = append(safeList, u)
+		}
+		// Marshal safeList to JSON string to store
+		imgJSON, _ := json.Marshal(safeList)
 		query += ", image_urls = ?"
-		args = append(args, *updateData.ImageURLs)
+		args = append(args, string(imgJSON))
 	}
 	if updateData.Premium != nil {
 		query += ", premium = ?"

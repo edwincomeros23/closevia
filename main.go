@@ -1,4 +1,5 @@
 package main
+
 // hallo :3
 import (
 	"log"
@@ -12,6 +13,7 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/handlers"
 	"github.com/xashathebest/clovia/middleware"
+	"github.com/xashathebest/clovia/services"
 )
 
 func main() {
@@ -57,7 +59,6 @@ func main() {
 	// Serve static files (uploads directory)
 	app.Static("/uploads", "./uploads")
 
-	
 	// Add after middleware setup
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -114,6 +115,14 @@ func main() {
 	users := api.Group("/users")
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
 	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
+
+	// Saved products routes (must be BEFORE dynamic ":id" route)
+	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
+	users.Delete("/saved-products/:id", middleware.AuthMiddleware(), userHandler.UnsaveProduct)
+	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
+	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
+
+	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
 	users.Get("/", userHandler.GetUsers)       // Admin route (no auth for demo)
 
@@ -182,6 +191,8 @@ func main() {
 	}
 
 	// Start server
+	// Start background trade timeout scheduler
+	services.StartTradeTimeoutScheduler(database.DB)
 	log.Printf("Starting Clovia server on port %s", port)
 	log.Fatal(app.Listen(":" + port))
 }
