@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react'
 import { Product, ProductCreate, ProductUpdate, SearchFilters, PaginatedResponse } from '../types'
+import { useAuth } from './AuthContext'
 import { api } from '../services/api'
 
 interface ProductContextType {
@@ -33,6 +34,7 @@ interface ProductProviderProps {
 }
 
 export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) => {
+  const { token } = useAuth() // Get auth token from context
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +65,15 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
+  // Helper function to get headers with auth token
+  const getAuthHeaders = () => {
+    const headers: any = {}
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    return headers
+  }
+
   const searchProducts = async (filters: SearchFilters) => {
     try {
       console.log('Searching products with filters:', filters)
@@ -84,7 +95,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       params.append('limit', (filters.limit || 10).toString())
 
       const response = await retryRequest(async () => {
-        return await api.get(`/api/products?${params.toString()}`)
+        return await api.get(`/api/products?${params.toString()}`, {
+          headers: getAuthHeaders(),
+        })
       })
       
       console.log('API Response:', response.data)
@@ -161,7 +174,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       params.append('limit', (filters.limit || 10).toString())
 
       const response = await retryRequest(async () => {
-        return await api.get(`/api/products?${params.toString()}`)
+        return await api.get(`/api/products?${params.toString()}`, {
+          headers: getAuthHeaders(),
+        })
       })
 
       if (response.data && response.data.data) {
@@ -195,8 +210,13 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const getProduct = async (id: number): Promise<Product | null> => {
     try {
       setError(null)
-      const response = await api.get(`/api/products/${id}`)
+      console.log(`🔍 Fetching product ID: ${id}`)
       
+      const response = await api.get(`/api/products/${id}`, {
+        headers: getAuthHeaders(),
+      })
+      
+      console.log(`✓ Product ${id} fetched successfully`)
       // Handle different response structures
       if (response.data && response.data.data) {
         return response.data.data
@@ -206,8 +226,19 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       
       return null
     } catch (error: any) {
-      console.error('Error fetching product:', error)
-      setError(error.response?.data?.error || 'Failed to fetch product')
+      console.error(`❌ Error fetching product ${id}:`, error)
+      
+      // Provide specific error messages
+      if (error.response?.status === 404) {
+        const message = `Product ID ${id} not found. It may have been deleted or doesn't exist.`
+        console.error(message)
+        setError(message)
+      } else if (error.response?.status === 401) {
+        setError('Authentication failed. Please log in again.')
+      } else {
+        setError(error.response?.data?.error || `Failed to fetch product: ${error.message}`)
+      }
+      
       return null
     }
   }
@@ -261,6 +292,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       const response = await api.post('/api/products', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          ...getAuthHeaders(),
         },
       })
       const newProduct = response.data.data
@@ -287,7 +319,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         }
       }
 
-      await api.put(`/api/products/${id}`, payload)
+      await api.put(`/api/products/${id}`, payload, {
+        headers: getAuthHeaders(),
+      })
       safeSetProducts((products || []).map(p => p.id === id ? { ...p, ...product } : p))
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to update product')
@@ -298,7 +332,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const deleteProduct = async (id: number): Promise<void> => {
     try {
       setError(null)
-      await api.delete(`/api/products/${id}`)
+      await api.delete(`/api/products/${id}`, {
+        headers: getAuthHeaders(),
+      })
       safeSetProducts((products || []).filter(p => p.id !== id))
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to delete product')
@@ -309,7 +345,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const getUserProducts = async (userId: number, page: number = 1): Promise<PaginatedResponse<Product>> => {
     try {
       setError(null)
-      const response = await api.get(`/api/products/user/${userId}?page=${page}`)
+      const response = await api.get(`/api/products/user/${userId}?page=${page}`, {
+        headers: getAuthHeaders(),
+      })
       return response.data.data
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to fetch user products')

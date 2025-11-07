@@ -685,7 +685,7 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box between header and main content (keeps same dimensions) */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1160', xl: '1140px' }}
+        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1160', xl: '1415px' }}
         mx="auto"
         mb={4}
         px={{ base: 2, md: 4 }}
@@ -802,11 +802,11 @@ const Home: React.FC = () => {
               const bgColor = isSelected ? 'gray.200' : (categoryColors[cat] || 'gray.100')
               
               return (
-                <Box key={cat} flexShrink={0}>
+                <Box key={cat} flexShrink={0} pl={3}>
                   <Button
                     size="sm"
                     rounded="full"
-                    px={{ base: 4, md: 5 }}
+                    px={{ base: 4, md: 8 }}
                     py={{ base: 2, md: 2.5 }}
                     fontWeight="medium"
                     variant="solid"
