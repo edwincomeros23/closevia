@@ -450,6 +450,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var imageURLsJSONStr sql.NullString
 	var locationNull sql.NullString
 	var biddingTypeNull sql.NullString
+	var sellerNameNull sql.NullString
 
 	err = h.db.QueryRow(`
 		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
@@ -458,12 +459,12 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		       (SELECT COUNT(*) FROM wishlists WHERE product_id = p.id) as wishlist_count,
 		       p.bidding_type
 		FROM products p
-		JOIN users u ON p.seller_id = u.id
+		LEFT JOIN users u ON p.seller_id = u.id
 		WHERE p.id = ?
 	`, productID).Scan(&product.ID, &product.Title, &product.Description, &priceNull,
 		&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 		&product.AllowBuying, &product.BarterOnly, &locationNull,
-		&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &product.WishlistCount, &biddingTypeNull)
+		&product.CreatedAt, &product.UpdatedAt, &sellerNameNull, &product.WishlistCount, &biddingTypeNull)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -498,6 +499,12 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 
 	if biddingTypeNull.Valid {
 		product.BiddingType = biddingTypeNull.String
+	}
+
+	if sellerNameNull.Valid {
+		product.SellerName = sellerNameNull.String
+	} else {
+		product.SellerName = "Unknown"
 	}
 
 	return c.JSON(models.APIResponse{
