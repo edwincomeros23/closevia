@@ -78,9 +78,18 @@ func CreateTables() error {
 			email VARCHAR(255) UNIQUE NOT NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			role VARCHAR(10) NOT NULL DEFAULT 'user',
+			is_organization TINYINT(1) NOT NULL DEFAULT 0,
+			org_verified TINYINT(1) NOT NULL DEFAULT 0,
+			org_name VARCHAR(255) NULL,
+			org_logo_url VARCHAR(512) NULL,
+			department VARCHAR(255) NULL,
+			bio TEXT NULL,
+			badges JSON NULL,
 			verified BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_users_is_org (is_organization),
+			INDEX idx_users_department (department)
 		)`,
 		`CREATE TABLE IF NOT EXISTS products (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -95,7 +104,11 @@ func CreateTables() error {
 			allow_buying BOOLEAN DEFAULT TRUE,
 			barter_only BOOLEAN DEFAULT FALSE,
 			location VARCHAR(255),
+<<<<<<< HEAD
 			` + "`condition`" + ` VARCHAR(50),
+=======
+			` + "`" + `condition` + "`" + ` VARCHAR(50),
+>>>>>>> f10a8e859bef6dcd766cee5e3e2f79b86b8a14bd
 			suggested_value INT,
 			category VARCHAR(100),
 			latitude FLOAT,
@@ -183,6 +196,7 @@ func CreateTables() error {
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS seller_rating INT NULL`,
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS buyer_feedback TEXT NULL`,
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS seller_feedback TEXT NULL`,
+		`ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url VARCHAR(500)`,
 		`CREATE TABLE IF NOT EXISTS trade_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			trade_id INT NOT NULL,
@@ -286,6 +300,55 @@ func CreateTables() error {
 		}
 	}
 
+	// Ensure users table has all required columns (for existing databases)
+	ensureUserColumns()
+
 	log.Println("Database tables and indexes created successfully")
 	return nil
+}
+
+// ensureUserColumns adds missing columns to the users table if they don't exist
+func ensureUserColumns() {
+	columns := []struct {
+		name    string
+		definition string
+	}{
+		{"is_organization", "TINYINT(1) NOT NULL DEFAULT 0"},
+		{"org_verified", "TINYINT(1) NOT NULL DEFAULT 0"},
+		{"org_name", "VARCHAR(255) NULL"},
+		{"org_logo_url", "VARCHAR(512) NULL"},
+		{"department", "VARCHAR(255) NULL"},
+		{"bio", "TEXT NULL"},
+		{"badges", "JSON NULL"},
+	}
+
+	for _, col := range columns {
+		// Check if column exists
+		var count int
+		err := DB.QueryRow(`
+			SELECT COUNT(*) 
+			FROM information_schema.COLUMNS 
+			WHERE TABLE_SCHEMA = DATABASE() 
+			AND TABLE_NAME = 'users' 
+			AND COLUMN_NAME = ?
+		`, col.name).Scan(&count)
+		
+		if err != nil {
+			log.Printf("Warning: failed to check column %s: %v", col.name, err)
+			continue
+		}
+
+		// Add column if it doesn't exist
+		if count == 0 {
+			query := fmt.Sprintf("ALTER TABLE users ADD COLUMN %s %s", col.name, col.definition)
+			if _, err := DB.Exec(query); err != nil {
+				log.Printf("Warning: failed to add column %s: %v", col.name, err)
+			} else {
+				log.Printf("Added missing column: %s", col.name)
+			}
+		}
+	}
+
+	// Ensure badges column is initialized for existing users
+	DB.Exec("UPDATE users SET badges = JSON_ARRAY() WHERE badges IS NULL")
 }
