@@ -70,7 +70,6 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
-	biddingType := c.FormValue("bidding_type")
 	// Optional category override from client
 	categoryOverride := c.FormValue("category")
 
@@ -129,8 +128,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Insert new product
 	result, err := h.db.Exec(
-		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category, bidding_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, biddingType,
+		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -144,12 +143,12 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Get the created product
 	var createdProduct models.Product
 	err = h.db.QueryRow(
-		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at, bidding_type FROM products WHERE id = ?",
+		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
 		productID,
 	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
 		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt, &createdProduct.BiddingType)
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -157,6 +156,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 			Error:   "Failed to retrieve created product",
 		})
 	}
+
+	// Set bidding_type to empty since it doesn't exist in database
+	createdProduct.BiddingType = ""
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
@@ -538,25 +540,103 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 
 	var product models.Product
 	var priceNull sql.NullFloat64
-	var imageURLsJSONStr string
+	var imageURLsJSONStr sql.NullString
+	var sellerName sql.NullString
+	var wishlistCount int
+	var descriptionNull sql.NullString
+	var locationNull sql.NullString
+	var titleNull sql.NullString
+	var premiumInt int64
+	var allowBuyingInt int64
+	var barterOnlyInt int64
+	var createdAtNull sql.NullTime
+	var updatedAtNull sql.NullTime
+	var statusNull sql.NullString
+	
 	err = h.db.QueryRow(`
 		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.location,
-		       p.created_at, p.updated_at, u.name as seller_name,
-		       (SELECT COUNT(*) FROM wishlists WHERE product_id = p.id) as wishlist_count,
-		       p.bidding_type
+			   p.premium, p.status, p.allow_buying, p.barter_only, p.location,
+			   p.created_at, p.updated_at, u.name as seller_name,
+			   (SELECT COUNT(*) FROM wishlists WHERE product_id = p.id) as wishlist_count
 		FROM products p
-		JOIN users u ON p.seller_id = u.id
+		LEFT JOIN users u ON p.seller_id = u.id
 		WHERE p.id = ?
-	`, productID).Scan(&product.ID, &product.Title, &product.Description, &priceNull,
-		&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-		&product.AllowBuying, &product.BarterOnly, &product.Location,
-		&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &product.WishlistCount, &product.BiddingType)
+	`, productID).Scan(&product.ID, &titleNull, &descriptionNull, &priceNull,
+		&imageURLsJSONStr, &product.SellerID, &premiumInt, &statusNull,
+		&allowBuyingInt, &barterOnlyInt, &locationNull,
+		&createdAtNull, &updatedAtNull, &sellerName, &wishlistCount)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Product not found",
+			})
+		}
+		// Log the actual error for debugging with more details
+		fmt.Printf("❌ Error scanning product %d: %v\n", productID, err)
+		fmt.Printf("   Error type: %T\n", err)
+		// Return error but don't expose internal details in production
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to retrieve product",
+		})
+	}
+	
+	// Handle nullable string fields
+	if titleNull.Valid {
+		product.Title = titleNull.String
+	} else {
+		product.Title = ""
+	}
+	
+	if descriptionNull.Valid {
+		product.Description = descriptionNull.String
+	} else {
+		product.Description = ""
+	}
+	
+	if locationNull.Valid {
+		product.Location = locationNull.String
+	} else {
+		product.Location = ""
+	}
+	
+	// Convert boolean integers to bool
+	product.Premium = premiumInt != 0
+	product.AllowBuying = allowBuyingInt != 0
+	product.BarterOnly = barterOnlyInt != 0
+	
+	// Handle status
+	if statusNull.Valid {
+		product.Status = statusNull.String
+	} else {
+		product.Status = "available" // Default value from schema
+	}
+	
+	// Handle timestamps
+	if createdAtNull.Valid {
+		product.CreatedAt = createdAtNull.Time
+	} else {
+		product.CreatedAt = time.Now()
+	}
+	if updatedAtNull.Valid {
+		product.UpdatedAt = updatedAtNull.Time
+	} else {
+		product.UpdatedAt = time.Now()
+	}
+
+	// Set seller name if present
+	if sellerName.Valid {
+		product.SellerName = sellerName.String
+	} else {
+		product.SellerName = ""
+	}
 
 	// Parse image URLs from JSON using defensive logic in models.StringArray
-	if imageURLsJSONStr != "" {
+	if imageURLsJSONStr.Valid && imageURLsJSONStr.String != "" {
 		var sa models.StringArray
-		if err := sa.UnmarshalJSON([]byte(imageURLsJSONStr)); err == nil {
+		if err := sa.UnmarshalJSON([]byte(imageURLsJSONStr.String)); err == nil {
 			// Filter out any excessively long entries (likely data URLs) and keep only valid-looking URLs
 			var cleaned []string
 			for _, u := range sa {
@@ -564,8 +644,14 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 					continue
 				}
 				// Skip obvious data URLs that might have been accidentally stored
-				if len(u) > 10 && (len(u) > 2000 || (len(u) > 100 && (u[:5] == "data:" || u[:7] == "data:/"))) {
-					// log or ignore
+				uLen := len(u)
+				if uLen > 2000 {
+					continue
+				}
+				if uLen > 100 && uLen >= 5 && u[:5] == "data:" {
+					continue
+				}
+				if uLen >= 7 && u[:7] == "data:/" {
 					continue
 				}
 				cleaned = append(cleaned, u)
@@ -575,14 +661,14 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			// If unmarshalling fails, avoid returning an error to the client; set to empty
 			product.ImageURLs = models.StringArray{}
 		}
+	} else {
+		product.ImageURLs = models.StringArray{}
 	}
 
-	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Product not found",
-		})
-	}
+	// Populate wishlist count
+	product.WishlistCount = wishlistCount
+	// bidding_type doesn't exist in the database schema, so set to empty
+	product.BiddingType = ""
 
 	if priceNull.Valid {
 		p := priceNull.Float64
@@ -716,10 +802,7 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		query += ", `condition` = ?"
 		args = append(args, *updateData.Condition)
 	}
-	if updateData.BiddingType != nil {
-		query += ", bidding_type = ?"
-		args = append(args, *updateData.BiddingType)
-	}
+	// bidding_type column doesn't exist in database, so skip it
 
 	// Recalculate suggested value if price or condition changed
 	if updateData.Price != nil || updateData.Condition != nil {

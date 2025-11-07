@@ -65,6 +65,8 @@ const ProductDetail: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string>('')
   const [isSaved, setIsSaved] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [wishlistCount, setWishlistCount] = useState<number>(0)
+  const [isWishlisted, setIsWishlisted] = useState<boolean>(false)
   
   const navigate = useNavigate()
   const toast = useToast()
