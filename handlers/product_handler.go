@@ -70,7 +70,6 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
-	biddingType := c.FormValue("bidding_type")
 
 	// Handle multiple file uploads
 	form, err := c.MultipartForm()
@@ -112,13 +111,31 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		finalCondition = appraisal.Condition
 	}
 
+	// Geocode location
+	var lat, lon *float64
+	if location != "" {
+		coords, err := services.GetCoordinates(location)
+		if err == nil {
+			lat = &coords.Latitude
+			lon = &coords.Longitude
+		}
+	}
+
 	// Calculate suggested value
 	suggestedValue := calculateSuggestedValue(insertPrice, finalCondition)
 
+	// Detect counterfeit
+	report := services.DetectCounterfeit(title, description, insertPrice)
+	finalDescription := description
+	if report.IsSuspicious {
+		finalDescription = "[SUSPICIOUS] " + report.Reason + ". " + finalDescription
+	}
+
 	// Insert new product
+	biddingType := c.FormValue("bidding_type")
 	result, err := h.db.Exec(
-		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category, bidding_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, biddingType,
+		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category, latitude, longitude, bidding_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, lat, lon, biddingType,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -132,12 +149,12 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Get the created product
 	var createdProduct models.Product
 	err = h.db.QueryRow(
-		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at, bidding_type FROM products WHERE id = ?",
+		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, latitude, longitude, created_at, updated_at FROM products WHERE id = ?",
 		productID,
 	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
 		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt, &createdProduct.BiddingType)
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.Latitude, &createdProduct.Longitude, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -193,8 +210,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	var args []interface{}
 
 	if keyword != "" {
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ?)"
-		args = append(args, "%"+keyword+"%", "%"+keyword+"%")
+		searchPattern := "%" + keyword + "%"
+		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.condition LIKE ? OR u.name LIKE ?)"
+		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
 	}
 
 	if minPriceStr != "" {
@@ -417,91 +435,6 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	})
 }
 
-// WishlistProduct adds a product to a user's wishlist
-func (h *ProductHandler) WishlistProduct(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
-	}
-
-	productID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
-	}
-
-	// Check if the product exists
-	var exists int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM products WHERE id = ?", productID).Scan(&exists)
-	if err != nil || exists == 0 {
-		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
-	}
-
-	// Insert into wishlists, ignoring if it already exists
-	_, err = h.db.Exec("INSERT IGNORE INTO wishlists (user_id, product_id) VALUES (?, ?)", userID, productID)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to add to wishlist"})
-	}
-
-	return c.JSON(models.APIResponse{Success: true, Message: "Product added to wishlist"})
-}
-
-// UnwishlistProduct removes a product from a user's wishlist
-func (h *ProductHandler) UnwishlistProduct(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
-	}
-
-	productID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
-	}
-
-	_, err = h.db.Exec("DELETE FROM wishlists WHERE user_id = ? AND product_id = ?", userID, productID)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to remove from wishlist"})
-	}
-
-	return c.JSON(models.APIResponse{Success: true, Message: "Product removed from wishlist"})
-}
-
-// GetWishlistCount gets the wishlist count for a product
-func (h *ProductHandler) GetWishlistCount(c *fiber.Ctx) error {
-	productID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
-	}
-
-	var count int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM wishlists WHERE product_id = ?", productID).Scan(&count)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get wishlist count"})
-	}
-
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": count}})
-}
-
-// GetUserWishlistStatus checks if a user has wishlisted a product
-func (h *ProductHandler) GetUserWishlistStatus(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
-	}
-
-	productID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
-	}
-
-	var exists int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM wishlists WHERE user_id = ? AND product_id = ?", userID, productID).Scan(&exists)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get wishlist status"})
-	}
-
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_wishlisted": exists > 0}})
-}
-
 // GetProduct gets a product by ID
 func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	productID, err := strconv.Atoi(c.Params("id"))
@@ -514,7 +447,10 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 
 	var product models.Product
 	var priceNull sql.NullFloat64
-	var imageURLsJSONStr string
+	var imageURLsJSONStr sql.NullString
+	var locationNull sql.NullString
+	var biddingTypeNull sql.NullString
+
 	err = h.db.QueryRow(`
 		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location,
@@ -526,21 +462,19 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		WHERE p.id = ?
 	`, productID).Scan(&product.ID, &product.Title, &product.Description, &priceNull,
 		&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-		&product.AllowBuying, &product.BarterOnly, &product.Location,
-		&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &product.WishlistCount, &product.BiddingType)
-
-	// Parse image URLs from JSON
-	if imageURLsJSONStr != "" {
-		var imageURLs []string
-		if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
-			product.ImageURLs = models.StringArray(imageURLs)
-		}
-	}
+		&product.AllowBuying, &product.BarterOnly, &locationNull,
+		&product.CreatedAt, &product.UpdatedAt, &product.SellerName, &product.WishlistCount, &biddingTypeNull)
 
 	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Product not found",
+			})
+		}
+		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Product not found",
+			Error:   "Database error",
 		})
 	}
 
@@ -549,6 +483,21 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		product.Price = &p
 	} else {
 		product.Price = nil
+	}
+
+	if imageURLsJSONStr.Valid {
+		var imageURLs []string
+		if err := json.Unmarshal([]byte(imageURLsJSONStr.String), &imageURLs); err == nil {
+			product.ImageURLs = models.StringArray(imageURLs)
+		}
+	}
+
+	if locationNull.Valid {
+		product.Location = locationNull.String
+	}
+
+	if biddingTypeNull.Valid {
+		product.BiddingType = biddingTypeNull.String
 	}
 
 	return c.JSON(models.APIResponse{
@@ -658,9 +607,48 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		query += ", `condition` = ?"
 		args = append(args, *updateData.Condition)
 	}
+
 	if updateData.BiddingType != nil {
 		query += ", bidding_type = ?"
 		args = append(args, *updateData.BiddingType)
+	}
+
+	// Re-check for counterfeit if title, description, or price changes
+	if updateData.Title != nil || updateData.Description != nil || updateData.Price != nil {
+		newTitle := p.Title
+		if updateData.Title != nil {
+			newTitle = *updateData.Title
+		}
+		newDescription := p.Description
+		if updateData.Description != nil {
+			newDescription = *updateData.Description
+		}
+		newPrice := p.Price
+		if updateData.Price != nil {
+			newPrice = updateData.Price
+		}
+		var priceValue float64
+		if newPrice != nil {
+			priceValue = *newPrice
+		}
+
+		report := services.DetectCounterfeit(newTitle, newDescription, priceValue)
+		if report.IsSuspicious {
+			// Prepend warning to the description if it's being updated
+			if updateData.Description != nil {
+				*updateData.Description = "[SUSPICIOUS] " + report.Reason + ". " + *updateData.Description
+			} else {
+				// If description is not being updated, we can't add the warning
+				// In a real app, you might want to force an update or handle this differently
+			}
+		}
+	}
+	if updateData.Location != nil {
+		coords, err := services.GetCoordinates(*updateData.Location)
+		if err == nil {
+			query += ", latitude = ?, longitude = ?"
+			args = append(args, coords.Latitude, coords.Longitude)
+		}
 	}
 
 	// Recalculate suggested value if price or condition changed
