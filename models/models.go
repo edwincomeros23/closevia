@@ -95,16 +95,6 @@ func (a StringArray) Value() (driver.Value, error) {
 
 // User represents a user in the system
 type User struct {
-	ID           int       `json:"id"`
-	Name         string    `json:"name" validate:"required,min=2,max=255"`
-	Email        string    `json:"email" validate:"required,email"`
-	PasswordHash string    `json:"-" validate:"required"`
-	Role         string    `json:"role" validate:"oneof=user admin"`
-	Verified     bool      `json:"verified"`
-	Latitude     *float64  `json:"latitude,omitempty"`
-	Longitude    *float64  `json:"longitude,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
 	ID             int       `json:"id"`
 	Name           string    `json:"name" validate:"required,min=2,max=255"`
 	Email          string    `json:"email" validate:"required,email"`
@@ -118,6 +108,8 @@ type User struct {
 	Department     string    `json:"department,omitempty"`
 	Bio            string    `json:"bio,omitempty"`
 	Badges         IntArray  `json:"badges,omitempty"`
+	Latitude       *float64  `json:"latitude,omitempty"`
+	Longitude      *float64  `json:"longitude,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
