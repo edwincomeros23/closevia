@@ -36,6 +36,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Product } from '../types'
 import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
+import { getProductUrl } from '../utils/productUtils'
 import axios, { AxiosError } from 'axios'
 
 interface SavedProductsResponse {
@@ -175,8 +176,8 @@ const SavedProducts: React.FC = () => {
     }
   }
 
-  const handleViewProduct = (productId: number) => {
-    navigate(`/products/${productId}`)
+  const handleViewProduct = (product: any) => {
+    navigate(getProductUrl(product))
   }
 
   const formatCurrency = (amount: number) => {
@@ -373,7 +374,7 @@ const SavedProducts: React.FC = () => {
                           variant="outline"
                           size="sm"
                           flex={1}
-                          onClick={() => handleViewProduct(product.id)}
+                          onClick={() => handleViewProduct(product)}
                         >
                           View Details
                         </Button>
@@ -383,7 +384,7 @@ const SavedProducts: React.FC = () => {
                             colorScheme="brand"
                             size="sm"
                             flex={1}
-                            onClick={() => handleViewProduct(product.id)}
+                            onClick={() => handleViewProduct(product)}
                           >
                             {product.price ? 'Buy' : 'Trade'}
                           </Button>

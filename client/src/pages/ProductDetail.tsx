@@ -151,7 +151,25 @@ const ProductDetail: React.FC = () => {
     try {
       setLoading(true)
       setError('')
-      const productData = await getProduct(parseInt(id!))
+      
+      const identifier = id!
+      let productData: Product | null = null
+      
+      // Try to parse as integer (old ID URL) - redirect to slug if found
+      const productId = parseInt(identifier)
+      if (!isNaN(productId) && identifier === productId.toString()) {
+        // It's a numeric ID - fetch and redirect to slug for SEO/backward compatibility
+        productData = await getProduct(productId)
+        if (productData && productData.slug) {
+          // Redirect to slug-based URL
+          navigate(`/products/${productData.slug}`, { replace: true })
+          return
+        }
+      } else {
+        // It's a slug - fetch directly
+        productData = await getProduct(identifier)
+      }
+      
       if (productData) {
         setProduct(productData)
         if (productData.image_urls && productData.image_urls.length > 0) {
@@ -162,11 +180,18 @@ const ProductDetail: React.FC = () => {
       }
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.error || 'An unexpected error occurred');
+        const status = err.response?.status
+        if (status === 403) {
+          setError('This item is no longer available')
+        } else if (status === 404) {
+          setError('Product not found')
+        } else {
+          setError(err.response?.data?.error || 'An unexpected error occurred')
+        }
       } else if (err instanceof Error) {
-        setError(err.message);
+        setError(err.message)
       } else {
-        setError('An unexpected error occurred');
+        setError('An unexpected error occurred')
       }
     } finally {
       setLoading(false)
@@ -353,7 +378,10 @@ const ProductDetail: React.FC = () => {
   }
 
   const copyToClipboard = async () => {
-    const url = window.location.href
+    // Use slug-based URL if available, otherwise use current URL
+    const url = product?.slug 
+      ? `${window.location.origin}/products/${product.slug}`
+      : window.location.href
     try {
       await navigator.clipboard.writeText(url)
       toast({
@@ -375,7 +403,11 @@ const ProductDetail: React.FC = () => {
   }
 
   const shareToSocial = (platform: string) => {
-    const url = encodeURIComponent(window.location.href)
+    // Use slug-based URL if available
+    const productUrl = product?.slug 
+      ? `${window.location.origin}/products/${product.slug}`
+      : window.location.href
+    const url = encodeURIComponent(productUrl)
     const title = encodeURIComponent(product?.title || 'Check out this product')
     const description = encodeURIComponent(product?.description || '')
 
@@ -435,6 +467,8 @@ const ProductDetail: React.FC = () => {
   }
 
   const isOwner = user && user.id === product.seller_id
+  const isUnavailable = product.status === 'traded' || product.status === 'sold' || product.status === 'locked'
+  const canTradeOrPurchase = !isOwner && product.status === 'available'
 
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
@@ -710,17 +744,42 @@ const ProductDetail: React.FC = () => {
                   </HStack>
                 )}
 
-                {product.status === 'sold' && (
+                {/* Unavailable Status Messages */}
+                {isUnavailable && !isOwner && (
+                  <Alert status="warning" borderRadius="md">
+                    <AlertIcon />
+                    <VStack align="start" spacing={1}>
+                      <Text fontWeight="bold">
+                        {product.status === 'traded' 
+                          ? 'This item has already been traded and is no longer available'
+                          : product.status === 'sold'
+                          ? 'This product has been sold'
+                          : 'This item is currently reserved in a trade'}
+                      </Text>
+                      <Text fontSize="sm" color="gray.600">
+                        Only the original owner can view this item.
+                      </Text>
+                    </VStack>
+                  </Alert>
+                )}
+                {product.status === 'sold' && isOwner && (
                   <Box textAlign="center" py={4} w="full">
                     <Text color="red.500" fontWeight="bold">
                       This product has been sold
                     </Text>
                   </Box>
                 )}
-                {product.status === 'locked' && (
+                {product.status === 'locked' && isOwner && (
                   <Box textAlign="center" py={4} w="full">
                     <Text color="orange.500" fontWeight="bold">
                       This item is currently reserved in a trade.
+                    </Text>
+                  </Box>
+                )}
+                {product.status === 'traded' && isOwner && (
+                  <Box textAlign="center" py={4} w="full">
+                    <Text color="green.500" fontWeight="bold">
+                      This item has been successfully traded.
                     </Text>
                   </Box>
                 )}
@@ -991,7 +1050,7 @@ const ProductDetail: React.FC = () => {
                 <Text fontWeight="medium" mb={2}>Copy Link</Text>
                 <HStack>
                   <Input
-                    value={window.location.href}
+                    value={product?.slug ? `${window.location.origin}/products/${product.slug}` : window.location.href}
                     readOnly
                     size="sm"
                     bg="gray.50"
