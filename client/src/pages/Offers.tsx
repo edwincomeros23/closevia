@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea } from '@chakra-ui/react'
-import { FaHandshake, FaTimes } from 'react-icons/fa'
+import { FaHandshake, FaTimes, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { api } from '../services/api'
 import { Trade, TradeAction } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
@@ -397,7 +397,18 @@ const Offers: React.FC = () => {
               {/* Use ProductThumb: if pimg exists it's used, otherwise it will fetch product by id */}
               <ProductThumb pid={Number(pid)} src={pimg} alt={getProductTitle(Number(pid), ptitle)} />
               <VStack spacing={0} align="start">
-                <Link href={`/products/${pid}`} color="brand.600" fontSize="sm">{getProductTitle(Number(pid), ptitle)}</Link>
+                <Link 
+                  href={`/products/${it.product_slug || pid}`} 
+                  color="brand.600" 
+                  fontSize="sm"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    const slug = it.product_slug || pid
+                    window.location.href = `/products/${slug}`
+                  }}
+                >
+                  {getProductTitle(Number(pid), ptitle)}
+                </Link>
                 <Text fontSize="xs" color="gray.500">{pstatus}</Text>
               </VStack>
             </HStack>
@@ -604,7 +615,22 @@ const Offers: React.FC = () => {
                   {/* Main content with extra right padding for actions */}
                   <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
                     <VStack align="start" spacing={2}>
-                      <Text fontWeight="semibold" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                      <HStack spacing={2} align="center" flexWrap="wrap">
+                        <Text fontWeight="semibold" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        {t.trade_option && (
+                          <Badge 
+                            colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                            variant="subtle"
+                            fontSize="xs"
+                            display="flex"
+                            alignItems="center"
+                            gap={1}
+                          >
+                            <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                            {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                          </Badge>
+                        )}
+                      </HStack>
                       <Text fontSize="sm" color="gray.600">From: <Text as="span" fontWeight="medium">{t.buyer_name || 'Anonymous User'}</Text></Text>
                       <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
                       {renderOfferedItems(t)}
@@ -709,7 +735,22 @@ const Offers: React.FC = () => {
                     {/* Main content with extra right padding for actions */}
                     <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
                       <VStack align="start" spacing={2}>
-                        <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <HStack spacing={2} align="center" flexWrap="wrap">
+                          <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                          {t.trade_option && (
+                            <Badge 
+                              colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                              variant="subtle"
+                              fontSize="xs"
+                              display="flex"
+                              alignItems="center"
+                              gap={1}
+                            >
+                              <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                              {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                            </Badge>
+                          )}
+                        </HStack>
                         <Text fontSize="sm" color="gray.600">To: <Text as="span" fontWeight="medium">{t.seller_name || 'Anonymous User'}</Text></Text>
                         <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
                         {renderOfferedItems(t)}
@@ -799,7 +840,22 @@ const Offers: React.FC = () => {
                     {/* Main content with extra right padding for actions */}
                     <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
                       <VStack align="start" spacing={2}>
-                        <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <HStack spacing={2} align="center" flexWrap="wrap">
+                          <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                          {t.trade_option && (
+                            <Badge 
+                              colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                              variant="subtle"
+                              fontSize="xs"
+                              display="flex"
+                              alignItems="center"
+                              gap={1}
+                            >
+                              <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                              {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                            </Badge>
+                          )}
+                        </HStack>
                         <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Seller: {t.seller_name || 'Anonymous User'}</Text>
                         {renderOfferedItems(t)}
                       </VStack>

@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
+import { getProductUrl } from '../utils/productUtils'
 import { api } from '../services/api'
 
 interface Notification {
@@ -281,7 +282,9 @@ const Notifications: React.FC = () => {
                               ) : (
                                 <Badge colorScheme="green">Barter</Badge>
                               )}
-                              <Button size="sm" variant="outline" onClick={() => window.location.href = `/products/${p.id}`}>View</Button>
+                              <Button size="sm" variant="outline" onClick={() => {
+                                window.location.href = getProductUrl(p)
+                              }}>View</Button>
                             </HStack>
                           </VStack>
                         </HStack>

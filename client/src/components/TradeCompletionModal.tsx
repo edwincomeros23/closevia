@@ -20,10 +20,11 @@ import {
   Icon,
   Flex,
   Progress,
-  Checkbox
+  Checkbox,
+  Image
 } from '@chakra-ui/react'
 import { keyframes } from '@emotion/react'
-import { FaStar, FaHeart, FaThumbsUp, FaCheck, FaHandshake } from 'react-icons/fa'
+import { FaStar, FaHeart, FaThumbsUp, FaCheck, FaHandshake, FaImage } from 'react-icons/fa'
 import { Trade } from '../types'
 import { api } from '../services/api'
 
@@ -66,6 +67,9 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   const [policyAgreed, setPolicyAgreed] = useState(false)
   const [showFinishButton, setShowFinishButton] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+  const [transactionProof, setTransactionProof] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const toast = useToast()
 
   const isUserBuyer = trade && currentUserId === trade.buyer_id
@@ -113,6 +117,62 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     setShowConfirmationModal(true)
   }
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload an image file',
+        status: 'error',
+      })
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'File too large',
+        description: 'Please upload an image smaller than 5MB',
+        status: 'error',
+      })
+      return
+    }
+
+    try {
+      setUploadingImage(true)
+      const formData = new FormData()
+      formData.append('image', file)
+      formData.append('type', 'trade_proof')
+
+      const response = await api.post('/api/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      const imageUrl = response.data?.data?.url || response.data?.url
+      if (imageUrl) {
+        setTransactionProof(imageUrl)
+        toast({
+          title: 'Image uploaded',
+          description: 'Transaction proof uploaded successfully',
+          status: 'success',
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Upload failed',
+        description: error?.response?.data?.error || 'Failed to upload image',
+        status: 'error',
+      })
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
   const handleConfirmCompletion = async () => {
     if (!trade) return
     
@@ -123,11 +183,13 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       console.log('Submitting trade completion:', {
         tradeId: trade.id,
         rating,
-        feedback: feedback.trim()
+        feedback: feedback.trim(),
+        transactionProof
       })
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
-        feedback: feedback.trim()
+        feedback: feedback.trim(),
+        transaction_proof_url: transactionProof
       })
       
       setHasSubmitted(true)
@@ -397,21 +459,93 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                   </Text>
 
                   {/* Upload Transaction Photo */}
-                  <Box w="full" p={4} border="2px dashed" borderColor="gray.300" borderRadius="lg" textAlign="center">
-                    <VStack spacing={3}>
-                      <Icon as={FaHeart} boxSize={8} color="gray.400" />
-                      <VStack spacing={1}>
-                        <Text fontSize="sm" fontWeight="medium" color="gray.700">
-                          Upload Photo of Transaction
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          Click to upload or drag and drop
-                        </Text>
+                  <Box w="full">
+                    <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
+                      Upload Proof of Transaction (Optional)
+                    </Text>
+                    <Box
+                      p={4}
+                      border="2px dashed"
+                      borderColor={transactionProof ? 'green.300' : 'gray.300'}
+                      borderRadius="lg"
+                      textAlign="center"
+                      bg={transactionProof ? 'green.50' : 'white'}
+                      cursor="pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                      _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
+                      transition="all 0.2s"
+                    >
+                      <VStack spacing={3}>
+                        {transactionProof ? (
+                          <>
+                            <Image
+                              src={transactionProof}
+                              alt="Transaction proof"
+                              maxH="200px"
+                              borderRadius="md"
+                              objectFit="contain"
+                            />
+                            <HStack spacing={2}>
+                              <Button
+                                size="sm"
+                                colorScheme="red"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setTransactionProof(null)
+                                  if (fileInputRef.current) {
+                                    fileInputRef.current.value = ''
+                                  }
+                                }}
+                              >
+                                Remove
+                              </Button>
+                              <Button
+                                size="sm"
+                                colorScheme="brand"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  fileInputRef.current?.click()
+                                }}
+                              >
+                                Change
+                              </Button>
+                            </HStack>
+                          </>
+                        ) : (
+                          <>
+                            <Icon as={FaImage} boxSize={8} color="gray.400" />
+                            <VStack spacing={1}>
+                              <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                Upload Photo of Transaction
+                              </Text>
+                              <Text fontSize="xs" color="gray.500">
+                                Click to upload or drag and drop
+                              </Text>
+                            </VStack>
+                            <Button
+                              size="sm"
+                              colorScheme="brand"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                fileInputRef.current?.click()
+                              }}
+                            >
+                              Choose File
+                            </Button>
+                          </>
+                        )}
                       </VStack>
-                      <Button size="sm" colorScheme="brand" variant="outline">
-                        Choose File
-                      </Button>
-                    </VStack>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={handleImageUpload}
+                      />
+                    </Box>
                   </Box>
                   
                   <VStack spacing={3}>

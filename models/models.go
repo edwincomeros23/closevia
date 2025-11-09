@@ -136,6 +136,7 @@ type UserRegister struct {
 // Product represents a product listing
 type Product struct {
 	ID             int         `json:"id"`
+	Slug           string      `json:"slug,omitempty"` // SEO-friendly URL identifier
 	Title          string      `json:"title" validate:"required,min=2,max=255"`
 	Description    string      `json:"description"`
 	Price          *float64    `json:"price,omitempty"`      // Optional for barter-only items

@@ -54,6 +54,7 @@ import { api } from '../services/api'
 import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
+import { getProductUrl } from '../utils/productUtils'
 
   type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
   avatar_url?: string
@@ -468,7 +469,7 @@ const UserProfile: React.FC = () => {
                         <Box p={3}>
                           <Text 
                             as={RouterLink} 
-                            to={`/products/${product.id}`}
+                            to={getProductUrl(product)}
                             fontWeight="medium" 
                             noOfLines={2} 
                             mb={1}

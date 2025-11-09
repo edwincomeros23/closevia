@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Link as RouterLink, useLocation } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
   Heading,
@@ -41,6 +41,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
+import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
@@ -67,6 +68,7 @@ const Home: React.FC = () => {
   const { products, loading, error, searchProducts, loadMore, hasMore, isLoadingMore } = useProducts()
   const { user } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { onOpen: openMobileNav } = useMobileNav()
   const { offerCount } = useRealtime() // added realtime usage
@@ -346,7 +348,7 @@ const Home: React.FC = () => {
       transition="all 0.2s ease"
       w="full"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
-      onClick={() => window.location.href = `/products/${product.id}`}
+      onClick={() => navigate(getProductUrl(product))}
     >
       {/* Square Product Image */}
       <Box position="relative" w="full" pt="100%" overflow="hidden">
@@ -467,7 +469,10 @@ const Home: React.FC = () => {
         </Heading>
         
         <Text color="gray.600" noOfLines={2} mb={3} fontSize="sm" flexShrink={0}>
-          {product.description || 'No description available'}
+          {product.description 
+            ? product.description.split(' ').slice(0, 15).join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+            : 'No description available'
+          }
         </Text>
 
         {/* Action Buttons */}
@@ -581,34 +586,6 @@ const Home: React.FC = () => {
               display={{ base: 'none', md: 'inline-flex' }}
             />
 
-            {/* Offers button (desktop only) - now placed to the right of Search */}
-            <Box position="relative" display={{ base: 'none', md: 'inline-block' }}>
-              <IconButton
-                as={RouterLink}
-                to="/offers"
-                aria-label="Offers"
-                icon={<RepeatIcon />}
-                variant="ghost"
-                size="lg"
-              />
-              {offerCount > 0 && (
-                <Badge
-                  position="absolute"
-                  /* push badge to the left side of the icon and vertically center it */
-                  left="-10px"
-                  top="50%"
-                  transform="translate(-100%, -50%)"
-                  colorScheme="purple"
-                  borderRadius="full"
-                  fontSize="0.65rem"
-                  px={2}
-                  py={0.5}
-                >
-                  {offerCount}
-                </Badge>
-              )}
-            </Box>
-
             {/* Profile button (desktop only)  */}
             <IconButton
               as={RouterLink}
@@ -715,13 +692,13 @@ const Home: React.FC = () => {
       <Box
         maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1160', xl: '1415px' }}
         mx="auto"
-        mb={4}
+        mb={8}
         px={{ base: 2, md: 4 }}
       >
         <Box
           position="relative"
           overflow="hidden"
-          h={{ base: 28, md: 28, lg: 32 }}   
+          h={{ base: 28, md: 28, lg: 40 }}   
           rounded="lg"
           border="1px"
           borderColor="gray.200"
@@ -798,7 +775,7 @@ const Home: React.FC = () => {
         </Box>
       </Box>
       {/* Horizontal category pills under search bar */}
-      <Box px={{ base: 3, md: 7 }} py={3}>
+      <Box px={{ base: 3, md: 7 }} py={0}>
         <Box
           w="full"
           maxW="8xl"
@@ -858,7 +835,7 @@ const Home: React.FC = () => {
         </Box>
       </Box>
       {/* Main Content */}
-      <Box px={{ base: 3, md: 8 }} py={0}>
+      <Box px={{ base: 3, md: 8 }} py={8}>
         {/* Loading State */}
         {loading && !products.length && (
           <Center h="50vh">
@@ -896,7 +873,6 @@ const Home: React.FC = () => {
   <Box
     maxW={{ base: 'calc(100% - 12px)', md: '100%' }}
     mx="auto"
-    mt={4}
     px={{ base: 2, md: 4 }}
   >
     <Grid
