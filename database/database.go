@@ -104,11 +104,7 @@ func CreateTables() error {
 			allow_buying BOOLEAN DEFAULT TRUE,
 			barter_only BOOLEAN DEFAULT FALSE,
 			location VARCHAR(255),
-<<<<<<< HEAD
 			` + "`condition`" + ` VARCHAR(50),
-=======
-			` + "`" + `condition` + "`" + ` VARCHAR(50),
->>>>>>> f10a8e859bef6dcd766cee5e3e2f79b86b8a14bd
 			suggested_value INT,
 			category VARCHAR(100),
 			latitude FLOAT,

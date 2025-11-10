@@ -146,8 +146,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Insert new product
 	biddingType := c.FormValue("bidding_type")
 	result, err := h.db.Exec(
-		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category,
+		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category, latitude, longitude, bidding_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, lat, lon, biddingType,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -161,22 +161,18 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Get the created product
 	var createdProduct models.Product
 	err = h.db.QueryRow(
-		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
+		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, latitude, longitude, bidding_type, created_at, updated_at FROM products WHERE id = ?",
 		productID,
 	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
 		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
-
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.Latitude, &createdProduct.Longitude, &createdProduct.BiddingType, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to retrieve created product",
 		})
 	}
-
-	// Set bidding_type to empty since it doesn't exist in database
-	createdProduct.BiddingType = ""
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
@@ -488,7 +484,9 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var createdAtNull sql.NullTime
 	var updatedAtNull sql.NullTime
 	var statusNull sql.NullString
-	
+	var biddingTypeNull sql.NullString
+	var sellerNameNull sql.NullString
+
 	err = h.db.QueryRow(`
 		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
 			   p.premium, p.status, p.allow_buying, p.barter_only, p.location,
@@ -518,38 +516,38 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			Error:   "Failed to retrieve product",
 		})
 	}
-	
+
 	// Handle nullable string fields
 	if titleNull.Valid {
 		product.Title = titleNull.String
 	} else {
 		product.Title = ""
 	}
-	
+
 	if descriptionNull.Valid {
 		product.Description = descriptionNull.String
 	} else {
 		product.Description = ""
 	}
-	
+
 	if locationNull.Valid {
 		product.Location = locationNull.String
 	} else {
 		product.Location = ""
 	}
-	
+
 	// Convert boolean integers to bool
 	product.Premium = premiumInt != 0
 	product.AllowBuying = allowBuyingInt != 0
 	product.BarterOnly = barterOnlyInt != 0
-	
+
 	// Handle status
 	if statusNull.Valid {
 		product.Status = statusNull.String
 	} else {
 		product.Status = "available" // Default value from schema
 	}
-	
+
 	// Handle timestamps
 	if createdAtNull.Valid {
 		product.CreatedAt = createdAtNull.Time
