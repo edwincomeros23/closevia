@@ -42,6 +42,7 @@ const EditProduct: React.FC = () => {
   
   const navigate = useNavigate()
   const toast = useToast()
+  const pageBg = '#FFFDF1'
 
   useEffect(() => {
     if (id) {
@@ -225,206 +226,212 @@ const EditProduct: React.FC = () => {
 
   if (fetching) {
     return (
-      <Center h="50vh">
+      <Box minH="100vh" bg={pageBg} display="flex" alignItems="center" justifyContent="center">
         <Spinner size="xl" color="brand.500" />
-      </Center>
+      </Box>
     )
   }
 
   if (error && !originalProduct) {
     return (
-      <Container maxW="container.md" py={8}>
-        <Alert status="error">
-          <AlertIcon />
-          {error}
-        </Alert>
-      </Container>
+      <Box minH="100vh" bg={pageBg} py={8}>
+        <Container maxW="container.md">
+          <Alert status="error">
+            <AlertIcon />
+            {error}
+          </Alert>
+        </Container>
+      </Box>
     )
   }
 
   if (!originalProduct) {
     return (
-      <Container maxW="container.md" py={8}>
-        <Alert status="error">
-          <AlertIcon />
-          Product not found
-        </Alert>
-      </Container>
+      <Box minH="100vh" bg={pageBg} py={8}>
+        <Container maxW="container.md">
+          <Alert status="error">
+            <AlertIcon />
+            Product not found
+          </Alert>
+        </Container>
+      </Box>
     )
   }
 
   return (
-    <Container maxW="container.md" py={8}>
-      <VStack spacing={8}>
-        <Box textAlign="center">
-          <Heading size="xl" color="brand.500" mb={2}>
-            Edit Product
-          </Heading>
-          <Text color="gray.600">
-            Update your product listing
-          </Text>
-        </Box>
+    <Box minH="100vh" bg={pageBg} py={8}>
+      <Container maxW="container.md">
+        <VStack spacing={8}>
+          <Box textAlign="center">
+            <Heading size="xl" color="brand.500" mb={2}>
+              Edit Product
+            </Heading>
+            <Text color="gray.600">
+              Update your product listing
+            </Text>
+          </Box>
 
-        <Box bg="white" p={8} rounded="lg" shadow="sm" w="full">
-          <form onSubmit={handleSubmit}>
-            <VStack spacing={6}>
-              {error && (
-                <Alert status="error">
-                  <AlertIcon />
-                  {error}
-                </Alert>
-              )}
-
-              <FormControl>
-                <FormLabel>Product Title</FormLabel>
-                <Input
-                  value={formData.title || originalProduct.title}
-                  onChange={(e) => handleInputChange('title', e.target.value)}
-                  placeholder="Enter product title"
-                  size="lg"
-                />
-                <FormHelperText>
-                  Leave empty to keep current title
-                </FormHelperText>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel>Description</FormLabel>
-                <Textarea
-                  value={formData.description || originalProduct.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  placeholder="Describe your product in detail"
-                  size="lg"
-                  rows={4}
-                />
-                <FormHelperText>
-                  Leave empty to keep current description
-                </FormHelperText>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel>Price (PHP)</FormLabel>
-                <NumberInput
-                  value={formData.price !== undefined ? formData.price : originalProduct.price}
-                  onChange={(value) => handleInputChange('price', parseFloat(value) || 0)}
-                  min={0}
-                  precision={2}
-                  size="lg"
-                >
-                  <NumberInputField placeholder="0.00" />
-                  <NumberInputStepper>
-                    <NumberIncrementStepper />
-                    <NumberDecrementStepper />
-                  </NumberInputStepper>
-                </NumberInput>
-                <FormHelperText>
-                  Leave empty to keep current price
-                </FormHelperText>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel>Condition</FormLabel>
-                <Select
-                  value={formData.condition || ''}
-                  onChange={(e) => handleInputChange('condition', e.target.value)}
-                  placeholder="Select condition"
-                  size="lg"
-                >
-                  <option value="New">New</option>
-                  <option value="Like-New">Like-New</option>
-                  <option value="Used">Used</option>
-                  <option value="Fair">Fair</option>
-                </Select>
-                <FormHelperText>
-                  Leave empty to keep current condition
-                </FormHelperText>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel>Image URL</FormLabel>
-                <Input
-                  value={formData.image_urls && formData.image_urls.length > 0 ? formData.image_urls[0] : (originalProduct.image_urls && originalProduct.image_urls[0])}
-                  onChange={(e) => handleInputChange('image_urls', e.target.value)}
-                  placeholder="https://example.com/image.jpg"
-                  size="lg"
-                />
-                <FormHelperText>
-                  Leave empty to keep current image
-                </FormHelperText>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel>Upload Images</FormLabel>
-                <input
-                  id="edit-image-input"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={(e) => handleAddImageFiles(e.target.files)}
-                />
-                <Button onClick={() => document.getElementById('edit-image-input')?.click()}>Add image</Button>
-                <Text fontSize="sm" color="gray.500">You can add multiple images. Previews are stored locally until you save.</Text>
-
-                {imagePreviews.length > 0 && (
-                  <VStack align="stretch" spacing={2} mt={3}>
-                    {imagePreviews.map((url, idx) => (
-                      <HStack key={idx} spacing={3} align="center">
-                        <img src={url} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
-                        <Text fontSize="sm" color="gray.600" noOfLines={1}>{url.startsWith('data:') ? 'Local preview' : url}</Text>
-                        <Button size="sm" onClick={() => removeImageAt(idx)}>Remove</Button>
-                      </HStack>
-                    ))}
-                  </VStack>
+          <Box bg="white" p={8} rounded="lg" shadow="sm" w="full">
+            <form onSubmit={handleSubmit}>
+              <VStack spacing={6}>
+                {error && (
+                  <Alert status="error">
+                    <AlertIcon />
+                    {error}
+                  </Alert>
                 )}
-              </FormControl>
 
-              <FormControl display="flex" alignItems="center">
-                <FormLabel htmlFor="premium" mb="0">
-                  Premium Listing
-                </FormLabel>
-                <Switch
-                  id="premium"
-                  isChecked={formData.premium !== undefined ? formData.premium : originalProduct.premium}
-                  onChange={(e) => handleInputChange('premium', e.target.checked)}
-                  colorScheme="yellow"
-                />
-                <FormHelperText ml={3}>
-                  Premium listings get featured placement
-                </FormHelperText>
-              </FormControl>
+                <FormControl>
+                  <FormLabel>Product Title</FormLabel>
+                  <Input
+                    value={formData.title || originalProduct.title}
+                    onChange={(e) => handleInputChange('title', e.target.value)}
+                    placeholder="Enter product title"
+                    size="lg"
+                  />
+                  <FormHelperText>
+                    Leave empty to keep current title
+                  </FormHelperText>
+                </FormControl>
 
-              <FormControl>
-                <FormLabel>Status</FormLabel>
-                <Select
-                  value={formData.status || originalProduct.status}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  placeholder="Select status"
+                <FormControl>
+                  <FormLabel>Description</FormLabel>
+                  <Textarea
+                    value={formData.description || originalProduct.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    placeholder="Describe your product in detail"
+                    size="lg"
+                    rows={4}
+                  />
+                  <FormHelperText>
+                    Leave empty to keep current description
+                  </FormHelperText>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Price (PHP)</FormLabel>
+                  <NumberInput
+                    value={formData.price !== undefined ? formData.price : originalProduct.price}
+                    onChange={(value) => handleInputChange('price', parseFloat(value) || 0)}
+                    min={0}
+                    precision={2}
+                    size="lg"
+                  >
+                    <NumberInputField placeholder="0.00" />
+                    <NumberInputStepper>
+                      <NumberIncrementStepper />
+                      <NumberDecrementStepper />
+                    </NumberInputStepper>
+                  </NumberInput>
+                  <FormHelperText>
+                    Leave empty to keep current price
+                  </FormHelperText>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Condition</FormLabel>
+                  <Select
+                    value={formData.condition || ''}
+                    onChange={(e) => handleInputChange('condition', e.target.value)}
+                    placeholder="Select condition"
+                    size="lg"
+                  >
+                    <option value="New">New</option>
+                    <option value="Like-New">Like-New</option>
+                    <option value="Used">Used</option>
+                    <option value="Fair">Fair</option>
+                  </Select>
+                  <FormHelperText>
+                    Leave empty to keep current condition
+                  </FormHelperText>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Image URL</FormLabel>
+                  <Input
+                    value={formData.image_urls && formData.image_urls.length > 0 ? formData.image_urls[0] : (originalProduct.image_urls && originalProduct.image_urls[0])}
+                    onChange={(e) => handleInputChange('image_urls', e.target.value)}
+                    placeholder="https://example.com/image.jpg"
+                    size="lg"
+                  />
+                  <FormHelperText>
+                    Leave empty to keep current image
+                  </FormHelperText>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Upload Images</FormLabel>
+                  <input
+                    id="edit-image-input"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => handleAddImageFiles(e.target.files)}
+                  />
+                  <Button onClick={() => document.getElementById('edit-image-input')?.click()}>Add image</Button>
+                  <Text fontSize="sm" color="gray.500">You can add multiple images. Previews are stored locally until you save.</Text>
+
+                  {imagePreviews.length > 0 && (
+                    <VStack align="stretch" spacing={2} mt={3}>
+                      {imagePreviews.map((url, idx) => (
+                        <HStack key={idx} spacing={3} align="center">
+                          <img src={url} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
+                          <Text fontSize="sm" color="gray.600" noOfLines={1}>{url.startsWith('data:') ? 'Local preview' : url}</Text>
+                          <Button size="sm" onClick={() => removeImageAt(idx)}>Remove</Button>
+                        </HStack>
+                      ))}
+                    </VStack>
+                  )}
+                </FormControl>
+
+                <FormControl display="flex" alignItems="center">
+                  <FormLabel htmlFor="premium" mb="0">
+                    Premium Listing
+                  </FormLabel>
+                  <Switch
+                    id="premium"
+                    isChecked={formData.premium !== undefined ? formData.premium : originalProduct.premium}
+                    onChange={(e) => handleInputChange('premium', e.target.checked)}
+                    colorScheme="yellow"
+                  />
+                  <FormHelperText ml={3}>
+                    Premium listings get featured placement
+                  </FormHelperText>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Status</FormLabel>
+                  <Select
+                    value={formData.status || originalProduct.status}
+                    onChange={(e) => handleInputChange('status', e.target.value)}
+                    placeholder="Select status"
+                    size="lg"
+                  >
+                    <option value="available">Available</option>
+                    <option value="bartered">Bartered</option>
+                  </Select>
+                  <FormHelperText>
+                    Select the current status of your product
+                  </FormHelperText>
+                </FormControl>
+
+                <Button
+                  type="submit"
+                  colorScheme="brand"
                   size="lg"
+                  w="full"
+                  isLoading={loading}
+                  loadingText="Updating product..."
                 >
-                  <option value="available">Available</option>
-                  <option value="bartered">Bartered</option>
-                </Select>
-                <FormHelperText>
-                  Select the current status of your product
-                </FormHelperText>
-              </FormControl>
-
-              <Button
-                type="submit"
-                colorScheme="brand"
-                size="lg"
-                w="full"
-                isLoading={loading}
-                loadingText="Updating product..."
-              >
-                Update Product
-              </Button>
-            </VStack>
-          </form>
-        </Box>
-      </VStack>
-    </Container>
+                  Update Product
+                </Button>
+              </VStack>
+            </form>
+          </Box>
+        </VStack>
+      </Container>
+    </Box>
   )
 }
 

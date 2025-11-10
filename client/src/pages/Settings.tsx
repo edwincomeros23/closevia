@@ -545,28 +545,6 @@ const SettingsPage: React.FC = () => {
                     Keep your account secure by updating your password regularly.
                   </Text>
                 </FormControl>
-
-                <Divider />
-
-                {/* Logout and Delete Account */}
-                <HStack spacing={4} flexWrap="wrap">
-                  <Button
-                    leftIcon={<FaSignOutAlt />}
-                    colorScheme="orange"
-                    variant="outline"
-                    onClick={onLogoutModalOpen}
-                  >
-                    Logout
-                  </Button>
-                  <Button
-                    leftIcon={<FaTrash />}
-                    colorScheme="red"
-                    variant="outline"
-                    onClick={onDeleteModalOpen}
-                  >
-                    Delete Account
-                  </Button>
-                </HStack>
               </VStack>
             </CardBody>
           </Card>
@@ -916,6 +894,63 @@ const SettingsPage: React.FC = () => {
                     Choose how often you want to receive notifications
                   </Text>
                 </FormControl>
+              </VStack>
+            </CardBody>
+          </Card>
+
+          {/* Danger Zone Section - Logout & Delete Account */}
+          <Card
+            bg={cardBg}
+            borderRadius="lg"
+            overflow="hidden"
+            variant="outline"
+            borderColor="red.300"
+            _hover={{ boxShadow: 'md' }}
+            transition="all 0.2s"
+          >
+            <CardHeader pb={3} bg="red.50">
+              <HStack spacing={3}>
+                <Icon as={FaTrash} color="red.500" boxSize={5} />
+                <Heading size="md" color="red.600">Danger Zone</Heading>
+              </HStack>
+            </CardHeader>
+            <CardBody pt={4}>
+              <VStack spacing={6} align="stretch">
+                {/* Logout */}
+                <Box>
+                  <Heading size="sm" mb={2}>Logout</Heading>
+                  <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')} mb={4}>
+                    Sign out of your account on this device. You can log back in anytime.
+                  </Text>
+                  <Button
+                    leftIcon={<FaSignOutAlt />}
+                    colorScheme="orange"
+                    variant="outline"
+                    onClick={onLogoutModalOpen}
+                    w="full"
+                  >
+                    Logout
+                  </Button>
+                </Box>
+
+                <Divider />
+
+                {/* Delete Account */}
+                <Box>
+                  <Heading size="sm" mb={2} color="red.600">Delete Account</Heading>
+                  <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')} mb={4}>
+                    Permanently delete your account and all associated data. This action cannot be undone.
+                  </Text>
+                  <Button
+                    leftIcon={<FaTrash />}
+                    colorScheme="red"
+                    variant="outline"
+                    onClick={onDeleteModalOpen}
+                    w="full"
+                  >
+                    Delete Account
+                  </Button>
+                </Box>
               </VStack>
             </CardBody>
           </Card>

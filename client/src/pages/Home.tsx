@@ -22,11 +22,18 @@ import {
   InputLeftElement,
   FormControl,
   FormLabel,
+  Tooltip,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalCloseButton,
+  ModalBody,
 } from '@chakra-ui/react'
 import { 
   SearchIcon, 
   RepeatIcon, 
-  StarIcon, 
+  StarIcon,
   ViewIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -34,8 +41,9 @@ import {
   HamburgerIcon,
   ArrowLeftIcon,   
   ArrowRightIcon,   
+  CloseIcon,
 } from '@chakra-ui/icons'
-import { FaUserCircle } from 'react-icons/fa'
+import { FaUserCircle, FaHandshake } from 'react-icons/fa'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
@@ -221,6 +229,10 @@ const Home: React.FC = () => {
 
   // Trade modal state
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
+  const [selectedProductForOffers, setSelectedProductForOffers] = useState<number | null>(null)
+  const [offersModalOpen, setOffersModalOpen] = useState(false)
+  const [offersForProduct, setOffersForProduct] = useState<any[]>([])
+  const [loadingOffers, setLoadingOffers] = useState(false)
 
   // Slider state: cycles public/1.jpg, public/2.jpg, public/3.jpg every 3s
   const sliderImages = ['/1.jpg', '/2.jpg', '/3.jpg']
@@ -319,6 +331,26 @@ const Home: React.FC = () => {
     }
   }
 
+  const handleViewOffers = async (productId: number) => {
+    try {
+      setLoadingOffers(true)
+      setSelectedProductForOffers(productId)
+      const response = await api.get(`/api/trades?target_product_id=${productId}`)
+      setOffersForProduct(response.data?.data || [])
+      setOffersModalOpen(true)
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load offers for this product',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    } finally {
+      setLoadingOffers(false)
+    }
+  }
+
   const clearFilters = () => {
     setSearchTerm('')
     setFilters({
@@ -333,6 +365,28 @@ const Home: React.FC = () => {
       limit: 20,
     })
     setHasSearched(false)
+  }
+
+  // Add state for offer sorting
+  const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
+
+  const getRankedOffers = () => {
+    const ranked = [...offersForProduct]
+    
+    if (offersSortBy === 'accepted') {
+      ranked.sort((a, b) => {
+        const statusOrder = { 'accepted': 0, 'active': 1, 'pending': 2, 'declined': 3, 'cancelled': 3 }
+        const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4
+        const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4
+        return aOrder - bOrder
+      })
+    } else if (offersSortBy === 'newest') {
+      ranked.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    } else if (offersSortBy === 'oldest') {
+      ranked.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    }
+    
+    return ranked
   }
 
   // Product card with square image and fixed info area for uniform height
@@ -505,6 +559,22 @@ const Home: React.FC = () => {
               {product.status === 'sold' ? 'Sold' : 'Buy'}
             </Button>
           )}
+
+          {/* New: View Offers Button */}
+          <Tooltip label={`View offers (${product.offer_count || 0})`} placement="top">
+            <IconButton
+              aria-label="View offers"
+              icon={<FaHandshake />}
+              size="sm"
+              variant="outline"
+              colorScheme="blue"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleViewOffers(product.id)
+              }}
+              isDisabled={product.status === 'sold'}
+            />
+          </Tooltip>
         </HStack>
       </Box>
     </Box>
@@ -936,35 +1006,115 @@ const Home: React.FC = () => {
 
       <TradeModal isOpen={isOpen} onClose={onClose} targetProductId={tradeTargetProductId} />
 
-      {/* Floating Add Product FAB (bottom-right) - more visible with stronger shadows and border */}
-      <IconButton
-        as={RouterLink}
-        to="/add-product"
-        aria-label="Add product"
-        icon={<AddIcon />}
-        position="fixed"
-        bottom={12}
-        right={6}
-        // explicit size for a prominent FAB
-        h={14}
-        w={14}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        bgGradient="linear(to-br, brand.500, teal.400)"
-        color="white"
-        borderRadius="full"
-        borderWidth={2}
-        borderColor="white"
-        zIndex={200}
-        // layered shadow for depth
-        boxShadow="0 8px 30px rgba(16, 185, 129, 0.18), 0 4px 10px rgba(0,0,0,0.08)"
-        // interactive states
-        _hover={{ transform: 'translateY(-4px) scale(1.03)', boxShadow: '0 12px 40px rgba(16,185,129,0.22), 0 6px 16px rgba(0,0,0,0.12)' }}
-        _active={{ transform: 'translateY(-1px) scale(0.99)', boxShadow: '0 6px 20px rgba(16,185,129,0.16)' }}
-        _focus={{ boxShadow: '0 0 0 6px rgba(16,185,129,0.12)' }}
-        title="Add product"
-      />
+      {/* Offers Modal - Simplified with Ranking */}
+      <Modal isOpen={offersModalOpen} onClose={() => setOffersModalOpen(false)} size="2xl">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            <HStack justify="space-between" w="full">
+              <Heading size="md" color="brand.600">
+                Offers ({offersForProduct.length})
+              </Heading>
+              <IconButton
+                aria-label="Close"
+                icon={<CloseIcon />}
+                variant="ghost"
+                onClick={() => setOffersModalOpen(false)}
+              />
+            </HStack>
+          </ModalHeader>
+
+          <ModalBody pb={6}>
+            {loadingOffers ? (
+              <Center py={8}>
+                <Spinner color="brand.500" />
+              </Center>
+            ) : getRankedOffers().length === 0 ? (
+              <Box textAlign="center" py={8}>
+                <Text color="gray.600">No offers yet</Text>
+              </Box>
+            ) : (
+              <VStack spacing={3} align="stretch">
+                {getRankedOffers().map((offer: any, index: number) => (
+                  <Box
+                    key={offer.id}
+                    p={4}
+                    borderWidth="2px"
+                    borderColor={index === 0 ? 'gold' : offer.status === 'accepted' ? 'green.400' : 'gray.200'}
+                    rounded="lg"
+                    bg={index === 0 ? 'yellow.50' : offer.status === 'accepted' ? 'green.50' : 'white'}
+                    position="relative"
+                  >
+                    {/* Rank Badge */}
+                    <Badge
+                      position="absolute"
+                      top={-3}
+                      left={4}
+                      colorScheme={index === 0 ? 'yellow' : index === 1 ? 'gray' : index === 2 ? 'orange' : 'gray'}
+                      fontSize="xs"
+                      px={2}
+                      py={1}
+                    >
+                      #{index + 1}
+                    </Badge>
+
+                    <HStack justify="space-between" mb={2} mt={2}>
+                      <HStack>
+                        {index === 0 && (
+                          <Text fontSize="lg">🏆</Text>
+                        )}
+                        <Text fontWeight="bold" fontSize="sm">
+                          {offer.buyer_name || 'Anonymous'}
+                        </Text>
+                      </HStack>
+                      <Badge
+                        colorScheme={
+                          offer.status === 'accepted' ? 'green' :
+                          offer.status === 'pending' ? 'yellow' : 'gray'
+                        }
+                        fontSize="xs"
+                      >
+                        {offer.status.toUpperCase()}
+                      </Badge>
+                    </HStack>
+
+                    <Text fontSize="sm" color="gray.600" mb={2}>
+                      {offer.items?.length || 0} item(s) offered
+                    </Text>
+
+                    <HStack spacing={2} flexWrap="wrap">
+                      {offer.items && offer.items.map((item: any, idx: number) => (
+                        <Badge key={idx} colorScheme="blue" variant="outline" fontSize="xs">
+                          {item.product_title?.substring(0, 20) || `Item ${idx + 1}`}
+                        </Badge>
+                      ))}
+                    </HStack>
+                  </Box>
+                ))}
+              </VStack>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
+    {/* Floating Add Product FAB */}
+    <IconButton
+      as={RouterLink}
+      to="/add-product"
+      aria-label="Add product"
+      icon={<AddIcon />}
+      position="fixed"
+      bottom={12}
+      right={6}
+      h={14}
+      w={14}
+      bgGradient="linear(to-br, brand.500, teal.400)"
+      color="white"
+      borderRadius="full"
+      zIndex={200}
+      boxShadow="lg"
+      _hover={{ transform: 'scale(1.05)' }}
+    />
     </Box>
   )
 }

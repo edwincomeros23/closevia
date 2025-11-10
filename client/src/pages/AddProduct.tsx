@@ -52,6 +52,7 @@ const AddProduct: React.FC = () => {
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [descriptionLength, setDescriptionLength] = useState(0)
   
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -114,6 +115,20 @@ const AddProduct: React.FC = () => {
   }
 
   const handleInputChange = (field: keyof ProductCreate, value: any) => {
+    if (field === 'description') {
+      const length = value?.length || 0
+      if (length > 800) {
+        toast({
+          title: 'Description too long',
+          description: `Maximum 800 characters allowed (currently ${length})`,
+          status: 'warning',
+          duration: 2000,
+          isClosable: true,
+        })
+        return
+      }
+      setDescriptionLength(length)
+    }
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
@@ -266,7 +281,7 @@ const AddProduct: React.FC = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1: return uploadedImages.length >= 3
-      case 2: return formData.title.trim() && formData.description.trim()
+      case 2: return formData.title.trim() && formData.description.trim() && descriptionLength >= 300 && descriptionLength <= 800
       case 3: return true // Barter options are always valid
       case 4: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
       case 5: return true
@@ -379,15 +394,61 @@ const AddProduct: React.FC = () => {
             </FormControl>
             
             <FormControl isRequired>
-              <FormLabel>Description</FormLabel>
+              <FormLabel>
+                <HStack justify="space-between" w="full">
+                  <Text>Description</Text>
+                  <Badge
+                    colorScheme={
+                      descriptionLength < 300 ? 'red' :
+                      descriptionLength <= 800 ? 'green' : 'orange'
+                    }
+                    fontSize="xs"
+                  >
+                    {descriptionLength}/800 chars
+                  </Badge>
+                </HStack>
+              </FormLabel>
               <Textarea
                 placeholder="Describe your product in detail..."
                 value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
+                onChange={(e) => {
+                  handleInputChange('description', e.target.value)
+                }}
                 rows={6}
                 size="lg"
+                borderColor={
+                  descriptionLength < 300 ? 'red.300' :
+                  descriptionLength <= 800 ? 'green.300' : 'orange.300'
+                }
+                _focus={{
+                  borderColor:
+                    descriptionLength < 300 ? 'red.500' :
+                    descriptionLength <= 800 ? 'green.500' : 'orange.500',
+                }}
               />
-              <FormHelperText>Include condition, features, and what you're looking for in exchange</FormHelperText>
+              <Box
+                mt={2}
+                p={2}
+                bg={
+                  descriptionLength < 300 ? 'red.50' :
+                  descriptionLength <= 800 ? 'green.50' : 'orange.50'
+                }
+                borderRadius="md"
+                borderLeftWidth="4px"
+                borderLeftColor={
+                  descriptionLength < 300 ? 'red.400' :
+                  descriptionLength <= 800 ? 'green.400' : 'orange.400'
+                }
+              >
+                <Text fontSize="sm" color="gray.700">
+                  {descriptionLength < 300
+                    ? `⚠️ Add at least ${300 - descriptionLength} more characters (minimum 300)`
+                    : descriptionLength <= 800
+                    ? `✓ Perfect length! ${descriptionLength} characters`
+                    : `❌ Description exceeds limit by ${descriptionLength - 800} characters`
+                  }
+                </Text>
+              </Box>
             </FormControl>
             
             <FormControl isRequired>
@@ -583,7 +644,7 @@ const AddProduct: React.FC = () => {
           {/* Header */}
           <Box textAlign="center">
             <Heading size="xl" color="brand.500" mb={2}>
-              Add New Product
+              Add New Products
             </Heading>
             <Text color="gray.600">
               Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
