@@ -32,6 +32,7 @@ import {
   ModalCloseButton,
   Input,
   Tooltip,
+  Grid,
 } from '@chakra-ui/react'
 import { 
   FiHeart, 
@@ -44,6 +45,7 @@ import {
   FiMessageCircle,
   FiBookmark
 } from 'react-icons/fi'
+import { FaHandshake } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { Product } from '../types'
@@ -51,6 +53,7 @@ import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import TradeModal from '../components/TradeModal'
 import axios from 'axios';
+import { ChevronUpIcon, ChevronDownIcon, CloseIcon, StarIcon } from '@chakra-ui/icons'
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -67,7 +70,11 @@ const ProductDetail: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [wishlistCount, setWishlistCount] = useState<number>(0)
   const [isWishlisted, setIsWishlisted] = useState<boolean>(false)
-  
+  const [offersForProduct, setOffersForProduct] = useState<any[]>([])
+  const [loadingOffers, setLoadingOffers] = useState(false)
+  const [offersModalOpen, setOffersModalOpen] = useState(false)
+  const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
+
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure()
@@ -443,6 +450,44 @@ const ProductDetail: React.FC = () => {
     }
   }
 
+  const handleViewOffers = async () => {
+    try {
+      setLoadingOffers(true)
+      const response = await api.get(`/api/trades?target_product_id=${product?.id}`)
+      setOffersForProduct(response.data?.data || [])
+      setOffersModalOpen(true)
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load offers for this product',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    } finally {
+      setLoadingOffers(false)
+    }
+  }
+
+  const getRankedOffers = () => {
+    const ranked = [...offersForProduct]
+    
+    if (offersSortBy === 'accepted') {
+      ranked.sort((a, b) => {
+        const statusOrder = { 'accepted': 0, 'active': 1, 'pending': 2, 'declined': 3, 'cancelled': 3 }
+        const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4
+        const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4
+        return aOrder - bOrder
+      })
+    } else if (offersSortBy === 'newest') {
+      ranked.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    } else {
+      ranked.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    }
+    
+    return ranked
+  }
+
   if (loading) {
     return (
       <Box bg="#FFFDF1" minH="100vh" w="100%">
@@ -687,15 +732,17 @@ const ProductDetail: React.FC = () => {
                         >
                           Buy Now - ₱{product.price.toFixed(2)}
                         </Button>
-                        <Button
-                          variant="outline"
-                          colorScheme="blue"
-                          size="lg"
-                          leftIcon={<FiMessageCircle />}
-                          onClick={() => navigate(`/messages?seller_id=${product.seller_id}`)}
-                        >
-                          Chat
-                        </Button>
+                        <Tooltip label={`View current offers (${product.offer_count || 0})`}>
+                          <Button
+                            variant="outline"
+                            colorScheme="blue"
+                            size="lg"
+                            leftIcon={<FaHandshake />}
+                            onClick={handleViewOffers}
+                          >
+                            Offers
+                          </Button>
+                        </Tooltip>
                       </HStack>
                     ) : (
                       <HStack spacing={4} w="full">
@@ -707,15 +754,17 @@ const ProductDetail: React.FC = () => {
                         >
                           Trade Offer
                         </Button>
-                        <Button
-                          variant="outline"
-                          colorScheme="blue"
-                          size="lg"
-                          leftIcon={<FiMessageCircle />}
-                          onClick={() => navigate(`/messages?seller_id=${product.seller_id}`)}
-                        >
-                          Chat
-                        </Button>
+                        <Tooltip label={`View current offers (${product.offer_count || 0})`}>
+                          <Button
+                            variant="outline"
+                            colorScheme="blue"
+                            size="lg"
+                            leftIcon={<FaHandshake />}
+                            onClick={handleViewOffers}
+                          >
+                            Offers
+                          </Button>
+                        </Tooltip>
                       </HStack>
                     )}
                   </>
@@ -1037,6 +1086,97 @@ const ProductDetail: React.FC = () => {
       </VStack>
       <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
       
+      {/* Offers Modal - Simplified with Ranking */}
+      <Modal isOpen={offersModalOpen} onClose={() => setOffersModalOpen(false)} size="2xl">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            <HStack justify="space-between" w="full">
+              <Heading size="md" color="brand.600">
+                Offers ({offersForProduct.length})
+              </Heading>
+              <IconButton
+                aria-label="Close"
+                icon={<CloseIcon />}
+                variant="ghost"
+                onClick={() => setOffersModalOpen(false)}
+              />
+            </HStack>
+          </ModalHeader>
+
+          <ModalBody pb={6}>
+            {loadingOffers ? (
+              <Center py={8}>
+                <Spinner color="brand.500" />
+              </Center>
+            ) : getRankedOffers().length === 0 ? (
+              <Box textAlign="center" py={8}>
+                <Text color="gray.600">No offers yet</Text>
+              </Box>
+            ) : (
+              <VStack spacing={3} align="stretch">
+                {getRankedOffers().map((offer: any, index: number) => (
+                  <Box
+                    key={offer.id}
+                    p={4}
+                    borderWidth="2px"
+                    borderColor={index === 0 ? 'gold' : offer.status === 'accepted' ? 'green.400' : 'gray.200'}
+                    rounded="lg"
+                    bg={index === 0 ? 'yellow.50' : offer.status === 'accepted' ? 'green.50' : 'white'}
+                    position="relative"
+                  >
+                    {/* Rank Badge */}
+                    <Badge
+                      position="absolute"
+                      top={-3}
+                      left={4}
+                      colorScheme={index === 0 ? 'yellow' : index === 1 ? 'gray' : index === 2 ? 'orange' : 'gray'}
+                      fontSize="xs"
+                      px={2}
+                      py={1}
+                    >
+                      #{index + 1}
+                    </Badge>
+
+                    <HStack justify="space-between" mb={2} mt={2}>
+                      <HStack>
+                        {index === 0 && (
+                          <Text fontSize="lg">🏆</Text>
+                        )}
+                        <Text fontWeight="bold" fontSize="sm">
+                          {offer.buyer_name || 'Anonymous'}
+                        </Text>
+                      </HStack>
+                      <Badge
+                        colorScheme={
+                          offer.status === 'accepted' ? 'green' :
+                          offer.status === 'pending' ? 'yellow' : 'gray'
+                        }
+                        fontSize="xs"
+                      >
+                        {offer.status.toUpperCase()}
+                      </Badge>
+                    </HStack>
+
+                    <Text fontSize="sm" color="gray.600" mb={2}>
+                      {offer.items?.length || 0} item(s) offered
+                    </Text>
+
+                    <HStack spacing={2} flexWrap="wrap">
+                      {offer.items && offer.items.map((item: any, idx: number) => (
+                        <Badge key={idx} colorScheme="blue" variant="outline" fontSize="xs">
+                          {item.product_title?.substring(0, 20) || `Item ${idx + 1}`}
+                        </Badge>
+                      ))}
+                    </HStack>
+                  </Box>
+                ))}
+              </VStack>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
       {/* Share Modal */}
       <Modal isOpen={isShareOpen} onClose={onShareClose} size="md">
         <ModalOverlay />
