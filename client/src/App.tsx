@@ -102,11 +102,7 @@ const AppContent: React.FC = () => {
               <Route path="/products" element={<ProductsList />} />
               <Route 
                 path="/dashboard" 
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } 
+                element={<Dashboard key="dashboard-route" />}
               />
               <Route 
                 path="/add-product" 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Link as RouterLink, useLocation } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
   Heading,
@@ -22,11 +22,18 @@ import {
   InputLeftElement,
   FormControl,
   FormLabel,
+  Tooltip,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalCloseButton,
+  ModalBody,
 } from '@chakra-ui/react'
 import { 
   SearchIcon, 
   RepeatIcon, 
-  StarIcon, 
+  StarIcon,
   ViewIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -34,13 +41,15 @@ import {
   HamburgerIcon,
   ArrowLeftIcon,   
   ArrowRightIcon,   
+  CloseIcon,
 } from '@chakra-ui/icons'
-import { FaUserCircle } from 'react-icons/fa'
+import { FaUserCircle, FaHandshake } from 'react-icons/fa'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
+import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
@@ -67,6 +76,7 @@ const Home: React.FC = () => {
   const { products, loading, error, searchProducts, loadMore, hasMore, isLoadingMore } = useProducts()
   const { user } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { onOpen: openMobileNav } = useMobileNav()
   const { offerCount } = useRealtime() // added realtime usage
@@ -219,6 +229,10 @@ const Home: React.FC = () => {
 
   // Trade modal state
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
+  const [selectedProductForOffers, setSelectedProductForOffers] = useState<number | null>(null)
+  const [offersModalOpen, setOffersModalOpen] = useState(false)
+  const [offersForProduct, setOffersForProduct] = useState<any[]>([])
+  const [loadingOffers, setLoadingOffers] = useState(false)
 
   // Slider state: cycles public/1.jpg, public/2.jpg, public/3.jpg every 3s
   const sliderImages = ['/1.jpg', '/2.jpg', '/3.jpg']
@@ -317,6 +331,26 @@ const Home: React.FC = () => {
     }
   }
 
+  const handleViewOffers = async (productId: number) => {
+    try {
+      setLoadingOffers(true)
+      setSelectedProductForOffers(productId)
+      const response = await api.get(`/api/trades?target_product_id=${productId}`)
+      setOffersForProduct(response.data?.data || [])
+      setOffersModalOpen(true)
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to load offers for this product',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    } finally {
+      setLoadingOffers(false)
+    }
+  }
+
   const clearFilters = () => {
     setSearchTerm('')
     setFilters({
@@ -333,6 +367,28 @@ const Home: React.FC = () => {
     setHasSearched(false)
   }
 
+  // Add state for offer sorting
+  const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
+
+  const getRankedOffers = () => {
+    const ranked = [...offersForProduct]
+    
+    if (offersSortBy === 'accepted') {
+      ranked.sort((a, b) => {
+        const statusOrder = { 'accepted': 0, 'active': 1, 'pending': 2, 'declined': 3, 'cancelled': 3 }
+        const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4
+        const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4
+        return aOrder - bOrder
+      })
+    } else if (offersSortBy === 'newest') {
+      ranked.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    } else if (offersSortBy === 'oldest') {
+      ranked.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    }
+    
+    return ranked
+  }
+
   // Product card with square image and fixed info area for uniform height
   const renderProductCard = (product: any) => (
     <Box
@@ -346,7 +402,7 @@ const Home: React.FC = () => {
       transition="all 0.2s ease"
       w="full"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
-      onClick={() => window.location.href = `/products/${product.id}`}
+      onClick={() => navigate(getProductUrl(product))}
     >
       {/* Square Product Image */}
       <Box position="relative" w="full" pt="100%" overflow="hidden">
@@ -406,41 +462,72 @@ const Home: React.FC = () => {
             Sold
           </Badge>
         )}
+
+        {/* Location Badge - New */}
+        <Badge
+          position="absolute"
+          bottom={2}
+          left={2}
+          colorScheme="gray"
+          variant="solid"
+          borderRadius="full"
+          px={2}
+          bg="blackAlpha.600"
+          color="white"
+          fontSize="xs"
+        >
+          <Text as="span" mr={1}>📍</Text>
+          {product.distance || '1.2km nearby'}
+        </Badge>
       </Box>
 
       {/* Product Info (fixed height) */}
       <Box p={4} display="flex" flexDirection="column" h={{ base: 180, md: 192 }} overflow="hidden">
+        <Flex justify="space-between" align="center" mb={2}>
+          <HStack spacing={2}>
+            <Box
+              as={RouterLink}
+              to={`/users/${product.seller_id}`}
+              w={7}
+              h={7}
+              rounded="full"
+              bg="brand.500"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              flexShrink={0}
+              cursor="pointer"
+              _hover={{ opacity: 0.8 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Text fontSize="md" fontWeight="bold" color="white">
+                {(product.seller_name || 'U').charAt(0).toUpperCase()}
+              </Text>
+            </Box>
+            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
+              {product.seller_name || 'Unknown'}
+            </Text>
+          </HStack>
+          <Badge 
+            fontSize="xs" 
+            colorScheme="blue" 
+            flexShrink={0}
+            borderWidth="1px"
+          >
+            {product.condition || 'Used'}
+          </Badge>
+        </Flex>
+
         <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
           {product.title}
         </Heading>
         
         <Text color="gray.600" noOfLines={2} mb={3} fontSize="sm" flexShrink={0}>
-          {product.description || 'No description available'}
+          {product.description 
+            ? product.description.split(' ').slice(0, 15).join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+            : 'No description available'
+          }
         </Text>
-        
-        {/* Price and Seller Info */}
-        <Flex justify="space-between" align="center" mb={3} flexShrink={0}>
-            {product.allow_buying && product.price && !product.barter_only ? (
-            <Text fontSize="lg" fontWeight="bold" color="brand.500">
-              {formatPHP(product.price)}
-            </Text>
-          ) : (
-            <Text fontSize="sm" color="green.600" fontWeight="medium">
-              Barter Only
-            </Text>
-          )}
-          
-          <Text
-            as={RouterLink}
-            to={`/users/${product.seller_id}`}
-            fontSize="xs"
-            color="blue.600"
-            _hover={{ textDecoration: 'underline' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            Listed by {product.seller_name || 'Unknown'}
-          </Text>
-        </Flex>
 
         {/* Action Buttons */}
         <HStack spacing={2} mt="auto">
@@ -472,6 +559,22 @@ const Home: React.FC = () => {
               {product.status === 'sold' ? 'Sold' : 'Buy'}
             </Button>
           )}
+
+          {/* New: View Offers Button */}
+          <Tooltip label={`View offers (${product.offer_count || 0})`} placement="top">
+            <IconButton
+              aria-label="View offers"
+              icon={<FaHandshake />}
+              size="sm"
+              variant="outline"
+              colorScheme="blue"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleViewOffers(product.id)
+              }}
+              isDisabled={product.status === 'sold'}
+            />
+          </Tooltip>
         </HStack>
       </Box>
     </Box>
@@ -553,38 +656,10 @@ const Home: React.FC = () => {
               display={{ base: 'none', md: 'inline-flex' }}
             />
 
-            {/* Offers button (desktop only) - now placed to the right of Search */}
-            <Box position="relative" display={{ base: 'none', md: 'inline-block' }}>
-              <IconButton
-                as={RouterLink}
-                to="/offers"
-                aria-label="Offers"
-                icon={<RepeatIcon />}
-                variant="ghost"
-                size="lg"
-              />
-              {offerCount > 0 && (
-                <Badge
-                  position="absolute"
-                  /* push badge to the left side of the icon and vertically center it */
-                  left="-10px"
-                  top="50%"
-                  transform="translate(-100%, -50%)"
-                  colorScheme="purple"
-                  borderRadius="full"
-                  fontSize="0.65rem"
-                  px={2}
-                  py={0.5}
-                >
-                  {offerCount}
-                </Badge>
-              )}
-            </Box>
-
-            {/* Profile button (desktop only) - now to the right of Search */}
+            {/* Profile button (desktop only)  */}
             <IconButton
               as={RouterLink}
-              to="/profile"
+              to={user ? `/users/${user.id}` : '/profile'}
               aria-label="Profile"
               icon={<FaUserCircle />}
               variant="ghost"
@@ -687,13 +762,13 @@ const Home: React.FC = () => {
       <Box
         maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1160', xl: '1415px' }}
         mx="auto"
-        mb={4}
+        mb={8}
         px={{ base: 2, md: 4 }}
       >
         <Box
           position="relative"
           overflow="hidden"
-          h={{ base: 28, md: 28, lg: 32 }}   
+          h={{ base: 28, md: 28, lg: 40 }}   
           rounded="lg"
           border="1px"
           borderColor="gray.200"
@@ -770,7 +845,7 @@ const Home: React.FC = () => {
         </Box>
       </Box>
       {/* Horizontal category pills under search bar */}
-      <Box px={{ base: 3, md: 7 }} py={3}>
+      <Box px={{ base: 3, md: 7 }} py={0}>
         <Box
           w="full"
           maxW="8xl"
@@ -830,7 +905,7 @@ const Home: React.FC = () => {
         </Box>
       </Box>
       {/* Main Content */}
-      <Box px={{ base: 3, md: 8 }} py={0}>
+      <Box px={{ base: 3, md: 8 }} py={8}>
         {/* Loading State */}
         {loading && !products.length && (
           <Center h="50vh">
@@ -868,7 +943,6 @@ const Home: React.FC = () => {
   <Box
     maxW={{ base: 'calc(100% - 12px)', md: '100%' }}
     mx="auto"
-    mt={4}
     px={{ base: 2, md: 4 }}
   >
     <Grid
@@ -932,35 +1006,115 @@ const Home: React.FC = () => {
 
       <TradeModal isOpen={isOpen} onClose={onClose} targetProductId={tradeTargetProductId} />
 
-      {/* Floating Add Product FAB (bottom-right) - more visible with stronger shadows and border */}
-      <IconButton
-        as={RouterLink}
-        to="/add-product"
-        aria-label="Add product"
-        icon={<AddIcon />}
-        position="fixed"
-        bottom={12}
-        right={6}
-        // explicit size for a prominent FAB
-        h={14}
-        w={14}
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-        bgGradient="linear(to-br, brand.500, teal.400)"
-        color="white"
-        borderRadius="full"
-        borderWidth={2}
-        borderColor="white"
-        zIndex={200}
-        // layered shadow for depth
-        boxShadow="0 8px 30px rgba(16, 185, 129, 0.18), 0 4px 10px rgba(0,0,0,0.08)"
-        // interactive states
-        _hover={{ transform: 'translateY(-4px) scale(1.03)', boxShadow: '0 12px 40px rgba(16,185,129,0.22), 0 6px 16px rgba(0,0,0,0.12)' }}
-        _active={{ transform: 'translateY(-1px) scale(0.99)', boxShadow: '0 6px 20px rgba(16,185,129,0.16)' }}
-        _focus={{ boxShadow: '0 0 0 6px rgba(16,185,129,0.12)' }}
-        title="Add product"
-      />
+      {/* Offers Modal - Simplified with Ranking */}
+      <Modal isOpen={offersModalOpen} onClose={() => setOffersModalOpen(false)} size="2xl">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            <HStack justify="space-between" w="full">
+              <Heading size="md" color="brand.600">
+                Offers ({offersForProduct.length})
+              </Heading>
+              <IconButton
+                aria-label="Close"
+                icon={<CloseIcon />}
+                variant="ghost"
+                onClick={() => setOffersModalOpen(false)}
+              />
+            </HStack>
+          </ModalHeader>
+
+          <ModalBody pb={6}>
+            {loadingOffers ? (
+              <Center py={8}>
+                <Spinner color="brand.500" />
+              </Center>
+            ) : getRankedOffers().length === 0 ? (
+              <Box textAlign="center" py={8}>
+                <Text color="gray.600">No offers yet</Text>
+              </Box>
+            ) : (
+              <VStack spacing={3} align="stretch">
+                {getRankedOffers().map((offer: any, index: number) => (
+                  <Box
+                    key={offer.id}
+                    p={4}
+                    borderWidth="2px"
+                    borderColor={index === 0 ? 'gold' : offer.status === 'accepted' ? 'green.400' : 'gray.200'}
+                    rounded="lg"
+                    bg={index === 0 ? 'yellow.50' : offer.status === 'accepted' ? 'green.50' : 'white'}
+                    position="relative"
+                  >
+                    {/* Rank Badge */}
+                    <Badge
+                      position="absolute"
+                      top={-3}
+                      left={4}
+                      colorScheme={index === 0 ? 'yellow' : index === 1 ? 'gray' : index === 2 ? 'orange' : 'gray'}
+                      fontSize="xs"
+                      px={2}
+                      py={1}
+                    >
+                      #{index + 1}
+                    </Badge>
+
+                    <HStack justify="space-between" mb={2} mt={2}>
+                      <HStack>
+                        {index === 0 && (
+                          <Text fontSize="lg">🏆</Text>
+                        )}
+                        <Text fontWeight="bold" fontSize="sm">
+                          {offer.buyer_name || 'Anonymous'}
+                        </Text>
+                      </HStack>
+                      <Badge
+                        colorScheme={
+                          offer.status === 'accepted' ? 'green' :
+                          offer.status === 'pending' ? 'yellow' : 'gray'
+                        }
+                        fontSize="xs"
+                      >
+                        {offer.status.toUpperCase()}
+                      </Badge>
+                    </HStack>
+
+                    <Text fontSize="sm" color="gray.600" mb={2}>
+                      {offer.items?.length || 0} item(s) offered
+                    </Text>
+
+                    <HStack spacing={2} flexWrap="wrap">
+                      {offer.items && offer.items.map((item: any, idx: number) => (
+                        <Badge key={idx} colorScheme="blue" variant="outline" fontSize="xs">
+                          {item.product_title?.substring(0, 20) || `Item ${idx + 1}`}
+                        </Badge>
+                      ))}
+                    </HStack>
+                  </Box>
+                ))}
+              </VStack>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
+    {/* Floating Add Product FAB */}
+    <IconButton
+      as={RouterLink}
+      to="/add-product"
+      aria-label="Add product"
+      icon={<AddIcon />}
+      position="fixed"
+      bottom={12}
+      right={6}
+      h={14}
+      w={14}
+      bgGradient="linear(to-br, brand.500, teal.400)"
+      color="white"
+      borderRadius="full"
+      zIndex={200}
+      boxShadow="lg"
+      _hover={{ transform: 'scale(1.05)' }}
+    />
     </Box>
   )
 }

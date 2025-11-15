@@ -40,6 +40,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { api } from '../services/api'
 import { Product } from '../types'
 import { formatPHP } from '../utils/currency'
+import { getProductUrl } from '../utils/productUtils'
 
 interface UserStats {
   totalProducts: number
@@ -320,7 +321,10 @@ const Profile: React.FC = () => {
                       borderRadius="md"
                       _hover={{ bg: 'gray.50' }}
                       cursor="pointer"
-                      onClick={() => window.location.href = `/products/${product.id}`}
+                      onClick={() => {
+                        const productUrl = getProductUrl(product)
+                        window.location.href = productUrl
+                      }}
                     >
                       <HStack justify="space-between">
                         <VStack align="start" spacing={1}>

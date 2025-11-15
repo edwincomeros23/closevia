@@ -11,7 +11,7 @@ interface ProductContextType {
   isLoadingMore: boolean
   searchProducts: (filters: SearchFilters) => Promise<void>
   loadMore: () => Promise<void>
-  getProduct: (id: number) => Promise<Product | null>
+  getProduct: (idOrSlug: number | string) => Promise<Product | null>
   createProduct: (product: ProductCreate | FormData) => Promise<Product>
   updateProduct: (id: number, product: ProductUpdate) => Promise<void>
   deleteProduct: (id: number) => Promise<void>
@@ -207,16 +207,16 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
-  const getProduct = async (id: number): Promise<Product | null> => {
+  const getProduct = async (idOrSlug: number | string): Promise<Product | null> => {
     try {
       setError(null)
-      console.log(`🔍 Fetching product ID: ${id}`)
+      console.log(`🔍 Fetching product: ${idOrSlug}`)
       
-      const response = await api.get(`/api/products/${id}`, {
+      const response = await api.get(`/api/products/${idOrSlug}`, {
         headers: getAuthHeaders(),
       })
       
-      console.log(`✓ Product ${id} fetched successfully`)
+      console.log(`✓ Product ${idOrSlug} fetched successfully`)
       // Handle different response structures
       if (response.data && response.data.data) {
         return response.data.data
@@ -226,12 +226,15 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       
       return null
     } catch (error: any) {
-      console.error(`❌ Error fetching product ${id}:`, error)
+      console.error(`❌ Error fetching product ${idOrSlug}:`, error)
       
       // Provide specific error messages
       if (error.response?.status === 404) {
-        const message = `Product ID ${id} not found. It may have been deleted or doesn't exist.`
+        const message = `Product not found. It may have been deleted or doesn't exist.`
         console.error(message)
+        setError(message)
+      } else if (error.response?.status === 403) {
+        const message = `This item is no longer available`
         setError(message)
       } else if (error.response?.status === 401) {
         setError('Authentication failed. Please log in again.')

@@ -20,10 +20,11 @@ import {
   Icon,
   Flex,
   Progress,
-  Checkbox
+  Checkbox,
+  Image
 } from '@chakra-ui/react'
 import { keyframes } from '@emotion/react'
-import { FaStar, FaHeart, FaThumbsUp, FaCheck, FaHandshake } from 'react-icons/fa'
+import { FaStar, FaHeart, FaThumbsUp, FaCheck, FaHandshake, FaImage } from 'react-icons/fa'
 import { Trade } from '../types'
 import { api } from '../services/api'
 
@@ -66,6 +67,9 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   const [policyAgreed, setPolicyAgreed] = useState(false)
   const [showFinishButton, setShowFinishButton] = useState(false)
   const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+  const [transactionProof, setTransactionProof] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const toast = useToast()
 
   const isUserBuyer = trade && currentUserId === trade.buyer_id
@@ -113,6 +117,62 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     setShowConfirmationModal(true)
   }
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload an image file',
+        status: 'error',
+      })
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'File too large',
+        description: 'Please upload an image smaller than 5MB',
+        status: 'error',
+      })
+      return
+    }
+
+    try {
+      setUploadingImage(true)
+      const formData = new FormData()
+      formData.append('image', file)
+      formData.append('type', 'trade_proof')
+
+      const response = await api.post('/api/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      const imageUrl = response.data?.data?.url || response.data?.url
+      if (imageUrl) {
+        setTransactionProof(imageUrl)
+        toast({
+          title: 'Image uploaded',
+          description: 'Transaction proof uploaded successfully',
+          status: 'success',
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Upload failed',
+        description: error?.response?.data?.error || 'Failed to upload image',
+        status: 'error',
+      })
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
   const handleConfirmCompletion = async () => {
     if (!trade) return
     
@@ -123,11 +183,13 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       console.log('Submitting trade completion:', {
         tradeId: trade.id,
         rating,
-        feedback: feedback.trim()
+        feedback: feedback.trim(),
+        transactionProof
       })
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
-        feedback: feedback.trim()
+        feedback: feedback.trim(),
+        transaction_proof_url: transactionProof
       })
       
       setHasSubmitted(true)
@@ -192,7 +254,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     <VStack spacing={3} flex={1} align="center">
       <Box position="relative">
         <Avatar
-          size="xl"
+          size="lg"
           name={name}
           bg={isCurrentUser ? 'brand.500' : 'gray.500'}
           color="white"
@@ -247,18 +309,24 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         borderRadius="xl"
         boxShadow="xl"
         mx={4}
-        mt={0}
+        mt={50}
+        display="flex"
+        flexDirection="column"
+        justifyContent="center"
+        alignItems="center"
+        minH="auto"
+        maxH="90vh"
       >
         
-        <ModalCloseButton color="white" />
+        <ModalCloseButton color="gray.600" position="absolute" top={4} right={4} />
         
-        <ModalBody p={6}>
+        <ModalBody p={6} w="full" display="flex" flexDirection="column" justifyContent="center" alignItems="center" overflowY="auto">
           {loading ? (
-            <Flex justify="center" py={8}>
+            <Flex justify="center" align="center" py={8} w="full">
               <Spinner size="lg" color="brand.500" />
             </Flex>
           ) : (
-            <VStack spacing={6}>
+            <VStack spacing={6} w="full" maxW="500px" justify="center" align="center">
               {/* Progress Indicator */}
               <Box w="full">
                 <Text fontSize="sm" color="gray.600" mb={2} textAlign="center">
@@ -389,6 +457,96 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                   <Text fontWeight="semibold" textAlign="center">
                     Please rate your experience and confirm completion
                   </Text>
+
+                  {/* Upload Transaction Photo */}
+                  <Box w="full">
+                    <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
+                      Upload Proof of Transaction (Optional)
+                    </Text>
+                    <Box
+                      p={4}
+                      border="2px dashed"
+                      borderColor={transactionProof ? 'green.300' : 'gray.300'}
+                      borderRadius="lg"
+                      textAlign="center"
+                      bg={transactionProof ? 'green.50' : 'white'}
+                      cursor="pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                      _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
+                      transition="all 0.2s"
+                    >
+                      <VStack spacing={3}>
+                        {transactionProof ? (
+                          <>
+                            <Image
+                              src={transactionProof}
+                              alt="Transaction proof"
+                              maxH="200px"
+                              borderRadius="md"
+                              objectFit="contain"
+                            />
+                            <HStack spacing={2}>
+                              <Button
+                                size="sm"
+                                colorScheme="red"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setTransactionProof(null)
+                                  if (fileInputRef.current) {
+                                    fileInputRef.current.value = ''
+                                  }
+                                }}
+                              >
+                                Remove
+                              </Button>
+                              <Button
+                                size="sm"
+                                colorScheme="brand"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  fileInputRef.current?.click()
+                                }}
+                              >
+                                Change
+                              </Button>
+                            </HStack>
+                          </>
+                        ) : (
+                          <>
+                            <Icon as={FaImage} boxSize={8} color="gray.400" />
+                            <VStack spacing={1}>
+                              <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                Upload Photo of Transaction
+                              </Text>
+                              <Text fontSize="xs" color="gray.500">
+                                Click to upload or drag and drop
+                              </Text>
+                            </VStack>
+                            <Button
+                              size="sm"
+                              colorScheme="brand"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                fileInputRef.current?.click()
+                              }}
+                            >
+                              Choose File
+                            </Button>
+                          </>
+                        )}
+                      </VStack>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={handleImageUpload}
+                      />
+                    </Box>
+                  </Box>
                   
                   <VStack spacing={3}>
                     <Text fontSize="sm" color="gray.600">Rate this trade:</Text>
@@ -489,6 +647,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     </Modal>
     </>
   )
+        
 }
 
 export default TradeCompletionModal

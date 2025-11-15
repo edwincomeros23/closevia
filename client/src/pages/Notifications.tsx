@@ -25,6 +25,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
+import { getProductUrl } from '../utils/productUtils'
 import { api } from '../services/api'
 
 interface Notification {
@@ -45,6 +46,7 @@ const Notifications: React.FC = () => {
   const [error, setError] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [query, setQuery] = useState('')
+  const [paginationStartPage, setPaginationStartPage] = useState(1)
   const itemsPerPage = 5
   const toast = useToast()
   // dev helper: when true, show multiple pages for testing even if there are no notifications
@@ -215,6 +217,22 @@ const Notifications: React.FC = () => {
   const totalPages = (DEV_SHOW_PAGES_ALWAYS && totalPagesInitial === 1) ? 5 : totalPagesInitial
   const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
+  // Pagination controls: show 3 pages at a time
+  const paginationWindowSize = 3
+  const maxStartPage = Math.max(1, totalPages - paginationWindowSize + 1)
+  const visiblePages = Array.from(
+    { length: Math.min(paginationWindowSize, totalPages) },
+    (_, i) => paginationStartPage + i
+  )
+
+  const handlePreviousPagination = () => {
+    setPaginationStartPage(prev => Math.max(1, prev - 1))
+  }
+
+  const handleNextPagination = () => {
+    setPaginationStartPage(prev => Math.min(maxStartPage, prev + 1))
+  }
+
   // If the query looks like a product search, prepare matching products to show in the empty state
   const matchingProducts = (query && products && products.length > 0)
     ? products.filter((p: any) => p && p.title && p.title.toLowerCase().includes(query.toLowerCase()))
@@ -241,7 +259,7 @@ const Notifications: React.FC = () => {
                 placeholder="Search products or notifications..."
                 size="sm"
                 value={query}
-                onChange={(e) => { setQuery(e.target.value); setCurrentPage(1) }}
+                onChange={(e) => { setQuery(e.target.value); setCurrentPage(1); setPaginationStartPage(1) }}
                 w={{ base: '160px', md: '240px' }}
                 bg={useColorModeValue('gray.50', 'gray.700')}
               />
@@ -257,8 +275,6 @@ const Notifications: React.FC = () => {
               )}
             </HStack>
           </Flex>
-
-          
 
           {/* Notifications List */}
           <VStack spacing={4} align="stretch">
@@ -281,7 +297,9 @@ const Notifications: React.FC = () => {
                               ) : (
                                 <Badge colorScheme="green">Barter</Badge>
                               )}
-                              <Button size="sm" variant="outline" onClick={() => window.location.href = `/products/${p.id}`}>View</Button>
+                              <Button size="sm" variant="outline" onClick={() => {
+                                window.location.href = getProductUrl(p)
+                              }}>View</Button>
                             </HStack>
                           </VStack>
                         </HStack>
@@ -362,8 +380,7 @@ const Notifications: React.FC = () => {
         </VStack>
       </Container>
 
-      {/* Lower pagination placed after content so it appears further down the page */}
-      {/* Floating pagination bar anchored bottom-right */}
+      {/* Floating pagination bar anchored bottom-right - Limited to 3 pages */}
       <HStack
         position="fixed"
         bottom={{ base: 6, md: 10 }}
@@ -377,11 +394,37 @@ const Notifications: React.FC = () => {
         spacing={2}
         zIndex={50}
       >
-        <Button size="sm" variant="outline" leftIcon={<ChevronLeftIcon />} onClick={() => setCurrentPage(p => Math.max(1, p - 1))} isDisabled={currentPage === 1}>Previous</Button>
-        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-          <Button key={p} size="sm" variant={p === currentPage ? 'solid' : 'outline'} onClick={() => setCurrentPage(p)}>{p}</Button>
+        <Button 
+          size="sm" 
+          variant="outline" 
+          leftIcon={<ChevronLeftIcon />} 
+          onClick={handlePreviousPagination}
+          isDisabled={paginationStartPage === 1}
+        >
+          Previous
+        </Button>
+
+        {visiblePages.map(p => (
+          <Button 
+            key={p} 
+            size="sm" 
+            variant={p === currentPage ? 'solid' : 'outline'} 
+            colorScheme={p === currentPage ? 'brand' : undefined}
+            onClick={() => setCurrentPage(p)}
+          >
+            {p}
+          </Button>
         ))}
-        <Button size="sm" variant="outline" rightIcon={<ChevronRightIcon />} onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} isDisabled={currentPage === totalPages}>Next</Button>
+
+        <Button 
+          size="sm" 
+          variant="outline" 
+          rightIcon={<ChevronRightIcon />} 
+          onClick={handleNextPagination}
+          isDisabled={paginationStartPage === maxStartPage}
+        >
+          Next
+        </Button>
       </HStack>
     </Box>
   )

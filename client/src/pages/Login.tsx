@@ -64,16 +64,16 @@ const Login: React.FC = () => {
   }
     
   return (
-    <Box bg="#FFFDF1" minH="100vh" pt={0} ml={-7} >
-      <Container maxW="container.lg" px={0} minH="100vh">
-        <Flex direction={{ base: 'column', md: 'row' }} gap={6} align="stretch" h="100vh">
+    <Box bg="#FFFDF1" minH="100vh" pt={0}>
+      <Container maxW="100%" px={0} minH="100vh">
+        <Flex direction={{ base: 'column', md: 'row' }} gap={0} align="stretch" h="100vh">
+          {/* Image on the left - full height */}
           <Box
-            flex={{ base: '1', md: '1.4' }}
-            display={{ base: 'none', md: 'flex' }} // hide image on mobile, show on md+
-            alignItems="flex-start"
-            justifyContent="flex-start"
-            ml={{ base: 0, md: '-80px' }}
-            h={{ base: 'auto', md: '100vh' }}                  
+            flex={{ base: '0', md: '1.2' }}
+            display={{ base: 'none', md: 'flex' }}
+            alignItems="center"
+            justifyContent="center"
+            h="100vh"
             overflow="hidden"
           >
             <Image
@@ -81,26 +81,29 @@ const Login: React.FC = () => {
               alt="Barter"
               objectFit="cover"
               objectPosition="center"
-              w={{ base: '100%', md: 'calc(100% + 80px)' }}      
-              h={{ base: '200px', md: '99.8vh' }}               
+              w="100%"
+              h="100%"
               position="relative"
-              top={0}                                      
-              borderTopRightRadius="2xl"                          
-              borderBottomRightRadius="2xl"                   
               draggable={false}
+              borderTopRightRadius="3xl"
+              borderBottomRightRadius="3xl"
             />
           </Box>
  
-          <Box flex={{ base: '1', md: '1' }} display="flex" alignItems="center" justifyContent="center" px={{ base: 4, md: 6 }}>
-             <Box
-               p={8}
-               rounded="2xl"
-               w="full"
-               borderTopLeftRadius={0}                          
-               borderBottomLeftRadius={0}                        
-               borderTopRightRadius={{ base: 0, md: '2xl' }} 
-               ml={10}     
-             >
+          {/* Form on the right */}
+          <Box 
+            flex={{ base: '1', md: '0.8' }} 
+            display="flex" 
+            alignItems="center" 
+            justifyContent="center" 
+            px={{ base: 4, md: 8 }}
+            bg="#FFFDF1"
+          >
+            <Box
+              p={8}
+              rounded="0"
+              w="full"
+            >
               <Box textAlign="center" mb={4}>
                 <Heading size="xl" color="brand.500" mb={2}>
                   Welcome Back

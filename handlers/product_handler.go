@@ -4,10 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
@@ -42,6 +45,38 @@ func calculateSuggestedValue(price float64, condition string) int {
 	}
 	// Assuming 1 PHP = 1 point for simplicity, then apply multiplier
 	return int(price * multiplier)
+}
+
+// generateSlug creates a URL-friendly slug from title and appends a short UUID
+func generateSlug(title string) string {
+	// Convert to lowercase
+	slug := strings.ToLower(title)
+	
+	// Remove special characters, keep only alphanumeric, spaces, and hyphens
+	reg := regexp.MustCompile(`[^a-z0-9\s-]`)
+	slug = reg.ReplaceAllString(slug, "")
+	
+	// Replace spaces with hyphens
+	slug = strings.ReplaceAll(slug, " ", "-")
+	
+	// Remove multiple consecutive hyphens
+	reg = regexp.MustCompile(`-+`)
+	slug = reg.ReplaceAllString(slug, "-")
+	
+	// Trim hyphens from start and end
+	slug = strings.Trim(slug, "-")
+	
+	// Limit length to 50 characters
+	if len(slug) > 50 {
+		slug = slug[:50]
+		slug = strings.TrimRight(slug, "-")
+	}
+	
+	// Generate short UUID (first 8 characters)
+	shortUUID := uuid.New().String()[:8]
+	
+	// Combine slug with UUID: "eco-bag-3f8a9d2a"
+	return fmt.Sprintf("%s-%s", slug, shortUUID)
 }
 
 // CreateProduct creates a new product
@@ -143,11 +178,27 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		finalDescription = "[SUSPICIOUS] " + report.Reason + ". " + finalDescription
 	}
 
-	// Insert new product
-	biddingType := c.FormValue("bidding_type")
+	// Generate unique slug
+	slug := generateSlug(title)
+	
+	// Ensure slug is unique by checking and appending number if needed
+	baseSlug := slug
+	counter := 1
+	for {
+		var exists int
+		err := h.db.QueryRow("SELECT COUNT(*) FROM products WHERE slug = ?", slug).Scan(&exists)
+		if err != nil || exists == 0 {
+			break
+		}
+		// If slug exists, append counter
+		slug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		counter++
+	}
+
+	// Insert new product with slug
 	result, err := h.db.Exec(
-		"INSERT INTO products (title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category, latitude, longitude, bidding_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, lat, lon, biddingType,
+		"INSERT INTO products (slug, title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		slug, title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -160,13 +211,19 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Get the created product
 	var createdProduct models.Product
+	var slugNull sql.NullString
 	err = h.db.QueryRow(
-		"SELECT id, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, latitude, longitude, bidding_type, created_at, updated_at FROM products WHERE id = ?",
+		"SELECT id, slug, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
 		productID,
-	).Scan(&createdProduct.ID, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
+	).Scan(&createdProduct.ID, &slugNull, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
 		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.Latitude, &createdProduct.Longitude, &createdProduct.BiddingType, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
+	
+	if slugNull.Valid {
+		createdProduct.Slug = slugNull.String
+	}
+
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
@@ -313,7 +370,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	if keyword == "" {
 		// No search keyword: show latest products
 		query = `
-		       SELECT p.id, p.title, p.description, p.price, p.seller_id,
+		       SELECT p.id, p.slug, p.title, p.description, p.price, p.seller_id,
 			      p.premium, p.status, p.allow_buying, p.barter_only, p.location,
 			      p.created_at, p.updated_at, COALESCE(u.name, 'Unknown') as seller_name,
 			      p.image_urls
@@ -326,7 +383,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	} else {
 		// Search: prioritize premium, then latest
 		query = `
-		       SELECT p.id, p.title, p.description, p.price, p.seller_id,
+		       SELECT p.id, p.slug, p.title, p.description, p.price, p.seller_id,
 			      p.premium, p.status, p.allow_buying, p.barter_only, p.location,
 			      p.created_at, p.updated_at, COALESCE(u.name, 'Unknown') as seller_name,
 			      p.image_urls
@@ -371,6 +428,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		rowCount++
 		// Scan all fields with proper NULL handling
 		var id int
+		var slugNull sql.NullString
 		var title string
 		var description string
 		var price sql.NullFloat64
@@ -385,7 +443,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var sellerName string
 		var imageURLsJSON sql.NullString
 
-		err := rows.Scan(&id, &title, &description, &price, &sellerID, &premium, &status,
+		err := rows.Scan(&id, &slugNull, &title, &description, &price, &sellerID, &premium, &status,
 			&allowBuying, &barterOnly, &location, &createdAt, &updatedAt, &sellerName, &imageURLsJSON)
 		if err != nil {
 			// Log the error but continue processing other rows
@@ -401,6 +459,11 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			Status:      status,
 			SellerName:  sellerName,
 			ImageURLs:   models.StringArray{},
+		}
+		
+		// Handle slug
+		if slugNull.Valid {
+			product.Slug = slugNull.String
 		}
 
 		// Set boolean flags
@@ -460,16 +523,98 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	})
 }
 
-// GetProduct gets a product by ID
-func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
-	productID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Invalid product ID",
-		})
+// WishlistProduct adds a product to a user's wishlist
+func (h *ProductHandler) WishlistProduct(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
+	}
+
+	// Check if the product exists
+	var exists int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM products WHERE id = ?", productID).Scan(&exists)
+	if err != nil || exists == 0 {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+	}
+
+	// Insert into wishlists, ignoring if it already exists
+	_, err = h.db.Exec("INSERT IGNORE INTO wishlists (user_id, product_id) VALUES (?, ?)", userID, productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to add to wishlist"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Product added to wishlist"})
+}
+
+// UnwishlistProduct removes a product from a user's wishlist
+func (h *ProductHandler) UnwishlistProduct(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
+	}
+
+	_, err = h.db.Exec("DELETE FROM wishlists WHERE user_id = ? AND product_id = ?", userID, productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to remove from wishlist"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Product removed from wishlist"})
+}
+
+// GetWishlistCount gets the wishlist count for a product
+func (h *ProductHandler) GetWishlistCount(c *fiber.Ctx) error {
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
+	}
+
+	var count int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM wishlists WHERE product_id = ?", productID).Scan(&count)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get wishlist count"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": count}})
+}
+
+// GetUserWishlistStatus checks if a user has wishlisted a product
+func (h *ProductHandler) GetUserWishlistStatus(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
+	}
+
+	var exists int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM wishlists WHERE user_id = ? AND product_id = ?", userID, productID).Scan(&exists)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get wishlist status"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_wishlisted": exists > 0}})
+}
+
+// GetProduct gets a product by ID or slug with visibility checks
+func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
+	identifier := c.Params("id") // Can be ID or slug
+	
+	// Get current user ID (may be 0 if not authenticated)
+	userID, _ := middleware.GetUserIDFromContext(c)
+	
 	var product models.Product
 	var priceNull sql.NullFloat64
 	var imageURLsJSONStr sql.NullString
@@ -478,24 +623,41 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var descriptionNull sql.NullString
 	var locationNull sql.NullString
 	var titleNull sql.NullString
+	var slugNull sql.NullString
 	var premiumInt int64
 	var allowBuyingInt int64
 	var barterOnlyInt int64
 	var createdAtNull sql.NullTime
 	var updatedAtNull sql.NullTime
 	var statusNull sql.NullString
-	var biddingTypeNull sql.NullString
-	var sellerNameNull sql.NullString
-
-	err = h.db.QueryRow(`
-		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
+	
+	// Try to parse as integer ID first, otherwise treat as slug
+	var query string
+	var queryArg interface{}
+	productID, err := strconv.Atoi(identifier)
+	if err == nil {
+		// It's a numeric ID
+		query = `SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
 			   p.premium, p.status, p.allow_buying, p.barter_only, p.location,
 			   p.created_at, p.updated_at, u.name as seller_name,
 			   (SELECT COUNT(*) FROM wishlists WHERE product_id = p.id) as wishlist_count
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
-		WHERE p.id = ?
-	`, productID).Scan(&product.ID, &titleNull, &descriptionNull, &priceNull,
+		WHERE p.id = ?`
+		queryArg = productID
+	} else {
+		// It's a slug
+		query = `SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
+			   p.premium, p.status, p.allow_buying, p.barter_only, p.location,
+			   p.created_at, p.updated_at, u.name as seller_name,
+			   (SELECT COUNT(*) FROM wishlists WHERE product_id = p.id) as wishlist_count
+		FROM products p
+		LEFT JOIN users u ON p.seller_id = u.id
+		WHERE p.slug = ?`
+		queryArg = identifier
+	}
+	
+	err = h.db.QueryRow(query, queryArg).Scan(&product.ID, &slugNull, &titleNull, &descriptionNull, &priceNull,
 		&imageURLsJSONStr, &product.SellerID, &premiumInt, &statusNull,
 		&allowBuyingInt, &barterOnlyInt, &locationNull,
 		&createdAtNull, &updatedAtNull, &sellerName, &wishlistCount)
@@ -508,7 +670,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			})
 		}
 		// Log the actual error for debugging with more details
-		fmt.Printf("❌ Error scanning product %d: %v\n", productID, err)
+		fmt.Printf("❌ Error scanning product %v: %v\n", identifier, err)
 		fmt.Printf("   Error type: %T\n", err)
 		// Return error but don't expose internal details in production
 		return c.Status(500).JSON(models.APIResponse{
@@ -523,7 +685,11 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	} else {
 		product.Title = ""
 	}
-
+	
+	if slugNull.Valid {
+		product.Slug = slugNull.String
+	}
+	
 	if descriptionNull.Valid {
 		product.Description = descriptionNull.String
 	} else {
@@ -547,7 +713,16 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	} else {
 		product.Status = "available" // Default value from schema
 	}
-
+	
+	// SECURITY: Enforce visibility rules
+	// If product is traded or locked, only the owner can view it
+	if (product.Status == "traded" || product.Status == "locked") && product.SellerID != userID {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "This item is no longer available",
+		})
+	}
+	
 	// Handle timestamps
 	if createdAtNull.Valid {
 		product.CreatedAt = createdAtNull.Time
@@ -897,7 +1072,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		where += " AND p.status = 'available'"
 	}
 	rows, err := h.db.Query(`
-		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
@@ -917,11 +1092,15 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	var products []models.Product
 	for rows.Next() {
 		var product models.Product
+		var slugNull sql.NullString
 		var priceNull sql.NullFloat64
 		var imageURLsJSONStr string
-		err := rows.Scan(&product.ID, &product.Title, &product.Description, &priceNull,
+		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName)
+		if slugNull.Valid {
+			product.Slug = slugNull.String
+		}
 		if err != nil {
 			continue
 		}
