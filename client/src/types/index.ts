@@ -17,6 +17,7 @@ export interface User {
 
 export interface Product {
   id: number
+  slug?: string // SEO-friendly URL identifier (e.g., "eco-bag-3f8a9d2a")
   title: string
   description: string
   price?: number
@@ -104,6 +105,7 @@ export interface PaginatedResponse<T> {
 }
 
 export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled'
+export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
   id: number
@@ -133,6 +135,16 @@ export interface Trade {
   buyer_completed?: boolean
   seller_completed?: boolean
   completed_at?: string | null
+  meetup_confirmed?: boolean
+  meetup_location?: string
+  buyer_meetup_confirmed?: boolean
+  seller_meetup_confirmed?: boolean
+  transaction_proof_url?: string
+  trade_option?: TradeOption // 'meetup' or 'delivery'
+  option_change_requested?: TradeOption // Requested option change (pending approval)
+  option_change_requested_by?: number // User ID who requested the change
+  delivery_address?: string // Delivery address if option is 'delivery'
+  delivery_estimated_time?: string // Estimated delivery time
 }
 
 export interface TradeCreate {
@@ -140,13 +152,17 @@ export interface TradeCreate {
   offered_product_ids: number[]
   message?: string
   offered_cash_amount?: number
+  trade_option: TradeOption // Required: 'meetup' or 'delivery'
+  delivery_address?: string // Required if trade_option is 'delivery'
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number
+  requested_option?: TradeOption // For option change requests
+  delivery_address?: string // For delivery option
 }
 
 export interface APIResponse<T = any> {

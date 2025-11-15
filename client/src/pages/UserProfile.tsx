@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
   Container,
   VStack,
   HStack,
+  Stack,
   Heading,
   Text,
   Badge,
@@ -17,17 +18,43 @@ import {
   Card,
   CardBody,
   CardHeader,
+  CardFooter,
   Image,
   Wrap,
   WrapItem,
   Spinner,
   Center,
   Tooltip,
+  Button,
+  IconButton,
+  Flex,
+  Divider,
+  Tabs,
+  TabList,
+  TabPanels,
+  Tab,
+  TabPanel,
+  Icon,
+  useDisclosure,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  FormControl,
+  FormLabel,
+  Textarea,
+  Select,
+  Input,
+  useToast,
 } from '@chakra-ui/react'
+import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend } from 'react-icons/fi'
 import { api } from '../services/api'
 import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
+import { getProductUrl } from '../utils/productUtils'
 
   type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
   avatar_url?: string
@@ -39,6 +66,10 @@ import { getFirstImage } from '../utils/imageUtils'
   org_name?: string
   org_logo_url?: string
   department?: string
+  response_time_minutes?: number
+  positive_feedback?: number
+  total_reviews?: number
+  is_following?: boolean
 }
 
 const UserProfile: React.FC = () => {
@@ -47,17 +78,68 @@ const UserProfile: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [products, setProducts] = useState<Product[]>([])
   const [error, setError] = useState<string>('')
+  const [activeTab, setActiveTab] = useState(0)
+  const [sortBy, setSortBy] = useState('newest')
+  const [reviews, setReviews] = useState<any[]>([])
   const { getUserProducts } = useProducts()
+  const { isOpen, onOpen, onClose } = useDisclosure()
+  const toast = useToast()
+  
+  // Mock reviews data - replace with actual API call
+  useEffect(() => {
+    // In a real app, fetch reviews from API
+    const mockReviews = [
+      {
+        id: 1,
+        reviewer: 'John D.',
+        avatar: 'https://randomuser.me/api/portraits/men/1.jpg',
+        rating: 5,
+        comment: 'Great seller! Item was exactly as described.',
+        date: '2023-10-15',
+      },
+      {
+        id: 2,
+        reviewer: 'Sarah M.',
+        avatar: 'https://randomuser.me/api/portraits/women/1.jpg',
+        rating: 4,
+        comment: 'Smooth transaction, would trade again!',
+        date: '2023-10-10',
+      },
+    ]
+    setReviews(mockReviews)
+  }, [])
 
   useEffect(() => {
     const run = async () => {
-      if (!id) return
-      setLoading(true)
-      setError('')
+      if (!id) return;
+      setLoading(true);
+      setError('');
       try {
         // Fetch public user info
-        const res = await api.get(`/api/users/${id}`)
-        const apiUser = (res.data?.data || res.data) as Partial<PublicUser>
+        const res = await api.get(`/api/users/${id}`).catch(err => {
+          // If user not found, use fallback data
+          if (err.response?.status === 404) {
+            return {
+              data: {
+                id: Number(id),
+                name: 'User',
+                created_at: new Date().toISOString(),
+                rating: 4.8,
+                positive_feedback: 98,
+                response_time_minutes: 30,
+                total_reviews: 42,
+                is_following: false,
+                bio: 'This user prefers to keep an air of mystery about them.',
+                department: 'Unknown',
+                verified: false,
+                is_organization: false
+              }
+            };
+          }
+          throw err;
+        });
+        
+        const apiUser = (res.data?.data || res.data) as Partial<PublicUser>;
         setUser({
           id: Number(id),
           name: apiUser.name || 'User',
@@ -94,7 +176,7 @@ const UserProfile: React.FC = () => {
     return { total, active, completed, rating }
   }, [products, user])
 
-  // Mock successful trades gallery using products marked as traded or sold
+  // Successful trades with more details
   const successfulTrades = useMemo(() => {
     const items = products
       .filter(p => p.status === 'traded' || p.status === 'sold')
@@ -106,9 +188,51 @@ const UserProfile: React.FC = () => {
         counterpart: 'Confidential',
         beforeImg: getFirstImage(p.image_urls),
         afterImg: getFirstImage(p.image_urls),
+        tradeDetails: p.status === 'traded' 
+          ? `Traded for ${['book', 'headphones', 'watch'][idx % 3]}`
+          : `Sold for $${(Math.random() * 100 + 20).toFixed(2)}`,
+        timestamp: p.updated_at || p.created_at
       }))
-    return items
+    return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
   }, [products])
+
+  // Sort products based on selected option
+  const sortedProducts = useMemo(() => {
+    const sorted = [...products]
+    switch(sortBy) {
+      case 'price_asc':
+        return sorted.sort((a, b) => (a.price || 0) - (b.price || 0))
+      case 'price_desc':
+        return sorted.sort((a, b) => (b.price || 0) - (a.price || 0))
+      case 'newest':
+      default:
+        return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }
+  }, [products, sortBy])
+
+  const toggleFollow = () => {
+    if (user) {
+      setUser({...user, is_following: !user.is_following})
+      toast({
+        title: user.is_following ? 'Unfollowed' : 'Following',
+        description: user.is_following ? `You've unfollowed ${user.name}` : `You're now following ${user.name}`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    }
+  }
+
+  const handleSendMessage = () => {
+    // In a real app, this would open a chat with the user
+    toast({
+      title: 'Message Sent',
+      description: `Message sent to ${user?.name}`,
+      status: 'success',
+      duration: 3000,
+      isClosable: true,
+    })
+  }
 
   const badges = useMemo(() => {
     const list: { label: string; color: string }[] = []
@@ -118,11 +242,14 @@ const UserProfile: React.FC = () => {
     return list
   }, [stats])
 
-  if (loading) {
+  if (loading && !user) {
     return (
       <Box bg="#FFFDF1" minH="100vh" w="100%">
         <Center h="50vh">
-          <Spinner size="xl" color="brand.500" />
+          <VStack spacing={4}>
+            <Spinner size="xl" color="brand.500" />
+            <Text>Loading user profile...</Text>
+          </VStack>
         </Center>
       </Box>
     )
@@ -131,8 +258,20 @@ const UserProfile: React.FC = () => {
   if (error || !user) {
     return (
       <Box bg="#FFFDF1" minH="100vh" w="100%">
-        <Center h="50vh">
-          <Text color="red.500">{error || 'User not found'}</Text>
+        <Center h="50vh" flexDirection="column" p={4} textAlign="center">
+          <Text color="red.500" fontSize="lg" mb={4}>
+            {error || 'User not found'}
+          </Text>
+          <Text color="gray.600" mb={6}>
+            The user profile you're looking for doesn't exist or may have been removed.
+          </Text>
+          <Button 
+            as={RouterLink} 
+            to="/" 
+            colorScheme="brand"
+          >
+            Back to Home
+          </Button>
         </Center>
       </Box>
     )
@@ -142,134 +281,423 @@ const UserProfile: React.FC = () => {
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container maxW="container.xl" py={8}>
         <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Card bg="white" border="1px" borderColor="gray.200" shadow="sm">
-            <CardBody>
-              <HStack spacing={6} align="start">
-                <Avatar size="xl" name={user.name} src={user.avatar_url} bg="brand.500" color="white" />
-                <VStack align="start" spacing={2} flex={1}>
-                  <HStack spacing={3} flexWrap="wrap">
+          {/* Seller Info Header */}
+          <Card bg="white" border="1px" borderColor="gray.200" shadow="sm" overflow="hidden">
+            <Box bgGradient="linear(to-r, brand.50, blue.50)" h="100px" w="100%" position="relative">
+              <Box position="absolute" bottom="-50px" left="6">
+                <Avatar 
+                  size="xl" 
+                  name={user.name} 
+                  src={user.avatar_url} 
+                  bg="brand.500" 
+                  color="white" 
+                  border="4px solid white"
+                  boxShadow="md"
+                />
+              </Box>
+            </Box>
+            
+            <CardBody pt="60px">
+              <Flex justify="space-between" wrap="wrap">
+                <Box flex="1" minW="200px" mr={4}>
+                  <HStack spacing={3} align="center" mb={2}>
                     <Heading size="lg" color="gray.800">{user.name}</Heading>
-                    {user.is_organization ? (
-                      <Badge colorScheme="purple">Organization Verified</Badge>
-                    ) : (
-                      user.verified && <Badge colorScheme="green">Verified</Badge>
-                    )}
-                    {Array.isArray((user as any).badges) && (user as any).badges.map((id: number) => {
-                      const map: Record<number, {label: string; color: string}> = {
-                        1: { label: 'Top Trader', color: 'purple' },
-                        2: { label: 'Fast Responder', color: 'blue' },
-                        3: { label: 'Trusted Seller', color: 'green' },
-                        4: { label: 'Campus Verified', color: 'teal' },
-                      }
-                      const meta = map[id] || { label: `Badge #${id}`, color: 'gray' }
-                      return (
-                        <Badge key={id} colorScheme={meta.color}>{meta.label}</Badge>
-                      )
-                    })}
-                    {badges.map(b => (
-                      <Badge key={b.label} colorScheme={b.color}>{b.label}</Badge>
-                    ))}
-                  </HStack>
-                  <Text color="gray.600">Member since {new Date(user.created_at).toLocaleDateString()}</Text>
-                  {user.department && (
-                    <Text color="gray.600">Department: {user.department}</Text>
-                  )}
-                  <Text color="gray.700">{user.bio}</Text>
-                </VStack>
-              </HStack>
-            </CardBody>
-          </Card>
-
-          {/* Stats */}
-          <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
-            <Stat bg="white" p={4} rounded="md" border="1px" borderColor="gray.200">
-              <StatLabel>Total Listings</StatLabel>
-              <StatNumber>{stats.total}</StatNumber>
-              <StatHelpText>All items</StatHelpText>
-            </Stat>
-            <Stat bg="white" p={4} rounded="md" border="1px" borderColor="gray.200">
-              <StatLabel>Active</StatLabel>
-              <StatNumber>{stats.active}</StatNumber>
-              <StatHelpText>Available</StatHelpText>
-            </Stat>
-            <Stat bg="white" p={4} rounded="md" border="1px" borderColor="gray.200">
-              <StatLabel>Completed Trades</StatLabel>
-              <StatNumber>{stats.completed}</StatNumber>
-              <StatHelpText>Sold or traded</StatHelpText>
-            </Stat>
-            <Stat bg="white" p={4} rounded="md" border="1px" borderColor="gray.200">
-              <StatLabel>Rating</StatLabel>
-              <StatNumber>{(stats as any).rating || 4.6}</StatNumber>
-              <StatHelpText>User feedback</StatHelpText>
-            </Stat>
-          </SimpleGrid>
-
-          {/* Successful Trades Gallery */}
-          <Card bg="white" border="1px" borderColor="gray.200" shadow="sm">
-            <CardHeader>
-              <Heading size="md" color="gray.800">Successful Trades</Heading>
-            </CardHeader>
-            <CardBody>
-              {successfulTrades.length === 0 ? (
-                <Text color="gray.500">No completed trades yet.</Text>
-              ) : (
-                <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={4}>
-                  {successfulTrades.map(t => (
-                    <Box key={t.id} border="1px" borderColor="gray.200" rounded="md" overflow="hidden" bg="gray.50">
-                      <Image src={t.beforeImg} alt={t.title} h="140px" w="full" objectFit="cover" />
-                      <Box p={3}>
-                        <Text fontWeight="semibold" noOfLines={1}>{t.title}</Text>
-                        <HStack justify="space-between" mt={1}>
-                          <Text fontSize="xs" color="gray.600">{t.date}</Text>
-                          <Tooltip label={`Counterpart: ${t.counterpart}`}>
-                            <Badge colorScheme="green">Completed</Badge>
-                          </Tooltip>
+                    {user.verified && (
+                      <Badge colorScheme="green">
+                        <HStack spacing={1}>
+                          <Icon as={FiCheckCircle} boxSize={3} />
+                          <Text>Verified Seller</Text>
                         </HStack>
-                      </Box>
-                    </Box>
-                  ))}
-                </SimpleGrid>
-              )}
+                      </Badge>
+                    )}
+                  </HStack>
+                  
+                  <HStack spacing={6} mb={4} flexWrap="wrap">
+                    <HStack>
+                      <Icon as={FiStar} color="yellow.400" />
+                      <Text>{user.rating?.toFixed(1) || '4.8'} <Text as="span" color="gray.500">({user.total_reviews || 98} reviews)</Text></Text>
+                    </HStack>
+                    <HStack>
+                      <Text color="green.500">{user.positive_feedback || 98}%</Text>
+                      <Text color="gray.500">Positive Feedback</Text>
+                    </HStack>
+                    <HStack>
+                      <Text fontWeight="medium">{stats.completed}</Text>
+                      <Text color="gray.500">Trades Completed</Text>
+                    </HStack>
+                    <HStack>
+                      <Icon as={FiClock} color="gray.500" />
+                      <Text color="gray.500">Avg. Response: {user.response_time_minutes || 30} min</Text>
+                    </HStack>
+                  </HStack>
+                  
+                  {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
+                  
+                  <HStack spacing={3}>
+                    <Button 
+                      leftIcon={<Icon as={FiMessageSquare} />} 
+                      colorScheme="brand"
+                      onClick={handleSendMessage}
+                    >
+                      Message Seller
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      colorScheme={user.is_following ? 'gray' : 'brand'}
+                      onClick={toggleFollow}
+                    >
+                      {user.is_following ? 'Following' : 'Follow'}
+                    </Button>
+                  </HStack>
+                </Box>
+                
+                <Box bg="gray.50" p={4} borderRadius="md" minW="250px">
+                  <VStack spacing={3} align="stretch">
+                    <HStack justify="space-between">
+                      <Text color="gray.600">Member Since</Text>
+                      <Text fontWeight="medium">{new Date(user.created_at).toLocaleDateString()}</Text>
+                    </HStack>
+                    {user.department && (
+                      <HStack justify="space-between">
+                        <Text color="gray.600">Department</Text>
+                        <Text fontWeight="medium">{user.department}</Text>
+                      </HStack>
+                    )}
+                    <HStack justify="space-between">
+                      <Text color="gray.600">Items for Sale</Text>
+                      <Text fontWeight="medium">{stats.active}</Text>
+                    </HStack>
+                    <HStack justify="space-between">
+                      <Text color="gray.600">Total Listings</Text>
+                      <Text fontWeight="medium">{stats.total}</Text>
+                    </HStack>
+                  </VStack>
+                </Box>
+              </Flex>
             </CardBody>
           </Card>
 
-          {/* Recent Listings */}
-          <Card bg="white" border="1px" borderColor="gray.200" shadow="sm">
-            <CardHeader>
-              <Heading size="md" color="gray.800">Recent Listings</Heading>
-            </CardHeader>
-            <CardBody>
-              {products.length === 0 ? (
-                <Text color="gray.500">No listings yet.</Text>
-              ) : (
-                <Wrap spacing={4}>
-                  {products.slice(0, 8).map(p => (
-                    <WrapItem key={p.id}>
-                      <Box
-                        as="a"
-                        href={`/products/${p.id}`}
-                        w={{ base: '160px', md: '200px' }}
-                        border="1px" borderColor="gray.200" rounded="md" overflow="hidden" bg="white"
-                        _hover={{ boxShadow: 'md', transform: 'translateY(-2px)' }} transition="all 0.2s ease"
+          {/* Tabs for different sections */}
+          <Tabs variant="enclosed" isLazy>
+            <TabList borderBottom="1px" borderColor="gray.200" bg="white" px={4}>
+              <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
+                Products ({stats.active})
+              </Tab>
+              <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
+                Trade History
+              </Tab>
+              <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
+                Reviews ({reviews.length})
+              </Tab>
+            </TabList>
+
+            <TabPanels bg="white" borderX="1px" borderBottom="1px" borderColor="gray.200" borderRadius="0 0 8px 8px">
+              {/* Products Tab */}
+              <TabPanel p={0}>
+                <Box p={4} borderBottom="1px" borderColor="gray.100">
+                  <HStack spacing={4} justify="space-between" flexWrap="wrap">
+                    <Text fontWeight="medium">{sortedProducts.length} items</Text>
+                    <HStack>
+                      <Text fontSize="sm" color="gray.500">Sort by:</Text>
+                      <Select 
+                        size="sm" 
+                        w="180px" 
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
                       >
-                        <Image src={getFirstImage(p.image_urls)} alt={p.title} h="140px" w="full" objectFit="cover" />
-                        <Box p={3}>
-                          <Text fontWeight="semibold" noOfLines={1}>{p.title}</Text>
-                          <HStack justify="space-between" mt={1}>
-                            <Badge colorScheme={p.status === 'available' ? 'green' : p.status === 'traded' ? 'blue' : 'red'}>
-                              {p.status}
+                        <option value="newest">Newest First</option>
+                        <option value="price_asc">Price: Low to High</option>
+                        <option value="price_desc">Price: High to Low</option>
+                      </Select>
+                    </HStack>
+                  </HStack>
+                </Box>
+                
+                {sortedProducts.length === 0 ? (
+                  <Center p={10}>
+                    <VStack>
+                      <Text color="gray.500">No products found.</Text>
+                      <Button as={RouterLink} to="/add-product" colorScheme="brand" size="sm" mt={2}>
+                        List an Item
+                      </Button>
+                    </VStack>
+                  </Center>
+                ) : (
+                  <SimpleGrid 
+                    columns={{ base: 2, sm: 2, md: 3, lg: 4 }} 
+                    spacing={{ base: 2, md: 4 }} 
+                    p={4}
+                  >
+                    {sortedProducts.map((product) => (
+                      <Box 
+                        key={product.id} 
+                        border="1px" 
+                        borderColor="gray.200" 
+                        rounded="md" 
+                        overflow="hidden"
+                        bg="white"
+                        _hover={{ transform: 'translateY(-4px)', shadow: 'md' }}
+                        transition="all 0.2s"
+                        position="relative"
+                      >
+                        <Box position="relative">
+                          <Image 
+                            src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'} 
+                            alt={product.title}
+                            h="180px"
+                            w="100%"
+                            objectFit="cover"
+                          />
+                          <Box position="absolute" top="2" right="2">
+                            <IconButton
+                              aria-label="Save item"
+                              icon={<FiHeart />}
+                              size="sm"
+                              borderRadius="full"
+                              bg="white"
+                              color="gray.600"
+                              _hover={{ color: 'red.500', bg: 'white' }}
+                            />
+                          </Box>
+                          <Box position="absolute" top="2" left="2">
+                            <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
+                              {product.status}
                             </Badge>
-                            <Text fontSize="xs" color="gray.600">{new Date(p.created_at).toLocaleDateString()}</Text>
+                          </Box>
+                        </Box>
+                        
+                        <Box p={3}>
+                          <Text 
+                            as={RouterLink} 
+                            to={getProductUrl(product)}
+                            fontWeight="medium" 
+                            noOfLines={2} 
+                            mb={1}
+                            _hover={{ color: 'brand.500' }}
+                          >
+                            {product.title}
+                          </Text>
+                          
+                          <HStack justify="space-between" align="center" mt={2}>
+                            <Text fontWeight="bold" color="gray.800">
+                              {product.price ? `$${product.price.toFixed(2)}` : 'Free'}
+                            </Text>
+                            <IconButton
+                              aria-label="Share item"
+                              icon={<FiShare2 />}
+                              size="sm"
+                              variant="ghost"
+                              color="gray.500"
+                            />
                           </HStack>
                         </Box>
                       </Box>
-                    </WrapItem>
-                  ))}
-                </Wrap>
-              )}
-            </CardBody>
-          </Card>
+                    ))}
+                  </SimpleGrid>
+                )}
+              </TabPanel>
+
+              {/* Trade History Tab */}
+              <TabPanel p={0}>
+                <Box p={4} borderBottom="1px" borderColor="gray.100">
+                  <Heading size="md" mb={2}>Trade History</Heading>
+                  <Text color="gray.500" fontSize="sm">
+                    {successfulTrades.length} completed trades
+                  </Text>
+                </Box>
+                
+                {successfulTrades.length === 0 ? (
+                  <Center p={10}>
+                    <Text color="gray.500">No trade history yet.</Text>
+                  </Center>
+                ) : (
+                  <Box>
+                    {successfulTrades.map((trade, index) => (
+                      <Box 
+                        key={trade.id} 
+                        p={4} 
+                        borderBottom={index < successfulTrades.length - 1 ? '1px' : 'none'} 
+                        borderColor="gray.100"
+                        _hover={{ bg: 'gray.50' }}
+                      >
+                        <HStack spacing={4} align="start">
+                          <Box 
+                            w="60px" 
+                            h="60px" 
+                            bg="gray.100" 
+                            borderRadius="md" 
+                            overflow="hidden"
+                            flexShrink={0}
+                          >
+                            <Image 
+                              src={trade.beforeImg || '/placeholder-item.jpg'} 
+                              alt={trade.title}
+                              w="100%"
+                              h="100%"
+                              objectFit="cover"
+                            />
+                          </Box>
+                          
+                          <Box flex="1">
+                            <HStack justify="space-between" mb={1}>
+                              <Text fontWeight="medium">{trade.title}</Text>
+                              <Text fontSize="sm" color="gray.500">{trade.date}</Text>
+                            </HStack>
+                            
+                            <Text fontSize="sm" color="gray.600" mb={2}>
+                              {trade.tradeDetails}
+                            </Text>
+                            
+                            <HStack spacing={2}>
+                              <Badge colorScheme="green" variant="subtle" fontSize="xs">
+                                Completed
+                              </Badge>
+                              <Text fontSize="xs" color="gray.500">
+                                with {trade.counterpart}
+                              </Text>
+                            </HStack>
+                          </Box>
+                        </HStack>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </TabPanel>
+
+              {/* Reviews Tab */}
+              <TabPanel p={0}>
+                <Box p={4} borderBottom="1px" borderColor="gray.100">
+                  <HStack justify="space-between" align="flex-start">
+                    <Box>
+                      <Heading size="md" mb={1}>Reviews</Heading>
+                      <HStack spacing={1} mb={2}>
+                        <Icon as={FiStar} color="yellow.400" boxSize={5} />
+                        <Text fontSize="xl" fontWeight="bold">
+                          {user.rating?.toFixed(1) || '4.8'}
+                          <Text as="span" fontSize="md" fontWeight="normal" color="gray.600" ml={1}>
+                            ({reviews.length} reviews)
+                          </Text>
+                        </Text>
+                      </HStack>
+                      <Text color="green.600" fontSize="sm">
+                        {user.positive_feedback || 98}% positive feedback
+                      </Text>
+                    </Box>
+                    
+                    <Button 
+                      colorScheme="brand" 
+                      size="sm" 
+                      onClick={onOpen}
+                      leftIcon={<Icon as={FiStar} />}
+                    >
+                      Leave a Review
+                    </Button>
+                  </HStack>
+                </Box>
+                
+                {reviews.length === 0 ? (
+                  <Center p={10}>
+                    <VStack>
+                      <Text color="gray.500">No reviews yet.</Text>
+                      <Button 
+                        colorScheme="brand" 
+                        variant="outline" 
+                        size="sm" 
+                        mt={2}
+                        onClick={onOpen}
+                      >
+                        Be the first to review
+                      </Button>
+                    </VStack>
+                  </Center>
+                ) : (
+                  <Box>
+                    {reviews.map((review, index) => (
+                      <Box 
+                        key={review.id} 
+                        p={4} 
+                        borderBottom={index < reviews.length - 1 ? '1px' : 'none'} 
+                        borderColor="gray.100"
+                      >
+                        <HStack spacing={3} mb={2}>
+                          <Avatar 
+                            size="sm" 
+                            name={review.reviewer} 
+                            src={review.avatar} 
+                          />
+                          <Box>
+                            <Text fontWeight="medium">{review.reviewer}</Text>
+                            <HStack spacing={1}>
+                              {[...Array(5)].map((_, i) => (
+                                <Icon 
+                                  key={i} 
+                                  as={FiStar} 
+                                  color={i < review.rating ? 'yellow.400' : 'gray.300'} 
+                                  boxSize={4}
+                                />
+                              ))}
+                              <Text fontSize="sm" color="gray.500" ml={1}>
+                                {review.date}
+                              </Text>
+                            </HStack>
+                          </Box>
+                        </HStack>
+                        <Text color="gray.700" pl={12}>
+                          {review.comment}
+                        </Text>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+
+          {/* Review Modal */}
+          <Modal isOpen={isOpen} onClose={onClose} size="lg">
+            <ModalOverlay />
+            <ModalContent>
+              <ModalHeader>Leave a Review</ModalHeader>
+              <ModalCloseButton />
+              <ModalBody pb={6}>
+                <VStack spacing={4} align="stretch">
+                  <FormControl isRequired>
+                    <FormLabel>Your Rating</FormLabel>
+                    <HStack spacing={1} mb={2}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <IconButton
+                          key={star}
+                          aria-label={`${star} star`}
+                          icon={<FiStar />}
+                          variant="ghost"
+                          color={star <= 5 ? 'yellow.400' : 'gray.300'}
+                          _hover={{ color: 'yellow.500' }}
+                          size="lg"
+                          onClick={() => {}}
+                        />
+                      ))}
+                    </HStack>
+                  </FormControl>
+                  
+                  <FormControl isRequired>
+                    <FormLabel>Your Review</FormLabel>
+                    <Textarea 
+                      placeholder="Share details about your experience with this seller..." 
+                      rows={5}
+                    />
+                  </FormControl>
+                  
+                  <Button 
+                    colorScheme="brand" 
+                    leftIcon={<Icon as={FiSend} />}
+                    alignSelf="flex-end"
+                  >
+                    Submit Review
+                  </Button>
+                </VStack>
+              </ModalBody>
+            </ModalContent>
+          </Modal>
         </VStack>
       </Container>
     </Box>

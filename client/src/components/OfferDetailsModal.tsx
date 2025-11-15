@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, VStack, HStack, Box, Image, Text, Badge, Button, Divider, Grid, useToast, ModalFooter, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter, useDisclosure } from '@chakra-ui/react'
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, VStack, HStack, Box, Image, Text, Badge, Button, Divider, Grid, useToast, ModalFooter, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter, useDisclosure, Icon, Card, CardBody, useColorModeValue, FormControl, FormLabel, Textarea } from '@chakra-ui/react'
+import { FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { formatPHP } from '../utils/currency'
-import { Trade, Product, TradeAction } from '../types'
+import { Trade, Product, TradeAction, TradeOption } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
+import { getProductUrl } from '../utils/productUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../services/api'
 
@@ -27,6 +29,10 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const [selectedCounterIds, setSelectedCounterIds] = useState<number[]>([])
   const [detailedTrade, setDetailedTrade] = useState<Trade | null>(null)
   const [showDebug, setShowDebug] = useState<boolean>(false)
+  const [showOptionChangeModal, setShowOptionChangeModal] = useState(false)
+  const [requestedOption, setRequestedOption] = useState<TradeOption | null>(null)
+  const [requestedDeliveryAddress, setRequestedDeliveryAddress] = useState<string>('')
+  const [requestingOptionChange, setRequestingOptionChange] = useState(false)
 
   // Deep debug logs for data structure analysis
   useEffect(() => {
@@ -175,6 +181,76 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     }
   }
 
+  // Option change request functionality
+  const canRequestOptionChange = () => {
+    if (!effectiveTrade || !user) return false
+    // Only allow option change before trade is ongoing (status is pending or accepted, but not active)
+    const isPendingOrAccepted = effectiveTrade.status === 'pending' || effectiveTrade.status === 'accepted'
+    // Only buyer can request option change (since seller set the initial option)
+    const isBuyer = effectiveTrade.buyer_id === user.id
+    // Don't allow if there's already a pending change request
+    const hasPendingRequest = !!effectiveTrade.option_change_requested
+    return isPendingOrAccepted && isBuyer && !hasPendingRequest
+  }
+
+  const requestOptionChange = async () => {
+    if (!effectiveTrade || !requestedOption) return
+    if (requestedOption === 'delivery' && !requestedDeliveryAddress.trim()) {
+      toast({ title: 'Delivery address required', description: 'Please provide a delivery address for delivery option.', status: 'warning' })
+      return
+    }
+    try {
+      setRequestingOptionChange(true)
+      await api.put(`/api/trades/${effectiveTrade.id}`, {
+        action: 'request_option_change',
+        requested_option: requestedOption,
+        delivery_address: requestedOption === 'delivery' ? requestedDeliveryAddress : undefined,
+      } as TradeAction)
+      toast({ 
+        title: 'Option change requested', 
+        description: 'The seller will be notified of your request to change the trade option.', 
+        status: 'success' 
+      })
+      setShowOptionChangeModal(false)
+      setRequestedOption(null)
+      setRequestedDeliveryAddress('')
+      onAccepted() // Refresh trade data
+    } catch (e: any) {
+      toast({ title: 'Failed to request change', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    } finally {
+      setRequestingOptionChange(false)
+    }
+  }
+
+  const approveOptionChange = async () => {
+    if (!effectiveTrade) return
+    try {
+      await api.put(`/api/trades/${effectiveTrade.id}`, {
+        action: 'approve_option_change',
+      } as TradeAction)
+      toast({ title: 'Option change approved', description: 'The trade option has been updated.', status: 'success' })
+      onAccepted() // Refresh trade data
+    } catch (e: any) {
+      toast({ title: 'Failed to approve change', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    }
+  }
+
+  const rejectOptionChange = async () => {
+    if (!effectiveTrade) return
+    try {
+      await api.put(`/api/trades/${effectiveTrade.id}`, {
+        action: 'reject_option_change',
+      } as TradeAction)
+      toast({ title: 'Option change rejected', description: 'The trade will proceed with the original option.', status: 'success' })
+      onAccepted() // Refresh trade data
+    } catch (e: any) {
+      toast({ title: 'Failed to reject change', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    }
+  }
+
+  const isUserSeller = effectiveTrade && user && effectiveTrade.seller_id === user.id
+  const hasPendingOptionChange = !!effectiveTrade?.option_change_requested
+
   // Resolve image URL robustly from various product shapes
   const resolveImage = (p?: Product | null): string | undefined => {
     if (!p) return undefined
@@ -239,7 +315,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
           {/* Remove seller info in compact (offered) mode */}
           {!compact && <Text mt={1} fontSize="sm" color="gray.600">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
 
-          <Button as={'a'} href={`/products/${p.id}`} variant="link" colorScheme="brand" mt={2} size={compact ? 'sm' : 'md'}>View listing</Button>
+          <Button as={'a'} href={getProductUrl(p)} variant="link" colorScheme="brand" mt={2} size={compact ? 'sm' : 'md'}>View listing</Button>
         </Box>
       </Box>
     )
@@ -286,6 +362,126 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </Box>
             </HStack>
 
+
+            {/* Trade Option Display - Prominent */}
+            {effectiveTrade?.trade_option && (
+              <Card 
+                variant="outline" 
+                borderWidth="2px" 
+                borderColor={effectiveTrade.trade_option === 'meetup' ? 'blue.400' : 'green.400'}
+                bg={effectiveTrade.trade_option === 'meetup' ? 'blue.50' : 'green.50'}
+                mb={4}
+              >
+                <CardBody p={4}>
+                  <VStack spacing={3} align="stretch">
+                    <HStack spacing={3} align="center">
+                      <Box
+                        p={2}
+                        borderRadius="full"
+                        bg={effectiveTrade.trade_option === 'meetup' ? 'blue.500' : 'green.500'}
+                        color="white"
+                      >
+                        <Icon 
+                          as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} 
+                          boxSize={5} 
+                        />
+                      </Box>
+                      <VStack align="start" spacing={1} flex={1}>
+                        <Text fontWeight="bold" fontSize="md" color={effectiveTrade.trade_option === 'meetup' ? 'blue.700' : 'green.700'}>
+                          Trade Option: {effectiveTrade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                        </Text>
+                        {effectiveTrade.trade_option === 'meetup' ? (
+                          <Text fontSize="sm" color="gray.600">
+                            Items will be exchanged at a meetup location
+                          </Text>
+                        ) : (
+                          <VStack align="start" spacing={0}>
+                            <Text fontSize="sm" color="gray.600">
+                              Items will be delivered to addresses
+                            </Text>
+                            {effectiveTrade.delivery_address && (
+                              <Text fontSize="xs" color="gray.600" mt={1} fontStyle="italic">
+                                Delivery address: {effectiveTrade.delivery_address}
+                              </Text>
+                            )}
+                          </VStack>
+                        )}
+                      </VStack>
+                      <Badge 
+                        colorScheme={effectiveTrade.trade_option === 'meetup' ? 'blue' : 'green'}
+                        variant="solid"
+                        fontSize="sm"
+                        px={3}
+                        py={1}
+                      >
+                        {effectiveTrade.trade_option === 'meetup' ? '📍 Meetup' : '🚚 Delivery'}
+                      </Badge>
+                    </HStack>
+
+                    {/* Pending Option Change Request */}
+                    {hasPendingOptionChange && effectiveTrade.option_change_requested && (
+                      <Box 
+                        p={3} 
+                        bg="yellow.50" 
+                        borderWidth="1px" 
+                        borderColor="yellow.300" 
+                        borderRadius="md"
+                        mt={2}
+                      >
+                        <VStack spacing={2} align="start">
+                          <HStack spacing={2}>
+                            <Badge colorScheme="yellow">Option Change Pending</Badge>
+                            <Text fontSize="xs" color="gray.600">
+                              Requested by: {effectiveTrade.option_change_requested_by === effectiveTrade.buyer_id ? 'Buyer' : 'Seller'}
+                            </Text>
+                          </HStack>
+                          <Text fontSize="sm" color="gray.700">
+                            Requested change to: <strong>{effectiveTrade.option_change_requested === 'meetup' ? 'Meetup' : 'Delivery'}</strong>
+                          </Text>
+                          {isUserSeller && (
+                            <HStack spacing={2} mt={2}>
+                              <Button 
+                                size="sm" 
+                                colorScheme="green" 
+                                onClick={approveOptionChange}
+                              >
+                                Approve
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                colorScheme="red" 
+                                variant="outline"
+                                onClick={rejectOptionChange}
+                              >
+                                Reject
+                              </Button>
+                            </HStack>
+                          )}
+                          {!isUserSeller && (
+                            <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                              Waiting for seller approval...
+                            </Text>
+                          )}
+                        </VStack>
+                      </Box>
+                    )}
+
+                    {/* Request Option Change Button (only for buyer, before ongoing) */}
+                    {canRequestOptionChange() && !hasPendingOptionChange && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        colorScheme="blue"
+                        onClick={() => setShowOptionChangeModal(true)}
+                        mt={2}
+                      >
+                        Request Option Change
+                      </Button>
+                    )}
+                  </VStack>
+                </CardBody>
+              </Card>
+            )}
 
             <HStack spacing={3} mt={2} align="center" wrap="wrap">
               {effectiveTrade?.offered_cash_amount ? (
@@ -394,6 +590,93 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 </AlertDialogContent>
               </AlertDialogOverlay>
             </AlertDialog>
+
+            {/* Option Change Request Modal */}
+            <Modal isOpen={showOptionChangeModal} onClose={() => setShowOptionChangeModal(false)} size="md" isCentered>
+              <ModalOverlay />
+              <ModalContent>
+                <ModalHeader>Request Option Change</ModalHeader>
+                <ModalCloseButton />
+                <ModalBody pb={6}>
+                  <VStack spacing={4} align="stretch">
+                    <Text fontSize="sm" color="gray.600">
+                      Select an alternative trade option. The seller will need to approve this change.
+                    </Text>
+                    
+                    <FormControl isRequired>
+                      <FormLabel fontSize="sm" fontWeight="semibold">
+                        New Trade Option
+                      </FormLabel>
+                      <Grid templateColumns="repeat(2, 1fr)" gap={3}>
+                        <Card
+                          variant="outline"
+                          cursor="pointer"
+                          borderWidth={requestedOption === 'meetup' ? '2px' : '1px'}
+                          borderColor={requestedOption === 'meetup' ? 'blue.500' : 'gray.200'}
+                          bg={requestedOption === 'meetup' ? 'blue.50' : 'white'}
+                          onClick={() => setRequestedOption('meetup')}
+                          _hover={{ borderColor: 'blue.300', shadow: 'md' }}
+                        >
+                          <CardBody p={3}>
+                            <VStack spacing={2} align="center">
+                              <Icon as={FaMapMarkerAlt} boxSize={5} color={requestedOption === 'meetup' ? 'blue.500' : 'gray.400'} />
+                              <Text fontSize="sm" fontWeight="semibold">Meetup</Text>
+                            </VStack>
+                          </CardBody>
+                        </Card>
+
+                        <Card
+                          variant="outline"
+                          cursor="pointer"
+                          borderWidth={requestedOption === 'delivery' ? '2px' : '1px'}
+                          borderColor={requestedOption === 'delivery' ? 'green.500' : 'gray.200'}
+                          bg={requestedOption === 'delivery' ? 'green.50' : 'white'}
+                          onClick={() => setRequestedOption('delivery')}
+                          _hover={{ borderColor: 'green.300', shadow: 'md' }}
+                        >
+                          <CardBody p={3}>
+                            <VStack spacing={2} align="center">
+                              <Icon as={FaTruck} boxSize={5} color={requestedOption === 'delivery' ? 'green.500' : 'gray.400'} />
+                              <Text fontSize="sm" fontWeight="semibold">Delivery</Text>
+                            </VStack>
+                          </CardBody>
+                        </Card>
+                      </Grid>
+                    </FormControl>
+
+                    {requestedOption === 'delivery' && (
+                      <FormControl isRequired>
+                        <FormLabel fontSize="sm">Delivery Address</FormLabel>
+                        <Textarea
+                          placeholder="Enter your complete delivery address..."
+                          value={requestedDeliveryAddress}
+                          onChange={(e) => setRequestedDeliveryAddress(e.target.value)}
+                          rows={3}
+                          resize="vertical"
+                        />
+                        <Text fontSize="xs" color="gray.500" mt={1}>
+                          This address will be shared with the seller
+                        </Text>
+                      </FormControl>
+                    )}
+
+                    <HStack spacing={3} justify="flex-end" mt={4}>
+                      <Button variant="ghost" onClick={() => setShowOptionChangeModal(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        colorScheme="blue"
+                        onClick={requestOptionChange}
+                        isLoading={requestingOptionChange}
+                        isDisabled={!requestedOption || (requestedOption === 'delivery' && !requestedDeliveryAddress.trim())}
+                      >
+                        Request Change
+                      </Button>
+                    </HStack>
+                  </VStack>
+                </ModalBody>
+              </ModalContent>
+            </Modal>
           </VStack>
         </ModalBody>
       </ModalContent>

@@ -16,6 +16,7 @@ import {
 } from '@chakra-ui/react'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
+import { getProductUrl } from '../utils/productUtils'
 import { formatPHP } from '../utils/currency'
 
 const ProductsList: React.FC = () => {
@@ -55,7 +56,7 @@ const ProductsList: React.FC = () => {
       transition="all 0.2s ease"
       w="full"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
-      onClick={() => navigate(`/products/${p.id}`)}
+      onClick={() => navigate(getProductUrl(p))}
     >
       <Box position="relative" w="full" pt="100%" overflow="hidden">
         <Image
