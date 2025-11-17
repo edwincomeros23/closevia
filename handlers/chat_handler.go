@@ -11,6 +11,7 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
+	"github.com/xashathebest/clovia/services"
 )
 
 type ChatHandler struct{}
@@ -32,7 +33,7 @@ type sseEvent struct {
 func (h *ChatHandler) Stream(c *fiber.Ctx) error {
 	// Try to get user ID from context first
 	userID, ok := middleware.GetUserIDFromContext(c)
-	
+
 	// If not in context, try to get from token query parameter
 	if !ok {
 		token := c.Query("token")
@@ -45,7 +46,7 @@ func (h *ChatHandler) Stream(c *fiber.Ctx) error {
 
 		// Set the token in the Authorization header
 		c.Request().Header.Set("Authorization", "Bearer "+token)
-		
+
 		// Validate the token
 		err := middleware.AuthMiddleware()(c)
 		if err != nil {
@@ -215,7 +216,31 @@ func saveMessage(conversationID, senderID int, content string) (int, time.Time, 
 	id64, _ := res.LastInsertId()
 	var createdAt time.Time
 	_ = database.DB.QueryRow("SELECT created_at FROM messages WHERE id = ?", id64).Scan(&createdAt)
+
+	// Update response metrics in background (non-blocking)
+	go updateUserResponseMetrics(senderID)
+
 	return int(id64), createdAt, nil
+}
+
+// updateUserResponseMetrics updates response metrics for a user
+func updateUserResponseMetrics(userID int) {
+	metrics, err := services.CalculateResponseMetrics(database.DB, userID)
+	if err != nil {
+		return
+	}
+
+	// Update user's response metrics in database
+	_, _ = database.DB.Exec(`
+		UPDATE users 
+		SET response_score = ?, 
+		    average_response_time_hours = ?, 
+		    response_rate = ?, 
+		    response_rating = ?,
+		    last_response_at = ?
+		WHERE id = ?
+	`, metrics.ResponseScore, metrics.AverageResponseTimeHours, metrics.ResponseRate,
+		metrics.Rating, metrics.LastResponseAt, userID)
 }
 
 func getConversationParticipants(conversationID int) []int {
