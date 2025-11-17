@@ -120,7 +120,7 @@ const Dashboard: React.FC = () => {
   const [declineFeedback, setDeclineFeedback] = useState('')
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
-  const offersPollingInterval = useRef<NodeJS.Timeout | null>(null)
+  const offersPollingInterval = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -1039,9 +1039,9 @@ const Dashboard: React.FC = () => {
             <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="green.300">
               {offeredItems.length > 0 ? (
                 <ProductThumb
-                  pid={Number(offeredItems[0].product_id ?? offeredItems[0].productId)}
-                  src={offeredItems[0].product_image_url ?? offeredItems[0].productImageUrl}
-                  alt={getProductTitle(Number(offeredItems[0].product_id ?? offeredItems[0].productId), offeredItems[0].product_title)}
+                  pid={Number(offeredItems[0].product_id)}
+                  src={offeredItems[0].product_image_url}
+                  alt={getProductTitle(Number(offeredItems[0].product_id), offeredItems[0].product_title)}
                   size="full"
                 />
               ) : (
@@ -2309,7 +2309,7 @@ const Dashboard: React.FC = () => {
                                 {trade.items && trade.items.length > 0 ? (
                                   <>
                                     <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="semibold" color="gray.800" noOfLines={1}>
-                                      {getProductTitle(Number(trade.items[0].product_id ?? trade.items[0].productId), trade.items[0].product_title)}
+                                      {getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)}
                                     </Text>
                                     <Badge colorScheme="green" fontSize="2xs" w="fit-content">
                                       Received
