@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/xashathebest/clovia/database"
@@ -62,8 +63,8 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// WMSU prioritization: enforce WMSU email for non-organization accounts
-	if user.IsOrganization == false {
-		if len(user.Email) < 15 || (len(user.Email) >= 15 && user.Email[len(user.Email)-14:] != "@wmsu.edu.ph") {
+	if !user.IsOrganization {
+		if !strings.HasSuffix(strings.ToLower(user.Email), "@wmsu.edu.ph") {
 			return c.Status(400).JSON(models.APIResponse{
 				Success: false,
 				Error:   "WMSU students must register with their @wmsu.edu.ph email",
