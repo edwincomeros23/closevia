@@ -52,6 +52,9 @@ import { Product } from '../types'
 import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import TradeModal from '../components/TradeModal'
+import CounterfeitWarning from '../components/CounterfeitWarning'
+import ProximityBadge from '../components/ProximityBadge'
+import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
 import axios from 'axios';
 import { ChevronUpIcon, ChevronDownIcon, CloseIcon, StarIcon } from '@chakra-ui/icons'
 
@@ -538,7 +541,7 @@ const ProductDetail: React.FC = () => {
                   objectFit="contain"
                   fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
                 />
-                <HStack position="absolute" top={3} left={3} spacing={2}>
+                  <HStack position="absolute" top={3} left={3} spacing={2}>
                   {product.premium && (
                     <Badge colorScheme="orange" px={2} py={1} fontSize="sm">
                       Premium Listing
@@ -558,6 +561,7 @@ const ProductDetail: React.FC = () => {
                   >
                     {product.status}
                   </Badge>
+                  {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
                 </HStack>
               </Box>
               {product.image_urls && product.image_urls.length > 1 && (
@@ -591,6 +595,9 @@ const ProductDetail: React.FC = () => {
             {/* Product Details */}
             <Box p={8} display="flex" flexDirection="column">
               <VStack spacing={6} align="stretch" flex={1}>
+                {/* Counterfeit Warning */}
+                {product && <CounterfeitWarning productId={product.id} />}
+                
                 <Box>
 
                   {/* Title on the left, Price on the right (noticeable) */}
@@ -871,6 +878,10 @@ const ProductDetail: React.FC = () => {
                 <Text color="gray.600" fontSize="sm">
                   Member since {new Date().getFullYear()}
                 </Text>
+                <HStack spacing={2} mt={2}>
+                  {product.seller_id && <ResponseMetricsBadge userId={product.seller_id} />}
+                  {product.seller_id && user && <ProximityBadge type="user" targetId={product.seller_id} />}
+                </HStack>
               </Box>
             </HStack>
 

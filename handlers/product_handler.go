@@ -51,30 +51,30 @@ func calculateSuggestedValue(price float64, condition string) int {
 func generateSlug(title string) string {
 	// Convert to lowercase
 	slug := strings.ToLower(title)
-	
+
 	// Remove special characters, keep only alphanumeric, spaces, and hyphens
 	reg := regexp.MustCompile(`[^a-z0-9\s-]`)
 	slug = reg.ReplaceAllString(slug, "")
-	
+
 	// Replace spaces with hyphens
 	slug = strings.ReplaceAll(slug, " ", "-")
-	
+
 	// Remove multiple consecutive hyphens
 	reg = regexp.MustCompile(`-+`)
 	slug = reg.ReplaceAllString(slug, "-")
-	
+
 	// Trim hyphens from start and end
 	slug = strings.Trim(slug, "-")
-	
+
 	// Limit length to 50 characters
 	if len(slug) > 50 {
 		slug = slug[:50]
 		slug = strings.TrimRight(slug, "-")
 	}
-	
+
 	// Generate short UUID (first 8 characters)
 	shortUUID := uuid.New().String()[:8]
-	
+
 	// Combine slug with UUID: "eco-bag-3f8a9d2a"
 	return fmt.Sprintf("%s-%s", slug, shortUUID)
 }
@@ -180,7 +180,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Generate unique slug
 	slug := generateSlug(title)
-	
+
 	// Ensure slug is unique by checking and appending number if needed
 	baseSlug := slug
 	counter := 1
@@ -197,8 +197,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Insert new product with slug
 	result, err := h.db.Exec(
-		"INSERT INTO products (slug, title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		slug, title, description, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category,
+		"INSERT INTO products (slug, title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, latitude, longitude, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, lat, lon, "available", finalCondition, suggestedValue, category,
 	)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -208,6 +208,20 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	}
 
 	productID, _ := result.LastInsertId()
+
+	// Store counterfeit detection results
+	if report.IsSuspicious {
+		flagsJSON, _ := json.Marshal(report.Flags)
+		_, _ = h.db.Exec(
+			"UPDATE products SET counterfeit_confidence = ?, counterfeit_flags = ?, last_counterfeit_check_at = CURRENT_TIMESTAMP WHERE id = ?",
+			report.Confidence, string(flagsJSON), productID,
+		)
+	} else {
+		_, _ = h.db.Exec(
+			"UPDATE products SET counterfeit_confidence = 0, last_counterfeit_check_at = CURRENT_TIMESTAMP WHERE id = ?",
+			productID,
+		)
+	}
 
 	// Get the created product
 	var createdProduct models.Product
@@ -219,7 +233,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
 		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
-	
+
 	if slugNull.Valid {
 		createdProduct.Slug = slugNull.String
 	}
@@ -460,7 +474,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			SellerName:  sellerName,
 			ImageURLs:   models.StringArray{},
 		}
-		
+
 		// Handle slug
 		if slugNull.Valid {
 			product.Slug = slugNull.String
@@ -611,10 +625,10 @@ func (h *ProductHandler) GetUserWishlistStatus(c *fiber.Ctx) error {
 // GetProduct gets a product by ID or slug with visibility checks
 func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	identifier := c.Params("id") // Can be ID or slug
-	
+
 	// Get current user ID (may be 0 if not authenticated)
 	userID, _ := middleware.GetUserIDFromContext(c)
-	
+
 	var product models.Product
 	var priceNull sql.NullFloat64
 	var imageURLsJSONStr sql.NullString
@@ -630,7 +644,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var createdAtNull sql.NullTime
 	var updatedAtNull sql.NullTime
 	var statusNull sql.NullString
-	
+
 	// Try to parse as integer ID first, otherwise treat as slug
 	var query string
 	var queryArg interface{}
@@ -656,7 +670,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		WHERE p.slug = ?`
 		queryArg = identifier
 	}
-	
+
 	err = h.db.QueryRow(query, queryArg).Scan(&product.ID, &slugNull, &titleNull, &descriptionNull, &priceNull,
 		&imageURLsJSONStr, &product.SellerID, &premiumInt, &statusNull,
 		&allowBuyingInt, &barterOnlyInt, &locationNull,
@@ -685,11 +699,11 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	} else {
 		product.Title = ""
 	}
-	
+
 	if slugNull.Valid {
 		product.Slug = slugNull.String
 	}
-	
+
 	if descriptionNull.Valid {
 		product.Description = descriptionNull.String
 	} else {
@@ -713,7 +727,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	} else {
 		product.Status = "available" // Default value from schema
 	}
-	
+
 	// SECURITY: Enforce visibility rules
 	// If product is traded or locked, only the owner can view it
 	if (product.Status == "traded" || product.Status == "locked") && product.SellerID != userID {
@@ -722,7 +736,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			Error:   "This item is no longer available",
 		})
 	}
-	
+
 	// Handle timestamps
 	if createdAtNull.Valid {
 		product.CreatedAt = createdAtNull.Time
@@ -784,27 +798,6 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		product.Price = &p
 	} else {
 		product.Price = nil
-	}
-
-	if imageURLsJSONStr.Valid {
-		var imageURLs []string
-		if err := json.Unmarshal([]byte(imageURLsJSONStr.String), &imageURLs); err == nil {
-			product.ImageURLs = models.StringArray(imageURLs)
-		}
-	}
-
-	if locationNull.Valid {
-		product.Location = locationNull.String
-	}
-
-	if biddingTypeNull.Valid {
-		product.BiddingType = biddingTypeNull.String
-	}
-
-	if sellerNameNull.Valid {
-		product.SellerName = sellerNameNull.String
-	} else {
-		product.SellerName = "Unknown"
 	}
 
 	return c.JSON(models.APIResponse{
