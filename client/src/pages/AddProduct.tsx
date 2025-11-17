@@ -168,6 +168,17 @@ const AddProduct: React.FC = () => {
       return
     }
     
+    if (formData.description.trim().length < 50) {
+      toast({
+        title: 'Description too short',
+        description: 'Please enter at least 50 characters in the description',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+    
     if (uploadedImages.length === 0) {
       toast({
         title: 'No images',
@@ -280,8 +291,8 @@ const AddProduct: React.FC = () => {
 
   const canProceed = () => {
     switch (currentStep) {
-      case 1: return uploadedImages.length >= 3
-      case 2: return formData.title.trim() && formData.description.trim() && descriptionLength >= 300 && descriptionLength <= 800
+      case 1: return uploadedImages.length >= 1 // Changed from 3 to 1 minimum
+      case 2: return formData.title.trim() && formData.description.trim() && descriptionLength >= 50 && descriptionLength <= 800 // Changed from 300 to 50 minimum
       case 3: return true // Barter options are always valid
       case 4: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
       case 5: return true
@@ -295,7 +306,7 @@ const AddProduct: React.FC = () => {
         return (
           <VStack spacing={6} align="stretch">
             <Text fontSize="lg" color="gray.600">
-              Upload at least 3 photos of your product. First image will be the cover.
+              Upload at least 1 photo of your product (up to 8). First image will be the cover.
             </Text>
             
             {/* Drag & Drop Area */}
@@ -316,7 +327,7 @@ const AddProduct: React.FC = () => {
                   Click to upload images or drag and drop
                 </Text>
                 <Text fontSize="sm" color="gray.500">
-                  PNG, JPG up to 5MB each (minimum 3 images required)
+                  PNG, JPG up to 5MB each (minimum 1 image required)
                 </Text>
               </VStack>
             </Box>
@@ -336,12 +347,12 @@ const AddProduct: React.FC = () => {
                 <Text fontWeight="semibold" color="gray.700">
                   Images uploaded: {uploadedImages.length}/8
                 </Text>
-                {uploadedImages.length < 3 && (
+                {uploadedImages.length === 0 && (
                   <Badge colorScheme="orange">
-                    Need {3 - uploadedImages.length} more image(s)
+                    Need at least 1 image
                   </Badge>
                 )}
-                {uploadedImages.length >= 3 && (
+                {uploadedImages.length >= 1 && (
                   <Badge colorScheme="green">
                     Ready to proceed
                   </Badge>
@@ -399,7 +410,8 @@ const AddProduct: React.FC = () => {
                   <Text>Description</Text>
                   <Badge
                     colorScheme={
-                      descriptionLength < 300 ? 'red' :
+                      descriptionLength < 50 ? 'red' :
+                      descriptionLength < 300 ? 'yellow' :
                       descriptionLength <= 800 ? 'green' : 'orange'
                     }
                     fontSize="xs"
@@ -417,12 +429,14 @@ const AddProduct: React.FC = () => {
                 rows={6}
                 size="lg"
                 borderColor={
-                  descriptionLength < 300 ? 'red.300' :
+                  descriptionLength < 50 ? 'red.300' :
+                  descriptionLength < 300 ? 'yellow.300' :
                   descriptionLength <= 800 ? 'green.300' : 'orange.300'
                 }
                 _focus={{
                   borderColor:
-                    descriptionLength < 300 ? 'red.500' :
+                    descriptionLength < 50 ? 'red.500' :
+                    descriptionLength < 300 ? 'yellow.500' :
                     descriptionLength <= 800 ? 'green.500' : 'orange.500',
                 }}
               />
@@ -430,21 +444,23 @@ const AddProduct: React.FC = () => {
                 mt={2}
                 p={2}
                 bg={
-                  descriptionLength < 300 ? 'red.50' :
+                  descriptionLength < 50 ? 'red.50' :
+                  descriptionLength < 300 ? 'yellow.50' :
                   descriptionLength <= 800 ? 'green.50' : 'orange.50'
                 }
                 borderRadius="md"
                 borderLeftWidth="4px"
                 borderLeftColor={
-                  descriptionLength < 300 ? 'red.400' :
+                  descriptionLength < 50 ? 'red.400' :
+                  descriptionLength < 300 ? 'yellow.400' :
                   descriptionLength <= 800 ? 'green.400' : 'orange.400'
                 }
               >
                 <Text fontSize="sm" color="gray.700">
-                  {descriptionLength < 300
-                    ? `⚠️ Add at least ${300 - descriptionLength} more characters (minimum 300)`
+                  {descriptionLength < 50
+                    ? `⚠️ Add at least ${50 - descriptionLength} more characters (minimum 50)`
                     : descriptionLength <= 800
-                    ? `✓ Perfect length! ${descriptionLength} characters`
+                    ? `✓ Good length! ${descriptionLength} characters (recommended: 300+)`
                     : `❌ Description exceeds limit by ${descriptionLength - 800} characters`
                   }
                 </Text>

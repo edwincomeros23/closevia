@@ -43,6 +43,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightElement,
   ScaleFade,
   Fade,
   Tooltip,
@@ -118,7 +119,7 @@ const Dashboard: React.FC = () => {
   const [declineFeedback, setDeclineFeedback] = useState('')
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
-  const offersPollingInterval = useRef<NodeJS.Timeout | null>(null)
+  const offersPollingInterval = useRef<number | null>(null)
   
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -270,7 +271,7 @@ const Dashboard: React.FC = () => {
       }
       if (trade.items) {
         trade.items.forEach((item: any) => {
-          const pid = item.product_id ?? item.productId
+          const pid = item.product_id
           if (pid) {
             productIds.add(Number(pid))
           }
@@ -618,8 +619,8 @@ const Dashboard: React.FC = () => {
         textTransform="none"
         boxShadow="sm"
       >
-        <span style={{ fontSize: '0.9em' }}>{icon}</span>
-        <span>{statusText}</span>
+        <Text as="span" fontSize="0.9em">{icon}</Text>
+        <Text as="span">{statusText}</Text>
       </Badge>
     )
   }
@@ -660,9 +661,9 @@ const Dashboard: React.FC = () => {
           >
             <HStack spacing={2} minW="max-content">
               {offered.map((it: any) => {
-                const pid = it.product_id ?? it.productId
-                const ptitle = it.product_title ?? it.productTitle
-                const pimg = it.product_image_url ?? it.productImageUrl
+                const pid = it.product_id
+                const ptitle = it.product_title
+                const pimg = it.product_image_url
                 return (
                   <VStack key={it.id} spacing={1} align="center" minW="60px">
                     <ProductThumb pid={Number(pid)} src={pimg} alt={getProductTitle(Number(pid), ptitle)} size="50px" />
@@ -686,9 +687,9 @@ const Dashboard: React.FC = () => {
         </Text>
         <SimpleGrid columns={offered.length} spacing={2}>
           {offered.map((it: any) => {
-            const pid = it.product_id ?? it.productId
-            const ptitle = it.product_title ?? it.productTitle
-            const pimg = it.product_image_url ?? it.productImageUrl
+            const pid = it.product_id
+            const ptitle = it.product_title
+            const pimg = it.product_image_url
             return (
               <VStack key={it.id} spacing={1} align="center">
                 <ProductThumb pid={Number(pid)} src={pimg} alt={getProductTitle(Number(pid), ptitle)} size="50px" />
@@ -784,9 +785,9 @@ const Dashboard: React.FC = () => {
             <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="green.300">
               {offeredItems.length > 0 ? (
                 <ProductThumb
-                  pid={Number(offeredItems[0].product_id ?? offeredItems[0].productId)}
-                  src={offeredItems[0].product_image_url ?? offeredItems[0].productImageUrl}
-                  alt={getProductTitle(Number(offeredItems[0].product_id ?? offeredItems[0].productId), offeredItems[0].product_title)}
+                  pid={Number(offeredItems[0].product_id)}
+                  src={offeredItems[0].product_image_url}
+                  alt={getProductTitle(Number(offeredItems[0].product_id), offeredItems[0].product_title)}
                   size="full"
                 />
               ) : (
@@ -1814,6 +1815,8 @@ const Dashboard: React.FC = () => {
                   <HStack spacing={3} flexWrap="wrap" justify="space-between">
                     <HStack spacing={2} flexWrap="wrap">
                       <Select
+                        aria-label="Product status filter"
+                        title="Product status filter"
                         value={productFilter}
                         onChange={(e) => {
                           setProductFilter(e.target.value as any)
@@ -1916,6 +1919,8 @@ const Dashboard: React.FC = () => {
                       </Badge>
                     )}
                     <Select
+                      aria-label="Offers status filter"
+                      title="Offers status filter"
                       value={offersStatusFilter}
                       onChange={(e) => {
                         setOffersStatusFilter(e.target.value)
@@ -1932,6 +1937,8 @@ const Dashboard: React.FC = () => {
                       <option value="countered">Countered</option>
                     </Select>
                     <Select
+                      aria-label="Offers sort order"
+                      title="Offers sort order"
                       value={offersSort}
                       onChange={(e) => setOffersSort(e.target.value as any)}
                       w="140px"
@@ -2220,6 +2227,8 @@ const Dashboard: React.FC = () => {
                       </Badge>
                     )}
                     <Select
+                      aria-label="Trade history sort"
+                      title="Trade history sort"
                       value={tradeHistorySort}
                       onChange={(e) => {
                         setTradeHistorySort(e.target.value as any)
@@ -2332,7 +2341,7 @@ const Dashboard: React.FC = () => {
                                 {trade.items && trade.items.length > 0 ? (
                                   <>
                                     <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="semibold" color="gray.800" noOfLines={1}>
-                                      {getProductTitle(Number(trade.items[0].product_id ?? trade.items[0].productId), trade.items[0].product_title)}
+                                      {getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)}
                                     </Text>
                                     <Badge colorScheme="green" fontSize="2xs" w="fit-content">
                                       Received

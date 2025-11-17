@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/xashathebest/clovia/database"
@@ -194,14 +196,24 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') as profile_picture, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{
-			Success: false,
-			Error:   "User not found",
+		// Return a friendly fallback (200) so frontend does not produce a network 404.
+		// Frontend expects a user-like object; provide minimal public fields.
+		fallback := models.User{
+			ID:             userID,
+			Name:           "User",
+			Verified:       false,
+			IsOrganization: false,
+			CreatedAt:      time.Now(),
+			ProfilePicture: "",
+		}
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data:    fallback,
 		})
 	}
 
@@ -222,8 +234,9 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	var updateData struct {
-		Name  *string `json:"name"`
-		Email *string `json:"email"`
+		Name           *string `json:"name"`
+		Email          *string `json:"email"`
+		ProfilePicture *string `json:"profile_picture"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -247,11 +260,24 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, *updateData.Email)
 	}
 
+	if updateData.ProfilePicture != nil {
+		query += ", profile_picture = ?"
+		args = append(args, *updateData.ProfilePicture)
+	}
+
 	query += " WHERE id = ?"
 	args = append(args, userID)
 
 	_, err := h.db.Exec(query, args...)
 	if err != nil {
+		// If profile_picture column doesn't exist, try to add it and retry once
+		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
+			_, alterErr := h.db.Exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL")
+			if alterErr == nil {
+				// retry update
+				_, err = h.db.Exec(query, args...)
+			}
+		}
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to update profile",
@@ -262,6 +288,49 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		Success: true,
 		Message: "Profile updated successfully",
 	})
+}
+
+// UploadProfilePicture handles uploading a single profile image and returns its URL
+func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	file, err := c.FormFile("image")
+	if err != nil {
+		// Debug info: log content-type and underlying error to help diagnose upload issues
+		contentType := c.Get("Content-Type")
+		fmt.Printf("UploadProfilePicture: missing form file 'image' - Content-Type: %s, err: %v\n", contentType, err)
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No file uploaded: " + err.Error()})
+	}
+
+	savePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), file.Filename)
+	if err := c.SaveFile(file, savePath); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save file"})
+	}
+
+	// Build an absolute URL so clients (dev server on different port) can load images
+	host := c.Get("Host")
+	if host == "" {
+		host = "localhost:4000"
+	}
+	url := fmt.Sprintf("http://%s/%s", host, savePath)
+
+	// Ensure profile_picture column exists
+	var exists int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'profile_picture'").Scan(&exists)
+	if err == nil && exists == 0 {
+		h.db.Exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL")
+	}
+
+	// Save URL to user's profile
+	_, err = h.db.Exec("UPDATE users SET profile_picture = ? WHERE id = ?", url, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update user profile picture"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: url, Message: "Uploaded"})
 }
 
 // GetUserByID gets a user by ID (public info only)
@@ -276,14 +345,23 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 
 	var user models.User
 	err = h.db.QueryRow(
-		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, COALESCE(profile_picture, '') as profile_picture, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &user.Department, &user.Bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &user.ProfilePicture, &user.Department, &user.Bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{
-			Success: false,
-			Error:   "User not found",
+		// Return a friendly fallback (200) so frontend does not produce a network 404.
+		fallback := models.User{
+			ID:             userID,
+			Name:           "User",
+			Verified:       false,
+			IsOrganization: false,
+			CreatedAt:      time.Now(),
+			ProfilePicture: "",
+		}
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data:    fallback,
 		})
 	}
 
@@ -348,7 +426,13 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 
 // SaveProduct saves a product to user's watchlist
 func (h *UserHandler) SaveProduct(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
 
 	var req struct {
 		ProductID int `json:"product_id"`
@@ -362,7 +446,7 @@ func (h *UserHandler) SaveProduct(c *fiber.Ctx) error {
 
 	// Check if product exists
 	var productExists bool
-	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ? AND deleted_at IS NULL)", req.ProductID).Scan(&productExists)
+	err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE id = ?)", req.ProductID).Scan(&productExists)
 	if err != nil || !productExists {
 		return c.Status(404).JSON(models.APIResponse{
 			Success: false,
@@ -370,24 +454,48 @@ func (h *UserHandler) SaveProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if already saved
-	var alreadySaved bool
-	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)", userID, req.ProductID).Scan(&alreadySaved)
-	if err != nil {
+	// Check if already saved (including soft-deleted ones)
+	var existingID sql.NullInt64
+	err = h.db.QueryRow("SELECT id FROM saved_products WHERE user_id = ? AND product_id = ?", userID, req.ProductID).Scan(&existingID)
+
+	if err == nil && existingID.Valid {
+		// Record exists - check if it's soft-deleted
+		var deletedAt sql.NullTime
+		err = h.db.QueryRow("SELECT deleted_at FROM saved_products WHERE id = ?", existingID.Int64).Scan(&deletedAt)
+		if err == nil {
+			if deletedAt.Valid && !deletedAt.Time.IsZero() {
+				// Restore soft-deleted record
+				_, err = h.db.Exec("UPDATE saved_products SET deleted_at = NULL, updated_at = NOW() WHERE id = ?", existingID.Int64)
+				if err != nil {
+					return c.Status(500).JSON(models.APIResponse{
+						Success: false,
+						Error:   "Failed to restore saved product",
+					})
+				}
+				return c.JSON(models.APIResponse{
+					Success: true,
+					Message: "Product saved successfully",
+				})
+			} else {
+				// Already saved and not deleted
+				return c.Status(409).JSON(models.APIResponse{
+					Success: false,
+					Error:   "Product already saved",
+				})
+			}
+		}
+	} else if err != sql.ErrNoRows {
+		// Some other error occurred
+		fmt.Printf("❌ SaveProduct check failed!\n")
+		fmt.Printf("UserID: %d, ProductID: %d\n", userID, req.ProductID)
+		fmt.Printf("Error: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to check saved status",
 		})
 	}
 
-	if alreadySaved {
-		return c.Status(409).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Product already saved",
-		})
-	}
-
-	// Save the product
+	// Save the product (new record)
 	_, err = h.db.Exec("INSERT INTO saved_products (user_id, product_id, created_at) VALUES (?, ?, NOW())", userID, req.ProductID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -404,7 +512,13 @@ func (h *UserHandler) SaveProduct(c *fiber.Ctx) error {
 
 // UnsaveProduct removes a product from user's watchlist
 func (h *UserHandler) UnsaveProduct(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
 	productID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{
@@ -413,12 +527,15 @@ func (h *UserHandler) UnsaveProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Remove the saved product
-	result, err := h.db.Exec("DELETE FROM saved_products WHERE user_id = ? AND product_id = ?", userID, productID)
+	// Soft delete the saved product
+	result, err := h.db.Exec("UPDATE saved_products SET deleted_at = NOW() WHERE user_id = ? AND product_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')", userID, productID)
 	if err != nil {
+		fmt.Printf("❌ UnsaveProduct query failed!\n")
+		fmt.Printf("UserID: %d, ProductID: %d\n", userID, productID)
+		fmt.Printf("Error: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to remove saved product",
+			Error:   "Failed to remove saved product: " + err.Error(),
 		})
 	}
 
@@ -438,7 +555,13 @@ func (h *UserHandler) UnsaveProduct(c *fiber.Ctx) error {
 
 // CheckSavedProduct checks if a product is saved by the user
 func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
 	productID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{
@@ -448,11 +571,14 @@ func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
 	}
 
 	var isSaved bool
-	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)", userID, productID).Scan(&isSaved)
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00'))", userID, productID).Scan(&isSaved)
 	if err != nil {
+		fmt.Printf("❌ CheckSavedProduct query failed!\n")
+		fmt.Printf("UserID: %d, ProductID: %d\n", userID, productID)
+		fmt.Printf("Error: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to check saved status",
+			Error:   "Failed to check saved status: " + err.Error(),
 		})
 	}
 
@@ -466,22 +592,31 @@ func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
 
 // GetSavedProducts gets all saved products for a user
 func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
-	userID := c.Locals("user_id").(int)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 	offset := (page - 1) * limit
 
-	// Get total count
+	// Get total count (excluding soft-deleted)
 	var total int
-	err := h.db.QueryRow("SELECT COUNT(*) FROM saved_products WHERE user_id = ?", userID).Scan(&total)
+	err := h.db.QueryRow("SELECT COUNT(*) FROM saved_products WHERE user_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')", userID).Scan(&total)
 	if err != nil {
+		fmt.Printf("❌ GetSavedProducts count query failed!\n")
+		fmt.Printf("UserID: %d\n", userID)
+		fmt.Printf("Error: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to get saved products count",
+			Error:   "Failed to get saved products count: " + err.Error(),
 		})
 	}
 
-	// Get saved products with product details
+	// Get saved products with product details (excluding soft-deleted)
 	rows, err := h.db.Query(`
 		SELECT 
 			p.id, p.title, p.description, p.price, p.image_urls, p.seller_id,
@@ -492,7 +627,7 @@ func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
 		FROM saved_products sp
 		JOIN products p ON p.id = sp.product_id
 		JOIN users u ON u.id = p.seller_id
-		WHERE sp.user_id = ? AND p.deleted_at IS NULL
+		WHERE sp.user_id = ? AND (sp.deleted_at IS NULL OR sp.deleted_at = '0000-00-00 00:00:00')
 		ORDER BY sp.created_at DESC
 		LIMIT ? OFFSET ?
 	`, userID, limit, offset)

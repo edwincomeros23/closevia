@@ -19,6 +19,7 @@ import {
   useToast,
   useColorModeValue,
   Flex,
+  Image as ChakraImage,
 } from '@chakra-ui/react'
 import { ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -286,7 +287,7 @@ const Notifications: React.FC = () => {
                       <CardBody>
                         <HStack spacing={4} align="center">
                           <Box boxSize="72px">
-                            <img src={getFirstImage(p.image_urls)} alt={p.title} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 6 }} />
+                            <ChakraImage src={getFirstImage(p.image_urls)} alt={p.title} width="100%" height="100%" objectFit="cover" borderRadius="6px" />
                           </Box>
                           <VStack align="start" spacing={1} flex={1}>
                             <Heading size="sm">{p.title}</Heading>

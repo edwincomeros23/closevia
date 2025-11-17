@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { User } from '../types'
-import { api } from '../services/api'
+import { api, API_BASE_URL } from '../services/api'
 
 interface AuthContextType {
   user: User | null
@@ -8,6 +8,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<void>
   logout: () => void
+  updateProfile: (payload: { name?: string; email?: string; profile_picture?: string }) => Promise<void>
   loading: boolean
 }
 
@@ -69,7 +70,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       })
       
       clearTimeout(timeoutId)
-      setUser(response.data.data)
+      // Normalize profile_picture: if backend returned a relative path ("/uploads/.."),
+      // prefix it with the API base URL so the browser loads from the backend origin.
+      const userData = response.data.data as any
+      if (userData && userData.profile_picture && typeof userData.profile_picture === 'string') {
+        if (userData.profile_picture.startsWith('/')) {
+          userData.profile_picture = `${API_BASE_URL}${userData.profile_picture}`
+        }
+      }
+      setUser(userData)
     } catch (error: any) {
       console.error('Failed to fetch user profile:', error)
       
@@ -103,6 +112,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }
 
+  const updateProfile = async (payload: { name?: string; email?: string; profile_picture?: string }) => {
+    try {
+      // Only call backend for fields the server accepts (name/email)
+      const serverPayload: any = {}
+      if (payload.name !== undefined) serverPayload.name = payload.name
+      if (payload.email !== undefined) serverPayload.email = payload.email
+      if (payload.profile_picture !== undefined) serverPayload.profile_picture = payload.profile_picture
+
+      if (Object.keys(serverPayload).length > 0) {
+        await api.put('/api/users/profile', serverPayload)
+      }
+
+      // Update local user state but only overwrite fields that are defined
+      setUser((prev) => {
+        const updated = prev ? { ...(prev as any) } as User : {} as User
+        if (payload.name !== undefined) updated.name = payload.name as string
+        if (payload.email !== undefined) updated.email = payload.email as string
+        if (payload.profile_picture !== undefined) {
+          // Normalize stored profile picture URL if backend returned a relative path
+          let pic = payload.profile_picture as string
+          if (pic.startsWith('/')) pic = `${API_BASE_URL}${pic}`
+          updated.profile_picture = pic
+        }
+        // If there was no previous user, and we have at least one field, return it
+        if (!prev) {
+          return updated
+        }
+        return updated
+      })
+    } catch (error: any) {
+      // bubble up error to caller
+      throw error
+    }
+  }
+
   const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => {
     try {
       const response = await api.post('/api/auth/register', payload)
@@ -130,6 +174,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     register,
     logout,
+    updateProfile,
     loading,
   }
 
