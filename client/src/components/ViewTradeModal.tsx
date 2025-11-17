@@ -37,6 +37,7 @@ import {
   AccordionIcon,
   Input,
   InputGroup,
+  InputLeftElement,
   FormLabel as Label,
   Grid,
 } from '@chakra-ui/react'
@@ -831,12 +832,16 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     mb={2}
                     bg="gray.50"
                   />
-                  <Input
-                    placeholder="+63 912 345 6789"
-                    size="sm"
-                    bg="gray.50"
-                    leftIcon={<FiPhone />}
-                  />
+                  <InputGroup>
+                    <InputLeftElement pointerEvents="none">
+                      <Icon as={FiPhone} color="gray.400" />
+                    </InputLeftElement>
+                    <Input
+                      placeholder="+63 912 345 6789"
+                      size="sm"
+                      bg="gray.50"
+                    />
+                  </InputGroup>
                 </Box>
 
                 <Divider />
@@ -854,13 +859,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     bg="white"
                     borderWidth="1px"
                   />
-                  <Input
-                    placeholder="Receiver's contact number"
-                    size="sm"
-                    bg="white"
-                    borderWidth="1px"
-                    leftIcon={<FiPhone />}
-                  />
+                  <InputGroup>
+                    <InputLeftElement pointerEvents="none">
+                      <Icon as={FiPhone} color="gray.400" />
+                    </InputLeftElement>
+                    <Input
+                      placeholder="Receiver's contact number"
+                      size="sm"
+                      bg="white"
+                      borderWidth="1px"
+                    />
+                  </InputGroup>
                 </Box>
 
                 <Divider />
@@ -1133,12 +1142,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   colorScheme="green"
                   size="lg"
                   onClick={handleConfirmDelivery}
-                  isDisabled={
+                  isDisabled={Boolean(
                     !deliveryState.paymentConfirmed ||
                     !deliveryState.proofOfDelivery ||
                     (isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
                     (isUserSeller && deliveryState.sellerConfirmedDelivery)
-                  }
+                  )}
                   leftIcon={
                     (isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
                     (isUserSeller && deliveryState.sellerConfirmedDelivery) ? (
@@ -1714,10 +1723,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         onClick={confirmMeetup}
                         isLoading={confirmingMeetup}
                         leftIcon={<FaCheckCircle />}
-                        isDisabled={
+                        isDisabled={Boolean(
                           (isUserBuyer && buyerMeetupConfirmed) ||
                           (isUserSeller && sellerMeetupConfirmed)
-                        }
+                        )}
                         w="full"
                         transition="all 0.2s"
                         _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}

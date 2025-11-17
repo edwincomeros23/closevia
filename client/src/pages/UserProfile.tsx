@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useParams, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -51,14 +51,16 @@ import {
 } from '@chakra-ui/react'
 import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend } from 'react-icons/fi'
 import { api } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 
   type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
   avatar_url?: string
   bio?: string
+    background_url?: string
   rating?: number
   rank?: string
   is_organization?: boolean
@@ -74,7 +76,13 @@ import { getProductUrl } from '../utils/productUtils'
 
 const UserProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>()
+  const { user: currentUser } = useAuth()
   const [user, setUser] = useState<PublicUser | null>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [draftBio, setDraftBio] = useState('')
+  const [backgroundPreview, setBackgroundPreview] = useState<string | null>(null)
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(true)
   const [products, setProducts] = useState<Product[]>([])
   const [error, setError] = useState<string>('')
@@ -115,37 +123,47 @@ const UserProfile: React.FC = () => {
       setLoading(true);
       setError('');
       try {
-        // Fetch public user info
-        const res = await api.get(`/api/users/${id}`).catch(err => {
-          // If user not found, use fallback data
-          if (err.response?.status === 404) {
-            return {
-              data: {
-                id: Number(id),
-                name: 'User',
-                created_at: new Date().toISOString(),
-                rating: 4.8,
-                positive_feedback: 98,
-                response_time_minutes: 30,
-                total_reviews: 42,
-                is_following: false,
-                bio: 'This user prefers to keep an air of mystery about them.',
-                department: 'Unknown',
-                verified: false,
-                is_organization: false
+        // If this is the currently authenticated user's page, fetch the protected profile
+        let res
+        if (currentUser && Number(id) === currentUser.id) {
+          res = await api.get('/api/users/profile')
+        } else {
+          // Fetch public user info
+          res = await api.get(`/api/users/${id}`).catch(err => {
+            // If user not found, use fallback data
+            if (err.response?.status === 404) {
+              return {
+                data: {
+                  id: Number(id),
+                  name: 'User',
+                  created_at: new Date().toISOString(),
+                  rating: 4.8,
+                  positive_feedback: 98,
+                  response_time_minutes: 30,
+                  total_reviews: 42,
+                  is_following: false,
+                  bio: 'This user prefers to keep an air of mystery about them.',
+                  department: 'Unknown',
+                  verified: false,
+                  is_organization: false,
+                },
               }
-            };
-          }
-          throw err;
-        });
-        
-        const apiUser = (res.data?.data || res.data) as Partial<PublicUser>;
+            }
+            throw err
+          })
+        }
+
+        const apiUser = (res.data?.data || res.data) as Partial<PublicUser>
         setUser({
           id: Number(id),
           name: apiUser.name || 'User',
           verified: Boolean(apiUser.verified),
           created_at: (apiUser as any).created_at || new Date().toISOString(),
-          avatar_url: (apiUser as any).org_logo_url,
+          // Prefer profile_picture if provided, fall back to org logo
+          avatar_url: getImageUrl((apiUser as any).profile_picture || (apiUser as any).org_logo_url || null),
+          background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || null),
+          // If the current user and API returned an email/name, prefer those
+          is_following: (apiUser as any).is_following ?? false,
           bio: (apiUser as any).bio || 'No bio provided yet.',
           rating: apiUser.rating ?? 4.6,
           rank: apiUser.rank || 'Rising Trader',
@@ -167,6 +185,70 @@ const UserProfile: React.FC = () => {
     }
     run()
   }, [id, getUserProducts])
+
+  const openEdit = () => {
+    if (!user) return
+    setDraftBio(user.bio || '')
+    setBackgroundPreview(user.background_url || null)
+    setBackgroundFile(null)
+    setIsEditOpen(true)
+  }
+
+  const closeEdit = () => {
+    setIsEditOpen(false)
+    setBackgroundFile(null)
+    setBackgroundPreview(null)
+  }
+
+  const handleBackgroundSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setBackgroundFile(f)
+    const url = URL.createObjectURL(f)
+    setBackgroundPreview(url)
+  }
+
+  const handleSaveProfile = async () => {
+    try {
+      const payload: any = { bio: draftBio }
+      // If user picked a new background file, upload it first
+      if (backgroundFile) {
+        const fd = new FormData()
+        fd.append('image', backgroundFile)
+        const uploadRes = await api.post('/api/users/profile-picture', fd)
+        // server expected to return { url: '/uploads/...' } or similar
+        const returned = uploadRes.data?.data || uploadRes.data
+        const uploadedUrl = returned?.url || returned?.path || returned
+        if (uploadedUrl) payload.background_image = uploadedUrl
+      }
+
+      await api.put('/api/users/profile', payload)
+      // Update local user state optimistically
+      setUser(prev => prev ? { ...prev, bio: draftBio, background_url: payload.background_image || prev.background_url } : prev)
+      setIsEditOpen(false)
+     
+      // revoke temporary preview object URL if any
+      if (backgroundPreview && backgroundFile) URL.revokeObjectURL(backgroundPreview)
+
+    } catch (err: any) {
+      console.error('Failed to save profile', err)
+      toast({
+        title: 'Failed to save profile',
+        description: err?.response?.data?.message || err?.message || 'An error occurred',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+      return
+    }
+    toast({
+      title: 'Profile updated',
+      description: 'Your profile changes have been saved.',
+      status: 'success',
+      duration: 3000,
+      isClosable: true,
+    })
+  }
 
   const stats = useMemo(() => {
     const total = products.length
@@ -283,7 +365,27 @@ const UserProfile: React.FC = () => {
         <VStack spacing={8} align="stretch">
           {/* Seller Info Header */}
           <Card bg="white" border="1px" borderColor="gray.200" shadow="sm" overflow="hidden">
-            <Box bgGradient="linear(to-r, brand.50, blue.50)" h="100px" w="100%" position="relative">
+            <Box
+              h="160px"
+              w="100%"
+              position="relative"
+              bgImage={`url(${user.background_url || '/profile-bg-default.jpg'})`}
+              bgSize="cover"
+              bgPos="center"
+            >
+              {currentUser && Number(id) === currentUser.id && (
+                <Button
+                  position="absolute"
+                  top={3}
+                  right={3}
+                  size="sm"
+                  onClick={openEdit}
+                  colorScheme="brand"
+                >
+                  Edit Profile
+                </Button>
+              )}
+
               <Box position="absolute" bottom="-50px" left="6">
                 <Avatar 
                   size="xl" 
@@ -404,6 +506,8 @@ const UserProfile: React.FC = () => {
                         w="180px" 
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
+                        aria-label="Sort products"
+                        title="Sort products"
                       >
                         <option value="newest">Newest First</option>
                         <option value="price_asc">Price: Low to High</option>
@@ -652,6 +756,57 @@ const UserProfile: React.FC = () => {
               </TabPanel>
             </TabPanels>
           </Tabs>
+
+          {/* Edit Profile Modal */}
+          <Modal isOpen={isEditOpen} onClose={closeEdit} size="lg">
+            <ModalOverlay />
+            <ModalContent>
+              <ModalHeader>Edit Profile</ModalHeader>
+              <ModalCloseButton />
+              <ModalBody pb={6}>
+                <VStack spacing={4} align="stretch">
+                  <FormControl>
+                    <FormLabel htmlFor="background-photo-input">Background Photo</FormLabel>
+                    <Box>
+                      <Image
+                        src={backgroundPreview || user?.background_url || '/profile-bg-default.jpg'}
+                        alt="Background preview"
+                        w="100%"
+                        h="160px"
+                        objectFit="cover"
+                        borderRadius="md"
+                        mb={2}
+                      />
+                      <Input
+                        id="background-photo-input"
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        display="none"
+                        onChange={handleBackgroundSelect}
+                        aria-label="Choose background photo"
+                        title="Choose background photo"
+                      />
+                      <HStack>
+                        <Button size="sm" onClick={() => fileInputRef.current?.click()}>Choose Photo</Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setBackgroundFile(null); setBackgroundPreview(user?.background_url || null); }}>Reset</Button>
+                      </HStack>
+                    </Box>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Bio</FormLabel>
+                    <Textarea value={draftBio} onChange={(e) => setDraftBio(e.target.value)} rows={4} />
+                  </FormControl>
+
+                  <HStack justify="flex-end">
+                    <Button onClick={closeEdit} variant="ghost">Cancel</Button>
+                    <Button colorScheme="brand" onClick={handleSaveProfile}>Save Changes</Button>
+                  </HStack>
+                </VStack>
+              </ModalBody>
+            </ModalContent>
+          </Modal>
 
           {/* Review Modal */}
           <Modal isOpen={isOpen} onClose={onClose} size="lg">

@@ -4,6 +4,7 @@ export interface User {
   email: string
   role: string
   verified: boolean
+  profile_picture?: string
   is_organization?: boolean
   org_verified?: boolean
   org_name?: string
@@ -32,6 +33,9 @@ export interface Product {
   condition?: string
   suggested_value?: number
   category?: string
+  latitude?: number
+  longitude?: number
+  distance?: string // Calculated distance from user (e.g., "1.2km nearby")
   created_at: string
   updated_at: string
   wishlist_count?: number;

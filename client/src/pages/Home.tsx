@@ -498,7 +498,7 @@ const Home: React.FC = () => {
               flexShrink={0}
               cursor="pointer"
               _hover={{ opacity: 0.8 }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               <Text fontSize="md" fontWeight="bold" color="white">
                 {(product.seller_name || 'U').charAt(0).toUpperCase()}
@@ -706,6 +706,8 @@ const Home: React.FC = () => {
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Listing Type</FormLabel>
                   <Select
+                    aria-label="Listing type"
+                    title="Listing type"
                     value={filters.premium === undefined ? '' : filters.premium.toString()}
                     onChange={(e) => handleFilterChange('premium', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
@@ -719,6 +721,8 @@ const Home: React.FC = () => {
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Trade Type</FormLabel>
                   <Select
+                    aria-label="Trade type"
+                    title="Trade type"
                     value={filters.barter_only === undefined ? '' : filters.barter_only.toString()}
                     onChange={(e) => handleFilterChange('barter_only', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
@@ -732,6 +736,8 @@ const Home: React.FC = () => {
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Status</FormLabel>
                   <Select
+                    aria-label="Listing status"
+                    title="Listing status"
                     value={filters.status || ''}
                     onChange={(e) => handleFilterChange('status', e.target.value)}
                     size="sm"

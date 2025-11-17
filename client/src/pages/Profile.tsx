@@ -39,6 +39,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { api } from '../services/api'
 import { Product } from '../types'
+import { getImageUrl } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
 
@@ -203,7 +204,7 @@ const Profile: React.FC = () => {
                 <Avatar
                   size="xl"
                   name={user.name}
-                  src={user.org_logo_url}
+                  src={getImageUrl(user.profile_picture || user.org_logo_url || null)}
                   bg="brand.500"
                   color="white"
                 />

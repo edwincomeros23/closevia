@@ -21,6 +21,17 @@ func StartTradeTimeoutScheduler(db *sql.DB) {
 }
 
 func runTradeTimeoutPass(db *sql.DB) error {
+	// If the DB doesn't have the expected timeout columns (migrations not applied),
+	// skip the pass to avoid SQL errors. Check for existence of first_completion_at.
+	var cnt int
+	if err := db.QueryRow("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'trades' AND column_name = 'first_completion_at'").Scan(&cnt); err != nil {
+		// If we can't query information_schema, return the error so it can be retried later
+		return err
+	}
+	if cnt == 0 {
+		// migrations not applied; nothing to do for trade timeouts
+		return nil
+	}
 	// Stage 1: Move to awaiting_confirmation after 24h from first_completion_at
 	if _, err := db.Exec(`
         UPDATE trades

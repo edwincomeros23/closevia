@@ -44,6 +44,7 @@ import {
   Spinner,
 } from '@chakra-ui/react'
 import { useNavigate } from 'react-router-dom'
+import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { 
   FaUserCircle, 
@@ -70,7 +71,7 @@ import { FiSettings, FiSave } from 'react-icons/fi'
 const SettingsPage: React.FC = () => {
   const toast = useToast()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, updateProfile } = useAuth()
   const { colorMode, toggleColorMode } = useColorMode()
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -314,41 +315,81 @@ const SettingsPage: React.FC = () => {
     setIsSaving(true)
     setSaveStatus('saving')
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    try {
+      // If profileImage is a data URL (client-side uploaded), upload it to server first
+      let profileUrlToSave: string | undefined = undefined
+      if (profileImage && profileImage.startsWith('data:')) {
+        setUploadingImage(true)
+        try {
+          const blob = await (await fetch(profileImage)).blob()
+          const form = new FormData()
+          form.append('image', blob, 'profile.jpg')
+          const uploadRes = await api.post('/api/users/profile-picture', form)
+          profileUrlToSave = uploadRes.data?.data || uploadRes.data
+        } catch (uploadErr: any) {
+          console.error('Profile image upload failed', uploadErr)
+          const serverMsg = uploadErr?.response?.data?.error || uploadErr?.response?.data || uploadErr?.message
+          throw new Error(serverMsg || 'Failed to upload profile image')
+        } finally {
+          setUploadingImage(false)
+        }
+      } else if (profileImage) {
+        // Already a URL (e.g., /uploads/...), use as-is
+        profileUrlToSave = profileImage
+      }
 
-    // Save to localStorage (frontend only)
-    const settings = {
-      username,
-      email,
-      profileImage,
-      darkMode,
-      language,
-      timezone,
-      dashboardLayout,
-      fontSize,
-      highContrast,
-      emailNotifications,
-      pushNotifications,
-      newOfferReceived,
-      tradeCompleted,
-      tradeAccepted,
-      tradeDeclined,
-      notificationFrequency,
+      // Update server-side profile (name/email/profile_picture)
+      if (updateProfile) {
+        await updateProfile({ name: username, email, profile_picture: profileUrlToSave })
+        // Ensure local preview shows the saved URL (not the base64 data URL)
+        if (profileUrlToSave) {
+          setProfileImage(profileUrlToSave)
+        }
+      }
+
+      // Persist preferences locally as before
+      const settings = {
+        username,
+        email,
+        profileImage,
+        darkMode,
+        language,
+        timezone,
+        dashboardLayout,
+        fontSize,
+        highContrast,
+        emailNotifications,
+        pushNotifications,
+        newOfferReceived,
+        tradeCompleted,
+        tradeAccepted,
+        tradeDeclined,
+        notificationFrequency,
+      }
+      localStorage.setItem('user_settings', JSON.stringify(settings))
+
+      setIsSaving(false)
+      setSaveStatus('saved')
+      setHasUnsavedChanges(false)
+
+      toast({
+        title: 'Settings saved',
+        description: 'Your preferences have been updated successfully.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    } catch (err: any) {
+      setIsSaving(false)
+      setSaveStatus('error')
+      toast({
+        title: 'Save failed',
+        description: err?.response?.data?.error || err?.message || 'Failed to save settings',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
     }
-    localStorage.setItem('user_settings', JSON.stringify(settings))
-
-    setIsSaving(false)
-    setSaveStatus('saved')
-    setHasUnsavedChanges(false)
-
-    toast({
-      title: 'Settings saved',
-      description: 'Your preferences have been updated successfully.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    })
   }
 
   // Handle logout
@@ -603,6 +644,7 @@ const SettingsPage: React.FC = () => {
                       setHasUnsavedChanges(true)
                     }}
                     maxW="300px"
+                    title="Select language"
                   >
                     <option value="en">English</option>
                     <option value="es">Español</option>
@@ -630,6 +672,7 @@ const SettingsPage: React.FC = () => {
                       setHasUnsavedChanges(true)
                     }}
                     maxW="400px"
+                    title="Select timezone"
                   >
                     {timezones.map((tz: string) => (
                       <option key={tz} value={tz}>
@@ -654,6 +697,7 @@ const SettingsPage: React.FC = () => {
                       setHasUnsavedChanges(true)
                     }}
                     maxW="300px"
+                    title="Select dashboard layout"
                   >
                     <option value="default">Default</option>
                     <option value="compact">Compact</option>
@@ -682,6 +726,7 @@ const SettingsPage: React.FC = () => {
                           setHasUnsavedChanges(true)
                         }}
                         maxW="200px"
+                        title="Select font size"
                       >
                         <option value="small">Small</option>
                         <option value="medium">Medium</option>

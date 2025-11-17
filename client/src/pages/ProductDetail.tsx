@@ -732,7 +732,7 @@ const ProductDetail: React.FC = () => {
                         >
                           Buy Now - ₱{product.price.toFixed(2)}
                         </Button>
-                        <Tooltip label={`View current offers (${product.offer_count || 0})`}>
+                        <Tooltip label={`View current offers (${(product as any).offer_count || 0})`}>
                           <Button
                             variant="outline"
                             colorScheme="blue"
@@ -754,7 +754,7 @@ const ProductDetail: React.FC = () => {
                         >
                           Trade Offer
                         </Button>
-                        <Tooltip label={`View current offers (${product.offer_count || 0})`}>
+                          <Tooltip label={`View current offers (${(product as any).offer_count || 0})`}>
                           <Button
                             variant="outline"
                             colorScheme="blue"
@@ -855,7 +855,7 @@ const ProductDetail: React.FC = () => {
                 flexShrink={0}
               >
                 <Text fontSize="24px" fontWeight="bold" color="white">
-                  {product.seller_name.charAt(0).toUpperCase()}
+                  {product.seller_name ? product.seller_name.charAt(0).toUpperCase() : '?'}
                 </Text>
               </Box>
               <Box>
@@ -929,12 +929,12 @@ const ProductDetail: React.FC = () => {
             >
               <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
                 <Image
-                  src="/uploads/1755585883998559300_Pink_Birkin_bag"
+                  src={getImageUrl('/uploads/1755585883998559300_Pink_Birkin_bag')}
                   alt="Product 1"
                   w="full"
                   h="full"
                   objectFit="cover"
-                  fallbackSrc="/images/placeholder.jpg"
+                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
                 />
                 <Badge position="absolute" top={2} right={2} colorScheme="teal" fontSize="xs">
                   available
@@ -970,12 +970,12 @@ const ProductDetail: React.FC = () => {
             >
               <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
                 <Image
-                  src="/uploads/1755585326243827700_image_"
+                  src={getImageUrl('/uploads/1755585326243827700_image_')}
                   alt="Unli water baso"
                   w="full"
                   h="full"
                   objectFit="cover"
-                  fallbackSrc="/images/placeholder.jpg"
+                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
                 />
                 <Badge position="absolute" top={2} right={2} colorScheme="teal" fontSize="xs">
                   available
@@ -1011,12 +1011,12 @@ const ProductDetail: React.FC = () => {
             >
               <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
                 <Image
-                  src="/uploads/1755590839905072000_ssdd.z"
+                  src={getImageUrl('/uploads/1755590839905072000_ssdd.z')}
                   alt="Endless bag"
                   w="full"
                   h="full"
                   objectFit="cover"
-                  fallbackSrc="/images/placeholder.jpg"
+                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
                 />
                 <Badge position="absolute" top={2} right={2} colorScheme="red" fontSize="xs">
                   sold
@@ -1052,12 +1052,12 @@ const ProductDetail: React.FC = () => {
             >
               <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
                 <Image
-                  src="/uploads/1755600258252118900_images"
+                  src={getImageUrl('/uploads/1755600258252118900_images')}
                   alt="headphone made in ph"
                   w="full"
                   h="full"
                   objectFit="cover"
-                  fallbackSrc="/images/placeholder.jpg"
+                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
                 />
                 <Badge position="absolute" top={2} right={2} colorScheme="red" fontSize="xs">
                   sold

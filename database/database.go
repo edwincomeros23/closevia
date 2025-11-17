@@ -93,6 +93,7 @@ func CreateTables() error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS products (
 			id INT AUTO_INCREMENT PRIMARY KEY,
+			slug VARCHAR(255) NULL,
 			title VARCHAR(255) NOT NULL,
 			description TEXT,
 			price DECIMAL(10,2),
@@ -112,7 +113,8 @@ func CreateTables() error {
 			bidding_type ENUM('none', 'blind', 'open') DEFAULT 'none',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE
+			FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_products_slug (slug)
 		)`,
 		`CREATE TABLE IF NOT EXISTS orders (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -193,6 +195,7 @@ func CreateTables() error {
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS buyer_feedback TEXT NULL`,
 		`ALTER TABLE trades ADD COLUMN IF NOT EXISTS seller_feedback TEXT NULL`,
 		`ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url VARCHAR(500)`,
+		`ALTER TABLE products ADD COLUMN IF NOT EXISTS slug VARCHAR(255) NULL AFTER id`,
 		`CREATE TABLE IF NOT EXISTS trade_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			trade_id INT NOT NULL,
@@ -250,6 +253,21 @@ func CreateTables() error {
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
 			UNIQUE KEY uniq_wishlist_item (user_id, product_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS saved_products (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			product_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			deleted_at TIMESTAMP NULL DEFAULT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			UNIQUE KEY unique_user_product (user_id, product_id),
+			INDEX idx_user_id (user_id),
+			INDEX idx_product_id (product_id),
+			INDEX idx_created_at (created_at),
+			INDEX idx_deleted_at (deleted_at)
 		)`,
 	}
 

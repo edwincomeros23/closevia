@@ -105,6 +105,7 @@ type User struct {
 	OrgVerified    bool      `json:"org_verified"`
 	OrgName        string    `json:"org_name,omitempty"`
 	OrgLogoURL     string    `json:"org_logo_url,omitempty"`
+	ProfilePicture string    `json:"profile_picture,omitempty"`
 	Department     string    `json:"department,omitempty"`
 	Bio            string    `json:"bio,omitempty"`
 	Badges         IntArray  `json:"badges,omitempty"`

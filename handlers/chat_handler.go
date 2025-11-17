@@ -3,6 +3,7 @@ package handlers
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
+	"github.com/xashathebest/clovia/utils"
 )
 
 type ChatHandler struct{}
@@ -32,37 +34,39 @@ type sseEvent struct {
 func (h *ChatHandler) Stream(c *fiber.Ctx) error {
 	// Try to get user ID from context first
 	userID, ok := middleware.GetUserIDFromContext(c)
-	
+
 	// If not in context, try to get from token query parameter
 	if !ok {
 		token := c.Query("token")
 		if token == "" {
+			// Debug: no token provided
+			fmt.Println("Chat Stream: missing token in query")
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"success": false,
 				"error":   "Missing authentication token",
 			})
 		}
 
-		// Set the token in the Authorization header
-		c.Request().Header.Set("Authorization", "Bearer "+token)
-		
-		// Validate the token
-		err := middleware.AuthMiddleware()(c)
+		// Validate the JWT token directly to avoid calling middleware handler inline
+		claims, err := utils.ValidateJWT(token)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"success": false,
-				"error":   "Invalid or expired token",
-			})
+			fmt.Printf("Chat Stream: token validation failed (len=%d) err=%v\n", len(token), err)
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "error": "Invalid or expired token"})
 		}
 
-		// Try to get user ID again after validation
-		userID, ok = middleware.GetUserIDFromContext(c)
-		if !ok {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"success": false,
-				"error":   "Failed to authenticate user",
-			})
+		// Extract claims and set them into context so downstream code can use them
+		uidFloat, okUID := claims["user_id"].(float64)
+		emailStr, okEmail := claims["email"].(string)
+		if !okUID || !okEmail {
+			fmt.Println("Chat Stream: token validated but claims missing user_id/email")
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "error": "Invalid token claims"})
 		}
+		uid := int(uidFloat)
+		c.Locals("user_id", uid)
+		c.Locals("user_email", emailStr)
+		userID = uid
+		ok = true
+		fmt.Printf("Chat Stream: authenticated user %d via token in query\n", userID)
 	}
 	c.Set("Content-Type", "text/event-stream")
 	c.Set("Cache-Control", "no-cache")

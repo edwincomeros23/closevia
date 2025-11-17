@@ -115,6 +115,7 @@ func main() {
 	users := api.Group("/users")
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
 	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
+	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
 	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
@@ -130,14 +131,16 @@ func main() {
 	products := api.Group("/products")
 	products.Get("/", productHandler.GetProducts)                      // Public route
 	products.Get("", productHandler.GetProducts)                       // Support no trailing slash
-	products.Get("/:id", productHandler.GetProduct)                    // Public route
 	products.Get("/user/:id", productHandler.GetUserProducts)          // Public route
 	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
+	// Specific routes must come before generic :id route
+	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
+	products.Get("/:id/comments", commentHandler.GetComments)
+	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
+	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
 	products.Delete("/:id", middleware.AuthMiddleware(), productHandler.DeleteProduct)
-	products.Get("/:id/comments", commentHandler.GetComments)
-	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 
 	// Order routes (authentication required)
 	orders := api.Group("/orders")
@@ -153,7 +156,8 @@ func main() {
 	chat.Post("/conversations", middleware.AuthMiddleware(), chatHandler.EnsureConversation)
 	chat.Post("/messages", middleware.AuthMiddleware(), chatHandler.SendMessage)
 	chat.Post("/typing", middleware.AuthMiddleware(), chatHandler.Typing)
-	chat.Get("/stream", middleware.AuthMiddleware(), chatHandler.Stream)
+	// Allow optional auth for SSE stream: clients may pass token via query param
+	chat.Get("/stream", middleware.OptionalAuthMiddleware(), chatHandler.Stream)
 
 	// Trade routes
 	trades := api.Group("/trades")
@@ -164,7 +168,8 @@ func main() {
 	trades.Get("/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeMessages)
 	trades.Post("/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeMessage)
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
-	trades.Get("/count", middleware.AuthMiddleware(), tradeHandler.CountTrades)
+	// Allow optional auth for counts endpoint so unauthenticated UI polling returns a safe zero value
+	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 

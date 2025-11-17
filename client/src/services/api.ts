@@ -1,13 +1,10 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 const DEBUG_API = localStorage.getItem('debug_api') === 'true'
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 })
 
 // Request interceptor to add auth token and log
@@ -20,6 +17,14 @@ api.interceptors.request.use(
       // Do not override if explicitly set by caller
       if (!config.headers['Authorization']) {
         config.headers['Authorization'] = `Bearer ${token}`
+      }
+    }
+
+    // Ensure Content-Type is set for JSON payloads, but do not override for FormData
+    if (config.data && !(config.data instanceof FormData)) {
+      config.headers = config.headers || {}
+      if (!config.headers['Content-Type']) {
+        config.headers['Content-Type'] = 'application/json'
       }
     }
 

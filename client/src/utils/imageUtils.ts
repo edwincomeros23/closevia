@@ -1,7 +1,8 @@
 // Utility function to construct proper image URLs
 export const getImageUrl = (imagePath: string | null | undefined): string => {
   if (!imagePath) {
-    return 'https://via.placeholder.com/400x300?text=No+Image'
+    // Use a local static fallback to avoid external network failures
+    return '/barter.jpg'
   }
   
   // If it's already a full URL, return as is
@@ -17,7 +18,8 @@ export const getImageUrl = (imagePath: string | null | undefined): string => {
 // Utility function to get the first image from an array
 export const getFirstImage = (imageUrls: string[] | null | undefined): string => {
   if (!imageUrls || imageUrls.length === 0) {
-    return 'https://via.placeholder.com/400x300?text=No+Image'
+    // Use a local static fallback to avoid external network failures
+    return '/barter.jpg'
   }
   
   return getImageUrl(imageUrls[0])

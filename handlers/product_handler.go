@@ -349,33 +349,42 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 
 	// Use the full query with proper WHERE clause handling
+	// Check if optional columns exist (slug, latitude, longitude). If migrations haven't been applied,
+	// avoid selecting missing columns to prevent SQL errors.
+	hasCol := func(col string) bool {
+		var cnt int
+		q := `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = ?`
+		if err := h.db.QueryRow(q, col).Scan(&cnt); err != nil {
+			return false
+		}
+		return cnt > 0
+	}
+
+	slugOK := hasCol("slug")
+	latOK := hasCol("latitude")
+	lngOK := hasCol("longitude")
+
+	// Build select column list dynamically to match available schema
+	selectCols := []string{"p.id"}
+	if slugOK {
+		selectCols = append(selectCols, "p.slug")
+	}
+	selectCols = append(selectCols, []string{"p.title", "p.description", "p.price", "p.seller_id", "p.premium", "p.status", "p.allow_buying", "p.barter_only", "p.location"}...)
+	if latOK {
+		selectCols = append(selectCols, "p.latitude")
+	}
+	if lngOK {
+		selectCols = append(selectCols, "p.longitude")
+	}
+	selectCols = append(selectCols, []string{"p.created_at", "p.updated_at", "COALESCE(u.name, 'Unknown') as seller_name", "p.image_urls"}...)
+
+	cols := strings.Join(selectCols, ", ")
+
 	var query string
 	if keyword == "" {
-		// No search keyword: show latest products
-		query = `
-		       SELECT p.id, p.slug, p.title, p.description, p.price, p.seller_id,
-			      p.premium, p.status, p.allow_buying, p.barter_only, p.location,
-			      p.created_at, p.updated_at, COALESCE(u.name, 'Unknown') as seller_name,
-			      p.image_urls
-		       FROM products p
-		       LEFT JOIN users u ON p.seller_id = u.id
-		       ` + whereClause + `
-		       ORDER BY p.created_at DESC
-		       LIMIT ? OFFSET ?
-	       `
+		query = fmt.Sprintf(`SELECT %s FROM products p LEFT JOIN users u ON p.seller_id = u.id %s ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, cols, whereClause)
 	} else {
-		// Search: prioritize premium, then latest
-		query = `
-		       SELECT p.id, p.slug, p.title, p.description, p.price, p.seller_id,
-			      p.premium, p.status, p.allow_buying, p.barter_only, p.location,
-			      p.created_at, p.updated_at, COALESCE(u.name, 'Unknown') as seller_name,
-			      p.image_urls
-		       FROM products p
-		       LEFT JOIN users u ON p.seller_id = u.id
-		       ` + whereClause + `
-		       ORDER BY p.premium DESC, p.created_at DESC
-		       LIMIT ? OFFSET ?
-	       `
+		query = fmt.Sprintf(`SELECT %s FROM products p LEFT JOIN users u ON p.seller_id = u.id %s ORDER BY p.premium DESC, p.created_at DESC LIMIT ? OFFSET ?`, cols, whereClause)
 	}
 	args = append(args, limit, offset)
 
@@ -390,6 +399,11 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 	rows, err := h.db.Query(query, args...)
 	if err != nil {
+		// Enhanced debugging: print query and args
+		fmt.Printf("❌ Products query failed!\n")
+		fmt.Printf("Query: %s\n", query)
+		fmt.Printf("Args: %v\n", args)
+		fmt.Printf("Error: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to get products: " + err.Error(),
@@ -409,9 +423,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	rowCount := 0
 	for rows.Next() {
 		rowCount++
-		// Scan all fields with proper NULL handling
+		// Scan all fields with proper NULL handling. We built selectCols dynamically above,
+		// so create matching scan targets.
 		var id int
-		var slugNull sql.NullString
 		var title string
 		var description string
 		var price sql.NullFloat64
@@ -426,10 +440,27 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var sellerName string
 		var imageURLsJSON sql.NullString
 
-		err := rows.Scan(&id, &slugNull, &title, &description, &price, &sellerID, &premium, &status,
-			&allowBuying, &barterOnly, &location, &createdAt, &updatedAt, &sellerName, &imageURLsJSON)
-		if err != nil {
+		// Optional holders
+		var slugNull sql.NullString
+		var latitudeNull sql.NullFloat64
+		var longitudeNull sql.NullFloat64
+
+		scanTargets := []interface{}{&id}
+		if slugOK {
+			scanTargets = append(scanTargets, &slugNull)
+		}
+		scanTargets = append(scanTargets, &title, &description, &price, &sellerID, &premium, &status, &allowBuying, &barterOnly, &location)
+		if latOK {
+			scanTargets = append(scanTargets, &latitudeNull)
+		}
+		if lngOK {
+			scanTargets = append(scanTargets, &longitudeNull)
+		}
+		scanTargets = append(scanTargets, &createdAt, &updatedAt, &sellerName, &imageURLsJSON)
+
+		if err := rows.Scan(scanTargets...); err != nil {
 			// Log the error but continue processing other rows
+			fmt.Printf("warning: failed to scan product row: %v\n", err)
 			continue
 		}
 
@@ -463,6 +494,16 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		// Handle location
 		if location.Valid {
 			product.Location = location.String
+		}
+
+		// Handle latitude and longitude
+		if latitudeNull.Valid {
+			lat := latitudeNull.Float64
+			product.Latitude = &lat
+		}
+		if longitudeNull.Valid {
+			lng := longitudeNull.Float64
+			product.Longitude = &lng
 		}
 
 		// Handle timestamps
