@@ -1650,82 +1650,13 @@ const Dashboard: React.FC = () => {
              borderColor="gray.200"
              py={2}
            >
-             <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand">
-               <TabList px={4} overflowX="auto" sx={{
-                 '&::-webkit-scrollbar': { display: 'none' },
-                 scrollbarWidth: 'none',
-                 msOverflowStyle: 'none'
-               }}>
-                 <Tab 
-                   _selected={{ 
-                     color: 'brand.600', 
-                     borderColor: 'brand.600',
-                     fontWeight: 'semibold'
-                   }}
-                   transition="all 0.2s"
-                 >
-<<<<<<< Updated upstream
-                   <HStack spacing={2}>
-                     <Icon as={FiShoppingBag} />
-                     <Text>My Products</Text>
-                     {userProducts.length > 0 && (
-                       <Badge colorScheme="green" borderRadius="full" fontSize="xs">
-                         {userProducts.length}
-                       </Badge>
-                     )}
-                   </HStack>
-                 </Tab>
-                 <Tab 
-                   position="relative"
-                   _selected={{ 
-                     color: 'brand.600', 
-                     borderColor: 'brand.600',
-                     fontWeight: 'semibold'
-                   }}
-                   transition="all 0.2s"
-                 >
-                   <HStack spacing={2}>
-                     <Icon as={FiMessageCircle} />
-                     <Text>Offers</Text>
-                     {unreadOffers > 0 && (
-                       <Badge
-                         bg="orange.500"
-                         color="white"
-                         borderRadius="full"
-                         fontSize="xs"
-                         minW="18px"
-                         h="18px"
-                         display="inline-flex"
-                         alignItems="center"
-                         justifyContent="center"
-                         fontWeight="bold"
-                       >
-                         {unreadOffers > 99 ? '99+' : unreadOffers}
-                       </Badge>
-                     )}
-                   </HStack>
-                 </Tab>
-                 <Tab 
-                   _selected={{ 
-                     color: 'brand.600', 
-                     borderColor: 'brand.600',
-                     fontWeight: 'semibold'
-                   }}
-                   transition="all 0.2s"
-                 >
-                   <HStack spacing={2}>
-                     <Icon as={FiRefreshCw} />
-                     <Text>Trade History</Text>
-                     {completedTradesCount > 0 && (
-                       <Badge colorScheme="green" borderRadius="full" fontSize="xs">
-                         {completedTradesCount}
-                       </Badge>
-                     )}
-                   </HStack>
-                 </Tab>
-               </TabList>
-             </Tabs>
-=======
+             <Flex justify="space-between" align="center" px={4} gap={4}>
+               <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1}>
+                 <TabList overflowX="auto" sx={{
+                   '&::-webkit-scrollbar': { display: 'none' },
+                   scrollbarWidth: 'none',
+                   msOverflowStyle: 'none'
+                 }}>
                    <Tab 
                      _selected={{ 
                        color: 'brand.600', 
@@ -1774,7 +1705,14 @@ const Dashboard: React.FC = () => {
                        )}
                      </HStack>
                    </Tab>
-                   <Tab>
+                   <Tab
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
                      <HStack spacing={2}>
                        <Icon as={FaExchangeAlt} boxSize={4} />
                        <Text>Multi-Way Trades</Text>
@@ -1809,7 +1747,6 @@ const Dashboard: React.FC = () => {
                  spacing={{ base: 2, md: 3 }}
                  flexShrink={0}
                  justify="flex-end"
-                 flex={{ base: '1 1 100%', lg: '0 0 auto' }}
                >
                  {activeTab === 0 && (
                    <>
@@ -1898,7 +1835,6 @@ const Dashboard: React.FC = () => {
                  )}
                </HStack>
              </Flex>
->>>>>>> Stashed changes
            </Box>
            
            <Tabs index={activeTab} onChange={setActiveTab}>
@@ -2091,7 +2027,7 @@ const Dashboard: React.FC = () => {
                               bg="green.50" 
                               borderRadius="lg" 
                               border="2px dashed" 
- borderColor="green.200"
+                              borderColor="green.200"
                             >
                               <Icon as={FaHandshake} boxSize={16} color="green.300" mb={4} />
                               <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
@@ -2174,7 +2110,7 @@ const Dashboard: React.FC = () => {
                                   ? 'No offers match your search/filters.'
                                   : 'No received offers'}
                               </Text>
-                              <Text color="gray.500" fontSize="sm">
+                              <Text color="gray.500" fontSize="sm" mb={4}>
                                 {(unifiedSearch || offersSearch) || offersStatusFilter !== 'all' 
                                   ? 'Try adjusting your search or filters.'
                                   : 'You haven\'t received any offers yet'}
