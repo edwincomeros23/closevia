@@ -702,7 +702,7 @@ const Home: React.FC = () => {
                         <Text fontSize="xs" color="gray.500">
                           {user.email}
                         </Text>
-                        {user.is_premium && (
+                        {user && (user as any).is_premium && (
                           <Badge colorScheme="yellow" fontSize="xs" mt={2}>
                             ⭐ Premium Member
                           </Badge>
