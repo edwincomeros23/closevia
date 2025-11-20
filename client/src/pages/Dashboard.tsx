@@ -1409,7 +1409,7 @@ const Dashboard: React.FC = () => {
              {/* Center: Unified Search Bar */}
              <InputGroup 
                flex={{ base: '1', md: '1 1 350px' }} 
-               maxW={{ base: '100%', md: '450px' }}
+               maxW={{ base: '100%', md: '800px' }}
                position="relative"
              >
                <InputLeftElement pointerEvents="none">
@@ -1524,7 +1524,7 @@ const Dashboard: React.FC = () => {
                )}
              </InputGroup>
 
-             {/* Right: Compact Stats Buttons (Row) */}
+             {/* Right: Compact Stats Buttons (Row) 
              <HStack spacing={2} flexShrink={0}>
                <Tooltip 
                  label={`${dashboardStats.totalProducts} total • ${dashboardStats.activeProducts} active • ${userProducts.filter(p => p.premium).length} premium`}
@@ -1598,6 +1598,7 @@ const Dashboard: React.FC = () => {
                  </Button>
                </Tooltip>
              </HStack>
+             */}
 
              {/* Notifications & Profile */}
              <HStack spacing={2} flexShrink={0}>
@@ -1663,6 +1664,7 @@ const Dashboard: React.FC = () => {
                    }}
                    transition="all 0.2s"
                  >
+<<<<<<< Updated upstream
                    <HStack spacing={2}>
                      <Icon as={FiShoppingBag} />
                      <Text>My Products</Text>
@@ -1723,6 +1725,180 @@ const Dashboard: React.FC = () => {
                  </Tab>
                </TabList>
              </Tabs>
+=======
+                   <Tab 
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
+                     <HStack spacing={2}>
+                       <Icon as={FiShoppingBag} />
+                       <Text>My Products</Text>
+                       {userProducts.length > 0 && (
+                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                           {userProducts.length}
+                         </Badge>
+                       )}
+                     </HStack>
+                   </Tab>
+                   <Tab 
+                     position="relative"
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
+                     <HStack spacing={2}>
+                       <Icon as={FiMessageCircle} />
+                       <Text>Offers</Text>
+                       {unreadOffers > 0 && (
+                         <Badge
+                           bg="orange.500"
+                           color="white"
+                           borderRadius="full"
+                           fontSize="xs"
+                           minW="18px"
+                           h="18px"
+                           display="inline-flex"
+                           alignItems="center"
+                           justifyContent="center"
+                           fontWeight="bold"
+                         >
+                           {unreadOffers > 99 ? '99+' : unreadOffers}
+                         </Badge>
+                       )}
+                     </HStack>
+                   </Tab>
+                   <Tab>
+                     <HStack spacing={2}>
+                       <Icon as={FaExchangeAlt} boxSize={4} />
+                       <Text>Multi-Way Trades</Text>
+                       <Badge colorScheme="purple" fontSize="2xs" px={1.5}>
+                         PRO
+                       </Badge>
+                     </HStack>
+                   </Tab>
+                   <Tab 
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
+                     <HStack spacing={2}>
+                       <Icon as={FiRefreshCw} />
+                       <Text>Trade History</Text>
+                       {completedTradesCount > 0 && (
+                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                           {completedTradesCount}
+                         </Badge>
+                       )}
+                     </HStack>
+                   </Tab>
+                 </TabList>
+               </Tabs>
+
+               {/* Right: Filter/Sort Controls - Responsive */}
+               <HStack
+                 spacing={{ base: 2, md: 3 }}
+                 flexShrink={0}
+                 justify="flex-end"
+                 flex={{ base: '1 1 100%', lg: '0 0 auto' }}
+               >
+                 {activeTab === 0 && (
+                   <>
+                     <Select
+                       value={productFilter}
+                       onChange={(e) => {
+                         setProductFilter(e.target.value as any)
+                         setCurrentPage(1)
+                       }}
+                       w={{ base: '120px', md: '150px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="all">All Status</option>
+                       <option value="available">Active</option>
+                       <option value="sold">Sold</option>
+                       <option value="traded">Traded</option>
+                       <option value="locked">Hidden</option>
+                     </Select>
+                     <Select
+                       value={productSort}
+                       onChange={(e) => {
+                         setProductSort(e.target.value as any)
+                         setCurrentPage(1)
+                       }}
+                       w={{ base: '120px', md: '140px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="newest">Newest First</option>
+                       <option value="oldest">Oldest First</option>
+                     </Select>
+                   </>
+                 )}
+                 
+                 {activeTab === 1 && (
+                   <>
+                     <Select
+                       value={offersStatusFilter}
+                       onChange={(e) => {
+                         setOffersStatusFilter(e.target.value)
+                         setOffersPage(1)
+                       }}
+                       w={{ base: '120px', md: '140px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="all">All Status</option>
+                       <option value="pending">Pending</option>
+                       <option value="accepted">Accepted</option>
+                       <option value="active">Active</option>
+                       <option value="countered">Countered</option>
+                     </Select>
+                     <Select
+                       value={offersSort}
+                       onChange={(e) => setOffersSort(e.target.value as any)}
+                       w={{ base: '120px', md: '140px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="newest">Newest First</option>
+                       <option value="oldest">Oldest First</option>
+                     </Select>
+                   </>
+                 )}
+
+                 {activeTab === 2 && (
+                   <Select
+                     value={tradeHistorySort}
+                     onChange={(e) => {
+                       setTradeHistorySort(e.target.value as any)
+                       setTradeHistoryPage(1)
+                     }}
+                     w={{ base: '120px', md: '140px' }}
+                     bg={cardBg}
+                     borderColor={borderColor}
+                     size="sm"
+                   >
+                     <option value="newest">Newest First</option>
+                     <option value="oldest">Oldest First</option>
+                   </Select>
+                 )}
+               </HStack>
+             </Flex>
+>>>>>>> Stashed changes
            </Box>
            
            <Tabs index={activeTab} onChange={setActiveTab}>
@@ -1892,11 +2068,11 @@ const Dashboard: React.FC = () => {
                         Ongoing Trades
                         {offersStats.ongoing > 0 && (
                           <Badge ml={2} colorScheme="green" borderRadius="full" fontSize="xs">
-                            {offersStats.ongoing}
-                          </Badge>
-                        )}
-                      </Tab>
-                    </TabList>
+                           {offersStats.ongoing}
+                         </Badge>
+                       )}
+                     </Tab>
+                   </TabList>
 
                     <TabPanels>
                       {/* Sent Offers */}
@@ -2125,6 +2301,97 @@ const Dashboard: React.FC = () => {
 
                     </TabPanels>
                   </Tabs>
+                </VStack>
+              </TabPanel>
+
+              {/* Multi-Way Trades Tab */}
+              <TabPanel>
+                <VStack spacing={4} align="stretch">
+                  {!user?.is_premium ? (
+                    <Center py={12}>
+                      <VStack spacing={4} textAlign="center" maxW="500px">
+                        {/* Icon & Heading */}
+                        <VStack spacing={2}>
+                          <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" />
+                          <Heading size="md" color="gray.800">
+                            Join Multi-Way Trading Loops
+                          </Heading>
+                          <Text color="gray.600" fontSize="sm">
+                            Exchange with 3+ users at once instead of waiting for perfect 1-1 trades
+                          </Text>
+                        </VStack>
+
+                        {/* How It Works - Compact */}
+                        <Box bg="purple.50" p={4} borderRadius="lg" w="full">
+                          <VStack align="start" spacing={2}>
+                            <Text fontWeight="bold" color="purple.900" fontSize="xs" textTransform="uppercase">
+                              How it works
+                            </Text>
+                            <HStack spacing={2} align="start" fontSize="sm">
+                              <Box bg="purple.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="purple.900" fontSize="xs" flexShrink={0}>1</Box>
+                              <Text color="gray.700">List your item</Text>
+                            </HStack>
+                            <HStack spacing={2} align="start" fontSize="sm">
+                              <Box bg="purple.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="purple.900" fontSize="xs" flexShrink={0}>2</Box>
+                              <Text color="gray.700">AI finds trade loops</Text>
+                            </HStack>
+                            <HStack spacing={2} align="start" fontSize="sm">
+                              <Box bg="green.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="green.900" fontSize="xs" flexShrink={0}>✓</Box>
+                              <Text color="gray.700">Everyone trades together</Text>
+                            </HStack>
+                          </VStack>
+                        </Box>
+
+                        {/* Features - 2 Columns */}
+                        <SimpleGrid columns={2} spacing={2} w="full" fontSize="xs">
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">Auto matching</Text>
+                          </HStack>
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">5-way loops</Text>
+                          </HStack>
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">Smart scheduling</Text>
+                          </HStack>
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">Priority matching</Text>
+                          </HStack>
+                        </SimpleGrid>
+
+                        {/* CTA */}
+                        <Button
+                          colorScheme="purple"
+                          size="md"
+                          w="full"
+                          onClick={() => navigate('/premium')}
+                          leftIcon={<StarIcon />}
+                        >
+                          Upgrade to Pro - ₱299/year
+                        </Button>
+                        <Text fontSize="2xs" color="gray.500">
+                          Includes 8 premium features
+                        </Text>
+                      </VStack>
+                    </Center>
+                  ) : (
+                    <Center py={12}>
+                      <VStack spacing={3} textAlign="center">
+                        <Icon as={FaExchangeAlt} boxSize={12} color="purple.300" />
+                        <VStack spacing={1}>
+                          <Heading size="sm" color="gray.700">
+                            Coming Soon
+                          </Heading>
+                          <Text color="gray.600" fontSize="xs">
+                            Multi-way trading is being developed
+                          </Text>
+                        </VStack>
+                      </VStack>
+                    </Center>
+                  )}
                 </VStack>
               </TabPanel>
 
