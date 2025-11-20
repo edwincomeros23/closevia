@@ -105,6 +105,7 @@ func main() {
 	adminHandler := handlers.NewAdminHandler()
 	commentHandler := handlers.NewCommentHandler()
 	wishlistHandler := handlers.NewWishlistHandler()
+	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -188,6 +189,14 @@ func main() {
 	wishlist.Get("/", middleware.AuthMiddleware(), wishlistHandler.GetWishlist)
 	wishlist.Post("/", middleware.AuthMiddleware(), wishlistHandler.AddToWishlist)
 	wishlist.Delete("/:productId", middleware.AuthMiddleware(), wishlistHandler.RemoveFromWishlist)
+
+	// AI Features routes
+	ai := api.Group("/ai")
+	ai.Get("/proximity", middleware.AuthMiddleware(), aiFeaturesHandler.GetProximity)
+	ai.Get("/response-metrics", middleware.AuthMiddleware(), aiFeaturesHandler.GetResponseMetrics)
+	ai.Get("/profile-analysis", middleware.AuthMiddleware(), aiFeaturesHandler.GetProfileAnalysis)
+	ai.Get("/profile-analysis/all", middleware.AuthMiddleware(), aiFeaturesHandler.AnalyzeAllProfiles)
+	ai.Get("/counterfeit/:id", aiFeaturesHandler.GetCounterfeitReport)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")

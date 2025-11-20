@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -19,9 +20,13 @@ import {
   useToast,
   useColorModeValue,
   Flex,
+<<<<<<< HEAD
   Image as ChakraImage,
+=======
+  IconButton,
+>>>>>>> db8e7cb05b8ee4b731cf9d77e6beecbbffd78187
 } from '@chakra-ui/react'
-import { ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
+import { ChevronLeftIcon, ChevronRightIcon, AddIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage } from '../utils/imageUtils'
@@ -381,52 +386,24 @@ const Notifications: React.FC = () => {
         </VStack>
       </Container>
 
-      {/* Floating pagination bar anchored bottom-right - Limited to 3 pages */}
-      <HStack
-        position="fixed"
-        bottom={{ base: 6, md: 10 }}
-        left="50%"
-        transform="translateX(-50%)"
-        bg="white"
-        boxShadow="md"
-        borderRadius="md"
-        px={3}
-        py={2}
-        spacing={2}
-        zIndex={50}
-      >
-        <Button 
-          size="sm" 
-          variant="outline" 
-          leftIcon={<ChevronLeftIcon />} 
-          onClick={handlePreviousPagination}
-          isDisabled={paginationStartPage === 1}
-        >
-          Previous
-        </Button>
-
-        {visiblePages.map(p => (
-          <Button 
-            key={p} 
-            size="sm" 
-            variant={p === currentPage ? 'solid' : 'outline'} 
-            colorScheme={p === currentPage ? 'brand' : undefined}
-            onClick={() => setCurrentPage(p)}
-          >
-            {p}
-          </Button>
-        ))}
-
-        <Button 
-          size="sm" 
-          variant="outline" 
-          rightIcon={<ChevronRightIcon />} 
-          onClick={handleNextPagination}
-          isDisabled={paginationStartPage === maxStartPage}
-        >
-          Next
-        </Button>
-      </HStack>
+    {/* Floating Add Product FAB */}
+    <IconButton
+      as={RouterLink}
+      to="/add-product"
+      aria-label="Add product"
+      icon={<AddIcon />}
+      position="fixed"
+      bottom={12}
+      right={6}
+      h={14}
+      w={14}
+      bgGradient="linear(to-br, brand.500, teal.400)"
+      color="white"
+      borderRadius="full"
+      zIndex={200}
+      boxShadow="lg"
+      _hover={{ transform: 'scale(1.05)' }}
+    />
     </Box>
   )
 }
