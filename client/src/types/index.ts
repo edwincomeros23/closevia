@@ -14,6 +14,10 @@ export interface User {
   badges?: number[]
   created_at: string
   updated_at: string
+  response_score?: number
+  response_rating?: 'excellent' | 'good' | 'average' | 'poor'
+  latitude?: number
+  longitude?: number
 }
 
 export interface Product {
@@ -39,6 +43,10 @@ export interface Product {
   created_at: string
   updated_at: string
   wishlist_count?: number;
+  counterfeit_confidence?: number;
+  counterfeit_flags?: string[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Order {
@@ -174,4 +182,38 @@ export interface APIResponse<T = any> {
   message?: string
   data?: T
   error?: string
+}
+
+// AI Features Types
+export interface DistanceResult {
+  distance_km: number
+  distance_miles: number
+  distance_m: number
+}
+
+export interface ResponseMetrics {
+  average_response_time_hours: number
+  average_response_time_mins: number
+  response_rate: number
+  total_messages: number
+  total_responses: number
+  response_score: number
+  last_response_at?: string
+  rating: 'excellent' | 'good' | 'average' | 'poor'
+}
+
+export interface ProfileAnalysis {
+  is_outdated: boolean
+  is_inactive: boolean
+  last_activity_at?: string
+  profile_age_days: number
+  recommendations: string[]
+  score: number
+}
+
+export interface CounterfeitReport {
+  is_suspicious: boolean
+  reason: string
+  confidence: number
+  flags: string[]
 }

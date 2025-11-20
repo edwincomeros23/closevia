@@ -12,7 +12,11 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
+<<<<<<< HEAD
 	"github.com/xashathebest/clovia/utils"
+=======
+	"github.com/xashathebest/clovia/services"
+>>>>>>> db8e7cb05b8ee4b731cf9d77e6beecbbffd78187
 )
 
 type ChatHandler struct{}
@@ -47,8 +51,16 @@ func (h *ChatHandler) Stream(c *fiber.Ctx) error {
 			})
 		}
 
+<<<<<<< HEAD
 		// Validate the JWT token directly to avoid calling middleware handler inline
 		claims, err := utils.ValidateJWT(token)
+=======
+		// Set the token in the Authorization header
+		c.Request().Header.Set("Authorization", "Bearer "+token)
+
+		// Validate the token
+		err := middleware.AuthMiddleware()(c)
+>>>>>>> db8e7cb05b8ee4b731cf9d77e6beecbbffd78187
 		if err != nil {
 			fmt.Printf("Chat Stream: token validation failed (len=%d) err=%v\n", len(token), err)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "error": "Invalid or expired token"})
@@ -219,7 +231,31 @@ func saveMessage(conversationID, senderID int, content string) (int, time.Time, 
 	id64, _ := res.LastInsertId()
 	var createdAt time.Time
 	_ = database.DB.QueryRow("SELECT created_at FROM messages WHERE id = ?", id64).Scan(&createdAt)
+
+	// Update response metrics in background (non-blocking)
+	go updateUserResponseMetrics(senderID)
+
 	return int(id64), createdAt, nil
+}
+
+// updateUserResponseMetrics updates response metrics for a user
+func updateUserResponseMetrics(userID int) {
+	metrics, err := services.CalculateResponseMetrics(database.DB, userID)
+	if err != nil {
+		return
+	}
+
+	// Update user's response metrics in database
+	_, _ = database.DB.Exec(`
+		UPDATE users 
+		SET response_score = ?, 
+		    average_response_time_hours = ?, 
+		    response_rate = ?, 
+		    response_rating = ?,
+		    last_response_at = ?
+		WHERE id = ?
+	`, metrics.ResponseScore, metrics.AverageResponseTimeHours, metrics.ResponseRate,
+		metrics.Rating, metrics.LastResponseAt, userID)
 }
 
 func getConversationParticipants(conversationID int) []int {
