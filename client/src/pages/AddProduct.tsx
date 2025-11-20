@@ -314,13 +314,8 @@ const AddProduct: React.FC = () => {
 
   const canProceed = () => {
     switch (currentStep) {
-<<<<<<< Updated upstream
-      case 1: return uploadedImages.length >= 1 // Changed from 3 to 1 minimum
-      case 2: return formData.title.trim() && formData.description.trim() && descriptionLength >= 50 && descriptionLength <= 800 // Changed from 300 to 50 minimum
-=======
       case 1: return uploadedImages.length >= 3
       case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 15 && descriptionLength >= 100 && descriptionLength <= 500
->>>>>>> Stashed changes
       case 3: return true // Barter options are always valid
       case 4: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
       case 5: return true
@@ -334,7 +329,7 @@ const AddProduct: React.FC = () => {
         return (
           <VStack spacing={6} align="stretch">
             <Text fontSize="lg" color="gray.600">
-              Upload at least 1 photo of your product (up to 8). First image will be the cover.
+              Upload at least 3 photos of your product. First image will be the cover.
             </Text>
             
             {/* Drag & Drop Area */}
@@ -355,7 +350,7 @@ const AddProduct: React.FC = () => {
                   Click to upload images or drag and drop
                 </Text>
                 <Text fontSize="sm" color="gray.500">
-                  PNG, JPG up to 5MB each (minimum 1 image required)
+                  PNG, JPG up to 5MB each (minimum 3 images required)
                 </Text>
               </VStack>
             </Box>
@@ -377,10 +372,10 @@ const AddProduct: React.FC = () => {
                 </Text>
                 {uploadedImages.length === 0 && (
                   <Badge colorScheme="orange">
-                    Need at least 1 image
+                    Need {3 - uploadedImages.length} more image(s)
                   </Badge>
                 )}
-                {uploadedImages.length >= 1 && (
+                {uploadedImages.length >= 3 && (
                   <Badge colorScheme="green">
                     Ready to proceed
                   </Badge>
@@ -431,7 +426,7 @@ const AddProduct: React.FC = () => {
                   mb="2"
                   title="Generate title from description"
                   onClick={() => {
-                    if (!user?.is_premium) {
+                    if (!(user as any)?.is_premium) {
                       onOpenPremiumModal()
                     } else {
                       // TODO: Add auto-generate logic here for premium users
@@ -465,14 +460,8 @@ const AddProduct: React.FC = () => {
                   <Text>Description</Text>
                   <Badge
                     colorScheme={
-<<<<<<< Updated upstream
-                      descriptionLength < 50 ? 'red' :
-                      descriptionLength < 300 ? 'yellow' :
-                      descriptionLength <= 800 ? 'green' : 'orange'
-=======
                       descriptionLength < 100 ? 'red' :
                       descriptionLength <= 500 ? 'green' : 'orange'
->>>>>>> Stashed changes
                     }
                     fontSize="xs"
                   >
@@ -489,17 +478,6 @@ const AddProduct: React.FC = () => {
                 rows={6}
                 size="lg"
                 borderColor={
-<<<<<<< Updated upstream
-                  descriptionLength < 50 ? 'red.300' :
-                  descriptionLength < 300 ? 'yellow.300' :
-                  descriptionLength <= 800 ? 'green.300' : 'orange.300'
-                }
-                _focus={{
-                  borderColor:
-                    descriptionLength < 50 ? 'red.500' :
-                    descriptionLength < 300 ? 'yellow.500' :
-                    descriptionLength <= 800 ? 'green.500' : 'orange.500',
-=======
                   descriptionLength < 100 ? 'red.300' :
                   descriptionLength <= 500 ? 'green.300' : 'orange.300'
                 }
@@ -507,38 +485,18 @@ const AddProduct: React.FC = () => {
                   borderColor:
                     descriptionLength < 100 ? 'red.500' :
                     descriptionLength <= 500 ? 'green.500' : 'orange.500',
->>>>>>> Stashed changes
                 }}
               />
               <Box
                 mt={2}
                 p={2}
                 bg={
-<<<<<<< Updated upstream
-                  descriptionLength < 50 ? 'red.50' :
-                  descriptionLength < 300 ? 'yellow.50' :
-                  descriptionLength <= 800 ? 'green.50' : 'orange.50'
-=======
                   descriptionLength < 100 ? 'red.50' :
                   descriptionLength <= 500 ? 'green.50' : 'orange.50'
->>>>>>> Stashed changes
                 }
                 borderRadius="md"
                 borderLeftWidth="4px"
                 borderLeftColor={
-<<<<<<< Updated upstream
-                  descriptionLength < 50 ? 'red.400' :
-                  descriptionLength < 300 ? 'yellow.400' :
-                  descriptionLength <= 800 ? 'green.400' : 'orange.400'
-                }
-              >
-                <Text fontSize="sm" color="gray.700">
-                  {descriptionLength < 50
-                    ? `⚠️ Add at least ${50 - descriptionLength} more characters (minimum 50)`
-                    : descriptionLength <= 800
-                    ? `✓ Good length! ${descriptionLength} characters (recommended: 300+)`
-                    : `❌ Description exceeds limit by ${descriptionLength - 800} characters`
-=======
                   descriptionLength < 100 ? 'red.400' :
                   descriptionLength <= 500 ? 'green.400' : 'orange.400'
                 }
@@ -549,7 +507,6 @@ const AddProduct: React.FC = () => {
                     : descriptionLength <= 500
                     ? `✓ Perfect length! ${descriptionLength} characters`
                     : `❌ Description exceeds limit by ${descriptionLength - 500} characters`
->>>>>>> Stashed changes
                   }
                 </Text>
               </Box>
@@ -684,14 +641,14 @@ const AddProduct: React.FC = () => {
               {/* Premium Listing */}
               <Box 
                 p={5} 
-                bg={user?.is_premium ? "yellow.50" : "gray.50"}
+                bg={(user as any)?.is_premium ? "yellow.50" : "gray.50"}
                 borderRadius="lg" 
                 borderLeft="4px solid" 
-                borderLeftColor={user?.is_premium ? "yellow.400" : "gray.300"}
-                opacity={user?.is_premium ? 1 : 0.6}
+                borderLeftColor={(user as any)?.is_premium ? "yellow.400" : "gray.300"}
+                opacity={(user as any)?.is_premium ? 1 : 0.6}
                 mb={3}
               >
-                <FormControl isDisabled={!user?.is_premium}>
+                <FormControl isDisabled={!(user as any)?.is_premium}>
                   <HStack justify="space-between" align="start">
                     <VStack align="start" spacing={1} flex={1}>
                       <HStack spacing={2}>
@@ -702,13 +659,13 @@ const AddProduct: React.FC = () => {
                           ⭐ Premium
                         </Badge>
                       </HStack>
-                      <Text fontSize="sm" color={user?.is_premium ? "gray.600" : "gray.500"}>
-                        {user?.is_premium 
+                      <Text fontSize="sm" color={(user as any)?.is_premium ? "gray.600" : "gray.500"}>
+                        {(user as any)?.is_premium 
                           ? 'Feature your product at the top of search results for maximum visibility'
                           : 'Feature your product at the top of search results'
                         }
                       </Text>
-                      {user?.is_premium && (
+                      {(user as any)?.is_premium && (
                         <Badge colorScheme="purple" variant="subtle" fontSize="xs" mt={2}>
                           Up to 20 premium listings
                         </Badge>
@@ -718,7 +675,7 @@ const AddProduct: React.FC = () => {
                       isChecked={formData.premium}
                       onChange={(e) => handleInputChange('premium', e.target.checked)}
                       colorScheme="yellow"
-                      isDisabled={!user?.is_premium}
+                      isDisabled={!(user as any)?.is_premium}
                     />
                   </HStack>
                 </FormControl>
@@ -727,13 +684,13 @@ const AddProduct: React.FC = () => {
               {/* Allow Buying */}
               <Box 
                 p={5} 
-                bg={user?.is_premium ? "green.50" : "gray.50"}
+                bg={(user as any)?.is_premium ? "green.50" : "gray.50"}
                 borderRadius="lg" 
                 borderLeft="4px solid" 
-                borderLeftColor={user?.is_premium ? "green.400" : "gray.300"}
-                opacity={user?.is_premium ? 1 : 0.6}
+                borderLeftColor={(user as any)?.is_premium ? "green.400" : "gray.300"}
+                opacity={(user as any)?.is_premium ? 1 : 0.6}
               >
-                <FormControl isDisabled={!user?.is_premium}>
+                <FormControl isDisabled={!(user as any)?.is_premium}>
                   <HStack justify="space-between" align="start">
                     <VStack align="start" spacing={1} flex={1}>
                       <HStack spacing={2}>
@@ -744,13 +701,13 @@ const AddProduct: React.FC = () => {
                           💰 Premium
                         </Badge>
                       </HStack>
-                      <Text fontSize="sm" color={user?.is_premium ? "gray.600" : "gray.500"}>
-                        {user?.is_premium
+                      <Text fontSize="sm" color={(user as any)?.is_premium ? "gray.600" : "gray.500"}>
+                        {(user as any)?.is_premium
                           ? 'Accept cash only offers'
                           : 'Accept cash only offers'
                         }
                       </Text>
-                      {user?.is_premium && (
+                      {(user as any)?.is_premium && (
                         <Badge colorScheme="purple" variant="subtle" fontSize="xs" mt={2}>
                           Accept both barter & cash transactions
                         </Badge>
@@ -765,7 +722,7 @@ const AddProduct: React.FC = () => {
                         }
                       }}
                       colorScheme="green"
-                      isDisabled={!user?.is_premium}
+                      isDisabled={!(user as any)?.is_premium}
                     />
                   </HStack>
                 </FormControl>
