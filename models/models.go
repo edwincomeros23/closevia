@@ -109,6 +109,7 @@ type User struct {
 	Department     string    `json:"department,omitempty"`
 	Bio            string    `json:"bio,omitempty"`
 	Badges         IntArray  `json:"badges,omitempty"`
+	ProfilePicture string    `json:"profile_picture,omitempty"`
 	Latitude       *float64  `json:"latitude,omitempty"`
 	Longitude      *float64  `json:"longitude,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
@@ -189,6 +190,15 @@ type ProductUpdate struct {
 	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	Category    *string      `json:"category,omitempty"`
 	BiddingType *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+}
+
+// ProductVote represents a user's vote on a product price
+type ProductVote struct {
+	ID        int       `json:"id"`
+	ProductID int       `json:"product_id"`
+	UserID    int       `json:"user_id"`
+	Vote      string    `json:"vote"` // "under" or "over"
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Order represents an order

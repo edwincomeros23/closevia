@@ -88,9 +88,18 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	// Insert new user
 	result, err := h.db.Exec(
-		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY())",
-		user.Name, user.Email, hashedPassword, user.Role,
-		user.IsOrganization, false, user.OrgName, user.OrgLogoURL, nullableString(user.Department), user.Bio,
+		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
+		user.Name,
+		user.Email,
+		hashedPassword,
+		user.Role,
+		user.IsOrganization,
+		false,
+		user.OrgName,
+		user.OrgLogoURL,
+		nullableString(user.Department),
+		user.Bio,
+		"",
 	)
 	if err != nil {
 		// Log the actual error for debugging
@@ -127,6 +136,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				OrgLogoURL:     user.OrgLogoURL,
 				Department:     derefString(user.Department),
 				Bio:            user.Bio,
+				ProfilePicture: "",
 			},
 			"token": token,
 		},
@@ -196,9 +206,15 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	var user models.User
 	err := h.db.QueryRow(
+<<<<<<< HEAD
 		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') as profile_picture, created_at, updated_at FROM users WHERE id = ?",
 		userID,
 	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.CreatedAt, &user.UpdatedAt)
+=======
+		"SELECT id, name, email, role, verified, created_at, updated_at, profile_picture FROM users WHERE id = ?",
+		userID,
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.CreatedAt, &user.UpdatedAt, &user.ProfilePicture)
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -254,10 +270,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		query += ", name = ?"
 		args = append(args, *updateData.Name)
 	}
-
 	if updateData.Email != nil {
 		query += ", email = ?"
 		args = append(args, *updateData.Email)
+	}
+	if updateData.ProfilePicture != nil {
+		query += ", profile_picture = ?"
+		args = append(args, *updateData.ProfilePicture)
 	}
 
 	if updateData.ProfilePicture != nil {
@@ -290,13 +309,20 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	})
 }
 
+<<<<<<< HEAD
 // UploadProfilePicture handles uploading a single profile image and returns its URL
 func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
+=======
+// ChangePassword allows an authenticated user to change their password.
+// Expects JSON: { current_password, new_password, confirm_password }
+func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
+<<<<<<< HEAD
 	file, err := c.FormFile("image")
 	if err != nil {
 		// Debug info: log content-type and underlying error to help diagnose upload issues
@@ -331,6 +357,58 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: url, Message: "Uploaded"})
+=======
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+		ConfirmPassword string `json:"confirm_password"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	// Basic validation
+	if len(req.NewPassword) < 8 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "New password must be at least 8 characters"})
+	}
+	if req.NewPassword != req.ConfirmPassword {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "New password and confirmation do not match"})
+	}
+
+	// Fetch current password hash
+	var currentHash string
+	err := h.db.QueryRow("SELECT password_hash FROM users WHERE id = ?", userID).Scan(&currentHash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
+		}
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to retrieve user"})
+	}
+
+	// Verify current password
+	if !utils.CheckPasswordHash(req.CurrentPassword, currentHash) {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Current password is incorrect"})
+	}
+
+	// Prevent reusing the same password
+	if utils.CheckPasswordHash(req.NewPassword, currentHash) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "New password must be different from the current password"})
+	}
+
+	// Hash new password
+	hashed, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to process password"})
+	}
+
+	// Update DB
+	_, err = h.db.Exec("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", hashed, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update password"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Password changed successfully"})
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 }
 
 // GetUserByID gets a user by ID (public info only)
@@ -562,6 +640,10 @@ func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
 			Error:   "User not authenticated",
 		})
 	}
+<<<<<<< HEAD
+=======
+
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 	productID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{
@@ -569,13 +651,19 @@ func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
 			Error:   "Invalid product ID",
 		})
 	}
-
 	var isSaved bool
+<<<<<<< HEAD
 	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00'))", userID, productID).Scan(&isSaved)
 	if err != nil {
 		fmt.Printf("❌ CheckSavedProduct query failed!\n")
 		fmt.Printf("UserID: %d, ProductID: %d\n", userID, productID)
 		fmt.Printf("Error: %v\n", err)
+=======
+	query := "SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)"
+	if err := h.db.QueryRow(query, userID, productID).Scan(&isSaved); err != nil {
+		// Log for debugging
+		fmt.Printf("❌ Failed to check saved status (user=%d, product=%d): %v\n", userID, productID, err)
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to check saved status: " + err.Error(),
