@@ -46,6 +46,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { api } from '../services/api'
 import { 
   FaUserCircle, 
   FaBell, 
@@ -71,7 +72,11 @@ import { FiSettings, FiSave } from 'react-icons/fi'
 const SettingsPage: React.FC = () => {
   const toast = useToast()
   const navigate = useNavigate()
+<<<<<<< HEAD
   const { user, logout, updateProfile } = useAuth()
+=======
+  const { user, logout, refreshUser } = useAuth()
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
   const { colorMode, toggleColorMode } = useColorMode()
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -93,13 +98,80 @@ const SettingsPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [passwordErrors, setPasswordErrors] = useState<string[]>([])
 
+  // Helper function to load initial font size from localStorage
+  const initializeFontSize = () => {
+    try {
+      const saved = localStorage.getItem('user_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.fontSize) {
+          return parsed.fontSize
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return 'medium'
+  }
+
   // Preferences State
   const [darkMode, setDarkMode] = useState(colorMode === 'dark')
   const [language, setLanguage] = useState('en')
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone)
   const [dashboardLayout, setDashboardLayout] = useState('default')
-  const [fontSize, setFontSize] = useState('medium')
+  const [fontSize, setFontSize] = useState(initializeFontSize)
   const [highContrast, setHighContrast] = useState(false)
+
+  // Apply font size to document for live preview
+  useEffect(() => {
+    const applyFontSize = (size: string) => {
+      const root = document.documentElement
+      switch (size) {
+        case 'small':
+          root.style.fontSize = '14px'
+          break
+        case 'large':
+          root.style.fontSize = '18px'
+          break
+        case 'extra-large':
+          root.style.fontSize = '20px'
+          break
+        default:
+          root.style.fontSize = '16px' // medium
+      }
+    }
+
+    applyFontSize(fontSize)
+    // Also persist to localStorage whenever font size changes
+    try {
+      const saved = localStorage.getItem('user_settings')
+      const settings = saved ? JSON.parse(saved) : {}
+      settings.fontSize = fontSize
+      localStorage.setItem('user_settings', JSON.stringify(settings))
+    } catch (e) {
+      // ignore
+    }
+  }, [fontSize])
+
+  // Load saved dark mode setting on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('user_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.darkMode !== undefined) {
+          const isDark = parsed.darkMode
+          setDarkMode(isDark)
+          // Apply to Chakra if not already in that mode
+          if ((colorMode === 'dark') !== isDark) {
+            toggleColorMode()
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [colorMode, toggleColorMode])
 
   // Notifications State
   const [emailNotifications, setEmailNotifications] = useState(true)
@@ -114,6 +186,7 @@ const SettingsPage: React.FC = () => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [changingPassword, setChangingPassword] = useState(false)
 
   // Modals
   const { isOpen: isPasswordModalOpen, onOpen: onPasswordModalOpen, onClose: onPasswordModalClose } = useDisclosure()
@@ -132,7 +205,7 @@ const SettingsPage: React.FC = () => {
     }
   }, [user])
 
-  // Sync dark mode with Chakra
+  // Sync dark mode to Chakra colorMode when user toggles switch
   useEffect(() => {
     if (darkMode !== (colorMode === 'dark')) {
       toggleColorMode()
@@ -241,7 +314,7 @@ const SettingsPage: React.FC = () => {
   }
 
   // Handle password change
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     setPasswordErrors([])
 
     // Validate new password
@@ -263,21 +336,55 @@ const SettingsPage: React.FC = () => {
       return
     }
 
-    // Simulate password change (frontend only)
-    toast({
-      title: 'Password changed',
-      description: 'Your password has been updated successfully.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    })
-
-    // Reset form
-    setCurrentPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
-    setPasswordErrors([])
-    onPasswordModalClose()
+    setChangingPassword(true)
+    try {
+      const resp = await api.post('/api/users/change-password', {
+        current_password: currentPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      })
+      if (resp.data && resp.data.success) {
+        // Refresh context user so changes persist across pages
+        try {
+          await refreshUser()
+        } catch (e) {
+          // non-fatal: we already updated backend; silently continue
+          console.warn('Failed to refresh user after profile update', e)
+        }
+        toast({
+          title: 'Password changed',
+          description: 'Your password has been updated successfully.',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        })
+        // Reset form
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+        setPasswordErrors([])
+        onPasswordModalClose()
+      } else {
+        toast({
+          title: 'Error',
+          description: resp.data?.error || 'Failed to change password',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        })
+      }
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err.message || 'Failed to change password'
+      toast({
+        title: 'Error',
+        description: message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    } finally {
+      setChangingPassword(false)
+    }
   }
 
   // Validate email
@@ -316,6 +423,7 @@ const SettingsPage: React.FC = () => {
     setSaveStatus('saving')
 
     try {
+<<<<<<< HEAD
       // If profileImage is a data URL (client-side uploaded), upload it to server first
       let profileUrlToSave: string | undefined = undefined
       if (profileImage && profileImage.startsWith('data:')) {
@@ -379,14 +487,73 @@ const SettingsPage: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
+=======
+      // Update user profile in backend, including profileImage
+      const resp = await api.put('/api/users/profile', {
+        name: username,
+        email: email,
+        profile_picture: profileImage,
+      })
+      if (resp.data && resp.data.success) {
+        // Optionally update localStorage for other settings
+        const settings = {
+          username,
+          email,
+          profileImage,
+          darkMode,
+          language,
+          timezone,
+          dashboardLayout,
+          fontSize,
+          highContrast,
+          emailNotifications,
+          pushNotifications,
+          newOfferReceived,
+          tradeCompleted,
+          tradeAccepted,
+          tradeDeclined,
+          notificationFrequency,
+        }
+        localStorage.setItem('user_settings', JSON.stringify(settings))
+
+        setIsSaving(false)
+        setSaveStatus('saved')
+        setHasUnsavedChanges(false)
+
+        toast({
+          title: 'Settings saved',
+          description: 'Your preferences have been updated successfully.',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        })
+      } else {
+        setIsSaving(false)
+        setSaveStatus('error')
+        toast({
+          title: 'Error',
+          description: resp.data?.error || 'Failed to update profile',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        })
+      }
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
     } catch (err: any) {
       setIsSaving(false)
       setSaveStatus('error')
       toast({
+<<<<<<< HEAD
         title: 'Save failed',
         description: err?.response?.data?.error || err?.message || 'Failed to save settings',
         status: 'error',
         duration: 4000,
+=======
+        title: 'Error',
+        description: err?.response?.data?.error || err.message || 'Failed to update profile',
+        status: 'error',
+        duration: 3000,
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
         isClosable: true,
       })
     }
@@ -1161,7 +1328,7 @@ const SettingsPage: React.FC = () => {
             <Button variant="ghost" mr={3} onClick={onPasswordModalClose}>
               Cancel
             </Button>
-            <Button colorScheme="brand" onClick={handlePasswordChange}>
+            <Button colorScheme="brand" onClick={handlePasswordChange} isLoading={changingPassword} loadingText="Changing...">
               Change Password
             </Button>
           </ModalFooter>

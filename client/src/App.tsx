@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text } from '@chakra-ui/react'
+import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text, useColorMode } from '@chakra-ui/react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { theme } from './theme'
 import Sidebar from './components/Sidebar'
@@ -27,6 +27,30 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
 import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
+
+// Theme applier component - loads and applies saved theme preference
+const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { colorMode, setColorMode } = useColorMode()
+  
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem('user_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.darkMode !== undefined) {
+          const targetMode = parsed.darkMode ? 'dark' : 'light'
+          if (colorMode !== targetMode) {
+            setColorMode(targetMode)
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [])
+  
+  return <>{children}</>
+}
 
 // Loading overlay component
 const LoadingOverlay: React.FC = () => {
@@ -188,17 +212,19 @@ const AppContent: React.FC = () => {
 function App() {
   return (
     <ChakraProvider theme={theme}>
-      <AuthProvider>
-        <ProductProvider>
-          <MobileNavProvider>
-            <RealtimeProvider>
-              <Router>
-                <AppContent />
-              </Router>
-            </RealtimeProvider>
-          </MobileNavProvider>
-        </ProductProvider>
-      </AuthProvider>
+      <ThemeApplier>
+        <AuthProvider>
+          <ProductProvider>
+            <MobileNavProvider>
+              <RealtimeProvider>
+                <Router>
+                  <AppContent />
+                </Router>
+              </RealtimeProvider>
+            </MobileNavProvider>
+          </ProductProvider>
+        </AuthProvider>
+      </ThemeApplier>
     </ChakraProvider>
   )
 }
