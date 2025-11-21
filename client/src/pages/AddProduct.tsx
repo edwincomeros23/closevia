@@ -426,7 +426,7 @@ const AddProduct: React.FC = () => {
                   mb="2"
                   title="Generate title from description"
                   onClick={() => {
-                    if (!(user as any)?.is_premium) {
+                    if (!user?.is_premium) {
                       onOpenPremiumModal()
                     } else {
                       // TODO: Add auto-generate logic here for premium users
@@ -641,14 +641,14 @@ const AddProduct: React.FC = () => {
               {/* Premium Listing */}
               <Box 
                 p={5} 
-                bg={(user as any)?.is_premium ? "yellow.50" : "gray.50"}
+                bg={user?.is_premium ? "yellow.50" : "gray.50"}
                 borderRadius="lg" 
                 borderLeft="4px solid" 
-                borderLeftColor={(user as any)?.is_premium ? "yellow.400" : "gray.300"}
-                opacity={(user as any)?.is_premium ? 1 : 0.6}
+                borderLeftColor={user?.is_premium ? "yellow.400" : "gray.300"}
+                opacity={user?.is_premium ? 1 : 0.6}
                 mb={3}
               >
-                <FormControl isDisabled={!(user as any)?.is_premium}>
+                <FormControl isDisabled={!user?.is_premium}>
                   <HStack justify="space-between" align="start">
                     <VStack align="start" spacing={1} flex={1}>
                       <HStack spacing={2}>
@@ -659,13 +659,13 @@ const AddProduct: React.FC = () => {
                           ⭐ Premium
                         </Badge>
                       </HStack>
-                      <Text fontSize="sm" color={(user as any)?.is_premium ? "gray.600" : "gray.500"}>
-                        {(user as any)?.is_premium 
+                      <Text fontSize="sm" color={user?.is_premium ? "gray.600" : "gray.500"}>
+                        {user?.is_premium 
                           ? 'Feature your product at the top of search results for maximum visibility'
                           : 'Feature your product at the top of search results'
                         }
                       </Text>
-                      {(user as any)?.is_premium && (
+                      {user?.is_premium && (
                         <Badge colorScheme="purple" variant="subtle" fontSize="xs" mt={2}>
                           Up to 20 premium listings
                         </Badge>
@@ -675,7 +675,7 @@ const AddProduct: React.FC = () => {
                       isChecked={formData.premium}
                       onChange={(e) => handleInputChange('premium', e.target.checked)}
                       colorScheme="yellow"
-                      isDisabled={!(user as any)?.is_premium}
+                      isDisabled={!user?.is_premium}
                     />
                   </HStack>
                 </FormControl>
@@ -684,13 +684,13 @@ const AddProduct: React.FC = () => {
               {/* Allow Buying */}
               <Box 
                 p={5} 
-                bg={(user as any)?.is_premium ? "green.50" : "gray.50"}
+                bg={user?.is_premium ? "green.50" : "gray.50"}
                 borderRadius="lg" 
                 borderLeft="4px solid" 
-                borderLeftColor={(user as any)?.is_premium ? "green.400" : "gray.300"}
-                opacity={(user as any)?.is_premium ? 1 : 0.6}
+                borderLeftColor={user?.is_premium ? "green.400" : "gray.300"}
+                opacity={user?.is_premium ? 1 : 0.6}
               >
-                <FormControl isDisabled={!(user as any)?.is_premium}>
+                <FormControl isDisabled={!user?.is_premium}>
                   <HStack justify="space-between" align="start">
                     <VStack align="start" spacing={1} flex={1}>
                       <HStack spacing={2}>
@@ -701,13 +701,13 @@ const AddProduct: React.FC = () => {
                           💰 Premium
                         </Badge>
                       </HStack>
-                      <Text fontSize="sm" color={(user as any)?.is_premium ? "gray.600" : "gray.500"}>
-                        {(user as any)?.is_premium
+                      <Text fontSize="sm" color={user?.is_premium ? "gray.600" : "gray.500"}>
+                        {user?.is_premium
                           ? 'Accept cash only offers'
                           : 'Accept cash only offers'
                         }
                       </Text>
-                      {(user as any)?.is_premium && (
+                      {user?.is_premium && (
                         <Badge colorScheme="purple" variant="subtle" fontSize="xs" mt={2}>
                           Accept both barter & cash transactions
                         </Badge>
@@ -722,7 +722,7 @@ const AddProduct: React.FC = () => {
                         }
                       }}
                       colorScheme="green"
-                      isDisabled={!(user as any)?.is_premium}
+                      isDisabled={!user?.is_premium}
                     />
                   </HStack>
                 </FormControl>
