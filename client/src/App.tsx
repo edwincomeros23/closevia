@@ -20,6 +20,8 @@ import UserProfile from './pages/UserProfile'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
+import DeliveryOption from './delivery_option/delivery'
+import RiderOption from './delivery_option/rider'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProductProvider } from './contexts/ProductContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
@@ -27,6 +29,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
 import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
+import Riderqueue from './delivery_option/riderqueue'
 
 // Loading overlay component
 const LoadingOverlay: React.FC = () => {
@@ -177,6 +180,9 @@ const AppContent: React.FC = () => {
                   </AdminRoute>
                 } 
               />
+              <Route path="/delivery" element={<DeliveryOption />} />
+              <Route path="/rider" element={<RiderOption />} />
+              <Route path="*" element={<Home />} />
             </Routes>
           </Box>
         </Box>
