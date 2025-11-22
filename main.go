@@ -106,6 +106,7 @@ func main() {
 	commentHandler := handlers.NewCommentHandler()
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
+	deliveryHandler := handlers.NewDeliveryHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -189,6 +190,19 @@ func main() {
 	wishlist.Get("/", middleware.AuthMiddleware(), wishlistHandler.GetWishlist)
 	wishlist.Post("/", middleware.AuthMiddleware(), wishlistHandler.AddToWishlist)
 	wishlist.Delete("/:productId", middleware.AuthMiddleware(), wishlistHandler.RemoveFromWishlist)
+
+	// Delivery routes
+	deliveries := api.Group("/deliveries")
+	deliveries.Post("/", middleware.AuthMiddleware(), deliveryHandler.CreateDelivery)
+	deliveries.Get("/", middleware.AuthMiddleware(), deliveryHandler.GetDeliveries)
+	deliveries.Get("/:id", middleware.AuthMiddleware(), deliveryHandler.GetDelivery)
+	deliveries.Put("/:id/status", middleware.AuthMiddleware(), deliveryHandler.UpdateDeliveryStatus)
+	deliveries.Post("/:id/assign", middleware.AuthMiddleware(), deliveryHandler.AssignRider)
+	// Rider-specific routes
+	deliveries.Get("/available", middleware.AuthMiddleware(), deliveryHandler.GetAvailableDeliveries)
+	deliveries.Get("/rider/my-deliveries", middleware.AuthMiddleware(), deliveryHandler.GetRiderDeliveries)
+	deliveries.Post("/:id/claim", middleware.AuthMiddleware(), deliveryHandler.ClaimDelivery)
+	deliveries.Get("/rider/earnings", middleware.AuthMiddleware(), deliveryHandler.GetRiderEarnings)
 
 	// AI Features routes
 	ai := api.Group("/ai")
