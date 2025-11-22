@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -25,9 +25,14 @@ import {
   AlertIcon,
   AlertTitle,
   AlertDescription,
+  Spinner,
 } from '@chakra-ui/react'
 import { CheckCircleIcon } from '@chakra-ui/icons'
-import { FaTruck, FaClock, FaShieldAlt, FaUsers } from 'react-icons/fa'
+import { FaTruck, FaClock, FaShieldAlt, FaUsers, FaLocationArrow } from 'react-icons/fa'
+import { api } from '../services/api'
+import { DeliveryRequest, Product } from '../types'
+import DeliveryTracking from '../components/DeliveryTracking'
+import { useAuth } from '../contexts/AuthContext'
 
 interface DeliveryOption {
   id: string
@@ -42,14 +47,27 @@ interface DeliveryOption {
 
 const DeliveryUI: React.FC = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const toast = useToast()
+  const { user } = useAuth()
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
   const [selectedDelivery, setSelectedDelivery] = useState<string>('standard')
-  const [address, setAddress] = useState('')
+  const [pickupAddress, setPickupAddress] = useState('')
+  const [deliveryAddress, setDeliveryAddress] = useState('')
   const [notes, setNotes] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [pickupLatitude, setPickupLatitude] = useState<number | undefined>()
+  const [pickupLongitude, setPickupLongitude] = useState<number | undefined>()
+  const [deliveryLatitude, setDeliveryLatitude] = useState<number | undefined>()
+  const [deliveryLongitude, setDeliveryLongitude] = useState<number | undefined>()
+  const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [products, setProducts] = useState<Product[]>([])
+  const [loadingProducts, setLoadingProducts] = useState(true)
+  const [deliveryTrackingOpen, setDeliveryTrackingOpen] = useState(false)
+  const [currentDeliveryId, setCurrentDeliveryId] = useState<number | null>(null)
+  const [tradeId, setTradeId] = useState<number | undefined>()
 
   const deliveryOptions: DeliveryOption[] = [
     {
@@ -86,12 +104,147 @@ const DeliveryUI: React.FC = () => {
     },
   ]
 
-  const handleSubmit = async () => {
-    if (!address.trim()) {
+  // Get products from location state or fetch from API
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoadingProducts(true)
+      try {
+        // Check if products are passed via location state
+        const stateProducts = (location.state as any)?.products as Product[] | undefined
+        const stateTradeId = (location.state as any)?.tradeId as number | undefined
+        
+        if (stateProducts && stateProducts.length > 0) {
+          setProducts(stateProducts)
+          setTradeId(stateTradeId)
+        } else if (user) {
+          // If no products in state, try to get user's available products
+          const response = await api.get(`/api/products/user/${user.id}?status=available&limit=10`)
+          const data = response.data?.data
+          const productList: Product[] = Array.isArray(data?.data) ? data.data : []
+          setProducts(productList.slice(0, selectedDelivery === 'express' ? 1 : 5))
+        }
+      } catch (error) {
+        console.error('Failed to fetch products:', error)
+        toast({
+          title: 'Error',
+          description: 'Failed to load products',
+          status: 'error',
+        })
+      } finally {
+        setLoadingProducts(false)
+      }
+    }
+
+    fetchProducts()
+  }, [location.state, user, selectedDelivery])
+
+  // Auto-detect location when component mounts
+  useEffect(() => {
+    if (navigator.geolocation) {
+      setIsGettingLocation(true)
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setPickupLatitude(position.coords.latitude)
+          setPickupLongitude(position.coords.longitude)
+          setIsGettingLocation(false)
+        },
+        () => {
+          setIsGettingLocation(false)
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+        }
+      )
+    }
+  }, [])
+
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
       toast({
-        title: 'Missing Address',
-        description: 'Please provide a delivery address',
+        title: 'Location not supported',
+        description: 'Your browser does not support geolocation.',
         status: 'warning',
+      })
+      return
+    }
+
+    setIsGettingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setPickupLatitude(position.coords.latitude)
+        setPickupLongitude(position.coords.longitude)
+        setIsGettingLocation(false)
+        toast({
+          title: 'Location detected',
+          description: 'GPS coordinates have been captured.',
+          status: 'success',
+          duration: 2000,
+        })
+      },
+      (error) => {
+        setIsGettingLocation(false)
+        toast({
+          title: 'Location access denied',
+          description: 'Please enter your address manually.',
+          status: 'warning',
+        })
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    )
+  }
+
+  const handleSubmit = async () => {
+    if (!deliveryAddress.trim() && !deliveryLongitude) {
+      toast({
+        title: 'Missing Delivery Address',
+        description: 'Please provide a delivery address or allow location access.',
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
+    if (!pickupAddress.trim() && !pickupLatitude) {
+      toast({
+        title: 'Missing Pickup Location',
+        description: 'Please provide a pickup address or allow location access.',
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
+    if (products.length === 0) {
+      toast({
+        title: 'No Products',
+        description: 'Please select products to deliver.',
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
+    // Validate item count
+    if (selectedDelivery === 'express' && products.length > 1) {
+      toast({
+        title: 'Invalid Item Count',
+        description: 'Express delivery allows only 1 item.',
+        status: 'error',
+        duration: 3000,
+      })
+      return
+    }
+
+    if (selectedDelivery === 'standard' && products.length > 5) {
+      toast({
+        title: 'Invalid Item Count',
+        description: 'Standard delivery allows maximum 5 items.',
+        status: 'error',
         duration: 3000,
       })
       return
@@ -99,20 +252,38 @@ const DeliveryUI: React.FC = () => {
 
     setIsProcessing(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
+      const payload: DeliveryRequest = {
+        trade_id: tradeId,
+        delivery_type: selectedDelivery as 'standard' | 'express',
+        pickup_latitude: pickupLatitude,
+        pickup_longitude: pickupLongitude,
+        pickup_address: pickupAddress || 'GPS Location',
+        delivery_latitude: deliveryLatitude,
+        delivery_longitude: deliveryLongitude,
+        delivery_address: deliveryAddress,
+        special_instructions: notes.trim() || undefined,
+        product_ids: products.map((p) => p.id),
+      }
+
+      const response = await api.post('/api/deliveries', payload)
+      const delivery = response.data?.data
+
       toast({
-        title: 'Delivery Option Saved',
-        description: `${deliveryOptions.find(d => d.id === selectedDelivery)?.name} selected`,
+        title: 'Delivery Request Created',
+        description: 'Your delivery has been added to the rider queue.',
         status: 'success',
         duration: 2000,
       })
 
-      navigate('/checkout')
-    } catch (error) {
+      // Show tracking modal
+      if (delivery?.id) {
+        setCurrentDeliveryId(delivery.id)
+        setDeliveryTrackingOpen(true)
+      }
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Failed to save delivery option',
+        description: error?.response?.data?.error || 'Failed to create delivery request',
         status: 'error',
         duration: 3000,
       })
@@ -205,7 +376,7 @@ const DeliveryUI: React.FC = () => {
           {/* Selected Details - Minimal */}
           {selectedOption && (
             <Card bg={bgColor} border="1px" borderColor={borderColor}>
-              <CardBody p={4} spacing={3}>
+              <CardBody p={4}>
                 <VStack spacing={3} align="stretch">
                   {/* Quick Info */}
                   {selectedOption.id === 'standard' && (
@@ -228,13 +399,46 @@ const DeliveryUI: React.FC = () => {
                     </HStack>
                   )}
 
-                  {/* Address Input */}
+                  {/* Pickup Location */}
+                  <FormControl>
+                    <FormLabel fontSize="sm" fontWeight="bold">Pickup Location</FormLabel>
+                    <HStack spacing={2} mb={2}>
+                      <Button
+                        size="xs"
+                        leftIcon={<Icon as={FaLocationArrow} />}
+                        onClick={getCurrentLocation}
+                        isLoading={isGettingLocation}
+                        variant="outline"
+                        colorScheme="brand"
+                      >
+                        Use GPS
+                      </Button>
+                      {pickupLatitude && pickupLongitude && (
+                        <Badge colorScheme="green" fontSize="xs">
+                          GPS Detected
+                        </Badge>
+                      )}
+                    </HStack>
+                    <Textarea
+                      placeholder="Enter pickup address (or use GPS location above)"
+                      value={pickupAddress}
+                      onChange={(e) => setPickupAddress(e.target.value)}
+                      rows={2}
+                      size="sm"
+                    />
+                    <FormHelperText fontSize="2xs">
+                      GPS coordinates will be used if available, otherwise address will be used
+                    </FormHelperText>
+                  </FormControl>
+
+                  {/* Delivery Address Input */}
                   <FormControl>
                     <FormLabel fontSize="sm" fontWeight="bold">Delivery Address</FormLabel>
-                    <Input
-                      placeholder="Street address"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
+                    <Textarea
+                      placeholder="Enter complete delivery address"
+                      value={deliveryAddress}
+                      onChange={(e) => setDeliveryAddress(e.target.value)}
+                      rows={2}
                       size="sm"
                     />
                   </FormControl>
@@ -307,6 +511,60 @@ const DeliveryUI: React.FC = () => {
           )}
         </VStack>
       </Box>
+
+      {/* Delivery Tracking Modal */}
+      {currentDeliveryId && (
+        <DeliveryTracking
+          isOpen={deliveryTrackingOpen}
+          onClose={() => {
+            setDeliveryTrackingOpen(false)
+            setCurrentDeliveryId(null)
+            // Optionally navigate back or to dashboard
+            // navigate('/dashboard')
+          }}
+          deliveryId={currentDeliveryId}
+        />
+      )}
+
+      {/* Loading Products */}
+      {loadingProducts && (
+        <Box position="fixed" top="50%" left="50%" transform="translate(-50%, -50%)" zIndex={1000}>
+          <VStack spacing={4}>
+            <Spinner size="xl" color="brand.500" />
+            <Text>Loading products...</Text>
+          </VStack>
+        </Box>
+      )}
+
+      {/* Products Display */}
+      {!loadingProducts && products.length > 0 && (
+        <Card bg={bgColor} border="1px" borderColor={borderColor} mt={4}>
+          <CardBody p={4}>
+            <VStack spacing={2} align="stretch" mb={0}>
+              <Text fontWeight="semibold" fontSize="sm">
+                Items to Deliver ({products.length})
+              </Text>
+              <VStack align="stretch" spacing={1}>
+                {products.map((product) => (
+                  <Text key={product.id} fontSize="xs" color="gray.600">
+                    • {product.title}
+                  </Text>
+                ))}
+              </VStack>
+            </VStack>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* No Products Warning */}
+      {!loadingProducts && products.length === 0 && (
+        <Alert status="warning" borderRadius="md" mt={4}>
+          <AlertIcon />
+          <AlertDescription fontSize="sm">
+            No products selected. Please navigate from a trade or product page to request delivery.
+          </AlertDescription>
+        </Alert>
+      )}
     </Box>
   )
 }

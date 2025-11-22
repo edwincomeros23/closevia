@@ -62,6 +62,8 @@ import { getFirstImage } from '../utils/imageUtils'
 import OfferDetailsModal from '../components/OfferDetailsModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
 import ViewTradeModal from '../components/ViewTradeModal'
+import DeliveryRequestModal from '../components/DeliveryRequestModal'
+import DeliveryTracking from '../components/DeliveryTracking'
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth()
@@ -121,6 +123,13 @@ const Dashboard: React.FC = () => {
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
   const offersPollingInterval = useRef<NodeJS.Timeout | null>(null)
+  
+  // Delivery modals state
+  const [deliveryRequestModalOpen, setDeliveryRequestModalOpen] = useState(false)
+  const [deliveryTrackingModalOpen, setDeliveryTrackingModalOpen] = useState(false)
+  const [tradeForDelivery, setTradeForDelivery] = useState<Trade | null>(null)
+  const [productsForDelivery, setProductsForDelivery] = useState<Product[]>([])
+  const [currentDeliveryId, setCurrentDeliveryId] = useState<number | null>(null)
   
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -2521,7 +2530,43 @@ const Dashboard: React.FC = () => {
           trade={selectedTrade}
           isOpen={detailsOpen}
           onClose={() => setDetailsOpen(false)}
-          onAccepted={() => { fetchOffers(); fetchNotificationCounts() }}
+          onAccepted={async () => {
+            await fetchOffers()
+            fetchNotificationCounts()
+            
+            // If trade option is delivery, show delivery request modal
+            if (selectedTrade?.trade_option === 'delivery') {
+              // Fetch products for delivery
+              try {
+                const productsToDeliver: Product[] = []
+                // Get target product
+                if (selectedTrade.target_product_id) {
+                  const targetRes = await api.get(`/api/products/${selectedTrade.target_product_id}`)
+                  if (targetRes.data?.data) {
+                    productsToDeliver.push(targetRes.data.data)
+                  }
+                }
+                // Get items from trade
+                if (selectedTrade.items && selectedTrade.items.length > 0) {
+                  for (const item of selectedTrade.items) {
+                    try {
+                      const itemRes = await api.get(`/api/products/${item.product_id}`)
+                      if (itemRes.data?.data) {
+                        productsToDeliver.push(itemRes.data.data)
+                      }
+                    } catch (e) {
+                      // Skip if product not found
+                    }
+                  }
+                }
+                setProductsForDelivery(productsToDeliver)
+                setTradeForDelivery(selectedTrade)
+                setDeliveryRequestModalOpen(true)
+              } catch (error) {
+                console.error('Failed to fetch products for delivery:', error)
+              }
+            }
+          }}
           onDeclined={() => { fetchOffers(); fetchNotificationCounts() }}
         />
 
@@ -2539,6 +2584,35 @@ const Dashboard: React.FC = () => {
           onCompleted={() => { fetchOffers(); fetchNotificationCounts() }}
           currentUserId={user?.id}
         />
+
+        {/* Delivery Request Modal */}
+        <DeliveryRequestModal
+          isOpen={deliveryRequestModalOpen}
+          onClose={() => {
+            setDeliveryRequestModalOpen(false)
+            setTradeForDelivery(null)
+            setProductsForDelivery([])
+          }}
+          onSuccess={(deliveryId) => {
+            setCurrentDeliveryId(deliveryId)
+            setDeliveryRequestModalOpen(false)
+            setDeliveryTrackingModalOpen(true)
+          }}
+          tradeId={tradeForDelivery?.id}
+          products={productsForDelivery}
+        />
+
+        {/* Delivery Tracking Modal */}
+        {currentDeliveryId && (
+          <DeliveryTracking
+            isOpen={deliveryTrackingModalOpen}
+            onClose={() => {
+              setDeliveryTrackingModalOpen(false)
+              setCurrentDeliveryId(null)
+            }}
+            deliveryId={currentDeliveryId}
+          />
+        )}
 
         {/* Cancel Confirmation Modal */}
         <Modal isOpen={cancelModalOpen} onClose={() => setCancelModalOpen(false)} size="sm" isCentered>
