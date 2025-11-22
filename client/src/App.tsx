@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text } from '@chakra-ui/react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { theme } from './theme'
@@ -20,8 +20,8 @@ import UserProfile from './pages/UserProfile'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
-import DeliveryOption from './delivery_option/delivery'
-import RiderOption from './delivery_option/rider'
+import DeliveryOption from './delivery_option/Delivery'
+import RiderOption from './delivery_option/Rider'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProductProvider } from './contexts/ProductContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
@@ -29,7 +29,13 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
 import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
-import Riderqueue from './delivery_option/riderqueue'
+
+// Lazy load delivery option components with error handling
+const RiderQueue = lazy(() => import('./delivery_option/Riderqueue').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Queue</Text></Box> })))
+const BatchPreview = lazy(() => import('./delivery_option/BatchPreview').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Preview</Text></Box> })))
+const BatchStatus = lazy(() => import('./delivery_option/BatchStatus').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Status</Text></Box> })))
+const RemittanceLedger = lazy(() => import('./delivery_option/RemittanceLedger').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Remittance Ledger</Text></Box> })))
+const TaskStepper = lazy(() => import('./delivery_option/TaskStepper').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Task Stepper</Text></Box> })))
 
 // Loading overlay component
 const LoadingOverlay: React.FC = () => {
@@ -92,6 +98,15 @@ const AppContent: React.FC = () => {
       {/* Landing page route - no sidebar or app layout */}
       <Route path="/" element={<LandingPage />} />
       
+      {/* Rider routes - no sidebar */}
+      <Route path="/rider" element={<RiderOption />} />
+      <Route path="/rider-queue" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderQueue /></Suspense>} />
+      <Route path="/batch-preview/:batchId" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><BatchPreview /></Suspense>} />
+      <Route path="/batch-status/:batchId" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><BatchStatus /></Suspense>} />
+      <Route path="/remittance-ledger" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RemittanceLedger /></Suspense>} />
+      <Route path="/task-stepper/:batchId" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><TaskStepper /></Suspense>} />
+      <Route path="/delivery" element={<DeliveryOption />} />
+      
       {/* App routes with sidebar and layout */}
       <Route path="/*" element={
         <Box minH="100vh" bg="gray.50">
@@ -103,85 +118,18 @@ const AppContent: React.FC = () => {
               <Route path="/register" element={<Register />} />
               <Route path="/products/:id" element={<ProductDetail />} />
               <Route path="/products" element={<ProductsList />} />
-              <Route 
-                path="/dashboard" 
-                element={<Dashboard key="dashboard-route" />}
-              />
-              <Route 
-                path="/add-product" 
-                element={
-                  <ProtectedRoute>
-                    <AddProduct />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/edit-product/:id" 
-                element={
-                  <ProtectedRoute>
-                    <EditProduct />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/notifications" 
-                element={
-                  <ProtectedRoute>
-                    <Notifications />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/profile" 
-                element={
-                  <ProtectedRoute>
-                    <Profile />
-                  </ProtectedRoute>
-                } 
-              />
+              <Route path="/dashboard" element={<Dashboard key="dashboard-route" />} />
+              <Route path="/add-product" element={<ProtectedRoute><AddProduct /></ProtectedRoute>} />
+              <Route path="/edit-product/:id" element={<ProtectedRoute><EditProduct /></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
               <Route path="/users/:id" element={<UserProfile />} />
-              <Route 
-                path="/settings" 
-                element={
-                  <ProtectedRoute>
-                    <Settings />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/trades" 
-                element={
-                  <ProtectedRoute>
-                    <Trades />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/offers" 
-                element={
-                  <ProtectedRoute>
-                    <Offers />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/saved-products" 
-                element={
-                  <PrivateRoute>
-                    <SavedProducts />
-                  </PrivateRoute>
-                } 
-              />
-              <Route 
-                path="/admin" 
-                element={
-                  <AdminRoute>
-                    <AdminDashboard />
-                  </AdminRoute>
-                } 
-              />
-              <Route path="/delivery" element={<DeliveryOption />} />
-              <Route path="/rider" element={<RiderOption />} />
+              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/trades" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
+              <Route path="/offers" element={<ProtectedRoute><Offers /></ProtectedRoute>} />
+              <Route path="/saved-products" element={<PrivateRoute><SavedProducts /></PrivateRoute>} />
+              <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+
               <Route path="*" element={<Home />} />
             </Routes>
           </Box>

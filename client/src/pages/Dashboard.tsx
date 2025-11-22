@@ -132,6 +132,16 @@ const Dashboard: React.FC = () => {
     }
   }, [user])
 
+  // Fetch offers when Offers tab is selected (if not already loaded)
+  useEffect(() => {
+    if (user && activeTab === 1) {
+      // Only fetch if we don't have any offers loaded yet
+      if (incoming.length === 0 && outgoing.length === 0 && !offersLoading) {
+        fetchOffers()
+      }
+    }
+  }, [user, activeTab])
+
   const fetchUserData = async () => {
     if (!user) return
     
@@ -155,6 +165,9 @@ const Dashboard: React.FC = () => {
 
       // Fetch notification counts
       await fetchNotificationCounts()
+      
+      // Fetch offers
+      await fetchOffers()
     } catch (error) {
       console.error('Failed to fetch user data:', error)
     } finally {
@@ -251,13 +264,22 @@ const Dashboard: React.FC = () => {
         api.get('/api/trades', { params: { direction: 'incoming' } }),
         api.get('/api/trades', { params: { direction: 'outgoing' } }),
       ])
-      setIncoming(Array.isArray(incRes.data?.data) ? incRes.data.data : [])
-      setOutgoing(Array.isArray(outRes.data?.data) ? outRes.data.data : [])
+      
+      // Ensure we're accessing the data correctly
+      const incomingData = Array.isArray(incRes.data?.data) ? incRes.data.data : (Array.isArray(incRes.data) ? incRes.data : [])
+      const outgoingData = Array.isArray(outRes.data?.data) ? outRes.data.data : (Array.isArray(outRes.data) ? outRes.data : [])
+      
+      setIncoming(incomingData)
+      setOutgoing(outgoingData)
       
       // Fetch product titles for all trades
-      await fetchProductTitles([...incRes.data?.data || [], ...outRes.data?.data || []])
+      await fetchProductTitles([...incomingData, ...outgoingData])
     } catch (e: any) {
+      console.error('Failed to fetch offers:', e)
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
+      // Set empty arrays on error to prevent stale data
+      setIncoming([])
+      setOutgoing([])
     } finally {
       setOffersLoading(false)
     }
@@ -1845,22 +1867,6 @@ const Dashboard: React.FC = () => {
                   {/* Filters and Actions (Search moved to top bar) */}
                   <HStack spacing={3} flexWrap="wrap" justify="space-between">
                     <HStack spacing={2} flexWrap="wrap">
-                      <Select
-                        value={productFilter}
-                        onChange={(e) => {
-                          setProductFilter(e.target.value as any)
-                          setCurrentPage(1)
-                        }}
-                        w="150px"
-                        bg={cardBg}
-                        borderColor={borderColor}
-                      >
-                        <option value="all">All Status</option>
-                        <option value="available">Active</option>
-                        <option value="sold">Sold</option>
-                        <option value="traded">Traded</option>
-                        <option value="locked">Hidden</option>
-                      </Select>
                       {unifiedSearch && (
                         <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
                           Searching: "{unifiedSearch}"
@@ -1938,41 +1944,6 @@ const Dashboard: React.FC = () => {
               {/* Offers Tab */}
               <TabPanel>
                 <VStack spacing={6} align="stretch">
-                  {/* Filters (Search moved to top bar) */}
-                  <HStack spacing={3} flexWrap="wrap">
-                    {unifiedSearch && (
-                      <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
-                        Searching: "{unifiedSearch}"
-                      </Badge>
-                    )}
-                    <Select
-                      value={offersStatusFilter}
-                      onChange={(e) => {
-                        setOffersStatusFilter(e.target.value)
-                        setOffersPage(1)
-                      }}
-                      w="150px"
-                      bg={cardBg}
-                      borderColor={borderColor}
-                    >
-                      <option value="all">All Status</option>
-                      <option value="pending">Pending</option>
-                      <option value="accepted">Accepted</option>
-                      <option value="active">Active</option>
-                      <option value="countered">Countered</option>
-                    </Select>
-                    <Select
-                      value={offersSort}
-                      onChange={(e) => setOffersSort(e.target.value as any)}
-                      w="140px"
-                      bg={cardBg}
-                      borderColor={borderColor}
-                    >
-                      <option value="newest">Newest First</option>
-                      <option value="oldest">Oldest First</option>
-                    </Select>
-                  </HStack>
-
                   {/* Sub-tabs for Offers */}
                   <Tabs 
                     index={offersSubTab} 
