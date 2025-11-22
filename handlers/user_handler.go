@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-<<<<<<< HEAD
 	"time"
-=======
->>>>>>> db8e7cb05b8ee4b731cf9d77e6beecbbffd78187
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/xashathebest/clovia/database"
