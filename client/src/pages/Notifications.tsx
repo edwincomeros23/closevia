@@ -20,11 +20,8 @@ import {
   useToast,
   useColorModeValue,
   Flex,
-<<<<<<< HEAD
   Image as ChakraImage,
-=======
   IconButton,
->>>>>>> db8e7cb05b8ee4b731cf9d77e6beecbbffd78187
 } from '@chakra-ui/react'
 import { ChevronLeftIcon, ChevronRightIcon, AddIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'

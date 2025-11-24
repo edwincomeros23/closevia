@@ -45,8 +45,7 @@ export interface Product {
   wishlist_count?: number;
   counterfeit_confidence?: number;
   counterfeit_flags?: string[];
-  latitude?: number;
-  longitude?: number;
+  // latitude/longitude are declared on Product above; avoid duplicate declarations
 }
 
 export interface Order {

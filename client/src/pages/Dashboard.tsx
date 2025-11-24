@@ -120,7 +120,7 @@ const Dashboard: React.FC = () => {
   const [declineFeedback, setDeclineFeedback] = useState('')
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
-  const offersPollingInterval = useRef<NodeJS.Timeout | null>(null)
+  const offersPollingInterval = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
