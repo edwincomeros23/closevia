@@ -254,7 +254,6 @@ func CreateTables() error {
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
 			UNIQUE KEY uniq_wishlist_item (user_id, product_id)
 		)`,
-<<<<<<< HEAD
 		`CREATE TABLE IF NOT EXISTS saved_products (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			user_id INT NOT NULL,
@@ -269,8 +268,7 @@ func CreateTables() error {
 			INDEX idx_product_id (product_id),
 			INDEX idx_created_at (created_at),
 			INDEX idx_deleted_at (deleted_at)
-=======
-		// Votes on product price: under/over
+		)`,
 		`CREATE TABLE IF NOT EXISTS product_votes (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			product_id INT NOT NULL,
@@ -280,7 +278,6 @@ func CreateTables() error {
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			UNIQUE KEY uniq_product_user_vote (product_id, user_id)
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 		)`,
 	}
 

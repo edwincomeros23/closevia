@@ -116,14 +116,11 @@ func main() {
 	users := api.Group("/users")
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
 	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
-<<<<<<< HEAD
 	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
-=======
 	// Change password (accept POST, PUT and PATCH to be resilient to client method differences)
 	users.Post("/change-password", middleware.AuthMiddleware(), userHandler.ChangePassword)
 	users.Put("/change-password", middleware.AuthMiddleware(), userHandler.ChangePassword)
 	users.Patch("/change-password", middleware.AuthMiddleware(), userHandler.ChangePassword)
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
 	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
@@ -137,7 +134,6 @@ func main() {
 
 	// Product routes
 	products := api.Group("/products")
-<<<<<<< HEAD
 	products.Get("/", productHandler.GetProducts)                      // Public route
 	products.Get("", productHandler.GetProducts)                       // Support no trailing slash
 	products.Get("/user/:id", productHandler.GetUserProducts)          // Public route
@@ -148,7 +144,6 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
-=======
 	products.Get("/", productHandler.GetProducts) // Public route
 	products.Get("", productHandler.GetProducts)  // Support no trailing slash
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
@@ -160,7 +155,6 @@ func main() {
 	// User-specific wishlist status for a product
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id", productHandler.GetProduct) // Public route - must be last
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
 	products.Delete("/:id", middleware.AuthMiddleware(), productHandler.DeleteProduct)
 
