@@ -268,7 +268,7 @@ const RiderQueue: React.FC = () => {
                 No active batches. Claim deliveries from the Available Deliveries screen to see batches here.
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
           {batches.map((batch) => (
             <Card
               key={batch.id}
@@ -281,16 +281,14 @@ const RiderQueue: React.FC = () => {
               onClick={() => setSelectedBatch(batch.id)}
             >
               <CardBody>
-                <VStack spacing={4}>
-                {/* Top Row: Zone + High Demand Badge */}
-                <HStack justify="space-between" align="start">
-                  <VStack align="start" spacing={1}>
-                    <HStack spacing={2}>
+                <VStack spacing={4} align="stretch">
+                  {/* Top Row: Zone + High Demand Badge */}
+                  <HStack justify="space-between" align="start" spacing={4}>
+                    {/* Tasks and Earnings */}
+                    <VStack align="start" spacing={1} minW="80px">
                       <Text fontWeight="bold" fontSize="md" color="gray.800">
                         {batch.taskCount} tasks
                       </Text>
-                    </VStack>
-                    <VStack align="end" spacing={0}>
                       <Text fontWeight="bold" fontSize="lg" color="brand.600">
                         ₱{batch.estimatedEarnings}
                       </Text>
@@ -298,28 +296,28 @@ const RiderQueue: React.FC = () => {
                         your earn
                       </Text>
                     </VStack>
-                  </HStack>
 
-                  {/* Capacity Progress */}
-                  <VStack spacing={1} align="stretch">
-                    <HStack justify="space-between" fontSize="xs">
-                      <HStack spacing={1}>
-                        <Icon as={FaBox} boxSize={3} color="gray.600" />
-                        <Text color="gray.600">
-                          Capacity: {batch.sizePoints}/{batch.maxCapacity} points
-                        </Text>
-                        <Tooltip label="Small item=1pt, Medium=2pts, Large=3pts. Your van holds 12pts max." placement="top">
-                          <InfoIcon boxSize={3} color="blue.500" cursor="help" />
-                        </Tooltip>
+                    {/* Capacity Progress */}
+                    <VStack spacing={1} align="stretch" flex={1}>
+                      <HStack justify="space-between" fontSize="xs">
+                        <HStack spacing={1}>
+                          <Icon as={FaBox} boxSize={3} color="gray.600" />
+                          <Text color="gray.600">
+                            {batch.sizePoints}/{batch.maxCapacity} pts
+                          </Text>
+                          <Tooltip label="Small=1pt, Medium=2pts, Large=3pts" placement="top">
+                            <InfoIcon boxSize={3} color="blue.500" cursor="help" />
+                          </Tooltip>
+                        </HStack>
                       </HStack>
-                    </HStack>
-                    <Progress
-                      value={capacityPercentage(batch.sizePoints, batch.maxCapacity)}
-                      colorScheme="brand"
-                      borderRadius="full"
-                      h="6px"
-                    />
-                  </VStack>
+                      <Progress
+                        value={capacityPercentage(batch.sizePoints, batch.maxCapacity)}
+                        colorScheme="brand"
+                        borderRadius="full"
+                        h="6px"
+                      />
+                    </VStack>
+                  </HStack>
 
                   {/* Distance + Time */}
                   <HStack spacing={4} fontSize="sm">
@@ -344,8 +342,8 @@ const RiderQueue: React.FC = () => {
                   </HStack>
 
                   {/* Required Pass */}
-                  <HStack spacing={2} bg="yellow.50" p={2} borderRadius="md">
-                    <Icon as={WarningIcon} boxSize={4} color="yellow.600" />
+                  <HStack spacing={2} bg="yellow.50" p={2} borderRadius="md" align="start">
+                    <Icon as={WarningIcon} boxSize={4} color="yellow.600" flexShrink={0} />
                     <VStack align="start" spacing={0} fontSize="xs">
                       <Text fontWeight="bold" color="yellow.900">
                         {batch.requiredPass} Pass needed
@@ -364,10 +362,10 @@ const RiderQueue: React.FC = () => {
                   >
                     {isOnline ? 'Claim batch (15m lock)' : 'Offline - Reconnect to claim'}
                   </Button>
-                </CardBody>
-              </Card>
-            ))
-          )}
+                </VStack>
+              </CardBody>
+            </Card>
+          ))}
         </VStack>
 
         {/* Navigation Buttons */}
