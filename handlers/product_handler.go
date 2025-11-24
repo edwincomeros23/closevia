@@ -195,15 +195,33 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		counter++
 	}
 
-	// Insert new product with slug
-	result, err := h.db.Exec(
-		"INSERT INTO products (slug, title, description, price, image_urls, seller_id, premium, allow_buying, barter_only, location, latitude, longitude, status, `condition`, suggested_value, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, lat, lon, "available", finalCondition, suggestedValue, category,
-	)
+	// Insert new product with slug. Build SQL dynamically so it's tolerant
+	// to missing latitude/longitude columns (some DBs may not have applied migrations).
+	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category"}
+	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
+	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category}
+
+	// Only include latitude/longitude if geocoding produced values
+	if lat != nil && lon != nil {
+		// insert latitude and longitude after 'location' (which is index 9)
+		insertIdx := 10 // index in cols/placeholders/args where 'status' currently resides
+		cols = append(cols[:insertIdx], append([]string{"latitude"}, cols[insertIdx:]...)...)
+		placeholders = append(placeholders[:insertIdx], append([]string{"?"}, placeholders[insertIdx:]...)...)
+		args = append(args[:insertIdx], append([]interface{}{*lat}, args[insertIdx:]...)...)
+
+		insertIdx2 := insertIdx + 1
+		cols = append(cols[:insertIdx2], append([]string{"longitude"}, cols[insertIdx2:]...)...)
+		placeholders = append(placeholders[:insertIdx2], append([]string{"?"}, placeholders[insertIdx2:]...)...)
+		args = append(args[:insertIdx2], append([]interface{}{*lon}, args[insertIdx2:]...)...)
+	}
+
+	sqlStr := fmt.Sprintf("INSERT INTO products (%s) VALUES (%s)", strings.Join(cols, ", "), strings.Join(placeholders, ", "))
+	result, err := h.db.Exec(sqlStr, args...)
 	if err != nil {
+		fmt.Printf("CreateProduct - insert error: %+v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to create product",
+			Error:   fmt.Sprintf("Failed to create product: %v", err),
 		})
 	}
 

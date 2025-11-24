@@ -95,24 +95,26 @@ func (a StringArray) Value() (driver.Value, error) {
 
 // User represents a user in the system
 type User struct {
-	ID             int       `json:"id"`
-	Name           string    `json:"name" validate:"required,min=2,max=255"`
-	Email          string    `json:"email" validate:"required,email"`
-	PasswordHash   string    `json:"-" validate:"required"`
-	Role           string    `json:"role" validate:"oneof=user admin"`
-	Verified       bool      `json:"verified"`
-	IsOrganization bool      `json:"is_organization"`
-	OrgVerified    bool      `json:"org_verified"`
-	OrgName        string    `json:"org_name,omitempty"`
-	OrgLogoURL     string    `json:"org_logo_url,omitempty"`
-	ProfilePicture string    `json:"profile_picture,omitempty"`
-	Department     string    `json:"department,omitempty"`
-	Bio            string    `json:"bio,omitempty"`
-	Badges         IntArray  `json:"badges,omitempty"`
-	Latitude       *float64  `json:"latitude,omitempty"`
-	Longitude      *float64  `json:"longitude,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID                 int       `json:"id"`
+	Name               string    `json:"name" validate:"required,min=2,max=255"`
+	Email              string    `json:"email" validate:"required,email"`
+	PasswordHash       string    `json:"-" validate:"required"`
+	Role               string    `json:"role" validate:"oneof=user admin"`
+	Verified           bool      `json:"verified"`
+	IsOrganization     bool      `json:"is_organization"`
+	OrgVerified        bool      `json:"org_verified"`
+	OrgName            string    `json:"org_name,omitempty"`
+	OrgLogoURL         string    `json:"org_logo_url,omitempty"`
+	ProfilePicture     string    `json:"profile_picture,omitempty"`
+	BackgroundImage    string    `json:"background_image,omitempty"`
+	BackgroundPosition string    `json:"background_position,omitempty"`
+	Department         string    `json:"department,omitempty"`
+	Bio                string    `json:"bio,omitempty"`
+	Badges             IntArray  `json:"badges,omitempty"`
+	Latitude           *float64  `json:"latitude,omitempty"`
+	Longitude          *float64  `json:"longitude,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // UserLogin represents login credentials
