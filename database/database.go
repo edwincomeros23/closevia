@@ -269,6 +269,15 @@ func CreateTables() error {
 			INDEX idx_created_at (created_at),
 			INDEX idx_deleted_at (deleted_at)
 		)`,
+		`CREATE TABLE IF NOT EXISTS product_votes (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			product_id INT NOT NULL,
+			user_id INT NOT NULL,
+			vote ENUM('under','over') NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_product_user_vote (product_id, user_id)
 		`CREATE TABLE IF NOT EXISTS riders (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			user_id INT NOT NULL,
@@ -390,7 +399,7 @@ func CreateTables() error {
 // ensureUserColumns adds missing columns to the users table if they don't exist
 func ensureUserColumns() {
 	columns := []struct {
-		name    string
+		name       string
 		definition string
 	}{
 		{"is_organization", "TINYINT(1) NOT NULL DEFAULT 0"},
@@ -412,7 +421,7 @@ func ensureUserColumns() {
 			AND TABLE_NAME = 'users' 
 			AND COLUMN_NAME = ?
 		`, col.name).Scan(&count)
-		
+
 		if err != nil {
 			log.Printf("Warning: failed to check column %s: %v", col.name, err)
 			continue
