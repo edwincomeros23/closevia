@@ -24,7 +24,7 @@ import {
   AlertIcon,
   AlertDescription,
 } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaClock, FaBox, FaMoneyBillWave, FaStar, FaWifi, FaWifiSlash } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaClock, FaBox, FaMoneyBillWave, FaStar, FaWifi } from 'react-icons/fa'
 import { InfoIcon, WarningIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'
 import { Delivery } from '../types'
@@ -222,7 +222,7 @@ const RiderQueue: React.FC = () => {
             </Text>
           </VStack>
           <HStack spacing={1} px={3} py={2} bg={isOnline ? 'green.50' : 'red.50'} borderRadius="lg">
-            <Icon as={isOnline ? FaWifi : FaWifiSlash} color={isOnline ? 'green.600' : 'red.600'} />
+            <Icon as={FaWifi} color={isOnline ? 'green.600' : 'red.600'} />
             <Text fontSize="xs" fontWeight="bold" color={isOnline ? 'green.700' : 'red.700'}>
               {isOnline ? 'Online' : 'Offline'}
             </Text>
@@ -260,7 +260,8 @@ const RiderQueue: React.FC = () => {
               _hover={{ shadow: 'md', borderColor: 'brand.400' }}
               onClick={() => setSelectedBatch(batch.id)}
             >
-              <CardBody spacing={4}>
+              <CardBody>
+                <VStack spacing={4}>
                 {/* Top Row: Zone + High Demand Badge */}
                 <HStack justify="space-between" align="start">
                   <VStack align="start" spacing={1}>
@@ -352,6 +353,7 @@ const RiderQueue: React.FC = () => {
                 >
                   {isOnline ? 'Claim batch (15m lock)' : 'Offline - Reconnect to claim'}
                 </Button>
+                </VStack>
               </CardBody>
             </Card>
           ))}
