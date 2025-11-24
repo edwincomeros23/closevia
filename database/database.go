@@ -17,40 +17,47 @@ var DB *sql.DB
 
 // InitDatabase initializes the database connection
 func InitDatabase() error {
-	// Get database configuration from environment variables or use the managed defaults
-	dbHost := getEnv("DB_HOST", "mysql-35b52f24-exssasha-e8a2.h.aivencloud.com")
-	dbPort := getEnv("DB_PORT", "27138")
-	dbUser := getEnv("DB_USER", "avnadmin")
-	dbPassword := getEnv("DB_PASSWORD", "AVNS_pLRoBYQKFEmFauYzh65")
-	dbName := getEnv("DB_NAME", "defaultdb")
-	caCertPath := getEnv("DB_CA_CERT", "./ca.pem")
+	// Get database configuration from environment variables ONLY
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+	caCertPath := os.Getenv("DB_CA_CERT")
 
-	// Require that we have a password before proceeding
+	// Validate all required environment variables are set
+	if dbHost == "" {
+		return fmt.Errorf("DB_HOST environment variable is not set")
+	}
+	if dbPort == "" {
+		return fmt.Errorf("DB_PORT environment variable is not set")
+	}
+	if dbUser == "" {
+		return fmt.Errorf("DB_USER environment variable is not set")
+	}
 	if dbPassword == "" {
 		return fmt.Errorf("DB_PASSWORD environment variable is not set")
 	}
-
-	// Managed database requires TLS, but allow opting out via empty cert path
-	useTLS := caCertPath != ""
-	var err error
-
-	if useTLS {
-		tlsConfig, err := createTLSConfig(caCertPath)
-		if err != nil {
-			return fmt.Errorf("failed to create TLS config: %v", err)
-		}
-
-		if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
-			return fmt.Errorf("failed to register TLS config: %v", err)
-		}
+	if dbName == "" {
+		return fmt.Errorf("DB_NAME environment variable is not set")
+	}
+	if caCertPath == "" {
+		return fmt.Errorf("DB_CA_CERT environment variable is not set")
 	}
 
-	// Create DSN (Data Source Name) and opt into TLS when configured
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
+	// Create TLS config (required for Aiven)
+	tlsConfig, err := createTLSConfig(dbHost, caCertPath)
+	if err != nil {
+		return fmt.Errorf("failed to create TLS config: %v", err)
+	}
+
+	if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
+		return fmt.Errorf("failed to register TLS config: %v", err)
+	}
+
+	// Create DSN with TLS enabled
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
 		dbUser, dbPassword, dbHost, dbPort, dbName)
-	if useTLS {
-		dsn += "&tls=custom"
-	}
 
 	// Open database connection
 	var openErr error
@@ -80,7 +87,7 @@ func InitDatabase() error {
 }
 
 // createTLSConfig creates a TLS configuration using the CA certificate
-func createTLSConfig(caCertPath string) (*tls.Config, error) {
+func createTLSConfig(serverName, caCertPath string) (*tls.Config, error) {
 	// Read CA certificate
 	caCert, err := os.ReadFile(caCertPath)
 	if err != nil {
@@ -95,6 +102,7 @@ func createTLSConfig(caCertPath string) (*tls.Config, error) {
 
 	// Create TLS configuration
 	tlsConfig := &tls.Config{
+		ServerName:         serverName,
 		RootCAs:            caCertPool,
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: false,
@@ -376,15 +384,14 @@ func CreateTables() error {
 			is_fragile BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
-			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-			INDEX idx_delivery_items_delivery (delivery_id),
-			INDEX idx_delivery_items_product (product_id)
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
 	}
 
+	// Execute table creation queries
 	for _, query := range queries {
 		if _, err := DB.Exec(query); err != nil {
-			return fmt.Errorf("failed to create table: %v", err)
+			return fmt.Errorf("failed to create tables: %v", err)
 		}
 	}
 
