@@ -29,6 +29,11 @@ import {
   ModalHeader,
   ModalCloseButton,
   ModalBody,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverBody,
+  Divider,
 } from '@chakra-ui/react'
 import { 
   SearchIcon, 
@@ -74,11 +79,12 @@ const useDebounce = (value: string, delay: number) => {
 
 const Home: React.FC = () => {
   const { products, loading, error, searchProducts, loadMore, hasMore, isLoadingMore } = useProducts()
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const { onOpen: openMobileNav } = useMobileNav()
+  const { isOpen: isLogoutModalOpen, onOpen: onOpenLogoutModal, onClose: onCloseLogoutModal } = useDisclosure()
   const { offerCount } = useRealtime() // added realtime usage
   
   // Search state management
@@ -367,6 +373,12 @@ const Home: React.FC = () => {
     setHasSearched(false)
   }
 
+  const handleLogout = () => {
+    logout()
+    onCloseLogoutModal()
+    navigate('/login')
+  }
+
   // Add state for offer sorting
   const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
 
@@ -430,8 +442,8 @@ const Home: React.FC = () => {
             borderRadius="full"
             px={2}
           >
-            <StarIcon mr={1} />
-            Premium
+            <StarIcon mr={0} />
+            
           </Badge>
         )}
         
@@ -498,7 +510,7 @@ const Home: React.FC = () => {
               flexShrink={0}
               cursor="pointer"
               _hover={{ opacity: 0.8 }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               <Text fontSize="md" fontWeight="bold" color="white">
                 {(product.seller_name || 'U').charAt(0).toUpperCase()}
@@ -522,9 +534,18 @@ const Home: React.FC = () => {
           {product.title}
         </Heading>
         
-        <Text color="gray.600" noOfLines={2} mb={3} fontSize="sm" flexShrink={0}>
+        <Text 
+          color="gray.600" 
+          noOfLines={{ base: 1, md: 2 }} 
+          mb={3} 
+          fontSize="sm" 
+          flexShrink={0}
+        >
           {product.description 
-            ? product.description.split(' ').slice(0, 15).join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+            ? product.description
+                .split(' ')
+                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
             : 'No description available'
           }
         </Text>
@@ -656,22 +677,106 @@ const Home: React.FC = () => {
               display={{ base: 'none', md: 'inline-flex' }}
             />
 
-            {/* Profile button (desktop only)  */}
-            <IconButton
-              as={RouterLink}
-              to={user ? `/users/${user.id}` : '/profile'}
-              aria-label="Profile"
-              icon={<FaUserCircle />}
-              variant="ghost"
-              size="lg"
-              display={{ base: 'none', md: 'inline-flex' }}
-            />
+            {/* Profile button (desktop only) with Popover */}
+            {user && (
+              <Popover placement="bottom-end" trigger="hover">
+                <PopoverTrigger>
+                  <IconButton
+                    aria-label="Profile"
+                    icon={<FaUserCircle />}
+                    variant="ghost"
+                    size="lg"
+                    display={{ base: 'none', md: 'inline-flex' }}
+                    _hover={{ bg: 'gray.100' }}
+                    onClick={() => navigate(`/users/${user.id}`)}
+                  />
+                </PopoverTrigger>
+                <PopoverContent w="72" shadow="lg">
+                  <PopoverBody p={4}>
+                    <VStack align="stretch" spacing={3}>
+                      {/* User Info */}
+                      <Box>
+                        <Text fontWeight="semibold" fontSize="sm" color="gray.800">
+                          {user.name || 'User'}
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          {user.email}
+                        </Text>
+                        {user && (user as any).is_premium && (
+                          <Badge colorScheme="yellow" fontSize="xs" mt={2}>
+                            ⭐ Premium Member
+                          </Badge>
+                        )}
+                      </Box>
+                      <Divider />
+                      {/* Action Buttons */}
+                      <Button
+                        as={RouterLink}
+                        to="/settings"
+                        size="sm"
+                        variant="outline"
+                        w="full"
+                        fontSize="sm"
+                      >
+                        Settings
+                      </Button>
+                      <Button
+                        as={RouterLink}
+                        to="/dashboard"
+                        size="sm"
+                        variant="outline"
+                        w="full"
+                        fontSize="sm"
+                      >
+                        Dashboard
+                      </Button>
+                      <Divider />
+                      <Button
+                        size="sm"
+                        colorScheme="red"
+                        variant="outline"
+                        w="full"
+                        fontSize="sm"
+                        onClick={onOpenLogoutModal}
+                      >
+                        Logout
+                      </Button>
+                    </VStack>
+                  </PopoverBody>
+                </PopoverContent>
+              </Popover>
+            )}
+
+            {!user && (
+              <IconButton
+                as={RouterLink}
+                to="/profile"
+                aria-label="Profile"
+                icon={<FaUserCircle />}
+                variant="ghost"
+                size="lg"
+                display={{ base: 'none', md: 'inline-flex' }}
+              />
+            )}
           </HStack>
 
           {/* Expandable Filters */}
           {showFilters && (
-            <Box w="full" maxW="4xl" mx="auto" bg="white" p={4} rounded="lg">
-              <Grid templateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap={4}>
+            <Box 
+              position="absolute"
+              top="100%"
+              left="50%"
+              w="full"
+              bg="white"
+              p={4}
+              rounded="lg"
+              shadow="md"
+              zIndex={50}
+              maxW="6xl"
+              mx="auto"
+              transform="translateX(-50%)"
+            >
+              <Grid templateColumns="repeat(auto-fit, minmax(150px, 1fr))" gap={3}>
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Price Range</FormLabel>
                   <HStack>
@@ -706,6 +811,8 @@ const Home: React.FC = () => {
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Listing Type</FormLabel>
                   <Select
+                    aria-label="Listing type"
+                    title="Listing type"
                     value={filters.premium === undefined ? '' : filters.premium.toString()}
                     onChange={(e) => handleFilterChange('premium', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
@@ -719,6 +826,8 @@ const Home: React.FC = () => {
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Trade Type</FormLabel>
                   <Select
+                    aria-label="Trade type"
+                    title="Trade type"
                     value={filters.barter_only === undefined ? '' : filters.barter_only.toString()}
                     onChange={(e) => handleFilterChange('barter_only', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
@@ -732,6 +841,8 @@ const Home: React.FC = () => {
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">Status</FormLabel>
                   <Select
+                    aria-label="Listing status"
+                    title="Listing status"
                     value={filters.status || ''}
                     onChange={(e) => handleFilterChange('status', e.target.value)}
                     size="sm"
@@ -745,7 +856,7 @@ const Home: React.FC = () => {
                 <FormControl>
                   <FormLabel fontSize="sm" color="gray.600">&nbsp;</FormLabel>
                   <Button
-                    size="sm"
+                    size="xs"
                     variant="outline"
                     onClick={clearFilters}
                     w="full"
@@ -1006,6 +1117,26 @@ const Home: React.FC = () => {
 
       <TradeModal isOpen={isOpen} onClose={onClose} targetProductId={tradeTargetProductId} />
 
+      {/* Logout Confirmation Modal */}
+      <Modal isOpen={isLogoutModalOpen} onClose={onCloseLogoutModal} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Confirm Logout</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text>Are you sure you want to logout?</Text>
+          </ModalBody>
+          <Box p={4} display="flex" gap={3} justifyContent="flex-end">
+            <Button variant="outline" onClick={onCloseLogoutModal}>
+              Cancel
+            </Button>
+            <Button colorScheme="red" onClick={handleLogout}>
+              Logout
+            </Button>
+          </Box>
+        </ModalContent>
+      </Modal>
+
       {/* Offers Modal - Simplified with Ranking */}
       <Modal isOpen={offersModalOpen} onClose={() => setOffersModalOpen(false)} size="2xl">
         <ModalOverlay />
@@ -1085,7 +1216,7 @@ const Home: React.FC = () => {
                     <HStack spacing={2} flexWrap="wrap">
                       {offer.items && offer.items.map((item: any, idx: number) => (
                         <Badge key={idx} colorScheme="blue" variant="outline" fontSize="xs">
-                          {item.product_title?.substring(0, 20) || `Item ${idx + 1}`}
+                          {item.product_title?.substring(0, 15) || `Item ${idx + 1}`}
                         </Badge>
                       ))}
                     </HStack>
@@ -1120,3 +1251,18 @@ const Home: React.FC = () => {
 }
 
 export default Home
+
+{/*}
+import React from 'react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+
+const App = () => {
+  return (
+    <DotLottieReact
+      src="path/to/animation.lottie"
+      loop
+      autoplay
+    />
+  );
+};
+*/}

@@ -25,14 +25,15 @@ import {
   Center,
   useToast,
   Select,
+  Image as ChakraImage,
 } from '@chakra-ui/react'
 import { useProducts } from '../contexts/ProductContext'
 import { ProductUpdate } from '../types'
 import { api } from '../services/api'
 
 const EditProduct: React.FC = () => {
-  const { id } = useParams<{ id: string }>()
   const { updateProduct } = useProducts()
+  const { id } = useParams<{ id: string }>()
   const [formData, setFormData] = useState<ProductUpdate>({})
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
@@ -293,7 +294,6 @@ const EditProduct: React.FC = () => {
                     Leave empty to keep current title
                   </FormHelperText>
                 </FormControl>
-
                 <FormControl>
                   <FormLabel>Description</FormLabel>
                   <Textarea
@@ -309,8 +309,9 @@ const EditProduct: React.FC = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Price (PHP)</FormLabel>
+                  <FormLabel htmlFor="price">Price (PHP)</FormLabel>
                   <NumberInput
+                    id="price"
                     value={formData.price !== undefined ? formData.price : originalProduct.price}
                     onChange={(value) => handleInputChange('price', parseFloat(value) || 0)}
                     min={0}
@@ -329,12 +330,14 @@ const EditProduct: React.FC = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Condition</FormLabel>
+                  <FormLabel htmlFor="condition">Condition</FormLabel>
                   <Select
+                    id="condition"
                     value={formData.condition || ''}
                     onChange={(e) => handleInputChange('condition', e.target.value)}
                     placeholder="Select condition"
                     size="lg"
+                    aria-label="Product condition"
                   >
                     <option value="New">New</option>
                     <option value="Like-New">Like-New</option>
@@ -366,7 +369,7 @@ const EditProduct: React.FC = () => {
                     type="file"
                     accept="image/*"
                     multiple
-                    style={{ display: 'none' }}
+                    hidden
                     onChange={(e) => handleAddImageFiles(e.target.files)}
                   />
                   <Button onClick={() => document.getElementById('edit-image-input')?.click()}>Add image</Button>
@@ -376,7 +379,7 @@ const EditProduct: React.FC = () => {
                     <VStack align="stretch" spacing={2} mt={3}>
                       {imagePreviews.map((url, idx) => (
                         <HStack key={idx} spacing={3} align="center">
-                          <img src={url} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
+                          <ChakraImage src={url} alt={`Preview ${idx + 1}`} boxSize="80px" objectFit="cover" borderRadius="6px" />
                           <Text fontSize="sm" color="gray.600" noOfLines={1}>{url.startsWith('data:') ? 'Local preview' : url}</Text>
                           <Button size="sm" onClick={() => removeImageAt(idx)}>Remove</Button>
                         </HStack>
@@ -401,12 +404,14 @@ const EditProduct: React.FC = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel>Status</FormLabel>
+                  <FormLabel htmlFor="status">Status</FormLabel>
                   <Select
+                    id="status"
                     value={formData.status || originalProduct.status}
                     onChange={(e) => handleInputChange('status', e.target.value)}
                     placeholder="Select status"
                     size="lg"
+                    aria-label="Product status"
                   >
                     <option value="available">Available</option>
                     <option value="bartered">Bartered</option>
