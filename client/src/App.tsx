@@ -1,3 +1,5 @@
+import React from 'react'
+import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text, useColorMode } from '@chakra-ui/react'
 import React, { Suspense, lazy } from 'react'
 import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text } from '@chakra-ui/react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
@@ -30,6 +32,29 @@ import AdminRoute from './components/AdminRoute'
 import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
 
+// Theme applier component - loads and applies saved theme preference
+const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { colorMode, setColorMode } = useColorMode()
+  
+  React.useEffect(() => {
+    try {
+      const saved = localStorage.getItem('user_settings')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed.darkMode !== undefined) {
+          const targetMode = parsed.darkMode ? 'dark' : 'light'
+          if (colorMode !== targetMode) {
+            setColorMode(targetMode)
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [])
+  
+  return <>{children}</>
+}
 // Lazy load delivery option components with error handling
 const RiderQueue = lazy(() => import('./delivery_option/Riderqueue').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Queue</Text></Box> })))
 const BatchPreview = lazy(() => import('./delivery_option/BatchPreview').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Preview</Text></Box> })))
@@ -142,17 +167,19 @@ const AppContent: React.FC = () => {
 function App() {
   return (
     <ChakraProvider theme={theme}>
-      <AuthProvider>
-        <ProductProvider>
-          <MobileNavProvider>
-            <RealtimeProvider>
-              <Router>
-                <AppContent />
-              </Router>
-            </RealtimeProvider>
-          </MobileNavProvider>
-        </ProductProvider>
-      </AuthProvider>
+      <ThemeApplier>
+        <AuthProvider>
+          <ProductProvider>
+            <MobileNavProvider>
+              <RealtimeProvider>
+                <Router>
+                  <AppContent />
+                </Router>
+              </RealtimeProvider>
+            </MobileNavProvider>
+          </ProductProvider>
+        </AuthProvider>
+      </ThemeApplier>
     </ChakraProvider>
   )
 }

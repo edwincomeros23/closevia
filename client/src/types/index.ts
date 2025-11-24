@@ -43,10 +43,14 @@ export interface Product {
   created_at: string
   updated_at: string
   wishlist_count?: number;
+<<<<<<< HEAD
   counterfeit_confidence?: number;
   counterfeit_flags?: string[];
   latitude?: number;
   longitude?: number;
+=======
+  offer_count?: number;
+>>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 }
 
 export interface Order {
