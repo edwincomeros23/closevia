@@ -122,7 +122,7 @@ const Dashboard: React.FC = () => {
   const [declineFeedback, setDeclineFeedback] = useState('')
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
-  const offersPollingInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+  const offersPollingInterval = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Delivery modals state
   const [deliveryRequestModalOpen, setDeliveryRequestModalOpen] = useState(false)
