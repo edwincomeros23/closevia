@@ -968,11 +968,7 @@ const ProductDetail: React.FC = () => {
                 flexShrink={0}
               >
                 <Text fontSize="24px" fontWeight="bold" color="white">
-<<<<<<< HEAD
-                  {product.seller_name ? product.seller_name.charAt(0).toUpperCase() : '?'}
-=======
                   {(product.seller_name ?? '?').charAt(0).toUpperCase()}
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
                 </Text>
               </Box>
               <Box>
@@ -1039,171 +1035,6 @@ const ProductDetail: React.FC = () => {
             Seller Products
           </Heading>
           <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={4}>
-<<<<<<< HEAD
-            {/* Product Card 1 */}
-            <Box
-              borderWidth="1px"
-              borderRadius="lg"
-              overflow="hidden"
-              bg="white"
-              _hover={{ shadow: 'md', cursor: 'pointer' }}
-              transition="all 0.3s"
-            >
-              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
-                <Image
-                  src={getImageUrl('/uploads/1755585883998559300_Pink_Birkin_bag')}
-                  alt="Product 1"
-                  w="full"
-                  h="full"
-                  objectFit="cover"
-                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
-                />
-                <Badge position="absolute" top={2} right={2} colorScheme="teal" fontSize="xs">
-                  available
-                </Badge>
-              </Box>
-              <Box p={3}>
-                <HStack justify="space-between" mb={2}>
-                  <Heading size="sm" noOfLines={1}>SAYGEXX</Heading>
-                  <Badge colorScheme="orange" fontSize="xs">
-                    Premium
-                  </Badge>
-                </HStack>
-                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
-                  asd
-                </Text>
-                <Text fontSize="sm" fontWeight="bold" color="brand.500">
-                  ₱150
-                </Text>
-                <Badge colorScheme="cyan" mt={2} fontSize="xs">
-                  Barter Only
-                </Badge>
-              </Box>
-            </Box>
-
-            {/* Product Card 2 */}
-            <Box
-              borderWidth="1px"
-              borderRadius="lg"
-              overflow="hidden"
-              bg="white"
-              _hover={{ shadow: 'md', cursor: 'pointer' }}
-              transition="all 0.3s"
-            >
-              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
-                <Image
-                  src={getImageUrl('/uploads/1755585326243827700_image_')}
-                  alt="Unli water baso"
-                  w="full"
-                  h="full"
-                  objectFit="cover"
-                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
-                />
-                <Badge position="absolute" top={2} right={2} colorScheme="teal" fontSize="xs">
-                  available
-                </Badge>
-              </Box>
-              <Box p={3}>
-                <HStack justify="space-between" mb={2}>
-                  <Heading size="sm" noOfLines={1}>Unli water baso</Heading>
-                  <Badge colorScheme="orange" fontSize="xs">
-                    Premium
-                  </Badge>
-                </HStack>
-                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
-                  it has endless water inside the baso
-                </Text>
-                <Text fontSize="sm" fontWeight="bold" color="brand.500" mb={2}>
-                  ₱0
-                </Text>
-                <Badge colorScheme="cyan" mt={2} fontSize="xs">
-                  Barter Only
-                </Badge>
-              </Box>
-            </Box>
-
-            {/* Product Card 3 */}
-            <Box
-              borderWidth="1px"
-              borderRadius="lg"
-              overflow="hidden"
-              bg="white"
-              _hover={{ shadow: 'md', cursor: 'pointer' }}
-              transition="all 0.3s"
-            >
-              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
-                <Image
-                  src={getImageUrl('/uploads/1755590839905072000_ssdd.z')}
-                  alt="Endless bag"
-                  w="full"
-                  h="full"
-                  objectFit="cover"
-                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
-                />
-                <Badge position="absolute" top={2} right={2} colorScheme="red" fontSize="xs">
-                  sold
-                </Badge>
-              </Box>
-              <Box p={3}>
-                <HStack justify="space-between" mb={2}>
-                  <Heading size="sm" noOfLines={1}>Endless bag</Heading>
-                  <Badge colorScheme="orange" fontSize="xs">
-                    Premium
-                  </Badge>
-                </HStack>
-                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
-                  you can put anything inside this bag
-                </Text>
-                <Text fontSize="sm" fontWeight="bold" color="brand.500" mb={2}>
-                  ₱0
-                </Text>
-                <Badge colorScheme="cyan" mt={2} fontSize="xs">
-                  Barter Only
-                </Badge>
-              </Box>
-            </Box>
-
-            {/* Product Card 4 */}
-            <Box
-              borderWidth="1px"
-              borderRadius="lg"
-              overflow="hidden"
-              bg="white"
-              _hover={{ shadow: 'md', cursor: 'pointer' }}
-              transition="all 0.3s"
-            >
-              <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
-                <Image
-                  src={getImageUrl('/uploads/1755600258252118900_images')}
-                  alt="headphone made in ph"
-                  w="full"
-                  h="full"
-                  objectFit="cover"
-                  fallbackSrc="https://via.placeholder.com/400x300?text=No+Image"
-                />
-                <Badge position="absolute" top={2} right={2} colorScheme="red" fontSize="xs">
-                  sold
-                </Badge>
-              </Box>
-              <Box p={3}>
-                <HStack justify="space-between" mb={2}>
-                  <Heading size="sm" noOfLines={1}>headphone made in ph</Heading>
-                  <Badge colorScheme="orange" fontSize="xs">
-                    Premium
-                  </Badge>
-                </HStack>
-                <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
-                  you can hear something you should not hear
-                </Text>
-                <Text fontSize="sm" fontWeight="bold" color="brand.500" mb={2}>
-                  ₱0
-                </Text>
-                <Badge colorScheme="cyan" mt={2} fontSize="xs">
-                  Barter Only
-                </Badge>
-              </Box>
-            </Box>
-=======
             {sellerProducts && sellerProducts.length > 0 ? (
               sellerProducts.map((p) => (
                 <Box
@@ -1253,7 +1084,6 @@ const ProductDetail: React.FC = () => {
                 <Text color="gray.600">No other products from this seller.</Text>
               </Box>
             )}
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
           </SimpleGrid>
         </Box>
       </VStack>

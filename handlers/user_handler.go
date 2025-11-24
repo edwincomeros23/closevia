@@ -205,16 +205,11 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	}
 
 	var user models.User
+	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
-<<<<<<< HEAD
 		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') as profile_picture, created_at, updated_at FROM users WHERE id = ?",
 		userID,
 	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.CreatedAt, &user.UpdatedAt)
-=======
-		"SELECT id, name, email, role, verified, created_at, updated_at, profile_picture FROM users WHERE id = ?",
-		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.CreatedAt, &user.UpdatedAt, &user.ProfilePicture)
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -309,20 +304,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	})
 }
 
-<<<<<<< HEAD
 // UploadProfilePicture handles uploading a single profile image and returns its URL
 func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
-=======
-// ChangePassword allows an authenticated user to change their password.
-// Expects JSON: { current_password, new_password, confirm_password }
-func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
-<<<<<<< HEAD
 	file, err := c.FormFile("image")
 	if err != nil {
 		// Debug info: log content-type and underlying error to help diagnose upload issues
@@ -357,7 +345,16 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: url, Message: "Uploaded"})
-=======
+}
+
+// ChangePassword allows an authenticated user to change their password.
+// Expects JSON: { current_password, new_password, confirm_password }
+func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
 	var req struct {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
@@ -408,7 +405,6 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Password changed successfully"})
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 }
 
 // GetUserByID gets a user by ID (public info only)
@@ -640,10 +636,7 @@ func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
 			Error:   "User not authenticated",
 		})
 	}
-<<<<<<< HEAD
-=======
 
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 	productID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(models.APIResponse{
@@ -652,18 +645,11 @@ func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
 		})
 	}
 	var isSaved bool
-<<<<<<< HEAD
-	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00'))", userID, productID).Scan(&isSaved)
-	if err != nil {
-		fmt.Printf("❌ CheckSavedProduct query failed!\n")
-		fmt.Printf("UserID: %d, ProductID: %d\n", userID, productID)
-		fmt.Printf("Error: %v\n", err)
-=======
-	query := "SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ?)"
+	// Keep check that excludes soft-deleted saved_products
+	query := "SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00'))"
 	if err := h.db.QueryRow(query, userID, productID).Scan(&isSaved); err != nil {
 		// Log for debugging
 		fmt.Printf("❌ Failed to check saved status (user=%d, product=%d): %v\n", userID, productID, err)
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to check saved status: " + err.Error(),

@@ -8,11 +8,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>
   register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<void>
   logout: () => void
-<<<<<<< HEAD
   updateProfile: (payload: { name?: string; email?: string; profile_picture?: string }) => Promise<void>
-=======
   refreshUser: () => Promise<void>
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
   loading: boolean
 }
 
@@ -184,11 +181,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     register,
     logout,
-<<<<<<< HEAD
     updateProfile,
-=======
     refreshUser,
->>>>>>> 15411a4 (	modified:   client/src/App.tsx)
     loading,
   }
 
