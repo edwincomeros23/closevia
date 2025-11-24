@@ -17,19 +17,20 @@ var DB *sql.DB
 
 // InitDatabase initializes the database connection
 func InitDatabase() error {
-	// Get database configuration from environment variables or use sane local defaults
-	dbHost := getEnv("DB_HOST", "127.0.0.1")
-	dbPort := getEnv("DB_PORT", "3306")
-	dbUser := getEnv("DB_USER", "root")
-	dbPassword := getEnv("DB_PASSWORD", "")
-	dbName := getEnv("DB_NAME", "closevia")
-	caCertPath := getEnv("DB_CA_CERT", "")
+	// Get database configuration from environment variables or use the managed defaults
+	dbHost := getEnv("DB_HOST", "mysql-35b52f24-exssasha-e8a2.h.aivencloud.com")
+	dbPort := getEnv("DB_PORT", "27138")
+	dbUser := getEnv("DB_USER", "avnadmin")
+	dbPassword := getEnv("DB_PASSWORD", "AVNS_pLRoBYQKFEmFauYzh65")
+	dbName := getEnv("DB_NAME", "defaultdb")
+	caCertPath := getEnv("DB_CA_CERT", "./ca.pem")
 
+	// Require that we have a password before proceeding
 	if dbPassword == "" {
-		log.Println("Warning: DB_PASSWORD is empty; continuing with provided defaults")
+		return fmt.Errorf("DB_PASSWORD environment variable is not set")
 	}
 
-	// Configure TLS only when a CA certificate is provided
+	// Managed database requires TLS, but allow opting out via empty cert path
 	useTLS := caCertPath != ""
 	var err error
 
