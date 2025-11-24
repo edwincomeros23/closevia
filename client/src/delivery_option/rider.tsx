@@ -113,7 +113,9 @@ const RiderJobs: React.FC = () => {
   const fetchAvailableDeliveries = async () => {
     try {
       setLoading(true)
-      const response = await api.get('/api/deliveries/available')
+      const response = await api.get('/api/deliveries', {
+        params: { status: 'pending' }
+      })
       const deliveries: Delivery[] = response.data?.data || []
       
       // Convert to DeliveryJob format
@@ -161,12 +163,21 @@ const RiderJobs: React.FC = () => {
 
       setPendingJobs(jobs)
     } catch (error: any) {
-      console.error('Failed to fetch available deliveries:', error)
-      toast({
-        title: 'Error',
-        description: error?.response?.data?.error || 'Failed to load available deliveries',
-        status: 'error',
-      })
+      console.error('Failed to fetch available deliveries:', error.response?.status, error.response?.data)
+      if (error.response?.status === 400) {
+        toast({
+          title: 'Bad Request',
+          description: 'Invalid query parameters. Please try again.',
+          status: 'warning',
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: error?.response?.data?.error || 'Failed to load available deliveries',
+          status: 'error',
+        })
+      }
+      setPendingJobs([])
     } finally {
       setLoading(false)
     }
@@ -175,7 +186,9 @@ const RiderJobs: React.FC = () => {
   // Fetch rider's claimed deliveries
   const fetchClaimedDeliveries = async () => {
     try {
-      const response = await api.get('/api/deliveries/rider/my-deliveries')
+      const response = await api.get('/api/deliveries', {
+        params: { status: 'claimed,picked_up,in_transit' }
+      })
       const deliveries: Delivery[] = response.data?.data || []
       
       const jobs: DeliveryJob[] = deliveries.map((d: Delivery) => {
@@ -211,7 +224,23 @@ const RiderJobs: React.FC = () => {
 
       setClaimedDeliveries(jobs)
     } catch (error: any) {
-      console.error('Failed to fetch claimed deliveries:', error)
+      console.error('Failed to fetch claimed deliveries:', error.response?.status, error.response?.data)
+      if (error.response?.status === 403) {
+        toast({
+          title: 'Access Denied',
+          description: 'You do not have permission to view these deliveries.',
+          status: 'warning',
+        })
+      } else if (error.response?.status === 400) {
+        toast({
+          title: 'Bad Request',
+          description: 'Invalid query. Please refresh the page.',
+          status: 'warning',
+        })
+      } else {
+        console.error('Error details:', error?.response?.data)
+      }
+      setClaimedDeliveries([])
     }
   }
 
@@ -388,52 +417,72 @@ const RiderJobs: React.FC = () => {
                       .filter(job => job.status === 'pending')
                       .map(job => (
                     <Card key={job.id} bg="white" border="1px" borderColor="gray.200">
-                      <CardBody p={3}>
+                      <CardBody p={2}>
                         <VStack spacing={2} align="stretch">
-                          {/* Header Row */}
+                          {/* Header: Type & Fee */}
                           <HStack justify="space-between" align="start">
-                            <VStack align="start" spacing={0} flex={1}>
-                              <HStack spacing={2}>
-                                <Badge fontSize="2xs" colorScheme={getDeliveryColor(job.deliveryType)}>
-                                  {job.deliveryType === 'express' ? '⭐ Express' : '💰 Standard'}
+                            <HStack spacing={1}>
+                              <Badge fontSize="2xs" colorScheme={getDeliveryColor(job.deliveryType)}>
+                                {job.deliveryType === 'express' ? '⭐ Express' : '💰 Standard'}
+                              </Badge>
+                              {job.isFragile && (
+                                <Badge fontSize="2xs" colorScheme="red">
+                                  🔴 Fragile
                                 </Badge>
-                                {job.isFragile && (
-                                  <Badge fontSize="2xs" colorScheme="red">
-                                    🔴 Fragile
-                                  </Badge>
-                                )}
-                              </HStack>
-                                  <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                                {job.itemCount} item{job.itemCount !== 1 ? 's' : ''}
-                              </Text>
-                            </VStack>
-                            <Text fontWeight="bold" color="brand.600">
+                              )}
+                            </HStack>
+                            <Text fontWeight="bold" fontSize="md" color="brand.600">
                               ₱{job.fee}
                             </Text>
                           </HStack>
 
-                          {/* Details Grid */}
-                          <SimpleGrid columns={2} spacing={2} fontSize="xs">
+                          {/* Sender & Addresses - Single Block */}
+                          <VStack spacing={1} align="stretch" fontSize="xs" bg="gray.50" p={2} borderRadius="md">
                             <HStack spacing={1}>
-                              <Icon as={FaMapMarkerAlt} color="red.500" boxSize={3} />
-                              <Text color="gray.600">{job.distance}</Text>
+                              <Text color="gray.600" fontWeight="bold" minW="35px">From:</Text>
+                              <Text fontSize="xs" color="gray.800" noOfLines={1} flex={1}>
+                                {job.sender || 'Customer'}
+                              </Text>
                             </HStack>
-                            <HStack spacing={1}>
+                            <HStack spacing={1} align="flex-start">
+                              <Icon as={FaMapMarkerAlt} color="green.500" boxSize={3} flexShrink={0} minW="24px" />
+                              <Text fontSize="xs" color="gray.800" noOfLines={1} flex={1}>
+                                {job.pickupLocation || 'N/A'}
+                              </Text>
+                            </HStack>
+                            <HStack spacing={1} align="flex-start">
+                              <Icon as={FaMapMarkerAlt} color="red.500" boxSize={3} flexShrink={0} minW="24px" />
+                              <Text fontSize="xs" color="gray.800" noOfLines={1} flex={1}>
+                                {job.dropoffLocation || 'N/A'}
+                              </Text>
+                            </HStack>
+                          </VStack>
+
+                          {/* Distance, Items, Time - Grid */}
+                          <SimpleGrid columns={3} spacing={1} fontSize="2xs">
+                            <VStack align="center" spacing={0} bg="gray.50" py={1} px={1} borderRadius="sm">
+                              <Icon as={FaMapMarkerAlt} color="orange.500" boxSize={3} />
+                              <Text fontWeight="bold" color="gray.800">
+                                {job.distance || 'N/A'}
+                              </Text>
+                            </VStack>
+                            <VStack align="center" spacing={0} bg="gray.50" py={1} px={1} borderRadius="sm">
+                              <Icon as={FaBox} color="blue.500" boxSize={3} />
+                              <Text fontWeight="bold" color="gray.800">
+                                {job.itemCount}
+                              </Text>
+                            </VStack>
+                            <VStack align="center" spacing={0} bg="gray.50" py={1} px={1} borderRadius="sm">
                               <Icon as={FaClock} color="blue.500" boxSize={3} />
-                              <Text color="gray.600">{job.pickupWindow}</Text>
-                            </HStack>
-                            <HStack spacing={1}>
-                              <Icon as={FaBox} color="gray.600" boxSize={3} />
-                              <Text color="gray.600">{job.itemCount} item(s)</Text>
-                            </HStack>
-                            <Text color="gray.600" fontSize="xs">
-                              {job.sender}
-                            </Text>
+                              <Text fontWeight="bold" color="gray.800" noOfLines={1}>
+                                {job.pickupWindow || 'ASAP'}
+                              </Text>
+                            </VStack>
                           </SimpleGrid>
 
-                          {/* Accept Button */}
+                          {/* Claim Button */}
                           <Button
-                            size="sm"
+                            size="xs"
                             colorScheme="brand"
                             w="full"
                             onClick={() => handleAcceptDelivery(job)}
@@ -441,7 +490,7 @@ const RiderJobs: React.FC = () => {
                               d.status !== 'delivered' && d.status !== 'cancelled'
                             )}
                           >
-                            Claim Delivery
+                            Claim
                           </Button>
                         </VStack>
                       </CardBody>
