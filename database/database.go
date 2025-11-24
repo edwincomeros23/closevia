@@ -388,48 +388,7 @@ func CreateTables() error {
 		}
 	}
 
-	// Create indexes
-	indexQueries := []string{
-		"CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_id)",
-		"CREATE INDEX IF NOT EXISTS idx_products_status ON products(status)",
-		"CREATE INDEX IF NOT EXISTS idx_products_premium ON products(premium)",
-		"CREATE INDEX IF NOT EXISTS idx_orders_buyer ON orders(buyer_id)",
-		"CREATE INDEX IF NOT EXISTS idx_orders_product ON orders(product_id)",
-		"CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
-		"CREATE INDEX IF NOT EXISTS idx_transactions_order ON transactions(order_id)",
-		"CREATE INDEX IF NOT EXISTS idx_premium_listings_product ON premium_listings(product_id)",
-		"CREATE INDEX IF NOT EXISTS idx_premium_listings_dates ON premium_listings(start_date, end_date)",
-		"CREATE INDEX IF NOT EXISTS idx_conversations_participants ON conversations(buyer_id, seller_id)",
-		"CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)",
-		"CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trades_participants ON trades(buyer_id, seller_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trades_target ON trades(target_product_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)",
-		"CREATE INDEX IF NOT EXISTS idx_trade_items_trade ON trade_items(trade_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trade_items_product ON trade_items(product_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trade_messages_trade ON trade_messages(trade_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trade_messages_sender ON trade_messages(sender_id)",
-		"CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)",
-		"CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(is_read)",
-		"CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type)",
-		"CREATE INDEX IF NOT EXISTS idx_comments_product ON comments(product_id)",
-		"CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id)",
-		"CREATE INDEX IF NOT EXISTS idx_wishlists_user ON wishlists(user_id)",
-		"CREATE INDEX IF NOT EXISTS idx_wishlists_product ON wishlists(product_id)",
-		"CREATE INDEX IF NOT EXISTS idx_riders_user ON riders(user_id)",
-		"CREATE INDEX IF NOT EXISTS idx_riders_active ON riders(is_active)",
-		"CREATE INDEX IF NOT EXISTS idx_deliveries_user ON deliveries(user_id)",
-		"CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status)",
-		"CREATE INDEX IF NOT EXISTS idx_delivery_items_delivery ON delivery_items(delivery_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trade_events_trade ON trade_events(trade_id)",
-		"CREATE INDEX IF NOT EXISTS idx_trade_events_actor ON trade_events(actor_id)",
-	}
-
-	for _, query := range indexQueries {
-		if _, err := DB.Exec(query); err != nil {
-			log.Printf("Warning: failed to create index: %v", err)
-		}
-	}
+	ensureIndexes()
 
 	ensureUserColumns()
 	ensureProductColumns()
@@ -567,4 +526,72 @@ func contains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ensureIndexes creates indexes if they do not exist (MySQL < 8.0.21 lacks CREATE INDEX IF NOT EXISTS)
+func ensureIndexes() {
+	indexes := []struct {
+		table   string
+		name    string
+		columns string
+	}{
+		{"products", "idx_products_seller", "seller_id"},
+		{"products", "idx_products_status", "status"},
+		{"products", "idx_products_premium", "premium"},
+		{"orders", "idx_orders_buyer", "buyer_id"},
+		{"orders", "idx_orders_product", "product_id"},
+		{"orders", "idx_orders_status", "status"},
+		{"transactions", "idx_transactions_order", "order_id"},
+		{"premium_listings", "idx_premium_listings_product", "product_id"},
+		{"premium_listings", "idx_premium_listings_dates", "start_date, end_date"},
+		{"conversations", "idx_conversations_participants", "buyer_id, seller_id"},
+		{"messages", "idx_messages_conversation", "conversation_id"},
+		{"messages", "idx_messages_sender", "sender_id"},
+		{"trades", "idx_trades_participants", "buyer_id, seller_id"},
+		{"trades", "idx_trades_target", "target_product_id"},
+		{"trades", "idx_trades_status", "status"},
+		{"trade_items", "idx_trade_items_trade", "trade_id"},
+		{"trade_items", "idx_trade_items_product", "product_id"},
+		{"trade_messages", "idx_trade_messages_trade", "trade_id"},
+		{"trade_messages", "idx_trade_messages_sender", "sender_id"},
+		{"notifications", "idx_notifications_user", "user_id"},
+		{"notifications", "idx_notifications_read", "is_read"},
+		{"notifications", "idx_notifications_type", "type"},
+		{"comments", "idx_comments_product", "product_id"},
+		{"comments", "idx_comments_user", "user_id"},
+		{"wishlists", "idx_wishlists_user", "user_id"},
+		{"wishlists", "idx_wishlists_product", "product_id"},
+		{"riders", "idx_riders_user", "user_id"},
+		{"riders", "idx_riders_active", "is_active"},
+		{"deliveries", "idx_deliveries_user", "user_id"},
+		{"deliveries", "idx_deliveries_status", "status"},
+		{"delivery_items", "idx_delivery_items_delivery", "delivery_id"},
+		{"trade_events", "idx_trade_events_trade", "trade_id"},
+		{"trade_events", "idx_trade_events_actor", "actor_id"},
+	}
+
+	for _, idx := range indexes {
+		var count int
+		err := DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.STATISTICS
+			WHERE TABLE_SCHEMA = DATABASE()
+			  AND TABLE_NAME = ?
+			  AND INDEX_NAME = ?
+		`, idx.table, idx.name).Scan(&count)
+		if err != nil {
+			log.Printf("Warning: failed to check index %s on %s: %v", idx.name, idx.table, err)
+			continue
+		}
+		if count > 0 {
+			continue
+		}
+
+		query := fmt.Sprintf("CREATE INDEX %s ON %s(%s)", idx.name, idx.table, idx.columns)
+		if _, err := DB.Exec(query); err != nil {
+			log.Printf("Warning: failed to create index %s on %s: %v", idx.name, idx.table, err)
+		} else {
+			log.Printf("Created missing index %s on %s", idx.name, idx.table)
+		}
+	}
 }
