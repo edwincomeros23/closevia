@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react'
 import { Product, ProductCreate, ProductUpdate, SearchFilters, PaginatedResponse } from '../types'
-import { useAuth } from './AuthContext'
 import { api } from '../services/api'
 
 interface ProductContextType {
@@ -34,7 +33,10 @@ interface ProductProviderProps {
 }
 
 export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) => {
-  const { token } = useAuth() // Get auth token from context
+  // Avoid calling `useAuth()` here to prevent errors when provider ordering
+  // is incorrect during initialization. Read token from localStorage instead
+  // which is safe even if `AuthProvider` isn't present yet.
+  const [token] = useState<string | null>(() => localStorage.getItem('clovia_token'))
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,11 +44,101 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false)
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [currentFilters, setCurrentFilters] = useState<SearchFilters | null>(null)
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const locationRequested = useRef(false)
+
+  // Get user's current location
+  useEffect(() => {
+    if (locationRequested.current) return
+    locationRequested.current = true
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          })
+        },
+        (error) => {
+          console.warn('Geolocation error:', error.message)
+          // Don't set error state, just silently fail - distance will show fallback
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000, // Cache for 5 minutes
+        }
+      )
+    }
+  }, [])
+
+  // Recalculate distances when user location becomes available
+  useEffect(() => {
+    if (userLocation && products.length > 0) {
+      const productsWithDistance = addDistanceToProducts(products)
+      setProducts(productsWithDistance)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation])
+
+  // Calculate distance between two coordinates using Haversine formula
+  const calculateDistance = (
+    lat1: number,
+    lng1: number,
+    lat2: number,
+    lng2: number
+  ): number => {
+    const R = 6371 // Earth's radius in kilometers
+    const dLat = ((lat2 - lat1) * Math.PI) / 180
+    const dLng = ((lng2 - lng1) * Math.PI) / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  // Format distance for display
+  const formatDistance = (distanceKm: number): string => {
+    if (distanceKm < 1) {
+      return `${Math.round(distanceKm * 1000)}m nearby`
+    } else if (distanceKm < 10) {
+      return `${distanceKm.toFixed(1)}km nearby`
+    } else {
+      return `${Math.round(distanceKm)}km away`
+    }
+  }
+
+  // Add distance to products
+  const addDistanceToProducts = (productsList: Product[]): Product[] => {
+    if (!userLocation) return productsList
+
+    return productsList.map((product) => {
+      if (product.latitude && product.longitude) {
+        const distance = calculateDistance(
+          userLocation.lat,
+          userLocation.lng,
+          product.latitude,
+          product.longitude
+        )
+        return {
+          ...product,
+          distance: formatDistance(distance),
+        }
+      }
+      return product
+    })
+  }
 
   // Helper function to ensure products is always an array
   const safeSetProducts = (newProducts: Product[] | null | undefined) => {
     if (Array.isArray(newProducts)) {
-      setProducts(newProducts)
+      const productsWithDistance = addDistanceToProducts(newProducts)
+      setProducts(productsWithDistance)
     } else {
       setProducts([])
     }
@@ -182,7 +274,8 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (response.data && response.data.data) {
         const data = response.data.data as PaginatedResponse<Product>
         const newItems = Array.isArray(data?.data) ? data.data : []
-        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItems] : newItems))
+        const newItemsWithDistance = addDistanceToProducts(newItems)
+        setProducts(prev => (Array.isArray(prev) ? [...prev, ...newItemsWithDistance] : newItemsWithDistance))
         setCurrentPage(data.page || nextPage)
         const totalPages = data.total_pages || 0
         if (totalPages > 0) {

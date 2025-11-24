@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
-import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea } from '@chakra-ui/react'
+import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden } from '@chakra-ui/react'
 import { FaHandshake, FaTimes, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { api } from '../services/api'
 import { Trade, TradeAction } from '../types'
@@ -369,8 +369,8 @@ const Offers: React.FC = () => {
         textTransform="none"
         boxShadow="sm"
       >
-        <span style={{ fontSize: '0.9em' }}>{icon}</span>
-        <span>{statusText}</span>
+        <Text as="span" fontSize="0.9em">{icon}</Text>
+        <Text as="span">{statusText}</Text>
       </Badge>
     )
   }
@@ -421,14 +421,19 @@ const Offers: React.FC = () => {
   return (
     <Box minH="100vh" bg="#FFFDF1">
       <Box px={8} py={20}>
-        <Slide direction="top" in={!loading} style={{ zIndex: 10 }}>
-          <HStack justify="space-between" mb={4} pl={24} mt={4}>
+        <Slide direction="top" in={!loading}>
+          <HStack justify="space-between" mb={4} pl={24} mt={4} zIndex={10}>
             <Heading size="lg" color="brand.500" fontWeight="bold">
               Trade Management
             </Heading>
             <HStack spacing={3} mt={2}>
               <Text fontSize="sm" color="gray.500" fontWeight="medium">Sort:</Text>
+              <VisuallyHidden as="label" htmlFor="sort-select" id="sort-select-label">Sort offers</VisuallyHidden>
               <Select 
+                id="sort-select"
+                aria-labelledby="sort-select-label"
+                aria-label="Sort offers"
+                title="Sort offers"
                 size="sm" 
                 value={sort} 
                 onChange={e => setSort(e.target.value as any)} 
@@ -602,9 +607,11 @@ const Offers: React.FC = () => {
                     rounded="md"
                     fontSize="xs"
                     textTransform="none"
-                    leftIcon={<span>💬</span>}
                   >
-                    Received
+                    <HStack spacing={2} align="center">
+                      <Box as="span">💬</Box>
+                      <Box>Received</Box>
+                    </HStack>
                   </Badge>
 
                   {/* Top-right: status */}
@@ -716,9 +723,11 @@ const Offers: React.FC = () => {
                       rounded="md"
                       fontSize="xs"
                       textTransform="none"
-                      leftIcon={<span>📤</span>}
                     >
-                      Sent
+                      <HStack spacing={2} align="center">
+                        <Box as="span">📤</Box>
+                        <Box>Sent</Box>
+                      </HStack>
                     </Badge>
 
                     {/* Top-right: status */}
@@ -821,9 +830,11 @@ const Offers: React.FC = () => {
                       rounded="md"
                       fontSize="xs"
                       textTransform="none"
-                      leftIcon={<span>🔄</span>}
                     >
-                      In Progress
+                      <HStack spacing={2} align="center">
+                        <Box as="span">🔄</Box>
+                        <Box>In Progress</Box>
+                      </HStack>
                     </Badge>
 
                     {/* Top-right: status */}
@@ -908,7 +919,12 @@ const Offers: React.FC = () => {
                         {renderOfferedItems(t)}
                         <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
                       </VStack>
-                      <Badge colorScheme={badgeColor(t.status)} variant="subtle">{t.status}</Badge>
+                      <Badge colorScheme={
+                        t.status === 'pending' ? 'yellow' :
+                        t.status === 'accepted' || t.status === 'active' ? 'green' :
+                        t.status === 'declined' || t.status === 'cancelled' ? 'red' :
+                        'gray'
+                      } variant="subtle">{t.status}</Badge>
                     </HStack>
                   </Box>
                 </ScaleFade>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -32,6 +32,7 @@ import {
   FiArrowLeft,
   FiTrash2
 } from 'react-icons/fi'
+import { AddIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { Product } from '../types'
 import { api } from '../services/api'
@@ -402,6 +403,25 @@ const SavedProducts: React.FC = () => {
           )}
         </VStack>
       </Container>
+
+    {/* Floating Add Product FAB */}
+    <IconButton
+      as={RouterLink}
+      to="/add-product"
+      aria-label="Add product"
+      icon={<AddIcon />}
+      position="fixed"
+      bottom={12}
+      right={6}
+      h={14}
+      w={14}
+      bgGradient="linear(to-br, brand.500, teal.400)"
+      color="white"
+      borderRadius="full"
+      zIndex={200}
+      boxShadow="lg"
+      _hover={{ transform: 'scale(1.05)' }}
+    />
     </Box>
   )
 }
