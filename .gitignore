@@ -1,4 +1,10 @@
-# ...existing entries...
+# Environment files - ONLY ignore .env, NOT .env.production
+.env
+.env.local
+.env.*.local
+
+# Deployment config
+# render.yaml (tracked in git)
 
 # Environment variables
 .env
