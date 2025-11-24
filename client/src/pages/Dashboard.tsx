@@ -62,6 +62,8 @@ import { getFirstImage } from '../utils/imageUtils'
 import OfferDetailsModal from '../components/OfferDetailsModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
 import ViewTradeModal from '../components/ViewTradeModal'
+import DeliveryRequestModal from '../components/DeliveryRequestModal'
+import DeliveryTracking from '../components/DeliveryTracking'
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth()
@@ -122,6 +124,13 @@ const Dashboard: React.FC = () => {
   const productImageCache = useRef<Map<number, string | null>>(new Map())
   const offersPollingInterval = useRef<ReturnType<typeof setTimeout> | null>(null)
   
+  // Delivery modals state
+  const [deliveryRequestModalOpen, setDeliveryRequestModalOpen] = useState(false)
+  const [deliveryTrackingModalOpen, setDeliveryTrackingModalOpen] = useState(false)
+  const [tradeForDelivery, setTradeForDelivery] = useState<Trade | null>(null)
+  const [productsForDelivery, setProductsForDelivery] = useState<Product[]>([])
+  const [currentDeliveryId, setCurrentDeliveryId] = useState<number | null>(null)
+  
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -131,6 +140,16 @@ const Dashboard: React.FC = () => {
       fetchUserData()
     }
   }, [user])
+
+  // Fetch offers when Offers tab is selected (if not already loaded)
+  useEffect(() => {
+    if (user && activeTab === 1) {
+      // Only fetch if we don't have any offers loaded yet
+      if (incoming.length === 0 && outgoing.length === 0 && !offersLoading) {
+        fetchOffers()
+      }
+    }
+  }, [user, activeTab])
 
   const fetchUserData = async () => {
     if (!user) return
@@ -155,6 +174,9 @@ const Dashboard: React.FC = () => {
 
       // Fetch notification counts
       await fetchNotificationCounts()
+      
+      // Fetch offers
+      await fetchOffers()
     } catch (error) {
       console.error('Failed to fetch user data:', error)
     } finally {
@@ -251,13 +273,22 @@ const Dashboard: React.FC = () => {
         api.get('/api/trades', { params: { direction: 'incoming' } }),
         api.get('/api/trades', { params: { direction: 'outgoing' } }),
       ])
-      setIncoming(Array.isArray(incRes.data?.data) ? incRes.data.data : [])
-      setOutgoing(Array.isArray(outRes.data?.data) ? outRes.data.data : [])
+      
+      // Ensure we're accessing the data correctly
+      const incomingData = Array.isArray(incRes.data?.data) ? incRes.data.data : (Array.isArray(incRes.data) ? incRes.data : [])
+      const outgoingData = Array.isArray(outRes.data?.data) ? outRes.data.data : (Array.isArray(outRes.data) ? outRes.data : [])
+      
+      setIncoming(incomingData)
+      setOutgoing(outgoingData)
       
       // Fetch product titles for all trades
-      await fetchProductTitles([...incRes.data?.data || [], ...outRes.data?.data || []])
+      await fetchProductTitles([...incomingData, ...outgoingData])
     } catch (e: any) {
+      console.error('Failed to fetch offers:', e)
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
+      // Set empty arrays on error to prevent stale data
+      setIncoming([])
+      setOutgoing([])
     } finally {
       setOffersLoading(false)
     }
@@ -1409,7 +1440,7 @@ const Dashboard: React.FC = () => {
              {/* Center: Unified Search Bar */}
              <InputGroup 
                flex={{ base: '1', md: '1 1 350px' }} 
-               maxW={{ base: '100%', md: '450px' }}
+               maxW={{ base: '100%', md: '800px' }}
                position="relative"
              >
                <InputLeftElement pointerEvents="none">
@@ -1524,7 +1555,7 @@ const Dashboard: React.FC = () => {
                )}
              </InputGroup>
 
-             {/* Right: Compact Stats Buttons (Row) */}
+             {/* Right: Compact Stats Buttons (Row) 
              <HStack spacing={2} flexShrink={0}>
                <Tooltip 
                  label={`${dashboardStats.totalProducts} total • ${dashboardStats.activeProducts} active • ${userProducts.filter(p => p.premium).length} premium`}
@@ -1598,6 +1629,7 @@ const Dashboard: React.FC = () => {
                  </Button>
                </Tooltip>
              </HStack>
+             */}
 
              {/* Notifications & Profile */}
              <HStack spacing={2} flexShrink={0}>
@@ -1649,80 +1681,191 @@ const Dashboard: React.FC = () => {
              borderColor="gray.200"
              py={2}
            >
-             <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand">
-               <TabList px={4} overflowX="auto" sx={{
-                 '&::-webkit-scrollbar': { display: 'none' },
-                 scrollbarWidth: 'none',
-                 msOverflowStyle: 'none'
-               }}>
-                 <Tab 
-                   _selected={{ 
-                     color: 'brand.600', 
-                     borderColor: 'brand.600',
-                     fontWeight: 'semibold'
-                   }}
-                   transition="all 0.2s"
-                 >
-                   <HStack spacing={2}>
-                     <Icon as={FiShoppingBag} />
-                     <Text>My Products</Text>
-                     {userProducts.length > 0 && (
-                       <Badge colorScheme="green" borderRadius="full" fontSize="xs">
-                         {userProducts.length}
+             <Flex justify="space-between" align="center" px={4} gap={4}>
+               <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1}>
+                 <TabList overflowX="auto" sx={{
+                   '&::-webkit-scrollbar': { display: 'none' },
+                   scrollbarWidth: 'none',
+                   msOverflowStyle: 'none'
+                 }}>
+                   <Tab 
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
+                     <HStack spacing={2}>
+                       <Icon as={FiShoppingBag} />
+                       <Text>My Products</Text>
+                       {userProducts.length > 0 && (
+                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                           {userProducts.length}
+                         </Badge>
+                       )}
+                     </HStack>
+                   </Tab>
+                   <Tab 
+                     position="relative"
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
+                     <HStack spacing={2}>
+                       <Icon as={FiMessageCircle} />
+                       <Text>Offers</Text>
+                       {unreadOffers > 0 && (
+                         <Badge
+                           bg="orange.500"
+                           color="white"
+                           borderRadius="full"
+                           fontSize="xs"
+                           minW="18px"
+                           h="18px"
+                           display="inline-flex"
+                           alignItems="center"
+                           justifyContent="center"
+                           fontWeight="bold"
+                         >
+                           {unreadOffers > 99 ? '99+' : unreadOffers}
+                         </Badge>
+                       )}
+                     </HStack>
+                   </Tab>
+                   <Tab
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
+                     <HStack spacing={2}>
+                       <Icon as={FaExchangeAlt} boxSize={4} />
+                       <Text>Multi-Way Trades</Text>
+                       <Badge colorScheme="purple" fontSize="2xs" px={1.5}>
+                         PRO
                        </Badge>
-                     )}
-                   </HStack>
-                 </Tab>
-                 <Tab 
-                   position="relative"
-                   _selected={{ 
-                     color: 'brand.600', 
-                     borderColor: 'brand.600',
-                     fontWeight: 'semibold'
-                   }}
-                   transition="all 0.2s"
-                 >
-                   <HStack spacing={2}>
-                     <Icon as={FiMessageCircle} />
-                     <Text>Offers</Text>
-                     {unreadOffers > 0 && (
-                       <Badge
-                         bg="orange.500"
-                         color="white"
-                         borderRadius="full"
-                         fontSize="xs"
-                         minW="18px"
-                         h="18px"
-                         display="inline-flex"
-                         alignItems="center"
-                         justifyContent="center"
-                         fontWeight="bold"
-                       >
-                         {unreadOffers > 99 ? '99+' : unreadOffers}
-                       </Badge>
-                     )}
-                   </HStack>
-                 </Tab>
-                 <Tab 
-                   _selected={{ 
-                     color: 'brand.600', 
-                     borderColor: 'brand.600',
-                     fontWeight: 'semibold'
-                   }}
-                   transition="all 0.2s"
-                 >
-                   <HStack spacing={2}>
-                     <Icon as={FiRefreshCw} />
-                     <Text>Trade History</Text>
-                     {completedTradesCount > 0 && (
-                       <Badge colorScheme="green" borderRadius="full" fontSize="xs">
-                         {completedTradesCount}
-                       </Badge>
-                     )}
-                   </HStack>
-                 </Tab>
-               </TabList>
-             </Tabs>
+                     </HStack>
+                   </Tab>
+                   <Tab 
+                     _selected={{ 
+                       color: 'brand.600', 
+                       borderColor: 'brand.600',
+                       fontWeight: 'semibold'
+                     }}
+                     transition="all 0.2s"
+                   >
+                     <HStack spacing={2}>
+                       <Icon as={FiRefreshCw} />
+                       <Text>Trade History</Text>
+                       {completedTradesCount > 0 && (
+                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                           {completedTradesCount}
+                         </Badge>
+                       )}
+                     </HStack>
+                   </Tab>
+                 </TabList>
+               </Tabs>
+
+               {/* Right: Filter/Sort Controls - Responsive */}
+               <HStack
+                 spacing={{ base: 2, md: 3 }}
+                 flexShrink={0}
+                 justify="flex-end"
+               >
+                 {activeTab === 0 && (
+                   <>
+                     <Select
+                       value={productFilter}
+                       onChange={(e) => {
+                         setProductFilter(e.target.value as any)
+                         setCurrentPage(1)
+                       }}
+                       w={{ base: '120px', md: '150px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="all">All Status</option>
+                       <option value="available">Active</option>
+                       <option value="sold">Sold</option>
+                       <option value="traded">Traded</option>
+                       <option value="locked">Hidden</option>
+                     </Select>
+                     <Select
+                       value={productSort}
+                       onChange={(e) => {
+                         setProductSort(e.target.value as any)
+                         setCurrentPage(1)
+                       }}
+                       w={{ base: '120px', md: '140px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="newest">Newest First</option>
+                       <option value="oldest">Oldest First</option>
+                     </Select>
+                   </>
+                 )}
+                 
+                 {activeTab === 1 && (
+                   <>
+                     <Select
+                       value={offersStatusFilter}
+                       onChange={(e) => {
+                         setOffersStatusFilter(e.target.value)
+                         setOffersPage(1)
+                       }}
+                       w={{ base: '120px', md: '140px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="all">All Status</option>
+                       <option value="pending">Pending</option>
+                       <option value="accepted">Accepted</option>
+                       <option value="active">Active</option>
+                       <option value="countered">Countered</option>
+                     </Select>
+                     <Select
+                       value={offersSort}
+                       onChange={(e) => setOffersSort(e.target.value as any)}
+                       w={{ base: '120px', md: '140px' }}
+                       bg={cardBg}
+                       borderColor={borderColor}
+                       size="sm"
+                     >
+                       <option value="newest">Newest First</option>
+                       <option value="oldest">Oldest First</option>
+                     </Select>
+                   </>
+                 )}
+
+                 {activeTab === 2 && (
+                   <Select
+                     value={tradeHistorySort}
+                     onChange={(e) => {
+                       setTradeHistorySort(e.target.value as any)
+                       setTradeHistoryPage(1)
+                     }}
+                     w={{ base: '120px', md: '140px' }}
+                     bg={cardBg}
+                     borderColor={borderColor}
+                     size="sm"
+                   >
+                     <option value="newest">Newest First</option>
+                     <option value="oldest">Oldest First</option>
+                   </Select>
+                 )}
+               </HStack>
+             </Flex>
            </Box>
            
            <Tabs index={activeTab} onChange={setActiveTab}>
@@ -1733,22 +1876,6 @@ const Dashboard: React.FC = () => {
                   {/* Filters and Actions (Search moved to top bar) */}
                   <HStack spacing={3} flexWrap="wrap" justify="space-between">
                     <HStack spacing={2} flexWrap="wrap">
-                      <Select
-                        value={productFilter}
-                        onChange={(e) => {
-                          setProductFilter(e.target.value as any)
-                          setCurrentPage(1)
-                        }}
-                        w="150px"
-                        bg={cardBg}
-                        borderColor={borderColor}
-                      >
-                        <option value="all">All Status</option>
-                        <option value="available">Active</option>
-                        <option value="sold">Sold</option>
-                        <option value="traded">Traded</option>
-                        <option value="locked">Hidden</option>
-                      </Select>
                       {unifiedSearch && (
                         <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
                           Searching: "{unifiedSearch}"
@@ -1826,41 +1953,6 @@ const Dashboard: React.FC = () => {
               {/* Offers Tab */}
               <TabPanel>
                 <VStack spacing={6} align="stretch">
-                  {/* Filters (Search moved to top bar) */}
-                  <HStack spacing={3} flexWrap="wrap">
-                    {unifiedSearch && (
-                      <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
-                        Searching: "{unifiedSearch}"
-                      </Badge>
-                    )}
-                    <Select
-                      value={offersStatusFilter}
-                      onChange={(e) => {
-                        setOffersStatusFilter(e.target.value)
-                        setOffersPage(1)
-                      }}
-                      w="150px"
-                      bg={cardBg}
-                      borderColor={borderColor}
-                    >
-                      <option value="all">All Status</option>
-                      <option value="pending">Pending</option>
-                      <option value="accepted">Accepted</option>
-                      <option value="active">Active</option>
-                      <option value="countered">Countered</option>
-                    </Select>
-                    <Select
-                      value={offersSort}
-                      onChange={(e) => setOffersSort(e.target.value as any)}
-                      w="140px"
-                      bg={cardBg}
-                      borderColor={borderColor}
-                    >
-                      <option value="newest">Newest First</option>
-                      <option value="oldest">Oldest First</option>
-                    </Select>
-                  </HStack>
-
                   {/* Sub-tabs for Offers */}
                   <Tabs 
                     index={offersSubTab} 
@@ -1892,11 +1984,11 @@ const Dashboard: React.FC = () => {
                         Ongoing Trades
                         {offersStats.ongoing > 0 && (
                           <Badge ml={2} colorScheme="green" borderRadius="full" fontSize="xs">
-                            {offersStats.ongoing}
-                          </Badge>
-                        )}
-                      </Tab>
-                    </TabList>
+                           {offersStats.ongoing}
+                         </Badge>
+                       )}
+                     </Tab>
+                   </TabList>
 
                     <TabPanels>
                       {/* Sent Offers */}
@@ -1915,7 +2007,7 @@ const Dashboard: React.FC = () => {
                               bg="green.50" 
                               borderRadius="lg" 
                               border="2px dashed" 
- borderColor="green.200"
+                              borderColor="green.200"
                             >
                               <Icon as={FaHandshake} boxSize={16} color="green.300" mb={4} />
                               <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
@@ -1998,7 +2090,7 @@ const Dashboard: React.FC = () => {
                                   ? 'No offers match your search/filters.'
                                   : 'No received offers'}
                               </Text>
-                              <Text color="gray.500" fontSize="sm">
+                              <Text color="gray.500" fontSize="sm" mb={4}>
                                 {(unifiedSearch || offersSearch) || offersStatusFilter !== 'all' 
                                   ? 'Try adjusting your search or filters.'
                                   : 'You haven\'t received any offers yet'}
@@ -2125,6 +2217,97 @@ const Dashboard: React.FC = () => {
 
                     </TabPanels>
                   </Tabs>
+                </VStack>
+              </TabPanel>
+
+              {/* Multi-Way Trades Tab */}
+              <TabPanel>
+                <VStack spacing={4} align="stretch">
+                  {!user?.is_premium ? (
+                    <Center py={12}>
+                      <VStack spacing={4} textAlign="center" maxW="500px">
+                        {/* Icon & Heading */}
+                        <VStack spacing={2}>
+                          <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" />
+                          <Heading size="md" color="gray.800">
+                            Join Multi-Way Trading Loops
+                          </Heading>
+                          <Text color="gray.600" fontSize="sm">
+                            Exchange with 3+ users at once instead of waiting for perfect 1-1 trades
+                          </Text>
+                        </VStack>
+
+                        {/* How It Works - Compact */}
+                        <Box bg="purple.50" p={4} borderRadius="lg" w="full">
+                          <VStack align="start" spacing={2}>
+                            <Text fontWeight="bold" color="purple.900" fontSize="xs" textTransform="uppercase">
+                              How it works
+                            </Text>
+                            <HStack spacing={2} align="start" fontSize="sm">
+                              <Box bg="purple.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="purple.900" fontSize="xs" flexShrink={0}>1</Box>
+                              <Text color="gray.700">List your item</Text>
+                            </HStack>
+                            <HStack spacing={2} align="start" fontSize="sm">
+                              <Box bg="purple.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="purple.900" fontSize="xs" flexShrink={0}>2</Box>
+                              <Text color="gray.700">AI finds trade loops</Text>
+                            </HStack>
+                            <HStack spacing={2} align="start" fontSize="sm">
+                              <Box bg="green.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="green.900" fontSize="xs" flexShrink={0}>✓</Box>
+                              <Text color="gray.700">Everyone trades together</Text>
+                            </HStack>
+                          </VStack>
+                        </Box>
+
+                        {/* Features - 2 Columns */}
+                        <SimpleGrid columns={2} spacing={2} w="full" fontSize="xs">
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">Auto matching</Text>
+                          </HStack>
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">5-way loops</Text>
+                          </HStack>
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">Smart scheduling</Text>
+                          </HStack>
+                          <HStack spacing={1} align="start">
+                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
+                            <Text color="gray.700">Priority matching</Text>
+                          </HStack>
+                        </SimpleGrid>
+
+                        {/* CTA */}
+                        <Button
+                          colorScheme="purple"
+                          size="md"
+                          w="full"
+                          onClick={() => navigate('/premium')}
+                          leftIcon={<StarIcon />}
+                        >
+                          Upgrade to Pro - ₱299/year
+                        </Button>
+                        <Text fontSize="2xs" color="gray.500">
+                          Includes 8 premium features
+                        </Text>
+                      </VStack>
+                    </Center>
+                  ) : (
+                    <Center py={12}>
+                      <VStack spacing={3} textAlign="center">
+                        <Icon as={FaExchangeAlt} boxSize={12} color="purple.300" />
+                        <VStack spacing={1}>
+                          <Heading size="sm" color="gray.700">
+                            Coming Soon
+                          </Heading>
+                          <Text color="gray.600" fontSize="xs">
+                            Multi-way trading is being developed
+                          </Text>
+                        </VStack>
+                      </VStack>
+                    </Center>
+                  )}
                 </VStack>
               </TabPanel>
 
@@ -2347,7 +2530,43 @@ const Dashboard: React.FC = () => {
           trade={selectedTrade}
           isOpen={detailsOpen}
           onClose={() => setDetailsOpen(false)}
-          onAccepted={() => { fetchOffers(); fetchNotificationCounts() }}
+          onAccepted={async () => {
+            await fetchOffers()
+            fetchNotificationCounts()
+            
+            // If trade option is delivery, show delivery request modal
+            if (selectedTrade?.trade_option === 'delivery') {
+              // Fetch products for delivery
+              try {
+                const productsToDeliver: Product[] = []
+                // Get target product
+                if (selectedTrade.target_product_id) {
+                  const targetRes = await api.get(`/api/products/${selectedTrade.target_product_id}`)
+                  if (targetRes.data?.data) {
+                    productsToDeliver.push(targetRes.data.data)
+                  }
+                }
+                // Get items from trade
+                if (selectedTrade.items && selectedTrade.items.length > 0) {
+                  for (const item of selectedTrade.items) {
+                    try {
+                      const itemRes = await api.get(`/api/products/${item.product_id}`)
+                      if (itemRes.data?.data) {
+                        productsToDeliver.push(itemRes.data.data)
+                      }
+                    } catch (e) {
+                      // Skip if product not found
+                    }
+                  }
+                }
+                setProductsForDelivery(productsToDeliver)
+                setTradeForDelivery(selectedTrade)
+                setDeliveryRequestModalOpen(true)
+              } catch (error) {
+                console.error('Failed to fetch products for delivery:', error)
+              }
+            }
+          }}
           onDeclined={() => { fetchOffers(); fetchNotificationCounts() }}
         />
 
@@ -2365,6 +2584,35 @@ const Dashboard: React.FC = () => {
           onCompleted={() => { fetchOffers(); fetchNotificationCounts() }}
           currentUserId={user?.id}
         />
+
+        {/* Delivery Request Modal */}
+        <DeliveryRequestModal
+          isOpen={deliveryRequestModalOpen}
+          onClose={() => {
+            setDeliveryRequestModalOpen(false)
+            setTradeForDelivery(null)
+            setProductsForDelivery([])
+          }}
+          onSuccess={(deliveryId) => {
+            setCurrentDeliveryId(deliveryId)
+            setDeliveryRequestModalOpen(false)
+            setDeliveryTrackingModalOpen(true)
+          }}
+          tradeId={tradeForDelivery?.id}
+          products={productsForDelivery}
+        />
+
+        {/* Delivery Tracking Modal */}
+        {currentDeliveryId && (
+          <DeliveryTracking
+            isOpen={deliveryTrackingModalOpen}
+            onClose={() => {
+              setDeliveryTrackingModalOpen(false)
+              setCurrentDeliveryId(null)
+            }}
+            deliveryId={currentDeliveryId}
+          />
+        )}
 
         {/* Cancel Confirmation Modal */}
         <Modal isOpen={cancelModalOpen} onClose={() => setCancelModalOpen(false)} size="sm" isCentered>

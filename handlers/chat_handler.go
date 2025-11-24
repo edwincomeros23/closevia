@@ -12,8 +12,8 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
-	"github.com/xashathebest/clovia/services"
 	"github.com/xashathebest/clovia/utils"
+	"github.com/xashathebest/clovia/services"
 )
 
 type ChatHandler struct{}
@@ -48,8 +48,15 @@ func (h *ChatHandler) Stream(c *fiber.Ctx) error {
 			})
 		}
 
+
 		// Validate the JWT token directly to avoid calling middleware handler inline
 		claims, err := utils.ValidateJWT(token)
+		// Set the token in the Authorization header
+		c.Request().Header.Set("Authorization", "Bearer "+token)
+
+		// Validate the token
+		// err := middleware.AuthMiddleware()(c)
+
 		if err != nil {
 			fmt.Printf("Chat Stream: token validation failed (len=%d) err=%v\n", len(token), err)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "error": "Invalid or expired token"})
