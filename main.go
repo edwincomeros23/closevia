@@ -129,6 +129,9 @@ func main() {
 	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
 
+	// Seller stats route (must be BEFORE dynamic ":id" route)
+	users.Get("/:id/stats", userHandler.GetSellerStats) // Public route for seller statistics
+
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
 	users.Get("/", userHandler.GetUsers)       // Admin route (no auth for demo)

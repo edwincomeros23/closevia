@@ -65,6 +65,7 @@ const ProductDetail: React.FC = () => {
   const { getProduct, getUserProducts } = useProducts()
   const [product, setProduct] = useState<Product | null>(null)
   const [sellerProducts, setSellerProducts] = useState<Product[]>([])
+  const [sellerStats, setSellerStats] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [purchasing, setPurchasing] = useState(false)
@@ -106,6 +107,24 @@ const ProductDetail: React.FC = () => {
     }
     loadSellerProducts()
   }, [product, getUserProducts])
+
+  // Fetch seller's statistics
+  useEffect(() => {
+    const loadSellerStats = async () => {
+      if (!product) return
+      try {
+        const response = await fetch(`/api/users/${product.seller_id}/stats`)
+        if (response.ok) {
+          const data = await response.json()
+          setSellerStats(data.data)
+        }
+      } catch (err) {
+        // ignore errors for this non-critical UX enhancement
+        console.error('Failed to fetch seller stats:', err)
+      }
+    }
+    loadSellerStats()
+  }, [product])
 
   useEffect(() => {
     if (product && user) {
@@ -982,7 +1001,7 @@ const ProductDetail: React.FC = () => {
                   {product.seller_name}
                 </Text>
                 <Text color="gray.600" fontSize="sm">
-                  Member since {new Date().getFullYear()}
+                  Member since {sellerStats?.member_since_year ?? new Date().getFullYear()}
                 </Text>
                 <HStack spacing={2} mt={2}>
                   {product.seller_id && <ResponseMetricsBadge userId={product.seller_id} />}
@@ -995,7 +1014,7 @@ const ProductDetail: React.FC = () => {
             <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
               <VStack spacing={1} align="center">
                 <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="brand.500">
-                  4.8
+                  {sellerStats?.avg_rating?.toFixed(1) ?? 'N/A'}
                 </Text>
                 <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                   Rating
@@ -1003,7 +1022,7 @@ const ProductDetail: React.FC = () => {
               </VStack>
               <VStack spacing={1} align="center">
                 <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="green.500">
-                  98%
+                  {sellerStats?.positive_percent?.toFixed(0) ?? 'N/A'}%
                 </Text>
                 <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                   Positive
@@ -1011,7 +1030,7 @@ const ProductDetail: React.FC = () => {
               </VStack>
               <VStack spacing={1} align="center">
                 <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="blue.500">
-                  247
+                  {sellerStats?.total_trades ?? 0}
                 </Text>
                 <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                   Trades
@@ -1019,7 +1038,7 @@ const ProductDetail: React.FC = () => {
               </VStack>
               <VStack spacing={1} align="center">
                 <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="purple.500">
-                  2hr
+                  {sellerStats?.avg_response_time ?? 'N/A'}
                 </Text>
                 <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                   Avg Response

@@ -444,9 +444,9 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 
 	var user models.User
 	err = h.db.QueryRow(
-		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, COALESCE(profile_picture, '') as profile_picture, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, COALESCE(profile_picture, '') as profile_picture, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &user.ProfilePicture, &user.Department, &user.Bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &user.ProfilePicture, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.Bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -766,5 +766,114 @@ func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
 			Limit:      limit,
 			TotalPages: totalPages,
 		},
+	})
+}
+
+// GetSellerStats gets comprehensive seller statistics
+func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid user ID",
+		})
+	}
+
+	// Check if user exists
+	var userCreatedAt time.Time
+	err = h.db.QueryRow("SELECT created_at FROM users WHERE id = ?", userID).Scan(&userCreatedAt)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
+		})
+	}
+
+	stats := models.SellerStats{
+		UserID:          userID,
+		MemberSinceYear: userCreatedAt.Year(),
+	}
+
+	// Calculate total trades (completed trades for this user as seller)
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades 
+		WHERE seller_id = ? AND status IN ('completed', 'auto_completed')
+	`, userID).Scan(&stats.TotalTrades)
+	if err != nil {
+		stats.TotalTrades = 0
+	}
+
+	// Calculate completed trades
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades 
+		WHERE seller_id = ? AND status = 'completed' AND seller_completed = true
+	`, userID).Scan(&stats.CompletedTrades)
+	if err != nil {
+		stats.CompletedTrades = 0
+	}
+
+	// Calculate average rating and positive feedback percentage
+	var avgRating sql.NullFloat64
+	var totalRatings sql.NullInt64
+	var fiveStarRatings sql.NullInt64
+
+	err = h.db.QueryRow(`
+		SELECT 
+			AVG(buyer_rating) as avg_rating,
+			COUNT(CASE WHEN buyer_rating IS NOT NULL THEN 1 END) as total_ratings,
+			COUNT(CASE WHEN buyer_rating >= 4 THEN 1 END) as five_star_ratings
+		FROM trades 
+		WHERE seller_id = ? AND buyer_rating IS NOT NULL
+	`, userID).Scan(&avgRating, &totalRatings, &fiveStarRatings)
+
+	if err == nil && avgRating.Valid {
+		stats.AvgRating = avgRating.Float64
+		stats.TotalFeedback = int(totalRatings.Int64)
+		if totalRatings.Int64 > 0 {
+			stats.PositivePercent = float64(fiveStarRatings.Int64) / float64(totalRatings.Int64) * 100
+		}
+	}
+
+	// Determine response metric based on average rating
+	if stats.AvgRating >= 4.5 {
+		stats.ResponseMetric = "excellent"
+	} else if stats.AvgRating >= 3.5 {
+		stats.ResponseMetric = "good"
+	} else if stats.AvgRating >= 2.5 {
+		stats.ResponseMetric = "average"
+	} else {
+		stats.ResponseMetric = "poor"
+	}
+
+	// Calculate average response time (estimated as hours from trade creation to first completion activity)
+	var avgResponseTimeMinutes sql.NullFloat64
+	err = h.db.QueryRow(`
+		SELECT AVG(EXTRACT(EPOCH FROM (CASE 
+			WHEN seller_completed THEN COALESCE(updated_at, NOW())
+			ELSE NOW()
+		END - created_at)) / 60) as avg_response_minutes
+		FROM trades
+		WHERE seller_id = ? AND created_at > DATE_SUB(NOW(), INTERVAL 90 DAY)
+		LIMIT 100
+	`, userID).Scan(&avgResponseTimeMinutes)
+
+	if err == nil && avgResponseTimeMinutes.Valid {
+		minutes := int(avgResponseTimeMinutes.Float64)
+		if minutes < 60 {
+			stats.AvgResponseTime = fmt.Sprintf("%dm", minutes)
+		} else if minutes < 1440 {
+			hours := minutes / 60
+			stats.AvgResponseTime = fmt.Sprintf("%dh", hours)
+		} else {
+			days := minutes / 1440
+			stats.AvgResponseTime = fmt.Sprintf("%dd", days)
+		}
+	} else {
+		stats.AvgResponseTime = "N/A"
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data:    stats,
 	})
 }
