@@ -31,13 +31,15 @@ func InitDatabase() error {
 
 	// Configure TLS only when a CA certificate is provided
 	useTLS := caCertPath != ""
+	var err error
+
 	if useTLS {
 		tlsConfig, err := createTLSConfig(caCertPath)
 		if err != nil {
 			return fmt.Errorf("failed to create TLS config: %v", err)
 		}
 
-		if err := mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
+		if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
 			return fmt.Errorf("failed to register TLS config: %v", err)
 		}
 	}
@@ -68,8 +70,7 @@ func InitDatabase() error {
 
 	// Test a simple query to verify we're connected to the right database
 	var currentDbName string
-	err = DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName)
-	if err != nil {
+	if err = DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName); err != nil {
 		return fmt.Errorf("failed to get database name: %v", err)
 	}
 
