@@ -472,7 +472,7 @@ const SettingsPage: React.FC = () => {
         }
       }
 
-      // Persist preferences locally as before (use profileUrlToSave when available)
+      // Persist preferences locally
       const settings = {
         username,
         email,
@@ -488,29 +488,35 @@ const SettingsPage: React.FC = () => {
       }
       localStorage.setItem('user_settings', JSON.stringify(settings))
 
-      setIsSaving(false)
-      setSaveStatus('saved')
-      setHasUnsavedChanges(false)
-
-      toast({
-        title: 'Settings saved',
-        description: 'Your preferences have been updated successfully.',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
-      // Update user profile in backend, including profileImage
+      // Update user profile in backend
       const resp = await api.put('/api/users/profile', {
         name: username,
         email: email,
         profile_picture: profileUrlToSave ?? profileImage,
       })
+
       if (resp.data && resp.data.success) {
-        // ensure persisted settings reflect final profile URL
+        // Ensure persisted settings reflect final profile URL
         localStorage.setItem('user_settings', JSON.stringify(settings))
+        
+        // Refresh context user so changes persist across pages
+        try {
+          await refreshUser()
+        } catch (e) {
+          console.warn('Failed to refresh user after profile update', e)
+        }
+
         setIsSaving(false)
         setSaveStatus('saved')
         setHasUnsavedChanges(false)
+
+        toast({
+          title: 'Settings saved',
+          description: 'Your preferences have been updated successfully.',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        })
       } else {
         setIsSaving(false)
         setSaveStatus('error')

@@ -1062,7 +1062,7 @@ const Home: React.FC = () => {
       alignItems="start"
     >
       {products
-        .filter((p) => p.status === 'available')
+        .filter((p) => p.status === 'available' && p.seller_id !== user?.id)
         .map((product) => (
           <Box key={product.id}>
             {renderProductCard(product)}

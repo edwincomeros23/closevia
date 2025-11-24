@@ -64,7 +64,10 @@ const RiderQueue: React.FC = () => {
     try {
       setLoading(true)
       setError(null)
-      const response = await api.get('/api/deliveries/rider/my-deliveries')
+      // Use correct endpoint with status filter
+      const response = await api.get('/api/deliveries', {
+        params: { status: 'claimed,picked_up,in_transit' }
+      })
       const deliveries: Delivery[] = response.data?.data || []
 
       // Group standard deliveries into batches (max 5 items per batch)
@@ -159,13 +162,16 @@ const RiderQueue: React.FC = () => {
 
       setBatches(batchClusters)
     } catch (err: any) {
-      console.error('Failed to fetch batches:', err)
-      setError(err?.response?.data?.error || 'Failed to load batches')
+      console.error('Failed to fetch batches:', err.response?.status, err.response?.data)
+      const errorMsg = err?.response?.data?.error || 'Failed to load batches'
+      setError(errorMsg)
       toast({
-        title: 'Error',
-        description: 'Failed to load rider queue',
+        title: 'Error Loading Batches',
+        description: errorMsg,
         status: 'error',
+        duration: 3000,
       })
+      setBatches([])
     } finally {
       setLoading(false)
     }
@@ -241,131 +247,136 @@ const RiderQueue: React.FC = () => {
 
         {/* Batches List */}
         <VStack spacing={4} align="stretch">
-          {batches.length === 0 && !loading && (
+          {loading ? (
+            <Center py={12}>
+              <VStack spacing={3} textAlign="center">
+                <Spinner size="lg" color="brand.500" />
+                <Text color="gray.600">Loading your batches...</Text>
+              </VStack>
+            </Center>
+          ) : error ? (
+            <Alert status="error" borderRadius="md">
+              <AlertIcon />
+              <AlertDescription>
+                {error}. Try refreshing or check your connection.
+              </AlertDescription>
+            </Alert>
+          ) : batches.length === 0 ? (
             <Alert status="info" borderRadius="md">
               <AlertIcon />
               <AlertDescription>
                 No active batches. Claim deliveries from the Available Deliveries screen to see batches here.
               </AlertDescription>
             </Alert>
-          )}
-          {batches.map((batch) => (
-            <Card
-              key={batch.id}
-              bg="white"
-              border="1px"
-              borderColor="gray.200"
-              cursor="pointer"
-              transition="all 0.2s"
-              _hover={{ shadow: 'md', borderColor: 'brand.400' }}
-              onClick={() => setSelectedBatch(batch.id)}
-            >
-              <CardBody spacing={4}>
-                {/* Top Row: Zone + High Demand Badge */}
-                <HStack justify="space-between" align="start">
-                  <VStack align="start" spacing={1}>
-                    <HStack spacing={2}>
-                      <Text fontWeight="bold" fontSize="md" color="gray.800">
-                        {batch.taskCount} tasks
+          ) : (
+            batches.map((batch) => (
+              <Card
+                key={batch.id}
+                bg="white"
+                border="1px"
+                borderColor="gray.200"
+                cursor="pointer"
+                transition="all 0.2s"
+                _hover={{ shadow: 'md', borderColor: 'brand.400' }}
+                onClick={() => setSelectedBatch(batch.id)}
+              >
+                <CardBody p={3}>
+                  {/* Top Row: Zone + High Demand Badge */}
+                  <HStack justify="space-between" align="start">
+                    <VStack align="start" spacing={1}>
+                      <HStack spacing={2}>
+                        <Text fontWeight="bold" fontSize="md" color="gray.800">
+                          {batch.taskCount} tasks
+                        </Text>
+                        {batch.isHighDemand && (
+                          <Badge colorScheme="orange" fontSize="xs">
+                            🔥 High Demand
+                          </Badge>
+                        )}
+                      </HStack>
+                      <Text fontSize="sm" color="gray.600">
+                        {batch.zone} zone
                       </Text>
-                      {batch.isHighDemand && (
-                        <Badge colorScheme="orange" fontSize="xs">
-                          🔥 High Demand
-                        </Badge>
-                      )}
-                    </HStack>
-                    <Text fontSize="sm" color="gray.600">
-                      {batch.zone} zone
-                    </Text>
-                  </VStack>
-                  <VStack align="end" spacing={0}>
-                    <Text fontWeight="bold" fontSize="lg" color="brand.600">
-                      ₱{batch.estimatedEarnings}
-                    </Text>
-                    <Text fontSize="xs" color="gray.500">
-                      your earn
-                    </Text>
-                  </VStack>
-                </HStack>
+                    </VStack>
+                    <VStack align="end" spacing={0}>
+                      <Text fontWeight="bold" fontSize="lg" color="brand.600">
+                        ₱{batch.estimatedEarnings}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        your earn
+                      </Text>
+                    </VStack>
+                  </HStack>
 
-                {/* Capacity Progress */}
-                <VStack spacing={1} align="stretch">
-                  <HStack justify="space-between" fontSize="xs">
+                  {/* Capacity Progress */}
+                  <VStack spacing={1} align="stretch">
+                    <HStack justify="space-between" fontSize="xs">
+                      <HStack spacing={1}>
+                        <Icon as={FaBox} boxSize={3} color="gray.600" />
+                        <Text color="gray.600">
+                          Capacity: {batch.sizePoints}/{batch.maxCapacity} points
+                        </Text>
+                        <Tooltip label="Small item=1pt, Medium=2pts, Large=3pts. Your van holds 12pts max." placement="top">
+                          <InfoIcon boxSize={3} color="blue.500" cursor="help" />
+                        </Tooltip>
+                      </HStack>
+                    </HStack>
+                    <Progress
+                      value={capacityPercentage(batch.sizePoints, batch.maxCapacity)}
+                      colorScheme="brand"
+                      borderRadius="full"
+                      h="6px"
+                    />
+                  </VStack>
+
+                  {/* Distance + Time */}
+                  <HStack spacing={4} fontSize="sm">
                     <HStack spacing={1}>
-                      <Icon as={FaBox} boxSize={3} color="gray.600" />
-                      <Text color="gray.600">
-                        Capacity: {batch.sizePoints}/{batch.maxCapacity} points
-                      </Text>
-                      <Tooltip label="Small item=1pt, Medium=2pts, Large=3pts. Your van holds 12pts max." placement="top">
-                        <InfoIcon boxSize={3} color="blue.500" cursor="help" />
-                      </Tooltip>
+                      <Icon as={FaMapMarkerAlt} color="red.500" boxSize={4} />
+                      <Text color="gray.700">{batch.distance}</Text>
+                    </HStack>
+                    <HStack spacing={1}>
+                      <Icon as={FaClock} color="blue.500" boxSize={4} />
+                      <Text color="gray.700">~{batch.estimatedTime}</Text>
                     </HStack>
                   </HStack>
-                  <Progress
-                    value={capacityPercentage(batch.sizePoints, batch.maxCapacity)}
+
+                  {/* Pickups + Deliveries */}
+                  <HStack spacing={3} fontSize="xs" color="gray.600">
+                    <Tag size="sm" colorScheme="blue" variant="subtle">
+                      <TagLabel>📍 {batch.pickupCount} pickup(s)</TagLabel>
+                    </Tag>
+                    <Tag size="sm" colorScheme="green" variant="subtle">
+                      <TagLabel>✓ {batch.deliveryCount} delivery(s)</TagLabel>
+                    </Tag>
+                  </HStack>
+
+                  {/* Required Pass */}
+                  <HStack spacing={2} bg="yellow.50" p={2} borderRadius="md">
+                    <Icon as={WarningIcon} boxSize={4} color="yellow.600" />
+                    <VStack align="start" spacing={0} fontSize="xs">
+                      <Text fontWeight="bold" color="yellow.900">
+                        {batch.requiredPass} Pass needed
+                      </Text>
+                      <Text color="yellow.800">{batch.passValidity}</Text>
+                    </VStack>
+                  </HStack>
+
+                  {/* Claim Button */}
+                  <Button
+                    w="full"
                     colorScheme="brand"
-                    borderRadius="full"
-                    h="6px"
-                  />
-                </VStack>
-
-                {/* Distance + Time */}
-                <HStack spacing={4} fontSize="sm">
-                  <HStack spacing={1}>
-                    <Icon as={FaMapMarkerAlt} color="red.500" boxSize={4} />
-                    <Text color="gray.700">{batch.distance}</Text>
-                  </HStack>
-                  <HStack spacing={1}>
-                    <Icon as={FaClock} color="blue.500" boxSize={4} />
-                    <Text color="gray.700">~{batch.estimatedTime}</Text>
-                  </HStack>
-                </HStack>
-
-                {/* Pickups + Deliveries */}
-                <HStack spacing={3} fontSize="xs" color="gray.600">
-                  <Tag size="sm" colorScheme="blue" variant="subtle">
-                    <TagLabel>📍 {batch.pickupCount} pickup(s)</TagLabel>
-                  </Tag>
-                  <Tag size="sm" colorScheme="green" variant="subtle">
-                    <TagLabel>✓ {batch.deliveryCount} delivery(s)</TagLabel>
-                  </Tag>
-                </HStack>
-
-                {/* Required Pass */}
-                <HStack spacing={2} bg="yellow.50" p={2} borderRadius="md">
-                  <Icon as={WarningIcon} boxSize={4} color="yellow.600" />
-                  <VStack align="start" spacing={0} fontSize="xs">
-                    <Text fontWeight="bold" color="yellow.900">
-                      {batch.requiredPass} Pass needed
-                    </Text>
-                    <Text color="yellow.800">{batch.passValidity}</Text>
-                  </VStack>
-                </HStack>
-
-                {/* Claim Button */}
-                <Button
-                  w="full"
-                  colorScheme="brand"
-                  size="md"
-                  onClick={() => handleClaimBatch(batch.id)}
-                  isDisabled={!isOnline}
-                >
-                  {isOnline ? 'Claim batch (15m lock)' : 'Offline - Reconnect to claim'}
-                </Button>
-              </CardBody>
-            </Card>
-          ))}
+                    size="md"
+                    onClick={() => handleClaimBatch(batch.id)}
+                    isDisabled={!isOnline}
+                  >
+                    {isOnline ? 'Claim batch (15m lock)' : 'Offline - Reconnect to claim'}
+                  </Button>
+                </CardBody>
+              </Card>
+            ))
+          )}
         </VStack>
-
-        {/* Empty State */}
-        {batches.length === 0 && (
-          <Center py={12}>
-            <VStack spacing={3} textAlign="center">
-              <Spinner size="lg" color="brand.500" />
-              <Text color="gray.600">Looking for batches near you...</Text>
-            </VStack>
-          </Center>
-        )}
 
         {/* Navigation Buttons */}
         <HStack spacing={2} w="full">

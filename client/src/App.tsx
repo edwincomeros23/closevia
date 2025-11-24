@@ -1,7 +1,5 @@
-import React from 'react'
-import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text, useColorMode } from '@chakra-ui/react'
 import React, { Suspense, lazy } from 'react'
-import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text } from '@chakra-ui/react'
+import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text, useColorMode } from '@chakra-ui/react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { theme } from './theme'
 import Sidebar from './components/Sidebar'
