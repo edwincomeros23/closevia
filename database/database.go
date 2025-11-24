@@ -17,33 +17,37 @@ var DB *sql.DB
 
 // InitDatabase initializes the database connection
 func InitDatabase() error {
-	// Get database configuration from environment variables or use defaults
-	dbHost := getEnv("DB_HOST", "mysql-35b52f24-exssasha-e8a2.h.aivencloud.com")
-	dbPort := getEnv("DB_PORT", "27138")
-	dbUser := getEnv("DB_USER", "avnadmin")
+	// Get database configuration from environment variables or use sane local defaults
+	dbHost := getEnv("DB_HOST", "127.0.0.1")
+	dbPort := getEnv("DB_PORT", "3306")
+	dbUser := getEnv("DB_USER", "root")
 	dbPassword := getEnv("DB_PASSWORD", "")
-	dbName := getEnv("DB_NAME", "defaultdb")
-	caCertPath := getEnv("DB_CA_CERT", "./ca.pem")
+	dbName := getEnv("DB_NAME", "closevia")
+	caCertPath := getEnv("DB_CA_CERT", "")
 
-	// Validate that password is set
 	if dbPassword == "" {
-		return fmt.Errorf("DB_PASSWORD environment variable is not set")
+		log.Println("Warning: DB_PASSWORD is empty; continuing with provided defaults")
 	}
 
-	// Register custom TLS config for SSL connection
-	tlsConfig, err := createTLSConfig(caCertPath)
-	if err != nil {
-		return fmt.Errorf("failed to create TLS config: %v", err)
+	// Configure TLS only when a CA certificate is provided
+	useTLS := caCertPath != ""
+	if useTLS {
+		tlsConfig, err := createTLSConfig(caCertPath)
+		if err != nil {
+			return fmt.Errorf("failed to create TLS config: %v", err)
+		}
+
+		if err := mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
+			return fmt.Errorf("failed to register TLS config: %v", err)
+		}
 	}
 
-	err = mysql.RegisterTLSConfig("custom", tlsConfig)
-	if err != nil {
-		return fmt.Errorf("failed to register TLS config: %v", err)
-	}
-
-	// Create DSN (Data Source Name) with SSL enabled
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
+	// Create DSN (Data Source Name) and opt into TLS when configured
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
 		dbUser, dbPassword, dbHost, dbPort, dbName)
+	if useTLS {
+		dsn += "&tls=custom"
+	}
 
 	// Open database connection
 	var openErr error
