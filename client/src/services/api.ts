@@ -4,7 +4,7 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 export const API_BASE_URL = import.meta.env.VITE_API_URL || (
   import.meta.env.PROD 
     ? 'https://closevia.onrender.com'  // Production Render URL
-    : 'http://localhost:4000'           // Development localhost
+    : 'http://localhost:10000'           // Development localhost
 )
 
 const DEBUG_API = localStorage.getItem('debug_api') === 'true'

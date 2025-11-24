@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { useAuth } from './AuthContext'
-import { api } from '../services/api'
+import { api, API_BASE_URL } from '../services/api'
 
 type RealtimeContextValue = {
   offerCount: number
@@ -40,7 +40,8 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Use token for SSE auth
     const token = localStorage.getItem('clovia_token')
     if (!token) return
-    const url = `http://localhost:4000/api/chat/stream?token=${encodeURIComponent(token)}`
+    const base = API_BASE_URL.replace(/\/$/, '')
+    const url = `${base}/api/chat/stream?token=${encodeURIComponent(token)}`
     const es = new EventSource(url)
     esRef.current = es
 

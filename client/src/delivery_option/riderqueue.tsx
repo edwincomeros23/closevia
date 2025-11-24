@@ -21,7 +21,7 @@ import {
   Tag,
   TagLabel,
 } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaClock, FaBox, FaMoneyBillWave, FaStar, FaWifi, FaWifiSlash } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaClock, FaBox, FaMoneyBillWave, FaStar, FaWifi } from 'react-icons/fa'
 import { InfoIcon, WarningIcon } from '@chakra-ui/icons'
 
 interface BatchCluster {
@@ -135,7 +135,7 @@ const RiderQueue: React.FC = () => {
             </Text>
           </VStack>
           <HStack spacing={1} px={3} py={2} bg={isOnline ? 'green.50' : 'red.50'} borderRadius="lg">
-            <Icon as={isOnline ? FaWifi : FaWifiSlash} color={isOnline ? 'green.600' : 'red.600'} />
+            <Icon as={isOnline ? FaWifi : WarningIcon} color={isOnline ? 'green.600' : 'red.600'} />
             <Text fontSize="xs" fontWeight="bold" color={isOnline ? 'green.700' : 'red.700'}>
               {isOnline ? 'Online' : 'Offline'}
             </Text>
@@ -165,98 +165,100 @@ const RiderQueue: React.FC = () => {
               _hover={{ shadow: 'md', borderColor: 'brand.400' }}
               onClick={() => setSelectedBatch(batch.id)}
             >
-              <CardBody spacing={4}>
-                {/* Top Row: Zone + High Demand Badge */}
-                <HStack justify="space-between" align="start">
-                  <VStack align="start" spacing={1}>
-                    <HStack spacing={2}>
-                      <Text fontWeight="bold" fontSize="md" color="gray.800">
-                        {batch.taskCount} tasks
+              <CardBody>
+                <VStack spacing={4} align="stretch">
+                  {/* Top Row: Zone + High Demand Badge */}
+                  <HStack justify="space-between" align="start">
+                    <VStack align="start" spacing={1}>
+                      <HStack spacing={2}>
+                        <Text fontWeight="bold" fontSize="md" color="gray.800">
+                          {batch.taskCount} tasks
+                        </Text>
+                        {batch.isHighDemand && (
+                          <Badge colorScheme="orange" fontSize="xs">
+                            🔥 High Demand
+                          </Badge>
+                        )}
+                      </HStack>
+                      <Text fontSize="sm" color="gray.600">
+                        {batch.zone} zone
                       </Text>
-                      {batch.isHighDemand && (
-                        <Badge colorScheme="orange" fontSize="xs">
-                          🔥 High Demand
-                        </Badge>
-                      )}
-                    </HStack>
-                    <Text fontSize="sm" color="gray.600">
-                      {batch.zone} zone
-                    </Text>
-                  </VStack>
-                  <VStack align="end" spacing={0}>
-                    <Text fontWeight="bold" fontSize="lg" color="brand.600">
-                      ₱{batch.estimatedEarnings}
-                    </Text>
-                    <Text fontSize="xs" color="gray.500">
-                      your earn
-                    </Text>
-                  </VStack>
-                </HStack>
+                    </VStack>
+                    <VStack align="end" spacing={0}>
+                      <Text fontWeight="bold" fontSize="lg" color="brand.600">
+                        ₱{batch.estimatedEarnings}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        your earn
+                      </Text>
+                    </VStack>
+                  </HStack>
 
-                {/* Capacity Progress */}
-                <VStack spacing={1} align="stretch">
-                  <HStack justify="space-between" fontSize="xs">
+                  {/* Capacity Progress */}
+                  <VStack spacing={1} align="stretch">
+                    <HStack justify="space-between" fontSize="xs">
+                      <HStack spacing={1}>
+                        <Icon as={FaBox} boxSize={3} color="gray.600" />
+                        <Text color="gray.600">
+                          Capacity: {batch.sizePoints}/{batch.maxCapacity} points
+                        </Text>
+                        <Tooltip label="Small item=1pt, Medium=2pts, Large=3pts. Your van holds 12pts max." placement="top">
+                          <InfoIcon boxSize={3} color="blue.500" cursor="help" />
+                        </Tooltip>
+                      </HStack>
+                    </HStack>
+                    <Progress
+                      value={capacityPercentage(batch.sizePoints, batch.maxCapacity)}
+                      colorScheme="brand"
+                      borderRadius="full"
+                      h="6px"
+                    />
+                  </VStack>
+
+                  {/* Distance + Time */}
+                  <HStack spacing={4} fontSize="sm">
                     <HStack spacing={1}>
-                      <Icon as={FaBox} boxSize={3} color="gray.600" />
-                      <Text color="gray.600">
-                        Capacity: {batch.sizePoints}/{batch.maxCapacity} points
-                      </Text>
-                      <Tooltip label="Small item=1pt, Medium=2pts, Large=3pts. Your van holds 12pts max." placement="top">
-                        <InfoIcon boxSize={3} color="blue.500" cursor="help" />
-                      </Tooltip>
+                      <Icon as={FaMapMarkerAlt} color="red.500" boxSize={4} />
+                      <Text color="gray.700">{batch.distance}</Text>
+                    </HStack>
+                    <HStack spacing={1}>
+                      <Icon as={FaClock} color="blue.500" boxSize={4} />
+                      <Text color="gray.700">~{batch.estimatedTime}</Text>
                     </HStack>
                   </HStack>
-                  <Progress
-                    value={capacityPercentage(batch.sizePoints, batch.maxCapacity)}
+
+                  {/* Pickups + Deliveries */}
+                  <HStack spacing={3} fontSize="xs" color="gray.600">
+                    <Tag size="sm" colorScheme="blue" variant="subtle">
+                      <TagLabel>📍 {batch.pickupCount} pickup(s)</TagLabel>
+                    </Tag>
+                    <Tag size="sm" colorScheme="green" variant="subtle">
+                      <TagLabel>✓ {batch.deliveryCount} delivery(s)</TagLabel>
+                    </Tag>
+                  </HStack>
+
+                  {/* Required Pass */}
+                  <HStack spacing={2} bg="yellow.50" p={2} borderRadius="md">
+                    <Icon as={WarningIcon} boxSize={4} color="yellow.600" />
+                    <VStack align="start" spacing={0} fontSize="xs">
+                      <Text fontWeight="bold" color="yellow.900">
+                        {batch.requiredPass} Pass needed
+                      </Text>
+                      <Text color="yellow.800">{batch.passValidity}</Text>
+                    </VStack>
+                  </HStack>
+
+                  {/* Claim Button */}
+                  <Button
+                    w="full"
                     colorScheme="brand"
-                    borderRadius="full"
-                    h="6px"
-                  />
+                    size="md"
+                    onClick={() => handleClaimBatch(batch.id)}
+                    isDisabled={!isOnline}
+                  >
+                    {isOnline ? 'Claim batch (15m lock)' : 'Offline - Reconnect to claim'}
+                  </Button>
                 </VStack>
-
-                {/* Distance + Time */}
-                <HStack spacing={4} fontSize="sm">
-                  <HStack spacing={1}>
-                    <Icon as={FaMapMarkerAlt} color="red.500" boxSize={4} />
-                    <Text color="gray.700">{batch.distance}</Text>
-                  </HStack>
-                  <HStack spacing={1}>
-                    <Icon as={FaClock} color="blue.500" boxSize={4} />
-                    <Text color="gray.700">~{batch.estimatedTime}</Text>
-                  </HStack>
-                </HStack>
-
-                {/* Pickups + Deliveries */}
-                <HStack spacing={3} fontSize="xs" color="gray.600">
-                  <Tag size="sm" colorScheme="blue" variant="subtle">
-                    <TagLabel>📍 {batch.pickupCount} pickup(s)</TagLabel>
-                  </Tag>
-                  <Tag size="sm" colorScheme="green" variant="subtle">
-                    <TagLabel>✓ {batch.deliveryCount} delivery(s)</TagLabel>
-                  </Tag>
-                </HStack>
-
-                {/* Required Pass */}
-                <HStack spacing={2} bg="yellow.50" p={2} borderRadius="md">
-                  <Icon as={WarningIcon} boxSize={4} color="yellow.600" />
-                  <VStack align="start" spacing={0} fontSize="xs">
-                    <Text fontWeight="bold" color="yellow.900">
-                      {batch.requiredPass} Pass needed
-                    </Text>
-                    <Text color="yellow.800">{batch.passValidity}</Text>
-                  </VStack>
-                </HStack>
-
-                {/* Claim Button */}
-                <Button
-                  w="full"
-                  colorScheme="brand"
-                  size="md"
-                  onClick={() => handleClaimBatch(batch.id)}
-                  isDisabled={!isOnline}
-                >
-                  {isOnline ? 'Claim batch (15m lock)' : 'Offline - Reconnect to claim'}
-                </Button>
               </CardBody>
             </Card>
           ))}

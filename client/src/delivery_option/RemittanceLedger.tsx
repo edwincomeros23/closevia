@@ -22,7 +22,7 @@ import {
   useToast,
 } from '@chakra-ui/react'
 import { CheckCircleIcon, WarningIcon } from '@chakra-ui/icons'
-import { FaMoneyBillWave, FaCreditCard, FaBank, FaLock } from 'react-icons/fa'
+import { FaMoneyBillWave, FaCreditCard, FaUniversity, FaLock } from 'react-icons/fa'
 
 interface RemittanceEntry {
   date: string
@@ -355,7 +355,7 @@ const RemittanceLedger: React.FC = () => {
                 >
                   <CardBody p={3}>
                     <HStack spacing={2}>
-                      <FaBank size={24} color={selectedPaymentMethod === 'bank' ? '#0066FF' : '#999'} />
+                      <FaUniversity size={24} color={selectedPaymentMethod === 'bank' ? '#0066FF' : '#999'} />
                       <VStack align="start" spacing={0} flex={1}>
                         <Text fontWeight="bold" fontSize="sm">Bank Transfer</Text>
                         <Text fontSize="xs" color="gray.600">1-2 business days</Text>
