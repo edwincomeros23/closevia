@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
@@ -207,9 +208,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') as profile_picture, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') as profile_picture, COALESCE(bio, '') as bio, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -245,9 +246,12 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	var updateData struct {
-		Name           *string `json:"name"`
-		Email          *string `json:"email"`
-		ProfilePicture *string `json:"profile_picture"`
+		Name               *string `json:"name"`
+		Email              *string `json:"email"`
+		ProfilePicture     *string `json:"profile_picture"`
+		Bio                *string `json:"bio"`
+		BackgroundImage    *string `json:"background_image"`
+		BackgroundPosition *string `json:"background_position"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -279,23 +283,44 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, *updateData.ProfilePicture)
 	}
 
+	if updateData.Bio != nil {
+		query += ", bio = ?"
+		args = append(args, *updateData.Bio)
+	}
+
+	if updateData.BackgroundImage != nil {
+		// allow column name background_image or cover_photo depending on schema; try background_image first
+		query += ", background_image = ?"
+		args = append(args, *updateData.BackgroundImage)
+	}
+
+	if updateData.BackgroundPosition != nil {
+		query += ", background_position = ?"
+		args = append(args, *updateData.BackgroundPosition)
+	}
+
 	query += " WHERE id = ?"
 	args = append(args, userID)
 
 	_, err := h.db.Exec(query, args...)
 	if err != nil {
-		// If profile_picture column doesn't exist, try to add it and retry once
+		// Handle missing columns: try to add any known columns then retry once
 		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
-			_, alterErr := h.db.Exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL")
-			if alterErr == nil {
-				// retry update
-				_, err = h.db.Exec(query, args...)
-			}
+			// Try adding profile_picture, background_image, background_position, bio as needed
+			// Note: guard each ALTER with best-effort; ignore errors to let retry attempt proceed
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255) NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_image VARCHAR(255) NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NULL")
+			// retry update
+			_, err = h.db.Exec(query, args...)
 		}
-		return c.Status(500).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Failed to update profile",
-		})
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Failed to update profile",
+			})
+		}
 	}
 
 	return c.JSON(models.APIResponse{
