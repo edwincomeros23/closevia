@@ -216,6 +216,10 @@ cd client
 npm test
 ```
 
+## Media & Cloudinary
+
+- Follow [CLOUDINARY_MIGRATION.md](CLOUDINARY_MIGRATION.md) for environment setup, migration tooling, database update guidance, and fallback strategies that keep `/uploads` assets online while Cloudinary becomes the primary image store.
+
 ## Deployment
 
 ### Backend Deployment

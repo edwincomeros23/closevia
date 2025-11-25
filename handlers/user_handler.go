@@ -3,6 +3,8 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
+	"github.com/xashathebest/clovia/services"
 	"github.com/xashathebest/clovia/utils"
 )
 
@@ -344,17 +347,24 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No file uploaded: " + err.Error()})
 	}
 
-	savePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), file.Filename)
-	if err := c.SaveFile(file, savePath); err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save file"})
-	}
+	var finalURL string
+	if url, err := services.UploadFileToCloudinary(file, "profile-pictures"); err == nil && url != "" {
+		finalURL = url
+	} else {
+		if err != nil && err != services.ErrCloudinaryDisabled {
+			fmt.Printf("Cloudinary profile upload failed: %v\n", err)
+		}
 
-	// Build an absolute URL so clients (dev server on different port) can load images
-	host := c.Get("Host")
-	if host == "" {
-		host = "localhost:4000"
+		fsPath, publicPath := services.GenerateLocalMediaPaths("profile-pictures", file.Filename)
+		if err := os.MkdirAll(filepath.Dir(fsPath), 0o755); err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to prepare upload directory"})
+		}
+		if err := c.SaveFile(file, fsPath); err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save file"})
+		}
+
+		finalURL = buildAbsoluteURL(c, publicPath)
 	}
-	url := fmt.Sprintf("http://%s/%s", host, savePath)
 
 	// Ensure profile_picture column exists
 	var exists int
@@ -364,12 +374,36 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 	}
 
 	// Save URL to user's profile
-	_, err = h.db.Exec("UPDATE users SET profile_picture = ? WHERE id = ?", url, userID)
+	_, err = h.db.Exec("UPDATE users SET profile_picture = ? WHERE id = ?", finalURL, userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update user profile picture"})
 	}
 
-	return c.JSON(models.APIResponse{Success: true, Data: url, Message: "Uploaded"})
+	return c.JSON(models.APIResponse{Success: true, Data: finalURL, Message: "Uploaded"})
+}
+
+func buildAbsoluteURL(c *fiber.Ctx, path string) string {
+	if path == "" {
+		return ""
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	scheme := c.Protocol()
+	if scheme == "" {
+		scheme = "http"
+	}
+	host := c.Hostname()
+	if host == "" {
+		host = c.Get("Host")
+	}
+	if host == "" {
+		host = "localhost:4000"
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, host, path)
 }
 
 // ChangePassword allows an authenticated user to change their password.

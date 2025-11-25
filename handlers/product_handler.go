@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -126,11 +129,19 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	}
 	var imagePaths []string
 	for _, file := range files {
-		savePath := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), file.Filename)
-		if err := c.SaveFile(file, savePath); err != nil {
-			continue // skip failed uploads
+		if url, err := services.UploadFileToCloudinary(file, "products"); err == nil && url != "" {
+			imagePaths = append(imagePaths, url)
+			continue
+		} else if err != nil && err != services.ErrCloudinaryDisabled {
+			fmt.Printf("Cloudinary upload failed: %v\n", err)
 		}
-		imagePaths = append(imagePaths, "/"+savePath)
+
+		localURL, err := saveFileLocally(c, file, "products")
+		if err != nil {
+			fmt.Printf("Local file save failed: %v\n", err)
+			continue
+		}
+		imagePaths = append(imagePaths, localURL)
 	}
 
 	// Convert imagePaths to JSON
@@ -594,6 +605,17 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			TotalPages: totalPages,
 		},
 	})
+}
+
+func saveFileLocally(c *fiber.Ctx, file *multipart.FileHeader, folder string) (string, error) {
+	fsPath, publicPath := services.GenerateLocalMediaPaths(folder, file.Filename)
+	if err := os.MkdirAll(filepath.Dir(fsPath), 0o755); err != nil {
+		return "", err
+	}
+	if err := c.SaveFile(file, fsPath); err != nil {
+		return "", err
+	}
+	return publicPath, nil
 }
 
 // WishlistProduct adds a product to a user's wishlist
