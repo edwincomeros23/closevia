@@ -65,6 +65,7 @@ const AddProduct: React.FC = () => {
   const [locationCoordinates, setLocationCoordinates] = useState<{ lat: number; lng: number } | null>(null)
   const [isGettingLocation, setIsGettingLocation] = useState(true)
   const [locationError, setLocationError] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
   const { isOpen: isPremiumModalOpen, onOpen: onOpenPremiumModal, onClose: onClosePremiumModal } = useDisclosure()
   const { isOpen: isLocationModalOpen, onOpen: onOpenLocationModal, onClose: onCloseLocationModal } = useDisclosure()
 
@@ -488,12 +489,55 @@ const AddProduct: React.FC = () => {
                   variant="outline"
                   colorScheme="purple"
                   mb="2"
-                  title="Generate title from description"
-                  onClick={() => {
-                    if (!user?.is_premium) {
-                      onOpenPremiumModal()
-                    } else {
-                      // TODO: Add auto-generate logic here for premium users
+                  title="Generate product details from images using AI"
+                  isLoading={isGenerating}
+                  loadingText="Analyzing..."
+                  isDisabled={uploadedImages.length < 3 || isGenerating}
+                  onClick={async () => {
+                    if (uploadedImages.length < 3) {
+                      toast({
+                        title: 'Insufficient images',
+                        description: 'Please upload at least 3 images to use AI generation',
+                        status: 'warning',
+                        duration: 3000,
+                        isClosable: true,
+                      })
+                      return
+                    }
+                    setIsGenerating(true)
+                    try {
+                      const formData = new FormData()
+                      uploadedImages.slice(0, 3).forEach((file) => {
+                        formData.append('images', file)
+                      })
+                      const { api } = await import('../services/api')
+                      const response = await api.post('/api/products/generate-details', formData)
+                      const data = response.data
+                      if (data.success && data.data) {
+                        handleInputChange('title', data.data.title || '')
+                        handleInputChange('description', data.data.description || '')
+                        handleInputChange('condition', data.data.condition || 'Used')
+                        handleInputChange('category', data.data.category || 'General')
+                        toast({
+                          title: 'AI generation complete!',
+                          description: 'Product details have been auto-filled',
+                          status: 'success',
+                          duration: 3000,
+                          isClosable: true,
+                        })
+                      } else {
+                        throw new Error(data.error || 'AI generation failed')
+                      }
+                    } catch (error: any) {
+                      toast({
+                        title: 'Generation failed',
+                        description: error.message || 'Failed to generate product details',
+                        status: 'error',
+                        duration: 3000,
+                        isClosable: true,
+                      })
+                    } finally {
+                      setIsGenerating(false)
                     }
                   }}
                 >

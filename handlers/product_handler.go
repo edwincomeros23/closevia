@@ -4,13 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -409,61 +409,25 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 
 	// Use the full query with proper WHERE clause handling
-	// Check if optional columns exist (slug, latitude, longitude). If migrations haven't been applied,
-	// avoid selecting missing columns to prevent SQL errors.
-	hasCol := func(col string) bool {
-		var cnt int
-		q := `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = ?`
-		if err := h.db.QueryRow(q, col).Scan(&cnt); err != nil {
-			return false
-		}
-		return cnt > 0
-	}
-
-	slugOK := hasCol("slug")
-	latOK := hasCol("latitude")
-	lngOK := hasCol("longitude")
-
-	// Build select column list dynamically to match available schema
-	selectCols := []string{"p.id"}
-	if slugOK {
-		selectCols = append(selectCols, "p.slug")
-	}
-	selectCols = append(selectCols, []string{"p.title", "p.description", "p.price", "p.seller_id", "p.premium", "p.status", "p.allow_buying", "p.barter_only", "p.location"}...)
-	if latOK {
-		selectCols = append(selectCols, "p.latitude")
-	}
-	if lngOK {
-		selectCols = append(selectCols, "p.longitude")
-	}
-	selectCols = append(selectCols, []string{"p.created_at", "p.updated_at", "COALESCE(u.name, 'Unknown') as seller_name", "p.image_urls"}...)
-
-	cols := strings.Join(selectCols, ", ")
-
-	var query string
-	if keyword == "" {
-		query = fmt.Sprintf(`SELECT %s FROM products p LEFT JOIN users u ON p.seller_id = u.id %s ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, cols, whereClause)
-	} else {
-		query = fmt.Sprintf(`SELECT %s FROM products p LEFT JOIN users u ON p.seller_id = u.id %s ORDER BY p.premium DESC, p.created_at DESC LIMIT ? OFFSET ?`, cols, whereClause)
-	}
+	query := `
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
+		       p.suggested_value, p.category, p.created_at, p.updated_at,
+		       u.name as seller_name
+		FROM products p
+		LEFT JOIN users u ON p.seller_id = u.id
+		` + whereClause + `
+		ORDER BY p.premium DESC, p.created_at DESC
+		LIMIT ? OFFSET ?
+	`
 	args = append(args, limit, offset)
 
-	// Test a simple query first
-	var testCount int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM products").Scan(&testCount)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Database connection test failed: " + err.Error(),
-		})
-	}
 	rows, err := h.db.Query(query, args...)
 	if err != nil {
-		// Enhanced debugging: print query and args
-		fmt.Printf("❌ Products query failed!\n")
-		fmt.Printf("Query: %s\n", query)
-		fmt.Printf("Args: %v\n", args)
-		fmt.Printf("Error: %v\n", err)
+		fmt.Println("❌ Products query failed!")
+		fmt.Println("Query:", query)
+		fmt.Println("Args:", args)
+		fmt.Println("Error:", err.Error())
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to get products: " + err.Error(),
@@ -471,118 +435,35 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
-	// Check for errors after query execution
-	if err = rows.Err(); err != nil {
-		return c.Status(500).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Error after query execution: " + err.Error(),
-		})
-	}
-
 	var products []models.Product
-	rowCount := 0
 	for rows.Next() {
-		rowCount++
-		// Scan all fields with proper NULL handling. We built selectCols dynamically above,
-		// so create matching scan targets.
-		var id int
-		var title string
-		var description string
-		var price sql.NullFloat64
-		var sellerID int
-		var premium int64
-		var status string
-		var allowBuying int64
-		var barterOnly int64
-		var location sql.NullString
-		var createdAt sql.NullTime
-		var updatedAt sql.NullTime
-		var sellerName string
-		var imageURLsJSON sql.NullString
-
-		// Optional holders
+		var product models.Product
 		var slugNull sql.NullString
-		var latitudeNull sql.NullFloat64
-		var longitudeNull sql.NullFloat64
-
-		scanTargets := []interface{}{&id}
-		if slugOK {
-			scanTargets = append(scanTargets, &slugNull)
-		}
-		scanTargets = append(scanTargets, &title, &description, &price, &sellerID, &premium, &status, &allowBuying, &barterOnly, &location)
-		if latOK {
-			scanTargets = append(scanTargets, &latitudeNull)
-		}
-		if lngOK {
-			scanTargets = append(scanTargets, &longitudeNull)
-		}
-		scanTargets = append(scanTargets, &createdAt, &updatedAt, &sellerName, &imageURLsJSON)
-
-		if err := rows.Scan(scanTargets...); err != nil {
-			// Log the error but continue processing other rows
-			fmt.Printf("warning: failed to scan product row: %v\n", err)
-			continue
-		}
-
-		// Create a complete product struct
-		product := models.Product{
-			ID:          id,
-			Title:       title,
-			Description: description,
-			SellerID:    sellerID,
-			Status:      status,
-			SellerName:  sellerName,
-			ImageURLs:   models.StringArray{},
-		}
-
-		// Handle slug
+		var priceNull sql.NullFloat64
+		var imageURLsJSONStr string
+		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
+			&product.SellerName)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
-
-		// Set boolean flags
-		product.Premium = premium != 0
-		product.AllowBuying = allowBuying != 0
-		product.BarterOnly = barterOnly != 0
-
-		// Handle price
-		if price.Valid {
-			p := price.Float64
+		if err != nil {
+			continue
+		}
+		if priceNull.Valid {
+			p := priceNull.Float64
 			product.Price = &p
-		}
-
-		// Handle location
-		if location.Valid {
-			product.Location = location.String
-		}
-
-		// Handle latitude and longitude
-		if latitudeNull.Valid {
-			lat := latitudeNull.Float64
-			product.Latitude = &lat
-		}
-		if longitudeNull.Valid {
-			lng := longitudeNull.Float64
-			product.Longitude = &lng
-		}
-
-		// Handle timestamps
-		if createdAt.Valid {
-			product.CreatedAt = createdAt.Time
 		} else {
-			product.CreatedAt = time.Now()
-		}
-		if updatedAt.Valid {
-			product.UpdatedAt = updatedAt.Time
-		} else {
-			product.UpdatedAt = time.Now()
+			product.Price = nil
 		}
 
-		// Parse image URLs JSON if present
-		if imageURLsJSON.Valid && imageURLsJSON.String != "" {
-			var urls []string
-			if err := json.Unmarshal([]byte(imageURLsJSON.String), &urls); err == nil {
-				product.ImageURLs = models.StringArray(urls)
+		// Parse image URLs from JSON
+		if imageURLsJSONStr != "" {
+			var imageURLs []string
+			if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
+				product.ImageURLs = models.StringArray(imageURLs)
 			}
 		}
 
@@ -637,8 +518,15 @@ func (h *ProductHandler) WishlistProduct(c *fiber.Ctx) error {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
 	}
 
-	// Insert into wishlists, ignoring if it already exists
-	_, err = h.db.Exec("INSERT IGNORE INTO wishlists (user_id, product_id) VALUES (?, ?)", userID, productID)
+	// Check if already in wishlist
+	var wishlistID sql.NullInt64
+	err = h.db.QueryRow("SELECT id FROM wishlists WHERE user_id = ? AND product_id = ?", userID, productID).Scan(&wishlistID)
+	if err == nil && wishlistID.Valid {
+		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "Product already in wishlist"})
+	}
+
+	// Add to wishlist
+	_, err = h.db.Exec("INSERT INTO wishlists (user_id, product_id, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)", userID, productID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to add to wishlist"})
 	}
@@ -666,23 +554,7 @@ func (h *ProductHandler) UnwishlistProduct(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Product removed from wishlist"})
 }
 
-// GetWishlistCount gets the wishlist count for a product
-func (h *ProductHandler) GetWishlistCount(c *fiber.Ctx) error {
-	productID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
-	}
-
-	var count int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM wishlists WHERE product_id = ?", productID).Scan(&count)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get wishlist count"})
-	}
-
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": count}})
-}
-
-// GetUserWishlistStatus checks if a user has wishlisted a product
+// GetUserWishlistStatus checks if a product is in the user's wishlist
 func (h *ProductHandler) GetUserWishlistStatus(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
@@ -697,65 +569,55 @@ func (h *ProductHandler) GetUserWishlistStatus(c *fiber.Ctx) error {
 	var exists int
 	err = h.db.QueryRow("SELECT COUNT(*) FROM wishlists WHERE user_id = ? AND product_id = ?", userID, productID).Scan(&exists)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get wishlist status"})
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check wishlist status"})
 	}
 
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_wishlisted": exists > 0}})
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"in_wishlist": exists > 0}})
 }
 
-// GetProduct gets a product by ID or slug with visibility checks
+// GetProduct gets a single product by ID or slug
 func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
-	identifier := c.Params("id") // Can be ID or slug
+	idOrSlug := c.Params("id")
 
-	// Get current user ID (may be 0 if not authenticated)
-	userID, _ := middleware.GetUserIDFromContext(c)
-
+	// Try to parse as integer first (ID)
 	var product models.Product
-	var priceNull sql.NullFloat64
-	var imageURLsJSONStr sql.NullString
-	var sellerName sql.NullString
-	var wishlistCount int
-	var descriptionNull sql.NullString
-	var locationNull sql.NullString
-	var titleNull sql.NullString
 	var slugNull sql.NullString
-	var premiumInt int64
-	var allowBuyingInt int64
-	var barterOnlyInt int64
-	var createdAtNull sql.NullTime
-	var updatedAtNull sql.NullTime
-	var statusNull sql.NullString
+	var priceNull sql.NullFloat64
+	var imageURLsJSON sql.NullString
+	var err error
 
-	// Try to parse as integer ID first, otherwise treat as slug
-	var query string
-	var queryArg interface{}
-	productID, err := strconv.Atoi(identifier)
-	if err == nil {
+	productID, parseErr := strconv.Atoi(idOrSlug)
+	if parseErr == nil {
 		// It's a numeric ID
-		query = `SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
-			   p.premium, p.status, p.allow_buying, p.barter_only, p.location,
-			   p.created_at, p.updated_at, u.name as seller_name,
-			   (SELECT COUNT(*) FROM wishlists WHERE product_id = p.id) as wishlist_count
-		FROM products p
-		LEFT JOIN users u ON p.seller_id = u.id
-		WHERE p.id = ?`
-		queryArg = productID
+		err = h.db.QueryRow(`
+			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+`condition`+`, 
+			       p.suggested_value, p.category, p.created_at, p.updated_at,
+			       u.name as seller_name
+			FROM products p
+			LEFT JOIN users u ON p.seller_id = u.id
+			WHERE p.id = ?
+		`, productID).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
+			&product.SellerName)
 	} else {
 		// It's a slug
-		query = `SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
-			   p.premium, p.status, p.allow_buying, p.barter_only, p.location,
-			   p.created_at, p.updated_at, u.name as seller_name,
-			   (SELECT COUNT(*) FROM wishlists WHERE product_id = p.id) as wishlist_count
-		FROM products p
-		LEFT JOIN users u ON p.seller_id = u.id
-		WHERE p.slug = ?`
-		queryArg = identifier
+		err = h.db.QueryRow(`
+			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+`condition`+`, 
+			       p.suggested_value, p.category, p.created_at, p.updated_at,
+			       u.name as seller_name
+			FROM products p
+			LEFT JOIN users u ON p.seller_id = u.id
+			WHERE p.slug = ?
+		`, idOrSlug).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
+			&product.SellerName)
 	}
-
-	err = h.db.QueryRow(query, queryArg).Scan(&product.ID, &slugNull, &titleNull, &descriptionNull, &priceNull,
-		&imageURLsJSONStr, &product.SellerID, &premiumInt, &statusNull,
-		&allowBuyingInt, &barterOnlyInt, &locationNull,
-		&createdAtNull, &updatedAtNull, &sellerName, &wishlistCount)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -764,134 +626,37 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 				Error:   "Product not found",
 			})
 		}
-		// Log the actual error for debugging with more details
-		fmt.Printf("❌ Error scanning product %v: %v\n", identifier, err)
-		fmt.Printf("   Error type: %T\n", err)
-		// Return error but don't expose internal details in production
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to retrieve product",
+			Error:   "Failed to get product",
 		})
-	}
-
-	// Handle nullable string fields
-	if titleNull.Valid {
-		product.Title = titleNull.String
-	} else {
-		product.Title = ""
 	}
 
 	if slugNull.Valid {
 		product.Slug = slugNull.String
 	}
-
-	if descriptionNull.Valid {
-		product.Description = descriptionNull.String
-	} else {
-		product.Description = ""
-	}
-
-	if locationNull.Valid {
-		product.Location = locationNull.String
-	} else {
-		product.Location = ""
-	}
-
-	// Convert boolean integers to bool
-	product.Premium = premiumInt != 0
-	product.AllowBuying = allowBuyingInt != 0
-	product.BarterOnly = barterOnlyInt != 0
-
-	// Handle status
-	if statusNull.Valid {
-		product.Status = statusNull.String
-	} else {
-		product.Status = "available" // Default value from schema
-	}
-
-	// SECURITY: Enforce visibility rules
-	// If product is traded or locked, only the owner can view it
-	if (product.Status == "traded" || product.Status == "locked") && product.SellerID != userID {
-		return c.Status(403).JSON(models.APIResponse{
-			Success: false,
-			Error:   "This item is no longer available",
-		})
-	}
-
-	// Handle timestamps
-	if createdAtNull.Valid {
-		product.CreatedAt = createdAtNull.Time
-	} else {
-		product.CreatedAt = time.Now()
-	}
-	if updatedAtNull.Valid {
-		product.UpdatedAt = updatedAtNull.Time
-	} else {
-		product.UpdatedAt = time.Now()
-	}
-
-	// Set seller name if present
-	if sellerName.Valid {
-		product.SellerName = sellerName.String
-	} else {
-		product.SellerName = ""
-	}
-
-	// Parse image URLs from JSON using defensive logic in models.StringArray
-	if imageURLsJSONStr.Valid && imageURLsJSONStr.String != "" {
-		var sa models.StringArray
-		if err := sa.UnmarshalJSON([]byte(imageURLsJSONStr.String)); err == nil {
-			// Filter out any excessively long entries (likely data URLs) and keep only valid-looking URLs
-			var cleaned []string
-			for _, u := range sa {
-				if u == "" {
-					continue
-				}
-				// Skip obvious data URLs that might have been accidentally stored
-				uLen := len(u)
-				if uLen > 2000 {
-					continue
-				}
-				if uLen > 100 && uLen >= 5 && u[:5] == "data:" {
-					continue
-				}
-				if uLen >= 7 && u[:7] == "data:/" {
-					continue
-				}
-				cleaned = append(cleaned, u)
-			}
-			product.ImageURLs = models.StringArray(cleaned)
-		} else {
-			// If unmarshalling fails, avoid returning an error to the client; set to empty
-			product.ImageURLs = models.StringArray{}
-		}
-	} else {
-		product.ImageURLs = models.StringArray{}
-	}
-
-	// Populate wishlist count
-	product.WishlistCount = wishlistCount
-	// bidding_type doesn't exist in the database schema, so set to empty
-	product.BiddingType = ""
-
 	if priceNull.Valid {
 		p := priceNull.Float64
 		product.Price = &p
-	} else {
-		product.Price = nil
 	}
 
-	// Compute vote counts for this product
-	var underCount int
-	var overCount int
+	// Parse image URLs JSON if present
+	if imageURLsJSON.Valid && imageURLsJSON.String != "" {
+		var urls []string
+		if err := json.Unmarshal([]byte(imageURLsJSON.String), &urls); err == nil {
+			product.ImageURLs = models.StringArray(urls)
+		}
+	}
+
+	// Get vote counts
+	var underCount, overCount int
 	_ = h.db.QueryRow("SELECT COALESCE(SUM(CASE WHEN vote = 'under' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN vote = 'over' THEN 1 ELSE 0 END),0) FROM product_votes WHERE product_id = ?", product.ID).Scan(&underCount, &overCount)
 
-	// Find current user's vote, if authenticated
-	var userVote string
-	if userID != 0 {
-		if err := h.db.QueryRow("SELECT vote FROM product_votes WHERE product_id = ? AND user_id = ?", product.ID, userID).Scan(&userVote); err != nil {
-			userVote = ""
-		}
+	// Get user's vote if authenticated
+	var userVote sql.NullString
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if ok {
+		_ = h.db.QueryRow("SELECT vote FROM product_votes WHERE product_id = ? AND user_id = ?", product.ID, userID).Scan(&userVote)
 	}
 
 	return c.JSON(models.APIResponse{
@@ -899,7 +664,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		Data: fiber.Map{
 			"product":   product,
 			"votes":     fiber.Map{"under": underCount, "over": overCount},
-			"user_vote": userVote,
+			"user_vote": userVote.String,
 		},
 	})
 }
@@ -984,7 +749,7 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to retrieve product details",
+			Error:   "Failed to get product",
 		})
 	}
 
@@ -995,119 +760,115 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	var updateData models.ProductUpdate
-	if err := c.BodyParser(&updateData); err != nil {
-		return c.Status(400).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Invalid request body",
-		})
-	}
-
-	// Prevent editing of products that are already sold or traded
-	if p.Status == "sold" || p.Status == "traded" {
-		return c.Status(403).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Cannot edit a product that has been sold or traded",
-		})
-	}
-
-	// Build update query dynamically
-	query := "UPDATE products SET updated_at = CURRENT_TIMESTAMP"
+	// Parse update fields
+	var updateFields []string
 	var args []interface{}
 
-	if updateData.Title != nil {
-		query += ", title = ?"
-		args = append(args, *updateData.Title)
+	title := c.FormValue("title")
+	if title != "" {
+		updateFields = append(updateFields, "title = ?")
+		args = append(args, title)
 	}
-	if updateData.Description != nil {
-		query += ", description = ?"
-		args = append(args, *updateData.Description)
+
+	description := c.FormValue("description")
+	if description != "" {
+		updateFields = append(updateFields, "description = ?")
+		args = append(args, description)
 	}
-	if updateData.Price != nil {
-		query += ", price = ?"
-		args = append(args, *updateData.Price)
+
+	priceStr := c.FormValue("price")
+	if priceStr != "" {
+		if price, err := strconv.ParseFloat(priceStr, 64); err == nil {
+			updateFields = append(updateFields, "price = ?")
+			args = append(args, price)
+		}
 	}
-	if updateData.ImageURLs != nil {
-		// Ensure we don't accidentally persist client-side data URLs or extremely large strings
-		var safeList []string
-		for _, u := range *updateData.ImageURLs {
-			if u == "" {
-				continue
+
+	premiumStr := c.FormValue("premium")
+	if premiumStr != "" {
+		premium := premiumStr == "true"
+		updateFields = append(updateFields, "premium = ?")
+		args = append(args, premium)
+	}
+
+	allowBuyingStr := c.FormValue("allow_buying")
+	if allowBuyingStr != "" {
+		allowBuying := allowBuyingStr == "true"
+		updateFields = append(updateFields, "allow_buying = ?")
+		args = append(args, allowBuying)
+	}
+
+	barterOnlyStr := c.FormValue("barter_only")
+	if barterOnlyStr != "" {
+		barterOnly := barterOnlyStr == "true"
+		updateFields = append(updateFields, "barter_only = ?")
+		args = append(args, barterOnly)
+	}
+
+	status := c.FormValue("status")
+	if status != "" {
+		updateFields = append(updateFields, "status = ?")
+		args = append(args, status)
+	}
+
+	location := c.FormValue("location")
+	if location != "" {
+		updateFields = append(updateFields, "location = ?")
+		args = append(args, location)
+	}
+
+	condition := c.FormValue("condition")
+	if condition != "" {
+		updateFields = append(updateFields, "`condition` = ?")
+		args = append(args, condition)
+	}
+
+	category := c.FormValue("category")
+	if category != "" {
+		updateFields = append(updateFields, "category = ?")
+		args = append(args, category)
+	}
+
+	// Handle image updates
+	form, err := c.MultipartForm()
+	if err == nil {
+		files := form.File["images"]
+		if len(files) > 0 {
+			var imagePaths []string
+			for _, file := range files {
+				if url, err := services.UploadFileToCloudinary(file, "products"); err == nil && url != "" {
+					imagePaths = append(imagePaths, url)
+					continue
+				} else if err != nil && err != services.ErrCloudinaryDisabled {
+					fmt.Printf("Cloudinary upload failed: %v\n", err)
+				}
+
+				localURL, err := saveFileLocally(c, file, "products")
+				if err != nil {
+					fmt.Printf("Local file save failed: %v\n", err)
+					continue
+				}
+				imagePaths = append(imagePaths, localURL)
 			}
-			if len(u) > 2000 {
-				// skip very large entries (likely data URLs)
-				continue
+			if len(imagePaths) > 0 {
+				imageURLsJSONBytes, _ := json.Marshal(imagePaths)
+				updateFields = append(updateFields, "image_urls = ?")
+				args = append(args, string(imageURLsJSONBytes))
 			}
-			if len(u) > 10 && (u[:5] == "data:" || u[:7] == "data:/") {
-				// skip inline data URLs
-				continue
-			}
-			safeList = append(safeList, u)
 		}
-		// Marshal safeList to JSON string to store
-		imgJSON, _ := json.Marshal(safeList)
-		query += ", image_urls = ?"
-		args = append(args, string(imgJSON))
-	}
-	if updateData.Premium != nil {
-		query += ", premium = ?"
-		args = append(args, *updateData.Premium)
-	}
-	if updateData.Status != nil {
-		query += ", status = ?"
-		args = append(args, *updateData.Status)
-	}
-	if updateData.AllowBuying != nil {
-		query += ", allow_buying = ?"
-		args = append(args, *updateData.AllowBuying)
-	}
-	if updateData.BarterOnly != nil {
-		query += ", barter_only = ?"
-		args = append(args, *updateData.BarterOnly)
-	}
-	if updateData.Location != nil {
-		query += ", location = ?"
-		args = append(args, *updateData.Location)
-	}
-	if updateData.Condition != nil {
-		query += ", `condition` = ?"
-		args = append(args, *updateData.Condition)
-	}
-	// bidding_type column doesn't exist in database, so skip it
-
-	// Recalculate suggested value if price or condition changed
-	if updateData.Price != nil || updateData.Condition != nil {
-		newPrice := p.Price
-		if updateData.Price != nil {
-			newPrice = updateData.Price
-		}
-
-		newCondition := p.Condition
-		if updateData.Condition != nil {
-			newCondition = *updateData.Condition
-		}
-
-		var priceValue float64
-		if newPrice != nil {
-			priceValue = *newPrice
-		}
-
-		newSuggestedValue := calculateSuggestedValue(priceValue, newCondition)
-		query += ", suggested_value = ?"
-		args = append(args, newSuggestedValue)
 	}
 
-	// Do not proceed if no fields were updated
-	if len(args) == 0 {
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Message: "No fields to update",
+	if len(updateFields) == 0 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "No fields to update",
 		})
 	}
 
-	query += " WHERE id = ?"
+	updateFields = append(updateFields, "updated_at = CURRENT_TIMESTAMP")
 	args = append(args, productID)
 
+	query := fmt.Sprintf("UPDATE products SET %s WHERE id = ?", strings.Join(updateFields, ", "))
 	_, err = h.db.Exec(query, args...)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -1144,9 +905,15 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 	var sellerID int
 	err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", productID).Scan(&sellerID)
 	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Product not found",
+			})
+		}
+		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Product not found",
+			Error:   "Failed to get product",
 		})
 	}
 
@@ -1157,7 +924,7 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if product has orders
+	// Check if product has any orders
 	var orderCount int
 	err = h.db.QueryRow("SELECT COUNT(*) FROM orders WHERE product_id = ?", productID).Scan(&orderCount)
 	if err == nil && orderCount > 0 {
@@ -1167,7 +934,6 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Delete the product
 	_, err = h.db.Exec("DELETE FROM products WHERE id = ?", productID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -1182,7 +948,7 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 	})
 }
 
-// GetUserProducts gets products by a specific user
+// GetUserProducts gets all products for a specific user
 func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	userID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -1193,7 +959,10 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	}
 
 	page, _ := strconv.Atoi(c.Query("page", "1"))
-	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if limit <= 0 {
+		limit = 20
+	}
 	offset := (page - 1) * limit
 
 	// Get total count
@@ -1274,5 +1043,39 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 			Limit:      limit,
 			TotalPages: totalPages,
 		},
+	})
+}
+
+// GenerateProductDetailsWithAI analyzes product images using Gemini AI and returns structured product details
+func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to parse uploaded files",
+		})
+	}
+
+	files := form.File["images"]
+	if len(files) < 3 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "At least 3 images are required for AI analysis",
+		})
+	}
+
+	result, err := services.GenerateProductDetails(files)
+	if err != nil {
+		errMsg := fmt.Sprintf("AI generation failed: %v", err)
+		log.Printf("Error in GenerateProductDetailsWithAI: %s", errMsg)
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   errMsg,
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data:    result,
 	})
 }
