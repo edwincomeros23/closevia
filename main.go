@@ -51,7 +51,7 @@ func main() {
 	// Middleware
 	app.Use(recover.New())
 	app.Use(logger.New())
-	
+
 	corsOrigins := os.Getenv("CORS_ORIGINS")
 	if corsOrigins == "" {
 		corsOrigins = strings.Join([]string{
@@ -105,6 +105,18 @@ func main() {
 		return c.JSON(fiber.Map{
 			"success":       true,
 			"product_count": count,
+		})
+	})
+	app.Get("/api/fix-profile-picture", func(c *fiber.Ctx) error {
+		if _, err := database.DB.Exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL"); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"success": false,
+				"error":   err.Error(),
+			})
+		}
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "profile_picture column ensured",
 		})
 	})
 

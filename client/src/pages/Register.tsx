@@ -90,6 +90,7 @@ const Register: React.FC = () => {
         org_logo_url: isOrganization ? orgLogoUrl : undefined,
         department: !isOrganization ? department : undefined,
         bio: bio || undefined,
+        // profile_picture NOT included - will be added via Settings page
       })
       
       toast({
