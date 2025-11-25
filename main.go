@@ -4,6 +4,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -50,10 +51,25 @@ func main() {
 	// Middleware
 	app.Use(recover.New())
 	app.Use(logger.New())
+	
+	corsOrigins := os.Getenv("CORS_ORIGINS")
+	if corsOrigins == "" {
+		corsOrigins = strings.Join([]string{
+			"http://localhost:5173",
+			"http://localhost:5174",
+			"http://localhost:3000",
+			"https://cloviaph.netlify.app",
+			"https://closevia.onrender.com",
+		}, ",")
+	}
+
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:5173,http://localhost:5174,http://localhost:3000",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
-		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
+		AllowOrigins:     corsOrigins,
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Requested-With",
+		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+		AllowCredentials: true,
+		MaxAge:           3600,
+		ExposeHeaders:    "Content-Length, Content-Type, Authorization",
 	}))
 
 	// Serve static files (uploads directory)
