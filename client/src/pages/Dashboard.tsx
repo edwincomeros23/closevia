@@ -56,7 +56,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
 import { api } from '../services/api'
 import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
-import { FiShoppingBag, FiRefreshCw, FiMessageCircle } from 'react-icons/fi'
+import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import OfferDetailsModal from '../components/OfferDetailsModal'
@@ -1681,13 +1681,24 @@ const Dashboard: React.FC = () => {
              borderColor="gray.200"
              py={2}
            >
-             <Flex justify="space-between" align="center" px={4} gap={4}>
-               <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1}>
-                 <TabList overflowX="auto" sx={{
-                   '&::-webkit-scrollbar': { display: 'none' },
-                   scrollbarWidth: 'none',
-                   msOverflowStyle: 'none'
-                 }}>
+             <Flex justify="space-between" align="center" px={4} gap={{ base: 2, md: 4 }} flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+               <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1} minW={0}>
+                 <TabList 
+                   overflowX={{ base: 'auto', md: 'visible' }}
+                   display="flex"
+                   flexWrap={{ base: 'wrap', md: 'nowrap' }}
+                   sx={{
+                     '&::-webkit-scrollbar': { display: 'none' },
+                     scrollbarWidth: 'none',
+                     msOverflowStyle: 'none',
+                     '& > button': {
+                       fontSize: { base: '0.75rem', sm: '0.875rem', md: '1rem' },
+                       whiteSpace: 'nowrap',
+                       minW: { base: 'auto', md: 'auto' },
+                       px: { base: '6px', sm: '12px', md: '16px' },
+                       py: { base: '8px', sm: '12px' },
+                     }
+                   }}>
                    <Tab 
                      _selected={{ 
                        color: 'brand.600', 
@@ -1696,11 +1707,11 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FiShoppingBag} />
-                       <Text>My Products</Text>
+                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
+                       <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 7, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>My Products</Text>
                        {userProducts.length > 0 && (
-                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                         <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                            {userProducts.length}
                          </Badge>
                        )}
@@ -1715,17 +1726,17 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FiMessageCircle} />
-                       <Text>Offers</Text>
+                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
+                       <Icon as={FiMessageCircle} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 7, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>Offers</Text>
                        {unreadOffers > 0 && (
                          <Badge
                            bg="orange.500"
                            color="white"
                            borderRadius="full"
-                           fontSize="xs"
-                           minW="18px"
-                           h="18px"
+                           fontSize="2xs"
+                           minW={{ base: '16px', md: '18px' }}
+                           h={{ base: '16px', md: '18px' }}
                            display="inline-flex"
                            alignItems="center"
                            justifyContent="center"
@@ -1744,10 +1755,10 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FaExchangeAlt} boxSize={4} />
-                       <Text>Multi-Way Trades</Text>
-                       <Badge colorScheme="purple" fontSize="2xs" px={1.5}>
+                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
+                       <Icon as={FaExchangeAlt} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 7, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>Multi-Way Trades</Text>
+                       <Badge colorScheme="purple" fontSize="2xs" px={{ base: 1, md: 1.5 }} display={{ base: 'none', sm: 'inline-flex' }}>
                          PRO
                        </Badge>
                      </HStack>
@@ -1760,11 +1771,11 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FiRefreshCw} />
-                       <Text>Trade History</Text>
+                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
+                       <Icon as={FiRefreshCw} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 3, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>Trade History</Text>
                        {completedTradesCount > 0 && (
-                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                         <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                            {completedTradesCount}
                          </Badge>
                        )}
@@ -1773,96 +1784,187 @@ const Dashboard: React.FC = () => {
                  </TabList>
                </Tabs>
 
-               {/* Right: Filter/Sort Controls - Responsive */}
+               {/* Right: Filter/Sort Controls - Icon Buttons on Mobile */}
                <HStack
-                 spacing={{ base: 2, md: 3 }}
+                 spacing={{ base: 1, md: 3 }}
                  flexShrink={0}
                  justify="flex-end"
                >
                  {activeTab === 0 && (
                    <>
-                     <Select
-                       value={productFilter}
-                       onChange={(e) => {
-                         setProductFilter(e.target.value as any)
-                         setCurrentPage(1)
-                       }}
-                       w={{ base: '120px', md: '150px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="all">All Status</option>
-                       <option value="available">Active</option>
-                       <option value="sold">Sold</option>
-                       <option value="traded">Traded</option>
-                       <option value="locked">Hidden</option>
-                     </Select>
-                     <Select
-                       value={productSort}
-                       onChange={(e) => {
-                         setProductSort(e.target.value as any)
-                         setCurrentPage(1)
-                       }}
-                       w={{ base: '120px', md: '140px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="newest">Newest First</option>
-                       <option value="oldest">Oldest First</option>
-                     </Select>
+                     {/* Desktop: Show selects | Mobile: Show icon button */}
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={productFilter}
+                         onChange={(e) => {
+                           setProductFilter(e.target.value as any)
+                           setCurrentPage(1)
+                         }}
+                         w={{ base: '120px', md: '150px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="all">All Status</option>
+                         <option value="available">Active</option>
+                         <option value="sold">Sold</option>
+                         <option value="traded">Traded</option>
+                         <option value="locked">Hidden</option>
+                       </Select>
+                     </Box>
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={productSort}
+                         onChange={(e) => {
+                           setProductSort(e.target.value as any)
+                           setCurrentPage(1)
+                         }}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="newest">Newest First</option>
+                         <option value="oldest">Oldest First</option>
+                       </Select>
+                     </Box>
+                     
+                     {/* Mobile: Icon buttons with tooltip */}
+                     <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
+                       <IconButton
+                         display={{ base: 'flex', lg: 'none' }}
+                         aria-label="Filter products"
+                         icon={<FiFilter />}
+                         size="sm"
+                         variant="ghost"
+                         onClick={() => {
+                           const filters = ['all', 'available', 'sold', 'traded', 'locked']
+                           const currentIndex = filters.indexOf(productFilter)
+                           setProductFilter(filters[(currentIndex + 1) % filters.length] as any)
+                           setCurrentPage(1)
+                         }}
+                       />
+                     </Tooltip>
+                     
+                     <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                       <IconButton
+                         display={{ base: 'flex', lg: 'none' }}
+                         aria-label="Sort products"
+                         icon={<FiArrowDown />}
+                         size="sm"
+                         variant="ghost"
+                         onClick={() => {
+                           setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
+                           setCurrentPage(1)
+                         }}
+                       />
+                     </Tooltip>
                    </>
                  )}
                  
                  {activeTab === 1 && (
                    <>
-                     <Select
-                       value={offersStatusFilter}
-                       onChange={(e) => {
-                         setOffersStatusFilter(e.target.value)
-                         setOffersPage(1)
-                       }}
-                       w={{ base: '120px', md: '140px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="all">All Status</option>
-                       <option value="pending">Pending</option>
-                       <option value="accepted">Accepted</option>
-                       <option value="active">Active</option>
-                       <option value="countered">Countered</option>
-                     </Select>
-                     <Select
-                       value={offersSort}
-                       onChange={(e) => setOffersSort(e.target.value as any)}
-                       w={{ base: '120px', md: '140px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="newest">Newest First</option>
-                       <option value="oldest">Oldest First</option>
-                     </Select>
+                     {/* Desktop: Show select | Mobile: Show icon button */}
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={offersStatusFilter}
+                         onChange={(e) => {
+                           setOffersStatusFilter(e.target.value)
+                           setOffersPage(1)
+                         }}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="all">All Status</option>
+                         <option value="pending">Pending</option>
+                         <option value="accepted">Accepted</option>
+                         <option value="active">Active</option>
+                         <option value="countered">Countered</option>
+                       </Select>
+                     </Box>
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={offersSort}
+                         onChange={(e) => setOffersSort(e.target.value as any)}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="newest">Newest First</option>
+                         <option value="oldest">Oldest First</option>
+                       </Select>
+                     </Box>
+                     
+                     {/* Mobile: Icon button for Offers tab */}
+                     <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
+                       <IconButton
+                         display={{ base: 'flex', lg: 'none' }}
+                         aria-label="Filter offers"
+                         icon={<FiFilter />}
+                         size="sm"
+                         variant="ghost"
+                         onClick={() => {
+                           const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+                           const currentIndex = statuses.indexOf(offersStatusFilter)
+                           setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+                           setOffersPage(1)
+                         }}
+                       />
+                     </Tooltip>
+                     
+                     <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                       <IconButton
+                         display={{ base: 'flex', lg: 'none' }}
+                         aria-label="Sort offers"
+                         icon={<FiArrowDown />}
+                         size="sm"
+                         variant="ghost"
+                         onClick={() => {
+                           setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                         }}
+                       />
+                     </Tooltip>
                    </>
                  )}
 
                  {activeTab === 2 && (
-                   <Select
-                     value={tradeHistorySort}
-                     onChange={(e) => {
-                       setTradeHistorySort(e.target.value as any)
-                       setTradeHistoryPage(1)
-                     }}
-                     w={{ base: '120px', md: '140px' }}
-                     bg={cardBg}
-                     borderColor={borderColor}
-                     size="sm"
-                   >
-                     <option value="newest">Newest First</option>
-                     <option value="oldest">Oldest First</option>
-                   </Select>
+                   <>
+                     {/* Desktop: Show select | Mobile: Show icon button */}
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={tradeHistorySort}
+                         onChange={(e) => {
+                           setTradeHistorySort(e.target.value as any)
+                           setTradeHistoryPage(1)
+                         }}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="newest">Newest First</option>
+                         <option value="oldest">Oldest First</option>
+                       </Select>
+                     </Box>
+                     
+                     {/* Mobile: Icon button for Trade History tab */}
+                     <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                       <IconButton
+                         display={{ base: 'flex', lg: 'none' }}
+                         aria-label="Sort trade history"
+                         icon={<FiArrowDown />}
+                         size="sm"
+                         variant="ghost"
+                         onClick={() => {
+                           setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
+                           setTradeHistoryPage(1)
+                         }}
+                       />
+                     </Tooltip>
+                   </>
                  )}
                </HStack>
              </Flex>
@@ -1963,7 +2065,17 @@ const Dashboard: React.FC = () => {
                     variant="soft-rounded" 
                     colorScheme="brand"
                   >
-                    <TabList flexWrap="wrap">
+                    <TabList 
+                      flexWrap={{ base: 'wrap', md: 'nowrap' }}
+                      overflowX={{ base: 'auto', md: 'visible' }}
+                      sx={{
+                        base: {
+                          '&::-webkit-scrollbar': { display: 'none' },
+                          scrollbarWidth: 'none',
+                          msOverflowStyle: 'none',
+                        }
+                      }}
+                    >
                       <Tab>
                         Sent Offers
                         {offersStats.sentPending > 0 && (
@@ -2314,29 +2426,6 @@ const Dashboard: React.FC = () => {
               {/* Trade History Tab */}
               <TabPanel>
                 <VStack spacing={6} align="stretch">
-                  {/* Filters (Search moved to top bar) */}
-                  <HStack spacing={3} flexWrap="wrap" justify="space-between">
-                    {unifiedSearch && (
-                      <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
-                        Searching: "{unifiedSearch}"
-                      </Badge>
-                    )}
-                    <Select
-                      value={tradeHistorySort}
-                      onChange={(e) => {
-                        setTradeHistorySort(e.target.value as any)
-                        setTradeHistoryPage(1)
-                      }}
-                      w="150px"
-                      bg={cardBg}
-                      borderColor={borderColor}
-                      ml="auto"
-                    >
-                      <option value="newest">Newest First</option>
-                      <option value="oldest">Oldest First</option>
-                    </Select>
-                  </HStack>
-
                   {/* Trade History Grid */}
                   {allCompletedTrades.length === 0 ? (
                     <Fade in={true}>
