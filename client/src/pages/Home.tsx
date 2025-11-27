@@ -415,11 +415,12 @@ const Home: React.FC = () => {
       w="full"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(product))}
+       ml={-0.5}
     >
       {/* Square Product Image - Fixed Dimensions for Mobile */}
       <Box 
         position="relative" 
-        w={{ base: '180px', md: 'full' }}
+        w={{ base: '160px', md: 'full' }}
         h={{ base: '150px', md: 'auto' }}
         pt={{ base: '0', md: '100%' }}
         overflow="hidden"
@@ -436,6 +437,7 @@ const Home: React.FC = () => {
           objectFit="cover"
           loading="lazy"
           fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          ml={0.5}
         />
         
         {/* Premium Badge */}
@@ -462,7 +464,9 @@ const Home: React.FC = () => {
           colorScheme={product.allow_buying && product.price && !product.barter_only ? "blue" : "green"}
           variant="solid"
           borderRadius="full"
-          px={2}
+          px={1.5}
+          py={0.5}
+          fontSize="3xs"
         >
           {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
         </Badge>
@@ -496,13 +500,30 @@ const Home: React.FC = () => {
           fontSize="xs"
         >
           <Text as="span" mr={1}>📍</Text>
-          {product.distance || '1.2km nearby'}
+          {product.distance || '1.2km'}
+        </Badge>
+
+        {/* Condition Badge for Image Section */}
+        <Badge
+          position="absolute"
+          bottom={2}
+          right={2}
+          fontSize="3xs"
+          colorScheme="blue"
+          variant="subtle"
+          borderWidth="0"
+          display={{ base: 'inline-flex', md: 'none' }}
+          px={1.5}
+          py={0.5}
+          height="fit-content"
+        >
+          {product.condition || 'Used'}
         </Badge>
       </Box>
 
       {/* Product Info (fixed height) */}
-      <Box p={4} display="flex" flexDirection="column" h={{ base: 180, md: 192 }} overflow="hidden">
-        <Flex justify="space-between" align="center" mb={2}>
+      <Box p={4} display="flex" flexDirection="column" h={{ base: 140, md: 192 }} overflow="hidden">
+        <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
           <HStack spacing={2}>
             <Box
               as={RouterLink}
