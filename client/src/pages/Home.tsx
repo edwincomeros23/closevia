@@ -416,12 +416,19 @@ const Home: React.FC = () => {
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(product))}
     >
-      {/* Square Product Image */}
-      <Box position="relative" w="full" pt="100%" overflow="hidden">
+      {/* Square Product Image - Fixed Dimensions for Mobile */}
+      <Box 
+        position="relative" 
+        w={{ base: '180px', md: 'full' }}
+        h={{ base: '150px', md: 'auto' }}
+        pt={{ base: '0', md: '100%' }}
+        overflow="hidden"
+        mx={{ base: 'auto', md: '0' }}
+      >
         <Image
           src={getFirstImage(product.image_urls)}
           alt={product.title}
-          position="absolute"
+          position={{ base: 'static', md: 'absolute' }}
           top={0}
           left={0}
           w="100%"
@@ -537,7 +544,7 @@ const Home: React.FC = () => {
         <Text 
           color="gray.600" 
           noOfLines={{ base: 1, md: 2 }} 
-          mb={3} 
+          mb={3}
           fontSize="sm" 
           flexShrink={0}
         >
