@@ -420,7 +420,7 @@ const Home: React.FC = () => {
       {/* Square Product Image - Fixed Dimensions for Mobile */}
       <Box 
         position="relative" 
-        w={{ base: '160px', md: 'full' }}
+        w={{ base: '170px', md: 'full' }}
         h={{ base: '150px', md: 'auto' }}
         pt={{ base: '0', md: '100%' }}
         overflow="hidden"
@@ -466,7 +466,7 @@ const Home: React.FC = () => {
           borderRadius="full"
           px={1.5}
           py={0.5}
-          fontSize="3xs"
+          fontSize="2xs"
         >
           {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
         </Badge>
@@ -549,7 +549,7 @@ const Home: React.FC = () => {
             </Text>
           </HStack>
           <Badge 
-            fontSize="xs" 
+            fontSize="SM" 
             colorScheme="blue" 
             flexShrink={0}
             borderWidth="1px"
