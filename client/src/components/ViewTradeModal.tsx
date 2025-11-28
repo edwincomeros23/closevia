@@ -602,7 +602,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 <Grid templateColumns="repeat(3, 1fr)" gap={3}>
                   {Object.entries(deliveryOptions).map(([type, option]) => (
                     <Card
-                      key={type}
+                      key={`delivery-${type}`}
                       cursor="pointer"
                       borderWidth="2px"
                       borderColor={
@@ -700,7 +700,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 <VStack spacing={2} align="stretch">
                   {Object.entries(paymentMethods).map(([method, details]) => (
                     <Card
-                      key={method}
+                      key={`payment-${method}`}
                       cursor="pointer"
                       borderWidth="2px"
                       borderColor={
@@ -1364,7 +1364,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               {offeredProducts.length > 0 ? (
                                 <SimpleGrid columns={offeredProducts.length > 1 ? 2 : 1} spacing={2}>
                                   {offeredProducts.map((product) => (
-                                    <Box key={product.id}>
+                                    <Box key={`offered-${product.id}`}>
                                       <Image
                                         src={getFirstImage(product.image_urls)}
                                         alt={product.title}
@@ -1447,7 +1447,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           const isOwnMessage = msg.sender_id === user?.id
                           return (
                             <HStack
-                              key={msg.id}
+                              key={`msg-${msg.id}`}
                               justify={isOwnMessage ? 'flex-end' : 'flex-start'}
                               align="flex-start"
                               spacing={2}
@@ -1564,7 +1564,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                           return (
                             <Card
-                              key={location.name}
+                              key={`location-${location.name}`}
                               variant="outline"
                               cursor="pointer"
                               borderWidth={isSelected ? '2px' : '1px'}

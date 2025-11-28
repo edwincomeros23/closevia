@@ -253,9 +253,13 @@ type Trade struct {
 	FirstCompletionAt         *time.Time `json:"first_completion_at,omitempty"`
 	AwaitingConfirmationSince *time.Time `json:"awaiting_confirmation_since,omitempty"`
 	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
-	BuyerName                 string     `json:"buyer_name,omitempty"`
-	SellerName                string     `json:"seller_name,omitempty"`
-	ProductTitle              string     `json:"product_title,omitempty"`
+	// Meetup-related fields
+	MeetupLocation         string `json:"meetup_location,omitempty"`
+	BuyerMeetupConfirmed   bool   `json:"buyer_meetup_confirmed"`
+	SellerMeetupConfirmed  bool   `json:"seller_meetup_confirmed"`
+	BuyerName              string `json:"buyer_name,omitempty"`
+	SellerName             string `json:"seller_name,omitempty"`
+	ProductTitle           string `json:"product_title,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade
@@ -281,10 +285,11 @@ type TradeCreate struct {
 
 // TradeAction represents accept/decline/counter actions
 type TradeAction struct {
-	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel"`
+	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup"`
 	Message                  string   `json:"message,omitempty"`
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
+	MeetupLocation           string   `json:"meetup_location,omitempty"`
 }
 
 // ChatConversation represents a conversation between a buyer and seller about a product

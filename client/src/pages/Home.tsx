@@ -549,7 +549,7 @@ const Home: React.FC = () => {
             </Text>
           </HStack>
           <Badge 
-            fontSize="SM" 
+            fontSize={{ base: 'xs', md: '2xs' }}
             colorScheme="blue" 
             flexShrink={0}
             borderWidth="1px"

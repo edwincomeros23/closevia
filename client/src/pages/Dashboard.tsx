@@ -141,6 +141,13 @@ const Dashboard: React.FC = () => {
     }
   }, [user])
 
+  // Check if user is authenticated, redirect to login if not
+  useEffect(() => {
+    if (!user) {
+      navigate('/login', { replace: true })
+    }
+  }, [user, navigate])
+
   // Fetch offers when Offers tab is selected (if not already loaded)
   useEffect(() => {
     if (user && activeTab === 1) {
@@ -1416,6 +1423,11 @@ const Dashboard: React.FC = () => {
     )
   }
 
+  // Early return if no user (in case redirect hasn't processed yet)
+  if (!user) {
+    return null
+  }
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container maxW="container.xl" py={8}>
@@ -1711,7 +1723,7 @@ const Dashboard: React.FC = () => {
                        <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 7, md: 2 }} />
                        <Text display={{ base: 'none', sm: 'block' }}>My Products</Text>
                        {userProducts.length > 0 && (
-                         <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
+                         <Badge colorScheme="green" borderRadius="full" fontSize="xs" display={{ base: 'none', sm: 'inline-flex' }}>
                            {userProducts.length}
                          </Badge>
                        )}
@@ -1901,6 +1913,7 @@ const Dashboard: React.FC = () => {
                      {/* Mobile: Icon button for Offers tab */}
                      <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
                        <IconButton
+                        
                          display={{ base: 'flex', lg: 'none' }}
                          aria-label="Filter offers"
                          icon={<FiFilter />}
