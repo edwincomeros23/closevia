@@ -20,7 +20,7 @@ import {
   Image,
   Flex,
 } from '@chakra-ui/react'
-import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons'
+import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 
 const Login: React.FC = () => {
@@ -64,7 +64,7 @@ const Login: React.FC = () => {
   }
     
   return (
-    <Box bg="#FFFDF1" minH="100vh" pt={0}>
+    <Box bg="#FFFDF1" minH="100vh" pt={0} h={{ base: '100vh', md: 'auto' }} overflow={{ base: 'hidden', md: 'visible' }}>
       <Container maxW="100%" px={0} minH="100vh">
         <Flex direction={{ base: 'column', md: 'row' }} gap={0} align="stretch" h="100vh">
           {/* Image on the left - full height */}
@@ -97,8 +97,24 @@ const Login: React.FC = () => {
             alignItems="center" 
             justifyContent="center" 
             px={{ base: 4, md: 8 }}
+            py={{ base: 0, md: 8 }}
             bg="#FFFDF1"
+            overflowY={{ base: 'hidden', md: 'auto' }}
+            position="relative"
           >
+            {/* Back Button - Mobile Only */}
+            <IconButton
+              aria-label="Go back"
+              icon={<ArrowBackIcon />}
+              position="absolute"
+              top={4}
+              left={4}
+              display={{ base: 'flex', md: 'none' }}
+              variant="ghost"
+              onClick={() => navigate(-1)}
+              size="md"
+            />
+            
             <Box
               p={8}
               rounded="0"

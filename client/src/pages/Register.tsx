@@ -20,7 +20,7 @@ import {
   useToast,
   SimpleGrid,
 } from '@chakra-ui/react'
-import { ViewIcon, ViewOffIcon } from '@chakra-ui/icons'
+import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 
 const Register: React.FC = () => {
@@ -110,8 +110,21 @@ const Register: React.FC = () => {
   }
 
   return (
-    <Box minH="100vh" bg="#FFFDF1" py={8}>
-      <Container maxW="container.sm">
+    <Box minH="100vh" bg="#FFFDF1" py={8} h={{ base: '100vh', md: 'auto' }} overflow={{ base: 'hidden', md: 'visible' }}>
+      <Container maxW="container.sm" position="relative">
+        {/* Back Button - Mobile Only */}
+        <IconButton
+          aria-label="Go back"
+          icon={<ArrowBackIcon />}
+          position="absolute"
+          top={{ base: 2, md: 8 }}
+          left={{ base: 4, md: 'auto' }}
+          display={{ base: 'flex', md: 'none' }}
+          variant="ghost"
+          onClick={() => navigate(-1)}
+          size="md"
+        />
+        
         <VStack spacing={8}>
           <Box textAlign="center">
             <Heading size="xl" color="brand.500" mb={2}>
