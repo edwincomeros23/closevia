@@ -56,6 +56,7 @@ import TradeModal from '../components/TradeModal'
 import CounterfeitWarning from '../components/CounterfeitWarning'
 import ProximityBadge from '../components/ProximityBadge'
 import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
+import FloatingTab from '../components/FloatingTab'
 import axios from 'axios';
 import { ChevronUpIcon, ChevronDownIcon, CloseIcon, StarIcon } from '@chakra-ui/icons'
 
@@ -617,7 +618,7 @@ const ProductDetail: React.FC = () => {
   const canTradeOrPurchase = !isOwner && product.status === 'available'
 
   return (
-    <Box bg="#FFFDF1" minH="100vh" w="100%">
+    <Box bg="#FFFDF1" minH="100vh" w="100%" pb={{ base: 20, lg: 6 }}>
       <Container maxW="container.xl" py={8}>
         <VStack spacing={8} align="stretch"> 
          <Box bg="white" rounded="lg" shadow="sm" overflow="hidden">
@@ -1287,6 +1288,8 @@ const ProductDetail: React.FC = () => {
         </ModalContent>
       </Modal>
       </Container>
+
+      <FloatingTab />
     </Box>
    )
 }

@@ -54,6 +54,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
+import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
 import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown } from 'react-icons/fi'
@@ -546,13 +547,13 @@ const Dashboard: React.FC = () => {
 
   // Get trades for each sub-tab (excluding completed - those go to Trade History)
   const sentOffers = useMemo(() => {
-    const active = outgoing.filter(t => t.status !== 'completed' && t.status !== 'declined' && t.status !== 'cancelled')
+    const active = outgoing.filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     return sortList(filtered)
   }, [outgoing, offersSearch, offersStatusFilter, sortList, filterTrades])
 
   const receivedOffers = useMemo(() => {
-    const active = incoming.filter(t => t.status !== 'completed' && t.status !== 'declined' && t.status !== 'cancelled')
+    const active = incoming.filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     return sortList(filtered)
   }, [incoming, offersSearch, offersStatusFilter, sortList, filterTrades])
@@ -1440,7 +1441,7 @@ const Dashboard: React.FC = () => {
              flexWrap={{ base: 'wrap', md: 'nowrap' }}
            >
              {/* Left: Welcome Message */}
-             <Box minW="fit-content">
+             <Box minW="fit-content" display={{ base: 'none', md: 'block' }}>
                <Heading size="md" color="brand.500" mb={1}>
                  Welcome, {user?.name}!
                </Heading>
@@ -1643,6 +1644,85 @@ const Dashboard: React.FC = () => {
              </HStack>
              */}
 
+             {/* Mobile: Filter/Sort Controls for All Tabs (Left Side) */}
+             <HStack spacing={1} display={{ base: 'flex', lg: 'none' }}>
+               {activeTab === 0 && (
+                 <>
+                   <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
+                     <IconButton
+                       aria-label="Filter products"
+                       icon={<FiFilter />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         const filters = ['all', 'available', 'sold', 'traded', 'locked']
+                         const currentIndex = filters.indexOf(productFilter)
+                         setProductFilter(filters[(currentIndex + 1) % filters.length] as any)
+                         setCurrentPage(1)
+                       }}
+                     />
+                   </Tooltip>
+                   <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                     <IconButton
+                       aria-label="Sort products"
+                       icon={<FiArrowDown />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
+                         setCurrentPage(1)
+                       }}
+                     />
+                   </Tooltip>
+                 </>
+               )}
+
+               {activeTab === 1 && (
+                 <>
+                   <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
+                     <IconButton
+                       aria-label="Filter offers"
+                       icon={<FiFilter />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+                         const currentIndex = statuses.indexOf(offersStatusFilter)
+                         setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+                         setOffersPage(1)
+                       }}
+                     />
+                   </Tooltip>
+                   <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                     <IconButton
+                       aria-label="Sort offers"
+                       icon={<FiArrowDown />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                       }}
+                     />
+                   </Tooltip>
+                 </>
+               )}
+
+               {activeTab === 2 && (
+                 <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                   <IconButton
+                     aria-label="Sort trade history"
+                     icon={<FiArrowDown />}
+                     size="sm"
+                     variant="ghost"
+                     onClick={() => {
+                       setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
+                       setTradeHistoryPage(1)
+                     }}
+                   />
+                 </Tooltip>
+               )}
+             </HStack>
+
              {/* Notifications & Profile */}
              <HStack spacing={2} flexShrink={0}>
                <Box position="relative">
@@ -1696,9 +1776,10 @@ const Dashboard: React.FC = () => {
              <Flex justify="space-between" align="center" px={4} gap={{ base: 2, md: 4 }} flexWrap={{ base: 'wrap', md: 'nowrap' }}>
                <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1} minW={0}>
                  <TabList 
-                   overflowX={{ base: 'auto', md: 'visible' }}
+                   overflowX={{ base: 'visible', md: 'visible' }}
                    display="flex"
-                   flexWrap={{ base: 'wrap', md: 'nowrap' }}
+                   flexWrap={{ base: 'nowrap', md: 'nowrap' }}
+                   justifyContent={{ base: 'space-between', md: 'flex-start' }}
                    sx={{
                      '&::-webkit-scrollbar': { display: 'none' },
                      scrollbarWidth: 'none',
@@ -1709,6 +1790,8 @@ const Dashboard: React.FC = () => {
                        minW: { base: 'auto', md: 'auto' },
                        px: { base: '6px', sm: '12px', md: '16px' },
                        py: { base: '8px', sm: '12px' },
+                       flex: { base: '1', md: 'initial' },
+                       justifyContent: { base: 'center', md: 'flex-start' },
                      }
                    }}>
                    <Tab 
@@ -1719,8 +1802,8 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
-                       <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 7, md: 2 }} />
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
                        <Text display={{ base: 'none', sm: 'block' }}>My Products</Text>
                        {userProducts.length > 0 && (
                          <Badge colorScheme="green" borderRadius="full" fontSize="xs" display={{ base: 'none', sm: 'inline-flex' }}>
@@ -1738,8 +1821,8 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
-                       <Icon as={FiMessageCircle} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 7, md: 2 }} />
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FiMessageCircle} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
                        <Text display={{ base: 'none', sm: 'block' }}>Offers</Text>
                        {unreadOffers > 0 && (
                          <Badge
@@ -1767,8 +1850,8 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
-                       <Icon as={FaExchangeAlt} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 7, md: 2 }} />
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FaExchangeAlt} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
                        <Text display={{ base: 'none', sm: 'block' }}>Multi-Way Trades</Text>
                        <Badge colorScheme="purple" fontSize="2xs" px={{ base: 1, md: 1.5 }} display={{ base: 'none', sm: 'inline-flex' }}>
                          PRO
@@ -1776,6 +1859,7 @@ const Dashboard: React.FC = () => {
                      </HStack>
                    </Tab>
                    <Tab 
+                     ml={{ base: 'auto', md: 0 }}
                      _selected={{ 
                        color: 'brand.600', 
                        borderColor: 'brand.600',
@@ -1783,8 +1867,8 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={{ base: 2, sm: 3, md: 3 }}>
-                       <Icon as={FiRefreshCw} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 3, md: 2 }} />
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FiRefreshCw} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
                        <Text display={{ base: 'none', sm: 'block' }}>Trade History</Text>
                        {completedTradesCount > 0 && (
                          <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
@@ -1804,7 +1888,7 @@ const Dashboard: React.FC = () => {
                >
                  {activeTab === 0 && (
                    <>
-                     {/* Desktop: Show selects | Mobile: Show icon button */}
+                     {/* Desktop: Show selects only */}
                      <Box display={{ base: 'none', lg: 'block' }}>
                        <Select
                          value={productFilter}
@@ -1840,43 +1924,12 @@ const Dashboard: React.FC = () => {
                          <option value="oldest">Oldest First</option>
                        </Select>
                      </Box>
-                     
-                     {/* Mobile: Icon buttons with tooltip */}
-                     <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
-                       <IconButton
-                         display={{ base: 'flex', lg: 'none' }}
-                         aria-label="Filter products"
-                         icon={<FiFilter />}
-                         size="sm"
-                         variant="ghost"
-                         onClick={() => {
-                           const filters = ['all', 'available', 'sold', 'traded', 'locked']
-                           const currentIndex = filters.indexOf(productFilter)
-                           setProductFilter(filters[(currentIndex + 1) % filters.length] as any)
-                           setCurrentPage(1)
-                         }}
-                       />
-                     </Tooltip>
-                     
-                     <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                       <IconButton
-                         display={{ base: 'flex', lg: 'none' }}
-                         aria-label="Sort products"
-                         icon={<FiArrowDown />}
-                         size="sm"
-                         variant="ghost"
-                         onClick={() => {
-                           setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
-                           setCurrentPage(1)
-                         }}
-                       />
-                     </Tooltip>
                    </>
                  )}
                  
                  {activeTab === 1 && (
                    <>
-                     {/* Desktop: Show select | Mobile: Show icon button */}
+                     {/* Desktop: Show selects only */}
                      <Box display={{ base: 'none', lg: 'block' }}>
                        <Select
                          value={offersStatusFilter}
@@ -1909,43 +1962,12 @@ const Dashboard: React.FC = () => {
                          <option value="oldest">Oldest First</option>
                        </Select>
                      </Box>
-                     
-                     {/* Mobile: Icon button for Offers tab */}
-                     <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
-                       <IconButton
-                        
-                         display={{ base: 'flex', lg: 'none' }}
-                         aria-label="Filter offers"
-                         icon={<FiFilter />}
-                         size="sm"
-                         variant="ghost"
-                         onClick={() => {
-                           const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
-                           const currentIndex = statuses.indexOf(offersStatusFilter)
-                           setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
-                           setOffersPage(1)
-                         }}
-                       />
-                     </Tooltip>
-                     
-                     <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                       <IconButton
-                         display={{ base: 'flex', lg: 'none' }}
-                         aria-label="Sort offers"
-                         icon={<FiArrowDown />}
-                         size="sm"
-                         variant="ghost"
-                         onClick={() => {
-                           setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
-                         }}
-                       />
-                     </Tooltip>
                    </>
                  )}
 
                  {activeTab === 2 && (
                    <>
-                     {/* Desktop: Show select | Mobile: Show icon button */}
+                     {/* Desktop: Show select only */}
                      <Box display={{ base: 'none', lg: 'block' }}>
                        <Select
                          value={tradeHistorySort}
@@ -1962,21 +1984,6 @@ const Dashboard: React.FC = () => {
                          <option value="oldest">Oldest First</option>
                        </Select>
                      </Box>
-                     
-                     {/* Mobile: Icon button for Trade History tab */}
-                     <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                       <IconButton
-                         display={{ base: 'flex', lg: 'none' }}
-                         aria-label="Sort trade history"
-                         icon={<FiArrowDown />}
-                         size="sm"
-                         variant="ghost"
-                         onClick={() => {
-                           setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
-                           setTradeHistoryPage(1)
-                         }}
-                       />
-                     </Tooltip>
                    </>
                  )}
                </HStack>
@@ -2079,34 +2086,46 @@ const Dashboard: React.FC = () => {
                     colorScheme="brand"
                   >
                     <TabList 
-                      flexWrap={{ base: 'wrap', md: 'nowrap' }}
+                      flexWrap={{ base: 'nowrap', md: 'nowrap' }}
                       overflowX={{ base: 'auto', md: 'visible' }}
+                      justify={{ base: 'space-between', md: 'flex-start' }}
+                      w="100%"
                       sx={{
                         base: {
                           '&::-webkit-scrollbar': { display: 'none' },
                           scrollbarWidth: 'none',
                           msOverflowStyle: 'none',
+                          gap: '4px',
+                          '& > button': {
+                            px: '6px !important',
+                            py: '4px !important',
+                            minW: 'fit-content',
+                            flex: { base: 'initial', md: 'initial' },
+                          }
                         }
                       }}
                     >
-                      <Tab>
-                        Sent Offers
+                      <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 12, md: 0 }}>
+                        <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
+                        <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
                         {offersStats.sentPending > 0 && (
                           <Badge ml={2} colorScheme="yellow" borderRadius="full" fontSize="xs">
                             {offersStats.sentPending}
                           </Badge>
                         )}
                       </Tab>
-                      <Tab>
-                        Received Offers
+                      <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 10, md: 0 }}>
+                        <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
+                        <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
                         {offersStats.receivedPending > 0 && (
                           <Badge ml={2} colorScheme="blue" borderRadius="full" fontSize="xs">
                             {offersStats.receivedPending}
                           </Badge>
                         )}
                       </Tab>
-                      <Tab>
-                        Ongoing Trades
+                      <Tab fontSize={{ base: '10px', md: 'sm' }}>
+                        <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
+                        <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
                         {offersStats.ongoing > 0 && (
                           <Badge ml={2} colorScheme="green" borderRadius="full" fontSize="xs">
                            {offersStats.ongoing}
@@ -2784,7 +2803,7 @@ const Dashboard: React.FC = () => {
                   <Text fontWeight="bold" fontSize="lg" color="gray.800">
                     Decline Offer
                   </Text>
-                  <Text fontSize="sm" color="gray.600">
+                  <Text fontSize="sm" color="gray.600" textAlign="center">
                     Are you sure you want to decline this offer?
                   </Text>
                   {tradeToDecline && (
@@ -2843,24 +2862,7 @@ const Dashboard: React.FC = () => {
       </VStack>
     </Container>
 
-    {/* Floating Add Product FAB */}
-    <IconButton
-      as={RouterLink}
-      to="/add-product"
-      aria-label="Add product"
-      icon={<AddIcon />}
-      position="fixed"
-      bottom={12}
-      right={6}
-      h={14}
-      w={14}
-      bgGradient="linear(to-br, brand.500, teal.400)"
-      color="white"
-      borderRadius="full"
-      zIndex={200}
-      boxShadow="lg"
-      _hover={{ transform: 'scale(1.05)' }}
-    />
+    <FloatingTab />
     </Box>
   )
 }

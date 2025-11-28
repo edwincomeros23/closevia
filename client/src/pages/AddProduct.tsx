@@ -35,6 +35,7 @@ import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, WarningIcon } from
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { ProductCreate } from '../types'
+import FloatingTab from '../components/FloatingTab'
 
 
 const AddProduct: React.FC = () => {
@@ -393,7 +394,7 @@ const AddProduct: React.FC = () => {
       case 1:
         return (
           <VStack spacing={6} align="stretch">
-            <Text fontSize="lg" color="gray.600">
+            <Text fontSize="lg" color="gray.600" display={{ base: 'none', md: 'block' }}>
               Upload at least 3 photos of your product. First image will be the cover.
             </Text>
             
@@ -402,21 +403,22 @@ const AddProduct: React.FC = () => {
               border="2px dashed"
               borderColor={borderColor}
               borderRadius="lg"
-              p={8}
+              p={4}
               textAlign="center"
               cursor="pointer"
               _hover={{ borderColor: 'brand.500' }}
               onClick={() => document.getElementById('image-upload')?.click()}
-              
             >
-              <VStack spacing={4}>
-                <AddIcon boxSize={8} color="gray.400" />
-                <Text fontSize="lg" color="gray.600">
-                  Click to upload images or drag and drop
-                </Text>
-                <Text fontSize="sm" color="gray.500">
-                  PNG, JPG up to 5MB each (minimum 3 images required)
-                </Text>
+              <VStack spacing={2}>
+                <AddIcon boxSize={6} color="gray.400" />
+                <VStack spacing={0}>
+                  <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                    Click to upload or drag and drop
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    PNG, JPG up to 5MB (min. 3 images)
+                  </Text>
+                </VStack>
               </VStack>
             </Box>
             
@@ -450,7 +452,7 @@ const AddProduct: React.FC = () => {
             
             {/* Image Previews */}
             {uploadedImages.length > 0 && (
-              <SimpleGrid columns={{ base: 3, md: 4 }} spacing={2}>
+              <SimpleGrid columns={{ base: 4, md: 4 }} spacing={2}>
                 {uploadedImages.map((_, index) => (
                   <Box key={index} position="relative" aspectRatio="1">
                     <Image
@@ -1276,6 +1278,8 @@ const AddProduct: React.FC = () => {
           </ModalBody>
         </ModalContent>
       </Modal>
+
+      <FloatingTab />
     </Box>
   )
 }

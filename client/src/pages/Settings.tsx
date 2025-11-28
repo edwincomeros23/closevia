@@ -54,6 +54,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import FloatingTab from '../components/FloatingTab'
 import { 
   FaUserCircle, 
   FaBell, 
@@ -1231,6 +1232,8 @@ const SettingsPage: React.FC = () => {
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+
+      <FloatingTab />
     </Box>
   )
 }

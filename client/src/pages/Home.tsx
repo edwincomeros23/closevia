@@ -34,6 +34,7 @@ import {
   PopoverContent,
   PopoverBody,
   Divider,
+  Icon,
 } from '@chakra-ui/react'
 import { 
   SearchIcon, 
@@ -48,7 +49,8 @@ import {
   ArrowRightIcon,   
   CloseIcon,
 } from '@chakra-ui/icons'
-import { FaUserCircle, FaHandshake } from 'react-icons/fa'
+import { FaUserCircle, FaHandshake, FaHome } from 'react-icons/fa'
+import { FiShoppingBag } from 'react-icons/fi'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
@@ -59,6 +61,7 @@ import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
 import { useRealtime } from '../contexts/RealtimeContext' // added import
+import FloatingTab from '../components/FloatingTab'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -1256,24 +1259,7 @@ const Home: React.FC = () => {
         </ModalContent>
       </Modal>
 
-    {/* Floating Add Product FAB */}
-    <IconButton
-      as={RouterLink}
-      to="/add-product"
-      aria-label="Add product"
-      icon={<AddIcon />}
-      position="fixed"
-      bottom={12}
-      right={6}
-      h={14}
-      w={14}
-      bgGradient="linear(to-br, brand.500, teal.400)"
-      color="white"
-      borderRadius="full"
-      zIndex={200}
-      boxShadow="lg"
-      _hover={{ transform: 'scale(1.05)' }}
-    />
+      <FloatingTab />
     </Box>
   )
 }
