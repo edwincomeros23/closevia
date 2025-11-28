@@ -2088,20 +2088,18 @@ const Dashboard: React.FC = () => {
                     <TabList 
                       flexWrap={{ base: 'nowrap', md: 'nowrap' }}
                       overflowX={{ base: 'auto', md: 'visible' }}
-                      justify={{ base: 'space-between', md: 'flex-start' }}
+                      justifyContent={{ base: 'space-between', md: 'flex-start' }}
                       w="100%"
                       sx={{
-                        base: {
-                          '&::-webkit-scrollbar': { display: 'none' },
-                          scrollbarWidth: 'none',
-                          msOverflowStyle: 'none',
-                          gap: '4px',
-                          '& > button': {
-                            px: '6px !important',
-                            py: '4px !important',
-                            minW: 'fit-content',
-                            flex: { base: 'initial', md: 'initial' },
-                          }
+                        '&::-webkit-scrollbar': { display: 'none' },
+                        scrollbarWidth: 'none',
+                        msOverflowStyle: 'none',
+                        gap: '4px',
+                        '& > button': {
+                          px: '6px !important',
+                          py: '4px !important',
+                          minW: 'fit-content',
+                          flex: { base: 'initial', md: 'initial' },
                         }
                       }}
                     >
