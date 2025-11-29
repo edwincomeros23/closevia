@@ -24,7 +24,7 @@ type GeminiResponse struct {
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
-		apiKey = "AIzaSyCY70zA3iVXFre_4eWaaE8pDppSMEbG8lA"
+		return nil, errors.New("GEMINI_API_KEY environment variable not set")
 	}
 
 	if len(images) < 3 {

@@ -21,7 +21,8 @@ func main() {
 func listModels() {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
-		apiKey = "AIzaSyCY70zA3iVXFre_4eWaaE8pDppSMEbG8lA"
+		fmt.Println("Error: GEMINI_API_KEY environment variable not set")
+		return
 	}
 
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models?key=%s", apiKey)
@@ -40,7 +41,8 @@ func listModels() {
 func testGemini() {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
-		apiKey = "AIzaSyCY70zA3iVXFre_4eWaaE8pDppSMEbG8lA"
+		fmt.Println("Error: GEMINI_API_KEY environment variable not set")
+		return
 	}
 
 	fmt.Printf("Using API key: %s...\n", apiKey[:20])
