@@ -72,6 +72,11 @@ func main() {
 		ExposeHeaders:    "Content-Length, Content-Type, Authorization",
 	}))
 
+	// Explicit OPTIONS handler for preflight requests
+	app.Options("/*", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusNoContent)
+	})
+
 	// Serve static files (uploads directory)
 	app.Static("/uploads", "./uploads")
 
