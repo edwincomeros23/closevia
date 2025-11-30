@@ -25,6 +25,8 @@ import {
 import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { FaGoogle } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
+import { auth } from '../config/firebase'
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('')
@@ -67,15 +69,60 @@ const Login: React.FC = () => {
   }
 
   const handleGoogleLogin = async () => {
-    // TODO: Connect to actual Google OAuth handler
-    console.log('Google login clicked')
-    toast({
-      title: 'Google Login',
-      description: 'Google authentication will be connected soon',
-      status: 'info',
-      duration: 2000,
-      isClosable: true,
-    })
+    try {
+      setLoading(true)
+      setError('')
+      
+      // Create Google Auth Provider
+      const googleProvider = new GoogleAuthProvider()
+      
+      // Set language to English
+      auth.languageCode = 'en'
+      
+      // Sign in with Google popup
+      const result = await signInWithPopup(auth, googleProvider)
+      const user = result.user
+      
+      // Get ID token
+      const idToken = await user.getIdToken()
+      
+      // Log user info
+      console.log('Google login successful:', {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+      })
+      
+      // You can now use the ID token to authenticate with your backend
+      // For example, send it to your backend to create/update user session
+      console.log('ID Token:', idToken)
+      
+      // Show success message
+      toast({
+        title: 'Login successful!',
+        description: `Welcome, ${user.displayName || user.email}`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+      
+      // Navigate to dashboard
+      navigate('/dashboard')
+    } catch (error: any) {
+      console.error('Google login error:', error)
+      
+      // Handle specific error codes
+      if (error.code === 'auth/popup-closed-by-user') {
+        setError('Login popup was closed. Please try again.')
+      } else if (error.code === 'auth/popup-blocked') {
+        setError('Login popup was blocked. Please check your browser settings.')
+      } else {
+        setError(error.message || 'Google login failed. Please try again.')
+      }
+    } finally {
+      setLoading(false)
+    }
   }
     
   return (
@@ -244,6 +291,8 @@ const Login: React.FC = () => {
                 borderColor="gray.300"
                 leftIcon={<FaGoogle />}
                 onClick={handleGoogleLogin}
+                isLoading={loading}
+                loadingText="Signing in..."
                 size={{ base: 'md', md: 'lg' }}
                 fontSize={{ base: 'sm', md: 'md' }}
                 _hover={{
