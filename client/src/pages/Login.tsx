@@ -94,35 +94,6 @@ const Login: React.FC = () => {
         photoURL: user.photoURL,
       })
       
-      // You can now use the ID token to authenticate with your backend
-      // For example, send it to your backend to create/update user session
-      console.log('ID Token:', idToken)
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true)
-      setError('')
-      
-      // Create Google Auth Provider
-      const googleProvider = new GoogleAuthProvider()
-      
-      // Set language to English
-      auth.languageCode = 'en'
-      
-      // Sign in with Google popup
-      const result = await signInWithPopup(auth, googleProvider)
-      const user = result.user
-      
-      // Get ID token
-      const idToken = await user.getIdToken()
-      
-      // Log user info
-      console.log('Google login successful:', {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-      })
-      
       // Send Firebase ID token to backend to authenticate
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/auth/google`, {
