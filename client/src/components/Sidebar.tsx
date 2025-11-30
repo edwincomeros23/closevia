@@ -143,7 +143,7 @@ const Sidebar: React.FC = () => {
         borderRight="1px"
         borderColor={borderColor}
         zIndex={1000}
-        py={0}
+        py={16}
         bg="white"
         display={{ base: 'none', lg: 'block' }} // hide on small screens
       >

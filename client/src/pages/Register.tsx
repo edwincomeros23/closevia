@@ -110,34 +110,51 @@ const Register: React.FC = () => {
   }
 
   return (
-    <Box minH="100vh" bg="#FFFDF1" py={8} h={{ base: '100vh', md: 'auto' }} overflow={{ base: 'hidden', md: 'visible' }}>
-      <Container maxW="container.sm" position="relative">
-        {/* Back Button - Mobile Only */}
-        <IconButton
-          aria-label="Go back"
-          icon={<ArrowBackIcon />}
-          position="absolute"
-          top={{ base: 2, md: 8 }}
-          left={{ base: 4, md: 'auto' }}
-          display={{ base: 'flex', md: 'none' }}
-          variant="ghost"
-          onClick={() => navigate(-1)}
-          size="md"
-        />
-        
-        <VStack spacing={8}>
-          <Box textAlign="center">
-            <Heading size="xl" color="brand.500" mb={2}>
-              Join Clovia
-            </Heading>
-            <Text color="gray.600">
-              Create your account to start buying and selling
-            </Text>
-          </Box>
+    <Box bg="#FFFDF1" w="100%" minH="100vh" display="flex" flexDirection="column">
+      {/* Mobile: Scrollable container */}
+      <Box 
+        flex={1}
+        overflowY="auto"
+        py={{ base: 12, md: 8 }}
+        px={{ base: 4, md: 8 }}
+        position="relative"
+      >
+        <Container maxW="container.sm" position="relative" p={0}>
+          {/* Back Button - Mobile Only */}
+          <IconButton
+            aria-label="Go back"
+            icon={<ArrowBackIcon />}
+            position="absolute"
+            top={{ base: -8, md: 0 }}
+            left={{ base: -4, md: 'auto' }}
+            display={{ base: 'flex', md: 'none' }}
+            variant="ghost"
+            onClick={() => navigate(-1)}
+            size="md"
+            zIndex={10}
+          />
+          
+          <VStack spacing={8} align="stretch">
+            <Box textAlign="center" mt={{ base: 6, md: 0 }}>
+              <Heading 
+                size="lg" 
+                color="brand.500" 
+                mb={2}
+                fontSize={{ base: '24px', md: '28px' }}
+              >
+                Join Clovia
+              </Heading>
+              <Text 
+                color="gray.600"
+                fontSize={{ base: 'sm', md: 'md' }}
+              >
+                Create your account to start buying and selling
+              </Text>
+            </Box>
 
-          <Box w="full" maxW="md">
-            <form onSubmit={handleSubmit}>
-              <VStack spacing={6}>
+            <Box w="full">
+              <form onSubmit={handleSubmit}>
+                <VStack spacing={5}>
                 {error && (
                   <Alert status="error">
                     <AlertIcon />
@@ -303,9 +320,10 @@ const Register: React.FC = () => {
                 </Text>
               </VStack>
             </form>
-          </Box>
-        </VStack>
-      </Container>
+            </Box>
+          </VStack>
+        </Container>
+      </Box>
     </Box>
   )
 }
