@@ -2,15 +2,15 @@ import { initializeApp } from 'firebase/app'
 import { getAnalytics } from 'firebase/analytics'
 import { getAuth } from 'firebase/auth'
 
-// Your web app's Firebase configuration
+// Firebase configuration loaded from environment variables
 const firebaseConfig = {
-  apiKey: 'AIzaSyApuEzNJNUkZzumrEgNRKLK_ynZwuMnKdc',
-  authDomain: 'wmsu-map-82e7c.firebaseapp.com',
-  projectId: 'wmsu-map-82e7c',
-  storageBucket: 'wmsu-map-82e7c.firebasestorage.app',
-  messagingSenderId: '947635210340',
-  appId: '1:947635210340:web:f2d2154b2fc84267b8b771',
-  measurementId: 'G-N8WG534VBX',
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 }
 
 // Initialize Firebase
