@@ -112,10 +112,10 @@ const Login: React.FC = () => {
       {/* Form on the right - centered vertically */}
       <Flex
         flex={{ base: '1', md: '0.8' }}
-        alignItems="center"
+        alignItems={{ base: 'flex-start', md: 'center' }}
         justifyContent="center"
         px={{ base: 4, md: 8 }}
-        py={{ base: 0, md: 8 }}
+        py={{ base: 16, md: 8 }}
         bg="#FFFDF1"
         position="relative"
         h="100%"
