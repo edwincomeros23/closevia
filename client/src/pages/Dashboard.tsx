@@ -124,6 +124,7 @@ const Dashboard: React.FC = () => {
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
   const offersPollingInterval = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notificationCountsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Delivery modals state
   const [deliveryRequestModalOpen, setDeliveryRequestModalOpen] = useState(false)
@@ -165,8 +166,12 @@ const Dashboard: React.FC = () => {
     setLoading(true)
     setProductsLoading(true)
     try {
-      // Fetch user products
-      const productsResponse = await getUserProducts(user.id)
+      // Fetch user products and orders in parallel (non-blocking)
+      const [productsResponse, ordersResponse] = await Promise.all([
+        getUserProducts(user.id),
+        api.get('/api/orders?type=bought'),
+      ])
+      
       const allProducts = productsResponse.data
       
       // Separate available and traded items
@@ -175,16 +180,13 @@ const Dashboard: React.FC = () => {
       
       setUserProducts(availableProducts)
       setTradedItems(tradedProducts)
-
-      // Fetch user orders
-      const ordersResponse = await api.get('/api/orders?type=bought')
       setOrders(ordersResponse.data.data.data)
 
-      // Fetch notification counts
+      // Fetch notification counts after products are loaded
       await fetchNotificationCounts()
       
-      // Fetch offers
-      await fetchOffers()
+      // DO NOT fetch offers here - defer until Offers tab is clicked
+      // This significantly speeds up initial dashboard load
     } catch (error) {
       console.error('Failed to fetch user data:', error)
     } finally {
@@ -239,7 +241,7 @@ const Dashboard: React.FC = () => {
         )
       }
     })
-  }, [productTitles])
+  }, [])
 
   // Filtered products - now uses unified search
   const filteredProducts = useMemo(() => {
@@ -273,6 +275,18 @@ const Dashboard: React.FC = () => {
       console.error('Failed to fetch notification counts:', error)
     }
   }
+
+  // Debounced notification count fetch to prevent spam
+  const fetchNotificationCountsDebounced = useCallback(() => {
+    // Clear existing timeout
+    if (notificationCountsTimeout.current) {
+      clearTimeout(notificationCountsTimeout.current)
+    }
+    // Schedule new fetch with 500ms delay
+    notificationCountsTimeout.current = setTimeout(() => {
+      fetchNotificationCounts()
+    }, 500)
+  }, [])
 
   const fetchOffers = async () => {
     try {
@@ -323,17 +337,25 @@ const Dashboard: React.FC = () => {
     
     if (titlesToFetch.length > 0) {
       try {
-        const titlePromises = titlesToFetch.map(async (id) => {
-          try {
-            const response = await api.get(`/api/products/${id}`)
-            const title = response.data?.data?.title
-            return { id, title: title || 'Unnamed Item' }
-          } catch {
-            return { id, title: 'Unnamed Item' }
-          }
-        })
+        // Batch requests with concurrency limit to avoid overwhelming the server
+        const BATCH_SIZE = 5
+        const results: any[] = []
         
-        const results = await Promise.all(titlePromises)
+        for (let i = 0; i < titlesToFetch.length; i += BATCH_SIZE) {
+          const batch = titlesToFetch.slice(i, i + BATCH_SIZE)
+          const batchPromises = batch.map(async (id) => {
+            try {
+              const response = await api.get(`/api/products/${id}`)
+              const title = response.data?.data?.title
+              return { id, title: title || 'Unnamed Item' }
+            } catch {
+              return { id, title: 'Unnamed Item' }
+            }
+          })
+          const batchResults = await Promise.all(batchPromises)
+          results.push(...batchResults)
+        }
+        
         const newTitles = new Map(productTitles)
         results.forEach(({ id, title }) => {
           newTitles.set(id, title)
@@ -416,16 +438,16 @@ const Dashboard: React.FC = () => {
     )
   }
 
-  const updateTrade = async (id: number, action: TradeAction) => {
+  const updateTrade = useCallback(async (id: number, action: TradeAction) => {
     try {
       await api.put(`/api/trades/${id}`, action)
       toast({ title: 'Success', description: 'Offer updated', status: 'success' })
+      // Only refetch offers once, not both separately
       fetchOffers()
-      fetchNotificationCounts()
     } catch (e: any) {
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
-  }
+  }, [])
 
   const handleCompleteTradeClick = (trade: Trade) => {
     // Check if meetup is confirmed before allowing completion
@@ -609,17 +631,15 @@ const Dashboard: React.FC = () => {
     return allCompletedTrades.slice(start, start + tradeHistoryPerPage)
   }, [allCompletedTrades, tradeHistoryPage])
 
-  // Get current tab's trades
-  const getCurrentTabTrades = () => {
+  // Get current tab's trades (memoized to prevent unnecessary recalculations)
+  const currentTabTrades = useMemo(() => {
     switch (offersSubTab) {
       case 0: return sentOffers
       case 1: return receivedOffers
       case 2: return ongoingTrades
       default: return []
     }
-  }
-
-  const currentTabTrades = getCurrentTabTrades()
+  }, [offersSubTab, sentOffers, receivedOffers, ongoingTrades])
   const offersPerPage = 9
   const totalPages = Math.ceil(currentTabTrades.length / offersPerPage)
   const paginatedTrades = useMemo(() => {
