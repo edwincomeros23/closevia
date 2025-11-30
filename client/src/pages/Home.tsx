@@ -50,7 +50,9 @@ import {
   CloseIcon,
 } from '@chakra-ui/icons'
 import { FaUserCircle, FaHandshake, FaHome } from 'react-icons/fa'
+import { FaBagShopping, FaBook, FaClock, FaShirt, FaShop, FaGem, FaHouse, FaBox, FaStar } from 'react-icons/fa6'
 import { FiShoppingBag } from 'react-icons/fi'
+import { MdSchool, MdLocalOffer } from 'react-icons/md'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
@@ -111,46 +113,32 @@ const Home: React.FC = () => {
   
   const toast = useToast()
 
-  // Category pills state
+  // Category pills state with enhanced metadata
   const categories = [
-    'All',
-    'Bag',
-    'School Supply',
-    'Book',
-    'Electronic',
-    'Clothing',
-    'Shoe',
-    'Accessory',
-    'Home & Living',
-    'Toy',
-    'Beauty',
+    { name: 'All', icon: MdLocalOffer, color: 'brand', lightColor: 'brand.50', accentColor: 'brand.600' },
+    { name: 'Bag', icon: FaBagShopping, color: 'orange', lightColor: 'orange.50', accentColor: 'orange.600' },
+    { name: 'School Supply', icon: MdSchool, color: 'cyan', lightColor: 'cyan.50', accentColor: 'cyan.600' },
+    { name: 'Book', icon: FaBook, color: 'purple', lightColor: 'purple.50', accentColor: 'purple.600' },
+    { name: 'Electronic', icon: FaClock, color: 'indigo', lightColor: 'indigo.50', accentColor: 'indigo.600' },
+    { name: 'Clothing', icon: FaShirt, color: 'pink', lightColor: 'pink.50', accentColor: 'pink.600' },
+    { name: 'Shoe', icon: FaShop, color: 'red', lightColor: 'red.50', accentColor: 'red.600' },
+    { name: 'Accessory', icon: FaGem, color: 'yellow', lightColor: 'yellow.50', accentColor: 'yellow.600' },
+    { name: 'Home & Living', icon: FaHouse, color: 'green', lightColor: 'green.50', accentColor: 'green.600' },
+    { name: 'Toy', icon: FaBox, color: 'teal', lightColor: 'teal.50', accentColor: 'teal.600' },
+    { name: 'Beauty', icon: FaStar, color: 'rose', lightColor: 'rose.50', accentColor: 'rose.600' },
   ]
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
 
-  // Category colors mapping
-  const categoryColors: { [key: string]: string } = {
-    'Bag': '#FFE5D0',
-    'School Supply': '#CFF6DA',
-    'Book': '#B9EEDC',
-    'Electronic': '#D8D8FA',
-    'Clothing': '#B8C5FF',
-    'Shoe': '#FAD8EB',
-    'Accessory': '#FADCB8',
-    'Home & Living': '#FFE5D0',
-    'Toy': '#CFF6DA',
-    'Beauty': '#B9EEDC',
-  }
-
-  const handleCategorySelect = (category: string) => {
-    setSelectedCategory(category)
-    if (category === 'All') {
+  const handleCategorySelect = (categoryName: string) => {
+    setSelectedCategory(categoryName)
+    if (categoryName === 'All') {
       setSearchTerm('')
       setFilters(prev => ({ ...prev, keyword: '', page: 1 }))
       setHasSearched(true)
       return
     }
-    setSearchTerm(category)
-    setFilters(prev => ({ ...prev, keyword: category, page: 1 }))
+    setSearchTerm(categoryName)
+    setFilters(prev => ({ ...prev, keyword: categoryName, page: 1 }))
     setHasSearched(true)
   }
 
@@ -986,22 +974,23 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
-      {/* Horizontal category pills under search bar */}
-      <Box px={{ base: 3, md: 7 }} py={0}>
+      {/* Horizontal category pills with modern styling and animations */}
+      <Box 
+        px={{ base: 3, md: 7 }} 
+        bg="linear-gradient(135deg, #FFFDF1 0%, #FFFCF0 100%)"
+        borderBottomColor="gray.100"
+      >
         <Box
           w="full"
           maxW="8xl"
           mx="auto"
-          rounded="lg"
-          px={{ base: 0, md: 0 }}
-          py={{ base: 0, md: 0 }}
         >
           <HStack
-            spacing={{ base: 2, md: 2.5 }}
+            spacing={{ base: 2.5, md: 3 }}
             overflowX="auto"
             whiteSpace="nowrap"
             align="center"
-            pb={2}
+            pb={{ base: 2, md: 0 }}
             sx={{
               '::-webkit-scrollbar': { 
                 display: 'none',
@@ -1014,32 +1003,74 @@ const Home: React.FC = () => {
               }
             }}
           >
-            {categories.map((cat) => {
-              const isSelected = selectedCategory === cat
-              const bgColor = isSelected ? 'gray.200' : (categoryColors[cat] || 'gray.100')
+            {categories.map((category) => {
+              const isSelected = selectedCategory === category.name
+              const IconComponent = category.icon
               
               return (
-                <Box key={cat} flexShrink={0} pl={3}>
-                  <Button
-                    size="sm"
+                <Box 
+                  key={category.name} 
+                  flexShrink={0}
+                  as="button"
+                  onClick={() => handleCategorySelect(category.name)}
+                  cursor="pointer"
+                  transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                  _active={{
+                    transform: 'scale(0.95)',
+                  }}
+                >
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    gap={{ base: 1.5, md: 2 }}
+                    px={{ base: 3, md: 5 }}
+                    py={{ base: 2, md: 3 }}
                     rounded="full"
-                    px={{ base: 4, md: 8 }}
-                    py={{ base: 2, md: 2.5 }}
-                    fontWeight="medium"
-                    variant="solid"
-                    bg={bgColor}
-                    _hover={{ 
-                      filter: 'brightness(0.85)',
-                      transform: 'scale(1.02)',
+                    bg={isSelected ? (category.name === 'All' ? 'brand.600' : category.color) : 'white'}
+                    color={isSelected ? 'white' : 'gray.700'}
+                    fontWeight={isSelected ? '600' : '500'}
+                    fontSize={{ base: 'xs', md: 'sm' }}
+                    border="2px solid"
+                    borderColor={isSelected ? category.accentColor : 'gray.200'}
+                    boxShadow="0 2px 4px rgba(0, 0, 0, 0.05)"
+                    transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                    position="relative"
+                    overflow="hidden"
+                    _before={{
+                      content: '""',
+                      position: 'absolute',
+                      inset: 0,
+                      bg: isSelected ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                      transition: 'background 0.3s ease',
                     }}
-                    color="gray.800"
-                    border={isSelected ? '2px solid' : '1px solid'}
-                    borderColor={isSelected ? 'gray.400' : 'transparent'}
-                    onClick={() => handleCategorySelect(cat)}
-                    transition="all 0.2s ease"
+                    _hover={{
+                      transform: 'translateY(-0.5px)',
+                      boxShadow: '0 6px 12px rgba(0, 0, 0, 0.1)',
+                      borderColor: category.accentColor,
+                      bg: isSelected ? (category.name === 'All' ? 'brand.600' : category.color) : category.lightColor,
+                    }}
+                    _focusVisible={{
+                      outline: '2px solid',
+                      outlineColor: category.accentColor,
+                      outlineOffset: '2px',
+                    }}
                   >
-                    {cat}
-                  </Button>
+                    <Icon
+                      as={IconComponent}
+                      w={{ base: 3.5, md: 4 }}
+                      h={{ base: 3.5, md: 4 }}
+                      transition="all 0.3s ease"
+                      transform={isSelected ? 'scale(1.1)' : 'scale(1)'}
+                      opacity={isSelected ? 1 : 0.7}
+                    />
+                    <Text
+                      as="span"
+                      transition="all 0.3s ease"
+                      display={{ base: category.name === 'All' ? 'inline' : 'none', md: 'inline' }}
+                    >
+                      {category.name}
+                    </Text>
+                  </Box>
                 </Box>
               )
             })}
