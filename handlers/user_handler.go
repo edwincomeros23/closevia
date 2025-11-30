@@ -198,6 +198,89 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 	})
 }
 
+// GoogleLogin handles Google OAuth authentication
+func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
+	var req struct {
+		IDToken     string `json:"idToken"`
+		UID         string `json:"uid"`
+		Email       string `json:"email"`
+		DisplayName string `json:"displayName"`
+		PhotoURL    string `json:"photoURL"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid request body",
+		})
+	}
+
+	if req.Email == "" {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Email is required",
+		})
+	}
+
+	// Check if user exists
+	var user models.User
+	err := h.db.QueryRow(
+		"SELECT id, name, email, role, verified, profile_picture FROM users WHERE email = ?",
+		req.Email,
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture)
+
+	if err == sql.ErrNoRows {
+		// Create new user from Google info
+		result, err := h.db.Exec(
+			"INSERT INTO users (name, email, role, verified, profile_picture, is_organization, org_verified, badges) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_ARRAY())",
+			req.DisplayName,
+			req.Email,
+			"user",
+			true, // Mark as verified since they authenticated with Google
+			req.PhotoURL,
+			false,
+			false,
+		)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Failed to create user",
+			})
+		}
+
+		userID, _ := result.LastInsertId()
+		user.ID = int(userID)
+		user.Name = req.DisplayName
+		user.Email = req.Email
+		user.Verified = true
+		user.ProfilePicture = req.PhotoURL
+		user.Role = "user"
+	} else if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Database error",
+		})
+	}
+
+	// Generate JWT token
+	token, err := utils.GenerateJWT(user.ID, user.Email)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to generate token",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Google login successful",
+		Data: fiber.Map{
+			"user":  user,
+			"token": token,
+		},
+	})
+}
+
 // GetProfile gets the current user's profile
 func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)

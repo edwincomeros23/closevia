@@ -147,6 +147,7 @@ func main() {
 	auth := api.Group("/auth")
 	auth.Post("/register", userHandler.Register)
 	auth.Post("/login", userHandler.Login)
+	auth.Post("/google", userHandler.GoogleLogin)
 
 	// User routes (authentication required)
 	users := api.Group("/users")

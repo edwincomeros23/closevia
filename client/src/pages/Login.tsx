@@ -97,6 +97,71 @@ const Login: React.FC = () => {
       // You can now use the ID token to authenticate with your backend
       // For example, send it to your backend to create/update user session
       console.log('ID Token:', idToken)
+  const handleGoogleLogin = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      
+      // Create Google Auth Provider
+      const googleProvider = new GoogleAuthProvider()
+      
+      // Set language to English
+      auth.languageCode = 'en'
+      
+      // Sign in with Google popup
+      const result = await signInWithPopup(auth, googleProvider)
+      const user = result.user
+      
+      // Get ID token
+      const idToken = await user.getIdToken()
+      
+      // Log user info
+      console.log('Google login successful:', {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+      })
+      
+      // Send Firebase ID token to backend to authenticate
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/auth/google`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            idToken: idToken,
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Backend authentication failed')
+        }
+
+        const data = await response.json()
+        const sessionToken = data.data?.token || data.token
+
+        if (!sessionToken) {
+          throw new Error('No session token received from backend')
+        }
+
+        // Store session token in localStorage
+        localStorage.setItem('clovia_token', sessionToken)
+        
+        // Update API headers
+        const apiModule = await import('../services/api')
+        apiModule.api.defaults.headers.common['Authorization'] = `Bearer ${sessionToken}`
+        
+        console.log('Session token stored, authentication complete')
+      } catch (backendError: any) {
+        console.error('Backend authentication error:', backendError)
+        throw new Error('Failed to authenticate with backend: ' + backendError.message)
+      }
       
       // Show success message
       toast({
@@ -107,7 +172,7 @@ const Login: React.FC = () => {
         isClosable: true,
       })
       
-      // Navigate to dashboard
+      // Navigate to dashboard - AuthContext will pick up the token
       navigate('/dashboard')
     } catch (error: any) {
       console.error('Google login error:', error)
