@@ -79,13 +79,9 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Cannot propose a trade on your own product"})
 	}
 
-	// Insert trade - try new schema first, fallback to legacy if columns don't exist
-	var res sql.Result
-	var err error
-
 	// Insert trade - start with minimal required fields
 	log.Printf("Creating trade with minimal fields first")
-	res, err = tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status) VALUES (?, ?, ?, 'pending')`,
+	res, err := tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status) VALUES (?, ?, ?, 'pending')`,
 		userID, sellerID, payload.TargetProductID)
 
 	if err != nil {
@@ -115,8 +111,8 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		_ = tx.Rollback()
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade"})
 	}
-	tradeID64, _ := res.LastInsertId()
-	tradeID := int(tradeID64)
+	tradeID64, _ = res.LastInsertId()
+	tradeID = int(tradeID64)
 
 	// Validate and insert offered items (buyer side)
 	for _, pid := range payload.OfferedProductIDs {
