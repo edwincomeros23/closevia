@@ -1174,6 +1174,7 @@ const Home: React.FC = () => {
     maxW={{ base: 'calc(100% - 12px)', md: '100%' }}
     mx="auto"
     px={{ base: 2, md: 4 }}
+    pb={{ base: 20, md: 0 }}
     minH={{ base: '1200px', md: '1600px' }}
   >
     <ProductGridWithAds products={products} user={user} />

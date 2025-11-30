@@ -31,8 +31,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	var payload models.TradeCreate
 	if err := c.BodyParser(&payload); err != nil {
+		log.Printf("BodyParser error: %v", err)
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
 	}
+
+	log.Printf("Received trade payload: %+v", payload)
 	if payload.TargetProductID <= 0 || len(payload.OfferedProductIDs) == 0 {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs"})
 	}
@@ -76,8 +79,38 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Cannot propose a trade on your own product"})
 	}
 
-	// Insert trade
-	res, err := tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status, message, offered_cash_amount, trade_option, delivery_address) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`, userID, sellerID, payload.TargetProductID, payload.Message, payload.OfferedCashAmount, payload.TradeOption, payload.DeliveryAddress)
+	// Insert trade - try new schema first, fallback to legacy if columns don't exist
+	var res sql.Result
+	var err error
+
+	// Insert trade - start with minimal required fields
+	log.Printf("Creating trade with minimal fields first")
+	res, err = tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status) VALUES (?, ?, ?, 'pending')`,
+		userID, sellerID, payload.TargetProductID)
+
+	if err != nil {
+		log.Printf("Basic trade insert failed: %v", err)
+		_ = tx.Rollback()
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Failed to create basic trade: %v", err)})
+	}
+
+	// Get the trade ID
+	tradeID64, _ := res.LastInsertId()
+	tradeID := int(tradeID64)
+	log.Printf("Basic trade created with ID: %d", tradeID)
+
+	// Now update with the additional fields
+	log.Printf("Updating trade with additional fields")
+	updateQuery := `UPDATE trades SET trade_option = ?, delivery_address = ?, message = ?, offered_cash_amount = ? WHERE id = ?`
+	_, err = tx.Exec(updateQuery, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, tradeID)
+
+	if err != nil {
+		log.Printf("Trade update failed: %v", err)
+		_ = tx.Rollback()
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Failed to update trade: %v", err)})
+	}
+
+	log.Printf("Trade fully created and updated successfully")
 	if err != nil {
 		_ = tx.Rollback()
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade"})
@@ -188,20 +221,35 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		args = append(args, status)
 	}
 
-	rows, err := h.db.Query(`
+	// Build query dynamically to handle missing columns
+	query := `
         SELECT
           t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
-          t.buyer_completed, t.seller_completed, t.completed_at,
-          COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address,
+          t.buyer_completed, t.seller_completed, t.completed_at`
+
+	// Check if trade_option column exists
+	var testRow *sql.Row
+	testRow = h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
+	var testTradeOption sql.NullString
+	if err := testRow.Scan(&testTradeOption); err == nil {
+		// Column exists, include it in query
+		query += `, COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address`
+	} else {
+		// Column doesn't exist, use empty defaults
+		query += `, '' as trade_option, '' as delivery_address`
+	}
+
+	query += `,
           COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
         FROM trades t
         JOIN users ub ON ub.id = t.buyer_id
         JOIN users us ON us.id = t.seller_id
         JOIN products p ON p.id = t.target_product_id
-        `+where+`
-        ORDER BY t.created_at DESC
-    `, args...)
+        ` + where + `
+        ORDER BY t.created_at DESC`
+
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch trades"})
 	}
@@ -824,19 +872,34 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade id"})
 	}
 	var tr models.Trade
-	err = h.db.QueryRow(`
+	// Build query dynamically for single trade
+	query := `
         SELECT
           t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
-          t.buyer_completed, t.seller_completed, t.completed_at,
-          COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address,
+          t.buyer_completed, t.seller_completed, t.completed_at`
+
+	// Check if trade_option column exists
+	var testRow *sql.Row
+	testRow = h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
+	var testTradeOption sql.NullString
+	if err := testRow.Scan(&testTradeOption); err == nil {
+		// Column exists, include it in query
+		query += `, COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address`
+	} else {
+		// Column doesn't exist, use empty defaults
+		query += `, '' as trade_option, '' as delivery_address`
+	}
+
+	query += `,
           COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
         FROM trades t
         JOIN users ub ON ub.id = t.buyer_id
         JOIN users us ON us.id = t.seller_id
         JOIN products p ON p.id = t.target_product_id
-        WHERE t.id = ?
-    `, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+        WHERE t.id = ?`
+
+	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 	}

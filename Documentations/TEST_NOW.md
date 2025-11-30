@@ -4,6 +4,20 @@
 - Updated Gemini model from `gemini-1.5-flash` to `gemini-2.5-flash` (fixed 404 error)
 - Improved error messages when images fail to process
 - Added comprehensive logging for debugging
+- **Fixed trade creation 500 error** - Added backward compatibility for missing database columns
+- **Fixed authentication flow** - Google login now properly updates AuthContext state
+
+## 🚨 Important: Database Migration Required
+
+**Your production trade creation is currently failing because the Aiven MySQL database is missing required columns.**
+
+### Quick Fix - Run this in your Aiven MySQL console:
+```sql
+ALTER TABLE trades ADD COLUMN trade_option VARCHAR(20) NULL AFTER status;
+ALTER TABLE trades ADD COLUMN delivery_address TEXT NULL AFTER trade_option;
+```
+
+See `aiven_mysql_fix.sql` for complete migration script.
 
 ## ✅ Backend is Already Running!
 The backend is compiled and running on port 4000. You can verify:
