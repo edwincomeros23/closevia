@@ -127,7 +127,7 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
       }}
     >
       {/* Badge */}
-      <Box position="relative" h="265px" bg="gray.100" overflow="hidden">
+      <Box position="relative" h={{ base: '170px', md: '265px' }} bg="gray.100" overflow="hidden">
         <Badge
           position="absolute"
           top={2}
