@@ -63,6 +63,8 @@ func main() {
 		}, ",")
 	}
 
+	log.Printf("CORS Origins configured: %s", corsOrigins)
+
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     corsOrigins,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Requested-With",

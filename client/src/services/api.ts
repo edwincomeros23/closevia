@@ -3,7 +3,7 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 // Use environment variable for API URL, default to localhost for development
 export const API_BASE_URL = import.meta.env.VITE_API_URL || (
   import.meta.env.PROD 
-    ? 'https://your-backend-service.onrender.com'  // Update with your actual Render backend URL
+    ? 'https://closevia.onrender.com'  // Update with your actual Render backend URL
     : 'http://localhost:4000'                        // Development localhost
 )
 
