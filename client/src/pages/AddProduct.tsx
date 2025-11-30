@@ -30,12 +30,15 @@ import {
   ModalBody,
   ModalCloseButton,
   Spinner,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, WarningIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { ProductCreate } from '../types'
 import FloatingTab from '../components/FloatingTab'
+import { prepareImageForUpload, isUnsupportedFormat, getFileTypeDescription } from '../utils/imageConverter'
 
 
 const AddProduct: React.FC = () => {
@@ -67,6 +70,7 @@ const AddProduct: React.FC = () => {
   const [isGettingLocation, setIsGettingLocation] = useState(true)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [imageConversionMessages, setImageConversionMessages] = useState<Array<{ file: string; message: string; type: 'info' | 'warning' | 'error' }>>([])
   const { isOpen: isPremiumModalOpen, onOpen: onOpenPremiumModal, onClose: onClosePremiumModal } = useDisclosure()
   const { isOpen: isLocationModalOpen, onOpen: onOpenLocationModal, onClose: onCloseLocationModal } = useDisclosure()
 
@@ -100,30 +104,83 @@ const AddProduct: React.FC = () => {
       return
     }
 
-    // Enforce a maximum of 8 images overall
-    setUploadedImages(prev => {
-      const remainingSlots = Math.max(0, 8 - prev.length)
-      const filesToAdd = validFiles.slice(0, remainingSlots)
-      if (filesToAdd.length < validFiles.length) {
-        toast({
-          title: 'Image limit reached',
-          description: 'You can upload up to 8 images per product.',
-          status: 'warning',
-          duration: 3000,
-          isClosable: true,
-        })
-      }
-      // Create preview URLs for the files we actually accept
-      filesToAdd.forEach(file => {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          setImagePreviewUrls(prevUrls => [...prevUrls, e.target?.result as string])
+    // Process each file for format compatibility
+    const processFiles = async () => {
+      const messages: Array<{ file: string; message: string; type: 'info' | 'warning' | 'error' }> = []
+      const processedFiles: File[] = []
+      const previewUrls: string[] = []
+
+      for (const file of validFiles.slice(0, 8 - uploadedImages.length)) {
+        try {
+          const { file: processedFile, isConverted, warning } = await prepareImageForUpload(file, 5)
+          
+          if (isConverted) {
+            messages.push({
+              file: file.name,
+              message: `✓ Converted ${getFileTypeDescription(file)} to JPEG for compatibility`,
+              type: 'info',
+            })
+          }
+
+          if (warning) {
+            messages.push({
+              file: file.name,
+              message: warning,
+              type: 'warning',
+            })
+          }
+
+          // Create preview URL
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            previewUrls.push(e.target?.result as string)
+            if (previewUrls.length === processedFiles.length) {
+              // All files processed
+              setImagePreviewUrls(prev => [...prev, ...previewUrls])
+            }
+          }
+          reader.readAsDataURL(processedFile)
+
+          processedFiles.push(processedFile)
+        } catch (error: any) {
+          messages.push({
+            file: file.name,
+            message: `✗ Error: ${error.message}`,
+            type: 'error',
+          })
         }
-        reader.readAsDataURL(file)
+      }
+
+      // Update state
+      setUploadedImages(prev => {
+        const newLength = prev.length + processedFiles.length
+        if (newLength > 8) {
+          toast({
+            title: 'Image limit reached',
+            description: `You can upload up to 8 images per product. Uploaded ${newLength} images.`,
+            status: 'warning',
+            duration: 3000,
+            isClosable: true,
+          })
+          return [...prev, ...processedFiles.slice(0, 8 - prev.length)]
+        }
+        return [...prev, ...processedFiles]
       })
-      return [...prev, ...filesToAdd]
-    })
-  }, [toast])
+
+      // Show messages
+      if (messages.length > 0) {
+        setImageConversionMessages(messages)
+        
+        // Auto-dismiss after 5 seconds if all successful
+        const hasErrors = messages.some(m => m.type === 'error')
+        if (!hasErrors) {
+          setTimeout(() => setImageConversionMessages([]), 5000)
+        }
+      }
+    }
+
+    processFiles()
+  }, [uploadedImages.length, toast])
 
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
@@ -430,6 +487,26 @@ const AddProduct: React.FC = () => {
               onChange={(e) => handleImageUpload(e.target.files)}
               style={{ display: 'none' }}
             />
+            
+            {/* Image Conversion Messages */}
+            {imageConversionMessages.length > 0 && (
+              <VStack spacing={2} align="stretch" mb={4}>
+                {imageConversionMessages.map((msg, idx) => (
+                  <Alert
+                    key={idx}
+                    status={msg.type === 'error' ? 'error' : msg.type === 'warning' ? 'warning' : 'info'}
+                    borderRadius="lg"
+                    fontSize="sm"
+                  >
+                    <AlertIcon />
+                    <VStack align="start" spacing={0}>
+                      <Text fontWeight="600">{msg.file}</Text>
+                      <Text fontSize="xs">{msg.message}</Text>
+                    </VStack>
+                  </Alert>
+                ))}
+              </VStack>
+            )}
             
             {/* Image Count Status */}
             <Box>

@@ -49,11 +49,44 @@ func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, er
 			continue
 		}
 
+		// Detect MIME type from content
 		mimeType := http.DetectContentType(data)
+
+		// Handle special cases where http.DetectContentType might be incorrect
+		// Check file name as fallback
 		if !strings.HasPrefix(mimeType, "image/") {
-			log.Printf("Image %d has invalid mime type: %s", i, mimeType)
-			continue
+			fileName := strings.ToLower(img.Filename)
+			if strings.Contains(fileName, ".jpg") || strings.Contains(fileName, ".jpeg") {
+				mimeType = "image/jpeg"
+			} else if strings.Contains(fileName, ".png") {
+				mimeType = "image/png"
+			} else if strings.Contains(fileName, ".gif") {
+				mimeType = "image/gif"
+			} else if strings.Contains(fileName, ".webp") {
+				mimeType = "image/webp"
+			} else if strings.Contains(fileName, ".heic") {
+				mimeType = "image/heic"
+			} else if strings.Contains(fileName, ".heif") {
+				mimeType = "image/heif"
+			}
 		}
+
+		// Validate it's an image format
+		if !strings.HasPrefix(mimeType, "image/") {
+			log.Printf("Image %d (%s) has invalid mime type detected: %s, attempting workaround", i, img.Filename, mimeType)
+			// Try to use it anyway with a fallback type
+			if len(data) > 0 {
+				// If we have data but can't detect type, assume JPEG as most phones use it
+				mimeType = "image/jpeg"
+				log.Printf("Image %d: Using fallback mime type: %s", i, mimeType)
+			} else {
+				log.Printf("Image %d has no data, skipping", i)
+				continue
+			}
+		}
+
+		// Log image info for debugging
+		log.Printf("Image %d: filename=%s, mime_type=%s, size=%d bytes", i, img.Filename, mimeType, len(data))
 
 		base64Data := base64.StdEncoding.EncodeToString(data)
 		parts = append(parts, map[string]interface{}{
@@ -150,9 +183,16 @@ Be specific and accurate based on what you see in the images.`
 	if geminiResp.Error.Message != "" {
 		log.Printf("Gemini API returned error: %s", geminiResp.Error.Message)
 		// Provide better error messages for common issues
-		if strings.Contains(strings.ToLower(geminiResp.Error.Message), "unable to process input image") {
-			return nil, fmt.Errorf("Gemini cannot process the uploaded images. Ensure images are: at least 100x100 pixels, clear photos of actual products, not blurry or too small")
+		errorMsg := strings.ToLower(geminiResp.Error.Message)
+
+		if strings.Contains(errorMsg, "unable to process input image") {
+			return nil, fmt.Errorf("Gemini cannot process uploaded images. Ensure images are:\n• At least 100x100 pixels\n• Clear photos of actual products\n• Not blurry, too small, or corrupted\n• In JPEG, PNG, or WebP format (HEIC should be converted to JPEG)")
 		}
+
+		if strings.Contains(errorMsg, "invalid_argument") || strings.Contains(errorMsg, "not supported") {
+			return nil, fmt.Errorf("Image format not supported. Please ensure:\n• Images are in JPEG, PNG, or WebP format\n• Mobile camera HEIC/HEIF photos are converted to JPEG\n• File size is less than 5MB")
+		}
+
 		return nil, fmt.Errorf("gemini API error: %s", geminiResp.Error.Message)
 	}
 
