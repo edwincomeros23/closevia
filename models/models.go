@@ -253,6 +253,16 @@ type Trade struct {
 	FirstCompletionAt         *time.Time `json:"first_completion_at,omitempty"`
 	AwaitingConfirmationSince *time.Time `json:"awaiting_confirmation_since,omitempty"`
 	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
+	// Trade option and delivery fields
+	TradeOption            string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
+	DeliveryAddress        string `json:"delivery_address,omitempty"`
+	// Review and proof fields
+	BuyerRating            *int    `json:"buyer_rating,omitempty"`
+	SellerRating           *int    `json:"seller_rating,omitempty"`
+	BuyerFeedback          string  `json:"buyer_feedback,omitempty"`
+	SellerFeedback         string  `json:"seller_feedback,omitempty"`
+	BuyerProofURL          string  `json:"buyer_proof_url,omitempty"`
+	SellerProofURL         string  `json:"seller_proof_url,omitempty"`
 	// Meetup-related fields
 	MeetupLocation         string `json:"meetup_location,omitempty"`
 	BuyerMeetupConfirmed   bool   `json:"buyer_meetup_confirmed"`
@@ -281,6 +291,8 @@ type TradeCreate struct {
 	OfferedProductIDs []int    `json:"offered_product_ids" validate:"required,min=1,dive,gt=0"`
 	Message           string   `json:"message"`
 	OfferedCashAmount *float64 `json:"offered_cash_amount,omitempty"`
+	TradeOption       string   `json:"trade_option" validate:"required,oneof=meetup delivery"`
+	DeliveryAddress   string   `json:"delivery_address,omitempty"`
 }
 
 // TradeAction represents accept/decline/counter actions

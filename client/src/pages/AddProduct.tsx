@@ -190,10 +190,10 @@ const AddProduct: React.FC = () => {
   const handleInputChange = (field: keyof ProductCreate, value: any) => {
     if (field === 'title') {
       const length = value?.length || 0
-      if (length > 15) {
+      if (length > 25) {
         toast({
-          title: 'Title too long',
-          description: `Maximum 15 characters allowed (currently ${length})`,
+          title: 'Name too long',
+          description: `Maximum 25 characters allowed (currently ${length})`,
           status: 'warning',
           duration: 2000,
           isClosable: true,
@@ -294,8 +294,8 @@ const AddProduct: React.FC = () => {
     // Validation before submission
     if (!formData.title.trim()) {
       toast({
-        title: 'Missing title',
-        description: 'Please enter a product title',
+        title: 'Missing name',
+        description: 'Please enter a product name',
         status: 'warning',
         duration: 3000,
         isClosable: true,
@@ -438,7 +438,7 @@ const AddProduct: React.FC = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1: return uploadedImages.length >= 3
-      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 15 && descriptionLength >= 50 && descriptionLength <= 500
+      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500
       case 3: return true // Barter options are always valid
       case 4: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
       case 5: return true
@@ -562,7 +562,7 @@ const AddProduct: React.FC = () => {
           <VStack spacing={6} align="stretch">
             <FormControl isRequired>
               <HStack justify="space-between" align="center">
-                <FormLabel mb={0}>Product Title</FormLabel>
+                <FormLabel mb={0}>Product Name</FormLabel>
                 <Button
                   size="xs"
                   variant="outline"
@@ -628,15 +628,15 @@ const AddProduct: React.FC = () => {
                 value={formData.title}
                 onChange={(e) => handleInputChange('title', e.target.value)}
                 size="lg"
-                maxLength={15}
+                maxLength={25}
               />
               <HStack justify="space-between" mt={1}>
-                <FormHelperText>Be specific (max 15 chars)</FormHelperText>
+                <FormHelperText>Be specific (max 25 chars)</FormHelperText>
                 <Badge
-                  colorScheme={titleLength === 0 ? 'gray' : titleLength <= 15 ? 'green' : 'orange'}
+                  colorScheme={titleLength === 0 ? 'gray' : titleLength <= 25 ? 'green' : 'orange'}
                   fontSize="xs"
                 >
-                  {titleLength}/15
+                  {titleLength}/25
                 </Badge>
               </HStack>
             </FormControl>

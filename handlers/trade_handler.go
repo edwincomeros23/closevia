@@ -77,7 +77,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	}
 
 	// Insert trade
-	res, err := tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status, message, offered_cash_amount) VALUES (?, ?, ?, 'pending', ?, ?)`, userID, sellerID, payload.TargetProductID, payload.Message, payload.OfferedCashAmount)
+	res, err := tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status, message, offered_cash_amount, trade_option, delivery_address) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`, userID, sellerID, payload.TargetProductID, payload.Message, payload.OfferedCashAmount, payload.TradeOption, payload.DeliveryAddress)
 	if err != nil {
 		_ = tx.Rollback()
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade"})
@@ -192,6 +192,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
         SELECT
           t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
           t.buyer_completed, t.seller_completed, t.completed_at,
+          COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address,
           COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
         FROM trades t
@@ -209,7 +210,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	trades := []models.Trade{}
 	for rows.Next() {
 		var tr models.Trade
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle); err == nil {
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle); err == nil {
 			// Load items
 			itemRows, qerr := h.db.Query(`
                 SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
@@ -333,8 +334,25 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
 		}
 
-		// Update trade status to active
-		_, err = tx.Exec("UPDATE trades SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
+		// Get trade option to determine next status
+		var tradeOption string
+		err = tx.QueryRow("SELECT COALESCE(trade_option, 'meetup') FROM trades WHERE id = ?", tradeID).Scan(&tradeOption)
+		if err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get trade option"})
+		}
+
+		// For delivery trades, go directly to active status
+		// For meetup trades, stay pending until meetup is confirmed
+		var newStatus string
+		if tradeOption == "delivery" {
+			newStatus = "active"
+		} else {
+			newStatus = "accepted"
+		}
+
+		// Update trade status
+		_, err = tx.Exec("UPDATE trades SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id = ?", newStatus, tradeID)
 		if err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to accept trade"})
@@ -519,6 +537,17 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 	case "confirm_meetup":
 		log.Printf("=== TRADE MEETUP CONFIRMATION REQUEST ===")
 		log.Printf("User %d attempting to confirm meetup for trade %d", userID, tradeID)
+
+		// Check if this is actually a meetup trade
+		var tradeOption string
+		err = h.db.QueryRow("SELECT COALESCE(trade_option, 'meetup') FROM trades WHERE id = ?", tradeID).Scan(&tradeOption)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get trade option"})
+		}
+
+		if tradeOption != "meetup" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This action is only available for meetup trades"})
+		}
 
 		// Validate meetup location is provided
 		if payload.MeetupLocation == "" {
@@ -799,6 +828,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
         SELECT
           t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
           t.buyer_completed, t.seller_completed, t.completed_at,
+          COALESCE(t.trade_option, '') as trade_option, COALESCE(t.delivery_address, '') as delivery_address,
           COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
         FROM trades t
@@ -806,7 +836,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
         JOIN users us ON us.id = t.seller_id
         JOIN products p ON p.id = t.target_product_id
         WHERE t.id = ?
-    `, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+    `, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 	}
@@ -1041,7 +1071,7 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": count}})
 }
 
-// CompleteTrade handles trade completion with rating and feedback
+// CompleteTrade handles trade completion with rating, feedback, and proof
 func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
@@ -1056,6 +1086,7 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	var payload struct {
 		Rating   int    `json:"rating"`
 		Feedback string `json:"feedback"`
+		ProofURL string `json:"proof_url,omitempty"`
 	}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
@@ -1077,34 +1108,43 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	}
 
 	// Determine which columns to update based on user role
-	var ratingColumn, feedbackColumn, completedColumn string
+	var ratingColumn, feedbackColumn, proofColumn, completedColumn string
 	if userID == buyerID {
 		ratingColumn = "buyer_rating"
 		feedbackColumn = "buyer_feedback"
+		proofColumn = "buyer_proof_url"
 		completedColumn = "buyer_completed"
 	} else {
 		ratingColumn = "seller_rating"
 		feedbackColumn = "seller_feedback"
+		proofColumn = "seller_proof_url"
 		completedColumn = "seller_completed"
 	}
 
-	// Update the trade with rating, feedback, and completion status
-	_, err = h.db.Exec(
-		"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
-		payload.Rating, payload.Feedback, tradeID)
+	// Update the trade with rating, feedback, proof, and completion status
+	if payload.ProofURL != "" {
+		_, err = h.db.Exec(
+			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+proofColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+			payload.Rating, payload.Feedback, payload.ProofURL, tradeID)
+	} else {
+		_, err = h.db.Exec(
+			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+			payload.Rating, payload.Feedback, tradeID)
+	}
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade completion"})
 	}
 
-	// Check if both parties have completed
+	// Check if both parties have completed (with ratings and feedback)
 	var buyerCompleted, sellerCompleted bool
-	err = h.db.QueryRow("SELECT buyer_completed, seller_completed FROM trades WHERE id = ?", tradeID).Scan(&buyerCompleted, &sellerCompleted)
+	var buyerRating, sellerRating sql.NullInt64
+	err = h.db.QueryRow("SELECT buyer_completed, seller_completed, buyer_rating, seller_rating FROM trades WHERE id = ?", tradeID).Scan(&buyerCompleted, &sellerCompleted, &buyerRating, &sellerRating)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check completion status"})
 	}
 
-	// If both completed, finalize the trade
-	if buyerCompleted && sellerCompleted {
+	// Both parties must complete AND provide ratings before finalizing
+	if buyerCompleted && sellerCompleted && buyerRating.Valid && sellerRating.Valid {
 		err = h.completeTradeTransaction(tradeID)
 		if err != nil {
 			log.Printf("Failed to complete trade transaction: %v", err)
@@ -1140,13 +1180,16 @@ func (h *TradeHandler) GetTradeCompletionStatus(c *fiber.Ctx) error {
 	var buyerCompleted, sellerCompleted bool
 	var buyerRating, sellerRating sql.NullInt64
 	var buyerFeedback, sellerFeedback sql.NullString
+	var buyerProofURL, sellerProofURL sql.NullString
 
 	err = h.db.QueryRow(`
-		SELECT buyer_id, seller_id, buyer_completed, seller_completed, 
-		       buyer_rating, seller_rating, buyer_feedback, seller_feedback
+		SELECT buyer_id, seller_id, buyer_completed, seller_completed,
+		       buyer_rating, seller_rating, buyer_feedback, seller_feedback,
+		       buyer_proof_url, seller_proof_url
 		FROM trades WHERE id = ?`, tradeID).Scan(
 		&buyerID, &sellerID, &buyerCompleted, &sellerCompleted,
-		&buyerRating, &sellerRating, &buyerFeedback, &sellerFeedback)
+		&buyerRating, &sellerRating, &buyerFeedback, &sellerFeedback,
+		&buyerProofURL, &sellerProofURL)
 
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
@@ -1174,6 +1217,12 @@ func (h *TradeHandler) GetTradeCompletionStatus(c *fiber.Ctx) error {
 	}
 	if sellerFeedback.Valid {
 		status["seller_feedback"] = sellerFeedback.String
+	}
+	if buyerProofURL.Valid {
+		status["buyer_proof_url"] = buyerProofURL.String
+	}
+	if sellerProofURL.Valid {
+		status["seller_proof_url"] = sellerProofURL.String
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: status})

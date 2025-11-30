@@ -67,14 +67,14 @@ import DeliveryRequestModal from '../components/DeliveryRequestModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth()
+  const { user, loading, isAuthenticated } = useAuth()
   const { getUserProducts, deleteProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [tradedItems, setTradedItems] = useState<Product[]>([])
-  const [loading, setLoading] = useState(false)
+  const [dataLoading, setDataLoading] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
@@ -144,11 +144,13 @@ const Dashboard: React.FC = () => {
   }, [user])
 
   // Check if user is authenticated, redirect to login if not
+  // Only redirect if not loading (to prevent race conditions after login)
   useEffect(() => {
-    if (!user) {
+    if (!loading && !isAuthenticated) {
+      console.log('Dashboard: Not authenticated, redirecting to login')
       navigate('/login', { replace: true })
     }
-  }, [user, navigate])
+  }, [isAuthenticated, loading, navigate])
 
   // Fetch offers when Offers tab is selected (if not already loaded)
   useEffect(() => {
@@ -163,7 +165,7 @@ const Dashboard: React.FC = () => {
   const fetchUserData = async () => {
     if (!user) return
     
-    setLoading(true)
+    setDataLoading(true)
     setProductsLoading(true)
     try {
       // Fetch user products and orders in parallel (non-blocking)
@@ -190,7 +192,7 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch user data:', error)
     } finally {
-      setLoading(false)
+      setDataLoading(false)
       setProductsLoading(false)
     }
   }
@@ -1053,13 +1055,29 @@ const Dashboard: React.FC = () => {
     })
     
     const getOngoingStatusBadge = () => {
-      if (trade.meetup_confirmed || (trade.buyer_meetup_confirmed && trade.seller_meetup_confirmed)) {
-        return { text: 'Meetup Confirmed', color: 'blue' }
+      if (trade.status === 'completed') {
+        return { text: 'Completed', color: 'blue' }
       }
-      if (trade.status === 'accepted' || trade.status === 'active') {
-        return { text: 'In Progress', color: 'green' }
+
+      if (trade.trade_option === 'delivery') {
+        if (trade.status === 'active') {
+          return { text: 'Delivery in Progress', color: 'green' }
+        }
+        return { text: 'Pending Delivery', color: 'yellow' }
+      } else {
+        // Meetup trades
+        if (trade.meetup_confirmed || (trade.buyer_meetup_confirmed && trade.seller_meetup_confirmed)) {
+          return { text: 'Meetup Confirmed', color: 'blue' }
+        }
+        if (trade.status === 'accepted') {
+          return { text: 'Waiting for Meetup', color: 'orange' }
+        }
+        if (trade.status === 'active') {
+          return { text: 'Exchange in Progress', color: 'green' }
+        }
       }
-      return { text: 'Pending Completion', color: 'yellow' }
+
+      return { text: 'Pending', color: 'yellow' }
     }
     
     const statusBadge = getOngoingStatusBadge()

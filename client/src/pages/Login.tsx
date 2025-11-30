@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -34,10 +34,27 @@ const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  
-  const { login } = useAuth()
+  const [googleLoginSuccess, setGoogleLoginSuccess] = useState(false)
+
+  const { login, googleLogin, user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
+
+  // Navigate to dashboard when user state is updated after Google login
+  useEffect(() => {
+    if (googleLoginSuccess && isAuthenticated) {
+      console.log('Login: Authentication state ready after Google login, navigating to dashboard')
+      navigate('/dashboard')
+    }
+  }, [googleLoginSuccess, isAuthenticated, navigate])
+
+  // Redirect already authenticated users away from login page
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('Login: User already authenticated, redirecting to dashboard')
+      navigate('/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -72,20 +89,20 @@ const Login: React.FC = () => {
     try {
       setLoading(true)
       setError('')
-      
+
       // Create Google Auth Provider
       const googleProvider = new GoogleAuthProvider()
-      
+
       // Set language to English
       auth.languageCode = 'en'
-      
+
       // Sign in with Google popup
       const result = await signInWithPopup(auth, googleProvider)
       const user = result.user
-      
+
       // Get ID token
       const idToken = await user.getIdToken()
-      
+
       // Log user info
       console.log('Google login successful:', {
         uid: user.uid,
@@ -93,47 +110,15 @@ const Login: React.FC = () => {
         displayName: user.displayName,
         photoURL: user.photoURL,
       })
-      
-      // Send Firebase ID token to backend to authenticate
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/auth/google`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            idToken: idToken,
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-          }),
-        })
 
-        if (!response.ok) {
-          throw new Error('Backend authentication failed')
-        }
+      // Use AuthContext to handle Google login
+      await googleLogin(idToken, {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+      })
 
-        const data = await response.json()
-        const sessionToken = data.data?.token || data.token
-
-        if (!sessionToken) {
-          throw new Error('No session token received from backend')
-        }
-
-        // Store session token in localStorage
-        localStorage.setItem('clovia_token', sessionToken)
-        
-        // Update API headers
-        const apiModule = await import('../services/api')
-        apiModule.api.defaults.headers.common['Authorization'] = `Bearer ${sessionToken}`
-        
-        console.log('Session token stored, authentication complete')
-      } catch (backendError: any) {
-        console.error('Backend authentication error:', backendError)
-        throw new Error('Failed to authenticate with backend: ' + backendError.message)
-      }
-      
       // Show success message
       toast({
         title: 'Login successful!',
@@ -142,12 +127,12 @@ const Login: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
-      
-      // Navigate to dashboard - AuthContext will pick up the token
-      navigate('/dashboard')
+
+      // Set flag to trigger navigation when user state is ready
+      setGoogleLoginSuccess(true)
     } catch (error: any) {
       console.error('Google login error:', error)
-      
+
       // Handle specific error codes
       if (error.code === 'auth/popup-closed-by-user') {
         setError('Login popup was closed. Please try again.')

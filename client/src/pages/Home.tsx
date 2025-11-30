@@ -64,6 +64,7 @@ import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
 import { useRealtime } from '../contexts/RealtimeContext' // added import
 import FloatingTab from '../components/FloatingTab'
+import { useStudentAdInjection, StudentAdCard } from '../components/StudentAdInjector'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -239,10 +240,8 @@ const Home: React.FC = () => {
   const touchStartX = useRef<number | null>(null)
 
   const startAuto = () => {
-    if (sliderIntervalRef.current) window.clearInterval(sliderIntervalRef.current)
-    sliderIntervalRef.current = window.setInterval(() => {
-      setSlideIndex(i => (i + 1) % sliderImages.length)
-    }, 3000)
+    // Auto-advance disabled to prevent dizziness
+    // Slider now only changes on user interaction (swipe/click)
   }
 
   const stopAuto = () => {
@@ -253,16 +252,12 @@ const Home: React.FC = () => {
   }
 
   const scheduleResume = (delay = 2000) => {
-    // stop immediate auto and restart after delay
+    // Resume logic disabled - slider stays on user-selected slide
     stopAuto()
-    if (resumeTimeoutRef.current) window.clearTimeout(resumeTimeoutRef.current)
-    resumeTimeoutRef.current = window.setTimeout(() => {
-      startAuto()
-    }, delay)
   }
 
   useEffect(() => {
-    startAuto()
+    // Auto-start disabled - slider stays on initial image
     return () => {
       stopAuto()
       if (resumeTimeoutRef.current) window.clearTimeout(resumeTimeoutRef.current)
@@ -619,6 +614,68 @@ const Home: React.FC = () => {
       </Box>
     </Box>
   )
+
+  // Component to render product grid with ad injections
+  const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
+    const filteredProducts = products.filter(
+      (p) => p.status === 'available' && p.seller_id !== user?.id
+    )
+
+    // Use the ad injection hook
+    const { shouldInsertAdAt, getAdForPosition, getAdIndexAt } = useStudentAdInjection(
+      filteredProducts.length,
+      undefined, // Use default ads
+      { min: 3, max: 6 } // Insertion interval
+    )
+
+    // Build the combined list with ads
+    const itemsWithAds: Array<{ type: 'product' | 'ad'; data: any; index: number }> = []
+
+    filteredProducts.forEach((product, idx) => {
+      itemsWithAds.push({
+        type: 'product',
+        data: product,
+        index: idx,
+      })
+
+      // Check if ad should be inserted after this product
+      if (shouldInsertAdAt(idx + 1)) {
+        const ad = getAdForPosition(getAdIndexAt(idx + 1))
+        if (ad) {
+          itemsWithAds.push({
+            type: 'ad',
+            data: ad,
+            index: idx + 1,
+          })
+        }
+      }
+    })
+
+    return (
+      <Grid
+        templateColumns={{
+          base: 'repeat(2, 1fr)',
+          md: 'repeat(3, 1fr)',
+          lg: 'repeat(4, 1fr)',
+          xl: 'repeat(5, 1fr)',
+        }}
+        gap={{ base: 3, md: 4 }}
+        alignItems="start"
+      >
+        {itemsWithAds.map((item, displayIndex) =>
+          item.type === 'product' ? (
+            <Box key={`product-${item.data.id}`}>
+              {renderProductCard(item.data)}
+            </Box>
+          ) : (
+            <Box key={`ad-${item.data.id}`}>
+              <StudentAdCard ad={item.data} />
+            </Box>
+          )
+        )}
+      </Grid>
+    )
+  }
 
   return (
     <Box minH="100vh" bg="#FFFDF1">
@@ -1111,26 +1168,15 @@ const Home: React.FC = () => {
           </Box>
         )}
 
-     {/* Products Grid - Shopee/Lazada Style */}
+     {/* Products Grid - Shopee/Lazada Style with Ad Injection */}
      {!loading && products.length > 0 && (
   <Box
     maxW={{ base: 'calc(100% - 12px)', md: '100%' }}
     mx="auto"
     px={{ base: 2, md: 4 }}
+    minH={{ base: '1200px', md: '1600px' }}
   >
-    <Grid
-      templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)', xl: 'repeat(5, 1fr)' }}
-      gap={{ base: 3, md: 4 }}
-      alignItems="start"
-    >
-      {products
-        .filter((p) => p.status === 'available' && p.seller_id !== user?.id)
-        .map((product) => (
-          <Box key={product.id}>
-            {renderProductCard(product)}
-          </Box>
-        ))}
-    </Grid>
+    <ProductGridWithAds products={products} user={user} />
 
     {/* Sentinel for infinite scroll */}
     <Box ref={sentinelRef} h="1px" />
