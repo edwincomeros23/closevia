@@ -71,20 +71,34 @@ const Sidebar: React.FC = () => {
         <DrawerOverlay />
         <DrawerContent display="flex" flexDirection="column" h="100%">
           <DrawerCloseButton />
-          <DrawerHeader display="flex" alignItems="center" gap={3}>
+          <DrawerHeader display="flex" alignItems="center" gap={3} justifyContent="space-between">
+            <Box display="flex" alignItems="center" gap={2}>
+              <Image
+                src={logo}
+                alt="Clovia"
+                w="35px"
+                h="35px"
+                objectFit="contain"
+                cursor="pointer"
+                onClick={() => {
+                  window.location.href = '/'
+                  onClose()
+                }}
+              />
+              <Box fontWeight="bold">Clovia</Box>
+            </Box>
             <Image
-              src={logo}
-              alt="Clovia"
-              w="35px"
-              h="35px"
+              src="/logoimage.png"
+              alt="ECODE"
+              h="28px"
               objectFit="contain"
               cursor="pointer"
+              _hover={{ opacity: 0.8 }}
               onClick={() => {
-                window.location.href = '/'
+                navigate('/company')
                 onClose()
               }}
             />
-            <Box fontWeight="bold">Clovia</Box>
           </DrawerHeader>
 
           <DrawerBody flex={1} overflowY="auto" pb={20}>
@@ -149,8 +163,8 @@ const Sidebar: React.FC = () => {
       >
         <Box h="100%" display="flex" flexDirection="column" justifyContent="space-between" alignItems="center">
           <VStack spacing={5} align="center" mt={2}>
-            {/* Logo/Brand */}
-            <Box mb={2} p={2}>
+            {/* Logo/Brand Section */}
+            <Box mb={2} p={2} display="flex" flexDirection="column" alignItems="center" gap={2}>
               <Image
                 src={logo}
                 alt="Clovia"
@@ -160,6 +174,16 @@ const Sidebar: React.FC = () => {
                 cursor="pointer"
                 onClick={() => (window.location.href = '/')}
                 _hover={{ opacity: 0.8 }}
+                transition="opacity 0.2s"
+              />
+              <Image
+                src="/logoimage.png"
+                alt="ECODE"
+                h="30px"
+                objectFit="contain"
+                cursor="pointer"
+                _hover={{ opacity: 0.8 }}
+                onClick={() => navigate('/company')}
                 transition="opacity 0.2s"
               />
             </Box>

@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { theme } from './theme'
 import Sidebar from './components/Sidebar'
 import LandingPage from './pages/Landingpage'
+import Company from './pages/Company'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -121,6 +122,7 @@ const AppContent: React.FC = () => {
     <Routes>
       {/* Landing page route - no sidebar or app layout */}
       <Route path="/" element={<LandingPage />} />
+      <Route path="/company" element={<Company />} />
       
       {/* Rider routes - no sidebar */}
       <Route path="/rider" element={<RiderOption />} />
