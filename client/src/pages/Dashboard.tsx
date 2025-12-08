@@ -256,11 +256,6 @@ const Dashboard: React.FC = () => {
       // Fetch unread notifications count
       const notificationsResponse = await api.get('/api/notifications?unread=true')
       setUnreadNotifications(notificationsResponse.data.data?.length || 0)
-
-      // Fetch pending offers count
-      const offersResponse = await api.get('/api/trades?direction=incoming')
-      const pendingOffers = offersResponse.data.data?.filter((offer: any) => offer.status === 'pending') || []
-      setUnreadOffers(pendingOffers.length)
     } catch (error) {
       console.error('Failed to fetch notification counts:', error)
     }
@@ -280,6 +275,10 @@ const Dashboard: React.FC = () => {
       
       setIncoming(incomingData)
       setOutgoing(outgoingData)
+      
+      // Calculate unread offers count from fetched data
+      const pendingOffers = incomingData.filter((offer: any) => offer.status === 'pending')
+      setUnreadOffers(pendingOffers.length)
       
       // Fetch product titles for all trades
       await fetchProductTitles([...incomingData, ...outgoingData])
@@ -968,6 +967,11 @@ const Dashboard: React.FC = () => {
                 <Icon as={FaHandshake} boxSize={3} />
                 <Text>{offersCount} offers</Text>
               </HStack>
+              {(product.wishlist_count ?? 0) > 0 && (
+                <Badge colorScheme="purple" variant="subtle" fontSize="xs">
+                  ❤️ {product.wishlist_count}
+                </Badge>
+              )}
             </HStack>
           </VStack>
         </CardBody>
