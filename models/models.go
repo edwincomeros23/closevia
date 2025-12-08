@@ -108,9 +108,9 @@ type User struct {
 	Department         string    `json:"department,omitempty"`
 	Bio                string    `json:"bio,omitempty"`
 	Badges             IntArray  `json:"badges,omitempty"`
-	ProfilePicture     string    `json:"profile_picture,omitempty"`
-	BackgroundImage    string    `json:"background_image,omitempty"`
-	BackgroundPosition string    `json:"background_position,omitempty"`
+	ProfilePicture     string    `json:"profile_picture"`
+	BackgroundImage    string    `json:"background_image"`
+	BackgroundPosition string    `json:"background_position"`
 	Latitude           *float64  `json:"latitude,omitempty"`
 	Longitude          *float64  `json:"longitude,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -138,29 +138,30 @@ type UserRegister struct {
 
 // Product represents a product listing
 type Product struct {
-	ID             int         `json:"id"`
-	Slug           string      `json:"slug,omitempty"` // SEO-friendly URL identifier
-	Title          string      `json:"title" validate:"required,min=2,max=255"`
-	Description    string      `json:"description"`
-	Price          *float64    `json:"price,omitempty"`      // Optional for barter-only items
-	ImageURLs      StringArray `json:"image_urls,omitempty"` // Multiple images
-	ImageURL       string      `json:"image_url,omitempty"`  // Single image for compatibility
-	SellerID       int         `json:"seller_id"`
-	SellerName     string      `json:"seller_name,omitempty"`
-	Premium        bool        `json:"premium"`
-	Status         string      `json:"status" validate:"oneof=available sold traded locked"`
-	AllowBuying    bool        `json:"allow_buying"` // Whether buying is allowed
-	BarterOnly     bool        `json:"barter_only"`  // Whether it's barter only
-	Location       string      `json:"location,omitempty"`
-	Condition      string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	SuggestedValue int         `json:"suggested_value,omitempty"`
-	Category       string      `json:"category,omitempty"`
-	Latitude       *float64    `json:"latitude,omitempty"`
-	Longitude      *float64    `json:"longitude,omitempty"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-	BiddingType    string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
-	WishlistCount  int         `json:"wishlist_count,omitempty"`
+	ID                   int         `json:"id"`
+	Slug                 string      `json:"slug,omitempty"` // SEO-friendly URL identifier
+	Title                string      `json:"title" validate:"required,min=2,max=255"`
+	Description          string      `json:"description"`
+	Price                *float64    `json:"price,omitempty"`      // Optional for barter-only items
+	ImageURLs            StringArray `json:"image_urls,omitempty"` // Multiple images
+	ImageURL             string      `json:"image_url,omitempty"`  // Single image for compatibility
+	SellerID             int         `json:"seller_id"`
+	SellerName           string      `json:"seller_name,omitempty"`
+	SellerProfilePicture string      `json:"seller_profile_picture,omitempty"`
+	Premium              bool        `json:"premium"`
+	Status               string      `json:"status" validate:"oneof=available sold traded locked"`
+	AllowBuying          bool        `json:"allow_buying"` // Whether buying is allowed
+	BarterOnly           bool        `json:"barter_only"`  // Whether it's barter only
+	Location             string      `json:"location,omitempty"`
+	Condition            string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	SuggestedValue       int         `json:"suggested_value,omitempty"`
+	Category             string      `json:"category,omitempty"`
+	Latitude             *float64    `json:"latitude,omitempty"`
+	Longitude            *float64    `json:"longitude,omitempty"`
+	CreatedAt            time.Time   `json:"created_at"`
+	UpdatedAt            time.Time   `json:"updated_at"`
+	BiddingType          string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	WishlistCount        int         `json:"wishlist_count,omitempty"`
 }
 
 // ProductCreate represents data for creating a product
@@ -254,22 +255,22 @@ type Trade struct {
 	AwaitingConfirmationSince *time.Time `json:"awaiting_confirmation_since,omitempty"`
 	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
 	// Trade option and delivery fields
-	TradeOption            string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
-	DeliveryAddress        string `json:"delivery_address,omitempty"`
+	TradeOption     string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
+	DeliveryAddress string `json:"delivery_address,omitempty"`
 	// Review and proof fields
-	BuyerRating            *int    `json:"buyer_rating,omitempty"`
-	SellerRating           *int    `json:"seller_rating,omitempty"`
-	BuyerFeedback          string  `json:"buyer_feedback,omitempty"`
-	SellerFeedback         string  `json:"seller_feedback,omitempty"`
-	BuyerProofURL          string  `json:"buyer_proof_url,omitempty"`
-	SellerProofURL         string  `json:"seller_proof_url,omitempty"`
+	BuyerRating    *int   `json:"buyer_rating,omitempty"`
+	SellerRating   *int   `json:"seller_rating,omitempty"`
+	BuyerFeedback  string `json:"buyer_feedback,omitempty"`
+	SellerFeedback string `json:"seller_feedback,omitempty"`
+	BuyerProofURL  string `json:"buyer_proof_url,omitempty"`
+	SellerProofURL string `json:"seller_proof_url,omitempty"`
 	// Meetup-related fields
-	MeetupLocation         string `json:"meetup_location,omitempty"`
-	BuyerMeetupConfirmed   bool   `json:"buyer_meetup_confirmed"`
-	SellerMeetupConfirmed  bool   `json:"seller_meetup_confirmed"`
-	BuyerName              string `json:"buyer_name,omitempty"`
-	SellerName             string `json:"seller_name,omitempty"`
-	ProductTitle           string `json:"product_title,omitempty"`
+	MeetupLocation        string `json:"meetup_location,omitempty"`
+	BuyerMeetupConfirmed  bool   `json:"buyer_meetup_confirmed"`
+	SellerMeetupConfirmed bool   `json:"seller_meetup_confirmed"`
+	BuyerName             string `json:"buyer_name,omitempty"`
+	SellerName            string `json:"seller_name,omitempty"`
+	ProductTitle          string `json:"product_title,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade

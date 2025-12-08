@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('AuthContext: Fetching user profile from /api/users/profile')
       // Add timeout to prevent infinite loading
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 2000) // 2 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
 
       const response = await api.get('/api/users/profile', {
         signal: controller.signal
@@ -96,6 +96,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('AuthContext: Setting user data:', userData)
       setUser(userData)
     } catch (error: any) {
+      // Don't log cancelled requests as errors - this is expected behavior
+      if (error.name === 'CanceledError' || error.name === 'AbortError') {
+        console.log('AuthContext: Request was cancelled or timed out')
+        // Don't clear token or user state for cancelled requests
+        return
+      }
+
       console.error('AuthContext: Failed to fetch user profile:', error)
 
       // Only clear token if it's a 401 (unauthorized) error
@@ -105,20 +112,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         localStorage.removeItem('clovia_token')
         setToken(null)
         setUser(null)
-      } else {
-        // For network errors or other issues, keep the token but clear user state
-        console.log('AuthContext: Network or server error, keeping token for retry')
-        setUser(null)
-        // Don't clear token here - user might be able to retry
-      }
-
-      // If it's a network error or timeout, show a more specific message
-      if (error.name === 'AbortError') {
-        console.log('AuthContext: Request timeout - backend might be down')
       } else if (error.code === 'NETWORK_ERROR' || !error.response) {
         console.log('AuthContext: Network error - backend might be down')
-      } else if (error.response?.status === 401) {
-        console.log('AuthContext: Token invalid or expired')
+        setUser(null)
+        // Don't clear token here - user might be able to retry
       }
     } finally {
       console.log('AuthContext: Setting loading to false')

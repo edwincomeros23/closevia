@@ -1,6 +1,6 @@
-import { initializeApp } from 'firebase/app'
-import { getAnalytics } from 'firebase/analytics'
-import { getAuth } from 'firebase/auth'
+import { initializeApp, type FirebaseApp } from 'firebase/app'
+import { getAnalytics, type Analytics } from 'firebase/analytics'
+import { getAuth, type Auth } from 'firebase/auth'
 
 // Firebase configuration loaded from environment variables
 const firebaseConfig = {
@@ -13,16 +13,52 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig)
+// Basic validation: we need at least projectId, apiKey and appId to initialize safely
+const hasRequiredFirebaseConfig = Boolean(
+  firebaseConfig.projectId && firebaseConfig.apiKey && firebaseConfig.appId
+)
 
-// Initialize Analytics (only if not in development)
-let analytics
-if (typeof window !== 'undefined') {
-  analytics = getAnalytics(app)
+let app: FirebaseApp | null = null
+let analytics: Analytics | null = null
+let auth: Auth | null = null
+
+if (hasRequiredFirebaseConfig) {
+  try {
+    app = initializeApp(firebaseConfig)
+
+    // Initialize Analytics (only if running in a browser environment)
+    if (typeof window !== 'undefined') {
+      try {
+        analytics = getAnalytics(app)
+      } catch (e) {
+        // Analytics can fail in some environments (server-side or missing measurementId)
+        // Don't let analytics errors break the app
+        // eslint-disable-next-line no-console
+        console.warn('Firebase analytics initialization failed:', e)
+        analytics = null
+      }
+    }
+
+    // Initialize Firebase Authentication
+    try {
+      auth = getAuth(app)
+    } catch (e) {
+      // Auth initialization shouldn't block the app if it fails
+      // eslint-disable-next-line no-console
+      console.warn('Firebase auth initialization failed:', e)
+      auth = null
+    }
+  } catch (err) {
+    // If initializeApp itself fails (for example missing fields), log and continue
+    // eslint-disable-next-line no-console
+    console.warn('Firebase initialization skipped due to incomplete config:', err)
+    app = null
+    analytics = null
+    auth = null
+  }
+} else {
+  // eslint-disable-next-line no-console
+  console.warn('Firebase config incomplete - skipping Firebase initialization')
 }
-
-// Initialize Firebase Authentication
-const auth = getAuth(app)
 
 export { app, analytics, auth }

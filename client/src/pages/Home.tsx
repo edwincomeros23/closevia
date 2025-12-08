@@ -35,6 +35,7 @@ import {
   PopoverBody,
   Divider,
   Icon,
+  Link,
 } from '@chakra-ui/react'
 import { 
   SearchIcon, 
@@ -56,7 +57,7 @@ import { MdSchool, MdLocalOffer } from 'react-icons/md'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
@@ -145,8 +146,8 @@ const Home: React.FC = () => {
 
   // Load products immediately on component mount
   useEffect(() => {
-  // Always fetch latest 10 available products on mount (default feed)
-  searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
+  // Always fetch latest 50 available products on mount (default feed)
+  searchProducts({ ...filters, status: 'available', limit: 50, page: 1 })
   setHasSearched(false)
   // empty deps intentional — only once on mount
   }, [])
@@ -154,7 +155,7 @@ const Home: React.FC = () => {
   // Refetch when navigating back to Home route to ensure newest items appear
   useEffect(() => {
     if (location.pathname === '/home') {
-      searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
+      searchProducts({ ...filters, status: 'available', limit: 50, page: 1 })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
@@ -180,7 +181,7 @@ const Home: React.FC = () => {
   useEffect(() => {
     const handleFocus = () => {
       if (window.location.pathname === '/home') {
-        searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
+        searchProducts({ ...filters, status: 'available', limit: 50, page: 1 })
       }
     }
     window.addEventListener('focus', handleFocus)
@@ -511,25 +512,43 @@ const Home: React.FC = () => {
       <Box p={4} display="flex" flexDirection="column" h={{ base: 140, md: 192 }} overflow="hidden">
         <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
           <HStack spacing={2}>
-            <Box
+            <Link
               as={RouterLink}
               to={`/users/${product.seller_id}`}
-              w={7}
-              h={7}
-              rounded="full"
-              bg="brand.500"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              flexShrink={0}
-              cursor="pointer"
-              _hover={{ opacity: 0.8 }}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              _hover={{ textDecoration: 'none' }}
             >
-              <Text fontSize="md" fontWeight="bold" color="white">
-                {(product.seller_name || 'U').charAt(0).toUpperCase()}
-              </Text>
-            </Box>
+              {product.seller_profile_picture ? (
+                <Image
+                  w={7}
+                  h={7}
+                  rounded="full"
+                  objectFit="cover"
+                  src={getImageUrl(product.seller_profile_picture)}
+                  alt={product.seller_name || 'Seller'}
+                  flexShrink={0}
+                  cursor="pointer"
+                  _hover={{ opacity: 0.9 }}
+                />
+              ) : (
+                <Box
+                  w={7}
+                  h={7}
+                  rounded="full"
+                  bg="brand.500"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  flexShrink={0}
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8 }}
+                >
+                  <Text fontSize="md" fontWeight="bold" color="white">
+                    {(product.seller_name || 'U').charAt(0).toUpperCase()}
+                  </Text>
+                </Box>
+              )}
+            </Link>
             <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
               {product.seller_name || 'Unknown'}
             </Text>
@@ -618,7 +637,7 @@ const Home: React.FC = () => {
   // Component to render product grid with ad injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
     const filteredProducts = products.filter(
-      (p) => p.status === 'available' && p.seller_id !== user?.id
+      (p) => p.status === 'available'
     )
 
     // Use the ad injection hook

@@ -142,6 +142,7 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
+	reviewHandler := handlers.NewReviewHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -160,6 +161,14 @@ func main() {
 	users.Delete("/saved-products/:id", middleware.AuthMiddleware(), userHandler.UnsaveProduct)
 	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
+
+	// User stats route (must be BEFORE dynamic ":id" route)
+	users.Get("/:id/stats", userHandler.GetSellerStats) // Public route
+
+	// Review routes (must be BEFORE dynamic ":id" route)
+	users.Get("/:id/reviews", reviewHandler.GetUserReviews)                             // Public route
+	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview) // Auth required
+	users.Get("/:id/rating", reviewHandler.GetUserRating)                               // Public route
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
@@ -202,13 +211,14 @@ func main() {
 	trades := api.Group("/trades")
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
+	// Allow optional auth for counts endpoint so unauthenticated UI polling returns a safe zero value
+	// IMPORTANT: /count must be BEFORE /:id routes to avoid matching "count" as an ID
+	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
 	trades.Get("/:id", middleware.AuthMiddleware(), tradeHandler.GetTrade)
 	trades.Get("/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeMessages)
 	trades.Post("/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeMessage)
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
-	// Allow optional auth for counts endpoint so unauthenticated UI polling returns a safe zero value
-	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 

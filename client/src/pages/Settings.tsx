@@ -552,12 +552,9 @@ const SettingsPage: React.FC = () => {
       // ignore
     }
 
-    // Attempt server-side logout (best-effort)
-    try {
-      await api.post('/api/logout')
-    } catch (e) {
-      // not fatal — continue clearing client state
-    }
+    // Server-side logout endpoint not implemented in all backends.
+    // Skip calling `/api/logout` to avoid 404 noise in the browser console.
+    // If you have a server-side logout endpoint, re-enable this call.
 
     // Call context logout if available to clear auth state
     try {

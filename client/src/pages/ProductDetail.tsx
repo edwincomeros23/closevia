@@ -48,7 +48,7 @@ import {
 import { FaHandshake } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
-import { Product } from '../types'
+import { Product, User } from '../types'
 import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import { getProductUrl } from '../utils/productUtils'
@@ -67,6 +67,7 @@ const ProductDetail: React.FC = () => {
   const [product, setProduct] = useState<Product | null>(null)
   const [sellerProducts, setSellerProducts] = useState<Product[]>([])
   const [sellerStats, setSellerStats] = useState<any | null>(null)
+  const [sellerProfile, setSellerProfile] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [purchasing, setPurchasing] = useState(false)
@@ -114,17 +115,80 @@ const ProductDetail: React.FC = () => {
     const loadSellerStats = async () => {
       if (!product) return
       try {
-        const response = await fetch(`/api/users/${product.seller_id}/stats`)
-        if (response.ok) {
-          const data = await response.json()
-          setSellerStats(data.data)
+        // Use the axios `api` client so requests go to the configured backend
+        // The backend API in this project is prefixed with /api
+        const resp = await api.get(`/api/users/${product.seller_id}/stats`)
+        if (resp && resp.data) {
+          setSellerStats(resp.data.data)
         }
       } catch (err) {
-        // ignore errors for this non-critical UX enhancement
-        console.error('Failed to fetch seller stats:', err)
+        // Treat 404 (endpoint missing) as non-fatal and use safe defaults
+        if (axios.isAxiosError(err)) {
+          const status = err.response?.status
+          // eslint-disable-next-line no-console
+          console.debug('Seller stats request failed', { status, url: err.config?.url })
+          if (status === 404) {
+            // Provide sensible defaults so UI shows N/A instead of failing
+            setSellerStats({ avg_rating: null, positive_percent: null, total_trades: 0, avg_response_time: null })
+            return
+          }
+          // For other statuses, log details for debugging
+          // eslint-disable-next-line no-console
+          console.error('Failed to fetch seller stats:', JSON.stringify({
+            message: err.message,
+            status: err.response?.status,
+            url: err.config?.url,
+            data: err.response?.data,
+          }))
+        } else {
+          // eslint-disable-next-line no-console
+          console.error('Failed to fetch seller stats (non-Axios error):', err)
+        }
+        // Fallback defaults to keep UI stable
+        setSellerStats({ avg_rating: null, positive_percent: null, total_trades: 0, avg_response_time: null })
       }
     }
     loadSellerStats()
+  }, [product])
+
+  // Load seller profile (to display uploaded profile picture)
+  useEffect(() => {
+    const loadSellerProfile = async () => {
+      if (!product) return
+      try {
+        const resp = await api.get(`/api/users/${product.seller_id}`)
+        // Debug: log the raw response for troubleshooting missing profile_picture
+        console.log('🔍 Seller profile response:', resp?.data)
+        const userData = resp.data?.data as User | undefined
+        console.log('🔍 User data extracted:', userData)
+        console.log('🔍 Profile picture value:', userData?.profile_picture)
+        console.log('🔍 Profile picture type:', typeof userData?.profile_picture)
+        
+        if (userData) {
+          // Normalize profile picture URL if it exists and is not empty
+          const profilePic = userData.profile_picture
+          if (profilePic && typeof profilePic === 'string' && profilePic.trim() !== '' && profilePic !== 'undefined') {
+            try {
+              const normalizedUrl = getImageUrl(profilePic)
+              console.log('✅ Profile picture URL:', profilePic, '-> Normalized:', normalizedUrl)
+              userData.profile_picture = normalizedUrl
+            } catch (e) {
+              console.error('❌ Failed to normalize profile picture URL:', e)
+              userData.profile_picture = undefined
+            }
+          } else {
+            console.log('⚠️ No valid profile picture found for user:', product.seller_id, '- Value:', profilePic, '- Type:', typeof profilePic)
+            userData.profile_picture = undefined
+          }
+        }
+        console.log('🔍 Final seller profile state:', userData)
+        setSellerProfile(userData || null)
+      } catch (err) {
+        console.error('❌ Failed to load seller profile', err)
+        setSellerProfile(null)
+      }
+    }
+    loadSellerProfile()
   }, [product])
 
   useEffect(() => {
@@ -976,21 +1040,52 @@ const ProductDetail: React.FC = () => {
             About the Seller
           </Heading>
           <Flex justify="space-between" align="stretch" gap={6}>
-            <HStack spacing={4} flex={1}>
-              <Box
-                w="60px"
-                h="60px"
-                rounded="full"
-                bg="red.500"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                flexShrink={0}
-              >
-                <Text fontSize="24px" fontWeight="bold" color="white">
-                  {(product.seller_name ?? '?').charAt(0).toUpperCase()}
-                </Text>
-              </Box>
+              <HStack spacing={4} flex={1}>
+              {sellerProfile?.profile_picture ? (
+                <Image
+                  src={sellerProfile.profile_picture}
+                  alt={sellerProfile.name || 'Seller'}
+                  w="60px"
+                  h="60px"
+                  borderRadius="full"
+                  objectFit="cover"
+                  flexShrink={0}
+                  fallback={
+                    <Box
+                      w="60px"
+                      h="60px"
+                      rounded="full"
+                      bg="brand.500"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      flexShrink={0}
+                    >
+                      <Text fontSize="24px" fontWeight="bold" color="white">
+                        {(product.seller_name ?? '?').charAt(0).toUpperCase()}
+                      </Text>
+                    </Box>
+                  }
+                  onError={(e) => {
+                    console.error('Failed to load seller profile image:', sellerProfile.profile_picture)
+                  }}
+                />
+              ) : (
+                <Box
+                  w="60px"
+                  h="60px"
+                  rounded="full"
+                  bg="brand.500"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  flexShrink={0}
+                >
+                  <Text fontSize="24px" fontWeight="bold" color="white">
+                    {(product.seller_name ?? '?').charAt(0).toUpperCase()}
+                  </Text>
+                </Box>
+              )}
               <Box>
                 <Text
                   as={RouterLink}
@@ -1074,7 +1169,7 @@ const ProductDetail: React.FC = () => {
                       w="full"
                       h="full"
                       objectFit="cover"
-                      fallbackSrc="/images/placeholder.jpg"
+                      fallbackSrc="/barter.jpg"
                     />
                     <Badge position="absolute" top={2} right={2} colorScheme={p.status === 'available' ? 'teal' : p.status === 'sold' ? 'red' : 'orange'} fontSize="xs">
                       {p.status}

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/go-sql-driver/mysql"
 )
 
 var DB *sql.DB
@@ -35,29 +34,39 @@ func InitDatabase() error {
 	if dbUser == "" {
 		return fmt.Errorf("DB_USER environment variable is not set")
 	}
-	if dbPassword == "" {
-		return fmt.Errorf("DB_PASSWORD environment variable is not set")
-	}
+	// DB_PASSWORD may be empty for local MySQL instances; do not require it.
 	if dbName == "" {
 		return fmt.Errorf("DB_NAME environment variable is not set")
 	}
-	if caCertPath == "" {
-		return fmt.Errorf("DB_CA_CERT environment variable is not set")
+	// Create TLS config only if a CA certificate path is provided.
+	// For local development, DB_CA_CERT may be omitted to allow non-TLS connections.
+	var useCustomTLS bool
+	var dsn string
+	var err error
+	if caCertPath != "" {
+		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
+		if err != nil {
+			return fmt.Errorf("failed to create TLS config: %v", err)
+		}
+
+		if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
+			return fmt.Errorf("failed to register TLS config: %v", err)
+		}
+
+		useCustomTLS = true
+	} else {
+		// No CA cert provided — skip TLS setup (useful for local development)
+		useCustomTLS = false
 	}
 
-	// Create TLS config (required for Aiven)
-	tlsConfig, err := createTLSConfig(dbHost, caCertPath)
-	if err != nil {
-		return fmt.Errorf("failed to create TLS config: %v", err)
+	// Create DSN; include TLS parameter only when a custom TLS config was registered
+	if useCustomTLS {
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
+	} else {
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
 	}
-
-	if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
-		return fmt.Errorf("failed to register TLS config: %v", err)
-	}
-
-	// Create DSN with TLS enabled
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
-		dbUser, dbPassword, dbHost, dbPort, dbName)
 
 	// Open database connection
 	var openErr error
@@ -117,14 +126,6 @@ func CloseDatabase() {
 		DB.Close()
 		log.Println("Database connection closed")
 	}
-}
-
-// getEnv gets an environment variable or returns a default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
 
 // CreateTables creates all necessary tables if they don't exist
