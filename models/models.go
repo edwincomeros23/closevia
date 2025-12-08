@@ -175,6 +175,7 @@ type ProductCreate struct {
 	Location    string      `json:"location,omitempty"`
 	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	Category    string      `json:"category,omitempty"`
+	BiddingType string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
 }
 
 // ProductUpdate represents data for updating a product

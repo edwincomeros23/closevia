@@ -92,9 +92,16 @@ const ProductsList: React.FC = () => {
           ) : (
             <Text fontSize="sm" color="green.600" fontWeight="medium">Barter Only</Text>
           )}
-          <Badge colorScheme={p.status === 'available' ? 'green' : p.status === 'traded' ? 'blue' : 'red'}>
-            {p.status}
-          </Badge>
+          <HStack spacing={2}>
+            {p.wishlist_count > 0 && (
+              <Badge colorScheme="purple" variant="subtle" fontSize="xs">
+                ❤️ {p.wishlist_count}
+              </Badge>
+            )}
+            <Badge colorScheme={p.status === 'available' ? 'green' : p.status === 'traded' ? 'blue' : 'red'}>
+              {p.status}
+            </Badge>
+          </HStack>
         </HStack>
       </Box>
     </Box>

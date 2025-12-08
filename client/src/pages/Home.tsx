@@ -520,14 +520,20 @@ const Home: React.FC = () => {
               {product.seller_name || 'Unknown'}
             </Text>
           </HStack>
-          <Badge 
-            fontSize="xs" 
-            colorScheme="blue" 
-            flexShrink={0}
-            borderWidth="1px"
-          >
-            {product.condition || 'Used'}
-          </Badge>
+          <HStack spacing={1} flexShrink={0}>
+            <Badge 
+              fontSize="xs" 
+              colorScheme="blue" 
+              borderWidth="1px"
+            >
+              {product.condition || 'Used'}
+            </Badge>
+            {product.wishlist_count > 0 && (
+              <Badge fontSize="xs" colorScheme="purple">
+                ❤️ {product.wishlist_count}
+              </Badge>
+            )}
+          </HStack>
         </Flex>
 
         <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>

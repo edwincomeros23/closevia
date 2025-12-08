@@ -55,6 +55,7 @@ const AddProduct: React.FC = () => {
     location: '',
     condition: 'Used',
     category: 'General',
+    bidding_type: 'none',
   })
   
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -318,6 +319,7 @@ const AddProduct: React.FC = () => {
       formDataToSend.append('location', formData.location?.trim() || '')
       formDataToSend.append('condition', formData.condition || 'Used')
       formDataToSend.append('category', formData.category || 'General')
+      formDataToSend.append('bidding_type', formData.bidding_type || 'none')
       
       // Append each image file
       uploadedImages.forEach((file) => {
@@ -589,6 +591,23 @@ const AddProduct: React.FC = () => {
                 <option value="Used">Used</option>
                 <option value="Fair">Fair</option>
               </Select>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel>Bidding Type</FormLabel>
+              <Select
+                placeholder="Select bidding type"
+                value={formData.bidding_type || 'none'}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('bidding_type', e.target.value)}
+                size="lg"
+              >
+                <option value="none">No Bidding</option>
+                <option value="blind">Blind Auction</option>
+                <option value="open">Open Bidding</option>
+              </Select>
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                Choose how buyers can make offers for this item
+              </Text>
             </FormControl>
 
             <FormControl>
