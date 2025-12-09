@@ -19,7 +19,12 @@ const app = initializeApp(firebaseConfig)
 // Initialize Analytics (only if not in development)
 let analytics
 if (typeof window !== 'undefined') {
-  analytics = getAnalytics(app)
+  try {
+    analytics = getAnalytics(app)
+  } catch (error) {
+    console.warn('Analytics initialization failed:', error)
+    // Analytics is optional, app can work without it
+  }
 }
 
 // Initialize Firebase Authentication
