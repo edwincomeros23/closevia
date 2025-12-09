@@ -36,6 +36,7 @@ import {
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, WarningIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
+import { api } from '../services/api'
 import { ProductCreate } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { prepareImageForUpload, isUnsupportedFormat, getFileTypeDescription } from '../utils/imageConverter'
@@ -589,7 +590,6 @@ const AddProduct: React.FC = () => {
                       uploadedImages.slice(0, 3).forEach((file) => {
                         formData.append('images', file)
                       })
-                      const { api } = await import('../services/api')
                       const response = await api.post('/api/products/generate-details', formData)
                       const data = response.data
                       if (data.success && data.data) {
