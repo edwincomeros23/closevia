@@ -521,3 +521,37 @@ type SellerStats struct {
 	MemberSinceYear int     `json:"member_since_year,omitempty"` // Year user joined
 	CompletedTrades int     `json:"completed_trades,omitempty"`
 }
+
+// Report represents a user report against another trader
+type Report struct {
+	ID              int       `json:"id"`
+	ReporterID      int       `json:"reporter_id"`
+	ReportedUserID  int       `json:"reported_user_id"`
+	ProductID       *int      `json:"product_id,omitempty"`       // Optional: product being reported
+	Reason          string    `json:"reason" validate:"required"` // "inappropriate", "counterfeit", "spam", "scam"
+	Description     string    `json:"description"`
+	Status          string    `json:"status" validate:"omitempty,oneof=pending reviewed dismissed resolved"` // pending, reviewed, dismissed, resolved
+	ReviewerID      *int      `json:"reviewer_id,omitempty"`                                                 // Admin who reviewed
+	ReviewerComment string    `json:"reviewer_comment,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+
+	// Related data
+	Reporter     *User    `json:"reporter,omitempty"`
+	ReportedUser *User    `json:"reported_user,omitempty"`
+	Product      *Product `json:"product,omitempty"`
+}
+
+// ReportCreate represents data for creating a report
+type ReportCreate struct {
+	ReportedUserID int    `json:"reported_user_id" validate:"required"`
+	ProductID      *int   `json:"product_id,omitempty"`
+	Reason         string `json:"reason" validate:"required,oneof=inappropriate counterfeit spam scam"`
+	Description    string `json:"description" validate:"required,min=10,max=1000"`
+}
+
+// ReportUpdate represents data for updating a report (admin only)
+type ReportUpdate struct {
+	Status          string `json:"status" validate:"required,oneof=pending reviewed dismissed resolved"`
+	ReviewerComment string `json:"reviewer_comment,omitempty"`
+}

@@ -107,6 +107,7 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
+	reportHandler := handlers.NewReportHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -198,6 +199,14 @@ func main() {
 	notifs.Get("/", middleware.AuthMiddleware(), notificationHandler.GetNotifications)
 	notifs.Put("/:id/read", middleware.AuthMiddleware(), notificationHandler.MarkAsRead)
 	notifs.Put("/read-all", middleware.AuthMiddleware(), notificationHandler.MarkAllAsRead)
+
+	// Report routes
+	reports := api.Group("/reports")
+	reports.Post("/", middleware.AuthMiddleware(), reportHandler.CreateReport)
+	reports.Get("/", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
+	reports.Get("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)
+	reports.Put("/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.UpdateReport)
+	reports.Get("/user/:id", reportHandler.GetUserReports) // Public route to check if user is flagged
 
 	// Admin routes
 	admin := api.Group("/admin")
