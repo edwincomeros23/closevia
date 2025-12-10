@@ -254,22 +254,22 @@ type Trade struct {
 	AwaitingConfirmationSince *time.Time `json:"awaiting_confirmation_since,omitempty"`
 	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
 	// Trade option and delivery fields
-	TradeOption            string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
-	DeliveryAddress        string `json:"delivery_address,omitempty"`
+	TradeOption     string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
+	DeliveryAddress string `json:"delivery_address,omitempty"`
 	// Review and proof fields
-	BuyerRating            *int    `json:"buyer_rating,omitempty"`
-	SellerRating           *int    `json:"seller_rating,omitempty"`
-	BuyerFeedback          string  `json:"buyer_feedback,omitempty"`
-	SellerFeedback         string  `json:"seller_feedback,omitempty"`
-	BuyerProofURL          string  `json:"buyer_proof_url,omitempty"`
-	SellerProofURL         string  `json:"seller_proof_url,omitempty"`
+	BuyerRating    *int   `json:"buyer_rating,omitempty"`
+	SellerRating   *int   `json:"seller_rating,omitempty"`
+	BuyerFeedback  string `json:"buyer_feedback,omitempty"`
+	SellerFeedback string `json:"seller_feedback,omitempty"`
+	BuyerProofURL  string `json:"buyer_proof_url,omitempty"`
+	SellerProofURL string `json:"seller_proof_url,omitempty"`
 	// Meetup-related fields
-	MeetupLocation         string `json:"meetup_location,omitempty"`
-	BuyerMeetupConfirmed   bool   `json:"buyer_meetup_confirmed"`
-	SellerMeetupConfirmed  bool   `json:"seller_meetup_confirmed"`
-	BuyerName              string `json:"buyer_name,omitempty"`
-	SellerName             string `json:"seller_name,omitempty"`
-	ProductTitle           string `json:"product_title,omitempty"`
+	MeetupLocation        string `json:"meetup_location,omitempty"`
+	BuyerMeetupConfirmed  bool   `json:"buyer_meetup_confirmed"`
+	SellerMeetupConfirmed bool   `json:"seller_meetup_confirmed"`
+	BuyerName             string `json:"buyer_name,omitempty"`
+	SellerName            string `json:"seller_name,omitempty"`
+	ProductTitle          string `json:"product_title,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade
@@ -536,4 +536,38 @@ type SellerStats struct {
 	ResponseMetric  string  `json:"response_metric,omitempty"`   // "excellent", "good", etc.
 	MemberSinceYear int     `json:"member_since_year,omitempty"` // Year user joined
 	CompletedTrades int     `json:"completed_trades,omitempty"`
+}
+
+// Report represents a trader report for policy violations
+type Report struct {
+	ID              int       `json:"id"`
+	ReporterID      int       `json:"reporter_id"`
+	ReportedUserID  int       `json:"reported_user_id"`
+	ProductID       *int      `json:"product_id,omitempty"`
+	Reason          string    `json:"reason"`
+	Description     string    `json:"description"`
+	Status          string    `json:"status"`
+	ReviewerID      *int      `json:"reviewer_id,omitempty"`
+	ReviewerComment *string   `json:"reviewer_comment,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+
+	// Related data for context
+	Reporter     *User    `json:"reporter,omitempty"`
+	ReportedUser *User    `json:"reported_user,omitempty"`
+	Product      *Product `json:"product,omitempty"`
+}
+
+// ReportCreate represents payload for submitting a new trader report
+type ReportCreate struct {
+	ReportedUserID int    `json:"reported_user_id" validate:"required"`
+	ProductID      *int   `json:"product_id,omitempty"`
+	Reason         string `json:"reason" validate:"required,oneof=inappropriate counterfeit spam scam"`
+	Description    string `json:"description" validate:"required,min=10,max=1000"`
+}
+
+// ReportUpdate represents data for updating report status (admin use only)
+type ReportUpdate struct {
+	Status          string `json:"status" validate:"required,oneof=pending reviewed dismissed resolved"`
+	ReviewerComment string `json:"reviewer_comment,omitempty"`
 }

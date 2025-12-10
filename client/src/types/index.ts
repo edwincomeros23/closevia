@@ -346,3 +346,32 @@ export interface DeliveryUpdate {
   longitude?: number
   estimated_eta?: string
 }
+
+export interface Report {
+  id: number
+  reporter_id: number
+  reported_user_id: number
+  product_id?: number
+  reason: string
+  description: string
+  status: string
+  reviewer_id?: number
+  reviewer_comment?: string
+  created_at: string
+  updated_at: string
+  reporter?: User
+  reported_user?: User
+  product?: Product
+}
+
+export interface ReportCreate {
+  reported_user_id: number
+  product_id?: number
+  reason: 'inappropriate' | 'counterfeit' | 'spam' | 'scam'
+  description: string
+}
+
+export interface ReportUpdate {
+  status: 'pending' | 'reviewed' | 'dismissed' | 'resolved'
+  reviewer_comment?: string
+}
