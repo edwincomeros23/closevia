@@ -92,7 +92,7 @@ func (h *DeliveryHandler) checkFragileItems(productIDs []int) (bool, error) {
 }
 
 // FindNearestRider finds the nearest available rider to pickup location
-func (h *DeliveryHandler) findNearestRider(pickupLat, pickupLon *float64, deliveryType string) (*models.Rider, error) {
+func (h *DeliveryHandler) findNearestRider(pickupLat, pickupLon *float64) (*models.Rider, error) {
 	if pickupLat == nil || pickupLon == nil {
 		// If no GPS, return first available rider
 		var rider models.Rider
@@ -157,14 +157,6 @@ func (h *DeliveryHandler) findNearestRider(pickupLat, pickupLon *float64, delive
 	}
 
 	return nearestRider, nil
-}
-
-// FindAvailableBatch finds an available batch for standard delivery (up to 5 items)
-func (h *DeliveryHandler) findAvailableBatch(pickupLat, pickupLon *float64, itemCount int) (int, error) {
-	// Find a pending standard delivery with space for more items
-	// For simplicity, we'll create a new batch for each delivery
-	// In a production system, you'd implement smart batching logic here
-	return 0, nil // Return 0 to indicate new batch
 }
 
 // CreateDelivery creates a new delivery request
@@ -252,7 +244,7 @@ func (h *DeliveryHandler) CreateDelivery(c *fiber.Ctx) error {
 	var riderID *int
 	if req.DeliveryType == "express" {
 		// For express, auto-assign nearest rider
-		rider, err := h.findNearestRider(req.PickupLatitude, req.PickupLongitude, req.DeliveryType)
+		rider, err := h.findNearestRider(req.PickupLatitude, req.PickupLongitude)
 		if err == nil && rider != nil {
 			riderID = &rider.ID
 		}
@@ -496,7 +488,7 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 	updates = append(updates, "updated_at = CURRENT_TIMESTAMP")
 	args = append(args, deliveryID)
 
-	query := "UPDATE deliveries SET " + fmt.Sprintf("%s", updates[0])
+	query := "UPDATE deliveries SET " + updates[0]
 	for i := 1; i < len(updates); i++ {
 		query += ", " + updates[i]
 	}
@@ -658,15 +650,13 @@ func (h *DeliveryHandler) loadDeliveryItems(d *models.Delivery) {
 	}
 	defer rows.Close()
 
-	items := []models.DeliveryItem{}
 	for rows.Next() {
 		var item models.DeliveryItem
 		err := rows.Scan(&item.ID, &item.DeliveryID, &item.ProductID, &item.ProductName, &item.IsFragile, &item.CreatedAt)
 		if err != nil {
 			continue
 		}
-		items = append(items, item)
+		_ = item // Item data loaded but not currently used
 	}
 	// Note: Delivery model doesn't have Items field, but we could add it if needed
 }
-
