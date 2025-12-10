@@ -54,9 +54,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
+import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
 import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
-import { FiShoppingBag, FiRefreshCw, FiMessageCircle } from 'react-icons/fi'
+import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import OfferDetailsModal from '../components/OfferDetailsModal'
@@ -66,14 +67,14 @@ import DeliveryRequestModal from '../components/DeliveryRequestModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth()
+  const { user, loading, isAuthenticated } = useAuth()
   const { getUserProducts, deleteProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [tradedItems, setTradedItems] = useState<Product[]>([])
-  const [loading, setLoading] = useState(false)
+  const [dataLoading, setDataLoading] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
@@ -123,6 +124,7 @@ const Dashboard: React.FC = () => {
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
   const offersPollingInterval = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notificationCountsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Delivery modals state
   const [deliveryRequestModalOpen, setDeliveryRequestModalOpen] = useState(false)
@@ -141,6 +143,15 @@ const Dashboard: React.FC = () => {
     }
   }, [user])
 
+  // Check if user is authenticated, redirect to login if not
+  // Only redirect if not loading (to prevent race conditions after login)
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      console.log('Dashboard: Not authenticated, redirecting to login')
+      navigate('/login', { replace: true })
+    }
+  }, [isAuthenticated, loading, navigate])
+
   // Fetch offers when Offers tab is selected (if not already loaded)
   useEffect(() => {
     if (user && activeTab === 1) {
@@ -154,11 +165,15 @@ const Dashboard: React.FC = () => {
   const fetchUserData = async () => {
     if (!user) return
     
-    setLoading(true)
+    setDataLoading(true)
     setProductsLoading(true)
     try {
-      // Fetch user products
-      const productsResponse = await getUserProducts(user.id)
+      // Fetch user products and orders in parallel (non-blocking)
+      const [productsResponse, ordersResponse] = await Promise.all([
+        getUserProducts(user.id),
+        api.get('/api/orders?type=bought'),
+      ])
+      
       const allProducts = productsResponse.data
       
       // Separate available and traded items
@@ -167,20 +182,17 @@ const Dashboard: React.FC = () => {
       
       setUserProducts(availableProducts)
       setTradedItems(tradedProducts)
-
-      // Fetch user orders
-      const ordersResponse = await api.get('/api/orders?type=bought')
       setOrders(ordersResponse.data.data.data)
 
-      // Fetch notification counts
+      // Fetch notification counts after products are loaded
       await fetchNotificationCounts()
       
-      // Fetch offers
-      await fetchOffers()
+      // DO NOT fetch offers here - defer until Offers tab is clicked
+      // This significantly speeds up initial dashboard load
     } catch (error) {
       console.error('Failed to fetch user data:', error)
     } finally {
-      setLoading(false)
+      setDataLoading(false)
       setProductsLoading(false)
     }
   }
@@ -231,7 +243,7 @@ const Dashboard: React.FC = () => {
         )
       }
     })
-  }, [productTitles])
+  }, [])
 
   // Filtered products - now uses unified search
   const filteredProducts = useMemo(() => {
@@ -256,10 +268,27 @@ const Dashboard: React.FC = () => {
       // Fetch unread notifications count
       const notificationsResponse = await api.get('/api/notifications?unread=true')
       setUnreadNotifications(notificationsResponse.data.data?.length || 0)
+
+      // Fetch pending offers count
+      const offersResponse = await api.get('/api/trades?direction=incoming')
+      const pendingOffers = offersResponse.data.data?.filter((offer: any) => offer.status === 'pending') || []
+      setUnreadOffers(pendingOffers.length)
     } catch (error) {
       console.error('Failed to fetch notification counts:', error)
     }
   }
+
+  // Debounced notification count fetch to prevent spam
+  const fetchNotificationCountsDebounced = useCallback(() => {
+    // Clear existing timeout
+    if (notificationCountsTimeout.current) {
+      clearTimeout(notificationCountsTimeout.current)
+    }
+    // Schedule new fetch with 500ms delay
+    notificationCountsTimeout.current = setTimeout(() => {
+      fetchNotificationCounts()
+    }, 500)
+  }, [])
 
   const fetchOffers = async () => {
     try {
@@ -275,10 +304,6 @@ const Dashboard: React.FC = () => {
       
       setIncoming(incomingData)
       setOutgoing(outgoingData)
-      
-      // Calculate unread offers count from fetched data
-      const pendingOffers = incomingData.filter((offer: any) => offer.status === 'pending')
-      setUnreadOffers(pendingOffers.length)
       
       // Fetch product titles for all trades
       await fetchProductTitles([...incomingData, ...outgoingData])
@@ -314,17 +339,25 @@ const Dashboard: React.FC = () => {
     
     if (titlesToFetch.length > 0) {
       try {
-        const titlePromises = titlesToFetch.map(async (id) => {
-          try {
-            const response = await api.get(`/api/products/${id}`)
-            const title = response.data?.data?.title
-            return { id, title: title || 'Unnamed Item' }
-          } catch {
-            return { id, title: 'Unnamed Item' }
-          }
-        })
+        // Batch requests with concurrency limit to avoid overwhelming the server
+        const BATCH_SIZE = 5
+        const results: any[] = []
         
-        const results = await Promise.all(titlePromises)
+        for (let i = 0; i < titlesToFetch.length; i += BATCH_SIZE) {
+          const batch = titlesToFetch.slice(i, i + BATCH_SIZE)
+          const batchPromises = batch.map(async (id) => {
+            try {
+              const response = await api.get(`/api/products/${id}`)
+              const title = response.data?.data?.title
+              return { id, title: title || 'Unnamed Item' }
+            } catch {
+              return { id, title: 'Unnamed Item' }
+            }
+          })
+          const batchResults = await Promise.all(batchPromises)
+          results.push(...batchResults)
+        }
+        
         const newTitles = new Map(productTitles)
         results.forEach(({ id, title }) => {
           newTitles.set(id, title)
@@ -407,16 +440,16 @@ const Dashboard: React.FC = () => {
     )
   }
 
-  const updateTrade = async (id: number, action: TradeAction) => {
+  const updateTrade = useCallback(async (id: number, action: TradeAction) => {
     try {
       await api.put(`/api/trades/${id}`, action)
       toast({ title: 'Success', description: 'Offer updated', status: 'success' })
+      // Only refetch offers once, not both separately
       fetchOffers()
-      fetchNotificationCounts()
     } catch (e: any) {
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
-  }
+  }, [])
 
   const handleCompleteTradeClick = (trade: Trade) => {
     // Check if meetup is confirmed before allowing completion
@@ -538,13 +571,13 @@ const Dashboard: React.FC = () => {
 
   // Get trades for each sub-tab (excluding completed - those go to Trade History)
   const sentOffers = useMemo(() => {
-    const active = outgoing.filter(t => t.status !== 'completed' && t.status !== 'declined' && t.status !== 'cancelled')
+    const active = outgoing.filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     return sortList(filtered)
   }, [outgoing, offersSearch, offersStatusFilter, sortList, filterTrades])
 
   const receivedOffers = useMemo(() => {
-    const active = incoming.filter(t => t.status !== 'completed' && t.status !== 'declined' && t.status !== 'cancelled')
+    const active = incoming.filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     return sortList(filtered)
   }, [incoming, offersSearch, offersStatusFilter, sortList, filterTrades])
@@ -600,17 +633,15 @@ const Dashboard: React.FC = () => {
     return allCompletedTrades.slice(start, start + tradeHistoryPerPage)
   }, [allCompletedTrades, tradeHistoryPage])
 
-  // Get current tab's trades
-  const getCurrentTabTrades = () => {
+  // Get current tab's trades (memoized to prevent unnecessary recalculations)
+  const currentTabTrades = useMemo(() => {
     switch (offersSubTab) {
       case 0: return sentOffers
       case 1: return receivedOffers
       case 2: return ongoingTrades
       default: return []
     }
-  }
-
-  const currentTabTrades = getCurrentTabTrades()
+  }, [offersSubTab, sentOffers, receivedOffers, ongoingTrades])
   const offersPerPage = 9
   const totalPages = Math.ceil(currentTabTrades.length / offersPerPage)
   const paginatedTrades = useMemo(() => {
@@ -967,11 +998,6 @@ const Dashboard: React.FC = () => {
                 <Icon as={FaHandshake} boxSize={3} />
                 <Text>{offersCount} offers</Text>
               </HStack>
-              {(product.wishlist_count ?? 0) > 0 && (
-                <Badge colorScheme="purple" variant="subtle" fontSize="xs">
-                  ❤️ {product.wishlist_count}
-                </Badge>
-              )}
             </HStack>
           </VStack>
         </CardBody>
@@ -1029,13 +1055,29 @@ const Dashboard: React.FC = () => {
     })
     
     const getOngoingStatusBadge = () => {
-      if (trade.meetup_confirmed || (trade.buyer_meetup_confirmed && trade.seller_meetup_confirmed)) {
-        return { text: 'Meetup Confirmed', color: 'blue' }
+      if (trade.status === 'completed') {
+        return { text: 'Completed', color: 'blue' }
       }
-      if (trade.status === 'accepted' || trade.status === 'active') {
-        return { text: 'In Progress', color: 'green' }
+
+      if (trade.trade_option === 'delivery') {
+        if (trade.status === 'active') {
+          return { text: 'Delivery in Progress', color: 'green' }
+        }
+        return { text: 'Pending Delivery', color: 'yellow' }
+      } else {
+        // Meetup trades
+        if (trade.meetup_confirmed || (trade.buyer_meetup_confirmed && trade.seller_meetup_confirmed)) {
+          return { text: 'Meetup Confirmed', color: 'blue' }
+        }
+        if (trade.status === 'accepted') {
+          return { text: 'Waiting for Meetup', color: 'orange' }
+        }
+        if (trade.status === 'active') {
+          return { text: 'Exchange in Progress', color: 'green' }
+        }
       }
-      return { text: 'Pending Completion', color: 'yellow' }
+
+      return { text: 'Pending', color: 'yellow' }
     }
     
     const statusBadge = getOngoingStatusBadge()
@@ -1420,6 +1462,11 @@ const Dashboard: React.FC = () => {
     )
   }
 
+  // Early return if no user (in case redirect hasn't processed yet)
+  if (!user) {
+    return null
+  }
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container maxW="container.xl" py={8}>
@@ -1432,7 +1479,7 @@ const Dashboard: React.FC = () => {
              flexWrap={{ base: 'wrap', md: 'nowrap' }}
            >
              {/* Left: Welcome Message */}
-             <Box minW="fit-content">
+             <Box minW="fit-content" display={{ base: 'none', md: 'block' }}>
                <Heading size="md" color="brand.500" mb={1}>
                  Welcome, {user?.name}!
                </Heading>
@@ -1635,6 +1682,85 @@ const Dashboard: React.FC = () => {
              </HStack>
              */}
 
+             {/* Mobile: Filter/Sort Controls for All Tabs (Left Side) */}
+             <HStack spacing={1} display={{ base: 'flex', lg: 'none' }}>
+               {activeTab === 0 && (
+                 <>
+                   <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
+                     <IconButton
+                       aria-label="Filter products"
+                       icon={<FiFilter />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         const filters = ['all', 'available', 'sold', 'traded', 'locked']
+                         const currentIndex = filters.indexOf(productFilter)
+                         setProductFilter(filters[(currentIndex + 1) % filters.length] as any)
+                         setCurrentPage(1)
+                       }}
+                     />
+                   </Tooltip>
+                   <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                     <IconButton
+                       aria-label="Sort products"
+                       icon={<FiArrowDown />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
+                         setCurrentPage(1)
+                       }}
+                     />
+                   </Tooltip>
+                 </>
+               )}
+
+               {activeTab === 1 && (
+                 <>
+                   <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
+                     <IconButton
+                       aria-label="Filter offers"
+                       icon={<FiFilter />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+                         const currentIndex = statuses.indexOf(offersStatusFilter)
+                         setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+                         setOffersPage(1)
+                       }}
+                     />
+                   </Tooltip>
+                   <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                     <IconButton
+                       aria-label="Sort offers"
+                       icon={<FiArrowDown />}
+                       size="sm"
+                       variant="ghost"
+                       onClick={() => {
+                         setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                       }}
+                     />
+                   </Tooltip>
+                 </>
+               )}
+
+               {activeTab === 2 && (
+                 <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                   <IconButton
+                     aria-label="Sort trade history"
+                     icon={<FiArrowDown />}
+                     size="sm"
+                     variant="ghost"
+                     onClick={() => {
+                       setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
+                       setTradeHistoryPage(1)
+                     }}
+                   />
+                 </Tooltip>
+               )}
+             </HStack>
+
              {/* Notifications & Profile */}
              <HStack spacing={2} flexShrink={0}>
                <Box position="relative">
@@ -1685,13 +1811,27 @@ const Dashboard: React.FC = () => {
              borderColor="gray.200"
              py={2}
            >
-             <Flex justify="space-between" align="center" px={4} gap={4}>
-               <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1}>
-                 <TabList overflowX="auto" sx={{
-                   '&::-webkit-scrollbar': { display: 'none' },
-                   scrollbarWidth: 'none',
-                   msOverflowStyle: 'none'
-                 }}>
+             <Flex justify="space-between" align="center" px={4} gap={{ base: 2, md: 4 }} flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+               <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1} minW={0}>
+                 <TabList 
+                   overflowX={{ base: 'visible', md: 'visible' }}
+                   display="flex"
+                   flexWrap={{ base: 'nowrap', md: 'nowrap' }}
+                   justifyContent={{ base: 'space-between', md: 'flex-start' }}
+                   sx={{
+                     '&::-webkit-scrollbar': { display: 'none' },
+                     scrollbarWidth: 'none',
+                     msOverflowStyle: 'none',
+                     '& > button': {
+                       fontSize: { base: '0.75rem', sm: '0.875rem', md: '1rem' },
+                       whiteSpace: 'nowrap',
+                       minW: { base: 'auto', md: 'auto' },
+                       px: { base: '6px', sm: '12px', md: '16px' },
+                       py: { base: '8px', sm: '12px' },
+                       flex: { base: '1', md: 'initial' },
+                       justifyContent: { base: 'center', md: 'flex-start' },
+                     }
+                   }}>
                    <Tab 
                      _selected={{ 
                        color: 'brand.600', 
@@ -1700,11 +1840,11 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FiShoppingBag} />
-                       <Text>My Products</Text>
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>My Products</Text>
                        {userProducts.length > 0 && (
-                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                         <Badge colorScheme="green" borderRadius="full" fontSize="xs" display={{ base: 'none', sm: 'inline-flex' }}>
                            {userProducts.length}
                          </Badge>
                        )}
@@ -1719,17 +1859,17 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FiMessageCircle} />
-                       <Text>Offers</Text>
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FiMessageCircle} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>Offers</Text>
                        {unreadOffers > 0 && (
                          <Badge
                            bg="orange.500"
                            color="white"
                            borderRadius="full"
-                           fontSize="xs"
-                           minW="18px"
-                           h="18px"
+                           fontSize="2xs"
+                           minW={{ base: '16px', md: '18px' }}
+                           h={{ base: '16px', md: '18px' }}
                            display="inline-flex"
                            alignItems="center"
                            justifyContent="center"
@@ -1748,15 +1888,16 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FaExchangeAlt} boxSize={4} />
-                       <Text>Multi-Way Trades</Text>
-                       <Badge colorScheme="purple" fontSize="2xs" px={1.5}>
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FaExchangeAlt} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>Multi-Way Trades</Text>
+                       <Badge colorScheme="purple" fontSize="2xs" px={{ base: 1, md: 1.5 }} display={{ base: 'none', sm: 'inline-flex' }}>
                          PRO
                        </Badge>
                      </HStack>
                    </Tab>
                    <Tab 
+                     ml={{ base: 'auto', md: 0 }}
                      _selected={{ 
                        color: 'brand.600', 
                        borderColor: 'brand.600',
@@ -1764,11 +1905,11 @@ const Dashboard: React.FC = () => {
                      }}
                      transition="all 0.2s"
                    >
-                     <HStack spacing={2}>
-                       <Icon as={FiRefreshCw} />
-                       <Text>Trade History</Text>
+                     <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
+                       <Icon as={FiRefreshCw} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
+                       <Text display={{ base: 'none', sm: 'block' }}>Trade History</Text>
                        {completedTradesCount > 0 && (
-                         <Badge colorScheme="green" borderRadius="full" fontSize="xs">
+                         <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                            {completedTradesCount}
                          </Badge>
                        )}
@@ -1777,96 +1918,111 @@ const Dashboard: React.FC = () => {
                  </TabList>
                </Tabs>
 
-               {/* Right: Filter/Sort Controls - Responsive */}
+               {/* Right: Filter/Sort Controls - Icon Buttons on Mobile */}
                <HStack
-                 spacing={{ base: 2, md: 3 }}
+                 spacing={{ base: 1, md: 3 }}
                  flexShrink={0}
                  justify="flex-end"
                >
                  {activeTab === 0 && (
                    <>
-                     <Select
-                       value={productFilter}
-                       onChange={(e) => {
-                         setProductFilter(e.target.value as any)
-                         setCurrentPage(1)
-                       }}
-                       w={{ base: '120px', md: '150px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="all">All Status</option>
-                       <option value="available">Active</option>
-                       <option value="sold">Sold</option>
-                       <option value="traded">Traded</option>
-                       <option value="locked">Hidden</option>
-                     </Select>
-                     <Select
-                       value={productSort}
-                       onChange={(e) => {
-                         setProductSort(e.target.value as any)
-                         setCurrentPage(1)
-                       }}
-                       w={{ base: '120px', md: '140px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="newest">Newest First</option>
-                       <option value="oldest">Oldest First</option>
-                     </Select>
+                     {/* Desktop: Show selects only */}
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={productFilter}
+                         onChange={(e) => {
+                           setProductFilter(e.target.value as any)
+                           setCurrentPage(1)
+                         }}
+                         w={{ base: '120px', md: '150px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="all">All Status</option>
+                         <option value="available">Active</option>
+                         <option value="sold">Sold</option>
+                         <option value="traded">Traded</option>
+                         <option value="locked">Hidden</option>
+                       </Select>
+                     </Box>
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={productSort}
+                         onChange={(e) => {
+                           setProductSort(e.target.value as any)
+                           setCurrentPage(1)
+                         }}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="newest">Newest First</option>
+                         <option value="oldest">Oldest First</option>
+                       </Select>
+                     </Box>
                    </>
                  )}
                  
                  {activeTab === 1 && (
                    <>
-                     <Select
-                       value={offersStatusFilter}
-                       onChange={(e) => {
-                         setOffersStatusFilter(e.target.value)
-                         setOffersPage(1)
-                       }}
-                       w={{ base: '120px', md: '140px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="all">All Status</option>
-                       <option value="pending">Pending</option>
-                       <option value="accepted">Accepted</option>
-                       <option value="active">Active</option>
-                       <option value="countered">Countered</option>
-                     </Select>
-                     <Select
-                       value={offersSort}
-                       onChange={(e) => setOffersSort(e.target.value as any)}
-                       w={{ base: '120px', md: '140px' }}
-                       bg={cardBg}
-                       borderColor={borderColor}
-                       size="sm"
-                     >
-                       <option value="newest">Newest First</option>
-                       <option value="oldest">Oldest First</option>
-                     </Select>
+                     {/* Desktop: Show selects only */}
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={offersStatusFilter}
+                         onChange={(e) => {
+                           setOffersStatusFilter(e.target.value)
+                           setOffersPage(1)
+                         }}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="all">All Status</option>
+                         <option value="pending">Pending</option>
+                         <option value="accepted">Accepted</option>
+                         <option value="active">Active</option>
+                         <option value="countered">Countered</option>
+                       </Select>
+                     </Box>
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={offersSort}
+                         onChange={(e) => setOffersSort(e.target.value as any)}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="newest">Newest First</option>
+                         <option value="oldest">Oldest First</option>
+                       </Select>
+                     </Box>
                    </>
                  )}
 
                  {activeTab === 2 && (
-                   <Select
-                     value={tradeHistorySort}
-                     onChange={(e) => {
-                       setTradeHistorySort(e.target.value as any)
-                       setTradeHistoryPage(1)
-                     }}
-                     w={{ base: '120px', md: '140px' }}
-                     bg={cardBg}
-                     borderColor={borderColor}
-                     size="sm"
-                   >
-                     <option value="newest">Newest First</option>
-                     <option value="oldest">Oldest First</option>
-                   </Select>
+                   <>
+                     {/* Desktop: Show select only */}
+                     <Box display={{ base: 'none', lg: 'block' }}>
+                       <Select
+                         value={tradeHistorySort}
+                         onChange={(e) => {
+                           setTradeHistorySort(e.target.value as any)
+                           setTradeHistoryPage(1)
+                         }}
+                         w={{ base: '120px', md: '140px' }}
+                         bg={cardBg}
+                         borderColor={borderColor}
+                         size="sm"
+                       >
+                         <option value="newest">Newest First</option>
+                         <option value="oldest">Oldest First</option>
+                       </Select>
+                     </Box>
+                   </>
                  )}
                </HStack>
              </Flex>
@@ -1967,25 +2123,45 @@ const Dashboard: React.FC = () => {
                     variant="soft-rounded" 
                     colorScheme="brand"
                   >
-                    <TabList flexWrap="wrap">
-                      <Tab>
-                        Sent Offers
+                    <TabList 
+                      flexWrap={{ base: 'nowrap', md: 'nowrap' }}
+                      overflowX={{ base: 'auto', md: 'visible' }}
+                      justifyContent={{ base: 'space-between', md: 'flex-start' }}
+                      w="100%"
+                      sx={{
+                        '&::-webkit-scrollbar': { display: 'none' },
+                        scrollbarWidth: 'none',
+                        msOverflowStyle: 'none',
+                        gap: '4px',
+                        '& > button': {
+                          px: '6px !important',
+                          py: '4px !important',
+                          minW: 'fit-content',
+                          flex: { base: 'initial', md: 'initial' },
+                        }
+                      }}
+                    >
+                      <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 12, md: 0 }}>
+                        <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
+                        <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
                         {offersStats.sentPending > 0 && (
                           <Badge ml={2} colorScheme="yellow" borderRadius="full" fontSize="xs">
                             {offersStats.sentPending}
                           </Badge>
                         )}
                       </Tab>
-                      <Tab>
-                        Received Offers
+                      <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 10, md: 0 }}>
+                        <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
+                        <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
                         {offersStats.receivedPending > 0 && (
                           <Badge ml={2} colorScheme="blue" borderRadius="full" fontSize="xs">
                             {offersStats.receivedPending}
                           </Badge>
                         )}
                       </Tab>
-                      <Tab>
-                        Ongoing Trades
+                      <Tab fontSize={{ base: '10px', md: 'sm' }}>
+                        <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
+                        <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
                         {offersStats.ongoing > 0 && (
                           <Badge ml={2} colorScheme="green" borderRadius="full" fontSize="xs">
                            {offersStats.ongoing}
@@ -2318,29 +2494,6 @@ const Dashboard: React.FC = () => {
               {/* Trade History Tab */}
               <TabPanel>
                 <VStack spacing={6} align="stretch">
-                  {/* Filters (Search moved to top bar) */}
-                  <HStack spacing={3} flexWrap="wrap" justify="space-between">
-                    {unifiedSearch && (
-                      <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
-                        Searching: "{unifiedSearch}"
-                      </Badge>
-                    )}
-                    <Select
-                      value={tradeHistorySort}
-                      onChange={(e) => {
-                        setTradeHistorySort(e.target.value as any)
-                        setTradeHistoryPage(1)
-                      }}
-                      w="150px"
-                      bg={cardBg}
-                      borderColor={borderColor}
-                      ml="auto"
-                    >
-                      <option value="newest">Newest First</option>
-                      <option value="oldest">Oldest First</option>
-                    </Select>
-                  </HStack>
-
                   {/* Trade History Grid */}
                   {allCompletedTrades.length === 0 ? (
                     <Fade in={true}>
@@ -2686,7 +2839,7 @@ const Dashboard: React.FC = () => {
                   <Text fontWeight="bold" fontSize="lg" color="gray.800">
                     Decline Offer
                   </Text>
-                  <Text fontSize="sm" color="gray.600">
+                  <Text fontSize="sm" color="gray.600" textAlign="center">
                     Are you sure you want to decline this offer?
                   </Text>
                   {tradeToDecline && (
@@ -2745,24 +2898,7 @@ const Dashboard: React.FC = () => {
       </VStack>
     </Container>
 
-    {/* Floating Add Product FAB */}
-    <IconButton
-      as={RouterLink}
-      to="/add-product"
-      aria-label="Add product"
-      icon={<AddIcon />}
-      position="fixed"
-      bottom={12}
-      right={6}
-      h={14}
-      w={14}
-      bgGradient="linear(to-br, brand.500, teal.400)"
-      color="white"
-      borderRadius="full"
-      zIndex={200}
-      boxShadow="lg"
-      _hover={{ transform: 'scale(1.05)' }}
-    />
+    <FloatingTab />
     </Box>
   )
 }

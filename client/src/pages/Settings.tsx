@@ -54,6 +54,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import FloatingTab from '../components/FloatingTab'
 import { 
   FaUserCircle, 
   FaBell, 
@@ -120,7 +121,6 @@ const SettingsPage: React.FC = () => {
   // Preferences State
   const [darkMode, setDarkMode] = useState(colorMode === 'dark')
   const [language, setLanguage] = useState('en')
-  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone)
   const [dashboardLayout, setDashboardLayout] = useState('default')
   const [fontSize, setFontSize] = useState(initializeFontSize)
   const [highContrast, setHighContrast] = useState(false)
@@ -230,7 +230,6 @@ const SettingsPage: React.FC = () => {
       profileImage !== ((user as any)?.profile_picture || null) ||
       darkMode !== (colorMode === 'dark') ||
       language !== 'en' ||
-      timezone !== Intl.DateTimeFormat().resolvedOptions().timeZone ||
       dashboardLayout !== 'default' ||
       fontSize !== initializeFontSize() ||
       highContrast !== false ||
@@ -245,7 +244,6 @@ const SettingsPage: React.FC = () => {
     darkMode,
     colorMode,
     language,
-    timezone,
     dashboardLayout,
     fontSize,
     highContrast,
@@ -479,7 +477,6 @@ const SettingsPage: React.FC = () => {
         profileImage: profileUrlToSave ?? profileImage,
         darkMode,
         language,
-        timezone,
         dashboardLayout,
         fontSize,
         highContrast,
@@ -596,41 +593,6 @@ const SettingsPage: React.FC = () => {
     navigate('/login')
     onDeleteModalClose()
   }
-
-  // Get timezones - fallback to common timezones if API not supported
-  const timezones = (() => {
-    try {
-      if (typeof Intl !== 'undefined' && 'supportedValuesOf' in Intl) {
-        return (Intl as any).supportedValuesOf('timeZone')
-      }
-    } catch (e) {
-      // Fallback if not supported
-    }
-    return [
-      'America/New_York',
-      'America/Chicago',
-      'America/Denver',
-      'America/Los_Angeles',
-      'America/Phoenix',
-      'America/Anchorage',
-      'America/Honolulu',
-      'Europe/London',
-      'Europe/Paris',
-      'Europe/Berlin',
-      'Europe/Madrid',
-      'Europe/Rome',
-      'Europe/Athens',
-      'Asia/Tokyo',
-      'Asia/Shanghai',
-      'Asia/Hong_Kong',
-      'Asia/Singapore',
-      'Asia/Dubai',
-      'Asia/Kolkata',
-      'Australia/Sydney',
-      'Australia/Melbourne',
-      'Pacific/Auckland',
-    ]
-  })()
 
   return (
     <Box minH="100vh" bg={pageBg} py={6} position="relative" pb={{ base: '100px', md: '80px' }}>
@@ -844,31 +806,6 @@ const SettingsPage: React.FC = () => {
                     <option value="pt">Português</option>
                     <option value="zh">中文</option>
                     <option value="ja">日本語</option>
-                  </Select>
-                </FormControl>
-
-                {/* Timezone */}
-                <FormControl>
-                  <FormLabel>
-                    <HStack spacing={2}>
-                      <Icon as={FaClock} />
-                      <Text>Timezone</Text>
-                    </HStack>
-                  </FormLabel>
-                  <Select
-                    value={timezone}
-                    onChange={(e) => {
-                      setTimezone(e.target.value)
-                      setHasUnsavedChanges(true)
-                    }}
-                    maxW="400px"
-                    title="Select timezone"
-                  >
-                    {timezones.map((tz: string) => (
-                      <option key={tz} value={tz}>
-                        {tz.replace(/_/g, ' ')}
-                      </option>
-                    ))}
                   </Select>
                 </FormControl>
 
@@ -1295,6 +1232,8 @@ const SettingsPage: React.FC = () => {
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+
+      <FloatingTab />
     </Box>
   )
 }

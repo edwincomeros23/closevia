@@ -11,7 +11,7 @@ import { HamburgerIcon } from '@chakra-ui/icons'
 import { useNavigate } from 'react-router-dom'
 import '@fontsource/prata'
 
-const Navbar = () => {
+const Navbar = ({ navigate }: { navigate: ReturnType<typeof useNavigate> }) => {
   const { isOpen, onOpen, onClose } = useDisclosure()
 
   const NavLink = ({ children }: { children: string }) => (
@@ -43,21 +43,32 @@ const Navbar = () => {
         </HStack>
 
         {/* Center Logo */}
-        <Image
-          src="/Group 224.png"
-          alt="Clovia Logo"
-          h="50px"
-          objectFit="contain"
-          position="absolute"
-          left="50%"
-          transform="translateX(-40%)" // Move slightly to the right by translating less than center
-        />
+        <HStack spacing={2} position="absolute" left="50%" transform="translateX(-50%)" align="center">
+          <Image
+            src="/Group 224.png"
+            alt="Clovia Logo"
+            h="50px"
+            objectFit="contain"
+          />
+        </HStack>
 
         {/* Right Links - Desktop */}
         <HStack spacing={8} display={{ base: 'none', md: 'flex' }}>
           <NavLink>Testimonials</NavLink>
           <NavLink>FAQs</NavLink>
           <NavLink>About Us</NavLink>
+          <Image
+            src="/logoimage.png"
+            alt="Logo"
+            h="35px"
+            objectFit="contain"
+            cursor="pointer"
+            _hover={{
+              transform: 'scale(1.05)',
+              transition: 'all 0.2s ease',
+            }}
+            onClick={() => navigate('/company')}
+          />
           <Button
             colorScheme="brand"
             size="md"
@@ -82,12 +93,40 @@ const Navbar = () => {
           color="white"
         />
 
+        {/* ECODE Logo - Mobile Right */}
+        <Image
+          src="/logoimage.png"
+          alt="ECODE Logo"
+          h="35px"
+          objectFit="contain"
+          display={{ base: 'block', md: 'none' }}
+          ml="auto"
+          mr={2}
+        />
+
         {/* Mobile Drawer */}
         <Drawer isOpen={isOpen} placement="right" onClose={onClose}>
           <DrawerOverlay />
           <DrawerContent>
             <DrawerCloseButton />
-            <DrawerHeader>Menu</DrawerHeader>
+            <DrawerHeader display="flex" alignItems="center" justifyContent="space-between" gap={2}>
+              <Box>Menu</Box>
+              <Image
+                src="/logoimage.png"
+                alt="ECODE Logo"
+                h="28px"
+                objectFit="contain"
+                cursor="pointer"
+                _hover={{
+                  transform: 'scale(1.05)',
+                  transition: 'all 0.2s ease',
+                }}
+                onClick={() => {
+                  navigate('/company')
+                  onClose()
+                }}
+              />
+            </DrawerHeader>
             <DrawerBody>
               <Stack spacing={4}>
                 <Link href="#home">Home</Link>
@@ -136,7 +175,7 @@ const LandingPage: React.FC = () => {
         zIndex={1}
       />
       
-      <Navbar />
+      <Navbar navigate={navigate} />
       
       {/* Main content */}
       <Container

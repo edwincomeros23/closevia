@@ -39,6 +39,7 @@ import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import axios, { AxiosError } from 'axios'
+import FloatingTab from '../components/FloatingTab'
 
 interface SavedProductsResponse {
   status: string;
@@ -385,24 +386,7 @@ const SavedProducts: React.FC = () => {
         </VStack>
       </Container>
 
-    {/* Floating Add Product FAB */}
-    <IconButton
-      as={RouterLink}
-      to="/add-product"
-      aria-label="Add product"
-      icon={<AddIcon />}
-      position="fixed"
-      bottom={12}
-      right={6}
-      h={14}
-      w={14}
-      bgGradient="linear(to-br, brand.500, teal.400)"
-      color="white"
-      borderRadius="full"
-      zIndex={200}
-      boxShadow="lg"
-      _hover={{ transform: 'scale(1.05)' }}
-    />
+    <FloatingTab />
     </Box>
   )
 }

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Link as RouterLink, useLocation } from 'react-router-dom'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -15,6 +15,7 @@ import {
   DrawerBody,
   DrawerHeader,
   Button,
+  Divider,
 } from '@chakra-ui/react'
 import {
   AddIcon,
@@ -28,10 +29,11 @@ import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
 import { FaUserCircle, FaHome } from 'react-icons/fa'
-import { FiGrid, FiHeart } from 'react-icons/fi'
+import { FiGrid, FiHeart, FiLogOut } from 'react-icons/fi'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
+  const navigate = useNavigate()
   const { colorMode } = useColorMode()
   const logo = colorMode === 'dark' ? '/logo1.svg' : '/logo.svg'
   const bgColor = useColorModeValue('white', 'gray.800')
@@ -40,7 +42,7 @@ const Sidebar: React.FC = () => {
   const activeIconColor = useColorModeValue('brand.500', 'brand.300')
   const { isOpen, onOpen, onClose } = useMobileNav()
   const { notificationCount } = useRealtime()
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   
   // Separate items for desktop vs mobile to keep desktop unchanged
   const desktopNavItems = [
@@ -54,9 +56,6 @@ const Sidebar: React.FC = () => {
   ]
 
   const mobileNavItems = [
-    { icon: FaHome, label: 'Home', path: '/home' },
-    { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
-    { icon: AddIcon, label: 'Add Product', path: '/add-product' },
     { icon: FiHeart, label: 'Saved', path: '/saved-products' },
     { icon: BellIcon, label: 'Notifications', path: '/notifications' },
     // Add admin link only for admin users
@@ -70,25 +69,39 @@ const Sidebar: React.FC = () => {
       {/* Drawer for mobile */}
       <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
         <DrawerOverlay />
-        <DrawerContent>
+        <DrawerContent display="flex" flexDirection="column" h="100%">
           <DrawerCloseButton />
-          <DrawerHeader display="flex" alignItems="center" gap={3}>
+          <DrawerHeader display="flex" alignItems="center" gap={3} justifyContent="space-between">
+            <Box display="flex" alignItems="center" gap={2}>
+              <Image
+                src={logo}
+                alt="Clovia"
+                w="35px"
+                h="35px"
+                objectFit="contain"
+                cursor="pointer"
+                onClick={() => {
+                  window.location.href = '/'
+                  onClose()
+                }}
+              />
+              <Box fontWeight="bold">Clovia</Box>
+            </Box>
             <Image
-              src={logo}
-              alt="Clovia"
-              w="35px"
-              h="35px"
+              src="/logoimage.png"
+              alt="ECODE"
+              h="28px"
               objectFit="contain"
               cursor="pointer"
+              _hover={{ opacity: 0.8 }}
               onClick={() => {
-                window.location.href = '/'
+                navigate('/company')
                 onClose()
               }}
             />
-            <Box fontWeight="bold">Clovia</Box>
           </DrawerHeader>
 
-          <DrawerBody>
+          <DrawerBody flex={1} overflowY="auto" pb={20}>
             <VStack spacing={4} align="stretch" mt={4}>
               <Box p={2}>
               </Box>
@@ -114,6 +127,23 @@ const Sidebar: React.FC = () => {
               })}
             </VStack>
           </DrawerBody>
+
+          {/* Fixed Logout Button at Bottom */}
+          <Box p={4} borderTop="1px" borderColor={borderColor} mt="auto">
+            <Button
+              w="full"
+              colorScheme="red"
+              variant="solid"
+              leftIcon={<FiLogOut />}
+              onClick={async () => {
+                onClose()
+                await logout()
+                navigate('/login')
+              }}
+            >
+              Logout
+            </Button>
+          </Box>
         </DrawerContent>
       </Drawer>
 
@@ -127,14 +157,14 @@ const Sidebar: React.FC = () => {
         borderRight="1px"
         borderColor={borderColor}
         zIndex={1000}
-        py={4}
+        py={16}
         bg="white"
         display={{ base: 'none', lg: 'block' }} // hide on small screens
       >
         <Box h="100%" display="flex" flexDirection="column" justifyContent="space-between" alignItems="center">
           <VStack spacing={5} align="center" mt={2}>
-            {/* Logo/Brand */}
-            <Box mb={2} p={2}>
+            {/* Logo/Brand Section */}
+            <Box mb={2} p={2} display="flex" flexDirection="column" alignItems="center" gap={2}>
               <Image
                 src={logo}
                 alt="Clovia"
@@ -144,6 +174,16 @@ const Sidebar: React.FC = () => {
                 cursor="pointer"
                 onClick={() => (window.location.href = '/')}
                 _hover={{ opacity: 0.8 }}
+                transition="opacity 0.2s"
+              />
+              <Image
+                src="/logoimage.png"
+                alt="ECODE"
+                h="30px"
+                objectFit="contain"
+                cursor="pointer"
+                _hover={{ opacity: 0.8 }}
+                onClick={() => navigate('/company')}
                 transition="opacity 0.2s"
               />
             </Box>
