@@ -107,10 +107,6 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	}
 
 	log.Printf("Trade fully created and updated successfully")
-	if err != nil {
-		_ = tx.Rollback()
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade"})
-	}
 	tradeID64, _ = res.LastInsertId()
 	tradeID = int(tradeID64)
 
@@ -224,8 +220,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
-	var testRow *sql.Row
-	testRow = h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
+	testRow := h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
 	var testTradeOption sql.NullString
 	if err := testRow.Scan(&testTradeOption); err == nil {
 		// Column exists, include it in query
@@ -970,8 +965,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
-	var testRow *sql.Row
-	testRow = h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
+	testRow := h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
 	var testTradeOption sql.NullString
 	if err := testRow.Scan(&testTradeOption); err == nil {
 		// Column exists, include it in query
