@@ -256,6 +256,7 @@ interface DeliveryTabProps {
   handleProofUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
+  saveDeliveryState: (updates: Partial<DeliveryState>) => Promise<void>
 }
 
 const DeliveryTab: React.FC<DeliveryTabProps> = ({
@@ -271,6 +272,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   handleProofUpload,
   handleConfirmPayment,
   handleConfirmDelivery,
+  saveDeliveryState,
 }) => {
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
   const totalCost = (requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee
@@ -351,12 +353,14 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       deliveryState.deliveryType === type ? 'blue.400' : 'gray.200'
                     }
                     bg={deliveryState.deliveryType === type ? 'blue.50' : 'white'}
-                    onClick={() =>
+                    onClick={() => {
+                      const newState = type as DeliveryState['deliveryType']
                       setDeliveryState(prev => ({
                         ...prev,
-                        deliveryType: type as DeliveryState['deliveryType'],
+                        deliveryType: newState,
                       }))
-                    }
+                      saveDeliveryState({ deliveryType: newState })
+                    }}
                     transition="all 0.2s"
                     _hover={{
                       borderColor: 'blue.300',
@@ -453,12 +457,14 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                         ? `${details.color}.50`
                         : 'white'
                     }
-                    onClick={() =>
+                    onClick={() => {
+                      const newMethod = method as DeliveryState['paymentMethod']
                       setDeliveryState(prev => ({
                         ...prev,
-                        paymentMethod: method as DeliveryState['paymentMethod'],
+                        paymentMethod: newMethod,
                       }))
-                    }
+                      saveDeliveryState({ paymentMethod: newMethod })
+                    }}
                     transition="all 0.2s"
                     _hover={{
                       borderColor: `${details.color}.300`,
@@ -1325,6 +1331,41 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     { name: 'Public Park', address: 'Rizal Park, Manila', type: 'public' },
   ]
 
+  // Save delivery state to backend
+  const saveDeliveryState = async (updates: Partial<DeliveryState>) => {
+    if (!trade) return
+    
+    try {
+      const payload: any = { action: 'update_delivery_state' }
+      
+      if (updates.deliveryType) payload.delivery_type = updates.deliveryType
+      if (updates.paymentMethod) payload.payment_method = updates.paymentMethod
+      if (updates.paymentConfirmed !== undefined) payload.payment_confirmed = updates.paymentConfirmed
+      if (updates.proofOfDelivery !== undefined) payload.proof_of_delivery = updates.proofOfDelivery
+      if (updates.buyerConfirmedReceipt !== undefined) payload.buyer_confirmed_receipt = updates.buyerConfirmedReceipt
+      if (updates.sellerConfirmedDelivery !== undefined) payload.seller_confirmed_delivery = updates.sellerConfirmedDelivery
+      
+      await api.put(`/api/trades/${trade.id}`, payload)
+    } catch (error) {
+      console.error('Failed to save delivery state:', error)
+    }
+  }
+
+  // Load delivery state from trade data when trade changes
+  useEffect(() => {
+    if (trade && trade.trade_option === 'delivery') {
+      setDeliveryState(prev => ({
+        ...prev,
+        deliveryType: (trade.delivery_type as any) || 'standard',
+        paymentMethod: (trade.payment_method as any) || 'gcash',
+        paymentConfirmed: trade.payment_confirmed || false,
+        proofOfDelivery: trade.proof_of_delivery || null,
+        buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
+        sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
+      }))
+    }
+  }, [trade?.id, trade?.trade_option])
+
   // Fetch trade messages
   useEffect(() => {
     if (isOpen && trade) {
@@ -1486,19 +1527,35 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }))
   }
 
-  const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const reader = new FileReader()
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
+        const proofData = reader.result as string
         setDeliveryState(prev => ({
           ...prev,
-          proofOfDelivery: reader.result as string,
+          proofOfDelivery: proofData,
         }))
-        toast({
-          title: 'Proof of delivery uploaded',
-          status: 'success',
-          duration: 2000,
-        })
+        
+        // Save proof of delivery to backend
+        try {
+          await api.put(`/api/trades/${trade?.id}`, {
+            action: 'update_delivery_state',
+            proof_of_delivery: proofData,
+          })
+          toast({
+            title: 'Proof of delivery uploaded',
+            status: 'success',
+            duration: 2000,
+          })
+        } catch (error) {
+          toast({
+            title: 'Failed to save proof',
+            description: 'Please try again',
+            status: 'error',
+            duration: 2000,
+          })
+        }
       }
       reader.readAsDataURL(e.target.files[0])
     }
@@ -1506,6 +1563,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const handleConfirmPayment = async () => {
     try {
+      // Save payment confirmation to backend
+      await api.put(`/api/trades/${trade?.id}`, {
+        action: 'update_delivery_state',
+        payment_confirmed: true,
+        payment_method: deliveryState.paymentMethod,
+      })
+      
       setDeliveryState(prev => ({
         ...prev,
         paymentConfirmed: true,
@@ -1538,17 +1602,26 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
 
     try {
+      const confirmationPayload: any = {
+        action: 'update_delivery_state',
+      }
+      
       if (isUserBuyer) {
+        confirmationPayload.buyer_confirmed_receipt = true
         setDeliveryState(prev => ({
           ...prev,
           buyerConfirmedReceipt: true,
         }))
       } else {
+        confirmationPayload.seller_confirmed_delivery = true
         setDeliveryState(prev => ({
           ...prev,
           sellerConfirmedDelivery: true,
         }))
       }
+      
+      // Save confirmation to backend
+      await api.put(`/api/trades/${trade?.id}`, confirmationPayload)
 
       toast({
         title: 'Delivery confirmed',
@@ -1557,23 +1630,29 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         duration: 2000,
       })
 
-      // If both parties confirmed, update trade status
-      if (deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery) {
-        await api.put(`/api/trades/${trade?.id}`, {
-          status: 'completed',
-        })
-        onStatusUpdate()
+      // Check if both parties have confirmed (need to get fresh state)
+      try {
+        const response = await api.get(`/api/trades/${trade?.id}`)
+        const updatedTrade = response.data?.data
+        if (updatedTrade?.buyer_confirmed_receipt && updatedTrade?.seller_confirmed_delivery) {
+          // Both confirmed, complete the trade
+          await api.put(`/api/trades/${trade?.id}`, {
+            action: 'complete',
+          })
+          onStatusUpdate()
+        }
+      } catch (error) {
+        console.error('Failed to check trade status:', error)
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'Failed to confirm delivery',
+        title: 'Delivery confirmation failed',
+        description: error?.response?.data?.error || 'Please try again',
         status: 'error',
         duration: 3000,
       })
     }
   }
-
 
   return (
     <>
@@ -1938,6 +2017,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     handleProofUpload={handleProofUpload}
                     handleConfirmPayment={handleConfirmPayment}
                     handleConfirmDelivery={handleConfirmDelivery}
+                    saveDeliveryState={saveDeliveryState}
                   />
                 ) : (
                   <VStack spacing={6} align="stretch">
