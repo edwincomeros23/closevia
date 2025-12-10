@@ -71,7 +71,6 @@ const EditProduct: React.FC = () => {
         allow_buying: product.allow_buying,
         barter_only: product.barter_only,
         location: product.location,
-        bidding_type: product.bidding_type,
       })
 
       // Load persisted previews for this product
@@ -347,25 +346,6 @@ const EditProduct: React.FC = () => {
                   </Select>
                   <FormHelperText>
                     Leave empty to keep current condition
-                  </FormHelperText>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel htmlFor="bidding_type">Bidding Type</FormLabel>
-                  <Select
-                    id="bidding_type"
-                    value={formData.bidding_type || ''}
-                    onChange={(e) => handleInputChange('bidding_type', e.target.value)}
-                    placeholder="Select bidding type"
-                    size="lg"
-                    aria-label="Product bidding type"
-                  >
-                    <option value="none">No Bidding</option>
-                    <option value="blind">Blind Auction</option>
-                    <option value="open">Open Bidding</option>
-                  </Select>
-                  <FormHelperText>
-                    Choose how buyers can make offers for this item
                   </FormHelperText>
                 </FormControl>
 
