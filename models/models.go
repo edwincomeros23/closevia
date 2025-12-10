@@ -254,29 +254,29 @@ type Trade struct {
 	AwaitingConfirmationSince *time.Time `json:"awaiting_confirmation_since,omitempty"`
 	AutoCompletedAt           *time.Time `json:"auto_completed_at,omitempty"`
 	// Trade option and delivery fields
-	TradeOption            string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
-	DeliveryAddress        string `json:"delivery_address,omitempty"`
+	TradeOption     string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
+	DeliveryAddress string `json:"delivery_address,omitempty"`
 	// Delivery state fields (for progress tracking and persistence)
-	DeliveryType           string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
-	PaymentMethod          string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet"`
-	PaymentConfirmed       bool   `json:"payment_confirmed"`
-	ProofOfDelivery        string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
-	BuyerConfirmedReceipt  bool   `json:"buyer_confirmed_receipt"`
-	SellerConfirmedDelivery bool  `json:"seller_confirmed_delivery"`
+	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
+	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet"`
+	PaymentConfirmed        bool   `json:"payment_confirmed"`
+	ProofOfDelivery         string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
+	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
+	SellerConfirmedDelivery bool   `json:"seller_confirmed_delivery"`
 	// Review and proof fields
-	BuyerRating            *int    `json:"buyer_rating,omitempty"`
-	SellerRating           *int    `json:"seller_rating,omitempty"`
-	BuyerFeedback          string  `json:"buyer_feedback,omitempty"`
-	SellerFeedback         string  `json:"seller_feedback,omitempty"`
-	BuyerProofURL          string  `json:"buyer_proof_url,omitempty"`
-	SellerProofURL         string  `json:"seller_proof_url,omitempty"`
+	BuyerRating    *int   `json:"buyer_rating,omitempty"`
+	SellerRating   *int   `json:"seller_rating,omitempty"`
+	BuyerFeedback  string `json:"buyer_feedback,omitempty"`
+	SellerFeedback string `json:"seller_feedback,omitempty"`
+	BuyerProofURL  string `json:"buyer_proof_url,omitempty"`
+	SellerProofURL string `json:"seller_proof_url,omitempty"`
 	// Meetup-related fields
-	MeetupLocation         string `json:"meetup_location,omitempty"`
-	BuyerMeetupConfirmed   bool   `json:"buyer_meetup_confirmed"`
-	SellerMeetupConfirmed  bool   `json:"seller_meetup_confirmed"`
-	BuyerName              string `json:"buyer_name,omitempty"`
-	SellerName             string `json:"seller_name,omitempty"`
-	ProductTitle           string `json:"product_title,omitempty"`
+	MeetupLocation        string `json:"meetup_location,omitempty"`
+	BuyerMeetupConfirmed  bool   `json:"buyer_meetup_confirmed"`
+	SellerMeetupConfirmed bool   `json:"seller_meetup_confirmed"`
+	BuyerName             string `json:"buyer_name,omitempty"`
+	SellerName            string `json:"seller_name,omitempty"`
+	ProductTitle          string `json:"product_title,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade
