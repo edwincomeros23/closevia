@@ -65,6 +65,7 @@ import TradeCompletionModal from '../components/TradeCompletionModal'
 import ViewTradeModal from '../components/ViewTradeModal'
 import DeliveryRequestModal from '../components/DeliveryRequestModal'
 import DeliveryTracking from '../components/DeliveryTracking'
+import MultiWayTradeUI from '../components/MultiWayTradeUI'
 
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth()
@@ -104,9 +105,18 @@ const Dashboard: React.FC = () => {
   const DEV_SHOW_PAGES_ALWAYS = true
   
   // Offers state
-  const [incoming, setIncoming] = useState<Trade[]>([])
-  const [outgoing, setOutgoing] = useState<Trade[]>([])
+  const [incoming, setIncoming] = useState<Trade[]>([]) // received
+  const [outgoing, setOutgoing] = useState<Trade[]>([]) // sent
+  const [ongoingTradesData, setOngoingTradesData] = useState<Trade[]>([])
   const [offersLoading, setOffersLoading] = useState(false)
+  const [sentLoaded, setSentLoaded] = useState(false)
+  const [receivedLoaded, setReceivedLoaded] = useState(false)
+  const [ongoingLoaded, setOngoingLoaded] = useState(false)
+  const [sentLoading, setSentLoading] = useState(false)
+  const [receivedLoading, setReceivedLoading] = useState(false)
+  const [ongoingLoading, setOngoingLoading] = useState(false)
+  const [tradeHistory, setTradeHistory] = useState<Trade[]>([])
+  const [tradeHistoryLoading, setTradeHistoryLoading] = useState(false)
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
   const [offersSubTab, setOffersSubTab] = useState(0) // 0: Sent, 1: Received, 2: Ongoing, 3: Completed
   const [offersPage, setOffersPage] = useState(1)
@@ -123,7 +133,6 @@ const Dashboard: React.FC = () => {
   const [declineFeedback, setDeclineFeedback] = useState('')
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
-  const offersPollingInterval = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notificationCountsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   // Delivery modals state
@@ -132,6 +141,12 @@ const Dashboard: React.FC = () => {
   const [tradeForDelivery, setTradeForDelivery] = useState<Trade | null>(null)
   const [productsForDelivery, setProductsForDelivery] = useState<Product[]>([])
   const [currentDeliveryId, setCurrentDeliveryId] = useState<number | null>(null)
+  
+  // Multi-way trade state
+  const [multiWayTrades, setMultiWayTrades] = useState<any[]>([])
+  const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
+  const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
+  const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
   
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -152,13 +167,10 @@ const Dashboard: React.FC = () => {
     }
   }, [isAuthenticated, loading, navigate])
 
-  // Fetch offers when Offers tab is selected (if not already loaded)
+  // Fetch multi-way trades when tab is selected
   useEffect(() => {
-    if (user && activeTab === 1) {
-      // Only fetch if we don't have any offers loaded yet
-      if (incoming.length === 0 && outgoing.length === 0 && !offersLoading) {
-        fetchOffers()
-      }
+    if (user && activeTab === 2 && user.is_premium) {
+      fetchMultiWayTrades()
     }
   }, [user, activeTab])
 
@@ -183,9 +195,6 @@ const Dashboard: React.FC = () => {
       setUserProducts(availableProducts)
       setTradedItems(tradedProducts)
       setOrders(ordersResponse.data.data.data)
-
-      // Fetch notification counts after products are loaded
-      await fetchNotificationCounts()
       
       // DO NOT fetch offers here - defer until Offers tab is clicked
       // This significantly speeds up initial dashboard load
@@ -194,15 +203,18 @@ const Dashboard: React.FC = () => {
     } finally {
       setDataLoading(false)
       setProductsLoading(false)
+      
+      // Fetch notification counts after products are loaded (non-blocking)
+      fetchNotificationCounts()
     }
   }
   
   // Computed dashboard stats
   const dashboardStats = useMemo(() => {
     const activeProducts = userProducts.filter(p => p.status === 'available').length
-    const activeTrades = [...incoming, ...outgoing].filter(t => t.status === 'accepted' || t.status === 'active').length
+    const activeTrades = ongoingTradesData.length
     const newOffers = incoming.filter(t => t.status === 'pending').length
-    const completedTrades = [...incoming, ...outgoing].filter(t => t.status === 'completed').length
+    const completedTrades = tradeHistory.length
     return {
       totalProducts: userProducts.length,
       activeProducts,
@@ -210,7 +222,7 @@ const Dashboard: React.FC = () => {
       newOffers,
       completedTrades
     }
-  }, [userProducts, incoming, outgoing])
+  }, [userProducts, incoming, ongoingTradesData, tradeHistory])
   
   // Get product title helper (needs to be defined before use)
   const getProductTitle = (productId: number, fallbackTitle?: string): string => {
@@ -265,14 +277,10 @@ const Dashboard: React.FC = () => {
 
   const fetchNotificationCounts = async () => {
     try {
-      // Fetch unread notifications count
-      const notificationsResponse = await api.get('/api/notifications?unread=true')
-      setUnreadNotifications(notificationsResponse.data.data?.length || 0)
-
-      // Fetch pending offers count
-      const offersResponse = await api.get('/api/trades?direction=incoming')
-      const pendingOffers = offersResponse.data.data?.filter((offer: any) => offer.status === 'pending') || []
-      setUnreadOffers(pendingOffers.length)
+      // Fetch both counts in a single, lightweight request
+      const countsResponse = await api.get('/api/dashboard/counts')
+      setUnreadNotifications(countsResponse.data?.unread_notifications || 0)
+      setUnreadOffers(countsResponse.data?.pending_offers || 0)
     } catch (error) {
       console.error('Failed to fetch notification counts:', error)
     }
@@ -290,81 +298,197 @@ const Dashboard: React.FC = () => {
     }, 500)
   }, [])
 
-  const fetchOffers = async () => {
+  // Fetchers for each offers sub-section (on-demand)
+  const fetchSentOffers = async () => {
+    if (!user) return
     try {
       setOffersLoading(true)
-      const [incRes, outRes] = await Promise.all([
-        api.get('/api/trades', { params: { direction: 'incoming' } }),
-        api.get('/api/trades', { params: { direction: 'outgoing' } }),
-      ])
-      
-      // Ensure we're accessing the data correctly
-      const incomingData = Array.isArray(incRes.data?.data) ? incRes.data.data : (Array.isArray(incRes.data) ? incRes.data : [])
+      setSentLoading(true)
+      const outRes = await api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'pending' } })
       const outgoingData = Array.isArray(outRes.data?.data) ? outRes.data.data : (Array.isArray(outRes.data) ? outRes.data : [])
-      
-      setIncoming(incomingData)
       setOutgoing(outgoingData)
-      
-      // Fetch product titles for all trades
-      await fetchProductTitles([...incomingData, ...outgoingData])
+      setSentLoaded(true)
+      fetchProductTitles(outgoingData)
     } catch (e: any) {
-      console.error('Failed to fetch offers:', e)
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
-      // Set empty arrays on error to prevent stale data
-      setIncoming([])
+      console.error('Failed to fetch sent offers:', e)
+      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load sent offers', status: 'error' })
       setOutgoing([])
     } finally {
       setOffersLoading(false)
+      setSentLoading(false)
     }
   }
 
+  const fetchReceivedOffers = async () => {
+    if (!user) return
+    try {
+      setOffersLoading(true)
+      setReceivedLoading(true)
+      const incRes = await api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'pending' } })
+      const incomingData = Array.isArray(incRes.data?.data) ? incRes.data.data : (Array.isArray(incRes.data) ? incRes.data : [])
+      setIncoming(incomingData)
+      setReceivedLoaded(true)
+      fetchProductTitles(incomingData)
+    } catch (e: any) {
+      console.error('Failed to fetch received offers:', e)
+      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load received offers', status: 'error' })
+      setIncoming([])
+    } finally {
+      setOffersLoading(false)
+      setReceivedLoading(false)
+    }
+  }
+
+  const fetchOngoingTrades = async () => {
+    if (!user) return
+    try {
+      setOffersLoading(true)
+      setOngoingLoading(true)
+      // Fetch accepted and active trades for both directions and merge uniquely
+      const [incAccepted, incActive, outAccepted, outActive] = await Promise.all([
+        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'accepted' } }),
+        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'active' } }),
+        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'accepted' } }),
+        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'active' } }),
+      ])
+
+      const incomingData = [
+        ...(Array.isArray(incAccepted.data?.data) ? incAccepted.data.data : Array.isArray(incAccepted.data) ? incAccepted.data : []),
+        ...(Array.isArray(incActive.data?.data) ? incActive.data.data : Array.isArray(incActive.data) ? incActive.data : []),
+      ]
+      const outgoingData = [
+        ...(Array.isArray(outAccepted.data?.data) ? outAccepted.data.data : Array.isArray(outAccepted.data) ? outAccepted.data : []),
+        ...(Array.isArray(outActive.data?.data) ? outActive.data.data : Array.isArray(outActive.data) ? outActive.data : []),
+      ]
+
+      const uniqueTrades = new Map<number, Trade>()
+      ;[...incomingData, ...outgoingData].forEach(tr => {
+        if (tr && tr.id) uniqueTrades.set(tr.id, tr)
+      })
+
+      const merged = Array.from(uniqueTrades.values())
+      setOngoingTradesData(merged)
+      setOngoingLoaded(true)
+      fetchProductTitles(merged)
+    } catch (e: any) {
+      console.error('Failed to fetch ongoing trades:', e)
+      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load ongoing trades', status: 'error' })
+      setOngoingTradesData([])
+    } finally {
+      setOffersLoading(false)
+      setOngoingLoading(false)
+    }
+  }
+
+  const fetchTradeHistory = useCallback(async () => {
+    if (!user) return
+    try {
+      setTradeHistoryLoading(true)
+      const res = await api.get('/api/trades', { params: { status: 'completed', include: 'products' } })
+      const data = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : [])
+      setTradeHistory(data)
+      // Prefetch titles for history items
+      fetchProductTitles(data)
+    } catch (e: any) {
+      console.error('Failed to fetch trade history:', e)
+    } finally {
+      setTradeHistoryLoading(false)
+    }
+  }, [user])
+
+  // Refresh only the datasets the user has already loaded (avoid unnecessary calls)
+  const refreshOffersData = useCallback(() => {
+    if (sentLoaded && !sentLoading) {
+      fetchSentOffers()
+    }
+    if (receivedLoaded && !receivedLoading) {
+      fetchReceivedOffers()
+    }
+    if (ongoingLoaded && !ongoingLoading) {
+      fetchOngoingTrades()
+    }
+  }, [sentLoaded, receivedLoaded, ongoingLoaded, sentLoading, receivedLoading, ongoingLoading])
+
+  // Load trade history independently on mount (does not depend on Offers tab)
+  useEffect(() => {
+    if (user) {
+      fetchTradeHistory()
+    }
+  }, [user, fetchTradeHistory])
+
+  // On-demand fetch based on active Offers sub-tab
+  useEffect(() => {
+    if (!user || activeTab !== 1) return
+    if (offersSubTab === 0 && !sentLoaded && !sentLoading) {
+      fetchSentOffers()
+    }
+    if (offersSubTab === 1 && !receivedLoaded && !receivedLoading) {
+      fetchReceivedOffers()
+    }
+    if (offersSubTab === 2 && !ongoingLoaded && !ongoingLoading) {
+      fetchOngoingTrades()
+    }
+  }, [user, activeTab, offersSubTab])
+
   const fetchProductTitles = async (trades: Trade[]) => {
     const productIds = new Set<number>()
+    const newTitles = new Map(productTitles)
     
+    // First, extract titles from trades response (if backend returns them)
     trades.forEach(trade => {
-      if (trade.target_product_id) {
+      if (trade.target_product_id && trade.product_title) {
+        newTitles.set(trade.target_product_id, trade.product_title)
+      }
+      if (trade.items) {
+        trade.items.forEach((item: any) => {
+          if (item.product_id && item.product_title) {
+            newTitles.set(Number(item.product_id), item.product_title)
+          }
+        })
+      }
+    })
+    
+    // Collect remaining IDs that need to be fetched
+    trades.forEach(trade => {
+      if (trade.target_product_id && !newTitles.has(trade.target_product_id)) {
         productIds.add(trade.target_product_id)
       }
       if (trade.items) {
         trade.items.forEach((item: any) => {
-          const pid = item.product_id
-          if (pid) {
-            productIds.add(Number(pid))
+          const pid = Number(item.product_id)
+          if (pid && !newTitles.has(pid)) {
+            productIds.add(pid)
           }
         })
       }
     })
 
-    const titlesToFetch = Array.from(productIds).filter(id => !productTitles.has(id))
-    
+    // Update state with titles we already have from response
+    setProductTitles(newTitles)
+
+    // Only fetch remaining titles if needed
+    const titlesToFetch = Array.from(productIds)
     if (titlesToFetch.length > 0) {
       try {
-        // Batch requests with concurrency limit to avoid overwhelming the server
-        const BATCH_SIZE = 5
-        const results: any[] = []
+        // Use batch endpoint to fetch multiple product titles in one request
+        const response = await api.post('/api/products/batch/titles', { ids: titlesToFetch })
+        const results = response.data?.data || []
         
-        for (let i = 0; i < titlesToFetch.length; i += BATCH_SIZE) {
-          const batch = titlesToFetch.slice(i, i + BATCH_SIZE)
-          const batchPromises = batch.map(async (id) => {
-            try {
-              const response = await api.get(`/api/products/${id}`)
-              const title = response.data?.data?.title
-              return { id, title: title || 'Unnamed Item' }
-            } catch {
-              return { id, title: 'Unnamed Item' }
-            }
-          })
-          const batchResults = await Promise.all(batchPromises)
-          results.push(...batchResults)
-        }
-        
-        const newTitles = new Map(productTitles)
-        results.forEach(({ id, title }) => {
-          newTitles.set(id, title)
+        const finalTitles = new Map(newTitles)
+        results.forEach(({ id, title }: any) => {
+          finalTitles.set(id, title || 'Unnamed Item')
         })
-        setProductTitles(newTitles)
+        setProductTitles(finalTitles)
       } catch (error) {
         console.error('Failed to fetch product titles:', error)
+        // Fallback: use 'Unnamed Item' for all missing titles
+        const finalTitles = new Map(newTitles)
+        titlesToFetch.forEach(id => {
+          if (!finalTitles.has(id)) {
+            finalTitles.set(id, 'Unnamed Item')
+          }
+        })
+        setProductTitles(finalTitles)
       }
     }
   }
@@ -384,44 +508,93 @@ const Dashboard: React.FC = () => {
     return undefined
   }
 
+  const fetchMultiWayTrades = async () => {
+    try {
+      setMultiWayTradesLoading(true)
+      const response = await api.get('/api/multi-way-trades/available', {
+        params: { user_id: user?.id }
+      })
+      setMultiWayTrades(response.data?.data || [])
+    } catch (error) {
+      console.error('Failed to fetch multi-way trades:', error)
+      toast({ title: 'Error', description: 'Failed to load multi-way trades', status: 'error' })
+      setMultiWayTrades([])
+    } finally {
+      setMultiWayTradesLoading(false)
+    }
+  }
+
+  const handleJoinMultiWayTrade = async (trade: any) => {
+    try {
+      setMultiWayTradeJoining(true)
+      await api.post(`/api/multi-way-trades/${trade.id}/join`, {
+        user_id: user?.id,
+      })
+      toast({
+        title: 'Success',
+        description: 'You joined the trade loop!',
+        status: 'success',
+        duration: 3000,
+      })
+      setSelectedMultiWayTrade(null)
+      // Refresh multi-way trades list
+      await fetchMultiWayTrades()
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to join trade',
+        status: 'error',
+      })
+    } finally {
+      setMultiWayTradeJoining(false)
+    }
+  }
+
+  const handleDeclineMultiWayTrade = async (trade: any) => {
+    try {
+      await api.post(`/api/multi-way-trades/${trade.id}/decline`, {
+        reason: 'Not interested'
+      })
+      toast({
+        title: 'Declined',
+        description: 'You declined this multi-way trade',
+        status: 'info',
+        duration: 2000,
+      })
+      setSelectedMultiWayTrade(null)
+      // Refresh multi-way trades list
+      await fetchMultiWayTrades()
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to decline trade',
+        status: 'error',
+      })
+    }
+  }
+
   const ProductThumb: React.FC<{ pid: number; src?: string; alt?: string; size?: string }> = ({ pid, src, alt, size = "40px" }) => {
     const [img, setImg] = useState<string | null>(src ?? null)
 
     useEffect(() => {
       let mounted = true
+      // If src is provided, use it directly (avoid API call)
       if (src) {
         setImg(src)
         return
       }
+      
+      // Check cache first
       const cached = productImageCache.current.get(pid)
       if (cached !== undefined) {
         setImg(cached)
         return
       }
-      ;(async () => {
-        try {
-          const res = await api.get(`/api/products/${pid}`)
-          const prod = res.data?.data
-          const maybeImgs: any = prod?.image_urls ?? prod?.images ?? null
-          let resolved: string | undefined
-          if (Array.isArray(maybeImgs) && maybeImgs.length > 0) resolved = getFirstImage(maybeImgs)
-          else if (typeof maybeImgs === 'string' && maybeImgs.trim().startsWith('[')) {
-            try {
-              const parsed = JSON.parse(maybeImgs)
-              if (Array.isArray(parsed) && parsed.length > 0) resolved = getFirstImage(parsed)
-            } catch {}
-          } else if (prod?.image_url) resolved = prod.image_url
-          else if (prod?.imageUrl) resolved = prod.imageUrl
-          if (mounted) {
-            productImageCache.current.set(pid, resolved ?? null)
-            setImg(resolved ?? null)
-          }
-        } catch {
-          productImageCache.current.set(pid, null)
-          if (mounted) setImg(null)
-        }
-      })()
-      return () => { mounted = false }
+      
+      // If no src and not cached, don't fetch - use fallback
+      // This prevents unnecessary API calls for thumbnails
+      productImageCache.current.set(pid, null)
+      setImg(null)
     }, [pid, src])
 
     const isLarge = size === "full"
@@ -444,12 +617,12 @@ const Dashboard: React.FC = () => {
     try {
       await api.put(`/api/trades/${id}`, action)
       toast({ title: 'Success', description: 'Offer updated', status: 'success' })
-      // Only refetch offers once, not both separately
-      fetchOffers()
+      refreshOffersData()
+      fetchTradeHistory()
     } catch (e: any) {
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
-  }, [])
+  }, [refreshOffersData, fetchTradeHistory])
 
   const handleCompleteTradeClick = (trade: Trade) => {
     // Check if meetup is confirmed before allowing completion
@@ -519,37 +692,27 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const sortList = useCallback((list: Trade[]) => {
-    const sorted = [...list]
-    sorted.sort((a, b) => {
-      const at = new Date(a.created_at).getTime()
-      const bt = new Date(b.created_at).getTime()
-      return offersSort === 'newest' ? bt - at : at - bt
-    })
-    return sorted
-  }, [offersSort])
-
   const historyStatuses = ['declined', 'cancelled', 'completed']
   
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
     const sentPending = outgoing.filter(t => t.status === 'pending').length
     const receivedPending = incoming.filter(t => t.status === 'pending').length
-    const ongoing = [...incoming, ...outgoing].filter(t => t.status === 'accepted' || t.status === 'active').length
+    const ongoing = ongoingTradesData.length
     return {
       sentPending,
       receivedPending,
       ongoing,
       totalPending: sentPending + receivedPending
     }
-  }, [incoming, outgoing])
+  }, [incoming, outgoing, ongoingTradesData])
   
   // Completed trades count for Trade History tab
   const completedTradesCount = useMemo(() => {
-    return [...incoming, ...outgoing].filter(t => t.status === 'completed').length
-  }, [incoming, outgoing])
+    return tradeHistory.length
+  }, [tradeHistory])
 
-  // Filter and search logic - now uses unified search
+  // Filter and search logic - now uses unified search and optimized with memoization
   const filterTrades = useCallback((trades: Trade[], searchTerm: string, statusFilter: string) => {
     let filtered = [...trades]
     
@@ -570,23 +733,42 @@ const Dashboard: React.FC = () => {
   }, [unifiedSearch, applyUnifiedSearch])
 
   // Get trades for each sub-tab (excluding completed - those go to Trade History)
+  // Optimized to only sort when rendering, not during filter
   const sentOffers = useMemo(() => {
     const active = outgoing.filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
-    return sortList(filtered)
-  }, [outgoing, offersSearch, offersStatusFilter, sortList, filterTrades])
+    // Sort inline to avoid extra function call
+    filtered.sort((a, b) => {
+      const at = new Date(a.created_at).getTime()
+      const bt = new Date(b.created_at).getTime()
+      return offersSort === 'newest' ? bt - at : at - bt
+    })
+    return filtered
+  }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const receivedOffers = useMemo(() => {
     const active = incoming.filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
-    return sortList(filtered)
-  }, [incoming, offersSearch, offersStatusFilter, sortList, filterTrades])
+    // Sort inline to avoid extra function call
+    filtered.sort((a, b) => {
+      const at = new Date(a.created_at).getTime()
+      const bt = new Date(b.created_at).getTime()
+      return offersSort === 'newest' ? bt - at : at - bt
+    })
+    return filtered
+  }, [incoming, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const ongoingTrades = useMemo(() => {
-    const all = [...incoming, ...outgoing].filter(t => t.status === 'accepted' || t.status === 'active')
+    const all = [...ongoingTradesData]
     const filtered = filterTrades(all, offersSearch, offersStatusFilter)
-    return sortList(filtered)
-  }, [incoming, outgoing, offersSearch, offersStatusFilter, sortList, filterTrades])
+    // Sort inline to avoid extra function call
+    filtered.sort((a, b) => {
+      const at = new Date(a.created_at).getTime()
+      const bt = new Date(b.created_at).getTime()
+      return offersSort === 'newest' ? bt - at : at - bt
+    })
+    return filtered
+  }, [incoming, outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
   
   // Unified search handler - clears tab-specific searches when unified search is used
   const handleUnifiedSearchChange = (value: string) => {
@@ -605,7 +787,7 @@ const Dashboard: React.FC = () => {
   const [tradeHistoryPage, setTradeHistoryPage] = useState(1)
   
   const allCompletedTrades = useMemo(() => {
-    const completed = [...incoming, ...outgoing].filter(t => t.status === 'completed')
+    const completed = [...tradeHistory]
     let filtered = [...completed]
     
     // Use unified search if available, otherwise use tradeHistorySearch
@@ -624,7 +806,7 @@ const Dashboard: React.FC = () => {
     })
     
     return filtered
-  }, [incoming, outgoing, unifiedSearch, tradeHistorySearch, tradeHistorySort, applyUnifiedSearch])
+  }, [tradeHistory, unifiedSearch, tradeHistorySearch, tradeHistorySort, applyUnifiedSearch])
   
   const tradeHistoryPerPage = 6
   const tradeHistoryTotalPages = Math.ceil(allCompletedTrades.length / tradeHistoryPerPage)
@@ -1045,13 +1227,22 @@ const Dashboard: React.FC = () => {
     onComplete?: () => void
   }> = ({ trade, isIncoming, onView, onComplete }) => {
     const userName = isIncoming ? (trade.seller_name || 'Anonymous User') : (trade.buyer_name || 'Anonymous User')
+    
+    // Get items offered by the other party
+    // For incoming trades, we want items offered by the buyer (seller is us)
+    // For outgoing trades, we want items offered by the seller (buyer is us)
     const offeredItems = (trade.items || []).filter((i: any) => {
-      const ob = (i?.offered_by ?? i?.offeredBy ?? i?.sender ?? i?.from_user_role)
-      if (typeof ob === 'string') {
-        const v = ob.toLowerCase()
-        return v === 'buyer' || v === 'from_buyer' || v === 'sender'
+      const ob = (i?.offered_by ?? i?.offeredBy ?? i?.sender ?? i?.from_user_role ?? '').toLowerCase()
+      
+      // If we can't determine who offered it, include it anyway (show all items)
+      if (!ob) return true
+      
+      // For incoming: we want items from the buyer
+      if (isIncoming) {
+        return ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
       }
-      return false
+      // For outgoing: we want items from the seller
+      return ob === 'seller' || ob === 'from_seller' || ob === 'recipient'
     })
     
     const getOngoingStatusBadge = () => {
@@ -1101,8 +1292,8 @@ const Dashboard: React.FC = () => {
           borderLeftColor="green.400"
           role="article"
         >
-          <Box position="relative" w="full" h="140px" display="flex" gap={1} p={1} bg="gray.50">
-            <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300">
+          <Box position="relative" w="full" h="140px" display="flex" gap={1} p={1} bg="gray.50" flexWrap="wrap" alignContent="flex-start" overflow="hidden">
+            <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="60px">
               <ProductThumb
                 pid={trade.target_product_id}
                 alt={getProductTitle(trade.target_product_id, trade.product_title)}
@@ -1113,23 +1304,50 @@ const Dashboard: React.FC = () => {
               </Badge>
             </Box>
             
-            <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="green.300">
-              {offeredItems.length > 0 ? (
-                <ProductThumb
-                  pid={Number(offeredItems[0].product_id)}
-                  src={offeredItems[0].product_image_url}
-                  alt={getProductTitle(Number(offeredItems[0].product_id), offeredItems[0].product_title)}
-                  size="full"
-                />
-              ) : (
+            {/* Show offered items in a row or stack if multiple */}
+            {offeredItems.length > 0 ? (
+              <>
+                {offeredItems.slice(0, 3).map((item: any, idx: number) => (
+                  <Box 
+                    key={item.id || idx}
+                    flex="0 0 auto"
+                    position="relative" 
+                    borderRadius="md" 
+                    overflow="hidden" 
+                    borderWidth="2px" 
+                    borderColor="green.300"
+                    w={offeredItems.length === 1 ? "calc(100% - 70px)" : "60px"}
+                    h="100%"
+                  >
+                    <ProductThumb
+                      pid={Number(item.product_id)}
+                      src={item.product_image_url}
+                      alt={getProductTitle(Number(item.product_id), item.product_title)}
+                      size="full"
+                    />
+                    {idx === 2 && offeredItems.length > 3 && (
+                      <Box position="absolute" inset={0} bg="blackAlpha.600" display="flex" alignItems="center" justifyContent="center">
+                        <Text fontSize="xs" color="white" fontWeight="bold">
+                          +{offeredItems.length - 3}
+                        </Text>
+                      </Box>
+                    )}
+                  </Box>
+                ))}
+                <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
+                  Their Items{offeredItems.length > 1 ? 's' : ''}
+                </Badge>
+              </>
+            ) : (
+              <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="gray.300" minW="60px">
                 <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
-                  <Text fontSize="xs" color="gray.500">No image</Text>
+                  <Text fontSize="xs" color="gray.500">No items</Text>
                 </Box>
-              )}
-              <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                Their Item{offeredItems.length > 1 ? 's' : ''}
-              </Badge>
-            </Box>
+                <Badge position="absolute" top={1} right={1} colorScheme="gray" fontSize="2xs" px={1} py={0.5}>
+                  No Items
+                </Badge>
+              </Box>
+            )}
           </Box>
 
           <CardHeader pb={2} flex={1}>
@@ -2402,93 +2620,75 @@ const Dashboard: React.FC = () => {
 
               {/* Multi-Way Trades Tab */}
               <TabPanel>
-                <VStack spacing={4} align="stretch">
-                  {!user?.is_premium ? (
-                    <Center py={12}>
-                      <VStack spacing={4} textAlign="center" maxW="500px">
-                        {/* Icon & Heading */}
-                        <VStack spacing={2}>
-                          <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" />
-                          <Heading size="md" color="gray.800">
-                            Join Multi-Way Trading Loops
-                          </Heading>
-                          <Text color="gray.600" fontSize="sm">
-                            Exchange with 3+ users at once instead of waiting for perfect 1-1 trades
-                          </Text>
-                        </VStack>
+                {multiWayTradesLoading ? (
+                  <Center py={12}>
+                    <Spinner size="lg" color="brand.500" />
+                  </Center>
+                ) : multiWayTrades.length === 0 ? (
+                  <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                    {/* Mock Trade Loop 1 */}
+                    <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                      <MultiWayTradeUI
+                        participants={[
+                          { id: 1, user_name: 'John Doe', product_id: 1, product_title: 'PlayStation 5' },
+                          { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
+                          { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
+                        ]}
+                        onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                        onViewDetails={() => {}}
+                        onDecline={() => {}}
+                        isLoading={false}
+                      />
+                    </Box>
 
-                        {/* How It Works - Compact */}
-                        <Box bg="purple.50" p={4} borderRadius="lg" w="full">
-                          <VStack align="start" spacing={2}>
-                            <Text fontWeight="bold" color="purple.900" fontSize="xs" textTransform="uppercase">
-                              How it works
-                            </Text>
-                            <HStack spacing={2} align="start" fontSize="sm">
-                              <Box bg="purple.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="purple.900" fontSize="xs" flexShrink={0}>1</Box>
-                              <Text color="gray.700">List your item</Text>
-                            </HStack>
-                            <HStack spacing={2} align="start" fontSize="sm">
-                              <Box bg="purple.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="purple.900" fontSize="xs" flexShrink={0}>2</Box>
-                              <Text color="gray.700">AI finds trade loops</Text>
-                            </HStack>
-                            <HStack spacing={2} align="start" fontSize="sm">
-                              <Box bg="green.200" borderRadius="full" w="24px" h="24px" display="flex" alignItems="center" justifyContent="center" fontWeight="bold" color="green.900" fontSize="xs" flexShrink={0}>✓</Box>
-                              <Text color="gray.700">Everyone trades together</Text>
-                            </HStack>
-                          </VStack>
-                        </Box>
+                    {/* Mock Trade Loop 2 */}
+                    <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                      <MultiWayTradeUI
+                        participants={[
+                          { id: 4, user_name: 'Emma Wilson', product_id: 4, product_title: 'Galaxy S23' },
+                          { id: 5, user_name: 'Alex Chen', product_id: 5, product_title: 'iPad Air' },
+                          { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
+                          { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
+                        ]}
+                        onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                        onViewDetails={() => {}}
+                        onDecline={() => {}}
+                        isLoading={false}
+                      />
+                    </Box>
 
-                        {/* Features - 2 Columns */}
-                        <SimpleGrid columns={2} spacing={2} w="full" fontSize="xs">
-                          <HStack spacing={1} align="start">
-                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
-                            <Text color="gray.700">Auto matching</Text>
-                          </HStack>
-                          <HStack spacing={1} align="start">
-                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
-                            <Text color="gray.700">5-way loops</Text>
-                          </HStack>
-                          <HStack spacing={1} align="start">
-                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
-                            <Text color="gray.700">Smart scheduling</Text>
-                          </HStack>
-                          <HStack spacing={1} align="start">
-                            <Icon as={CheckIcon} color="green.500" boxSize={3} flexShrink={0} />
-                            <Text color="gray.700">Priority matching</Text>
-                          </HStack>
-                        </SimpleGrid>
-
-                        {/* CTA */}
-                        <Button
-                          colorScheme="purple"
-                          size="md"
-                          w="full"
-                          onClick={() => navigate('/premium')}
-                          leftIcon={<StarIcon />}
-                        >
-                          Upgrade to Pro - ₱299/year
-                        </Button>
-                        <Text fontSize="2xs" color="gray.500">
-                          Includes 8 premium features
-                        </Text>
-                      </VStack>
-                    </Center>
-                  ) : (
-                    <Center py={12}>
-                      <VStack spacing={3} textAlign="center">
-                        <Icon as={FaExchangeAlt} boxSize={12} color="purple.300" />
-                        <VStack spacing={1}>
-                          <Heading size="sm" color="gray.700">
-                            Coming Soon
-                          </Heading>
-                          <Text color="gray.600" fontSize="xs">
-                            Multi-way trading is being developed
-                          </Text>
-                        </VStack>
-                      </VStack>
-                    </Center>
-                  )}
-                </VStack>
+                    {/* Mock Trade Loop 3 */}
+                    <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                      <MultiWayTradeUI
+                        participants={[
+                          { id: 8, user_name: 'Chris Martin', product_id: 8, product_title: 'Nintendo Switch' },
+                          { id: 9, user_name: 'Jessica Brown', product_id: 9, product_title: 'Bicycle' },
+                          { id: 10, user_name: 'Robert Taylor', product_id: 10, product_title: 'Guitar' },
+                          { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
+                          { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
+                        ]}
+                        onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                        onViewDetails={() => {}}
+                        onDecline={() => {}}
+                        isLoading={false}
+                      />
+                    </Box>
+                  </SimpleGrid>
+                ) : (
+                  <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                    {multiWayTrades.map((trade) => (
+                      <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                        <MultiWayTradeUI
+                          participants={trade.participants || []}
+                          onJoinTrade={() => handleJoinMultiWayTrade(trade)}
+                          onViewDetails={() => setSelectedMultiWayTrade(trade)}
+                          onDecline={() => handleDeclineMultiWayTrade(trade)}
+                          isLoading={multiWayTradeJoining}
+                        />
+                      </Box>
+                    ))}
+                  </SimpleGrid>
+                )}
               </TabPanel>
 
               {/* Trade History Tab */}
@@ -2688,7 +2888,8 @@ const Dashboard: React.FC = () => {
           isOpen={detailsOpen}
           onClose={() => setDetailsOpen(false)}
           onAccepted={async () => {
-            await fetchOffers()
+            refreshOffersData()
+            fetchTradeHistory()
             fetchNotificationCounts()
             
             // If trade option is delivery, show delivery request modal
@@ -2724,14 +2925,14 @@ const Dashboard: React.FC = () => {
               }
             }
           }}
-          onDeclined={() => { fetchOffers(); fetchNotificationCounts() }}
+          onDeclined={() => { refreshOffersData(); fetchTradeHistory(); fetchNotificationCounts() }}
         />
 
         <ViewTradeModal
           trade={selectedTrade}
           isOpen={viewTradeModalOpen}
           onClose={() => setViewTradeModalOpen(false)}
-          onStatusUpdate={() => { fetchOffers(); fetchNotificationCounts() }}
+          onStatusUpdate={() => { refreshOffersData(); fetchTradeHistory(); fetchNotificationCounts() }}
           onTradeUpdate={setSelectedTrade}
         />
 
@@ -2739,7 +2940,7 @@ const Dashboard: React.FC = () => {
           trade={selectedTrade}
           isOpen={completionModalOpen}
           onClose={() => setCompletionModalOpen(false)}
-          onCompleted={() => { fetchOffers(); fetchNotificationCounts() }}
+          onCompleted={() => { refreshOffersData(); fetchTradeHistory(); fetchNotificationCounts() }}
           currentUserId={user?.id}
         />
 
@@ -2905,3 +3106,4 @@ const Dashboard: React.FC = () => {
 }
 
 export default Dashboard
+

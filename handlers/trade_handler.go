@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -17,6 +18,25 @@ import (
 
 type TradeHandler struct {
 	db *sql.DB
+}
+
+// extractFirstImage returns the first element from a JSON/text array string of image URLs.
+// Falls back to empty string on parse errors.
+func extractFirstImage(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	// Try JSON array first
+	var arr []string
+	if err := json.Unmarshal([]byte(raw), &arr); err == nil && len(arr) > 0 && strings.TrimSpace(arr[0]) != "" {
+		return arr[0]
+	}
+	// Fallback: comma-separated
+	parts := strings.Split(raw, ",")
+	if len(parts) > 0 {
+		return strings.TrimSpace(parts[0])
+	}
+	return ""
 }
 
 func NewTradeHandler() *TradeHandler {
@@ -282,7 +302,9 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
-	trades := []models.Trade{}
+	tradePtrs := []*models.Trade{}
+	tradeMap := make(map[int]*models.Trade)
+
 	for rows.Next() {
 		var tr models.Trade
 		var deliveryType, paymentMethod string
@@ -300,84 +322,74 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 			tr.BuyerConfirmedReceipt = buyerConfirmedReceipt
 			tr.SellerConfirmedDelivery = sellerConfirmedDelivery
 
-			// Load items
-			itemRows, qerr := h.db.Query(`
-                SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
-                       p.title, p.status, p.image_url
-                FROM trade_items ti
-                LEFT JOIN products p ON p.id = ti.product_id
-                WHERE ti.trade_id = ?
-            `, tr.ID)
-			items := []models.TradeItem{}
-			if qerr != nil {
-				log.Printf("trade %d: joined items query error: %v", tr.ID, qerr)
-			} else if itemRows != nil {
-				for itemRows.Next() {
-					var it models.TradeItem
-					var offeredBy sql.NullString
-					var title, pstatus, pimg sql.NullString
-					if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg); err == nil {
-						if offeredBy.Valid {
-							it.OfferedBy = offeredBy.String
-						} else {
-							it.OfferedBy = ""
-						}
-						if title.Valid {
-							it.ProductTitle = title.String
-						}
-						if pstatus.Valid {
-							it.ProductStatus = pstatus.String
-						}
-						if pimg.Valid {
-							it.ProductImageURL = pimg.String
-						}
-						items = append(items, it)
-					} else {
-						log.Printf("trade %d: item row scan error: %v", tr.ID, err)
-					}
-				}
-				itemRows.Close()
-			}
-
-			// Fallback: if no items found via join, fetch basic trade_items and enrich individually
-			if len(items) == 0 {
-				rows2, err2 := h.db.Query("SELECT id, trade_id, product_id, offered_by, created_at FROM trade_items WHERE trade_id = ?", tr.ID)
-				if err2 != nil {
-					log.Printf("trade %d: fallback items query error: %v", tr.ID, err2)
-				} else {
-					for rows2.Next() {
-						var it models.TradeItem
-						var offeredBy sql.NullString
-						if err := rows2.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt); err == nil {
-							if offeredBy.Valid {
-								it.OfferedBy = offeredBy.String
-							}
-							// try to enrich product info
-							var title, pstatus, pimg sql.NullString
-							_ = h.db.QueryRow("SELECT title, status, image_url FROM products WHERE id = ?", it.ProductID).Scan(&title, &pstatus, &pimg)
-							if title.Valid {
-								it.ProductTitle = title.String
-							}
-							if pstatus.Valid {
-								it.ProductStatus = pstatus.String
-							}
-							if pimg.Valid {
-								it.ProductImageURL = pimg.String
-							}
-							items = append(items, it)
-						} else {
-							log.Printf("trade %d: fallback item scan error: %v", tr.ID, err)
-						}
-					}
-					rows2.Close()
-				}
-			}
-
-			tr.Items = items
-			trades = append(trades, tr)
+			tr.Items = []models.TradeItem{}
+			trCopy := tr
+			tradePtrs = append(tradePtrs, &trCopy)
+			tradeMap[tr.ID] = &trCopy
 		} else {
 			log.Printf("trade row scan error: %v", err)
 		}
+	}
+
+	// Batch-load trade items to avoid N+1 queries when many trades exist
+	if len(tradePtrs) > 0 {
+		placeholders := strings.Repeat("?,", len(tradePtrs))
+		placeholders = strings.TrimSuffix(placeholders, ",")
+		args := make([]interface{}, len(tradePtrs))
+		for i, tr := range tradePtrs {
+			args[i] = tr.ID
+		}
+
+		itemQuery := fmt.Sprintf(`
+            SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
+                   p.title, p.status, p.image_url
+            FROM trade_items ti
+            LEFT JOIN products p ON p.id = ti.product_id
+            WHERE ti.trade_id IN (%s)
+            ORDER BY ti.trade_id, ti.id
+        `, placeholders)
+
+		itemRows, err := h.db.Query(itemQuery, args...)
+		if err != nil {
+			log.Printf("batch trade items query error: %v", err)
+		} else {
+			defer itemRows.Close()
+			for itemRows.Next() {
+				var it models.TradeItem
+				var offeredBy sql.NullString
+				var title, pstatus, pimg sql.NullString
+
+				if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg); err != nil {
+					log.Printf("batch trade item scan error: %v", err)
+					continue
+				}
+
+				if offeredBy.Valid {
+					it.OfferedBy = offeredBy.String
+				} else {
+					it.OfferedBy = ""
+				}
+				if title.Valid {
+					it.ProductTitle = title.String
+				}
+				if pstatus.Valid {
+					it.ProductStatus = pstatus.String
+				}
+				if pimg.Valid {
+					it.ProductImageURL = pimg.String
+				}
+
+				if tr := tradeMap[it.TradeID]; tr != nil {
+					tr.Items = append(tr.Items, it)
+				}
+			}
+		}
+	}
+
+	// Convert back to value slice for response
+	trades := make([]models.Trade, 0, len(tradePtrs))
+	for _, tr := range tradePtrs {
+		trades = append(trades, *tr)
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: trades})
@@ -1062,12 +1074,12 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 	}
 	itemRows, qerr := h.db.Query(`
-        SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
-               p.title, p.status, p.image_url
-        FROM trade_items ti
-        LEFT JOIN products p ON p.id = ti.product_id
-        WHERE ti.trade_id = ?
-    `, tr.ID)
+                SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
+                       p.title, p.status, p.image_url, p.image_urls
+                FROM trade_items ti
+                LEFT JOIN products p ON p.id = ti.product_id
+                WHERE ti.trade_id = ?
+            `, tr.ID)
 	items := []models.TradeItem{}
 	if qerr != nil {
 		log.Printf("trade %d: joined items query error: %v", tr.ID, qerr)
@@ -1076,7 +1088,8 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 			var it models.TradeItem
 			var offeredBy sql.NullString
 			var title, pstatus, pimg sql.NullString
-			if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg); err == nil {
+			var pimgs sql.NullString
+			if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg, &pimgs); err == nil {
 				if offeredBy.Valid {
 					it.OfferedBy = offeredBy.String
 				} else {
@@ -1088,8 +1101,15 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 				if pstatus.Valid {
 					it.ProductStatus = pstatus.String
 				}
-				if pimg.Valid {
+				// Prefer image_url; fall back to first of image_urls JSON/text array
+				if pimg.Valid && pimg.String != "" {
 					it.ProductImageURL = pimg.String
+				} else if pimgs.Valid && pimgs.String != "" {
+					var first string
+					first = extractFirstImage(pimgs.String)
+					if first != "" {
+						it.ProductImageURL = first
+					}
 				}
 				items = append(items, it)
 			} else {
@@ -1112,16 +1132,20 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 					if offeredBy.Valid {
 						it.OfferedBy = offeredBy.String
 					}
-					var title, pstatus, pimg sql.NullString
-					_ = h.db.QueryRow("SELECT title, status, image_url FROM products WHERE id = ?", it.ProductID).Scan(&title, &pstatus, &pimg)
+					var title, pstatus, pimg, pimgs sql.NullString
+					_ = h.db.QueryRow("SELECT title, status, image_url, image_urls FROM products WHERE id = ?", it.ProductID).Scan(&title, &pstatus, &pimg, &pimgs)
 					if title.Valid {
 						it.ProductTitle = title.String
 					}
 					if pstatus.Valid {
 						it.ProductStatus = pstatus.String
 					}
-					if pimg.Valid {
+					if pimg.Valid && pimg.String != "" {
 						it.ProductImageURL = pimg.String
+					} else if pimgs.Valid && pimgs.String != "" {
+						if first := extractFirstImage(pimgs.String); first != "" {
+							it.ProductImageURL = first
+						}
 					}
 					items = append(items, it)
 				} else {
@@ -1504,8 +1528,8 @@ func (h *TradeHandler) ensureDeliveryStateColumns() error {
 		if _, err := h.db.Exec(query); err != nil {
 			// Check if it's a "duplicate column" error - this is OK, column already exists
 			if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") ||
-			   strings.Contains(strings.ToLower(err.Error()), "column already exists") ||
-			   strings.Contains(strings.ToLower(err.Error()), "1060") { // MySQL error code for duplicate column
+				strings.Contains(strings.ToLower(err.Error()), "column already exists") ||
+				strings.Contains(strings.ToLower(err.Error()), "1060") { // MySQL error code for duplicate column
 				log.Printf("Column %s already exists, skipping", col.name)
 				continue
 			}

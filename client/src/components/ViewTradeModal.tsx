@@ -754,7 +754,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                     transition="all 0.2s"
                     _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
                   >
-                    ✓ Leave Review & Complete Trade
+                    Review & Complete Trade
                   </Button>
                 </VStack>
               ) : null}
@@ -1146,6 +1146,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     },
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
@@ -1272,13 +1273,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   // Fetch trade messages
   useEffect(() => {
     if (isOpen && trade) {
-      fetchMessages()
+      fetchMessages({ showLoading: true })
       fetchProducts()
       fetchMeetupStatus()
       
-      // Poll for new messages every 3 seconds
-      const interval = setInterval(fetchMessages, 3000)
-      return () => clearInterval(interval)
+      // Poll for new messages every 3 seconds without flashing a loader
+      messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
+      return () => {
+        if (messagesPollRef.current) {
+          clearInterval(messagesPollRef.current)
+          messagesPollRef.current = null
+        }
+      }
     } else {
       setMessages([])
       setNewMessage('')
@@ -1290,18 +1296,21 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading
     if (!trade) return
     
     try {
-      setLoadingMessages(true)
+      if (showLoading) setLoadingMessages(true)
       const response = await api.get(`/api/trades/${trade.id}/messages`)
       const data = response.data?.data || []
-      setMessages(Array.isArray(data) ? data : [])
+      const safeMessages = Array.isArray(data) ? data : []
+      safeMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      setMessages(safeMessages)
     } catch (error) {
       console.error('Failed to fetch messages:', error)
     } finally {
-      setLoadingMessages(false)
+      if (showLoading) setLoadingMessages(false)
     }
   }
 
@@ -1313,13 +1322,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const requested = await getProduct(trade.target_product_id)
       setRequestedProduct(requested)
 
-      const offered: Product[] = []
-      for (const item of trade.items || []) {
-        const pid = item.product_id
-        const product = await getProduct(pid)
-        if (product) offered.push(product)
-      }
-      setOfferedProducts(offered)
+      const offeredIds = (trade.items || []).map((item: any) => item.product_id).filter(Boolean)
+      const offeredResults = await Promise.all(offeredIds.map((pid: number) => getProduct(pid)))
+      setOfferedProducts(offeredResults.filter(Boolean) as Product[])
     } catch (error) {
       console.error('Failed to fetch products:', error)
     } finally {
@@ -1356,7 +1361,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         content: newMessage.trim(),
       })
       setNewMessage('')
-      await fetchMessages()
+      await fetchMessages({ showLoading: false })
     } catch (error: any) {
       toast({
         title: 'Error',

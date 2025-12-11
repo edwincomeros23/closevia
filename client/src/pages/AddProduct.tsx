@@ -52,7 +52,7 @@ const AddProduct: React.FC = () => {
   const [formData, setFormData] = useState<ProductCreate>({
     title: '',
     description: '',
-    price: 0, 
+    price: 0,
     image_urls: [],
     premium: false,
     allow_buying: false,
@@ -60,6 +60,7 @@ const AddProduct: React.FC = () => {
     location: '',
     condition: 'Used',
     category: 'General',
+    wants: '',
   })
   
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -83,9 +84,10 @@ const AddProduct: React.FC = () => {
   const steps = [
     { number: 1, title: 'Upload Photos', description: 'Add product images' },
     { number: 2, title: 'Basic Info', description: 'Title and description' },
-    { number: 3, title: 'Barter Options', description: 'Set exchange preferences' },
-    { number: 4, title: 'Price (Optional)', description: 'If buying is allowed' },
-    { number: 5, title: 'Review & Post', description: 'Confirm and publish' },
+    { number: 3, title: 'What I Want', description: 'Specify items you want in exchange' },
+    { number: 4, title: 'Barter Options', description: 'Set exchange preferences' },
+    { number: 5, title: 'Price (Optional)', description: 'If buying is allowed' },
+    { number: 6, title: 'Review & Post', description: 'Confirm and publish' },
   ]
 
   const handleImageUpload = useCallback((files: FileList | null) => {
@@ -440,9 +442,10 @@ const AddProduct: React.FC = () => {
     switch (currentStep) {
       case 1: return uploadedImages.length >= 3
       case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500
-      case 3: return true // Barter options are always valid
-      case 4: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
-      case 5: return true
+      case 3: return formData.wants?.trim() || false // What I Want is required for multi-way trading
+      case 4: return true // Barter options are always valid
+      case 5: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
+      case 6: return true
       default: return false
     }
   }
@@ -812,8 +815,64 @@ const AddProduct: React.FC = () => {
             </FormControl>
           </VStack>
         )
-        
+
       case 3:
+        return (
+          <VStack spacing={6} align="stretch">
+            <Box>
+              <Heading size="sm" mb={2} color="gray.700">
+                What I Want in Exchange
+              </Heading>
+              <Text fontSize="sm" color="gray.500" mb={4}>
+                Specify the items or categories you're interested in trading for. This helps with multi-way trading loops.
+              </Text>
+            </Box>
+
+            <FormControl isRequired>
+              <FormLabel fontWeight="semibold">Desired Items</FormLabel>
+              <Textarea
+                placeholder="e.g., iPhone 12, gaming laptop, DSLR camera, collectible items, electronics..."
+                value={formData.wants}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, wants: e.target.value }))
+                }}
+                size="lg"
+                rows={6}
+                bg="white"
+                borderWidth="2px"
+                _focus={{ borderColor: 'brand.500', shadow: 'md' }}
+                fontSize="md"
+              />
+              <FormHelperText>
+                <VStack align="start" spacing={1} mt={2}>
+                  <Text fontSize="xs" color="gray.600">
+                    Be specific about what you're looking for. This enables advanced multi-way trading algorithms.
+                  </Text>
+                  <Text fontSize="xs" color="red.500" fontWeight="semibold">
+                    ⚠️ Prohibited: nudity, animals, weapons, drugs, illegal items
+                  </Text>
+                </VStack>
+              </FormHelperText>
+            </FormControl>
+
+            <Box p={4} bg="blue.50" borderRadius="lg" borderLeftWidth="4px" borderLeftColor="blue.400">
+              <VStack align="start" spacing={2}>
+                <HStack>
+                  <Box color="blue.600" fontSize="lg">🔄</Box>
+                  <Text fontWeight="semibold" color="blue.800" fontSize="sm">
+                    Multi-Way Trading
+                  </Text>
+                </HStack>
+                <Text fontSize="xs" color="blue.700">
+                  Your "wants" list will be used to find trading loops where multiple users can exchange items in a chain.
+                  For example: You want a laptop → Someone has a laptop but wants a camera → Someone has a camera but wants your item.
+                </Text>
+              </VStack>
+            </Box>
+          </VStack>
+        )
+
+      case 4:
         return (
           <VStack spacing={8} align="stretch">
             <Box>
@@ -981,8 +1040,8 @@ const AddProduct: React.FC = () => {
             </Box>
           </VStack>
         )
-        
-      case 4:
+
+      case 6:
         return (
           <VStack spacing={6} align="stretch">
             {formData.allow_buying ? (

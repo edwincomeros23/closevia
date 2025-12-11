@@ -241,17 +241,17 @@ func main() {
 	// Allow optional auth for SSE stream: clients may pass token via query param
 	chat.Get("/stream", middleware.OptionalAuthMiddleware(), chatHandler.Stream)
 
-	// Trade routes
+	// Trade routes (order matters: specific paths before :id)
 	trades := api.Group("/trades")
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
+	// Counts endpoint must come before any :id routes to avoid shadowing
+	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
 	trades.Get("/:id", middleware.AuthMiddleware(), tradeHandler.GetTrade)
 	trades.Get("/:id/messages", middleware.AuthMiddleware(), tradeHandler.GetTradeMessages)
 	trades.Post("/:id/messages", middleware.AuthMiddleware(), tradeHandler.SendTradeMessage)
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
-	// Allow optional auth for counts endpoint so unauthenticated UI polling returns a safe zero value
-	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 
@@ -260,6 +260,9 @@ func main() {
 	notifs.Get("/", middleware.AuthMiddleware(), notificationHandler.GetNotifications)
 	notifs.Put("/:id/read", middleware.AuthMiddleware(), notificationHandler.MarkAsRead)
 	notifs.Put("/read-all", middleware.AuthMiddleware(), notificationHandler.MarkAllAsRead)
+
+	// Dashboard counts (unread notifications, pending offers)
+	api.Get("/dashboard/counts", middleware.AuthMiddleware(), notificationHandler.GetDashboardCounts)
 
 	// Admin routes
 	admin := api.Group("/admin")
