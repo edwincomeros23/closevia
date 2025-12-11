@@ -255,6 +255,7 @@ interface DeliveryTabProps {
   isUserBuyer: boolean
   toggleSection: (section: keyof DeliveryState['expandedSections']) => void
   handleProofUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  setIsReviewModalOpen: (open: boolean) => void
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
   saveDeliveryState: (updates: Partial<DeliveryState>) => Promise<void>
@@ -274,6 +275,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   handleConfirmPayment,
   handleConfirmDelivery,
   saveDeliveryState,
+  setIsReviewModalOpen,
 }) => {
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
   const totalCost = (requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee
@@ -2154,6 +2156,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     handleConfirmPayment={handleConfirmPayment}
                     handleConfirmDelivery={handleConfirmDelivery}
                     saveDeliveryState={saveDeliveryState}
+                    setIsReviewModalOpen={setIsReviewModalOpen}
                   />
                 ) : (
                   <VStack spacing={6} align="stretch">
