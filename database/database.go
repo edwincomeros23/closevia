@@ -568,6 +568,8 @@ func ensureTradeColumns() {
 		{"proof_of_delivery", "LONGTEXT NULL"},
 		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
 		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
+		{"auto_completed_at", "TIMESTAMP NULL DEFAULT NULL"},
+		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {
