@@ -416,6 +416,7 @@ func CreateTables() error {
 
 	ensureUserColumns()
 	ensureProductColumns()
+	ensureTradeColumns()
 
 	log.Println("Database tables and indexes created successfully")
 	return nil
@@ -522,10 +523,10 @@ func updateProductStatusEnum() {
 	// Check current status enum
 	var columnType string
 	err := DB.QueryRow(`
-		SELECT COLUMN_TYPE 
-		FROM information_schema.COLUMNS 
-		WHERE TABLE_SCHEMA = DATABASE() 
-		AND TABLE_NAME = 'products' 
+		SELECT COLUMN_TYPE
+		FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		AND TABLE_NAME = 'products'
 		AND COLUMN_NAME = 'status'
 	`).Scan(&columnType)
 
@@ -541,6 +542,58 @@ func updateProductStatusEnum() {
 			log.Printf("Warning: failed to update status enum: %v", err)
 		} else {
 			log.Println("Updated products status enum to include 'traded' and 'locked'")
+		}
+	}
+}
+
+// ensureTradeColumns adds missing columns to the trades table if they don't exist
+func ensureTradeColumns() {
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"trade_option", "VARCHAR(20) NULL DEFAULT 'meetup'"},
+		{"delivery_address", "TEXT NULL"},
+		{"buyer_rating", "INT NULL"},
+		{"seller_rating", "INT NULL"},
+		{"buyer_feedback", "TEXT NULL"},
+		{"seller_feedback", "TEXT NULL"},
+		{"buyer_proof_url", "VARCHAR(500) NULL"},
+		{"seller_proof_url", "VARCHAR(500) NULL"},
+		{"first_completion_at", "TIMESTAMP NULL"},
+		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
+		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
+		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
+		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
+		{"proof_of_delivery", "LONGTEXT NULL"},
+		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
+		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
+	}
+
+	for _, col := range columns {
+		// Check if column exists
+		var count int
+		err := DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = 'trades'
+			AND COLUMN_NAME = ?
+		`, col.name).Scan(&count)
+
+		if err != nil {
+			log.Printf("Warning: failed to check trade column %s: %v", col.name, err)
+			continue
+		}
+
+		// Add column if it doesn't exist
+		if count == 0 {
+			query := fmt.Sprintf("ALTER TABLE trades ADD COLUMN %s %s", col.name, col.definition)
+			if _, err := DB.Exec(query); err != nil {
+				log.Printf("Warning: failed to add trade column %s: %v", col.name, err)
+			} else {
+				log.Printf("Added missing trade column: %s", col.name)
+			}
 		}
 	}
 }
