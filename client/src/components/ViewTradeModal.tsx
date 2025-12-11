@@ -447,7 +447,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 {Object.entries(paymentMethods).map(([method, details]: [string, any]) => (
                   <Card
                     key={`payment-${method}`}
-                    cursor="pointer"
+                    cursor={deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
                     borderWidth="2px"
                     borderColor={
                       deliveryState.paymentMethod === method ? 'green.400' : 'gray.200'
@@ -457,7 +457,11 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                         ? `${details.color}.50`
                         : 'white'
                     }
+                    opacity={deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1}
                     onClick={() => {
+                      // Disable changing payment method if already confirmed
+                      if (deliveryState.paymentConfirmed) return
+                      
                       const newMethod = method as DeliveryState['paymentMethod']
                       setDeliveryState(prev => ({
                         ...prev,
@@ -466,7 +470,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       saveDeliveryState({ paymentMethod: newMethod })
                     }}
                     transition="all 0.2s"
-                    _hover={{
+                    _hover={deliveryState.paymentConfirmed ? {} : {
                       borderColor: `${details.color}.300`,
                       shadow: 'md',
                     }}
@@ -475,12 +479,23 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       <HStack spacing={3} justify="space-between">
                         <HStack spacing={3}>
                           <Text fontSize="xl">{details.icon}</Text>
-                          <Text fontWeight="medium" fontSize="sm">
-                            {details.label}
-                          </Text>
+                          <VStack spacing={0} align="start">
+                            <Text fontWeight="medium" fontSize="sm">
+                              {details.label}
+                            </Text>
+                            {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
+                              <Text fontSize="xs" color="green.600" fontWeight="semibold">
+                                ✓ Confirmed & Locked
+                              </Text>
+                            )}
+                          </VStack>
                         </HStack>
                         {deliveryState.paymentMethod === method && (
-                          <Icon as={FiCheck} color={`${details.color}.500`} boxSize={5} />
+                          <Icon 
+                            as={FiCheck} 
+                            color={`${details.color}.500`} 
+                            boxSize={5} 
+                          />
                         )}
                       </HStack>
                     </CardBody>
@@ -516,7 +531,9 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
                 w="full"
               >
-                {deliveryState.paymentConfirmed ? '✓ Payment Confirmed' : 'Confirm Payment'}
+                {deliveryState.paymentConfirmed 
+                  ? `✓ ${paymentMethods[deliveryState.paymentMethod].label} Confirmed & Locked` 
+                  : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
               </Button>
             </VStack>
           </AccordionPanel>
@@ -1513,8 +1530,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const paymentMethods = {
     gcash: { label: 'GCash', icon: '💳', color: 'blue' },
+    maya: { label: 'Maya', icon: '📱', color: 'purple' },
     cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
-    wallet: { label: 'In-app Wallet', icon: '👛', color: 'purple' },
+    wallet: { label: 'In-app Wallet', icon: '👛', color: 'orange' },
   }
 
   const toggleSection = (section: keyof typeof deliveryState.expandedSections) => {

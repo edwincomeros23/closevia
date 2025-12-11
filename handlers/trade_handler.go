@@ -699,20 +699,9 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		// Add timestamp update
 		updateFields = append(updateFields, "updated_at = CURRENT_TIMESTAMP")
-		updateArgs = append(updateArgs, tradeID)
 
-		// Build and execute update query
-		updateQuery := "UPDATE trades SET " + fmt.Sprintf("%s", fmt.Sprintf("%s", fmt.Sprintf("updated_at = CURRENT_TIMESTAMP")))
-		for i, field := range updateFields[:len(updateFields)-1] {
-			if i > 0 {
-				updateQuery += ", "
-			}
-			updateQuery += field
-		}
-		updateQuery += " WHERE id = ?"
-
-		// Properly reconstruct the query
-		updateQuery = "UPDATE trades SET "
+		// Build update query
+		updateQuery := "UPDATE trades SET "
 		for i, field := range updateFields {
 			if i > 0 {
 				updateQuery += ", "
@@ -721,8 +710,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		}
 		updateQuery += " WHERE id = ?"
 
-		log.Printf("Executing delivery state update: %s", updateQuery)
-		_, err := h.db.Exec(updateQuery, append(updateArgs, tradeID)...)
+		// Append trade ID to args
+		updateArgs = append(updateArgs, tradeID)
+
+		log.Printf("Executing delivery state update: %s with args: %v", updateQuery, updateArgs)
+		_, err := h.db.Exec(updateQuery, updateArgs...)
 		if err != nil {
 			log.Printf("Failed to update delivery state for trade %d: %v", tradeID, err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update delivery state"})
