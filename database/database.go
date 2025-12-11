@@ -25,7 +25,7 @@ func InitDatabase() error {
 	dbName := os.Getenv("DB_NAME")
 	caCertPath := os.Getenv("DB_CA_CERT")
 
-	// Validate all required environment variables are set
+	// Validate required environment variables are set
 	if dbHost == "" {
 		return fmt.Errorf("DB_HOST environment variable is not set")
 	}
@@ -35,29 +35,37 @@ func InitDatabase() error {
 	if dbUser == "" {
 		return fmt.Errorf("DB_USER environment variable is not set")
 	}
-	if dbPassword == "" {
-		return fmt.Errorf("DB_PASSWORD environment variable is not set")
-	}
 	if dbName == "" {
 		return fmt.Errorf("DB_NAME environment variable is not set")
 	}
-	if caCertPath == "" {
-		return fmt.Errorf("DB_CA_CERT environment variable is not set")
-	}
 
-	// Create TLS config (required for Aiven)
-	tlsConfig, err := createTLSConfig(dbHost, caCertPath)
-	if err != nil {
-		return fmt.Errorf("failed to create TLS config: %v", err)
-	}
+	// DB_PASSWORD can be empty for local development (XAMPP has no password)
+	// DB_CA_CERT is only needed for hosted databases with TLS
+	var dsn string
+	if caCertPath != "" {
+		// Hosted database with TLS (e.g., Aiven, AWS RDS)
+		if dbPassword == "" {
+			return fmt.Errorf("DB_PASSWORD must be set for hosted database")
+		}
 
-	if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
-		return fmt.Errorf("failed to register TLS config: %v", err)
-	}
+		// Create TLS config (required for hosted databases)
+		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
+		if err != nil {
+			return fmt.Errorf("failed to create TLS config: %v", err)
+		}
 
-	// Create DSN with TLS enabled
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
-		dbUser, dbPassword, dbHost, dbPort, dbName)
+		if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
+			return fmt.Errorf("failed to register TLS config: %v", err)
+		}
+
+		// Create DSN with TLS enabled
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
+	} else {
+		// Local database without TLS (XAMPP)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
+	}
 
 	// Open database connection
 	var openErr error
@@ -78,7 +86,7 @@ func InitDatabase() error {
 
 	// Test a simple query to verify we're connected to the right database
 	var currentDbName string
-	if err = DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName); err != nil {
+	if err := DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName); err != nil {
 		return fmt.Errorf("failed to get database name: %v", err)
 	}
 
