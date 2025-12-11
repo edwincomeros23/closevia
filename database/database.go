@@ -17,7 +17,7 @@ var DB *sql.DB
 
 // InitDatabase initializes the database connection
 func InitDatabase() error {
-	// Get database configuration from environment variables ONLY
+	// Get database configuration from environment variables
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
@@ -39,16 +39,18 @@ func InitDatabase() error {
 		return fmt.Errorf("DB_NAME environment variable is not set")
 	}
 
-	// DB_PASSWORD can be empty for local development (XAMPP has no password)
-	// DB_CA_CERT is only needed for hosted databases with TLS
-	var dsn string
-	if caCertPath != "" {
-		// Hosted database with TLS (e.g., Aiven, AWS RDS)
-		if dbPassword == "" {
-			return fmt.Errorf("DB_PASSWORD must be set for hosted database")
-		}
+	// Determine if using hosted database (Aiven/AWS) or local (XAMPP)
+	isHostedDatabase := caCertPath != ""
 
-		// Create TLS config (required for hosted databases)
+	// For hosted databases, password is required
+	if isHostedDatabase && dbPassword == "" {
+		return fmt.Errorf("DB_PASSWORD environment variable is not set (required for hosted database)")
+	}
+
+	var dsn string
+
+	if isHostedDatabase {
+		// Create TLS config for hosted database
 		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
 		if err != nil {
 			return fmt.Errorf("failed to create TLS config: %v", err)
@@ -58,11 +60,11 @@ func InitDatabase() error {
 			return fmt.Errorf("failed to register TLS config: %v", err)
 		}
 
-		// Create DSN with TLS enabled
+		// Create DSN with TLS enabled for hosted database
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
 			dbUser, dbPassword, dbHost, dbPort, dbName)
 	} else {
-		// Local database without TLS (XAMPP)
+		// Create DSN without TLS for local database (XAMPP)
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
 			dbUser, dbPassword, dbHost, dbPort, dbName)
 	}
@@ -86,8 +88,9 @@ func InitDatabase() error {
 
 	// Test a simple query to verify we're connected to the right database
 	var currentDbName string
-	if err := DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName); err != nil {
-		return fmt.Errorf("failed to get database name: %v", err)
+	queryErr := DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName)
+	if queryErr != nil {
+		return fmt.Errorf("failed to get database name: %v", queryErr)
 	}
 
 	log.Printf("Successfully connected to MySQL database: %s (Host: %s:%s)", currentDbName, dbHost, dbPort)
