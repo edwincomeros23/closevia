@@ -74,6 +74,7 @@ interface ViewTradeModalProps {
   isOpen: boolean
   onClose: () => void
   onStatusUpdate: () => void
+  onTradeUpdate?: (updatedTrade: Trade) => void
 }
 
 interface MeetupLocation {
@@ -444,21 +445,26 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               </Text>
 
               <VStack spacing={2} align="stretch">
-                {Object.entries(paymentMethods).map(([method, details]: [string, any]) => (
+                {Object.entries(paymentMethods).map(([method, details]: [string, any]) => {
+                  const isLocked = method === 'gcash' || method === 'maya'
+                  
+                  return (
                   <Card
                     key={`payment-${method}`}
-                    cursor={deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
+                    cursor={isLocked || deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
                     borderWidth="2px"
                     borderColor={
-                      deliveryState.paymentMethod === method ? 'green.400' : 'gray.200'
+                      deliveryState.paymentMethod === method ? 'green.400' : isLocked ? 'gray.300' : 'gray.200'
                     }
                     bg={
                       deliveryState.paymentMethod === method
                         ? `${details.color}.50`
-                        : 'white'
+                        : isLocked ? 'gray.100' : 'white'
                     }
-                    opacity={deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1}
+                    opacity={isLocked ? 0.5 : (deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1)}
                     onClick={() => {
+                      // Disable locked options
+                      if (isLocked) return
                       // Disable changing payment method if already confirmed
                       if (deliveryState.paymentConfirmed) return
                       
@@ -470,7 +476,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       saveDeliveryState({ paymentMethod: newMethod })
                     }}
                     transition="all 0.2s"
-                    _hover={deliveryState.paymentConfirmed ? {} : {
+                    _hover={isLocked || deliveryState.paymentConfirmed ? {} : {
                       borderColor: `${details.color}.300`,
                       shadow: 'md',
                     }}
@@ -483,6 +489,11 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                             <Text fontWeight="medium" fontSize="sm">
                               {details.label}
                             </Text>
+                            {isLocked && (
+                              <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+                                🔒 Coming Soon
+                              </Text>
+                            )}
                             {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
                               <Text fontSize="xs" color="green.600" fontWeight="semibold">
                                 ✓ Confirmed & Locked
@@ -500,7 +511,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       </HStack>
                     </CardBody>
                   </Card>
-                ))}
+                  )
+                })}
               </VStack>
 
               <Divider />
@@ -1298,6 +1310,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   isOpen,
   onClose,
   onStatusUpdate,
+  onTradeUpdate,
 }) => {
   const { user } = useAuth()
   const { getProduct } = useProducts()
@@ -1362,9 +1375,52 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       if (updates.buyerConfirmedReceipt !== undefined) payload.buyer_confirmed_receipt = updates.buyerConfirmedReceipt
       if (updates.sellerConfirmedDelivery !== undefined) payload.seller_confirmed_delivery = updates.sellerConfirmedDelivery
       
-      await api.put(`/api/trades/${trade.id}`, payload)
-    } catch (error) {
+      console.log('Sending delivery state payload:', payload, 'to trade:', trade.id)
+      const response = await api.put(`/api/trades/${trade.id}`, payload)
+      console.log('Delivery state update response:', response)
+
+      // Update local trade state with the new delivery data
+      if (trade && onTradeUpdate) {
+        const updatedTrade: Trade = {
+          ...trade,
+          ...Object.keys(updates).reduce((acc, key) => {
+            const value = updates[key as keyof DeliveryState]
+            if (value !== undefined) {
+              // Map frontend field names to backend field names
+              switch (key) {
+                case 'deliveryType':
+                  acc.delivery_type = value as 'standard' | 'express' | 'meetup'
+                  break
+                case 'paymentMethod':
+                  acc.payment_method = value as 'gcash' | 'cod' | 'wallet'
+                  break
+                case 'paymentConfirmed':
+                  acc.payment_confirmed = value as boolean
+                  break
+                case 'proofOfDelivery':
+                  acc.proof_of_delivery = value as string | null
+                  break
+                case 'buyerConfirmedReceipt':
+                  acc.buyer_confirmed_receipt = value as boolean
+                  break
+                case 'sellerConfirmedDelivery':
+                  acc.seller_confirmed_delivery = value as boolean
+                  break
+              }
+            }
+            return acc
+          }, {} as any)
+        }
+        onTradeUpdate(updatedTrade)
+      }
+
+      // Call onStatusUpdate to refresh any parent state
+      onStatusUpdate()
+    } catch (error: any) {
       console.error('Failed to save delivery state:', error)
+      if (error?.response?.data) {
+        console.error('Backend error details:', error.response.data)
+      }
     }
   }
 
@@ -1529,10 +1585,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
   const paymentMethods = {
+    cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
     gcash: { label: 'GCash', icon: '💳', color: 'blue' },
     maya: { label: 'Maya', icon: '📱', color: 'purple' },
-    cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
-    wallet: { label: 'In-app Wallet', icon: '👛', color: 'orange' },
   }
 
   const toggleSection = (section: keyof typeof deliveryState.expandedSections) => {
@@ -1587,11 +1642,25 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         payment_confirmed: true,
         payment_method: deliveryState.paymentMethod,
       })
-      
+
       setDeliveryState(prev => ({
         ...prev,
         paymentConfirmed: true,
       }))
+
+      // Update local trade state
+      if (trade && onTradeUpdate) {
+        const updatedTrade: Trade = {
+          ...trade,
+          payment_confirmed: true,
+          payment_method: deliveryState.paymentMethod,
+        }
+        onTradeUpdate(updatedTrade)
+      }
+
+      // Call onStatusUpdate to refresh parent state
+      onStatusUpdate()
+
       toast({
         title: 'Payment confirmed',
         description: 'Your payment has been secured',
@@ -1641,6 +1710,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       // Save confirmation to backend
       await api.put(`/api/trades/${trade?.id}`, confirmationPayload)
 
+      // Update local trade state
+      if (trade && onTradeUpdate) {
+        const updatedTrade: Trade = {
+          ...trade,
+          ...(isUserBuyer ? { buyer_confirmed_receipt: true } : { seller_confirmed_delivery: true }),
+        }
+        onTradeUpdate(updatedTrade)
+      }
+
+      // Call onStatusUpdate to refresh parent state
+      onStatusUpdate()
+
       toast({
         title: 'Delivery confirmed',
         description: 'Thank you for confirming',
@@ -1651,10 +1732,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       // Check if both parties have confirmed (need to get fresh state)
       try {
         const response = await api.get(`/api/trades/${trade?.id}`)
-        const updatedTrade = response.data?.data
-        if (updatedTrade?.buyer_confirmed_receipt && updatedTrade?.seller_confirmed_delivery) {
+        const freshTrade = response.data?.data
+        if (freshTrade?.buyer_confirmed_receipt && freshTrade?.seller_confirmed_delivery) {
           // Both confirmed, complete the trade
-          await api.put(`/api/trades/${trade?.id}`, {
+          await api.put(`/api/trades/${freshTrade.id}`, {
             action: 'complete',
           })
           onStatusUpdate()

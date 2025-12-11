@@ -2732,6 +2732,7 @@ const Dashboard: React.FC = () => {
           isOpen={viewTradeModalOpen}
           onClose={() => setViewTradeModalOpen(false)}
           onStatusUpdate={() => { fetchOffers(); fetchNotificationCounts() }}
+          onTradeUpdate={setSelectedTrade}
         />
 
         <TradeCompletionModal
