@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react'
 import { Product, ProductCreate, ProductUpdate, SearchFilters, PaginatedResponse } from '../types'
 import { api } from '../services/api'
+import { apiCallWithRetry } from '../utils/apiUtils'
 
 interface ProductContextType {
   products: Product[]
@@ -303,7 +304,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       params.append('page', nextPage.toString())
       params.append('limit', (filters.limit || 10).toString())
 
-      const response = await retryRequest(async () => {
+      const response = await apiCallWithRetry(async () => {
         return await api.get(`/api/products?${params.toString()}`, {
           headers: getAuthHeaders(),
         })
