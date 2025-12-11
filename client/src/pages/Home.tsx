@@ -143,19 +143,22 @@ const Home: React.FC = () => {
     setHasSearched(true)
   }
 
-  // Load products immediately on component mount
+  // Load products immediately on component mount (only once)
   useEffect(() => {
-  // Always fetch latest 10 available products on mount (default feed)
-  searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
-  setHasSearched(false)
-  // empty deps intentional — only once on mount
+    // Check if we already have cached products
+    if (products.length > 0) {
+      console.log('Using cached products, skipping initial fetch')
+      return
+    }
+    // Fetch latest 10 available products on mount (default feed)
+    searchProducts({ status: 'available', limit: 10, page: 1 })
+    // empty deps — only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Refetch when navigating back to Home route to ensure newest items appear
+  // DO NOT refetch when navigating back to home - use persistent cache instead
   useEffect(() => {
-    if (location.pathname === '/home') {
-      searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
-    }
+    // Navigation doesn't trigger refetch; cached data persists
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
 
@@ -176,15 +179,10 @@ const Home: React.FC = () => {
     return () => observer.unobserve(el)
   }, [sentinelRef, loading, isLoadingMore, hasMore, loadMore])
 
-  // Refetch on tab/window focus to keep feed fresh
+  // DISABLED: Do NOT refetch on tab/window focus to keep persistent cache
+  // The cached products will remain on screen even when switching tabs
   useEffect(() => {
-    const handleFocus = () => {
-      if (window.location.pathname === '/home') {
-        searchProducts({ ...filters, status: 'available', limit: 10, page: 1 })
-      }
-    }
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
+    // Window focus events disabled to maintain persistent data
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
