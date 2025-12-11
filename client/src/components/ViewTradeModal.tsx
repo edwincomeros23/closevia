@@ -263,6 +263,7 @@ interface DeliveryTabProps {
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
   saveDeliveryState: (updates: Partial<DeliveryState>) => Promise<void>
+  confirmingPayment: boolean
 }
 
 const DeliveryTab: React.FC<DeliveryTabProps> = ({
@@ -279,6 +280,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   handleConfirmDelivery,
   saveDeliveryState,
   setIsReviewModalOpen,
+  confirmingPayment,
 }) => {
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
   const totalCost = (requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee
@@ -501,7 +503,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                             )}
                             {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
                               <Text fontSize="xs" color="green.600" fontWeight="semibold">
-                                ✓ Confirmed & Locked
+                                ✓ Secured
                               </Text>
                             )}
                           </VStack>
@@ -544,12 +546,14 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 colorScheme="green"
                 size="md"
                 onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed}
+                isDisabled={deliveryState.paymentConfirmed || confirmingPayment}
+                isLoading={confirmingPayment}
+                loadingText="Confirming..."
                 leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
                 w="full"
               >
                 {deliveryState.paymentConfirmed 
-                  ? `✓ ${paymentMethods[deliveryState.paymentMethod].label} Confirmed & Locked` 
+                  ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured` 
                   : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
               </Button>
             </VStack>
@@ -652,64 +656,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                   </Text>
                 </Box>
               ) : null}
-
-              {/* Confirmation Status */}
-              <SimpleGrid columns={2} spacing={4}>
-                <Card
-                  bg={deliveryState.buyerConfirmedReceipt ? 'green.50' : 'gray.50'}
-                  borderWidth="2px"
-                  borderColor={deliveryState.buyerConfirmedReceipt ? 'green.400' : 'gray.200'}
-                >
-                  <CardBody>
-                    <VStack spacing={2} textAlign="center">
-                      <Avatar
-                        name={trade?.buyer_name || 'Buyer'}
-                        size="md"
-                        bg="blue.500"
-                        color="white"
-                      />
-                      <Text fontWeight="semibold" fontSize="sm">
-                        Buyer
-                      </Text>
-                      <Badge
-                        colorScheme={deliveryState.buyerConfirmedReceipt ? 'green' : 'gray'}
-                        variant="subtle"
-                      >
-                        {deliveryState.buyerConfirmedReceipt ? '✓ Confirmed' : 'Pending'}
-                      </Badge>
-                    </VStack>
-                  </CardBody>
-                </Card>
-
-                <Card
-                  bg={deliveryState.sellerConfirmedDelivery ? 'green.50' : 'gray.50'}
-                  borderWidth="2px"
-                  borderColor={deliveryState.sellerConfirmedDelivery ? 'green.400' : 'gray.200'}
-                >
-                  <CardBody>
-                    <VStack spacing={2} textAlign="center">
-                      <Avatar
-                        name={trade?.seller_name || 'Seller'}
-                        size="md"
-                        bg="green.500"
-                        color="white"
-                      />
-                      <Text fontWeight="semibold" fontSize="sm">
-                        Seller
-                      </Text>
-                      <Badge
-                        colorScheme={deliveryState.sellerConfirmedDelivery ? 'green' : 'gray'}
-                        variant="subtle"
-                      >
-                        {deliveryState.sellerConfirmedDelivery ? '✓ Confirmed' : 'Pending'}
-                      </Badge>
-                    </VStack>
-                  </CardBody>
-                </Card>
-              </SimpleGrid>
-
-              <Divider />
-
               {/* Transaction Summary */}
               <Card bg="gray.50" variant="outline">
                 <CardBody>
@@ -1128,6 +1074,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
   const [confirmingMeetup, setConfirmingMeetup] = useState(false)
+  const [confirmingPayment, setConfirmingPayment] = useState(false)
   const [buyerMeetupConfirmed, setBuyerMeetupConfirmed] = useState(false)
   const [sellerMeetupConfirmed, setSellerMeetupConfirmed] = useState(false)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
@@ -1437,6 +1384,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const handleConfirmPayment = async () => {
     try {
+      setConfirmingPayment(true)
       // Save payment confirmation to backend
       await api.put(`/api/trades/${trade?.id}`, {
         action: 'update_delivery_state',
@@ -1475,6 +1423,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         status: 'error',
         duration: 3000,
       })
+    } finally {
+      setConfirmingPayment(false)
     }
   }
 
@@ -1997,6 +1947,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     handleConfirmDelivery={handleConfirmDelivery}
                     saveDeliveryState={saveDeliveryState}
                     setIsReviewModalOpen={setIsReviewModalOpen}
+                    confirmingPayment={confirmingPayment}
                   />
                 ) : (
                   <VStack spacing={6} align="stretch">
