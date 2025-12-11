@@ -231,6 +231,41 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		query += `, '' as trade_option, '' as delivery_address`
 	}
 
+	// Check if delivery state columns exist
+	deliveryStateQuery := `
+		SELECT
+			COALESCE(t.delivery_type, '') as delivery_type,
+			COALESCE(t.payment_method, '') as payment_method,
+			COALESCE(t.payment_confirmed, FALSE) as payment_confirmed,
+			t.proof_of_delivery,
+			COALESCE(t.buyer_confirmed_receipt, FALSE) as buyer_confirmed_receipt,
+			COALESCE(t.seller_confirmed_delivery, FALSE) as seller_confirmed_delivery
+		FROM trades t LIMIT 1`
+	testDeliveryRow := h.db.QueryRow(deliveryStateQuery)
+	var testDeliveryType, testPaymentMethod string
+	var testPaymentConfirmed, testBuyerConfirmed, testSellerConfirmed bool
+	var testProofOfDelivery sql.NullString
+	if err := testDeliveryRow.Scan(&testDeliveryType, &testPaymentMethod, &testPaymentConfirmed, &testProofOfDelivery, &testBuyerConfirmed, &testSellerConfirmed); err == nil {
+		// Delivery state columns exist, include them in query
+		query += `,
+			COALESCE(t.delivery_type, '') as delivery_type,
+			COALESCE(t.payment_method, '') as payment_method,
+			COALESCE(t.payment_confirmed, FALSE) as payment_confirmed,
+			t.proof_of_delivery,
+			COALESCE(t.buyer_confirmed_receipt, FALSE) as buyer_confirmed_receipt,
+			COALESCE(t.seller_confirmed_delivery, FALSE) as seller_confirmed_delivery`
+	} else {
+		// Delivery state columns don't exist, use empty defaults
+		log.Printf("Delivery state columns not found in trades table, using defaults")
+		query += `,
+			'' as delivery_type,
+			'' as payment_method,
+			FALSE as payment_confirmed,
+			NULL as proof_of_delivery,
+			FALSE as buyer_confirmed_receipt,
+			FALSE as seller_confirmed_delivery`
+	}
+
 	query += `,
           COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
@@ -250,7 +285,21 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	trades := []models.Trade{}
 	for rows.Next() {
 		var tr models.Trade
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle); err == nil {
+		var deliveryType, paymentMethod string
+		var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
+		var proofOfDelivery sql.NullString
+
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle); err == nil {
+			// Set delivery state fields
+			tr.DeliveryType = deliveryType
+			tr.PaymentMethod = paymentMethod
+			tr.PaymentConfirmed = paymentConfirmed
+			if proofOfDelivery.Valid {
+				tr.ProofOfDelivery = proofOfDelivery.String
+			}
+			tr.BuyerConfirmedReceipt = buyerConfirmedReceipt
+			tr.SellerConfirmedDelivery = sellerConfirmedDelivery
+
 			// Load items
 			itemRows, qerr := h.db.Query(`
                 SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
