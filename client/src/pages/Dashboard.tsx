@@ -298,23 +298,29 @@ const Dashboard: React.FC = () => {
     }, 500)
   }, [])
 
-  // Fetchers for each offers sub-section (on-demand)
+  // Fetchers for each offers sub-section (on-demand) - OPTIMIZED
   const fetchSentOffers = async () => {
     if (!user) return
     try {
-      setOffersLoading(true)
       setSentLoading(true)
-      const outRes = await api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'pending' } })
+      const outRes = await api.get('/api/trades', { 
+        params: { 
+          direction: 'outgoing', 
+          include: 'products', 
+          status: 'pending',
+          limit: 100 // Add limit to prevent large payloads
+        } 
+      })
       const outgoingData = Array.isArray(outRes.data?.data) ? outRes.data.data : (Array.isArray(outRes.data) ? outRes.data : [])
       setOutgoing(outgoingData)
       setSentLoaded(true)
-      fetchProductTitles(outgoingData)
+      // Cache images from response without additional fetch
+      cacheProductImages(outgoingData)
     } catch (e: any) {
       console.error('Failed to fetch sent offers:', e)
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load sent offers', status: 'error' })
       setOutgoing([])
     } finally {
-      setOffersLoading(false)
       setSentLoading(false)
     }
   }
@@ -322,19 +328,25 @@ const Dashboard: React.FC = () => {
   const fetchReceivedOffers = async () => {
     if (!user) return
     try {
-      setOffersLoading(true)
       setReceivedLoading(true)
-      const incRes = await api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'pending' } })
+      const incRes = await api.get('/api/trades', { 
+        params: { 
+          direction: 'incoming', 
+          include: 'products', 
+          status: 'pending',
+          limit: 100 // Add limit to prevent large payloads
+        } 
+      })
       const incomingData = Array.isArray(incRes.data?.data) ? incRes.data.data : (Array.isArray(incRes.data) ? incRes.data : [])
       setIncoming(incomingData)
       setReceivedLoaded(true)
-      fetchProductTitles(incomingData)
+      // Cache images from response without additional fetch
+      cacheProductImages(incomingData)
     } catch (e: any) {
       console.error('Failed to fetch received offers:', e)
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load received offers', status: 'error' })
       setIncoming([])
     } finally {
-      setOffersLoading(false)
       setReceivedLoading(false)
     }
   }
@@ -342,53 +354,70 @@ const Dashboard: React.FC = () => {
   const fetchOngoingTrades = async () => {
     if (!user) return
     try {
-      setOffersLoading(true)
       setOngoingLoading(true)
-      // Fetch accepted and active trades for both directions and merge uniquely
-      const [incAccepted, incActive, outAccepted, outActive] = await Promise.all([
-        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'accepted' } }),
-        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'active' } }),
-        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'accepted' } }),
-        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'active' } }),
+      // Optimized: Only 2 requests instead of 4 by using comma-separated status filter
+      const [bothDirections] = await Promise.all([
+        api.get('/api/trades', { 
+          params: { 
+            include: 'products', 
+            status: 'accepted,active', // Fetch both statuses in one call
+            limit: 100 // Add limit to prevent large payloads
+          } 
+        }),
       ])
 
-      const incomingData = [
-        ...(Array.isArray(incAccepted.data?.data) ? incAccepted.data.data : Array.isArray(incAccepted.data) ? incAccepted.data : []),
-        ...(Array.isArray(incActive.data?.data) ? incActive.data.data : Array.isArray(incActive.data) ? incActive.data : []),
-      ]
-      const outgoingData = [
-        ...(Array.isArray(outAccepted.data?.data) ? outAccepted.data.data : Array.isArray(outAccepted.data) ? outAccepted.data : []),
-        ...(Array.isArray(outActive.data?.data) ? outActive.data.data : Array.isArray(outActive.data) ? outActive.data : []),
-      ]
+      const allTradesData = Array.isArray(bothDirections.data?.data) 
+        ? bothDirections.data.data 
+        : (Array.isArray(bothDirections.data) ? bothDirections.data : [])
 
+      // Deduplicate by trade ID
       const uniqueTrades = new Map<number, Trade>()
-      ;[...incomingData, ...outgoingData].forEach(tr => {
+      allTradesData.forEach((tr: Trade) => {
         if (tr && tr.id) uniqueTrades.set(tr.id, tr)
       })
 
       const merged = Array.from(uniqueTrades.values())
       setOngoingTradesData(merged)
       setOngoingLoaded(true)
-      fetchProductTitles(merged)
+      // Cache images from response without additional fetch
+      cacheProductImages(merged)
     } catch (e: any) {
       console.error('Failed to fetch ongoing trades:', e)
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load ongoing trades', status: 'error' })
       setOngoingTradesData([])
     } finally {
-      setOffersLoading(false)
       setOngoingLoading(false)
     }
+  }
+
+  // New optimized function to cache images from trades without additional API calls
+  const cacheProductImages = (trades: Trade[]) => {
+    trades.forEach(trade => {
+      // Cache target product image if available
+      const productImageUrl = (trade as any)?.product_image_url
+      if (trade.target_product_id && productImageUrl) {
+        productImageCache.current.set(trade.target_product_id, productImageUrl)
+      }
+      // Cache item images if available
+      if (trade.items) {
+        trade.items.forEach((item: any) => {
+          if (item.product_id && item.product_image_url) {
+            productImageCache.current.set(Number(item.product_id), item.product_image_url)
+          }
+        })
+      }
+    })
   }
 
   const fetchTradeHistory = useCallback(async () => {
     if (!user) return
     try {
       setTradeHistoryLoading(true)
-      const res = await api.get('/api/trades', { params: { status: 'completed', include: 'products' } })
+      const res = await api.get('/api/trades', { params: { status: 'completed', include: 'products', limit: 100 } })
       const data = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : [])
       setTradeHistory(data)
-      // Prefetch titles for history items
-      fetchProductTitles(data)
+      // Cache images from response
+      cacheProductImages(data)
     } catch (e: any) {
       console.error('Failed to fetch trade history:', e)
     } finally {
