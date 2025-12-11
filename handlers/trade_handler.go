@@ -653,10 +653,12 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		log.Printf("User %d attempting to update delivery state for trade %d", userID, tradeID)
 
 		// Check if required delivery state columns exist
+		log.Printf("About to ensure delivery state columns exist...")
 		if err := h.ensureDeliveryStateColumns(); err != nil {
 			log.Printf("Failed to ensure delivery state columns exist: %v", err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database schema error"})
 		}
+		log.Printf("Delivery state columns check completed")
 
 		// Prepare update query and arguments
 		updateFields := []string{}
@@ -1434,6 +1436,8 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 
 // ensureDeliveryStateColumns ensures that delivery state columns exist in the trades table
 func (h *TradeHandler) ensureDeliveryStateColumns() error {
+	log.Printf("Ensuring delivery state columns exist...")
+
 	columns := []struct {
 		name       string
 		definition string
@@ -1447,32 +1451,22 @@ func (h *TradeHandler) ensureDeliveryStateColumns() error {
 	}
 
 	for _, col := range columns {
-		// Check if column exists
-		var count int
-		err := h.db.QueryRow(`
-			SELECT COUNT(*)
-			FROM information_schema.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			AND TABLE_NAME = 'trades'
-			AND COLUMN_NAME = ?
-		`, col.name).Scan(&count)
-
-		if err != nil {
-			log.Printf("Warning: failed to check delivery state column %s: %v", col.name, err)
-			continue
-		}
-
-		// Add column if it doesn't exist
-		if count == 0 {
-			query := fmt.Sprintf("ALTER TABLE trades ADD COLUMN %s %s", col.name, col.definition)
-			if _, err := h.db.Exec(query); err != nil {
-				log.Printf("Failed to add delivery state column %s: %v", col.name, err)
-				return fmt.Errorf("failed to add column %s: %w", col.name, err)
-			} else {
-				log.Printf("Added missing delivery state column: %s", col.name)
+		query := fmt.Sprintf("ALTER TABLE trades ADD COLUMN %s %s", col.name, col.definition)
+		if _, err := h.db.Exec(query); err != nil {
+			// Check if it's a "duplicate column" error - this is OK, column already exists
+			if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") ||
+			   strings.Contains(strings.ToLower(err.Error()), "column already exists") ||
+			   strings.Contains(strings.ToLower(err.Error()), "1060") { // MySQL error code for duplicate column
+				log.Printf("Column %s already exists, skipping", col.name)
+				continue
 			}
+			log.Printf("Failed to add delivery state column %s: %v", col.name, err)
+			return fmt.Errorf("failed to add column %s: %w", col.name, err)
+		} else {
+			log.Printf("Successfully added delivery state column: %s", col.name)
 		}
 	}
 
+	log.Printf("All delivery state columns ensured")
 	return nil
 }
