@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -651,6 +652,12 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")
 		log.Printf("User %d attempting to update delivery state for trade %d", userID, tradeID)
 
+		// Check if required delivery state columns exist
+		if err := h.ensureDeliveryStateColumns(); err != nil {
+			log.Printf("Failed to ensure delivery state columns exist: %v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database schema error"})
+		}
+
 		// Prepare update query and arguments
 		updateFields := []string{}
 		updateArgs := []interface{}{}
@@ -725,11 +732,20 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		updateArgs = append(updateArgs, tradeID)
 
 		log.Printf("Executing delivery state update: %s with args: %v", updateQuery, updateArgs)
-		_, err := h.db.Exec(updateQuery, updateArgs...)
+		result, err := h.db.Exec(updateQuery, updateArgs...)
 		if err != nil {
 			log.Printf("Failed to update delivery state for trade %d: %v", tradeID, err)
+			// Try to provide more specific error information
+			if strings.Contains(err.Error(), "Unknown column") {
+				log.Printf("Database schema issue: delivery state columns may be missing")
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database schema error: delivery state columns missing"})
+			}
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update delivery state"})
 		}
+
+		// Log how many rows were affected
+		rowsAffected, _ := result.RowsAffected()
+		log.Printf("Delivery state update successful, affected %d rows", rowsAffected)
 
 		// Notify other party of the update
 		var otherUserID int
@@ -1410,6 +1426,51 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 		_, err := tx.Exec("UPDATE products SET status = ? WHERE id = ?", status, pid)
 		if err != nil {
 			return fmt.Errorf("failed to update status for product %d: %w", pid, err)
+		}
+	}
+
+	return nil
+}
+
+// ensureDeliveryStateColumns ensures that delivery state columns exist in the trades table
+func (h *TradeHandler) ensureDeliveryStateColumns() error {
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
+		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
+		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
+		{"proof_of_delivery", "LONGTEXT NULL"},
+		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
+		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
+	}
+
+	for _, col := range columns {
+		// Check if column exists
+		var count int
+		err := h.db.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = 'trades'
+			AND COLUMN_NAME = ?
+		`, col.name).Scan(&count)
+
+		if err != nil {
+			log.Printf("Warning: failed to check delivery state column %s: %v", col.name, err)
+			continue
+		}
+
+		// Add column if it doesn't exist
+		if count == 0 {
+			query := fmt.Sprintf("ALTER TABLE trades ADD COLUMN %s %s", col.name, col.definition)
+			if _, err := h.db.Exec(query); err != nil {
+				log.Printf("Failed to add delivery state column %s: %v", col.name, err)
+				return fmt.Errorf("failed to add column %s: %w", col.name, err)
+			} else {
+				log.Printf("Added missing delivery state column: %s", col.name)
+			}
 		}
 	}
 
