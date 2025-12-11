@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import '@fontsource/prata/400.css'
 import './index.css'
@@ -32,8 +33,32 @@ try {
   // ignore if localStorage is not available
 }
 
+// Configure React Query client for optimal caching
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Cache data for 5 minutes (data stays fresh)
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      // Keep cached data for 24 hours
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours
+      // Don't refetch on window focus to prevent unnecessary requests
+      refetchOnWindowFocus: false,
+      // Don't refetch on reconnect
+      refetchOnReconnect: false,
+      // Retry failed requests 2 times
+      retry: 2,
+      // Don't refetch on mount if data is fresh
+      refetchOnMount: false,
+      // Keep previous data while refetching (prevents loading states)
+      placeholderData: (previousData: unknown) => previousData,
+    },
+  },
+})
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
   </React.StrictMode>
 )
