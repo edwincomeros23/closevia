@@ -660,10 +660,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			Action                  string `json:"action"`
 			DeliveryType            string `json:"delivery_type,omitempty"`
 			PaymentMethod           string `json:"payment_method,omitempty"`
-			PaymentConfirmed        bool   `json:"payment_confirmed"`
+			PaymentConfirmed        *bool  `json:"payment_confirmed,omitempty"`
 			ProofOfDelivery         string `json:"proof_of_delivery,omitempty"`
-			BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
-			SellerConfirmedDelivery bool   `json:"seller_confirmed_delivery"`
+			BuyerConfirmedReceipt   *bool  `json:"buyer_confirmed_receipt,omitempty"`
+			SellerConfirmedDelivery *bool  `json:"seller_confirmed_delivery,omitempty"`
 		}
 
 		var deliveryPayload DeliveryStatePayload
@@ -687,17 +687,22 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			updateFields = append(updateFields, "payment_method = ?")
 			updateArgs = append(updateArgs, deliveryPayload.PaymentMethod)
 		}
-		// Always update boolean fields since client sends them
-		updateFields = append(updateFields, "payment_confirmed = ?")
-		updateArgs = append(updateArgs, deliveryPayload.PaymentConfirmed)
+		if deliveryPayload.PaymentConfirmed != nil {
+			updateFields = append(updateFields, "payment_confirmed = ?")
+			updateArgs = append(updateArgs, *deliveryPayload.PaymentConfirmed)
+		}
 		if deliveryPayload.ProofOfDelivery != "" {
 			updateFields = append(updateFields, "proof_of_delivery = ?")
 			updateArgs = append(updateArgs, deliveryPayload.ProofOfDelivery)
 		}
-		updateFields = append(updateFields, "buyer_confirmed_receipt = ?")
-		updateArgs = append(updateArgs, deliveryPayload.BuyerConfirmedReceipt)
-		updateFields = append(updateFields, "seller_confirmed_delivery = ?")
-		updateArgs = append(updateArgs, deliveryPayload.SellerConfirmedDelivery)
+		if deliveryPayload.BuyerConfirmedReceipt != nil {
+			updateFields = append(updateFields, "buyer_confirmed_receipt = ?")
+			updateArgs = append(updateArgs, *deliveryPayload.BuyerConfirmedReceipt)
+		}
+		if deliveryPayload.SellerConfirmedDelivery != nil {
+			updateFields = append(updateFields, "seller_confirmed_delivery = ?")
+			updateArgs = append(updateArgs, *deliveryPayload.SellerConfirmedDelivery)
+		}
 
 		if len(updateFields) == 0 {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No fields to update"})
