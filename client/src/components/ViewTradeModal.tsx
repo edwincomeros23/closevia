@@ -87,14 +87,19 @@ interface DeliveryState {
   deliveryType: 'standard' | 'express' | 'meetup'
   paymentMethod: 'gcash' | 'cod' | 'wallet'
   paymentConfirmed: boolean
-  proofOfDelivery: string | null
   buyerConfirmedReceipt: boolean
   sellerConfirmedDelivery: boolean
+  deliveryInstructions: string
+  senderLocation?: string
+  receiverLocation?: string
+  assignedRider?: {
+    name: string
+    phone: string
+  }
   expandedSections: {
     options: boolean
     payment: boolean
     details: boolean
-    proof: boolean
     completion: boolean
   }
 }
@@ -254,7 +259,6 @@ interface DeliveryTabProps {
   isUserSeller: boolean
   isUserBuyer: boolean
   toggleSection: (section: keyof DeliveryState['expandedSections']) => void
-  handleProofUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   setIsReviewModalOpen: (open: boolean) => void
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
@@ -271,7 +275,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   isUserSeller,
   isUserBuyer,
   toggleSection,
-  handleProofUpload,
   handleConfirmPayment,
   handleConfirmDelivery,
   saveDeliveryState,
@@ -569,129 +572,10 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           >
             <HStack spacing={3} flex={1}>
               <Icon as={FiMapPin} boxSize={5} color="purple.500" />
-              <Text fontWeight="semibold">Delivery Details</Text>
-            </HStack>
-            <AccordionIcon />
-          </AccordionButton>
-
-          <AccordionPanel pb={4} pt={4}>
-            <VStack spacing={5} align="stretch">
-              {/* Map Preview */}
-              <Box
-                w="full"
-                h="150px"
-                bg="gray.100"
-                borderRadius="lg"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                borderWidth="2px"
-                borderColor="gray.200"
-                borderStyle="dashed"
-              >
-                <VStack spacing={2}>
-                  <Icon as={FiMapPin} boxSize={6} color="gray.400" />
-                  <Text fontSize="xs" color="gray.500">
-                    Static map preview
-                  </Text>
-                </VStack>
-              </Box>
-
-              {/* Sender Address */}
-              <Box>
-                <Label fontWeight="semibold" mb={2} display="flex" alignItems="center" gap={2}>
-                  <Icon as={FaMapMarkerAlt} color="blue.500" />
-                  Sender Address
-                </Label>
-                <Input
-                  placeholder="123 Main Street, Manila"
-                  value={trade?.delivery_address || ''}
-                  isReadOnly
-                  size="sm"
-                  mb={2}
-                  bg="gray.50"
-                />
-                <InputGroup>
-                  <InputLeftElement pointerEvents="none">
-                    <Icon as={FiPhone} color="gray.400" />
-                  </InputLeftElement>
-                  <Input
-                    placeholder="+63 912 345 6789"
-                    size="sm"
-                    bg="gray.50"
-                  />
-                </InputGroup>
-              </Box>
-
-              <Divider />
-
-              {/* Receiver Address */}
-              <Box>
-                <Label fontWeight="semibold" mb={2} display="flex" alignItems="center" gap={2}>
-                  <Icon as={FaMapMarkerAlt} color="green.500" />
-                  Receiver Address
-                </Label>
-                <Input
-                  placeholder="Receiver's full address"
-                  size="sm"
-                  mb={2}
-                  bg="white"
-                  borderWidth="1px"
-                />
-                <InputGroup>
-                  <InputLeftElement pointerEvents="none">
-                    <Icon as={FiPhone} color="gray.400" />
-                  </InputLeftElement>
-                  <Input
-                    placeholder="Receiver's contact number"
-                    size="sm"
-                    bg="white"
-                    borderWidth="1px"
-                  />
-                </InputGroup>
-              </Box>
-
-              <Divider />
-
-              {/* Delivery Notes */}
-              <Box>
-                <Label fontWeight="semibold" mb={2}>
-                  Delivery Instructions (Optional)
-                </Label>
-                <Textarea
-                  placeholder="e.g., Leave at the gate, Ring doorbell twice, Do not leave in rain..."
-                  size="sm"
-                  rows={3}
-                  bg="white"
-                  borderWidth="1px"
-                />
-              </Box>
-            </VStack>
-          </AccordionPanel>
-        </AccordionItem>
-
-        {/* 4. PROOF OF DELIVERY */}
-        <AccordionItem
-          border="2px"
-          borderColor={deliveryState.expandedSections.proof ? 'orange.400' : 'gray.200'}
-          borderRadius="lg"
-          bg={deliveryState.expandedSections.proof ? 'orange.50' : 'white'}
-          overflow="hidden"
-          mt={3}
-          isDisabled={!deliveryState.paymentConfirmed}
-        >
-          <AccordionButton
-            onClick={() => toggleSection('proof')}
-            _hover={{ bg: deliveryState.expandedSections.proof ? 'orange.100' : 'gray.50' }}
-            py={4}
-            opacity={deliveryState.paymentConfirmed ? 1 : 0.5}
-          >
-            <HStack spacing={3} flex={1}>
-              <Icon as={FiPackage} boxSize={5} color="orange.500" />
               <VStack align="start" spacing={0}>
-                <Text fontWeight="semibold">Proof of Delivery</Text>
+                <Text fontWeight="semibold">Delivery Instructions</Text>
                 <Text fontSize="xs" color="gray.500">
-                  {deliveryState.proofOfDelivery ? '✓ Photo uploaded' : 'Upload delivery photo'}
+                  {deliveryState.deliveryInstructions ? '✓ Added' : 'Optional notes'}
                 </Text>
               </VStack>
             </HStack>
@@ -700,98 +584,38 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
           <AccordionPanel pb={4} pt={4}>
             <VStack spacing={4} align="stretch">
-              {!deliveryState.paymentConfirmed && (
-                <Box p={3} bg="yellow.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="yellow.400">
-                  <Text fontSize="sm" color="yellow.700">
-                    🔒 Complete payment first to upload proof of delivery
-                  </Text>
-                </Box>
-              )}
+              <Box p={3} bg="blue.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
+                <Text fontSize="sm" color="blue.700">
+                  ℹ️ Sender and receiver addresses are auto-detected from your locations
+                </Text>
+              </Box>
 
-              {deliveryState.proofOfDelivery ? (
-                <Box>
-                  <Image
-                    src={deliveryState.proofOfDelivery}
-                    alt="Proof of delivery"
-                    w="full"
-                    h="250px"
-                    objectFit="cover"
-                    borderRadius="lg"
-                    mb={3}
-                  />
-                  <HStack spacing={2} justify="space-between" mb={3}>
-                    <Text fontSize="sm" color="gray.600">
-                      ✓ Delivered on {new Date().toLocaleDateString()}
-                    </Text>
-                    <Badge colorScheme="green">Confirmed</Badge>
-                  </HStack>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    size="sm"
-                    display="none"
-                    id="proof-upload"
-                    onChange={handleProofUpload}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    colorScheme="orange"
-                    w="full"
-                    onClick={() => document.getElementById('proof-upload')?.click()}
-                    leftIcon={<FiUpload />}
-                  >
-                    Replace Photo
-                  </Button>
-                </Box>
-              ) : (
-                <Box
-                  p={6}
-                  border="2px dashed"
-                  borderColor="orange.300"
-                  borderRadius="lg"
-                  textAlign="center"
-                  cursor="pointer"
-                  bg="orange.50"
-                  transition="all 0.2s"
-                  _hover={{ borderColor: 'orange.400', bg: 'orange.100' }}
-                  onClick={() => document.getElementById('proof-upload')?.click()}
-                >
-                  <VStack spacing={2}>
-                    <Icon as={FiUpload} boxSize={8} color="orange.500" />
-                    <Text fontWeight="medium" color="orange.700">
-                      Click to upload delivery photo
-                    </Text>
-                    <Text fontSize="xs" color="orange.600">
-                      or drag and drop
-                    </Text>
-                    <Text fontSize="2xs" color="gray.500">
-                      PNG, JPG up to 10MB
-                    </Text>
-                  </VStack>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    size="sm"
-                    display="none"
-                    id="proof-upload"
-                    onChange={handleProofUpload}
-                  />
-                </Box>
-              )}
-
-              {isUserSeller && (
-                <Box p={3} bg="blue.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
-                  <Text fontSize="sm" color="blue.700">
-                    📸 This photo will be visible to the buyer as proof of delivery
-                  </Text>
-                </Box>
-              )}
+              <Box>
+                <Label fontWeight="semibold" mb={2}>
+                  Delivery Instructions (Optional)
+                </Label>
+                <Textarea
+                  value={deliveryState.deliveryInstructions}
+                  onChange={(e) => setDeliveryState(prev => ({
+                    ...prev,
+                    deliveryInstructions: e.target.value,
+                  }))}
+                  onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
+                  placeholder="e.g., Landmark: Red gate, Leave with guard, Do not leave in rain..."
+                  size="sm"
+                  rows={3}
+                  bg="white"
+                  borderWidth="1px"
+                />
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  {deliveryState.deliveryInstructions.length}/200 characters
+                </Text>
+              </Box>
             </VStack>
           </AccordionPanel>
         </AccordionItem>
 
-        {/* 5. TRADE COMPLETION */}
+        {/* 4. TRADE COMPLETION */}
         <AccordionItem
           border="2px"
           borderColor={deliveryState.expandedSections.completion ? 'green.400' : 'gray.200'}
@@ -799,13 +623,13 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           bg={bothConfirmed ? 'green.50' : deliveryState.expandedSections.completion ? 'green.50' : 'white'}
           overflow="hidden"
           mt={3}
-          isDisabled={!deliveryState.paymentConfirmed || !deliveryState.proofOfDelivery}
+          isDisabled={!deliveryState.paymentConfirmed}
         >
           <AccordionButton
             onClick={() => toggleSection('completion')}
             _hover={{ bg: deliveryState.expandedSections.completion ? 'green.100' : 'gray.50' }}
             py={4}
-            opacity={deliveryState.paymentConfirmed && deliveryState.proofOfDelivery ? 1 : 0.5}
+            opacity={deliveryState.paymentConfirmed ? 1 : 0.5}
           >
             <HStack spacing={3} flex={1}>
               <Icon as={FiCheck} boxSize={5} color={bothConfirmed ? 'green.500' : 'green.400'} />
@@ -821,10 +645,10 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
           <AccordionPanel pb={4} pt={4}>
             <VStack spacing={5} align="stretch">
-              {!deliveryState.paymentConfirmed || !deliveryState.proofOfDelivery ? (
+              {!deliveryState.paymentConfirmed ? (
                 <Box p={3} bg="yellow.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="yellow.400">
                   <Text fontSize="sm" color="yellow.700">
-                    ⏳ Complete payment and upload proof to finalize delivery
+                    ⏳ Complete payment to finalize delivery
                   </Text>
                 </Box>
               ) : null}
@@ -916,46 +740,10 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 </CardBody>
               </Card>
 
-              {/* Confirm Button */}
-              <Button
-                colorScheme="green"
-                size="lg"
-                onClick={handleConfirmDelivery}
-                isDisabled={Boolean(
-                  !deliveryState.paymentConfirmed ||
-                  !deliveryState.proofOfDelivery ||
-                  (isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
-                  (isUserSeller && deliveryState.sellerConfirmedDelivery)
-                )}
-                leftIcon={
-                  (isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
-                  (isUserSeller && deliveryState.sellerConfirmedDelivery) ? (
-                    <FiCheck />
-                  ) : undefined
-                }
-                w="full"
-                transition="all 0.2s"
-                _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-              >
-                {(isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
-                (isUserSeller && deliveryState.sellerConfirmedDelivery)
-                  ? '✓ You Confirmed Receipt'
-                  : isUserBuyer
-                  ? 'Confirm Receipt'
-                  : 'Confirm Delivery Sent'}
-              </Button>
+              {/* Confirm Button - Hidden, goes directly to review */}
 
               {bothConfirmed && (
                 <VStack spacing={4}>
-                  <Box p={4} bg="green.50" borderRadius="lg" borderWidth="2px" borderColor="green.200" textAlign="center">
-                    <Icon as={FiCheck} boxSize={8} color="green.500" mb={2} mx="auto" display="block" />
-                    <Text fontWeight="bold" color="green.700" mb={1}>
-                      Trade Complete!
-                    </Text>
-                    <Text fontSize="sm" color="green.600">
-                      Both parties have confirmed delivery. You can now leave feedback.
-                    </Text>
-                  </Box>
 
                   <Button
                     colorScheme="green"
@@ -1347,14 +1135,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     deliveryType: 'standard',
     paymentMethod: 'gcash',
     paymentConfirmed: false,
-    proofOfDelivery: null,
     buyerConfirmedReceipt: false,
     sellerConfirmedDelivery: false,
+    deliveryInstructions: '',
     expandedSections: {
       options: true,
       payment: false,
       details: false,
-      proof: false,
       completion: false,
     },
   })
@@ -1387,9 +1174,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       if (updates.deliveryType) payload.delivery_type = updates.deliveryType
       if (updates.paymentMethod) payload.payment_method = updates.paymentMethod
       if (updates.paymentConfirmed !== undefined) payload.payment_confirmed = updates.paymentConfirmed
-      if (updates.proofOfDelivery !== undefined) payload.proof_of_delivery = updates.proofOfDelivery
       if (updates.buyerConfirmedReceipt !== undefined) payload.buyer_confirmed_receipt = updates.buyerConfirmedReceipt
       if (updates.sellerConfirmedDelivery !== undefined) payload.seller_confirmed_delivery = updates.sellerConfirmedDelivery
+      if (updates.deliveryInstructions !== undefined) payload.delivery_instructions = updates.deliveryInstructions
       
       console.log('Sending delivery state payload:', payload, 'to trade:', trade.id)
       const response = await api.put(`/api/trades/${trade.id}`, payload)
@@ -1411,14 +1198,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
               case 'paymentConfirmed':
                 acc.payment_confirmed = value as boolean
                 break
-              case 'proofOfDelivery':
-                acc.proof_of_delivery = value as string | null
-                break
               case 'buyerConfirmedReceipt':
                 acc.buyer_confirmed_receipt = value as boolean
                 break
               case 'sellerConfirmedDelivery':
                 acc.seller_confirmed_delivery = value as boolean
+                break
+              case 'deliveryInstructions':
+                acc.delivery_instructions = value as string
                 break
             }
           }
@@ -1453,7 +1240,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         delivery_type: trade.delivery_type,
         payment_method: trade.payment_method,
         payment_confirmed: trade.payment_confirmed,
-        proof_of_delivery: trade.proof_of_delivery,
         buyer_confirmed_receipt: trade.buyer_confirmed_receipt,
         seller_confirmed_delivery: trade.seller_confirmed_delivery
       })
@@ -1463,9 +1249,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         deliveryType: (trade.delivery_type as any) || 'standard',
         paymentMethod: (trade.payment_method as any) || 'gcash',
         paymentConfirmed: trade.payment_confirmed || false,
-        proofOfDelivery: trade.proof_of_delivery || null,
         buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
         sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
+        senderLocation: (trade as any).seller_location || 'Seller location - From product listing',
+        receiverLocation: (trade as any).buyer_location || 'Buyer location - From user profile',
+        assignedRider: {
+          name: 'Juan Dela Cruz (Mock Rider)',
+          phone: '+63 917 123 4567'
+        }
       }))
 
       console.log('Delivery state loaded:', {
@@ -1639,40 +1430,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }))
   }
 
-  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const reader = new FileReader()
-      reader.onloadend = async () => {
-        const proofData = reader.result as string
-        setDeliveryState(prev => ({
-          ...prev,
-          proofOfDelivery: proofData,
-        }))
-        
-        // Save proof of delivery to backend
-        try {
-          await api.put(`/api/trades/${trade?.id}`, {
-            action: 'update_delivery_state',
-            proof_of_delivery: proofData,
-          })
-          toast({
-            title: 'Proof of delivery uploaded',
-            status: 'success',
-            duration: 2000,
-          })
-        } catch (error) {
-          toast({
-            title: 'Failed to save proof',
-            description: 'Please try again',
-            status: 'error',
-            duration: 2000,
-          })
-        }
-      }
-      reader.readAsDataURL(e.target.files[0])
-    }
-  }
-
   const handleConfirmPayment = async () => {
     try {
       // Save payment confirmation to backend
@@ -1717,16 +1474,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
   const handleConfirmDelivery = async () => {
-    if (!deliveryState.proofOfDelivery && isUserSeller) {
-      toast({
-        title: 'Proof required',
-        description: 'Please upload delivery proof before confirming',
-        status: 'warning',
-        duration: 3000,
-      })
-      return
-    }
-
     try {
       const confirmationPayload: any = {
         action: 'update_delivery_state',
@@ -2028,6 +1775,95 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       </Text>
                     </HStack>
                   </Box>
+
+                  {/* Delivery Information - Show for delivery trades after payment confirmed */}
+                  {trade?.trade_option === 'delivery' && deliveryState.paymentConfirmed && (
+                    <>
+                      <Divider />
+                      <Box>
+                        <Text fontWeight="semibold" mb={4} fontSize="md">
+                          Delivery Information
+                        </Text>
+                        <VStack spacing={3} align="stretch">
+                          {/* Sender Address */}
+                          <Card variant="outline" borderColor="blue.300">
+                            <CardBody p={4}>
+                              <HStack spacing={3} mb={2}>
+                                <Icon as={FaMapMarkerAlt} color="blue.500" boxSize={5} />
+                                <Text fontWeight="semibold" fontSize="sm">Sender Location</Text>
+                              </HStack>
+                              <Text fontSize="sm" color="gray.700" ml={8}>
+                                {deliveryState.senderLocation || 'Auto-detecting sender location...'}
+                              </Text>
+                              {isUserSeller && (
+                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                  (Your location - from product listing)
+                                </Text>
+                              )}
+                            </CardBody>
+                          </Card>
+
+                          {/* Receiver Address */}
+                          <Card variant="outline" borderColor="green.300">
+                            <CardBody p={4}>
+                              <HStack spacing={3} mb={2}>
+                                <Icon as={FaMapMarkerAlt} color="green.500" boxSize={5} />
+                                <Text fontWeight="semibold" fontSize="sm">Receiver Location</Text>
+                              </HStack>
+                              <Text fontSize="sm" color="gray.700" ml={8}>
+                                {deliveryState.receiverLocation || 'Auto-detecting receiver location...'}
+                              </Text>
+                              {isUserBuyer && (
+                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                  (Your location - from your profile)
+                                </Text>
+                              )}
+                            </CardBody>
+                          </Card>
+
+                          {/* Delivery Instructions */}
+                          {deliveryState.deliveryInstructions && (
+                            <Card variant="outline" borderColor="purple.300">
+                              <CardBody p={4}>
+                                <HStack spacing={3} mb={2}>
+                                  <Icon as={FiMapPin} color="purple.500" boxSize={5} />
+                                  <Text fontWeight="semibold" fontSize="sm">Special Instructions</Text>
+                                </HStack>
+                                <Text fontSize="sm" color="gray.700" ml={8} fontStyle="italic">
+                                  "{deliveryState.deliveryInstructions}"
+                                </Text>
+                              </CardBody>
+                            </Card>
+                          )}
+
+                          {/* Assigned Rider */}
+                          <Card variant="outline" borderColor="orange.300" bg="orange.50">
+                            <CardBody p={4}>
+                              <HStack spacing={3} mb={2}>
+                                <Avatar
+                                  name="Juan Dela Cruz"
+                                  size="sm"
+                                  bg="orange.500"
+                                  color="white"
+                                />
+                                <Box flex={1}>
+                                  <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
+                                  <Text fontSize="sm" color="gray.700">Juan Dela Cruz (Mock Rider)</Text>
+                                </Box>
+                              </HStack>
+                              <HStack spacing={2} ml={8} mt={2}>
+                                <Icon as={FiPhone} color="orange.500" boxSize={4} />
+                                <Text fontSize="sm" color="gray.700">+63 917 123 4567</Text>
+                              </HStack>
+                              <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                🎭 This is a mock rider for demonstration
+                              </Text>
+                            </CardBody>
+                          </Card>
+                        </VStack>
+                      </Box>
+                    </>
+                  )}
                 </VStack>
               </TabPanel>
 
@@ -2152,7 +1988,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     isUserSeller={isUserSeller ?? false}
                     isUserBuyer={isUserBuyer ?? false}
                     toggleSection={toggleSection}
-                    handleProofUpload={handleProofUpload}
                     handleConfirmPayment={handleConfirmPayment}
                     handleConfirmDelivery={handleConfirmDelivery}
                     saveDeliveryState={saveDeliveryState}
