@@ -657,6 +657,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		// Check which fields to update based on payload
 		type DeliveryStatePayload struct {
+			Action                  string `json:"action"`
 			DeliveryType            string `json:"delivery_type"`
 			PaymentMethod           string `json:"payment_method"`
 			PaymentConfirmed        *bool  `json:"payment_confirmed"`
@@ -666,31 +667,41 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		}
 
 		var deliveryPayload DeliveryStatePayload
-		if err := c.BodyParser(&deliveryPayload); err == nil {
-			if deliveryPayload.DeliveryType != "" {
-				updateFields = append(updateFields, "delivery_type = ?")
-				updateArgs = append(updateArgs, deliveryPayload.DeliveryType)
-			}
-			if deliveryPayload.PaymentMethod != "" {
-				updateFields = append(updateFields, "payment_method = ?")
-				updateArgs = append(updateArgs, deliveryPayload.PaymentMethod)
-			}
-			if deliveryPayload.PaymentConfirmed != nil {
-				updateFields = append(updateFields, "payment_confirmed = ?")
-				updateArgs = append(updateArgs, *deliveryPayload.PaymentConfirmed)
-			}
-			if deliveryPayload.ProofOfDelivery != "" {
-				updateFields = append(updateFields, "proof_of_delivery = ?")
-				updateArgs = append(updateArgs, deliveryPayload.ProofOfDelivery)
-			}
-			if deliveryPayload.BuyerConfirmedReceipt != nil {
-				updateFields = append(updateFields, "buyer_confirmed_receipt = ?")
-				updateArgs = append(updateArgs, *deliveryPayload.BuyerConfirmedReceipt)
-			}
-			if deliveryPayload.SellerConfirmedDelivery != nil {
-				updateFields = append(updateFields, "seller_confirmed_delivery = ?")
-				updateArgs = append(updateArgs, *deliveryPayload.SellerConfirmedDelivery)
-			}
+		if err := c.BodyParser(&deliveryPayload); err != nil {
+			log.Printf("Failed to parse delivery state payload: %v", err)
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid delivery state payload"})
+		}
+
+		// Check if payload was parsed successfully
+		if deliveryPayload.Action == "" {
+			log.Printf("Delivery state payload missing action field")
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Missing action in delivery state payload"})
+		}
+
+		// Process delivery state fields
+		if deliveryPayload.DeliveryType != "" {
+			updateFields = append(updateFields, "delivery_type = ?")
+			updateArgs = append(updateArgs, deliveryPayload.DeliveryType)
+		}
+		if deliveryPayload.PaymentMethod != "" {
+			updateFields = append(updateFields, "payment_method = ?")
+			updateArgs = append(updateArgs, deliveryPayload.PaymentMethod)
+		}
+		if deliveryPayload.PaymentConfirmed != nil {
+			updateFields = append(updateFields, "payment_confirmed = ?")
+			updateArgs = append(updateArgs, *deliveryPayload.PaymentConfirmed)
+		}
+		if deliveryPayload.ProofOfDelivery != "" {
+			updateFields = append(updateFields, "proof_of_delivery = ?")
+			updateArgs = append(updateArgs, deliveryPayload.ProofOfDelivery)
+		}
+		if deliveryPayload.BuyerConfirmedReceipt != nil {
+			updateFields = append(updateFields, "buyer_confirmed_receipt = ?")
+			updateArgs = append(updateArgs, *deliveryPayload.BuyerConfirmedReceipt)
+		}
+		if deliveryPayload.SellerConfirmedDelivery != nil {
+			updateFields = append(updateFields, "seller_confirmed_delivery = ?")
+			updateArgs = append(updateArgs, *deliveryPayload.SellerConfirmedDelivery)
 		}
 
 		if len(updateFields) == 0 {
