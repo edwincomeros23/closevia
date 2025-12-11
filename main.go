@@ -115,6 +115,48 @@ func main() {
 			"product_count": count,
 		})
 	})
+
+	// Check trades table and delivery state columns
+	app.Get("/test-trades-db", func(c *fiber.Ctx) error {
+		// Check if trades table exists
+		var tradeCount int
+		err := database.DB.QueryRow("SELECT COUNT(*) FROM trades").Scan(&tradeCount)
+		if err != nil {
+			return c.JSON(fiber.Map{
+				"success": false,
+				"error":   "Trades table error: " + err.Error(),
+			})
+		}
+
+		// Check delivery state columns
+		columns := []string{
+			"delivery_type", "payment_method", "payment_confirmed",
+			"proof_of_delivery", "buyer_confirmed_receipt", "seller_confirmed_delivery",
+		}
+
+		missingColumns := []string{}
+		for _, col := range columns {
+			var count int
+			err := database.DB.QueryRow(`
+				SELECT COUNT(*)
+				FROM information_schema.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE()
+				AND TABLE_NAME = 'trades'
+				AND COLUMN_NAME = ?
+			`, col).Scan(&count)
+
+			if err != nil || count == 0 {
+				missingColumns = append(missingColumns, col)
+			}
+		}
+
+		return c.JSON(fiber.Map{
+			"success":         true,
+			"trade_count":     tradeCount,
+			"missing_columns": missingColumns,
+			"schema_status":   "OK",
+		})
+	})
 	app.Get("/api/fix-profile-picture", func(c *fiber.Ctx) error {
 		if _, err := database.DB.Exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL"); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
