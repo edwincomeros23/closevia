@@ -944,15 +944,29 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               </Button>
 
               {bothConfirmed && (
-                <Box p={4} bg="green.50" borderRadius="lg" borderWidth="2px" borderColor="green.200" textAlign="center">
-                  <Icon as={FiCheck} boxSize={8} color="green.500" mb={2} mx="auto" display="block" />
-                  <Text fontWeight="bold" color="green.700" mb={1}>
-                    Trade Complete!
-                  </Text>
-                  <Text fontSize="sm" color="green.600">
-                    Both parties have confirmed delivery. You can now leave feedback.
-                  </Text>
-                </Box>
+                <VStack spacing={4}>
+                  <Box p={4} bg="green.50" borderRadius="lg" borderWidth="2px" borderColor="green.200" textAlign="center">
+                    <Icon as={FiCheck} boxSize={8} color="green.500" mb={2} mx="auto" display="block" />
+                    <Text fontWeight="bold" color="green.700" mb={1}>
+                      Trade Complete!
+                    </Text>
+                    <Text fontSize="sm" color="green.600">
+                      Both parties have confirmed delivery. You can now leave feedback.
+                    </Text>
+                  </Box>
+
+                  <Button
+                    colorScheme="green"
+                    size="lg"
+                    onClick={() => setIsReviewModalOpen(true)}
+                    leftIcon={<FaStar />}
+                    w="full"
+                    transition="all 0.2s"
+                    _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                  >
+                    ✓ Leave Review & Complete Trade
+                  </Button>
+                </VStack>
               )}
             </VStack>
           </AccordionPanel>
@@ -1381,36 +1395,42 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
       // Update local trade state with the new delivery data
       if (trade && onTradeUpdate) {
+        const updatedFields = Object.keys(updates).reduce((acc, key) => {
+          const value = updates[key as keyof DeliveryState]
+          if (value !== undefined) {
+            // Map frontend field names to backend field names
+            switch (key) {
+              case 'deliveryType':
+                acc.delivery_type = value as 'standard' | 'express' | 'meetup'
+                break
+              case 'paymentMethod':
+                acc.payment_method = value as 'gcash' | 'cod' | 'wallet'
+                break
+              case 'paymentConfirmed':
+                acc.payment_confirmed = value as boolean
+                break
+              case 'proofOfDelivery':
+                acc.proof_of_delivery = value as string | null
+                break
+              case 'buyerConfirmedReceipt':
+                acc.buyer_confirmed_receipt = value as boolean
+                break
+              case 'sellerConfirmedDelivery':
+                acc.seller_confirmed_delivery = value as boolean
+                break
+            }
+          }
+          return acc
+        }, {} as any)
+
         const updatedTrade: Trade = {
           ...trade,
-          ...Object.keys(updates).reduce((acc, key) => {
-            const value = updates[key as keyof DeliveryState]
-            if (value !== undefined) {
-              // Map frontend field names to backend field names
-              switch (key) {
-                case 'deliveryType':
-                  acc.delivery_type = value as 'standard' | 'express' | 'meetup'
-                  break
-                case 'paymentMethod':
-                  acc.payment_method = value as 'gcash' | 'cod' | 'wallet'
-                  break
-                case 'paymentConfirmed':
-                  acc.payment_confirmed = value as boolean
-                  break
-                case 'proofOfDelivery':
-                  acc.proof_of_delivery = value as string | null
-                  break
-                case 'buyerConfirmedReceipt':
-                  acc.buyer_confirmed_receipt = value as boolean
-                  break
-                case 'sellerConfirmedDelivery':
-                  acc.seller_confirmed_delivery = value as boolean
-                  break
-              }
-            }
-            return acc
-          }, {} as any)
+          ...updatedFields,
+          updated_at: new Date().toISOString() // Force re-render
         }
+
+        console.log('Updating trade with delivery fields:', updatedFields)
+        console.log('Updated trade object:', updatedTrade)
         onTradeUpdate(updatedTrade)
       }
 
@@ -1427,6 +1447,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   // Load delivery state from trade data when trade changes
   useEffect(() => {
     if (trade && trade.trade_option === 'delivery') {
+      console.log('Loading delivery state from trade:', {
+        delivery_type: trade.delivery_type,
+        payment_method: trade.payment_method,
+        payment_confirmed: trade.payment_confirmed,
+        proof_of_delivery: trade.proof_of_delivery,
+        buyer_confirmed_receipt: trade.buyer_confirmed_receipt,
+        seller_confirmed_delivery: trade.seller_confirmed_delivery
+      })
+
       setDeliveryState(prev => ({
         ...prev,
         deliveryType: (trade.delivery_type as any) || 'standard',
@@ -1436,8 +1465,16 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
         sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
       }))
+
+      console.log('Delivery state loaded:', {
+        deliveryType: (trade.delivery_type as any) || 'standard',
+        paymentMethod: (trade.payment_method as any) || 'gcash',
+        paymentConfirmed: trade.payment_confirmed || false,
+        buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
+        sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
+      })
     }
-  }, [trade?.id, trade?.trade_option])
+  }, [trade?.id, trade?.trade_option, trade?.updated_at])
 
   // Fetch trade messages
   useEffect(() => {
