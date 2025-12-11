@@ -742,7 +742,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
               {/* Confirm Button - Hidden, goes directly to review */}
 
-              {bothConfirmed && (
+              {(deliveryState.paymentConfirmed && deliveryState.deliveryInstructions) || bothConfirmed ? (
                 <VStack spacing={4}>
 
                   <Button
@@ -757,7 +757,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                     ✓ Leave Review & Complete Trade
                   </Button>
                 </VStack>
-              )}
+              ) : null}
             </VStack>
           </AccordionPanel>
         </AccordionItem>
