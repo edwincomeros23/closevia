@@ -37,7 +37,15 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   // is incorrect during initialization. Read token from localStorage instead
   // which is safe even if `AuthProvider` isn't present yet.
   const [token] = useState<string | null>(() => localStorage.getItem('clovia_token'))
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<Product[]>(() => {
+    // Try to restore from localStorage on mount
+    try {
+      const cached = localStorage.getItem('clovia_home_products')
+      return cached ? JSON.parse(cached) : []
+    } catch {
+      return []
+    }
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState<boolean>(true)
@@ -46,6 +54,22 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const [currentFilters, setCurrentFilters] = useState<SearchFilters | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const locationRequested = useRef(false)
+  
+  // Cache management refs
+  const cacheRef = useRef<{ filters: string; products: Product[]; timestamp: number } | null>(null)
+  const pendingRequestRef = useRef<Promise<void> | null>(null)
+  const hasInitialized = useRef(false)
+
+  // Persist products to localStorage
+  useEffect(() => {
+    if (products.length > 0) {
+      try {
+        localStorage.setItem('clovia_home_products', JSON.stringify(products))
+      } catch (e) {
+        console.warn('Failed to persist products:', e)
+      }
+    }
+  }, [products])
 
   // Get user's current location
   useEffect(() => {
@@ -144,19 +168,6 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
-  // Helper function to retry failed requests
-  const retryRequest = async (fn: () => Promise<any>, maxRetries: number = 3) => {
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        return await fn()
-      } catch (error) {
-        if (i === maxRetries - 1) throw error
-        // Wait before retrying (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000))
-      }
-    }
-  }
-
   // Helper function to get headers with auth token
   const getAuthHeaders = () => {
     const headers: any = {}
@@ -169,59 +180,86 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const searchProducts = async (filters: SearchFilters) => {
     try {
       console.log('Searching products with filters:', filters)
-      setLoading(true)
-      setError(null)
-      setCurrentFilters(filters)
+      const filterKey = JSON.stringify(filters)
       
-      const params = new URLSearchParams()
-      if (filters.keyword) params.append('keyword', filters.keyword)
-      if (filters.min_price) params.append('min_price', filters.min_price.toString())
-      if (filters.max_price) params.append('max_price', filters.max_price.toString())
-      if (filters.premium !== undefined) params.append('premium', filters.premium.toString())
-      if (filters.status) params.append('status', filters.status)
-      if (filters.seller_id) params.append('seller_id', filters.seller_id.toString())
-      if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
-      if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
-      if (filters.location) params.append('location', filters.location)
-      params.append('page', (filters.page || 1).toString())
-      params.append('limit', (filters.limit || 10).toString())
+      // Return cached data if available and identical filters
+      if (cacheRef.current && cacheRef.current.filters === filterKey) {
+        console.log('Using cached products for filters:', filters)
+        safeSetProducts(cacheRef.current.products)
+        setHasMore(true)
+        return
+      }
+      
+      // Return pending request if same request is already in flight
+      if (pendingRequestRef.current) {
+        console.log('Request already pending, returning existing promise')
+        return pendingRequestRef.current
+      }
+      
+      // Create the fetch promise
+      const fetchPromise = (async () => {
+        setLoading(true)
+        setError(null)
+        setCurrentFilters(filters)
+        
+        const params = new URLSearchParams()
+        if (filters.keyword) params.append('keyword', filters.keyword)
+        if (filters.min_price) params.append('min_price', filters.min_price.toString())
+        if (filters.max_price) params.append('max_price', filters.max_price.toString())
+        if (filters.premium !== undefined) params.append('premium', filters.premium.toString())
+        if (filters.status) params.append('status', filters.status)
+        if (filters.seller_id) params.append('seller_id', filters.seller_id.toString())
+        if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
+        if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
+        if (filters.location) params.append('location', filters.location)
+        params.append('page', (filters.page || 1).toString())
+        params.append('limit', (filters.limit || 10).toString())
 
-      const response = await retryRequest(async () => {
-        return await api.get(`/api/products?${params.toString()}`, {
+        const response = await api.get(`/api/products?${params.toString()}`, {
           headers: getAuthHeaders(),
         })
-      })
-      
-      console.log('API Response:', response.data)
-      
-      // Handle different response structures safely
-      if (response.data && response.data.data) {
-        const data = response.data.data as PaginatedResponse<Product>
-        if (data && data.data && Array.isArray(data.data)) {
-          console.log('Setting products from paginated response:', data.data.length)
-          safeSetProducts(data.data)
-          // Update pagination state
-          setCurrentPage(data.page || 1)
-          const total = data.total || 0
-          const limit = data.limit || (filters.limit || 10)
-          const loaded = data.data.length
-          // If returned fewer than limit, we know there's no more
-          setHasMore(loaded >= limit && (data.page < (data.total_pages || Number.MAX_SAFE_INTEGER)))
+        
+        console.log('API Response:', response.data)
+        
+        // Handle different response structures safely
+        if (response.data && response.data.data) {
+          const data = response.data.data as PaginatedResponse<Product>
+          if (data && data.data && Array.isArray(data.data)) {
+            console.log('Setting products from paginated response:', data.data.length)
+            safeSetProducts(data.data)
+            // Cache the result
+            cacheRef.current = { filters: filterKey, products: data.data, timestamp: Date.now() }
+            // Update pagination state
+            setCurrentPage(data.page || 1)
+            const total = data.total || 0
+            const limit = data.limit || (filters.limit || 10)
+            const loaded = data.data.length
+            // If returned fewer than limit, we know there's no more
+            setHasMore(loaded >= limit && (data.page < (data.total_pages || Number.MAX_SAFE_INTEGER)))
+          } else {
+            console.log('No products in paginated response')
+            safeSetProducts([])
+            setHasMore(false)
+          }
+        } else if (response.data && Array.isArray(response.data)) {
+          // Direct array response
+          console.log('Setting products from direct array response:', response.data.length)
+          safeSetProducts(response.data)
+          cacheRef.current = { filters: filterKey, products: response.data, timestamp: Date.now() }
+          setHasMore(false)
         } else {
-          console.log('No products in paginated response')
+          // Fallback to empty array
+          console.log('No products found, setting empty array')
           safeSetProducts([])
           setHasMore(false)
         }
-      } else if (response.data && Array.isArray(response.data)) {
-        // Direct array response
-        console.log('Setting products from direct array response:', response.data.length)
-        safeSetProducts(response.data)
-        setHasMore(false)
-      } else {
-        // Fallback to empty array
-        console.log('No products found, setting empty array')
-        safeSetProducts([])
-        setHasMore(false)
+      })()
+      
+      pendingRequestRef.current = fetchPromise
+      try {
+        await fetchPromise
+      } finally {
+        pendingRequestRef.current = null
       }
     } catch (error: any) {
       console.error('Error fetching products:', error)
