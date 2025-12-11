@@ -66,16 +66,46 @@ import ViewTradeModal from '../components/ViewTradeModal'
 import DeliveryRequestModal from '../components/DeliveryRequestModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 import MultiWayTradeUI from '../components/MultiWayTradeUI'
+import {
+  useDashboardProducts,
+  useDashboardOrders,
+  useDashboardCounts,
+  useSentOffers,
+  useReceivedOffers,
+  useOngoingTrades,
+  useTradeHistory,
+  usePrefetchDashboard,
+  useInvalidateDashboard,
+} from '../hooks/useDashboard'
 
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth()
-  const { getUserProducts, deleteProduct } = useProducts()
+  const { deleteProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
-  const [userProducts, setUserProducts] = useState<Product[]>([])
-  const [orders, setOrders] = useState<Order[]>([])
-  const [tradedItems, setTradedItems] = useState<Product[]>([])
-  const [dataLoading, setDataLoading] = useState(false)
+
+  // Use React Query hooks for cached data
+  const { data: userProducts = [], isLoading: productsLoading } = useDashboardProducts(user?.id)
+  const actualUserProducts = Array.isArray(userProducts) ? userProducts : []
+  const { data: orders = [] } = useDashboardOrders()
+  const { data: counts = { unread_notifications: 0, pending_offers: 0 } } = useDashboardCounts()
+  const { data: sentOffersData = [] } = useSentOffers()
+  const { data: receivedOffersData = [] } = useReceivedOffers()
+  const { data: ongoingTradesData = [] } = useOngoingTrades()
+  const { data: tradeHistoryData = [] } = useTradeHistory()
+
+  const { prefetchDashboardData } = usePrefetchDashboard(user?.id)
+  const { invalidateDashboard, invalidateProducts, invalidateOffers } = useInvalidateDashboard()
+
+  // Derived state from cached data
+  const tradedItems = useMemo(() =>
+    actualUserProducts.filter(p => p.status === 'traded' || p.status === 'sold'),
+    [actualUserProducts]
+  )
+
+  // Combined loading states
+  const offersLoading = !sentOffersData && !receivedOffersData && !ongoingTradesData
+
   const [activeTab, setActiveTab] = useState(0)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
@@ -85,8 +115,9 @@ const Dashboard: React.FC = () => {
   const itemsPerPage = 12
   const [popupOpen, setPopupOpen] = useState(false)
   const [popupConfig, setPopupConfig] = useState<any>(null)
-  const [unreadNotifications, setUnreadNotifications] = useState(0)
-  const [unreadOffers, setUnreadOffers] = useState(0)
+  // Notification counts from cached data
+  const unreadNotifications = counts?.unread_notifications || 0
+  const unreadOffers = counts?.pending_offers || 0
   const toast = useToast()
   
   // Product filters
@@ -97,26 +128,20 @@ const Dashboard: React.FC = () => {
   // Unified search - searches across all content
   const [unifiedSearch, setUnifiedSearch] = useState('')
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
-  
-  // Loading states
-  const [productsLoading, setProductsLoading] = useState(false)
   // notifications state (handled on /notifications page)
   // dev helper: when true, show multiple pages for testing even if there are no notifications
   const DEV_SHOW_PAGES_ALWAYS = true
   
-  // Offers state
-  const [incoming, setIncoming] = useState<Trade[]>([]) // received
-  const [outgoing, setOutgoing] = useState<Trade[]>([]) // sent
-  const [ongoingTradesData, setOngoingTradesData] = useState<Trade[]>([])
-  const [offersLoading, setOffersLoading] = useState(false)
-  const [sentLoaded, setSentLoaded] = useState(false)
-  const [receivedLoaded, setReceivedLoaded] = useState(false)
-  const [ongoingLoaded, setOngoingLoaded] = useState(false)
-  const [sentLoading, setSentLoading] = useState(false)
-  const [receivedLoading, setReceivedLoading] = useState(false)
-  const [ongoingLoading, setOngoingLoading] = useState(false)
-  const [tradeHistory, setTradeHistory] = useState<Trade[]>([])
-  const [tradeHistoryLoading, setTradeHistoryLoading] = useState(false)
+  // Offers data from React Query hooks (replacing local state)
+  const incoming = receivedOffersData // received offers
+  const outgoing = sentOffersData // sent offers
+  const tradeHistory = tradeHistoryData
+
+  // Loading states from React Query
+  const sentLoading = false // React Query handles this internally
+  const receivedLoading = false
+  const ongoingLoading = false
+  const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
   const [offersSubTab, setOffersSubTab] = useState(0) // 0: Sent, 1: Received, 2: Ongoing, 3: Completed
   const [offersPage, setOffersPage] = useState(1)
@@ -131,6 +156,8 @@ const Dashboard: React.FC = () => {
   const [declineModalOpen, setDeclineModalOpen] = useState(false)
   const [tradeToDecline, setTradeToDecline] = useState<Trade | null>(null)
   const [declineFeedback, setDeclineFeedback] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [processModalOpen, setProcessModalOpen] = useState(false)
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
   const notificationCountsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -153,10 +180,10 @@ const Dashboard: React.FC = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
   useEffect(() => {
-    if (user) {
-      fetchUserData()
+    if (user && user?.id) {
+      prefetchDashboardData()
     }
-  }, [user])
+  }, [user?.id, prefetchDashboardData])
 
   // Check if user is authenticated, redirect to login if not
   // Only redirect if not loading (to prevent race conditions after login)
@@ -174,55 +201,28 @@ const Dashboard: React.FC = () => {
     }
   }, [user, activeTab])
 
-  const fetchUserData = async () => {
-    if (!user) return
-    
-    setDataLoading(true)
-    setProductsLoading(true)
-    try {
-      // Fetch user products and orders in parallel (non-blocking)
-      const [productsResponse, ordersResponse] = await Promise.all([
-        getUserProducts(user.id),
-        api.get('/api/orders?type=bought'),
-      ])
-      
-      const allProducts = productsResponse.data
-      
-      // Separate available and traded items
-      const availableProducts = allProducts.filter(p => p.status === 'available')
-      const tradedProducts = allProducts.filter(p => p.status === 'traded' || p.status === 'sold')
-      
-      setUserProducts(availableProducts)
-      setTradedItems(tradedProducts)
-      setOrders(ordersResponse.data.data.data)
-      
-      // DO NOT fetch offers here - defer until Offers tab is clicked
-      // This significantly speeds up initial dashboard load
-    } catch (error) {
-      console.error('Failed to fetch user data:', error)
-    } finally {
-      setDataLoading(false)
-      setProductsLoading(false)
-      
-      // Fetch notification counts after products are loaded (non-blocking)
-      fetchNotificationCounts()
+  // Prefetch dashboard data when component mounts (only if not already cached)
+  useEffect(() => {
+    if (user?.id) {
+      prefetchDashboardData()
     }
-  }
+  }, [user?.id, prefetchDashboardData])
   
-  // Computed dashboard stats
+  // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
-    const activeProducts = userProducts.filter(p => p.status === 'available').length
-    const activeTrades = ongoingTradesData.length
-    const newOffers = incoming.filter(t => t.status === 'pending').length
-    const completedTrades = tradeHistory.length
+    const totalProducts = actualUserProducts.length
+    const activeProducts = actualUserProducts.length // All actualUserProducts are already filtered to available
+    const activeTrades = (ongoingTradesData || []).length
+    const newOffers = (incoming || []).length // All incoming trades are already filtered to pending
+    const completedTrades = (tradeHistory || []).length
     return {
-      totalProducts: userProducts.length,
+      totalProducts,
       activeProducts,
       activeTrades,
       newOffers,
       completedTrades
     }
-  }, [userProducts, incoming, ongoingTradesData, tradeHistory])
+  }, [actualUserProducts, incoming, ongoingTradesData, tradeHistory])
   
   // Get product title helper (needs to be defined before use)
   const getProductTitle = (productId: number, fallbackTitle?: string): string => {
@@ -233,162 +233,90 @@ const Dashboard: React.FC = () => {
   // Unified search filter - applies to all content types
   const applyUnifiedSearch = useCallback((items: any[], searchTerm: string, type: 'product' | 'trade') => {
     if (!searchTerm.trim()) return items
-    
-    const searchLower = searchTerm.toLowerCase()
+
+    const searchLower = searchTerm.toLowerCase().trim()
+    if (searchLower.length === 0) return items
+
     return items.filter((item: any) => {
       if (type === 'product') {
-        return (
-          item.title?.toLowerCase().includes(searchLower) ||
-          item.description?.toLowerCase().includes(searchLower) ||
-          item.category?.toLowerCase().includes(searchLower) ||
-          item.seller_name?.toLowerCase().includes(searchLower)
-        )
+        const title = item.title?.toLowerCase() || ''
+        const description = item.description?.toLowerCase() || ''
+        const category = item.category?.toLowerCase() || ''
+        const sellerName = item.seller_name?.toLowerCase() || ''
+        return title.includes(searchLower) ||
+               description.includes(searchLower) ||
+               category.includes(searchLower) ||
+               sellerName.includes(searchLower)
       } else {
-        // For trades/offers
+        // For trades/offers - cache product title to avoid repeated calls
         const productTitle = getProductTitle(item.target_product_id, item.product_title).toLowerCase()
         const buyerName = (item.buyer_name || '').toLowerCase()
         const sellerName = (item.seller_name || '').toLowerCase()
-        return (
-          productTitle.includes(searchLower) ||
-          buyerName.includes(searchLower) ||
-          sellerName.includes(searchLower)
-        )
+        return productTitle.includes(searchLower) ||
+               buyerName.includes(searchLower) ||
+               sellerName.includes(searchLower)
       }
     })
-  }, [])
+  }, [getProductTitle])
 
-  // Filtered products - now uses unified search
+  // Filtered products - optimized with better memoization
   const filteredProducts = useMemo(() => {
-    let filtered = [...userProducts]
-    
-    // Status filter
+    let filtered = actualUserProducts
+
+    // Status filter - optimize by avoiding unnecessary filtering
     if (productFilter !== 'all') {
-      filtered = filtered.filter(p => p.status === productFilter)
+      filtered = actualUserProducts.filter(p => p.status === productFilter)
     }
-    
+
     // Apply unified search (fallback to productSearch for backward compatibility)
     const searchTerm = unifiedSearch || productSearch
     if (searchTerm.trim()) {
       filtered = applyUnifiedSearch(filtered, searchTerm, 'product')
     }
-    
+
     return filtered
-  }, [userProducts, productFilter, unifiedSearch, productSearch, applyUnifiedSearch])
+  }, [actualUserProducts, productFilter, unifiedSearch, productSearch, applyUnifiedSearch])
 
-  const fetchNotificationCounts = async () => {
-    try {
-      // Fetch both counts in a single, lightweight request
-      const countsResponse = await api.get('/api/dashboard/counts')
-      setUnreadNotifications(countsResponse.data?.unread_notifications || 0)
-      setUnreadOffers(countsResponse.data?.pending_offers || 0)
-    } catch (error) {
-      console.error('Failed to fetch notification counts:', error)
-    }
-  }
-
-  // Debounced notification count fetch to prevent spam
-  const fetchNotificationCountsDebounced = useCallback(() => {
+  // Debounced cache invalidation for notification counts
+  const invalidateCountsDebounced = useCallback(() => {
     // Clear existing timeout
     if (notificationCountsTimeout.current) {
       clearTimeout(notificationCountsTimeout.current)
     }
-    // Schedule new fetch with 500ms delay
+    // Schedule cache invalidation with 500ms delay
     notificationCountsTimeout.current = setTimeout(() => {
-      fetchNotificationCounts()
+      invalidateDashboard()
     }, 500)
-  }, [])
+  }, [invalidateDashboard])
 
-  // Fetchers for each offers sub-section (on-demand) - OPTIMIZED
-  const fetchSentOffers = async () => {
-    if (!user) return
-    try {
-      setSentLoading(true)
-      const outRes = await api.get('/api/trades', { 
-        params: { 
-          direction: 'outgoing', 
-          include: 'products', 
-          status: 'pending',
-          limit: 100 // Add limit to prevent large payloads
-        } 
-      })
-      const outgoingData = Array.isArray(outRes.data?.data) ? outRes.data.data : (Array.isArray(outRes.data) ? outRes.data : [])
-      setOutgoing(outgoingData)
-      setSentLoaded(true)
-      // Cache images from response without additional fetch
-      cacheProductImages(outgoingData)
-    } catch (e: any) {
-      console.error('Failed to fetch sent offers:', e)
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load sent offers', status: 'error' })
-      setOutgoing([])
-    } finally {
-      setSentLoading(false)
+  // Cache product images and titles when data changes
+  useEffect(() => {
+    if (sentOffersData.length > 0) {
+      cacheProductImages(sentOffersData)
+      fetchProductTitles(sentOffersData)
     }
-  }
+  }, [sentOffersData])
 
-  const fetchReceivedOffers = async () => {
-    if (!user) return
-    try {
-      setReceivedLoading(true)
-      const incRes = await api.get('/api/trades', { 
-        params: { 
-          direction: 'incoming', 
-          include: 'products', 
-          status: 'pending',
-          limit: 100 // Add limit to prevent large payloads
-        } 
-      })
-      const incomingData = Array.isArray(incRes.data?.data) ? incRes.data.data : (Array.isArray(incRes.data) ? incRes.data : [])
-      setIncoming(incomingData)
-      setReceivedLoaded(true)
-      // Cache images from response without additional fetch
-      cacheProductImages(incomingData)
-    } catch (e: any) {
-      console.error('Failed to fetch received offers:', e)
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load received offers', status: 'error' })
-      setIncoming([])
-    } finally {
-      setReceivedLoading(false)
+  useEffect(() => {
+    if (receivedOffersData.length > 0) {
+      cacheProductImages(receivedOffersData)
+      fetchProductTitles(receivedOffersData)
     }
-  }
+  }, [receivedOffersData])
 
-  const fetchOngoingTrades = async () => {
-    if (!user) return
-    try {
-      setOngoingLoading(true)
-      // Optimized: Only 2 requests instead of 4 by using comma-separated status filter
-      const [bothDirections] = await Promise.all([
-        api.get('/api/trades', { 
-          params: { 
-            include: 'products', 
-            status: 'accepted,active', // Fetch both statuses in one call
-            limit: 100 // Add limit to prevent large payloads
-          } 
-        }),
-      ])
-
-      const allTradesData = Array.isArray(bothDirections.data?.data) 
-        ? bothDirections.data.data 
-        : (Array.isArray(bothDirections.data) ? bothDirections.data : [])
-
-      // Deduplicate by trade ID
-      const uniqueTrades = new Map<number, Trade>()
-      allTradesData.forEach((tr: Trade) => {
-        if (tr && tr.id) uniqueTrades.set(tr.id, tr)
-      })
-
-      const merged = Array.from(uniqueTrades.values())
-      setOngoingTradesData(merged)
-      setOngoingLoaded(true)
-      // Cache images from response without additional fetch
-      cacheProductImages(merged)
-    } catch (e: any) {
-      console.error('Failed to fetch ongoing trades:', e)
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load ongoing trades', status: 'error' })
-      setOngoingTradesData([])
-    } finally {
-      setOngoingLoading(false)
+  useEffect(() => {
+    if (ongoingTradesData.length > 0) {
+      cacheProductImages(ongoingTradesData)
+      fetchProductTitles(ongoingTradesData)
     }
-  }
+  }, [ongoingTradesData])
+
+  useEffect(() => {
+    if (tradeHistoryData.length > 0) {
+      cacheProductImages(tradeHistoryData)
+      fetchProductTitles(tradeHistoryData)
+    }
+  }, [tradeHistoryData])
 
   // New optimized function to cache images from trades without additional API calls
   const cacheProductImages = (trades: Trade[]) => {
@@ -409,55 +337,15 @@ const Dashboard: React.FC = () => {
     })
   }
 
-  const fetchTradeHistory = useCallback(async () => {
-    if (!user) return
-    try {
-      setTradeHistoryLoading(true)
-      const res = await api.get('/api/trades', { params: { status: 'completed', include: 'products', limit: 100 } })
-      const data = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : [])
-      setTradeHistory(data)
-      // Cache images from response
-      cacheProductImages(data)
-    } catch (e: any) {
-      console.error('Failed to fetch trade history:', e)
-    } finally {
-      setTradeHistoryLoading(false)
-    }
-  }, [user])
+  // Trade history is now handled by React Query hook
 
-  // Refresh only the datasets the user has already loaded (avoid unnecessary calls)
+  // Refresh offers data by invalidating cache (React Query will refetch automatically)
   const refreshOffersData = useCallback(() => {
-    if (sentLoaded && !sentLoading) {
-      fetchSentOffers()
-    }
-    if (receivedLoaded && !receivedLoading) {
-      fetchReceivedOffers()
-    }
-    if (ongoingLoaded && !ongoingLoading) {
-      fetchOngoingTrades()
-    }
-  }, [sentLoaded, receivedLoaded, ongoingLoaded, sentLoading, receivedLoading, ongoingLoading])
+    invalidateOffers()
+  }, [invalidateOffers])
 
-  // Load trade history independently on mount (does not depend on Offers tab)
-  useEffect(() => {
-    if (user) {
-      fetchTradeHistory()
-    }
-  }, [user, fetchTradeHistory])
-
-  // On-demand fetch based on active Offers sub-tab
-  useEffect(() => {
-    if (!user || activeTab !== 1) return
-    if (offersSubTab === 0 && !sentLoaded && !sentLoading) {
-      fetchSentOffers()
-    }
-    if (offersSubTab === 1 && !receivedLoaded && !receivedLoading) {
-      fetchReceivedOffers()
-    }
-    if (offersSubTab === 2 && !ongoingLoaded && !ongoingLoading) {
-      fetchOngoingTrades()
-    }
-  }, [user, activeTab, offersSubTab])
+  // React Query automatically manages data fetching and caching
+  // No need for manual loading state management
 
   const fetchProductTitles = async (trades: Trade[]) => {
     const productIds = new Set<number>()
@@ -646,12 +534,13 @@ const Dashboard: React.FC = () => {
     try {
       await api.put(`/api/trades/${id}`, action)
       toast({ title: 'Success', description: 'Offer updated', status: 'success' })
-      refreshOffersData()
-      fetchTradeHistory()
+      // Invalidate cache to refresh data
+      invalidateOffers()
+      invalidateDashboard()
     } catch (e: any) {
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
-  }, [refreshOffersData, fetchTradeHistory])
+  }, [invalidateOffers, invalidateDashboard])
 
   const handleCompleteTradeClick = (trade: Trade) => {
     // Check if meetup is confirmed before allowing completion
@@ -682,11 +571,26 @@ const Dashboard: React.FC = () => {
   const handleConfirmCancel = async () => {
     if (!tradeToCancel) return
     
+    setIsProcessing(true)
+    setProcessModalOpen(true)
+    setCancelModalOpen(false)
+    
     try {
       await updateTrade(tradeToCancel.id, { action: 'cancel' })
-      setCancelModalOpen(false)
       setTradeToCancel(null)
+      setTimeout(() => {
+        setProcessModalOpen(false)
+        setIsProcessing(false)
+        toast({
+          title: 'Success',
+          description: 'Offer cancelled successfully',
+          status: 'success',
+          duration: 3000
+        })
+      }, 1000)
     } catch (error: any) {
+      setProcessModalOpen(false)
+      setIsProcessing(false)
       toast({
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to cancel offer',
@@ -704,15 +608,30 @@ const Dashboard: React.FC = () => {
   const handleConfirmDecline = async () => {
     if (!tradeToDecline) return
     
+    setIsProcessing(true)
+    setProcessModalOpen(true)
+    setDeclineModalOpen(false)
+    
     try {
       await updateTrade(tradeToDecline.id, { 
         action: 'decline',
         message: declineFeedback.trim() || undefined
       })
-      setDeclineModalOpen(false)
       setTradeToDecline(null)
       setDeclineFeedback('')
+      setTimeout(() => {
+        setProcessModalOpen(false)
+        setIsProcessing(false)
+        toast({
+          title: 'Success',
+          description: 'Offer declined successfully',
+          status: 'success',
+          duration: 3000
+        })
+      }, 1000)
     } catch (error: any) {
+      setProcessModalOpen(false)
+      setIsProcessing(false)
       toast({
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to decline offer',
@@ -725,9 +644,9 @@ const Dashboard: React.FC = () => {
   
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
-    const sentPending = outgoing.filter(t => t.status === 'pending').length
-    const receivedPending = incoming.filter(t => t.status === 'pending').length
-    const ongoing = ongoingTradesData.length
+    const sentPending = (outgoing || []).filter(t => t.status === 'pending').length
+    const receivedPending = (incoming || []).filter(t => t.status === 'pending').length
+    const ongoing = (ongoingTradesData || []).length
     return {
       sentPending,
       receivedPending,
@@ -741,63 +660,68 @@ const Dashboard: React.FC = () => {
     return tradeHistory.length
   }, [tradeHistory])
 
-  // Filter and search logic - now uses unified search and optimized with memoization
+  // Filter and search logic - optimized to avoid unnecessary operations
   const filterTrades = useCallback((trades: Trade[], searchTerm: string, statusFilter: string) => {
-    let filtered = [...trades]
-    
+    let filtered = trades
+
     // Use unified search if available, otherwise use provided searchTerm
     const effectiveSearch = unifiedSearch || searchTerm
-    
-    // Search filter
-    if (effectiveSearch.trim()) {
+
+    // Search filter - only if there's a search term
+    if (effectiveSearch?.trim()) {
       filtered = applyUnifiedSearch(filtered, effectiveSearch, 'trade')
     }
-    
-    // Status filter
+
+    // Status filter - only if not 'all'
     if (statusFilter !== 'all') {
       filtered = filtered.filter(trade => trade.status === statusFilter)
     }
-    
+
     return filtered
   }, [unifiedSearch, applyUnifiedSearch])
 
   // Get trades for each sub-tab (excluding completed - those go to Trade History)
   // Optimized to only sort when rendering, not during filter
   const sentOffers = useMemo(() => {
-    const active = outgoing.filter(t => t.status === 'pending') // Only show pending offers
+    const active = (outgoing || []).filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
-    filtered.sort((a, b) => {
-      const at = new Date(a.created_at).getTime()
-      const bt = new Date(b.created_at).getTime()
-      return offersSort === 'newest' ? bt - at : at - bt
-    })
+    if (filtered.length > 1) {
+      filtered.sort((a, b) => {
+        const at = new Date(a.created_at).getTime()
+        const bt = new Date(b.created_at).getTime()
+        return offersSort === 'newest' ? bt - at : at - bt
+      })
+    }
     return filtered
   }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const receivedOffers = useMemo(() => {
-    const active = incoming.filter(t => t.status === 'pending') // Only show pending offers
+    const active = (incoming || []).filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
-    filtered.sort((a, b) => {
-      const at = new Date(a.created_at).getTime()
-      const bt = new Date(b.created_at).getTime()
-      return offersSort === 'newest' ? bt - at : at - bt
-    })
+    if (filtered.length > 1) {
+      filtered.sort((a, b) => {
+        const at = new Date(a.created_at).getTime()
+        const bt = new Date(b.created_at).getTime()
+        return offersSort === 'newest' ? bt - at : at - bt
+      })
+    }
     return filtered
   }, [incoming, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const ongoingTrades = useMemo(() => {
-    const all = [...ongoingTradesData]
-    const filtered = filterTrades(all, offersSearch, offersStatusFilter)
+    const filtered = filterTrades(ongoingTradesData, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
-    filtered.sort((a, b) => {
-      const at = new Date(a.created_at).getTime()
-      const bt = new Date(b.created_at).getTime()
-      return offersSort === 'newest' ? bt - at : at - bt
-    })
+    if (filtered.length > 1) {
+      filtered.sort((a, b) => {
+        const at = new Date(a.created_at).getTime()
+        const bt = new Date(b.created_at).getTime()
+        return offersSort === 'newest' ? bt - at : at - bt
+      })
+    }
     return filtered
-  }, [incoming, outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
+  }, [ongoingTradesData, offersSearch, offersStatusFilter, offersSort, filterTrades])
   
   // Unified search handler - clears tab-specific searches when unified search is used
   const handleUnifiedSearchChange = (value: string) => {
@@ -994,12 +918,13 @@ const Dashboard: React.FC = () => {
 
   const handleConfirmDelete = async () => {
     if (!productToDelete) return
-    
+
     try {
       setDeleting(true)
       await deleteProduct(productToDelete.id)
-      setUserProducts(prev => prev.filter(p => p.id !== productToDelete.id))
-      setTradedItems(prev => prev.filter(p => p.id !== productToDelete.id))
+      // Invalidate products cache to refresh data
+      invalidateProducts()
+      invalidateOffers() // Also invalidate offers since deleting a product affects trades
       
       setPopupOpen(false)
       showPopup({
@@ -1100,9 +1025,9 @@ const Dashboard: React.FC = () => {
     )
   }
 
-  const getProductOffersCount = (productId: number) => {
+  const getProductOffersCount = React.useCallback((productId: number) => {
     return [...incoming, ...outgoing].filter(t => t.target_product_id === productId && t.status !== 'declined' && t.status !== 'cancelled').length
-  }
+  }, [incoming, outgoing])
 
   const ProductCardSkeleton = () => (
     <Card variant="outline">
@@ -1120,11 +1045,11 @@ const Dashboard: React.FC = () => {
     </Card>
   )
 
-  // Reusable Product Card Component
-  const ProductCard = ({ product, showActions = true }: { product: Product, showActions?: boolean }) => {
+  // Reusable Product Card Component - memoized for performance
+  const ProductCard = React.memo(({ product, showActions = true }: { product: Product, showActions?: boolean }) => {
     // Never show actions for traded/sold items
     const shouldShowActions = showActions && product.status !== 'traded' && product.status !== 'sold'
-    const offersCount = getProductOffersCount(product.id)
+    const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id])
     const viewsCount = 0 // TODO: Fetch from API when available
     
     return (
@@ -1246,15 +1171,15 @@ const Dashboard: React.FC = () => {
       </Card>
     </ScaleFade>
     )
-  }
+  })
 
-  // Enhanced Ongoing Trade Card Component
+  // Enhanced Ongoing Trade Card Component - memoized for performance
   const OngoingTradeCard: React.FC<{
     trade: Trade
     isIncoming: boolean
     onView: () => void
     onComplete?: () => void
-  }> = ({ trade, isIncoming, onView, onComplete }) => {
+  }> = React.memo(({ trade, isIncoming, onView, onComplete }) => {
     const userName = isIncoming ? (trade.seller_name || 'Anonymous User') : (trade.buyer_name || 'Anonymous User')
     
     // Get items offered by the other party
@@ -1441,7 +1366,7 @@ const Dashboard: React.FC = () => {
         </Card>
       </ScaleFade>
     )
-  }
+  })
 
   const getTimeAgo = (dateString: string): string => {
     const date = new Date(dateString)
@@ -1458,7 +1383,7 @@ const Dashboard: React.FC = () => {
     return date.toLocaleDateString()
   }
 
-  const OfferCard: React.FC<{ 
+  const OfferCard: React.FC<{
     trade: Trade
     isIncoming: boolean
     onView: () => void
@@ -1466,7 +1391,7 @@ const Dashboard: React.FC = () => {
     onDecline?: () => void
     onCancel?: () => void
     onComplete?: () => void
-  }> = ({ trade, isIncoming, onView, onAccept, onDecline, onCancel, onComplete }) => {
+  }> = React.memo(({ trade, isIncoming, onView, onAccept, onDecline, onCancel, onComplete }) => {
     const userName = isIncoming ? (trade.buyer_name || 'Anonymous User') : (trade.seller_name || 'Anonymous User')
     
     return (
@@ -1624,7 +1549,7 @@ const Dashboard: React.FC = () => {
         </Card>
       </ScaleFade>
     )
-  }
+  })
 
 
   // Reusable Popup Component
@@ -1855,8 +1780,8 @@ const Dashboard: React.FC = () => {
 
              {/* Right: Compact Stats Buttons (Row) 
              <HStack spacing={2} flexShrink={0}>
-               <Tooltip 
-                 label={`${dashboardStats.totalProducts} total • ${dashboardStats.activeProducts} active • ${userProducts.filter(p => p.premium).length} premium`}
+               <Tooltip
+                 label={`${dashboardStats.totalProducts} total • ${dashboardStats.activeProducts} active • ${actualUserProducts.filter(p => p.premium).length} premium`}
                  placement="bottom"
                  hasArrow
                >
@@ -1929,8 +1854,8 @@ const Dashboard: React.FC = () => {
              </HStack>
              */}
 
-             {/* Mobile: Filter/Sort Controls for All Tabs (Left Side) */}
-             <HStack spacing={1} display={{ base: 'flex', lg: 'none' }}>
+             {/* Filter/Sort Controls - All Screens */}
+             <HStack spacing={1} flexShrink={0}>
                {activeTab === 0 && (
                  <>
                    <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
@@ -2008,8 +1933,8 @@ const Dashboard: React.FC = () => {
                )}
              </HStack>
 
-             {/* Notifications & Profile */}
-             <HStack spacing={2} flexShrink={0}>
+             {/* Notifications & Profile - Mobile Only */}
+             <HStack spacing={2} flexShrink={0} display={{ base: 'flex', md: 'none' }}>
                <Box position="relative">
                  <IconButton
                    aria-label="Notifications"
@@ -2041,7 +1966,16 @@ const Dashboard: React.FC = () => {
                    </Badge>
                  )}
                </Box>
-               <Avatar name={user?.name || 'User'} size="md" bg="brand.500" color="white" cursor="pointer" />
+               <Avatar 
+                 name={user?.name || 'User'} 
+                 src={user?.profile_picture || undefined}
+                 size="md" 
+                 bg="brand.500" 
+                 color="white" 
+                 cursor="pointer"
+                 onClick={() => navigate('/UserProfile')}
+                 _hover={{ opacity: 0.8 }}
+               />
              </HStack>
            </Flex>
          </VStack>
@@ -2090,9 +2024,9 @@ const Dashboard: React.FC = () => {
                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
                        <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
                        <Text display={{ base: 'none', sm: 'block' }}>My Products</Text>
-                       {userProducts.length > 0 && (
+                       {actualUserProducts.length > 0 && (
                          <Badge colorScheme="green" borderRadius="full" fontSize="xs" display={{ base: 'none', sm: 'inline-flex' }}>
-                           {userProducts.length}
+                           {actualUserProducts.length}
                          </Badge>
                        )}
                      </HStack>
@@ -2165,112 +2099,12 @@ const Dashboard: React.FC = () => {
                  </TabList>
                </Tabs>
 
-               {/* Right: Filter/Sort Controls - Icon Buttons on Mobile */}
+               {/* Right: Filter/Sort Controls - Icon Buttons */}
                <HStack
                  spacing={{ base: 1, md: 3 }}
                  flexShrink={0}
                  justify="flex-end"
                >
-                 {activeTab === 0 && (
-                   <>
-                     {/* Desktop: Show selects only */}
-                     <Box display={{ base: 'none', lg: 'block' }}>
-                       <Select
-                         value={productFilter}
-                         onChange={(e) => {
-                           setProductFilter(e.target.value as any)
-                           setCurrentPage(1)
-                         }}
-                         w={{ base: '120px', md: '150px' }}
-                         bg={cardBg}
-                         borderColor={borderColor}
-                         size="sm"
-                       >
-                         <option value="all">All Status</option>
-                         <option value="available">Active</option>
-                         <option value="sold">Sold</option>
-                         <option value="traded">Traded</option>
-                         <option value="locked">Hidden</option>
-                       </Select>
-                     </Box>
-                     <Box display={{ base: 'none', lg: 'block' }}>
-                       <Select
-                         value={productSort}
-                         onChange={(e) => {
-                           setProductSort(e.target.value as any)
-                           setCurrentPage(1)
-                         }}
-                         w={{ base: '120px', md: '140px' }}
-                         bg={cardBg}
-                         borderColor={borderColor}
-                         size="sm"
-                       >
-                         <option value="newest">Newest First</option>
-                         <option value="oldest">Oldest First</option>
-                       </Select>
-                     </Box>
-                   </>
-                 )}
-                 
-                 {activeTab === 1 && (
-                   <>
-                     {/* Desktop: Show selects only */}
-                     <Box display={{ base: 'none', lg: 'block' }}>
-                       <Select
-                         value={offersStatusFilter}
-                         onChange={(e) => {
-                           setOffersStatusFilter(e.target.value)
-                           setOffersPage(1)
-                         }}
-                         w={{ base: '120px', md: '140px' }}
-                         bg={cardBg}
-                         borderColor={borderColor}
-                         size="sm"
-                       >
-                         <option value="all">All Status</option>
-                         <option value="pending">Pending</option>
-                         <option value="accepted">Accepted</option>
-                         <option value="active">Active</option>
-                         <option value="countered">Countered</option>
-                       </Select>
-                     </Box>
-                     <Box display={{ base: 'none', lg: 'block' }}>
-                       <Select
-                         value={offersSort}
-                         onChange={(e) => setOffersSort(e.target.value as any)}
-                         w={{ base: '120px', md: '140px' }}
-                         bg={cardBg}
-                         borderColor={borderColor}
-                         size="sm"
-                       >
-                         <option value="newest">Newest First</option>
-                         <option value="oldest">Oldest First</option>
-                       </Select>
-                     </Box>
-                   </>
-                 )}
-
-                 {activeTab === 2 && (
-                   <>
-                     {/* Desktop: Show select only */}
-                     <Box display={{ base: 'none', lg: 'block' }}>
-                       <Select
-                         value={tradeHistorySort}
-                         onChange={(e) => {
-                           setTradeHistorySort(e.target.value as any)
-                           setTradeHistoryPage(1)
-                         }}
-                         w={{ base: '120px', md: '140px' }}
-                         bg={cardBg}
-                         borderColor={borderColor}
-                         size="sm"
-                       >
-                         <option value="newest">Newest First</option>
-                         <option value="oldest">Oldest First</option>
-                       </Select>
-                     </Box>
-                   </>
-                 )}
                </HStack>
              </Flex>
            </Box>
@@ -2747,7 +2581,8 @@ const Dashboard: React.FC = () => {
                     </Fade>
                   ) : (
                     <>
-                      <VStack spacing={0} align="stretch" borderWidth="1px" borderColor={borderColor} rounded="lg" overflow="hidden">
+                      {/* Desktop Table View */}
+                      <VStack spacing={0} align="stretch" borderWidth="1px" borderColor={borderColor} rounded="lg" overflow="hidden" display={{ base: 'none', md: 'flex' }}>
                         {/* Header Row */}
                         <HStack
                           spacing={4}
@@ -2873,6 +2708,97 @@ const Dashboard: React.FC = () => {
                           )
                         })}
                       </VStack>
+
+                      {/* Mobile Card View */}
+                      <VStack spacing={4} align="stretch" display={{ base: 'flex', md: 'none' }}>
+                        {paginatedTradeHistory.map((trade) => {
+                          const isIncoming = incoming.some(t => t.id === trade.id)
+                          const tradingPartner = isIncoming 
+                            ? (trade.buyer_name || 'Anonymous')
+                            : (trade.seller_name || 'Anonymous')
+                          
+                          return (
+                            <Box
+                              key={trade.id}
+                              p={4}
+                              bg="white"
+                              borderWidth="1px"
+                              borderColor={borderColor}
+                              borderRadius="lg"
+                              transition="all 0.2s"
+                              _hover={{ shadow: 'md' }}
+                            >
+                              <VStack align="stretch" spacing={3}>
+                                {/* Header with product thumbnail and partner */}
+                                <HStack spacing={3} justify="space-between">
+                                  <Box w="50px" h="50px" flexShrink={0} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
+                                    <ProductThumb
+                                      pid={trade.target_product_id}
+                                      alt={getProductTitle(trade.target_product_id, trade.product_title)}
+                                      size="full"
+                                    />
+                                  </Box>
+                                  <VStack align="start" spacing={0} flex={1}>
+                                    <Text fontSize="xs" fontWeight="semibold" color="gray.600">
+                                      Trading with
+                                    </Text>
+                                    <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={1}>
+                                      {tradingPartner}
+                                    </Text>
+                                  </VStack>
+                                </HStack>
+
+                                {/* Date */}
+                                <Text fontSize="xs" color="gray.500">
+                                  {trade.completed_at 
+                                    ? new Date(trade.completed_at).toLocaleDateString()
+                                    : new Date(trade.updated_at).toLocaleDateString()}
+                                </Text>
+
+                                {/* Trade details */}
+                                <Box bg="gray.50" p={3} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+                                  <VStack align="stretch" spacing={2}>
+                                    <VStack align="start" spacing={1}>
+                                      <Text fontSize="xs" fontWeight="semibold" color="gray.600" textTransform="uppercase">
+                                        You Gave
+                                      </Text>
+                                      <Text fontSize="sm" color="gray.800">
+                                        {getProductTitle(trade.target_product_id, trade.product_title)}
+                                      </Text>
+                                    </VStack>
+                                    
+                                    <HStack justify="center">
+                                      <Text fontSize="md" color="brand.400">↔</Text>
+                                    </HStack>
+
+                                    <VStack align="start" spacing={1}>
+                                      <Text fontSize="xs" fontWeight="semibold" color="gray.600" textTransform="uppercase">
+                                        You Received
+                                      </Text>
+                                      <Text fontSize="sm" color="gray.800">
+                                        {trade.items && trade.items.length > 0 
+                                          ? getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)
+                                          : 'N/A'}
+                                      </Text>
+                                    </VStack>
+                                  </VStack>
+                                </Box>
+
+                                {/* Action button */}
+                                <Button
+                                  size="sm"
+                                  colorScheme="brand"
+                                  variant="outline"
+                                  w="full"
+                                  onClick={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
+                                >
+                                  View Details
+                                </Button>
+                              </VStack>
+                            </Box>
+                          )
+                        })}
+                      </VStack>
                       
                       {/* Pagination */}
                       {tradeHistoryTotalPages > 1 && (
@@ -2917,9 +2843,8 @@ const Dashboard: React.FC = () => {
           isOpen={detailsOpen}
           onClose={() => setDetailsOpen(false)}
           onAccepted={async () => {
-            refreshOffersData()
-            fetchTradeHistory()
-            fetchNotificationCounts()
+            invalidateOffers()
+            invalidateDashboard()
             
             // If trade option is delivery, show delivery request modal
             if (selectedTrade?.trade_option === 'delivery') {
@@ -2954,14 +2879,14 @@ const Dashboard: React.FC = () => {
               }
             }
           }}
-          onDeclined={() => { refreshOffersData(); fetchTradeHistory(); fetchNotificationCounts() }}
+          onDeclined={() => { invalidateOffers(); invalidateDashboard() }}
         />
 
         <ViewTradeModal
           trade={selectedTrade}
           isOpen={viewTradeModalOpen}
           onClose={() => setViewTradeModalOpen(false)}
-          onStatusUpdate={() => { refreshOffersData(); fetchTradeHistory(); fetchNotificationCounts() }}
+          onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
           onTradeUpdate={setSelectedTrade}
         />
 
@@ -2969,7 +2894,7 @@ const Dashboard: React.FC = () => {
           trade={selectedTrade}
           isOpen={completionModalOpen}
           onClose={() => setCompletionModalOpen(false)}
-          onCompleted={() => { refreshOffersData(); fetchTradeHistory(); fetchNotificationCounts() }}
+          onCompleted={() => { invalidateOffers(); invalidateDashboard() }}
           currentUserId={user?.id}
         />
 
@@ -3001,6 +2926,35 @@ const Dashboard: React.FC = () => {
             deliveryId={currentDeliveryId}
           />
         )}
+
+        {/* Processing Modal - Shows while accepting/declining/canceling */}
+        <Modal isOpen={processModalOpen} onClose={() => {}} size="sm" isCentered closeOnEsc={false} closeOnOverlayClick={false}>
+          <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+          <ModalContent
+            bg="white"
+            borderRadius="xl"
+            boxShadow="xl"
+            mx={4}
+          >
+            <ModalBody p={8} textAlign="center">
+              <VStack spacing={4}>
+                <Spinner 
+                  size="lg" 
+                  color="brand.500"
+                  thickness="4px"
+                />
+                <VStack spacing={2}>
+                  <Text fontWeight="semibold" fontSize="md" color="gray.800">
+                    Processing...
+                  </Text>
+                  <Text fontSize="sm" color="gray.500">
+                    Please wait while we process your request
+                  </Text>
+                </VStack>
+              </VStack>
+            </ModalBody>
+          </ModalContent>
+        </Modal>
 
         {/* Cancel Confirmation Modal */}
         <Modal isOpen={cancelModalOpen} onClose={() => setCancelModalOpen(false)} size="sm" isCentered>
@@ -3044,6 +2998,8 @@ const Dashboard: React.FC = () => {
                     flex={1}
                     onClick={handleConfirmCancel}
                     leftIcon={<Icon as={FaTimes} />}
+                    isDisabled={isProcessing}
+                    isLoading={isProcessing}
                   >
                     Cancel Offer
                   </Button>
@@ -3116,6 +3072,8 @@ const Dashboard: React.FC = () => {
                     flex={1}
                     onClick={handleConfirmDecline}
                     leftIcon={<Icon as={FaTimes} />}
+                    isDisabled={isProcessing}
+                    isLoading={isProcessing}
                   >
                     Decline Offer
                   </Button>

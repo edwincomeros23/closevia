@@ -64,7 +64,7 @@ const TaskStepper = lazy(() => import('./delivery_option/TaskStepper').catch(() 
 
 // Loading overlay component
 const LoadingOverlay: React.FC = () => {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   
   const handleSkip = () => {
     // Enable development mode and reload
@@ -80,31 +80,34 @@ const LoadingOverlay: React.FC = () => {
       left="0"
       right="0"
       bottom="0"
-      bg="rgba(255, 255, 255, 0.9)"
+      bg="rgba(255, 255, 255, 0.95)"
       zIndex={9999}
       display="flex"
       alignItems="center"
       justifyContent="center"
+      backdropFilter="blur(1px)"
     >
       <Center flexDirection="column" gap={6}>
         <Spinner size="xl" color="brand.500" thickness="4px" />
         <VStack spacing={2}>
           <Text fontSize="lg" color="gray.700" fontWeight="medium">
-            {user ? 'Loading your dashboard...' : 'Loading Clovia...'}
+            {user ? 'Loading your dashboard...' : 'Verifying session...'}
           </Text>
-          <Text fontSize="sm" color="gray.500" textAlign="center">
-            If this takes too long, the backend might be down
+          <Text fontSize="sm" color="gray.500" textAlign="center" maxW="300px">
+            {user ? 'Please wait while we load your dashboard' : 'Checking your authentication status'}
           </Text>
         </VStack>
-        <Button
-          size="md"
-          variant="solid"
-          colorScheme="brand"
-          onClick={handleSkip}
-          px={6}
-        >
-          Skip Loading & Continue
-        </Button>
+        {!user && (
+          <Button
+            size="sm"
+            variant="ghost"
+            colorScheme="brand"
+            onClick={handleSkip}
+            fontSize="xs"
+          >
+            Skip & Continue
+          </Button>
+        )}
       </Center>
     </Box>
   )
@@ -149,6 +152,7 @@ const AppContent: React.FC = () => {
               <Route path="/edit-product/:id" element={<ProtectedRoute><EditProduct /></ProtectedRoute>} />
               <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/UserProfile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
               <Route path="/users/:id" element={<UserProfile />} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/trades" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
