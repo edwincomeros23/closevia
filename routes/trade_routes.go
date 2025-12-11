@@ -12,6 +12,7 @@ import (
 //	routes.RegisterTradeRoutes(app, th)
 func RegisterTradeRoutes(app *fiber.App, th *handlers.TradeHandler) {
 	// ...existing code...
+	app.Get("/api/trades/:id", th.GetTrade)
 	// Ensure the completion endpoint accepts PUT (and POST for compatibility)
 	app.Put("/api/trades/:id/complete", th.CompleteTrade)
 	app.Post("/api/trades/:id/complete", th.CompleteTrade)

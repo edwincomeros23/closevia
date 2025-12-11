@@ -59,6 +59,7 @@ func main() {
 			"http://localhost:5174",
 			"http://localhost:3000",
 			"https://cloviaph.netlify.app",
+			"https://cloviaph.site",
 			"https://closevia.onrender.com",
 		}, ",")
 	}

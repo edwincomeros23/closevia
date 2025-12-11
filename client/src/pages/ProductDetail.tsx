@@ -84,6 +84,10 @@ const ProductDetail: React.FC = () => {
   const [loadingOffers, setLoadingOffers] = useState(false)
   const [offersModalOpen, setOffersModalOpen] = useState(false)
   const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
+  const [isReportOpen, setIsReportOpen] = useState(false)
+  const [reportReason, setReportReason] = useState('')
+  const [reportDescription, setReportDescription] = useState('')
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -377,6 +381,83 @@ const ProductDetail: React.FC = () => {
       })
     } finally {
       setPurchasing(false)
+    }
+  }
+
+  const handleSubmitReport = async () => {
+    if (!user) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please log in to report this trader',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
+
+    if (!product) return
+
+    if (!reportReason.trim()) {
+      toast({
+        title: 'Reason required',
+        description: 'Please select a reason for your report',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    if (reportDescription.trim().length < 10) {
+      toast({
+        title: 'Description too short',
+        description: 'Please provide at least 10 characters of description',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    try {
+      setIsSubmittingReport(true)
+      await api.post('/api/reports', {
+        reported_user_id: product.seller_id,
+        product_id: product.id,
+        reason: reportReason,
+        description: reportDescription,
+      })
+      
+      toast({
+        title: 'Report submitted',
+        description: 'Thank you for helping keep Clovia safe. We will review your report.',
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      })
+      
+      // Reset and close modal
+      setReportReason('')
+      setReportDescription('')
+      setIsReportOpen(false)
+    } catch (err: unknown) {
+      let description = 'Failed to submit report';
+      if (axios.isAxiosError(err)) {
+        description = err.response?.data?.error || description;
+      } else if (err instanceof Error) {
+        description = err.message;
+      }
+      toast({
+        title: 'Report failed',
+        description,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      })
+    } finally {
+      setIsSubmittingReport(false)
     }
   }
 
@@ -967,6 +1048,18 @@ const ProductDetail: React.FC = () => {
                   </>
                 )}
 
+                {/* Report Button - allows users to report policy violations */}
+                {!isOwner && product.status === 'available' && (
+                  <Button
+                    variant="outline"
+                    colorScheme="red"
+                    w="full"
+                    onClick={() => setIsReportOpen(true)}
+                  >
+                    Report this Trader
+                  </Button>
+                )}
+
                 {isOwner && (
                   <HStack spacing={4} w="full">
                     <Button
@@ -1380,6 +1473,80 @@ const ProductDetail: React.FC = () => {
               </Box>
             </VStack>
           </ModalBody>
+        </ModalContent>
+      </Modal>
+
+      {/* Report Modal for submitting trader reports */}
+      <Modal isOpen={isReportOpen} onClose={() => setIsReportOpen(false)} size="md">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Report Trader for Policy Violation</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4}>
+              <Box w="full">
+                <Text fontWeight="medium" mb={2}>Reason for Report</Text>
+                <select
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #cbd5e0',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="inappropriate">Inappropriate Behavior</option>
+                  <option value="counterfeit">Counterfeit Items</option>
+                  <option value="spam">Spam</option>
+                  <option value="scam">Scam/Fraud</option>
+                </select>
+              </Box>
+
+              <Box w="full">
+                <Text fontWeight="medium" mb={2}>Description</Text>
+                <textarea
+                  value={reportDescription}
+                  onChange={(e) => setReportDescription(e.target.value)}
+                  placeholder="Please provide details about your report (minimum 10 characters)"
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #cbd5e0',
+                    fontFamily: 'inherit',
+                    minHeight: '100px',
+                    resize: 'vertical',
+                  }}
+                />
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  {reportDescription.length} characters
+                </Text>
+              </Box>
+            </VStack>
+          </ModalBody>
+          <Box p={4} borderTop="1px solid" borderColor="gray.200">
+            <HStack spacing={3}>
+              <Button
+                flex={1}
+                variant="outline"
+                onClick={() => setIsReportOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                flex={1}
+                colorScheme="red"
+                onClick={handleSubmitReport}
+                isLoading={isSubmittingReport}
+                loadingText="Submitting..."
+              >
+                Submit Report
+              </Button>
+            </HStack>
+          </Box>
         </ModalContent>
       </Modal>
       </Container>

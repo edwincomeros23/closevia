@@ -107,10 +107,6 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	}
 
 	log.Printf("Trade fully created and updated successfully")
-	if err != nil {
-		_ = tx.Rollback()
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade"})
-	}
 	tradeID64, _ = res.LastInsertId()
 	tradeID = int(tradeID64)
 
@@ -224,8 +220,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
-	var testRow *sql.Row
-	testRow = h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
+	testRow := h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
 	var testTradeOption sql.NullString
 	if err := testRow.Scan(&testTradeOption); err == nil {
 		// Column exists, include it in query
@@ -651,6 +646,101 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		}
 
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_confirmed', ?)", tradeID, userID, currentStatus, "Meetup location confirmed: "+payload.MeetupLocation)
+	case "update_delivery_state":
+		// Handle delivery state updates (payment confirmation, proof of delivery, confirmations)
+		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")
+		log.Printf("User %d attempting to update delivery state for trade %d", userID, tradeID)
+
+		// Prepare update query and arguments
+		updateFields := []string{}
+		updateArgs := []interface{}{}
+
+		// Check which fields to update based on payload
+		type DeliveryStatePayload struct {
+			DeliveryType            string `json:"delivery_type"`
+			PaymentMethod           string `json:"payment_method"`
+			PaymentConfirmed        *bool  `json:"payment_confirmed"`
+			ProofOfDelivery         string `json:"proof_of_delivery"`
+			BuyerConfirmedReceipt   *bool  `json:"buyer_confirmed_receipt"`
+			SellerConfirmedDelivery *bool  `json:"seller_confirmed_delivery"`
+		}
+
+		var deliveryPayload DeliveryStatePayload
+		if err := c.BodyParser(&deliveryPayload); err == nil {
+			if deliveryPayload.DeliveryType != "" {
+				updateFields = append(updateFields, "delivery_type = ?")
+				updateArgs = append(updateArgs, deliveryPayload.DeliveryType)
+			}
+			if deliveryPayload.PaymentMethod != "" {
+				updateFields = append(updateFields, "payment_method = ?")
+				updateArgs = append(updateArgs, deliveryPayload.PaymentMethod)
+			}
+			if deliveryPayload.PaymentConfirmed != nil {
+				updateFields = append(updateFields, "payment_confirmed = ?")
+				updateArgs = append(updateArgs, *deliveryPayload.PaymentConfirmed)
+			}
+			if deliveryPayload.ProofOfDelivery != "" {
+				updateFields = append(updateFields, "proof_of_delivery = ?")
+				updateArgs = append(updateArgs, deliveryPayload.ProofOfDelivery)
+			}
+			if deliveryPayload.BuyerConfirmedReceipt != nil {
+				updateFields = append(updateFields, "buyer_confirmed_receipt = ?")
+				updateArgs = append(updateArgs, *deliveryPayload.BuyerConfirmedReceipt)
+			}
+			if deliveryPayload.SellerConfirmedDelivery != nil {
+				updateFields = append(updateFields, "seller_confirmed_delivery = ?")
+				updateArgs = append(updateArgs, *deliveryPayload.SellerConfirmedDelivery)
+			}
+		}
+
+		if len(updateFields) == 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No fields to update"})
+		}
+
+		// Add timestamp update
+		updateFields = append(updateFields, "updated_at = CURRENT_TIMESTAMP")
+		updateArgs = append(updateArgs, tradeID)
+
+		// Build and execute update query
+		updateQuery := "UPDATE trades SET " + fmt.Sprintf("%s", fmt.Sprintf("%s", fmt.Sprintf("updated_at = CURRENT_TIMESTAMP")))
+		for i, field := range updateFields[:len(updateFields)-1] {
+			if i > 0 {
+				updateQuery += ", "
+			}
+			updateQuery += field
+		}
+		updateQuery += " WHERE id = ?"
+
+		// Properly reconstruct the query
+		updateQuery = "UPDATE trades SET "
+		for i, field := range updateFields {
+			if i > 0 {
+				updateQuery += ", "
+			}
+			updateQuery += field
+		}
+		updateQuery += " WHERE id = ?"
+
+		log.Printf("Executing delivery state update: %s", updateQuery)
+		_, err := h.db.Exec(updateQuery, append(updateArgs, tradeID)...)
+		if err != nil {
+			log.Printf("Failed to update delivery state for trade %d: %v", tradeID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update delivery state"})
+		}
+
+		// Notify other party of the update
+		var otherUserID int
+		if userID == buyerID {
+			otherUserID = sellerID
+		} else {
+			otherUserID = buyerID
+		}
+
+		notifMsg := "Trade delivery status has been updated"
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, notifMsg)
+		publishToUser(otherUserID, sseEvent{Type: "trade_delivery_state_updated", Data: fiber.Map{"trade_id": tradeID}})
+
+		log.Printf("Delivery state updated successfully for trade %d", tradeID)
 	default:
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
 	}
@@ -875,8 +965,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
-	var testRow *sql.Row
-	testRow = h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
+	testRow := h.db.QueryRow("SELECT trade_option FROM trades LIMIT 1")
 	var testTradeOption sql.NullString
 	if err := testRow.Scan(&testTradeOption); err == nil {
 		// Column exists, include it in query
