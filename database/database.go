@@ -41,23 +41,28 @@ func InitDatabase() error {
 	if dbName == "" {
 		return fmt.Errorf("DB_NAME environment variable is not set")
 	}
-	if caCertPath == "" {
-		return fmt.Errorf("DB_CA_CERT environment variable is not set")
-	}
 
-	// Create TLS config (required for Aiven)
-	tlsConfig, err := createTLSConfig(dbHost, caCertPath)
-	if err != nil {
-		return fmt.Errorf("failed to create TLS config: %v", err)
-	}
+	// Create DSN - with or without TLS based on DB_CA_CERT
+	var dsn string
+	if caCertPath != "" {
+		// Create TLS config (required for Aiven/remote databases)
+		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
+		if err != nil {
+			return fmt.Errorf("failed to create TLS config: %v", err)
+		}
 
-	if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
-		return fmt.Errorf("failed to register TLS config: %v", err)
-	}
+		if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
+			return fmt.Errorf("failed to register TLS config: %v", err)
+		}
 
-	// Create DSN with TLS enabled
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
-		dbUser, dbPassword, dbHost, dbPort, dbName)
+		// Create DSN with TLS enabled
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
+	} else {
+		// Create DSN without TLS (for local development)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
+			dbUser, dbPassword, dbHost, dbPort, dbName)
+	}
 
 	// Open database connection
 	var openErr error
@@ -78,8 +83,9 @@ func InitDatabase() error {
 
 	// Test a simple query to verify we're connected to the right database
 	var currentDbName string
-	if err = DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName); err != nil {
-		return fmt.Errorf("failed to get database name: %v", err)
+	dbTestErr := DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName)
+	if dbTestErr != nil {
+		return fmt.Errorf("failed to get database name: %v", dbTestErr)
 	}
 
 	log.Printf("Successfully connected to MySQL database: %s (Host: %s:%s)", currentDbName, dbHost, dbPort)
