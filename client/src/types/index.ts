@@ -74,6 +74,7 @@ export interface ProductCreate {
   location?: string
   condition: string
   category?: string
+  wants?: string
 }
 
 export interface ProductUpdate {

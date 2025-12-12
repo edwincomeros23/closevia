@@ -1,4 +1,4 @@
-package models
+﻿package models
 
 import (
 	"database/sql/driver"
@@ -138,29 +138,30 @@ type UserRegister struct {
 
 // Product represents a product listing
 type Product struct {
-	ID             int         `json:"id"`
-	Slug           string      `json:"slug,omitempty"` // SEO-friendly URL identifier
-	Title          string      `json:"title" validate:"required,min=2,max=255"`
-	Description    string      `json:"description"`
-	Price          *float64    `json:"price,omitempty"`      // Optional for barter-only items
-	ImageURLs      StringArray `json:"image_urls,omitempty"` // Multiple images
-	ImageURL       string      `json:"image_url,omitempty"`  // Single image for compatibility
-	SellerID       int         `json:"seller_id"`
-	SellerName     string      `json:"seller_name,omitempty"`
-	Premium        bool        `json:"premium"`
-	Status         string      `json:"status" validate:"oneof=available sold traded locked"`
-	AllowBuying    bool        `json:"allow_buying"` // Whether buying is allowed
-	BarterOnly     bool        `json:"barter_only"`  // Whether it's barter only
-	Location       string      `json:"location,omitempty"`
-	Condition      string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	SuggestedValue int         `json:"suggested_value,omitempty"`
-	Category       string      `json:"category,omitempty"`
-	Latitude       *float64    `json:"latitude,omitempty"`
-	Longitude      *float64    `json:"longitude,omitempty"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-	BiddingType    string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
-	WishlistCount  int         `json:"wishlist_count,omitempty"`
+	ID                   int         `json:"id"`
+	Slug                 string      `json:"slug,omitempty"` // SEO-friendly URL identifier
+	Title                string      `json:"title" validate:"required,min=2,max=255"`
+	Description          string      `json:"description"`
+	Price                *float64    `json:"price,omitempty"`      // Optional for barter-only items
+	ImageURLs            StringArray `json:"image_urls,omitempty"` // Multiple images
+	ImageURL             string      `json:"image_url,omitempty"`  // Single image for compatibility
+	SellerID             int         `json:"seller_id"`
+	SellerName           string      `json:"seller_name,omitempty"`
+	SellerProfilePicture string      `json:"seller_profile_picture,omitempty"`
+	Premium              bool        `json:"premium"`
+	Status               string      `json:"status" validate:"oneof=available sold traded locked"`
+	AllowBuying          bool        `json:"allow_buying"` // Whether buying is allowed
+	BarterOnly           bool        `json:"barter_only"`  // Whether it's barter only
+	Location             string      `json:"location,omitempty"`
+	Condition            string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	SuggestedValue       int         `json:"suggested_value,omitempty"`
+	Category             string      `json:"category,omitempty"`
+	Latitude             *float64    `json:"latitude,omitempty"`
+	Longitude            *float64    `json:"longitude,omitempty"`
+	CreatedAt            time.Time   `json:"created_at"`
+	UpdatedAt            time.Time   `json:"updated_at"`
+	BiddingType          string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	WishlistCount        int         `json:"wishlist_count,omitempty"`
 }
 
 // ProductCreate represents data for creating a product

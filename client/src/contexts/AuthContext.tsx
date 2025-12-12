@@ -34,44 +34,53 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authInitialized, setAuthInitialized] = useState(false)
 
   // Computed authentication state
   const isAuthenticated = !!(user && token)
 
   useEffect(() => {
     console.log('AuthContext: Initializing authentication check')
+    
+    // Initialize auth synchronously from localStorage first
+    const initializeAuth = async () => {
+      try {
+        // Development mode: skip authentication for faster development
+        const skipAuth = localStorage.getItem('skip_auth') === 'true'
+        if (skipAuth) {
+          console.log('AuthContext: Development mode: skipping authentication')
+          setAuthInitialized(true)
+          setLoading(false)
+          return
+        }
 
-    // Development mode: skip authentication for faster development
-    const skipAuth = localStorage.getItem('skip_auth') === 'true'
-    if (skipAuth) {
-      console.log('AuthContext: Development mode: skipping authentication')
-      setLoading(false)
-      return
+        // Check if user is logged in on app start - restore token FIRST
+        const storedToken = localStorage.getItem('clovia_token')
+        console.log('AuthContext: Stored token found:', !!storedToken)
+        
+        if (storedToken) {
+          console.log('AuthContext: Restoring token and fetching user profile')
+          // Set token and headers immediately without waiting for user fetch to complete
+          setToken(storedToken)
+          api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
+          
+          // Now fetch user profile in the background
+          await fetchUserProfile(storedToken)
+        } else {
+          console.log('AuthContext: No stored token found')
+        }
+      } catch (error) {
+        console.error('AuthContext: Error during initialization:', error)
+      } finally {
+        setAuthInitialized(true)
+        setLoading(false)
+      }
     }
 
-    // Check if user is logged in on app start
-    const storedToken = localStorage.getItem('clovia_token')
-    console.log('AuthContext: Stored token found:', !!storedToken)
-    if (storedToken) {
-      console.log('AuthContext: Setting token and fetching user profile')
-      setToken(storedToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
-      fetchUserProfile()
-    } else {
-      console.log('AuthContext: No stored token, setting loading to false')
-      setLoading(false)
-    }
-
-    // More aggressive fallback: force loading to stop after 3 seconds
-    const fallbackTimer = setTimeout(() => {
-      console.log('AuthContext: Loading timeout - forcing loading state to false')
-      setLoading(false)
-    }, 3000) // 3 second fallback
-
-    return () => clearTimeout(fallbackTimer)
+    initializeAuth()
   }, [])
 
-  const fetchUserProfile = async () => {
+  const fetchUserProfile = async (currentToken?: string) => {
     try {
       console.log('AuthContext: Fetching user profile from /api/users/profile')
       // Add timeout to prevent infinite loading
@@ -95,39 +104,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       console.log('AuthContext: Setting user data:', userData)
       setUser(userData)
-    } catch (error: any) {
-      // Don't log cancelled requests as errors - this is expected behavior
-      if (error.name === 'CanceledError' || error.name === 'AbortError') {
-        console.log('AuthContext: Request was cancelled or timed out')
-        // Don't clear token or user state for cancelled requests
-        return
+      
+      // If token was passed, ensure it's set in state
+      if (currentToken && !token) {
+        setToken(currentToken)
       }
-
+    } catch (error: any) {
       console.error('AuthContext: Failed to fetch user profile:', error)
 
       // Only clear token if it's a 401 (unauthorized) error
       // For network errors, keep the token and allow manual retry
       if (error.response?.status === 401) {
-        console.log('AuthContext: Token invalid or expired, clearing authentication')
+        console.log('AuthContext: Token invalid or expired (401), clearing authentication')
         localStorage.removeItem('clovia_token')
         setToken(null)
         setUser(null)
+        delete api.defaults.headers.common['Authorization']
+      } else {
+        // For network errors or other issues, keep the token but DON'T clear user state
+        // This prevents the flicker of logged-out state on network issues
+        console.log('AuthContext: Network or server error, keeping authentication for retry')
+        // Don't clear user or token here - keep the previous state
+        // User will still see they are logged in until token truly expires
+      }
+
+      // If it's a network error or timeout, show a more specific message
+      if (error.name === 'AbortError') {
+        console.log('AuthContext: Request timeout - backend might be down')
       } else if (error.code === 'NETWORK_ERROR' || !error.response) {
         console.log('AuthContext: Network error - backend might be down')
-        setUser(null)
-        // Don't clear token here - user might be able to retry
+      } else if (error.response?.status === 401) {
+        console.log('AuthContext: Token invalid or expired')
       }
-    } finally {
-      console.log('AuthContext: Setting loading to false')
-      setLoading(false)
     }
   }
 
   // Exposed helper to allow components to refresh user data after updates
   const refreshUser = async () => {
     console.log('AuthContext: Manual refresh requested')
-    setLoading(true)
-    await fetchUserProfile()
+    // Don't change loading state - just refresh user data silently
+    await fetchUserProfile(token || undefined)
   }
 
   // Helper to check and restore authentication from stored token
@@ -135,10 +151,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     console.log('AuthContext: Restoring authentication from stored token')
     const storedToken = localStorage.getItem('clovia_token')
     if (storedToken && !token) {
+      console.log('AuthContext: Found stored token, restoring...')
       setToken(storedToken)
       api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
-      setLoading(true)
-      await fetchUserProfile()
+      await fetchUserProfile(storedToken)
     }
   }
 
@@ -147,10 +163,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await api.post('/api/auth/login', { email, password })
       const { token: newToken, user: userData } = response.data.data
 
+      // Store token in localStorage FIRST
+      localStorage.setItem('clovia_token', newToken)
+      
+      // Set authorization header
+      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+      
+      // Set state - token first, then user
       setToken(newToken)
       setUser(userData)
-      localStorage.setItem('clovia_token', newToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+      
+      console.log('AuthContext: Login successful')
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Login failed')
     }
@@ -169,11 +192,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('AuthContext: Backend response received:', response.data)
       const { token: newToken, user: userDataResponse } = response.data.data
 
+      // Store token in localStorage FIRST
+      localStorage.setItem('clovia_token', newToken)
+      
+      // Set authorization header
+      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+      
       console.log('AuthContext: Setting token and user state')
+      // Set state - token first, then user
       setToken(newToken)
       setUser(userDataResponse)
-      localStorage.setItem('clovia_token', newToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
       console.log('AuthContext: Google login completed successfully')
     } catch (error: any) {
       console.error('AuthContext: Google login failed:', error)
@@ -221,20 +249,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await api.post('/api/auth/register', payload)
       const { token: newToken, user: userData } = response.data.data
       
+      // Store token in localStorage FIRST
+      localStorage.setItem('clovia_token', newToken)
+      
+      // Set authorization header
+      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+      
+      // Set state - token first, then user
       setToken(newToken)
       setUser(userData)
-      localStorage.setItem('clovia_token', newToken)
-      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+      
+      console.log('AuthContext: Registration successful')
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Registration failed')
     }
   }
 
   const logout = () => {
-    setUser(null)
-    setToken(null)
+    console.log('AuthContext: Logging out user')
     localStorage.removeItem('clovia_token')
     delete api.defaults.headers.common['Authorization']
+    setToken(null)
+    setUser(null)
   }
 
   const value: AuthContextType = {

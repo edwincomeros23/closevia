@@ -35,7 +35,6 @@ import {
   PopoverBody,
   Divider,
   Icon,
-  Link,
 } from '@chakra-ui/react'
 import { 
   SearchIcon, 
@@ -57,7 +56,7 @@ import { MdSchool, MdLocalOffer } from 'react-icons/md'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
-import { getFirstImage, getImageUrl } from '../utils/imageUtils'
+import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
@@ -144,19 +143,22 @@ const Home: React.FC = () => {
     setHasSearched(true)
   }
 
-  // Load products immediately on component mount
+  // Load products immediately on component mount (only once)
   useEffect(() => {
-  // Always fetch latest 50 available products on mount (default feed)
-  searchProducts({ ...filters, status: 'available', limit: 50, page: 1 })
-  setHasSearched(false)
-  // empty deps intentional — only once on mount
+    // Check if we already have cached products
+    if (products.length > 0) {
+      console.log('Using cached products, skipping initial fetch')
+      return
+    }
+    // Fetch latest 10 available products on mount (default feed)
+    searchProducts({ status: 'available', limit: 10, page: 1 })
+    // empty deps — only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Refetch when navigating back to Home route to ensure newest items appear
+  // DO NOT refetch when navigating back to home - use persistent cache instead
   useEffect(() => {
-    if (location.pathname === '/home') {
-      searchProducts({ ...filters, status: 'available', limit: 50, page: 1 })
-    }
+    // Navigation doesn't trigger refetch; cached data persists
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
 
@@ -177,15 +179,10 @@ const Home: React.FC = () => {
     return () => observer.unobserve(el)
   }, [sentinelRef, loading, isLoadingMore, hasMore, loadMore])
 
-  // Refetch on tab/window focus to keep feed fresh
+  // DISABLED: Do NOT refetch on tab/window focus to keep persistent cache
+  // The cached products will remain on screen even when switching tabs
   useEffect(() => {
-    const handleFocus = () => {
-      if (window.location.pathname === '/home') {
-        searchProducts({ ...filters, status: 'available', limit: 50, page: 1 })
-      }
-    }
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
+    // Window focus events disabled to maintain persistent data
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -512,43 +509,25 @@ const Home: React.FC = () => {
       <Box p={4} display="flex" flexDirection="column" h={{ base: 140, md: 192 }} overflow="hidden">
         <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
           <HStack spacing={2}>
-            <Link
+            <Box
               as={RouterLink}
               to={`/users/${product.seller_id}`}
+              w={7}
+              h={7}
+              rounded="full"
+              bg="brand.500"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              flexShrink={0}
+              cursor="pointer"
+              _hover={{ opacity: 0.8 }}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
-              _hover={{ textDecoration: 'none' }}
             >
-              {product.seller_profile_picture ? (
-                <Image
-                  w={7}
-                  h={7}
-                  rounded="full"
-                  objectFit="cover"
-                  src={getImageUrl(product.seller_profile_picture)}
-                  alt={product.seller_name || 'Seller'}
-                  flexShrink={0}
-                  cursor="pointer"
-                  _hover={{ opacity: 0.9 }}
-                />
-              ) : (
-                <Box
-                  w={7}
-                  h={7}
-                  rounded="full"
-                  bg="brand.500"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  flexShrink={0}
-                  cursor="pointer"
-                  _hover={{ opacity: 0.8 }}
-                >
-                  <Text fontSize="md" fontWeight="bold" color="white">
-                    {(product.seller_name || 'U').charAt(0).toUpperCase()}
-                  </Text>
-                </Box>
-              )}
-            </Link>
+              <Text fontSize="md" fontWeight="bold" color="white">
+                {(product.seller_name || 'U').charAt(0).toUpperCase()}
+              </Text>
+            </Box>
             <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
               {product.seller_name || 'Unknown'}
             </Text>
@@ -637,7 +616,7 @@ const Home: React.FC = () => {
   // Component to render product grid with ad injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
     const filteredProducts = products.filter(
-      (p) => p.status === 'available'
+      (p) => p.status === 'available' && p.seller_id !== user?.id
     )
 
     // Use the ad injection hook

@@ -72,3 +72,30 @@ func (h *NotificationHandler) MarkAllAsRead(c *fiber.Ctx) error {
 	}
 	return c.JSON(models.APIResponse{Success: true})
 }
+
+// GetDashboardCounts returns unread notification count and pending offer count
+func (h *NotificationHandler) GetDashboardCounts(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return fiber.ErrUnauthorized
+	}
+
+	var unread int
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = FALSE", userID).Scan(&unread); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch notification counts"})
+	}
+
+	// Pending offers are incoming trades with status=pending
+	var pendingOffers int
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status = 'pending'", userID).Scan(&pendingOffers); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch pending offers count"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"unread_notifications": unread,
+			"pending_offers":       pendingOffers,
+		},
+	})
+}

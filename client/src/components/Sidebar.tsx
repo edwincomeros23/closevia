@@ -176,7 +176,7 @@ const Sidebar: React.FC = () => {
                 _hover={{ opacity: 0.8 }}
                 transition="opacity 0.2s"
               />
-              <Image
+              {/* <Image
                 src="/logoimage.png"
                 alt="ECODE"
                 h="30px"
@@ -185,7 +185,7 @@ const Sidebar: React.FC = () => {
                 _hover={{ opacity: 0.8 }}
                 onClick={() => navigate('/company')}
                 transition="opacity 0.2s"
-              />
+              /> */}
             </Box>
 
             {/* Navigation Items (exclude Settings) */}

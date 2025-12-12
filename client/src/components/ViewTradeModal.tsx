@@ -74,6 +74,7 @@ interface ViewTradeModalProps {
   isOpen: boolean
   onClose: () => void
   onStatusUpdate: () => void
+  onTradeUpdate?: (updatedTrade: Trade) => void
 }
 
 interface MeetupLocation {
@@ -86,14 +87,19 @@ interface DeliveryState {
   deliveryType: 'standard' | 'express' | 'meetup'
   paymentMethod: 'gcash' | 'cod' | 'wallet'
   paymentConfirmed: boolean
-  proofOfDelivery: string | null
   buyerConfirmedReceipt: boolean
   sellerConfirmedDelivery: boolean
+  deliveryInstructions: string
+  senderLocation?: string
+  receiverLocation?: string
+  assignedRider?: {
+    name: string
+    phone: string
+  }
   expandedSections: {
     options: boolean
     payment: boolean
     details: boolean
-    proof: boolean
     completion: boolean
   }
 }
@@ -253,10 +259,11 @@ interface DeliveryTabProps {
   isUserSeller: boolean
   isUserBuyer: boolean
   toggleSection: (section: keyof DeliveryState['expandedSections']) => void
-  handleProofUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+  setIsReviewModalOpen: (open: boolean) => void
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
   saveDeliveryState: (updates: Partial<DeliveryState>) => Promise<void>
+  confirmingPayment: boolean
 }
 
 const DeliveryTab: React.FC<DeliveryTabProps> = ({
@@ -269,10 +276,11 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   isUserSeller,
   isUserBuyer,
   toggleSection,
-  handleProofUpload,
   handleConfirmPayment,
   handleConfirmDelivery,
   saveDeliveryState,
+  setIsReviewModalOpen,
+  confirmingPayment,
 }) => {
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
   const totalCost = (requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee
@@ -444,20 +452,29 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               </Text>
 
               <VStack spacing={2} align="stretch">
-                {Object.entries(paymentMethods).map(([method, details]: [string, any]) => (
+                {Object.entries(paymentMethods).map(([method, details]: [string, any]) => {
+                  const isLocked = method === 'gcash' || method === 'maya'
+                  
+                  return (
                   <Card
                     key={`payment-${method}`}
-                    cursor="pointer"
+                    cursor={isLocked || deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
                     borderWidth="2px"
                     borderColor={
-                      deliveryState.paymentMethod === method ? 'green.400' : 'gray.200'
+                      deliveryState.paymentMethod === method ? 'green.400' : isLocked ? 'gray.300' : 'gray.200'
                     }
                     bg={
                       deliveryState.paymentMethod === method
                         ? `${details.color}.50`
-                        : 'white'
+                        : isLocked ? 'gray.100' : 'white'
                     }
+                    opacity={isLocked ? 0.5 : (deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1)}
                     onClick={() => {
+                      // Disable locked options
+                      if (isLocked) return
+                      // Disable changing payment method if already confirmed
+                      if (deliveryState.paymentConfirmed) return
+                      
                       const newMethod = method as DeliveryState['paymentMethod']
                       setDeliveryState(prev => ({
                         ...prev,
@@ -466,7 +483,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       saveDeliveryState({ paymentMethod: newMethod })
                     }}
                     transition="all 0.2s"
-                    _hover={{
+                    _hover={isLocked || deliveryState.paymentConfirmed ? {} : {
                       borderColor: `${details.color}.300`,
                       shadow: 'md',
                     }}
@@ -475,17 +492,34 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       <HStack spacing={3} justify="space-between">
                         <HStack spacing={3}>
                           <Text fontSize="xl">{details.icon}</Text>
-                          <Text fontWeight="medium" fontSize="sm">
-                            {details.label}
-                          </Text>
+                          <VStack spacing={0} align="start">
+                            <Text fontWeight="medium" fontSize="sm">
+                              {details.label}
+                            </Text>
+                            {isLocked && (
+                              <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+                                🔒 Coming Soon
+                              </Text>
+                            )}
+                            {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
+                              <Text fontSize="xs" color="green.600" fontWeight="semibold">
+                                ✓ Secured
+                              </Text>
+                            )}
+                          </VStack>
                         </HStack>
                         {deliveryState.paymentMethod === method && (
-                          <Icon as={FiCheck} color={`${details.color}.500`} boxSize={5} />
+                          <Icon 
+                            as={FiCheck} 
+                            color={`${details.color}.500`} 
+                            boxSize={5} 
+                          />
                         )}
                       </HStack>
                     </CardBody>
                   </Card>
-                ))}
+                  )
+                })}
               </VStack>
 
               <Divider />
@@ -512,11 +546,15 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 colorScheme="green"
                 size="md"
                 onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed}
+                isDisabled={deliveryState.paymentConfirmed || confirmingPayment}
+                isLoading={confirmingPayment}
+                loadingText="Confirming..."
                 leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
                 w="full"
               >
-                {deliveryState.paymentConfirmed ? '✓ Payment Confirmed' : 'Confirm Payment'}
+                {deliveryState.paymentConfirmed 
+                  ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured` 
+                  : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
               </Button>
             </VStack>
           </AccordionPanel>
@@ -538,129 +576,10 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           >
             <HStack spacing={3} flex={1}>
               <Icon as={FiMapPin} boxSize={5} color="purple.500" />
-              <Text fontWeight="semibold">Delivery Details</Text>
-            </HStack>
-            <AccordionIcon />
-          </AccordionButton>
-
-          <AccordionPanel pb={4} pt={4}>
-            <VStack spacing={5} align="stretch">
-              {/* Map Preview */}
-              <Box
-                w="full"
-                h="150px"
-                bg="gray.100"
-                borderRadius="lg"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                borderWidth="2px"
-                borderColor="gray.200"
-                borderStyle="dashed"
-              >
-                <VStack spacing={2}>
-                  <Icon as={FiMapPin} boxSize={6} color="gray.400" />
-                  <Text fontSize="xs" color="gray.500">
-                    Static map preview
-                  </Text>
-                </VStack>
-              </Box>
-
-              {/* Sender Address */}
-              <Box>
-                <Label fontWeight="semibold" mb={2} display="flex" alignItems="center" gap={2}>
-                  <Icon as={FaMapMarkerAlt} color="blue.500" />
-                  Sender Address
-                </Label>
-                <Input
-                  placeholder="123 Main Street, Manila"
-                  value={trade?.delivery_address || ''}
-                  isReadOnly
-                  size="sm"
-                  mb={2}
-                  bg="gray.50"
-                />
-                <InputGroup>
-                  <InputLeftElement pointerEvents="none">
-                    <Icon as={FiPhone} color="gray.400" />
-                  </InputLeftElement>
-                  <Input
-                    placeholder="+63 912 345 6789"
-                    size="sm"
-                    bg="gray.50"
-                  />
-                </InputGroup>
-              </Box>
-
-              <Divider />
-
-              {/* Receiver Address */}
-              <Box>
-                <Label fontWeight="semibold" mb={2} display="flex" alignItems="center" gap={2}>
-                  <Icon as={FaMapMarkerAlt} color="green.500" />
-                  Receiver Address
-                </Label>
-                <Input
-                  placeholder="Receiver's full address"
-                  size="sm"
-                  mb={2}
-                  bg="white"
-                  borderWidth="1px"
-                />
-                <InputGroup>
-                  <InputLeftElement pointerEvents="none">
-                    <Icon as={FiPhone} color="gray.400" />
-                  </InputLeftElement>
-                  <Input
-                    placeholder="Receiver's contact number"
-                    size="sm"
-                    bg="white"
-                    borderWidth="1px"
-                  />
-                </InputGroup>
-              </Box>
-
-              <Divider />
-
-              {/* Delivery Notes */}
-              <Box>
-                <Label fontWeight="semibold" mb={2}>
-                  Delivery Instructions (Optional)
-                </Label>
-                <Textarea
-                  placeholder="e.g., Leave at the gate, Ring doorbell twice, Do not leave in rain..."
-                  size="sm"
-                  rows={3}
-                  bg="white"
-                  borderWidth="1px"
-                />
-              </Box>
-            </VStack>
-          </AccordionPanel>
-        </AccordionItem>
-
-        {/* 4. PROOF OF DELIVERY */}
-        <AccordionItem
-          border="2px"
-          borderColor={deliveryState.expandedSections.proof ? 'orange.400' : 'gray.200'}
-          borderRadius="lg"
-          bg={deliveryState.expandedSections.proof ? 'orange.50' : 'white'}
-          overflow="hidden"
-          mt={3}
-          isDisabled={!deliveryState.paymentConfirmed}
-        >
-          <AccordionButton
-            onClick={() => toggleSection('proof')}
-            _hover={{ bg: deliveryState.expandedSections.proof ? 'orange.100' : 'gray.50' }}
-            py={4}
-            opacity={deliveryState.paymentConfirmed ? 1 : 0.5}
-          >
-            <HStack spacing={3} flex={1}>
-              <Icon as={FiPackage} boxSize={5} color="orange.500" />
               <VStack align="start" spacing={0}>
-                <Text fontWeight="semibold">Proof of Delivery</Text>
+                <Text fontWeight="semibold">Delivery Instructions</Text>
                 <Text fontSize="xs" color="gray.500">
-                  {deliveryState.proofOfDelivery ? '✓ Photo uploaded' : 'Upload delivery photo'}
+                  {deliveryState.deliveryInstructions ? '✓ Added' : 'Optional notes'}
                 </Text>
               </VStack>
             </HStack>
@@ -669,98 +588,38 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
           <AccordionPanel pb={4} pt={4}>
             <VStack spacing={4} align="stretch">
-              {!deliveryState.paymentConfirmed && (
-                <Box p={3} bg="yellow.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="yellow.400">
-                  <Text fontSize="sm" color="yellow.700">
-                    🔒 Complete payment first to upload proof of delivery
-                  </Text>
-                </Box>
-              )}
+              <Box p={3} bg="blue.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
+                <Text fontSize="sm" color="blue.700">
+                  ℹ️ Sender and receiver addresses are auto-detected from your locations
+                </Text>
+              </Box>
 
-              {deliveryState.proofOfDelivery ? (
-                <Box>
-                  <Image
-                    src={deliveryState.proofOfDelivery}
-                    alt="Proof of delivery"
-                    w="full"
-                    h="250px"
-                    objectFit="cover"
-                    borderRadius="lg"
-                    mb={3}
-                  />
-                  <HStack spacing={2} justify="space-between" mb={3}>
-                    <Text fontSize="sm" color="gray.600">
-                      ✓ Delivered on {new Date().toLocaleDateString()}
-                    </Text>
-                    <Badge colorScheme="green">Confirmed</Badge>
-                  </HStack>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    size="sm"
-                    display="none"
-                    id="proof-upload"
-                    onChange={handleProofUpload}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    colorScheme="orange"
-                    w="full"
-                    onClick={() => document.getElementById('proof-upload')?.click()}
-                    leftIcon={<FiUpload />}
-                  >
-                    Replace Photo
-                  </Button>
-                </Box>
-              ) : (
-                <Box
-                  p={6}
-                  border="2px dashed"
-                  borderColor="orange.300"
-                  borderRadius="lg"
-                  textAlign="center"
-                  cursor="pointer"
-                  bg="orange.50"
-                  transition="all 0.2s"
-                  _hover={{ borderColor: 'orange.400', bg: 'orange.100' }}
-                  onClick={() => document.getElementById('proof-upload')?.click()}
-                >
-                  <VStack spacing={2}>
-                    <Icon as={FiUpload} boxSize={8} color="orange.500" />
-                    <Text fontWeight="medium" color="orange.700">
-                      Click to upload delivery photo
-                    </Text>
-                    <Text fontSize="xs" color="orange.600">
-                      or drag and drop
-                    </Text>
-                    <Text fontSize="2xs" color="gray.500">
-                      PNG, JPG up to 10MB
-                    </Text>
-                  </VStack>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    size="sm"
-                    display="none"
-                    id="proof-upload"
-                    onChange={handleProofUpload}
-                  />
-                </Box>
-              )}
-
-              {isUserSeller && (
-                <Box p={3} bg="blue.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
-                  <Text fontSize="sm" color="blue.700">
-                    📸 This photo will be visible to the buyer as proof of delivery
-                  </Text>
-                </Box>
-              )}
+              <Box>
+                <Label fontWeight="semibold" mb={2}>
+                  Delivery Instructions (Optional)
+                </Label>
+                <Textarea
+                  value={deliveryState.deliveryInstructions}
+                  onChange={(e) => setDeliveryState(prev => ({
+                    ...prev,
+                    deliveryInstructions: e.target.value,
+                  }))}
+                  onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
+                  placeholder="e.g., Landmark: Red gate, Leave with guard, Do not leave in rain..."
+                  size="sm"
+                  rows={3}
+                  bg="white"
+                  borderWidth="1px"
+                />
+                <Text fontSize="xs" color="gray.500" mt={1}>
+                  {deliveryState.deliveryInstructions.length}/200 characters
+                </Text>
+              </Box>
             </VStack>
           </AccordionPanel>
         </AccordionItem>
 
-        {/* 5. TRADE COMPLETION */}
+        {/* 4. TRADE COMPLETION */}
         <AccordionItem
           border="2px"
           borderColor={deliveryState.expandedSections.completion ? 'green.400' : 'gray.200'}
@@ -768,13 +627,13 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           bg={bothConfirmed ? 'green.50' : deliveryState.expandedSections.completion ? 'green.50' : 'white'}
           overflow="hidden"
           mt={3}
-          isDisabled={!deliveryState.paymentConfirmed || !deliveryState.proofOfDelivery}
+          isDisabled={!deliveryState.paymentConfirmed}
         >
           <AccordionButton
             onClick={() => toggleSection('completion')}
             _hover={{ bg: deliveryState.expandedSections.completion ? 'green.100' : 'gray.50' }}
             py={4}
-            opacity={deliveryState.paymentConfirmed && deliveryState.proofOfDelivery ? 1 : 0.5}
+            opacity={deliveryState.paymentConfirmed ? 1 : 0.5}
           >
             <HStack spacing={3} flex={1}>
               <Icon as={FiCheck} boxSize={5} color={bothConfirmed ? 'green.500' : 'green.400'} />
@@ -790,71 +649,13 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
           <AccordionPanel pb={4} pt={4}>
             <VStack spacing={5} align="stretch">
-              {!deliveryState.paymentConfirmed || !deliveryState.proofOfDelivery ? (
+              {!deliveryState.paymentConfirmed ? (
                 <Box p={3} bg="yellow.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="yellow.400">
                   <Text fontSize="sm" color="yellow.700">
-                    ⏳ Complete payment and upload proof to finalize delivery
+                    ⏳ Complete payment to finalize delivery
                   </Text>
                 </Box>
               ) : null}
-
-              {/* Confirmation Status */}
-              <SimpleGrid columns={2} spacing={4}>
-                <Card
-                  bg={deliveryState.buyerConfirmedReceipt ? 'green.50' : 'gray.50'}
-                  borderWidth="2px"
-                  borderColor={deliveryState.buyerConfirmedReceipt ? 'green.400' : 'gray.200'}
-                >
-                  <CardBody>
-                    <VStack spacing={2} textAlign="center">
-                      <Avatar
-                        name={trade?.buyer_name || 'Buyer'}
-                        size="md"
-                        bg="blue.500"
-                        color="white"
-                      />
-                      <Text fontWeight="semibold" fontSize="sm">
-                        Buyer
-                      </Text>
-                      <Badge
-                        colorScheme={deliveryState.buyerConfirmedReceipt ? 'green' : 'gray'}
-                        variant="subtle"
-                      >
-                        {deliveryState.buyerConfirmedReceipt ? '✓ Confirmed' : 'Pending'}
-                      </Badge>
-                    </VStack>
-                  </CardBody>
-                </Card>
-
-                <Card
-                  bg={deliveryState.sellerConfirmedDelivery ? 'green.50' : 'gray.50'}
-                  borderWidth="2px"
-                  borderColor={deliveryState.sellerConfirmedDelivery ? 'green.400' : 'gray.200'}
-                >
-                  <CardBody>
-                    <VStack spacing={2} textAlign="center">
-                      <Avatar
-                        name={trade?.seller_name || 'Seller'}
-                        size="md"
-                        bg="green.500"
-                        color="white"
-                      />
-                      <Text fontWeight="semibold" fontSize="sm">
-                        Seller
-                      </Text>
-                      <Badge
-                        colorScheme={deliveryState.sellerConfirmedDelivery ? 'green' : 'gray'}
-                        variant="subtle"
-                      >
-                        {deliveryState.sellerConfirmedDelivery ? '✓ Confirmed' : 'Pending'}
-                      </Badge>
-                    </VStack>
-                  </CardBody>
-                </Card>
-              </SimpleGrid>
-
-              <Divider />
-
               {/* Transaction Summary */}
               <Card bg="gray.50" variant="outline">
                 <CardBody>
@@ -885,46 +686,24 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 </CardBody>
               </Card>
 
-              {/* Confirm Button */}
-              <Button
-                colorScheme="green"
-                size="lg"
-                onClick={handleConfirmDelivery}
-                isDisabled={Boolean(
-                  !deliveryState.paymentConfirmed ||
-                  !deliveryState.proofOfDelivery ||
-                  (isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
-                  (isUserSeller && deliveryState.sellerConfirmedDelivery)
-                )}
-                leftIcon={
-                  (isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
-                  (isUserSeller && deliveryState.sellerConfirmedDelivery) ? (
-                    <FiCheck />
-                  ) : undefined
-                }
-                w="full"
-                transition="all 0.2s"
-                _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-              >
-                {(isUserBuyer && deliveryState.buyerConfirmedReceipt) ||
-                (isUserSeller && deliveryState.sellerConfirmedDelivery)
-                  ? '✓ You Confirmed Receipt'
-                  : isUserBuyer
-                  ? 'Confirm Receipt'
-                  : 'Confirm Delivery Sent'}
-              </Button>
+              {/* Confirm Button - Hidden, goes directly to review */}
 
-              {bothConfirmed && (
-                <Box p={4} bg="green.50" borderRadius="lg" borderWidth="2px" borderColor="green.200" textAlign="center">
-                  <Icon as={FiCheck} boxSize={8} color="green.500" mb={2} mx="auto" display="block" />
-                  <Text fontWeight="bold" color="green.700" mb={1}>
-                    Trade Complete!
-                  </Text>
-                  <Text fontSize="sm" color="green.600">
-                    Both parties have confirmed delivery. You can now leave feedback.
-                  </Text>
-                </Box>
-              )}
+              {(deliveryState.paymentConfirmed && deliveryState.deliveryInstructions) || bothConfirmed ? (
+                <VStack spacing={4}>
+
+                  <Button
+                    colorScheme="green"
+                    size="lg"
+                    onClick={() => setIsReviewModalOpen(true)}
+                    leftIcon={<FaStar />}
+                    w="full"
+                    transition="all 0.2s"
+                    _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                  >
+                    Review & Complete Trade
+                  </Button>
+                </VStack>
+              ) : null}
             </VStack>
           </AccordionPanel>
         </AccordionItem>
@@ -1281,6 +1060,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   isOpen,
   onClose,
   onStatusUpdate,
+  onTradeUpdate,
 }) => {
   const { user } = useAuth()
   const { getProduct } = useProducts()
@@ -1294,6 +1074,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
   const [confirmingMeetup, setConfirmingMeetup] = useState(false)
+  const [confirmingPayment, setConfirmingPayment] = useState(false)
   const [buyerMeetupConfirmed, setBuyerMeetupConfirmed] = useState(false)
   const [sellerMeetupConfirmed, setSellerMeetupConfirmed] = useState(false)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
@@ -1301,18 +1082,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     deliveryType: 'standard',
     paymentMethod: 'gcash',
     paymentConfirmed: false,
-    proofOfDelivery: null,
     buyerConfirmedReceipt: false,
     sellerConfirmedDelivery: false,
+    deliveryInstructions: '',
     expandedSections: {
       options: true,
       payment: false,
       details: false,
-      proof: false,
       completion: false,
     },
   })
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
 
@@ -1341,41 +1122,116 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       if (updates.deliveryType) payload.delivery_type = updates.deliveryType
       if (updates.paymentMethod) payload.payment_method = updates.paymentMethod
       if (updates.paymentConfirmed !== undefined) payload.payment_confirmed = updates.paymentConfirmed
-      if (updates.proofOfDelivery !== undefined) payload.proof_of_delivery = updates.proofOfDelivery
       if (updates.buyerConfirmedReceipt !== undefined) payload.buyer_confirmed_receipt = updates.buyerConfirmedReceipt
       if (updates.sellerConfirmedDelivery !== undefined) payload.seller_confirmed_delivery = updates.sellerConfirmedDelivery
+      if (updates.deliveryInstructions !== undefined) payload.delivery_instructions = updates.deliveryInstructions
       
-      await api.put(`/api/trades/${trade.id}`, payload)
-    } catch (error) {
+      console.log('Sending delivery state payload:', payload, 'to trade:', trade.id)
+      const response = await api.put(`/api/trades/${trade.id}`, payload)
+      console.log('Delivery state update response:', response)
+
+      // Update local trade state with the new delivery data
+      if (trade && onTradeUpdate) {
+        const updatedFields = Object.keys(updates).reduce((acc, key) => {
+          const value = updates[key as keyof DeliveryState]
+          if (value !== undefined) {
+            // Map frontend field names to backend field names
+            switch (key) {
+              case 'deliveryType':
+                acc.delivery_type = value as 'standard' | 'express' | 'meetup'
+                break
+              case 'paymentMethod':
+                acc.payment_method = value as 'gcash' | 'cod' | 'wallet'
+                break
+              case 'paymentConfirmed':
+                acc.payment_confirmed = value as boolean
+                break
+              case 'buyerConfirmedReceipt':
+                acc.buyer_confirmed_receipt = value as boolean
+                break
+              case 'sellerConfirmedDelivery':
+                acc.seller_confirmed_delivery = value as boolean
+                break
+              case 'deliveryInstructions':
+                acc.delivery_instructions = value as string
+                break
+            }
+          }
+          return acc
+        }, {} as any)
+
+        const updatedTrade: Trade = {
+          ...trade,
+          ...updatedFields,
+          updated_at: new Date().toISOString() // Force re-render
+        }
+
+        console.log('Updating trade with delivery fields:', updatedFields)
+        console.log('Updated trade object:', updatedTrade)
+        onTradeUpdate(updatedTrade)
+      }
+
+      // Call onStatusUpdate to refresh any parent state
+      onStatusUpdate()
+    } catch (error: any) {
       console.error('Failed to save delivery state:', error)
+      if (error?.response?.data) {
+        console.error('Backend error details:', error.response.data)
+      }
     }
   }
 
   // Load delivery state from trade data when trade changes
   useEffect(() => {
     if (trade && trade.trade_option === 'delivery') {
+      console.log('Loading delivery state from trade:', {
+        delivery_type: trade.delivery_type,
+        payment_method: trade.payment_method,
+        payment_confirmed: trade.payment_confirmed,
+        buyer_confirmed_receipt: trade.buyer_confirmed_receipt,
+        seller_confirmed_delivery: trade.seller_confirmed_delivery
+      })
+
       setDeliveryState(prev => ({
         ...prev,
         deliveryType: (trade.delivery_type as any) || 'standard',
         paymentMethod: (trade.payment_method as any) || 'gcash',
         paymentConfirmed: trade.payment_confirmed || false,
-        proofOfDelivery: trade.proof_of_delivery || null,
         buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
         sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
+        senderLocation: (trade as any).seller_location || 'Seller location - From product listing',
+        receiverLocation: (trade as any).buyer_location || 'Buyer location - From user profile',
+        assignedRider: {
+          name: 'Juan Dela Cruz (Mock Rider)',
+          phone: '+63 917 123 4567'
+        }
       }))
+
+      console.log('Delivery state loaded:', {
+        deliveryType: (trade.delivery_type as any) || 'standard',
+        paymentMethod: (trade.payment_method as any) || 'gcash',
+        paymentConfirmed: trade.payment_confirmed || false,
+        buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
+        sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
+      })
     }
-  }, [trade?.id, trade?.trade_option])
+  }, [trade?.id, trade?.trade_option, trade?.updated_at])
 
   // Fetch trade messages
   useEffect(() => {
     if (isOpen && trade) {
-      fetchMessages()
+      fetchMessages({ showLoading: true })
       fetchProducts()
       fetchMeetupStatus()
       
-      // Poll for new messages every 3 seconds
-      const interval = setInterval(fetchMessages, 3000)
-      return () => clearInterval(interval)
+      // Poll for new messages every 3 seconds without flashing a loader
+      messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
+      return () => {
+        if (messagesPollRef.current) {
+          clearInterval(messagesPollRef.current)
+          messagesPollRef.current = null
+        }
+      }
     } else {
       setMessages([])
       setNewMessage('')
@@ -1387,18 +1243,21 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading
     if (!trade) return
     
     try {
-      setLoadingMessages(true)
+      if (showLoading) setLoadingMessages(true)
       const response = await api.get(`/api/trades/${trade.id}/messages`)
       const data = response.data?.data || []
-      setMessages(Array.isArray(data) ? data : [])
+      const safeMessages = Array.isArray(data) ? data : []
+      safeMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      setMessages(safeMessages)
     } catch (error) {
       console.error('Failed to fetch messages:', error)
     } finally {
-      setLoadingMessages(false)
+      if (showLoading) setLoadingMessages(false)
     }
   }
 
@@ -1410,13 +1269,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const requested = await getProduct(trade.target_product_id)
       setRequestedProduct(requested)
 
-      const offered: Product[] = []
-      for (const item of trade.items || []) {
-        const pid = item.product_id
-        const product = await getProduct(pid)
-        if (product) offered.push(product)
-      }
-      setOfferedProducts(offered)
+      const offeredIds = (trade.items || []).map((item: any) => item.product_id).filter(Boolean)
+      const offeredResults = await Promise.all(offeredIds.map((pid: number) => getProduct(pid)))
+      setOfferedProducts(offeredResults.filter(Boolean) as Product[])
     } catch (error) {
       console.error('Failed to fetch products:', error)
     } finally {
@@ -1453,7 +1308,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         content: newMessage.trim(),
       })
       setNewMessage('')
-      await fetchMessages()
+      await fetchMessages({ showLoading: false })
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -1512,9 +1367,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
   const paymentMethods = {
-    gcash: { label: 'GCash', icon: '💳', color: 'blue' },
     cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
-    wallet: { label: 'In-app Wallet', icon: '👛', color: 'purple' },
+    gcash: { label: 'GCash', icon: '💳', color: 'blue' },
+    maya: { label: 'Maya', icon: '📱', color: 'purple' },
   }
 
   const toggleSection = (section: keyof typeof deliveryState.expandedSections) => {
@@ -1527,53 +1382,34 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }))
   }
 
-  const handleProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const reader = new FileReader()
-      reader.onloadend = async () => {
-        const proofData = reader.result as string
-        setDeliveryState(prev => ({
-          ...prev,
-          proofOfDelivery: proofData,
-        }))
-        
-        // Save proof of delivery to backend
-        try {
-          await api.put(`/api/trades/${trade?.id}`, {
-            action: 'update_delivery_state',
-            proof_of_delivery: proofData,
-          })
-          toast({
-            title: 'Proof of delivery uploaded',
-            status: 'success',
-            duration: 2000,
-          })
-        } catch (error) {
-          toast({
-            title: 'Failed to save proof',
-            description: 'Please try again',
-            status: 'error',
-            duration: 2000,
-          })
-        }
-      }
-      reader.readAsDataURL(e.target.files[0])
-    }
-  }
-
   const handleConfirmPayment = async () => {
     try {
+      setConfirmingPayment(true)
       // Save payment confirmation to backend
       await api.put(`/api/trades/${trade?.id}`, {
         action: 'update_delivery_state',
         payment_confirmed: true,
         payment_method: deliveryState.paymentMethod,
       })
-      
+
       setDeliveryState(prev => ({
         ...prev,
         paymentConfirmed: true,
       }))
+
+      // Update local trade state
+      if (trade && onTradeUpdate) {
+        const updatedTrade: Trade = {
+          ...trade,
+          payment_confirmed: true,
+          payment_method: deliveryState.paymentMethod,
+        }
+        onTradeUpdate(updatedTrade)
+      }
+
+      // Call onStatusUpdate to refresh parent state
+      onStatusUpdate()
+
       toast({
         title: 'Payment confirmed',
         description: 'Your payment has been secured',
@@ -1587,20 +1423,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         status: 'error',
         duration: 3000,
       })
+    } finally {
+      setConfirmingPayment(false)
     }
   }
 
   const handleConfirmDelivery = async () => {
-    if (!deliveryState.proofOfDelivery && isUserSeller) {
-      toast({
-        title: 'Proof required',
-        description: 'Please upload delivery proof before confirming',
-        status: 'warning',
-        duration: 3000,
-      })
-      return
-    }
-
     try {
       const confirmationPayload: any = {
         action: 'update_delivery_state',
@@ -1623,6 +1451,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       // Save confirmation to backend
       await api.put(`/api/trades/${trade?.id}`, confirmationPayload)
 
+      // Update local trade state
+      if (trade && onTradeUpdate) {
+        const updatedTrade: Trade = {
+          ...trade,
+          ...(isUserBuyer ? { buyer_confirmed_receipt: true } : { seller_confirmed_delivery: true }),
+        }
+        onTradeUpdate(updatedTrade)
+      }
+
+      // Call onStatusUpdate to refresh parent state
+      onStatusUpdate()
+
       toast({
         title: 'Delivery confirmed',
         description: 'Thank you for confirming',
@@ -1633,10 +1473,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       // Check if both parties have confirmed (need to get fresh state)
       try {
         const response = await api.get(`/api/trades/${trade?.id}`)
-        const updatedTrade = response.data?.data
-        if (updatedTrade?.buyer_confirmed_receipt && updatedTrade?.seller_confirmed_delivery) {
+        const freshTrade = response.data?.data
+        if (freshTrade?.buyer_confirmed_receipt && freshTrade?.seller_confirmed_delivery) {
           // Both confirmed, complete the trade
-          await api.put(`/api/trades/${trade?.id}`, {
+          await api.put(`/api/trades/${freshTrade.id}`, {
             action: 'complete',
           })
           onStatusUpdate()
@@ -1890,6 +1730,95 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       </Text>
                     </HStack>
                   </Box>
+
+                  {/* Delivery Information - Show for delivery trades after payment confirmed */}
+                  {trade?.trade_option === 'delivery' && deliveryState.paymentConfirmed && (
+                    <>
+                      <Divider />
+                      <Box>
+                        <Text fontWeight="semibold" mb={4} fontSize="md">
+                          Delivery Information
+                        </Text>
+                        <VStack spacing={3} align="stretch">
+                          {/* Sender Address */}
+                          <Card variant="outline" borderColor="blue.300">
+                            <CardBody p={4}>
+                              <HStack spacing={3} mb={2}>
+                                <Icon as={FaMapMarkerAlt} color="blue.500" boxSize={5} />
+                                <Text fontWeight="semibold" fontSize="sm">Sender Location</Text>
+                              </HStack>
+                              <Text fontSize="sm" color="gray.700" ml={8}>
+                                {deliveryState.senderLocation || 'Auto-detecting sender location...'}
+                              </Text>
+                              {isUserSeller && (
+                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                  (Your location - from product listing)
+                                </Text>
+                              )}
+                            </CardBody>
+                          </Card>
+
+                          {/* Receiver Address */}
+                          <Card variant="outline" borderColor="green.300">
+                            <CardBody p={4}>
+                              <HStack spacing={3} mb={2}>
+                                <Icon as={FaMapMarkerAlt} color="green.500" boxSize={5} />
+                                <Text fontWeight="semibold" fontSize="sm">Receiver Location</Text>
+                              </HStack>
+                              <Text fontSize="sm" color="gray.700" ml={8}>
+                                {deliveryState.receiverLocation || 'Auto-detecting receiver location...'}
+                              </Text>
+                              {isUserBuyer && (
+                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                  (Your location - from your profile)
+                                </Text>
+                              )}
+                            </CardBody>
+                          </Card>
+
+                          {/* Delivery Instructions */}
+                          {deliveryState.deliveryInstructions && (
+                            <Card variant="outline" borderColor="purple.300">
+                              <CardBody p={4}>
+                                <HStack spacing={3} mb={2}>
+                                  <Icon as={FiMapPin} color="purple.500" boxSize={5} />
+                                  <Text fontWeight="semibold" fontSize="sm">Special Instructions</Text>
+                                </HStack>
+                                <Text fontSize="sm" color="gray.700" ml={8} fontStyle="italic">
+                                  "{deliveryState.deliveryInstructions}"
+                                </Text>
+                              </CardBody>
+                            </Card>
+                          )}
+
+                          {/* Assigned Rider */}
+                          <Card variant="outline" borderColor="orange.300" bg="orange.50">
+                            <CardBody p={4}>
+                              <HStack spacing={3} mb={2}>
+                                <Avatar
+                                  name="Juan Dela Cruz"
+                                  size="sm"
+                                  bg="orange.500"
+                                  color="white"
+                                />
+                                <Box flex={1}>
+                                  <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
+                                  <Text fontSize="sm" color="gray.700">Juan Dela Cruz (Mock Rider)</Text>
+                                </Box>
+                              </HStack>
+                              <HStack spacing={2} ml={8} mt={2}>
+                                <Icon as={FiPhone} color="orange.500" boxSize={4} />
+                                <Text fontSize="sm" color="gray.700">+63 917 123 4567</Text>
+                              </HStack>
+                              <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                🎭 This is a mock rider for demonstration
+                              </Text>
+                            </CardBody>
+                          </Card>
+                        </VStack>
+                      </Box>
+                    </>
+                  )}
                 </VStack>
               </TabPanel>
 
@@ -2014,10 +1943,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     isUserSeller={isUserSeller ?? false}
                     isUserBuyer={isUserBuyer ?? false}
                     toggleSection={toggleSection}
-                    handleProofUpload={handleProofUpload}
                     handleConfirmPayment={handleConfirmPayment}
                     handleConfirmDelivery={handleConfirmDelivery}
                     saveDeliveryState={saveDeliveryState}
+                    setIsReviewModalOpen={setIsReviewModalOpen}
+                    confirmingPayment={confirmingPayment}
                   />
                 ) : (
                   <VStack spacing={6} align="stretch">

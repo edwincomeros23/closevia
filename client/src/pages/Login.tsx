@@ -105,6 +105,13 @@ const Login: React.FC = () => {
       // Clear any existing auth state before new login
       localStorage.removeItem('clovia_token')
 
+      // Check if Firebase is initialized
+      if (!auth) {
+        setError('Firebase is not properly configured. Please check your environment variables.')
+        setLoading(false)
+        return
+      }
+
       // Create Google Auth Provider
       const googleProvider = new GoogleAuthProvider()
 
