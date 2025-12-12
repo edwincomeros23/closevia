@@ -277,15 +277,6 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         <Text fontWeight="bold" fontSize="lg">
           {name} {isCurrentUser && '(You)'}
         </Text>
-        <Badge
-          colorScheme={hasCompleted ? 'green' : 'yellow'}
-          variant="solid"
-          px={3}
-          py={1}
-          borderRadius="full"
-        >
-          {hasCompleted ? 'Confirmed' : 'Pending'}
-        </Badge>
         {userRating && userRating > 0 && (
           <HStack>
             <Text fontSize="sm" color="gray.600">Rating:</Text>

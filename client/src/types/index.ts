@@ -73,6 +73,7 @@ export interface ProductCreate {
   location?: string
   condition: string
   category?: string
+  wants?: string
 }
 
 export interface ProductUpdate {
@@ -158,6 +159,13 @@ export interface Trade {
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
+  // Delivery state fields
+  delivery_type?: 'standard' | 'express' | 'meetup'
+  payment_method?: 'gcash' | 'cod' | 'wallet'
+  payment_confirmed?: boolean
+  proof_of_delivery?: string | null // Base64 encoded image
+  buyer_confirmed_receipt?: boolean
+  seller_confirmed_delivery?: boolean
   delivery_estimated_time?: string // Estimated delivery time
 }
 

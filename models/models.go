@@ -256,6 +256,13 @@ type Trade struct {
 	// Trade option and delivery fields
 	TradeOption     string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
 	DeliveryAddress string `json:"delivery_address,omitempty"`
+	// Delivery state fields (for progress tracking and persistence)
+	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
+	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet"`
+	PaymentConfirmed        bool   `json:"payment_confirmed"`
+	ProofOfDelivery         string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
+	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
+	SellerConfirmedDelivery bool   `json:"seller_confirmed_delivery"`
 	// Review and proof fields
 	BuyerRating    *int   `json:"buyer_rating,omitempty"`
 	SellerRating   *int   `json:"seller_rating,omitempty"`

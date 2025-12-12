@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/go-sql-driver/mysql"
 )
 
 var DB *sql.DB
 
 // InitDatabase initializes the database connection
 func InitDatabase() error {
-	// Get database configuration from environment variables ONLY
+	// Get database configuration from environment variables
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
@@ -25,7 +24,7 @@ func InitDatabase() error {
 	dbName := os.Getenv("DB_NAME")
 	caCertPath := os.Getenv("DB_CA_CERT")
 
-	// Validate all required environment variables are set
+	// Validate required environment variables are set
 	if dbHost == "" {
 		return fmt.Errorf("DB_HOST environment variable is not set")
 	}
@@ -35,17 +34,21 @@ func InitDatabase() error {
 	if dbUser == "" {
 		return fmt.Errorf("DB_USER environment variable is not set")
 	}
-	if dbPassword == "" {
-		return fmt.Errorf("DB_PASSWORD environment variable is not set")
-	}
 	if dbName == "" {
 		return fmt.Errorf("DB_NAME environment variable is not set")
 	}
 
-	// Create DSN - with or without TLS based on DB_CA_CERT
+	// Determine if using hosted database (Aiven/AWS) or local (XAMPP)
+	isHostedDatabase := caCertPath != ""
+
+	// For hosted databases, password is required
+	if isHostedDatabase && dbPassword == "" {
+		return fmt.Errorf("DB_PASSWORD environment variable is not set (required for hosted database)")
+	}
+
 	var dsn string
-	if caCertPath != "" {
-		// Create TLS config (required for Aiven/remote databases)
+	if isHostedDatabase {
+		// Create TLS config for hosted databases (required for Aiven)
 		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
 		if err != nil {
 			return fmt.Errorf("failed to create TLS config: %v", err)
@@ -55,11 +58,11 @@ func InitDatabase() error {
 			return fmt.Errorf("failed to register TLS config: %v", err)
 		}
 
-		// Create DSN with TLS enabled
+		// Create DSN with TLS enabled for hosted database
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
 			dbUser, dbPassword, dbHost, dbPort, dbName)
 	} else {
-		// Create DSN without TLS (for local development)
+		// Create DSN without TLS for local database (XAMPP)
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
 			dbUser, dbPassword, dbHost, dbPort, dbName)
 	}
@@ -83,9 +86,9 @@ func InitDatabase() error {
 
 	// Test a simple query to verify we're connected to the right database
 	var currentDbName string
-	dbTestErr := DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName)
-	if dbTestErr != nil {
-		return fmt.Errorf("failed to get database name: %v", dbTestErr)
+	queryErr := DB.QueryRow("SELECT DATABASE()").Scan(&currentDbName)
+	if queryErr != nil {
+		return fmt.Errorf("failed to get database name: %v", queryErr)
 	}
 
 	log.Printf("Successfully connected to MySQL database: %s (Host: %s:%s)", currentDbName, dbHost, dbPort)
@@ -411,6 +414,7 @@ func CreateTables() error {
 
 	ensureUserColumns()
 	ensureProductColumns()
+	ensureTradeColumns()
 
 	log.Println("Database tables and indexes created successfully")
 	return nil
@@ -517,10 +521,10 @@ func updateProductStatusEnum() {
 	// Check current status enum
 	var columnType string
 	err := DB.QueryRow(`
-		SELECT COLUMN_TYPE 
-		FROM information_schema.COLUMNS 
-		WHERE TABLE_SCHEMA = DATABASE() 
-		AND TABLE_NAME = 'products' 
+		SELECT COLUMN_TYPE
+		FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		AND TABLE_NAME = 'products'
 		AND COLUMN_NAME = 'status'
 	`).Scan(&columnType)
 
@@ -536,6 +540,60 @@ func updateProductStatusEnum() {
 			log.Printf("Warning: failed to update status enum: %v", err)
 		} else {
 			log.Println("Updated products status enum to include 'traded' and 'locked'")
+		}
+	}
+}
+
+// ensureTradeColumns adds missing columns to the trades table if they don't exist
+func ensureTradeColumns() {
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"trade_option", "VARCHAR(20) NULL DEFAULT 'meetup'"},
+		{"delivery_address", "TEXT NULL"},
+		{"buyer_rating", "INT NULL"},
+		{"seller_rating", "INT NULL"},
+		{"buyer_feedback", "TEXT NULL"},
+		{"seller_feedback", "TEXT NULL"},
+		{"buyer_proof_url", "VARCHAR(500) NULL"},
+		{"seller_proof_url", "VARCHAR(500) NULL"},
+		{"first_completion_at", "TIMESTAMP NULL"},
+		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
+		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
+		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
+		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
+		{"proof_of_delivery", "LONGTEXT NULL"},
+		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
+		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
+		{"auto_completed_at", "TIMESTAMP NULL DEFAULT NULL"},
+		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
+	}
+
+	for _, col := range columns {
+		// Check if column exists
+		var count int
+		err := DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = 'trades'
+			AND COLUMN_NAME = ?
+		`, col.name).Scan(&count)
+
+		if err != nil {
+			log.Printf("Warning: failed to check trade column %s: %v", col.name, err)
+			continue
+		}
+
+		// Add column if it doesn't exist
+		if count == 0 {
+			query := fmt.Sprintf("ALTER TABLE trades ADD COLUMN %s %s", col.name, col.definition)
+			if _, err := DB.Exec(query); err != nil {
+				log.Printf("Warning: failed to add trade column %s: %v", col.name, err)
+			} else {
+				log.Printf("Added missing trade column: %s", col.name)
+			}
 		}
 	}
 }
