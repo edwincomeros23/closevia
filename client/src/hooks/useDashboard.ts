@@ -16,11 +16,39 @@ export const DASHBOARD_QUERY_KEYS = {
 // Custom hook for user products with caching
 export const useDashboardProducts = (userId: number | undefined) => {
   return useQuery({
-    queryKey: DASHBOARD_QUERY_KEYS.products,
+    queryKey: [...DASHBOARD_QUERY_KEYS.products, userId],
     queryFn: async (): Promise<Product[]> => {
       if (!userId) throw new Error('User ID required')
-      const response = await api.get(`/api/products/user/${userId}`)
-      return response.data.data || []
+      try {
+        // Use same method as UserProfile - direct API call with auth headers
+        const response = await api.get(`/api/products/user/${userId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        })
+        console.log('Products API Response:', response.data)
+        
+        // response.data = { success: true, data: { data: [...], total, page, totalPages } }
+        const paginatedResponse = response.data?.data
+        if (paginatedResponse && Array.isArray(paginatedResponse.data)) {
+          console.log('Returning products from paginated response:', paginatedResponse.data.length)
+          return paginatedResponse.data
+        }
+        // Fallback: direct array
+        if (Array.isArray(response.data?.data)) {
+          console.log('Returning direct data array:', response.data.data.length)
+          return response.data.data
+        }
+        if (Array.isArray(response.data)) {
+          console.log('Returning response as array:', response.data.length)
+          return response.data
+        }
+        console.log('No products array found')
+        return []
+      } catch (error) {
+        console.error('Error fetching products:', error)
+        throw error
+      }
     },
     enabled: !!userId,
     // Products data can be cached longer since it doesn't change frequently
