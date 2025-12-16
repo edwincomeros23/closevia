@@ -549,7 +549,7 @@ const Home: React.FC = () => {
         <Text 
           color="gray.600" 
           noOfLines={{ base: 1, md: 2 }} 
-          mb={3}
+          mb={2}
           fontSize="sm" 
           flexShrink={0}
         >
@@ -561,6 +561,22 @@ const Home: React.FC = () => {
             : 'No description available'
           }
         </Text>
+
+        {/* Wishlist Count Badge */}
+        {product.wishlist_count > 0 && (
+          <Flex mb={2} align="center" gap={1}>
+            <Badge 
+              colorScheme="pink" 
+              variant="subtle" 
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="xs"
+            >
+              ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
+            </Badge>
+          </Flex>
+        )}
 
         {/* Action Buttons */}
         <HStack spacing={2} mt="auto">

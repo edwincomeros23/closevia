@@ -1090,6 +1090,21 @@ const Dashboard: React.FC = () => {
           <Text color="gray.600" noOfLines={2} fontSize="sm">
             {product.description}
           </Text>
+          {/* Wishlist Count Badge */}
+          {product && product.wishlist_count && product.wishlist_count > 0 && (
+            <Flex mt={2} align="center" gap={1}>
+              <Badge 
+                colorScheme="pink" 
+                variant="subtle" 
+                borderRadius="full"
+                px={2}
+                py={0.5}
+                fontSize="xs"
+              >
+                ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
+              </Badge>
+            </Flex>
+          )}
         </CardHeader>
         <CardBody pt={0}>
           <VStack spacing={2} align="stretch">

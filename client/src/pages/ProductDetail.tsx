@@ -879,6 +879,11 @@ const ProductDetail: React.FC = () => {
                     {product.category && (
                       <Badge colorScheme="purple">{product.category}</Badge>
                     )}
+                    {product.bidding_type && product.bidding_type !== 'none' && (
+                      <Badge colorScheme={product.bidding_type === 'blind' ? 'orange' : 'green'}>
+                        {product.bidding_type === 'blind' ? '🤐 Blind Bidding' : '🏆 Open Bidding'}
+                      </Badge>
+                    )}
                   </HStack>
                   {product.suggested_value && product.suggested_value > 0 && (
                   <Text mt={2} color="gray.600" fontSize="sm">

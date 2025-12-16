@@ -49,7 +49,7 @@ const AddProduct: React.FC = () => {
   const toast = useToast()
   
   const [currentStep, setCurrentStep] = useState(1)
-  const [formData, setFormData] = useState<ProductCreate>({
+  const [formData, setFormData] = useState<ProductCreate & { bidding_type?: string }>({
     title: '',
     description: '',
     price: 0,
@@ -61,6 +61,7 @@ const AddProduct: React.FC = () => {
     condition: 'Used',
     category: 'General',
     wants: '',
+    bidding_type: 'none',
   })
   
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -377,6 +378,7 @@ const AddProduct: React.FC = () => {
       formDataToSend.append('premium', formData.premium ? '1' : '0')
       formDataToSend.append('allow_buying', formData.allow_buying ? '1' : '0')
       formDataToSend.append('barter_only', formData.barter_only ? '1' : '0')
+      formDataToSend.append('bidding_type', formData.bidding_type || 'none')
       formDataToSend.append('location', formData.location?.trim() || '')
       formDataToSend.append('condition', formData.condition || 'Used')
       formDataToSend.append('category', formData.category || 'General')
@@ -911,6 +913,112 @@ const AddProduct: React.FC = () => {
                     colorScheme="blue"
                   />
                 </HStack>
+              </FormControl>
+            </Box>
+
+            {/* Bidding Type Section */}
+            <Box>
+              <Heading size="sm" mb={4} color="gray.700">
+                Bidding & Offers Type
+              </Heading>
+              <FormControl>
+                <FormLabel fontWeight="semibold" mb={3}>
+                  How would you like buyers to interact with this item?
+                </FormLabel>
+                <VStack spacing={3} align="start">
+                  <Box
+                    p={3}
+                    borderWidth="2px"
+                    borderRadius="md"
+                    cursor="pointer"
+                    borderColor={formData.bidding_type === 'none' ? 'blue.500' : 'gray.200'}
+                    bg={formData.bidding_type === 'none' ? 'blue.50' : 'white'}
+                    _hover={{ borderColor: 'blue.400' }}
+                    onClick={() => handleInputChange('bidding_type', 'none')}
+                  >
+                    <HStack justify="space-between" w="100%">
+                      <VStack align="start" spacing={1}>
+                        <Text fontWeight="semibold" color="gray.800">
+                          No Bidding
+                        </Text>
+                        <Text fontSize="sm" color="gray.600">
+                          Buyers can only accept/decline your set price or make trade offers
+                        </Text>
+                      </VStack>
+                      <Box>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="none"
+                          checked={formData.bidding_type === 'none'}
+                          onChange={() => {}}
+                        />
+                      </Box>
+                    </HStack>
+                  </Box>
+
+                  <Box
+                    p={3}
+                    borderWidth="2px"
+                    borderRadius="md"
+                    cursor="pointer"
+                    borderColor={formData.bidding_type === 'blind' ? 'blue.500' : 'gray.200'}
+                    bg={formData.bidding_type === 'blind' ? 'blue.50' : 'white'}
+                    _hover={{ borderColor: 'blue.400' }}
+                    onClick={() => handleInputChange('bidding_type', 'blind')}
+                  >
+                    <HStack justify="space-between" w="100%">
+                      <VStack align="start" spacing={1}>
+                        <Text fontWeight="semibold" color="gray.800">
+                          Blind Bidding
+                        </Text>
+                        <Text fontSize="sm" color="gray.600">
+                          Buyers submit private offers without seeing others' bids. You choose the best offer
+                        </Text>
+                      </VStack>
+                      <Box>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="blind"
+                          checked={formData.bidding_type === 'blind'}
+                          onChange={() => {}}
+                        />
+                      </Box>
+                    </HStack>
+                  </Box>
+
+                  <Box
+                    p={3}
+                    borderWidth="2px"
+                    borderRadius="md"
+                    cursor="pointer"
+                    borderColor={formData.bidding_type === 'open' ? 'blue.500' : 'gray.200'}
+                    bg={formData.bidding_type === 'open' ? 'blue.50' : 'white'}
+                    _hover={{ borderColor: 'blue.400' }}
+                    onClick={() => handleInputChange('bidding_type', 'open')}
+                  >
+                    <HStack justify="space-between" w="100%">
+                      <VStack align="start" spacing={1}>
+                        <Text fontWeight="semibold" color="gray.800">
+                          Open Bidding
+                        </Text>
+                        <Text fontSize="sm" color="gray.600">
+                          Buyers can see all bids and counter-bid. Most competitive option for maximum price discovery
+                        </Text>
+                      </VStack>
+                      <Box>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="open"
+                          checked={formData.bidding_type === 'open'}
+                          onChange={() => {}}
+                        />
+                      </Box>
+                    </HStack>
+                  </Box>
+                </VStack>
               </FormControl>
             </Box>
 

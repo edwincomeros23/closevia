@@ -70,6 +70,7 @@ const EditProduct: React.FC = () => {
         condition: product.condition,
         allow_buying: product.allow_buying,
         barter_only: product.barter_only,
+        bidding_type: product.bidding_type || 'none',
         location: product.location,
       })
 
@@ -418,6 +419,91 @@ const EditProduct: React.FC = () => {
                   </Select>
                   <FormHelperText>
                     Select the current status of your product
+                  </FormHelperText>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel mb={3} fontWeight="semibold">
+                    Bidding Type
+                  </FormLabel>
+                  <VStack spacing={2} align="start">
+                    <Box
+                      p={2}
+                      borderWidth="1px"
+                      borderRadius="md"
+                      cursor="pointer"
+                      borderColor={formData.bidding_type === 'none' ? 'blue.500' : 'gray.200'}
+                      bg={formData.bidding_type === 'none' ? 'blue.50' : 'white'}
+                      w="full"
+                      onClick={() => handleInputChange('bidding_type', 'none')}
+                    >
+                      <HStack>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="none"
+                          checked={formData.bidding_type === 'none' || (formData.bidding_type === undefined && originalProduct.bidding_type === 'none')}
+                          onChange={() => {}}
+                        />
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="semibold" fontSize="sm">No Bidding</Text>
+                          <Text fontSize="xs" color="gray.600">Set price only, no auction</Text>
+                        </VStack>
+                      </HStack>
+                    </Box>
+
+                    <Box
+                      p={2}
+                      borderWidth="1px"
+                      borderRadius="md"
+                      cursor="pointer"
+                      borderColor={formData.bidding_type === 'blind' ? 'blue.500' : 'gray.200'}
+                      bg={formData.bidding_type === 'blind' ? 'blue.50' : 'white'}
+                      w="full"
+                      onClick={() => handleInputChange('bidding_type', 'blind')}
+                    >
+                      <HStack>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="blind"
+                          checked={formData.bidding_type === 'blind'}
+                          onChange={() => {}}
+                        />
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="semibold" fontSize="sm">Blind Bidding</Text>
+                          <Text fontSize="xs" color="gray.600">Private offers, you choose best</Text>
+                        </VStack>
+                      </HStack>
+                    </Box>
+
+                    <Box
+                      p={2}
+                      borderWidth="1px"
+                      borderRadius="md"
+                      cursor="pointer"
+                      borderColor={formData.bidding_type === 'open' ? 'blue.500' : 'gray.200'}
+                      bg={formData.bidding_type === 'open' ? 'blue.50' : 'white'}
+                      w="full"
+                      onClick={() => handleInputChange('bidding_type', 'open')}
+                    >
+                      <HStack>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="open"
+                          checked={formData.bidding_type === 'open'}
+                          onChange={() => {}}
+                        />
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="semibold" fontSize="sm">Open Bidding</Text>
+                          <Text fontSize="xs" color="gray.600">Public bids, most competitive</Text>
+                        </VStack>
+                      </HStack>
+                    </Box>
+                  </VStack>
+                  <FormHelperText mt={2}>
+                    Change how buyers can bid or make offers on this product
                   </FormHelperText>
                 </FormControl>
 
