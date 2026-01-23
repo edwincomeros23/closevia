@@ -61,7 +61,10 @@ const AddProduct: React.FC = () => {
     condition: 'Used',
     category: 'General',
     wants: '',
+<<<<<<< HEAD
     bidding_type: 'none',
+=======
+>>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
   })
   
   const [uploadedImages, setUploadedImages] = useState<File[]>([])

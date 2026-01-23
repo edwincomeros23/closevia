@@ -16,6 +16,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const { user } = useAuth()
   const toast = useToast()
   const [userProducts, setUserProducts] = useState<Product[]>([])
+  const [targetProduct, setTargetProduct] = useState<Product | null>(null)
   const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([])
   const [tradeMessage, setTradeMessage] = useState('')
   const [submittingTrade, setSubmittingTrade] = useState(false)
@@ -28,6 +29,23 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const selectedBorder = useColorModeValue('brand.500', 'brand.400')
 
   const selectedProducts = useMemo(() => userProducts.filter(p => selectedOfferIds.includes(p.id)), [userProducts, selectedOfferIds])
+
+  // Fetch target product details
+  useEffect(() => {
+    if (!isOpen || !targetProductId) {
+      setTargetProduct(null)
+      return
+    }
+    ;(async () => {
+      try {
+        const res = await api.get(`/api/products/${targetProductId}`)
+        const product = res.data?.data?.product || res.data?.data
+        setTargetProduct(product)
+      } catch (_) {
+        setTargetProduct(null)
+      }
+    })()
+  }, [isOpen, targetProductId])
 
   useEffect(() => {
     if (!isOpen) return
@@ -116,6 +134,42 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
         <ModalBody pb={6}>
           {user ? (
             <VStack spacing={4} align="stretch">
+              {/* Target Product Display */}
+              {targetProduct && (
+                <Card variant="outline" bg={useColorModeValue('blue.50', 'blue.900')} borderColor={useColorModeValue('blue.200', 'blue.700')}>
+                  <CardBody p={4}>
+                    <VStack spacing={3} align="stretch">
+                      <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('blue.700', 'blue.200')} textTransform="uppercase">
+                        Trading For
+                      </Text>
+                      <HStack spacing={3} align="start">
+                        <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="80px" h="80px" objectFit="cover" rounded="md" />
+                        <VStack spacing={2} align="start" flex={1}>
+                          <Text fontWeight="semibold" fontSize="sm">{targetProduct.title}</Text>
+                          <Text fontSize="xs" color="gray.500" noOfLines={2}>{targetProduct.description}</Text>
+                          {targetProduct.bidding_type && targetProduct.bidding_type !== 'none' && (
+                            <HStack spacing={2}>
+                              {targetProduct.bidding_type === 'blind' && (
+                                <Badge colorScheme="orange" fontSize="xs">
+                                  🤐 Blind Bidding
+                                </Badge>
+                              )}
+                              {targetProduct.bidding_type === 'open' && (
+                                <Badge colorScheme="green" fontSize="xs">
+                                  🏆 Open Bidding
+                                </Badge>
+                              )}
+                            </HStack>
+                          )}
+                        </VStack>
+                      </HStack>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              )}
+
+              <Divider />
+
               <Text fontWeight="semibold">Select your items to offer:</Text>
               {/* Scrollable grid: shows 2 full rows + small peek of 3rd; scroll when overflowing */}
               <Box maxH="244px" overflowY="auto" pr={2}>

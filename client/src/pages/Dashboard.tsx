@@ -644,8 +644,13 @@ const Dashboard: React.FC = () => {
   
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
+<<<<<<< HEAD
     const sentPending = (outgoing || []).filter((t: Trade) => t.status === 'pending').length
     const receivedPending = (incoming || []).filter((t: Trade) => t.status === 'pending').length
+=======
+    const sentPending = (outgoing || []).filter(t => t.status === 'pending').length
+    const receivedPending = (incoming || []).filter(t => t.status === 'pending').length
+>>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
     const ongoing = (ongoingTradesData || []).length
     return {
       sentPending,
@@ -683,7 +688,11 @@ const Dashboard: React.FC = () => {
   // Get trades for each sub-tab (excluding completed - those go to Trade History)
   // Optimized to only sort when rendering, not during filter
   const sentOffers = useMemo(() => {
+<<<<<<< HEAD
     const active = (outgoing || []).filter((t: Trade) => t.status === 'pending') // Only show pending offers
+=======
+    const active = (outgoing || []).filter(t => t.status === 'pending') // Only show pending offers
+>>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -697,7 +706,11 @@ const Dashboard: React.FC = () => {
   }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const receivedOffers = useMemo(() => {
+<<<<<<< HEAD
     const active = (incoming || []).filter((t: Trade) => t.status === 'pending') // Only show pending offers
+=======
+    const active = (incoming || []).filter(t => t.status === 'pending') // Only show pending offers
+>>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -2726,7 +2739,11 @@ const Dashboard: React.FC = () => {
                       {/* Mobile Card View */}
                       <VStack spacing={4} align="stretch" display={{ base: 'flex', md: 'none' }}>
                         {paginatedTradeHistory.map((trade) => {
+<<<<<<< HEAD
                           const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
+=======
+                          const isIncoming = incoming.some(t => t.id === trade.id)
+>>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
                           const tradingPartner = isIncoming 
                             ? (trade.buyer_name || 'Anonymous')
                             : (trade.seller_name || 'Anonymous')

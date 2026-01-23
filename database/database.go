@@ -10,6 +10,10 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+<<<<<<< HEAD
+=======
+	_ "github.com/go-sql-driver/mysql"
+>>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
 )
 
 var DB *sql.DB
@@ -47,6 +51,7 @@ func InitDatabase() error {
 	}
 
 	var dsn string
+<<<<<<< HEAD
 	if isHostedDatabase {
 		// Create TLS config for hosted databases (required for Aiven)
 		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
@@ -58,6 +63,20 @@ func InitDatabase() error {
 			return fmt.Errorf("failed to register TLS config: %v", err)
 		}
 
+=======
+
+	if isHostedDatabase {
+		// Create TLS config for hosted database
+		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
+		if err != nil {
+			return fmt.Errorf("failed to create TLS config: %v", err)
+		}
+
+		if err = mysql.RegisterTLSConfig("custom", tlsConfig); err != nil {
+			return fmt.Errorf("failed to register TLS config: %v", err)
+		}
+
+>>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
 		// Create DSN with TLS enabled for hosted database
 		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
 			dbUser, dbPassword, dbHost, dbPort, dbName)
