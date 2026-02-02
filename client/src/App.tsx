@@ -140,7 +140,7 @@ const AppContent: React.FC = () => {
       <Route path="/*" element={
         <Box minH="100vh" bg="gray.50">
           <Sidebar />
-          <Box as="main" ml={{ base: 0, lg: '70px' }}>
+          <Box as="main" ml={{ base: 0, lg: '70px' }} w="full">
             <Routes>
               <Route path="/home" element={<Home />} />
               <Route path="/login" element={<Login />} />

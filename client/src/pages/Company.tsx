@@ -123,7 +123,7 @@ const Company: React.FC = () => {
         />
       </Box>
 
-      {/* Glassmorphic Navigation Bar */}
+      {/* Glassmorphic Navigation Bar - desktop: wider max and padding */}
       <Box
         position="fixed"
         top={0}
@@ -139,24 +139,24 @@ const Company: React.FC = () => {
         )}
         transition="all 0.3s ease"
         mx="auto"
-        maxW="6xl"
+        maxW={{ base: '100%', md: '6xl', xl: '7xl', '2xl': '1600px' }}
         display={{ base: 'block', md: 'block' }}
         mt={{ base: 0, md: 4 }}
         borderRadius={{ base: '0', md: 'lg' }}
       >
-        <Container maxW="6xl" px={{ base: 3, md: 8 }}>
+        <Container maxW={{ base: '100%', md: '6xl', xl: '7xl', '2xl': '1600px' }} px={{ base: 3, md: 8, lg: 10, xl: 12 }}>
           <Flex
-            py={{ base: 3, md: 4 }}
+            py={{ base: 3, md: 4, lg: 4 }}
             justify="space-between"
             align="center"
-            h={{ base: '50px', md: '60px' }}
+            h={{ base: '50px', md: '60px', lg: '64px' }}
           >
             {/* Logo Section */}
             <HStack spacing={2} cursor="pointer" onClick={() => navigate('/')} flex={1}>
               <Image
                 src="/logoimage.png"
                 alt="Logo"
-                h={{ base: '32px', md: '40px' }}
+                h={{ base: '32px', md: '40px', lg: '44px' }}
                 objectFit="contain"
               />
               {/* ECODE Logo - Mobile Only */}
@@ -170,8 +170,8 @@ const Company: React.FC = () => {
               />
             </HStack>
 
-            {/* Nav Links */}
-            <HStack spacing={{ base: 2, sm: 3, md: 8 }} align="center">
+            {/* Nav Links - desktop: more spacing */}
+            <HStack spacing={{ base: 2, sm: 3, md: 6, lg: 8, xl: 10 }} align="center">
               <ChakraLink
                 fontSize={{ base: 'xs', sm: 'sm' }}
                 fontWeight="500"
@@ -253,7 +253,7 @@ const Company: React.FC = () => {
         </Container>
       </Box>
 
-      {/* Hero Section */}
+      {/* Hero Section - desktop: larger container and typography */}
       <Flex
         w="100%"
         h="100vh"
@@ -261,19 +261,19 @@ const Company: React.FC = () => {
         justify="center"
         position="relative"
         zIndex={2}
-        pt={16}
+        pt={{ base: 16, md: 20 }}
       >
-        <Container maxW="2xl" centerContent>
-          <VStack spacing={8} textAlign="center" align="center">
+        <Container maxW={{ base: '2xl', md: '3xl', lg: '4xl', xl: '5xl' }} centerContent px={{ base: 4, md: 6, lg: 8 }}>
+          <VStack spacing={{ base: 6, md: 8, lg: 10 }} textAlign="center" align="center">
             {/* Main Heading */}
-            <VStack spacing={4}>
+            <VStack spacing={{ base: 4, md: 6 }}>
               <Heading
                 as="h1"
                 size="2xl"
                 color="white"
                 fontWeight="900"
                 lineHeight="1.2"
-                fontSize={{ base: '3xl', md: '5xl' }}
+                fontSize={{ base: '3xl', md: '5xl', lg: '6xl', xl: '7xl' }}
                 textShadow="0 2px 10px rgba(0, 0, 0, 0.3)"
               >
                 Sustainable Solutions, 
@@ -283,7 +283,7 @@ const Company: React.FC = () => {
                   color="green.300"
                   display="inline"
                   fontWeight="900"
-                  fontSize={{ base: '3xl', md: '5xl' }}
+                  fontSize={{ base: '3xl', md: '5xl', lg: '6xl', xl: '7xl' }}
                   fontFamily="'Courier New', monospace"
                   letterSpacing="0.1em"
                   textShadow="0 0 20px rgba(74, 222, 128, 0.8), 0 0 40px rgba(74, 222, 128, 0.5), 0 0 60px rgba(74, 222, 128, 0.3)"
@@ -304,9 +304,9 @@ const Company: React.FC = () => {
               </Heading>
 
               <Text
-                fontSize={{ base: 'lg', md: 'xl' }}
+                fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }}
                 color="gray.100"
-                maxW="xl"
+                maxW={{ base: 'xl', md: '2xl', lg: '3xl' }}
                 textShadow="0 1px 5px rgba(0, 0, 0, 0.2)"
                 fontWeight="500"
               >
