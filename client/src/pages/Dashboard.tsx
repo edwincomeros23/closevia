@@ -1262,61 +1262,64 @@ const Dashboard: React.FC = () => {
           role="article"
         >
           <Box position="relative" w="full" h="140px" display="flex" gap={1} p={1} bg="gray.50" flexWrap="wrap" alignContent="flex-start" overflow="hidden">
-            <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="60px">
+            {/* Your Item - Always flex=1 */}
+            <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="0">
               <ProductThumb
                 pid={trade.target_product_id}
                 alt={getProductTitle(trade.target_product_id, trade.product_title)}
-                size="full"
+                size="100%"
               />
               <Badge position="absolute" top={1} left={1} colorScheme="blue" fontSize="2xs" px={1} py={0.5}>
                 Your Item
               </Badge>
             </Box>
 
-            {/* Show offered items in a row or stack if multiple */}
-            {offeredItems.length > 0 ? (
-              <>
-                {offeredItems.slice(0, 3).map((item: any, idx: number) => (
-                  <Box
-                    key={item.id || idx}
-                    flex="0 0 auto"
-                    position="relative"
-                    borderRadius="md"
-                    overflow="hidden"
-                    borderWidth="2px"
-                    borderColor="green.300"
-                    w={offeredItems.length === 1 ? "calc(100% - 70px)" : "60px"}
-                    h="100%"
-                  >
-                    <ProductThumb
-                      pid={Number(item.product_id)}
-                      src={item.product_image_url}
-                      alt={getProductTitle(Number(item.product_id), item.product_title)}
-                      size="full"
-                    />
-                    {idx === 2 && offeredItems.length > 3 && (
-                      <Box position="absolute" inset={0} bg="blackAlpha.600" display="flex" alignItems="center" justifyContent="center">
-                        <Text fontSize="xs" color="white" fontWeight="bold">
-                          +{offeredItems.length - 3}
-                        </Text>
-                      </Box>
-                    )}
+            {/* Their Items - Always flex=1 */}
+            <Box flex={1} display="flex" gap={1} minW="0">
+              {offeredItems.length > 0 ? (
+                <>
+                  {offeredItems.slice(0, 3).map((item: any, idx: number) => (
+                    <Box
+                      key={item.id || idx}
+                      flex={1}
+                      position="relative"
+                      borderRadius="md"
+                      overflow="hidden"
+                      borderWidth="2px"
+                      borderColor="green.300"
+                      minW="0"
+                      h="100%"
+                    >
+                      <ProductThumb
+                        pid={Number(item.product_id)}
+                        src={item.product_image_url}
+                        alt={getProductTitle(Number(item.product_id), item.product_title)}
+                        size="100%"
+                      />
+                      {idx === 2 && offeredItems.length > 3 && (
+                        <Box position="absolute" inset={0} bg="blackAlpha.600" display="flex" alignItems="center" justifyContent="center">
+                          <Text fontSize="xs" color="white" fontWeight="bold">
+                            +{offeredItems.length - 3}
+                          </Text>
+                        </Box>
+                      )}
+                    </Box>
+                  ))}
+                  <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
+                    Their Items{offeredItems.length > 1 ? 's' : ''}
+                  </Badge>
+                </>
+              ) : (
+                <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="gray.300" minW="0">
+                  <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
+                    <Text fontSize="xs" color="gray.500">No items</Text>
                   </Box>
-                ))}
-                <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                  Their Items{offeredItems.length > 1 ? 's' : ''}
-                </Badge>
-              </>
-            ) : (
-              <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="gray.300" minW="60px">
-                <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
-                  <Text fontSize="xs" color="gray.500">No items</Text>
+                  <Badge position="absolute" top={1} right={1} colorScheme="gray" fontSize="2xs" px={1} py={0.5}>
+                    No Items
+                  </Badge>
                 </Box>
-                <Badge position="absolute" top={1} right={1} colorScheme="gray" fontSize="2xs" px={1} py={0.5}>
-                  No Items
-                </Badge>
-              </Box>
-            )}
+              )}
+            </Box>
           </Box>
 
           <CardHeader pb={2} flex={1}>
