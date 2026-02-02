@@ -74,10 +74,7 @@ export interface ProductCreate {
   location?: string
   condition: string
   category?: string
-<<<<<<< HEAD
   bidding_type?: 'none' | 'blind' | 'open'
-=======
->>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
   wants?: string
 }
 
@@ -92,10 +89,7 @@ export interface ProductUpdate {
   barter_only?: boolean
   location?: string
   condition?: string
-<<<<<<< HEAD
   bidding_type?: 'none' | 'blind' | 'open'
-=======
->>>>>>> 5ffd92e7006c945875372ac2d2bb82c3e0d3b436
 }
 
 export interface OrderCreate {
