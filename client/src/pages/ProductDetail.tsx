@@ -33,6 +33,7 @@ import {
   Input,
   Tooltip,
   Grid,
+  Avatar,
 } from '@chakra-ui/react'
 import { 
   FiHeart, 
@@ -1134,51 +1135,12 @@ const ProductDetail: React.FC = () => {
           </Heading>
           <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
-              {sellerProfile?.profile_picture ? (
-                <Image
-                  src={sellerProfile.profile_picture}
-                  alt={sellerProfile.name || 'Seller'}
-                  w="60px"
-                  h="60px"
-                  borderRadius="full"
-                  objectFit="cover"
-                  flexShrink={0}
-                  fallback={
-                    <Box
-                      w="60px"
-                      h="60px"
-                      rounded="full"
-                      bg="brand.500"
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="center"
-                      flexShrink={0}
-                    >
-                      <Text fontSize="24px" fontWeight="bold" color="white">
-                        {(product.seller_name ?? '?').charAt(0).toUpperCase()}
-                      </Text>
-                    </Box>
-                  }
-                  onError={(e) => {
-                    console.error('Failed to load seller profile image:', sellerProfile.profile_picture)
-                  }}
-                />
-              ) : (
-                <Box
-                  w="60px"
-                  h="60px"
-                  rounded="full"
-                  bg="brand.500"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  flexShrink={0}
-                >
-                  <Text fontSize="24px" fontWeight="bold" color="white">
-                    {(product.seller_name ?? '?').charAt(0).toUpperCase()}
-                  </Text>
-                </Box>
-              )}
+              <Avatar
+                size="lg"
+                src={sellerProfile?.profile_picture ? `${sellerProfile.profile_picture}?t=${Date.now()}` : undefined}
+                name={product.seller_name || 'Seller'}
+                bg="brand.500"
+              />
               <Box>
                 <Text
                   as={RouterLink}

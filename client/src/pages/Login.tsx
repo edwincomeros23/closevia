@@ -50,13 +50,17 @@ const Login: React.FC = () => {
   }, [googleLoginSuccess, isAuthenticated, isLoggingIn, navigate])
 
   // Redirect already authenticated users away from login page
-  // BUT only if we're not currently in the middle of a login attempt
+  // ONLY when component first mounts, not on every auth state change
   useEffect(() => {
-    if (isAuthenticated && !isLoggingIn && !loading) {
-      console.log('Login: User already authenticated, redirecting to dashboard')
+    // Check if we're actually on the login page before redirecting
+    const isOnLoginPage = window.location.pathname === '/login'
+    
+    if (isAuthenticated && !isLoggingIn && !loading && isOnLoginPage) {
+      console.log('Login: User already authenticated on login page, redirecting to dashboard')
       navigate('/dashboard', { replace: true })
     }
-  }, [isAuthenticated, isLoggingIn, loading, navigate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run once on mount
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

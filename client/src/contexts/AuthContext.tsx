@@ -110,6 +110,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setToken(currentToken)
       }
     } catch (error: any) {
+      // Ignore canceled requests (happens during navigation or component unmount)
+      if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+        console.log('AuthContext: Request canceled (navigation or unmount)')
+        return
+      }
+      
       console.error('AuthContext: Failed to fetch user profile:', error)
 
       // Only clear token if it's a 401 (unauthorized) error
