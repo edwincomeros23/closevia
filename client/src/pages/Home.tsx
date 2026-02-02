@@ -397,7 +397,7 @@ const Home: React.FC = () => {
       overflow="hidden"
       transition="all 0.2s ease"
       w="full"
-      maxW={{ base: "270px", md: "250px" }}
+      maxW={{ base: "27f0px", md: "250px" }}
       h="full"
       display="flex"
       flexDirection="column"
