@@ -676,7 +676,7 @@ const Home: React.FC = () => {
           md: 'repeat(3, 1fr)',
           lg: 'repeat(4, 1fr)',
           xl: 'repeat(5, 1fr)',
-          '2xl': 'repeat(6, 1fr)',
+          '2xl': 'repeat(5, 1fr)',
         }}
         gap={{ base: 3, md: 4, lg: 4, xl: 5 }}
         alignItems="start"
@@ -708,9 +708,14 @@ const Home: React.FC = () => {
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
         py={{ base: 3, md: 4 }}
       >
-        <VStack spacing={4} w="full" maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx="auto">
+        <VStack
+          spacing={4}
+          w="full"
+          maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
+          mx={{ base: 'auto', lg: 0 }}
+        >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap">
+          <HStack w="full" spacing={3} wrap="wrap" ml={-14}>
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -860,16 +865,17 @@ const Home: React.FC = () => {
             <Box
               position="absolute"
               top="100%"
-              left="50%"
+              left={0}
+              right={0}
               w="full"
               bg="white"
               p={4}
               rounded="lg"
               shadow="md"
               zIndex={50}
-              maxW="6xl"
-              mx="auto"
-              transform="translateX(-50%)"
+              maxW={{ base: "100%", md: "6xl" }}
+              mx={0}
+              transform="none"
             >
               <Grid templateColumns="repeat(auto-fit, minmax(150px, 1fr))" gap={3}>
                 <FormControl>
@@ -966,8 +972,8 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box - desktop: capped width and taller */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1050px', xl: '1200px', '2xl': '1400px' }}
-        mx="auto"
+        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
+        mx={{ base: 'auto', lg: 0 }}
         mb={8}
         px={{ base: 2, md: 4, lg: 6 }}
       >
@@ -1059,7 +1065,7 @@ const Home: React.FC = () => {
         <Box
           w="full"
           maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
-          mx="auto"
+          mx={{ base: 'auto', lg: 0 }}
         >
           <HStack
             spacing={{ base: 2.5, md: 3 }}
@@ -1154,7 +1160,13 @@ const Home: React.FC = () => {
         </Box>
       </Box>
       {/* Main Content - desktop: centered max-width */}
-      <Box px={{ base: 3, md: 6, lg: 8, xl: 10 }} py={8} maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx="auto" w="full">
+      <Box
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
+        py={8}
+        maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
+        mx={{ base: 'auto', lg: 0 }}
+        w="full"
+      >
         {/* Loading State */}
         {loading && !products.length && (
           <Center h="50vh">
@@ -1195,6 +1207,7 @@ const Home: React.FC = () => {
     px={{ base: 2, md: 4, lg: 0 }}
     pb={{ base: 20, md: 0 }}
     minH={{ base: '1200px', md: '1600px' }}
+    ml={-10}
   >
     <ProductGridWithAds products={products} user={user} />
 
