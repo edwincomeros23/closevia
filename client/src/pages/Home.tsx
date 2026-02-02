@@ -676,9 +676,10 @@ const Home: React.FC = () => {
           md: 'repeat(3, 1fr)',
           lg: 'repeat(4, 1fr)',
           xl: 'repeat(5, 1fr)',
+          '2xl': 'repeat(6, 1fr)',
         }}
-        gap={{ base: 3, md: 4 }}
-        alignItems="stretch"
+        gap={{ base: 3, md: 4, lg: 4, xl: 5 }}
+        alignItems="start"
       >
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
@@ -697,19 +698,19 @@ const Home: React.FC = () => {
 
   return (
     <Box minH="100vh" bg="#FFFDF1">
-      {/* Sticky Search Header */}
+      {/* Sticky Search Header - desktop: centered max-width */}
       <Box
         position="sticky"
         top={0}
         zIndex={100}
         bg="#FFFDF1"
         borderColor="gray.200"
-        px={8}
-        py={4}
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
+        py={{ base: 3, md: 4 }}
       >
-        <VStack spacing={4}>
+        <VStack spacing={4} w="full" maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx="auto">
           {/* Main Search Bar */}
-          <HStack w="full" maxW="8xl" mx="auto" spacing={3} wrap="wrap">
+          <HStack w="full" spacing={3} wrap="wrap">
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -963,17 +964,17 @@ const Home: React.FC = () => {
           )}
         </VStack>
       </Box>
-      {/* slider / visual box between header and main content (keeps same dimensions) */}
+      {/* slider / visual box - desktop: capped width and taller */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1160', xl: '1415px' }}
+        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1050px', xl: '1200px', '2xl': '1400px' }}
         mx="auto"
         mb={8}
-        px={{ base: 2, md: 4 }}
+        px={{ base: 2, md: 4, lg: 6 }}
       >
         <Box
           position="relative"
           overflow="hidden"
-          h={{ base: 28, md: 28, lg: 40 }}
+          h={{ base: 28, md: 28, lg: 40, xl: 44, '2xl': 48 }}
           rounded="lg"
           border="1px"
           borderColor="gray.200"
@@ -1049,15 +1050,15 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
-      {/* Horizontal category pills with modern styling and animations */}
-      <Box
-        px={{ base: 3, md: 7 }}
+      {/* Horizontal category pills - desktop: centered max-width */}
+      <Box 
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }} 
         bg="linear-gradient(135deg, #FFFDF1 0%, #FFFCF0 100%)"
         borderBottomColor="gray.100"
       >
         <Box
           w="full"
-          maxW="8xl"
+          maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
           mx="auto"
         >
           <HStack
@@ -1152,8 +1153,8 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
-      {/* Main Content */}
-      <Box px={{ base: 3, md: 8 }} py={8}>
+      {/* Main Content - desktop: centered max-width */}
+      <Box px={{ base: 3, md: 6, lg: 8, xl: 10 }} py={8} maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx="auto" w="full">
         {/* Loading State */}
         {loading && !products.length && (
           <Center h="50vh">
@@ -1186,16 +1187,16 @@ const Home: React.FC = () => {
           </Box>
         )}
 
-        {/* Products Grid - Shopee/Lazada Style with Ad Injection */}
-        {!loading && products.length > 0 && (
-          <Box
-            maxW={{ base: 'calc(100% - 12px)', md: '100%' }}
-            mx="auto"
-            px={{ base: 2, md: 4 }}
-            pb={{ base: 20, md: 0 }}
-            minH={{ base: '1200px', md: '1600px' }}
-          >
-            <ProductGridWithAds products={products} user={user} />
+     {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
+     {!loading && products.length > 0 && (
+  <Box
+    w="full"
+    mx="auto"
+    px={{ base: 2, md: 4, lg: 0 }}
+    pb={{ base: 20, md: 0 }}
+    minH={{ base: '1200px', md: '1600px' }}
+  >
+    <ProductGridWithAds products={products} user={user} />
 
             {/* Sentinel for infinite scroll */}
             <Box ref={sentinelRef} h="1px" />

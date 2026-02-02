@@ -46,7 +46,7 @@ const GetInvolvedSection: React.FC = () => {
 
   return (
     <Box position="relative" zIndex={2} bg="rgba(0, 0, 0, 0.6)" backdropFilter="blur(10px)" py={{ base: 12, md: 24 }}>
-      <Container maxW="4xl" px={{ base: 4, md: 8 }}>
+      <Container maxW={{ base: '100%', md: '4xl', lg: '5xl', xl: '6xl' }} px={{ base: 4, md: 8, lg: 10, xl: 12 }}>
         <VStack spacing={{ base: 8, md: 16 }} align="stretch">
           {/* Header */}
           <VStack spacing={4} textAlign="center">

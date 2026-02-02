@@ -1,6 +1,17 @@
 import { extendTheme } from '@chakra-ui/react'
 
+// Chakra default breakpoints: sm 30em, md 48em, lg 62em, xl 80em, 2xl 96em (1536px)
+// Ensure desktop (xl/2xl) is usable; optional custom container for very wide
+const breakpoints = {
+  sm: '30em',
+  md: '48em',
+  lg: '62em',
+  xl: '80em',
+  '2xl': '96em', // 1536px - desktop monitor
+}
+
 export const theme = extendTheme({
+  breakpoints,
   colors: {
     brand: {
       50: '#e6fffa',
