@@ -82,9 +82,24 @@ const ProductsList: React.FC = () => {
         <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
           {p.title}
         </Heading>
-        <Text color="gray.600" noOfLines={2} mb={3} fontSize="sm" flexShrink={0}>
+        <Text color="gray.600" noOfLines={2} mb={2} fontSize="sm" flexShrink={0}>
           {p.description || 'No description available'}
         </Text>
+        {/* Wishlist Count Badge */}
+        {p.wishlist_count > 0 && (
+          <HStack mb={2} spacing={1}>
+            <Badge 
+              colorScheme="pink" 
+              variant="subtle" 
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="xs"
+            >
+              ❤️ {p.wishlist_count} {p.wishlist_count === 1 ? 'person wants' : 'people want'}
+            </Badge>
+          </HStack>
+        )}
         <HStack justify="space-between" align="center" mt="auto">
           {p.allow_buying && p.price && !p.barter_only ? (
             <Text fontSize="lg" fontWeight="bold" color="brand.500">

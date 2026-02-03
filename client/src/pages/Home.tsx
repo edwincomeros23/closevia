@@ -37,17 +37,17 @@ import {
   Icon,
   Avatar,
 } from '@chakra-ui/react'
-import { 
-  SearchIcon, 
-  RepeatIcon, 
+import {
+  SearchIcon,
+  RepeatIcon,
   StarIcon,
   ViewIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   AddIcon,
   HamburgerIcon,
-  ArrowLeftIcon,   
-  ArrowRightIcon,   
+  ArrowLeftIcon,
+  ArrowRightIcon,
   CloseIcon,
 } from '@chakra-ui/icons'
 import { FaUserCircle, FaHandshake, FaHome } from 'react-icons/fa'
@@ -93,7 +93,7 @@ const Home: React.FC = () => {
   const { onOpen: openMobileNav } = useMobileNav()
   const { isOpen: isLogoutModalOpen, onOpen: onOpenLogoutModal, onClose: onCloseLogoutModal } = useDisclosure()
   const { offerCount } = useRealtime() // added realtime usage
-  
+
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -109,10 +109,10 @@ const Home: React.FC = () => {
     limit: 20, // Load more products
   })
   const [hasSearched, setHasSearched] = useState(false)
-  
+
   // Debounce search term for smooth UX
   const debouncedSearchTerm = useDebounce(searchTerm, 400)
-  
+
   const toast = useToast()
 
   // Category pills state with enhanced metadata
@@ -370,7 +370,7 @@ const Home: React.FC = () => {
 
   const getRankedOffers = () => {
     const ranked = [...offersForProduct]
-    
+
     if (offersSortBy === 'accepted') {
       ranked.sort((a, b) => {
         const statusOrder = { 'accepted': 0, 'active': 1, 'pending': 2, 'declined': 3, 'cancelled': 3 }
@@ -383,7 +383,7 @@ const Home: React.FC = () => {
     } else if (offersSortBy === 'oldest') {
       ranked.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     }
-    
+
     return ranked
   }
 
@@ -407,23 +407,28 @@ const Home: React.FC = () => {
       overflow="hidden"
       transition="all 0.2s ease"
       w="full"
+      maxW={{ base: "270px", md: "250px" }}
+      h="full"
+      display="flex"
+      flexDirection="column"
+      mx="auto"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(product))}
-       ml={-0.5}
     >
-      {/* Square Product Image - Fixed Dimensions for Mobile */}
-      <Box 
-        position="relative" 
-        w={{ base: '170px', md: 'full' }}
-        h={{ base: '150px', md: 'auto' }}
-        pt={{ base: '0', md: '100%' }}
+      {/* Square Product Image - Responsive Aspect Ratio */}
+      <Box
+        position="relative"
+        w="full"
+        maxW={{ base: "270px", md: "250px" }}
+        maxH={{ base: "280px", md: "250px" }}
+        aspectRatio={1}
         overflow="hidden"
-        mx={{ base: 'auto', md: '0' }}
+        mx="auto"
       >
         <Image
           src={getFirstImage(product.image_urls)}
           alt={product.title}
-          position={{ base: 'static', md: 'absolute' }}
+          position="absolute"
           top={0}
           left={0}
           w="100%"
@@ -431,9 +436,8 @@ const Home: React.FC = () => {
           objectFit="cover"
           loading="lazy"
           fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
-          ml={0.5}
         />
-        
+
         {/* Premium Badge */}
         {product.premium && (
           <Badge
@@ -446,10 +450,10 @@ const Home: React.FC = () => {
             px={2}
           >
             <StarIcon mr={0} />
-            
+
           </Badge>
         )}
-        
+
         {/* Trade/Buy Badge */}
         <Badge
           position="absolute"
@@ -464,7 +468,7 @@ const Home: React.FC = () => {
         >
           {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
         </Badge>
-        
+
         {/* Status Badge */}
         {product.status === 'sold' && (
           <Badge
@@ -515,8 +519,8 @@ const Home: React.FC = () => {
         </Badge>
       </Box>
 
-      {/* Product Info (fixed height) */}
-      <Box p={4} display="flex" flexDirection="column" h={{ base: 140, md: 192 }} overflow="hidden">
+      {/* Product Info (Flexible height) */}
+      <Box p={4} display="flex" flexDirection="column" flex={1} overflow="hidden">
         <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
           <HStack spacing={2}>
             <Avatar
@@ -535,9 +539,9 @@ const Home: React.FC = () => {
               {product.seller_name || 'Unknown'}
             </Text>
           </HStack>
-          <Badge 
+          <Badge
             fontSize={{ base: 'xs', md: '2xs' }}
-            colorScheme="blue" 
+            colorScheme="blue"
             flexShrink={0}
             borderWidth="1px"
           >
@@ -548,22 +552,38 @@ const Home: React.FC = () => {
         <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
           {product.title}
         </Heading>
-        
-        <Text 
-          color="gray.600" 
-          noOfLines={{ base: 1, md: 2 }} 
-          mb={3}
-          fontSize="sm" 
+
+        <Text
+          color="gray.600"
+          noOfLines={{ base: 1, md: 2 }}
+          mb={2}
+          fontSize="sm"
           flexShrink={0}
         >
-          {product.description 
+          {product.description
             ? product.description
-                .split(' ')
-                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+              .split(' ')
+              .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+              .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
             : 'No description available'
           }
         </Text>
+
+        {/* Wishlist Count Badge */}
+        {product.wishlist_count > 0 && (
+          <Flex mb={2} align="center" gap={1}>
+            <Badge
+              colorScheme="pink"
+              variant="subtle"
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="xs"
+            >
+              ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
+            </Badge>
+          </Flex>
+        )}
 
         {/* Action Buttons */}
         <HStack spacing={2} mt="auto">
@@ -580,7 +600,7 @@ const Home: React.FC = () => {
           >
             {product.status === 'sold' ? 'Sold' : 'Trade'}
           </Button>
-          
+
           {product.allow_buying && product.price && !product.barter_only && (
             <Button
               size="sm"
@@ -663,12 +683,13 @@ const Home: React.FC = () => {
     return (
       <Grid
         templateColumns={{
-          base: 'repeat(2, 1fr)',
+          base: 'repeat(1, 1fr)',
           md: 'repeat(3, 1fr)',
           lg: 'repeat(4, 1fr)',
           xl: 'repeat(5, 1fr)',
+          '2xl': 'repeat(5, 1fr)',
         }}
-        gap={{ base: 3, md: 4 }}
+        gap={{ base: 3, md: 4, lg: 4, xl: 5 }}
         alignItems="start"
       >
         {itemsWithAds.map((item, displayIndex) =>
@@ -688,19 +709,24 @@ const Home: React.FC = () => {
 
   return (
     <Box minH="100vh" bg="#FFFDF1">
-      {/* Sticky Search Header */}
+      {/* Sticky Search Header - desktop: centered max-width */}
       <Box
         position="sticky"
         top={0}
         zIndex={100}
         bg="#FFFDF1"
         borderColor="gray.200"
-        px={8}
-        py={4}
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
+        py={{ base: 3, md: 4 }}
       >
-        <VStack spacing={4}>
+        <VStack
+          spacing={4}
+          w="full"
+          maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
+          mx={{ base: 'auto', lg: 0 }}
+        >
           {/* Main Search Bar */}
-          <HStack w="full" maxW="8xl" mx="auto" spacing={3} wrap="wrap">
+          <HStack w="full" spacing={3} wrap="wrap" ml={-14}>
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -718,7 +744,7 @@ const Home: React.FC = () => {
                   boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
                 }}
               />
-            </InputGroup> 
+            </InputGroup>
 
             {/* Toggle Filters icon (mobile inline, right side) */}
             <IconButton
@@ -847,19 +873,20 @@ const Home: React.FC = () => {
 
           {/* Expandable Filters */}
           {showFilters && (
-            <Box 
+            <Box
               position="absolute"
               top="100%"
-              left="50%"
+              left={0}
+              right={0}
               w="full"
               bg="white"
               p={4}
               rounded="lg"
               shadow="md"
               zIndex={50}
-              maxW="6xl"
-              mx="auto"
-              transform="translateX(-50%)"
+              maxW={{ base: "100%", md: "6xl" }}
+              mx={0}
+              transform="none"
             >
               <Grid templateColumns="repeat(auto-fit, minmax(150px, 1fr))" gap={3}>
                 <FormControl>
@@ -954,17 +981,17 @@ const Home: React.FC = () => {
           )}
         </VStack>
       </Box>
-      {/* slider / visual box between header and main content (keeps same dimensions) */}
+      {/* slider / visual box - desktop: capped width and taller */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1160', xl: '1415px' }}
-        mx="auto"
+        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
+        mx={{ base: 'auto', lg: 0 }}
         mb={8}
-        px={{ base: 2, md: 4 }}
+        px={{ base: 2, md: 4, lg: 6 }}
       >
         <Box
           position="relative"
           overflow="hidden"
-          h={{ base: 28, md: 28, lg: 40 }}   
+          h={{ base: 28, md: 28, lg: 40, xl: 44, '2xl': 48 }}
           rounded="lg"
           border="1px"
           borderColor="gray.200"
@@ -1040,16 +1067,16 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
-      {/* Horizontal category pills with modern styling and animations */}
+      {/* Horizontal category pills - desktop: centered max-width */}
       <Box 
-        px={{ base: 3, md: 7 }} 
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }} 
         bg="linear-gradient(135deg, #FFFDF1 0%, #FFFCF0 100%)"
         borderBottomColor="gray.100"
       >
         <Box
           w="full"
-          maxW="8xl"
-          mx="auto"
+          maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
+          mx={{ base: 'auto', lg: 0 }}
         >
           <HStack
             spacing={{ base: 2.5, md: 3 }}
@@ -1058,7 +1085,7 @@ const Home: React.FC = () => {
             align="center"
             pb={{ base: 2, md: 0 }}
             sx={{
-              '::-webkit-scrollbar': { 
+              '::-webkit-scrollbar': {
                 display: 'none',
                 height: '0px',
               },
@@ -1072,10 +1099,10 @@ const Home: React.FC = () => {
             {categories.map((category) => {
               const isSelected = selectedCategory === category.name
               const IconComponent = category.icon
-              
+
               return (
-                <Box 
-                  key={category.name} 
+                <Box
+                  key={category.name}
                   flexShrink={0}
                   as="button"
                   onClick={() => handleCategorySelect(category.name)}
@@ -1143,8 +1170,14 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
-      {/* Main Content */}
-      <Box px={{ base: 3, md: 8 }} py={8}>
+      {/* Main Content - desktop: centered max-width */}
+      <Box
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
+        py={8}
+        maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
+        mx={{ base: 'auto', lg: 0 }}
+        w="full"
+      >
         {/* Loading State */}
         {loading && !products.length && (
           <Center h="50vh">
@@ -1177,28 +1210,29 @@ const Home: React.FC = () => {
           </Box>
         )}
 
-     {/* Products Grid - Shopee/Lazada Style with Ad Injection */}
+     {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
      {!loading && products.length > 0 && (
   <Box
-    maxW={{ base: 'calc(100% - 12px)', md: '100%' }}
+    w="full"
     mx="auto"
-    px={{ base: 2, md: 4 }}
+    px={{ base: 2, md: 4, lg: 0 }}
     pb={{ base: 20, md: 0 }}
     minH={{ base: '1200px', md: '1600px' }}
+    ml={-10}
   >
     <ProductGridWithAds products={products} user={user} />
 
-    {/* Sentinel for infinite scroll */}
-    <Box ref={sentinelRef} h="1px" />
+            {/* Sentinel for infinite scroll */}
+            <Box ref={sentinelRef} h="1px" />
 
-    {/* Subtle loading indicator for loading more */}
-    {isLoadingMore && (
-      <Center py={6}>
-        <Spinner size="md" color="brand.500" />
-      </Center>
-    )}
-  </Box>
-)}
+            {/* Subtle loading indicator for loading more */}
+            {isLoadingMore && (
+              <Center py={6}>
+                <Spinner size="md" color="brand.500" />
+              </Center>
+            )}
+          </Box>
+        )}
 
         {/* Empty State (single, correct location) */}
         {!loading && products.length === 0 && (
@@ -1212,7 +1246,7 @@ const Home: React.FC = () => {
                   No products found
                 </Heading>
                 <Text color="gray.500" fontSize="lg">
-                  {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available' 
+                  {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
                     ? "Try adjusting your search criteria or clearing filters to see all products."
                     : "No products are currently available. Check back later!"
                   }
@@ -1223,7 +1257,7 @@ const Home: React.FC = () => {
                 colorScheme="brand"
                 onClick={clearFilters}
               >
-                {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available' 
+                {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
                   ? "Clear All Filters"
                   : "Refresh Page"
                 }
@@ -1319,7 +1353,7 @@ const Home: React.FC = () => {
                       <Badge
                         colorScheme={
                           offer.status === 'accepted' ? 'green' :
-                          offer.status === 'pending' ? 'yellow' : 'gray'
+                            offer.status === 'pending' ? 'yellow' : 'gray'
                         }
                         fontSize="xs"
                       >

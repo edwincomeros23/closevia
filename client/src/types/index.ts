@@ -43,6 +43,7 @@ export interface Product {
   created_at: string
   updated_at: string
   wishlist_count?: number;
+  bidding_type?: 'none' | 'blind' | 'open'
   counterfeit_confidence?: number;
   counterfeit_flags?: string[];
   // latitude/longitude are declared on Product above; avoid duplicate declarations
@@ -74,6 +75,7 @@ export interface ProductCreate {
   location?: string
   condition: string
   category?: string
+  bidding_type?: 'none' | 'blind' | 'open'
   wants?: string
 }
 
@@ -88,6 +90,7 @@ export interface ProductUpdate {
   barter_only?: boolean
   location?: string
   condition?: string
+  bidding_type?: 'none' | 'blind' | 'open'
 }
 
 export interface OrderCreate {

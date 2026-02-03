@@ -44,25 +44,33 @@ const Sidebar: React.FC = () => {
   const { notificationCount } = useRealtime()
   const { user, logout } = useAuth()
   
-  // Separate items for desktop vs mobile to keep desktop unchanged
+  // Desktop: Home always; Dashboard, Add Product, Saved, Notifications only when logged in
   const desktopNavItems = [
     { icon: FaHome, label: 'Home', path: '/home' },
-    { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
-    { icon: AddIcon, label: 'Add Product', path: '/add-product' },
-    { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-    { icon: BellIcon, label: 'Notifications', path: '/notifications' },
-    // Add admin link only for admin users
-    ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
+    ...(user
+      ? [
+          { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
+          { icon: AddIcon, label: 'Add Product', path: '/add-product' },
+          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
+          { icon: BellIcon, label: 'Notifications', path: '/notifications' },
+          ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
+        ]
+      : []),
   ]
 
-  const mobileNavItems = [
-    { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-    { icon: BellIcon, label: 'Notifications', path: '/notifications' },
-    // Add admin link only for admin users
-    ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
-    { icon: SettingsIcon, label: 'Settings', path: '/settings' },
-    { icon: FaUserCircle, label: 'Profile', path: '/profile' },
-  ]
+  // Mobile drawer: Dashboard, Add Product, Saved, Settings only when logged in
+  const mobileNavItems = user
+    ? [
+        { icon: FiHeart, label: 'Saved', path: '/saved-products' },
+        { icon: BellIcon, label: 'Notifications', path: '/notifications' },
+        ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
+        { icon: SettingsIcon, label: 'Settings', path: '/settings' },
+        { icon: FaUserCircle, label: 'Profile', path: '/profile' },
+      ]
+    : [
+        { icon: FaHome, label: 'Home', path: '/home' },
+        { icon: FaUserCircle, label: 'Login', path: '/login' },
+      ]
   
   return (
     <>
@@ -101,7 +109,7 @@ const Sidebar: React.FC = () => {
             />
           </DrawerHeader>
 
-          <DrawerBody flex={1} overflowY="auto" pb={20}>
+          <DrawerBody flex={1} overflowY="auto" pb={user ? 20 : 4}>
             <VStack spacing={4} align="stretch" mt={4}>
               <Box p={2}>
               </Box>
@@ -128,22 +136,24 @@ const Sidebar: React.FC = () => {
             </VStack>
           </DrawerBody>
 
-          {/* Fixed Logout Button at Bottom */}
-          <Box p={4} borderTop="1px" borderColor={borderColor} mt="auto">
-            <Button
-              w="full"
-              colorScheme="red"
-              variant="solid"
-              leftIcon={<FiLogOut />}
-              onClick={async () => {
-                onClose()
-                await logout()
-                navigate('/login')
-              }}
-            >
-              Logout
-            </Button>
-          </Box>
+          {/* Fixed Logout Button at Bottom - only when logged in */}
+          {user && (
+            <Box p={4} borderTop="1px" borderColor={borderColor} mt="auto">
+              <Button
+                w="full"
+                colorScheme="red"
+                variant="solid"
+                leftIcon={<FiLogOut />}
+                onClick={async () => {
+                  onClose()
+                  await logout()
+                  navigate('/login')
+                }}
+              >
+                Logout
+              </Button>
+            </Box>
+          )}
         </DrawerContent>
       </Drawer>
 
@@ -223,24 +233,26 @@ const Sidebar: React.FC = () => {
             })}
           </VStack>
 
-          {/* Settings at the bottom */}
-          <Box mb={4}>
-            <Tooltip label="Settings" placement="right" hasArrow>
-              <IconButton
-                as={RouterLink}
-                to="/settings"
-                aria-label="Settings"
-                icon={<SettingsIcon />}
-                variant="ghost"
-                size="lg"
-                color={location.pathname === '/settings' ? activeIconColor : iconColor}
-                bg={location.pathname === '/settings' ? 'brand.50' : 'transparent'}
-                _hover={{ bg: location.pathname === '/settings' ? 'brand.100' : 'gray.100' }}
-                borderRadius="xl"
-                transition="all 0.2s"
-              />
-            </Tooltip>
-          </Box>
+          {/* Settings at the bottom - only when logged in */}
+          {user && (
+            <Box mb={4}>
+              <Tooltip label="Settings" placement="right" hasArrow>
+                <IconButton
+                  as={RouterLink}
+                  to="/settings"
+                  aria-label="Settings"
+                  icon={<SettingsIcon />}
+                  variant="ghost"
+                  size="lg"
+                  color={location.pathname === '/settings' ? activeIconColor : iconColor}
+                  bg={location.pathname === '/settings' ? 'brand.50' : 'transparent'}
+                  _hover={{ bg: location.pathname === '/settings' ? 'brand.100' : 'gray.100' }}
+                  borderRadius="xl"
+                  transition="all 0.2s"
+                />
+              </Tooltip>
+            </Box>
+          )}
         </Box>
       </Box>
     </>

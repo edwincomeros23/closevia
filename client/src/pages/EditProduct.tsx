@@ -40,7 +40,7 @@ const EditProduct: React.FC = () => {
   const [error, setError] = useState('')
   const [originalProduct, setOriginalProduct] = useState<any>(null)
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
-  
+
   const navigate = useNavigate()
   const toast = useToast()
   const pageBg = '#FFFDF1'
@@ -58,8 +58,8 @@ const EditProduct: React.FC = () => {
       const response = await api.get(`/api/products/${id}`)
       const product = response.data.data
       setOriginalProduct(product)
-      
-  // Pre-fill form with current values
+
+      // Pre-fill form with current values
       setFormData({
         title: product.title,
         description: product.description,
@@ -70,6 +70,8 @@ const EditProduct: React.FC = () => {
         condition: product.condition,
         allow_buying: product.allow_buying,
         barter_only: product.barter_only,
+        bidding_type: product.bidding_type || 'none',
+
         location: product.location,
       })
 
@@ -141,7 +143,7 @@ const EditProduct: React.FC = () => {
         try {
           const el = document.getElementById('edit-image-input') as HTMLInputElement | null
           if (el) el.value = ''
-        } catch {}
+        } catch { }
         return
       }
 
@@ -165,7 +167,7 @@ const EditProduct: React.FC = () => {
       try {
         const el = document.getElementById('edit-image-input') as HTMLInputElement | null
         if (el) el.value = ''
-      } catch {}
+      } catch { }
     })()
   }
 
@@ -176,7 +178,7 @@ const EditProduct: React.FC = () => {
       const key = `edit_images_${originalProduct.id}`
       const onlyData = next.filter(u => typeof u === 'string' && u.startsWith('data:'))
       localStorage.setItem(key, JSON.stringify(onlyData))
-    } catch {}
+    } catch { }
     setFormData(prev => ({ ...prev, image_urls: next }))
   }
 
@@ -191,10 +193,10 @@ const EditProduct: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!formData.title && !formData.description && !formData.price && 
-  (!formData.image_urls || formData.image_urls.length === 0) && formData.premium === undefined && 
-  formData.status === undefined) {
+
+    if (!formData.title && !formData.description && !formData.price &&
+      (!formData.image_urls || formData.image_urls.length === 0) && formData.premium === undefined &&
+      formData.status === undefined) {
       setError('Please make at least one change to update the product')
       return
     }
@@ -208,7 +210,7 @@ const EditProduct: React.FC = () => {
       setLoading(true)
       setError('')
       await updateProduct(parseInt(id!), formData)
-      
+
       toast({
         title: 'Product updated!',
         description: 'Your product has been successfully updated',
@@ -216,7 +218,7 @@ const EditProduct: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
-      
+
       navigate('/dashboard')
     } catch (error: any) {
       setError(error.message || 'Failed to update product')
@@ -388,6 +390,112 @@ const EditProduct: React.FC = () => {
                   )}
                 </FormControl>
 
+                {/* Bidding Type Section */}
+                <Box mb={4}>
+                  <Heading size="sm" mb={4} color="gray.700">
+                    Bidding & Offers Type
+                  </Heading>
+                  <FormControl>
+                    <FormLabel fontWeight="semibold" mb={3}>
+                      How would you like buyers to interact with this item?
+                    </FormLabel>
+                    <VStack spacing={3} align="start">
+                      <Box
+                        p={3}
+                        borderWidth="2px"
+                        borderRadius="md"
+                        cursor="pointer"
+                        borderColor={formData.bidding_type === 'none' ? 'blue.500' : 'gray.200'}
+                        bg={formData.bidding_type === 'none' ? 'blue.50' : 'white'}
+                        _hover={{ borderColor: 'blue.400' }}
+                        onClick={() => handleInputChange('bidding_type', 'none')}
+                      >
+                        <HStack justify="space-between" w="100%">
+                          <VStack align="start" spacing={1}>
+                            <Text fontWeight="semibold" color="gray.800">
+                              No Bidding
+                            </Text>
+                            <Text fontSize="sm" color="gray.600">
+                              Buyers can only accept/decline your set price or make trade offers
+                            </Text>
+                          </VStack>
+                          <Box>
+                            <input
+                              type="radio"
+                              name="bidding_type_edit"
+                              value="none"
+                              checked={formData.bidding_type === 'none'}
+                              onChange={() => { }}
+                            />
+                          </Box>
+                        </HStack>
+                      </Box>
+
+                      <Box
+                        p={3}
+                        borderWidth="2px"
+                        borderRadius="md"
+                        cursor="pointer"
+                        borderColor={formData.bidding_type === 'blind' ? 'blue.500' : 'gray.200'}
+                        bg={formData.bidding_type === 'blind' ? 'blue.50' : 'white'}
+                        _hover={{ borderColor: 'blue.400' }}
+                        onClick={() => handleInputChange('bidding_type', 'blind')}
+                      >
+                        <HStack justify="space-between" w="100%">
+                          <VStack align="start" spacing={1}>
+                            <Text fontWeight="semibold" color="gray.800">
+                              Blind Bidding
+                            </Text>
+                            <Text fontSize="sm" color="gray.600">
+                              Buyers submit private offers without seeing others' bids. You choose the best offer
+                            </Text>
+                          </VStack>
+                          <Box>
+                            <input
+                              type="radio"
+                              name="bidding_type_edit"
+                              value="blind"
+                              checked={formData.bidding_type === 'blind'}
+                              onChange={() => { }}
+                            />
+                          </Box>
+                        </HStack>
+                      </Box>
+
+                      <Box
+                        p={3}
+                        borderWidth="2px"
+                        borderRadius="md"
+                        cursor="pointer"
+                        borderColor={formData.bidding_type === 'open' ? 'blue.500' : 'gray.200'}
+                        bg={formData.bidding_type === 'open' ? 'blue.50' : 'white'}
+                        _hover={{ borderColor: 'blue.400' }}
+                        onClick={() => handleInputChange('bidding_type', 'open')}
+                      >
+                        <HStack justify="space-between" w="100%">
+                          <VStack align="start" spacing={1}>
+                            <Text fontWeight="semibold" color="gray.800">
+                              Open Bidding
+                            </Text>
+                            <Text fontSize="sm" color="gray.600">
+                              Buyers can see all bids and counter-bid. Most competitive option for maximum price discovery
+                            </Text>
+                          </VStack>
+                          <Box>
+                            <input
+                              type="radio"
+                              name="bidding_type_edit"
+                              value="open"
+                              checked={formData.bidding_type === 'open'}
+                              onChange={() => { }}
+                            />
+                          </Box>
+                        </HStack>
+                      </Box>
+                    </VStack>
+                  </FormControl>
+                </Box>
+
                 <FormControl display="flex" alignItems="center">
                   <FormLabel htmlFor="premium" mb="0">
                     Premium Listing
@@ -420,6 +528,8 @@ const EditProduct: React.FC = () => {
                     Select the current status of your product
                   </FormHelperText>
                 </FormControl>
+
+
 
                 <Button
                   type="submit"
