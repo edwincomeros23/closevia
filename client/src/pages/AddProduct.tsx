@@ -36,6 +36,7 @@ import {
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, WarningIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
+import { api } from '../services/api'
 import { ProductCreate } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { prepareImageForUpload, isUnsupportedFormat, getFileTypeDescription } from '../utils/imageConverter'
@@ -46,12 +47,12 @@ const AddProduct: React.FC = () => {
   const { user } = useAuth()
   const { createProduct } = useProducts()
   const toast = useToast()
-  
+
   const [currentStep, setCurrentStep] = useState(1)
-  const [formData, setFormData] = useState<ProductCreate>({
+  const [formData, setFormData] = useState<ProductCreate & { bidding_type?: string }>({
     title: '',
     description: '',
-    price: 0, 
+    price: 0,
     image_urls: [],
     premium: false,
     allow_buying: false,
@@ -59,8 +60,11 @@ const AddProduct: React.FC = () => {
     location: '',
     condition: 'Used',
     category: 'General',
+    wants: '',
+    bidding_type: 'none',
+
   })
-  
+
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -82,17 +86,18 @@ const AddProduct: React.FC = () => {
   const steps = [
     { number: 1, title: 'Upload Photos', description: 'Add product images' },
     { number: 2, title: 'Basic Info', description: 'Title and description' },
-    { number: 3, title: 'Barter Options', description: 'Set exchange preferences' },
-    { number: 4, title: 'Price (Optional)', description: 'If buying is allowed' },
-    { number: 5, title: 'Review & Post', description: 'Confirm and publish' },
+    { number: 3, title: 'What I Want', description: 'Specify items you want in exchange' },
+    { number: 4, title: 'Barter Options', description: 'Set exchange preferences' },
+    { number: 5, title: 'Price (Optional)', description: 'If buying is allowed' },
+    { number: 6, title: 'Review & Post', description: 'Confirm and publish' },
   ]
 
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return
-    
+
     let newFiles = Array.from(files)
     const validFiles = newFiles.filter(file => file.type.startsWith('image/'))
-    
+
     if (validFiles.length === 0) {
       toast({
         title: 'Invalid file type',
@@ -113,7 +118,7 @@ const AddProduct: React.FC = () => {
       for (const file of validFiles.slice(0, 8 - uploadedImages.length)) {
         try {
           const { file: processedFile, isConverted, warning } = await prepareImageForUpload(file, 5)
-          
+
           if (isConverted) {
             messages.push({
               file: file.name,
@@ -170,7 +175,7 @@ const AddProduct: React.FC = () => {
       // Show messages
       if (messages.length > 0) {
         setImageConversionMessages(messages)
-        
+
         // Auto-dismiss after 5 seconds if all successful
         const hasErrors = messages.some(m => m.type === 'error')
         if (!hasErrors) {
@@ -222,7 +227,7 @@ const AddProduct: React.FC = () => {
   const handleGetCurrentLocation = useCallback(() => {
     setIsGettingLocation(true)
     setLocationError(null)
-    
+
     if (!navigator.geolocation) {
       setLocationError('Geolocation is not supported by your browser')
       setIsGettingLocation(false)
@@ -233,7 +238,7 @@ const AddProduct: React.FC = () => {
       async (position) => {
         const { latitude, longitude } = position.coords
         setLocationCoordinates({ lat: latitude, lng: longitude })
-        
+
         // Reverse geocode to get full address
         try {
           const response = await fetch(
@@ -241,21 +246,21 @@ const AddProduct: React.FC = () => {
           )
           const data = await response.json()
           const address = data.address || {}
-          
+
           // Build full address: purok, barangay, city, municipality
           const purok = address.hamlet || address.village || ''
           const barangay = address.suburb || address.neighborhood || ''
           const city = address.city || address.town || ''
           const municipality = address.county || ''
-          
+
           const addressParts = [purok, barangay, city, municipality].filter(Boolean)
           const fullAddress = addressParts.join(', ') || `Location ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-          
+
           handleInputChange('location', fullAddress)
         } catch (error) {
           handleInputChange('location', `Location ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
         }
-        
+
         setIsGettingLocation(false)
       },
       (error) => {
@@ -302,7 +307,7 @@ const AddProduct: React.FC = () => {
       })
       return
     }
-    
+
     if (!formData.description.trim()) {
       toast({
         title: 'Missing description',
@@ -313,7 +318,7 @@ const AddProduct: React.FC = () => {
       })
       return
     }
-    
+
     if (formData.description.trim().length < 50) {
       toast({
         title: 'Description too short',
@@ -324,7 +329,7 @@ const AddProduct: React.FC = () => {
       })
       return
     }
-    
+
     if (uploadedImages.length === 0) {
       toast({
         title: 'No images',
@@ -361,12 +366,12 @@ const AddProduct: React.FC = () => {
         return
       }
     }
-    
+
     setIsSubmitting(true)
-    
+
     try {
       const formDataToSend = new FormData()
-      
+
       // Append fields in exact order backend expects
       formDataToSend.append('title', formData.title.trim())
       formDataToSend.append('description', formData.description.trim())
@@ -374,10 +379,11 @@ const AddProduct: React.FC = () => {
       formDataToSend.append('premium', formData.premium ? '1' : '0')
       formDataToSend.append('allow_buying', formData.allow_buying ? '1' : '0')
       formDataToSend.append('barter_only', formData.barter_only ? '1' : '0')
+      formDataToSend.append('bidding_type', formData.bidding_type || 'none')
       formDataToSend.append('location', formData.location?.trim() || '')
       formDataToSend.append('condition', formData.condition || 'Used')
       formDataToSend.append('category', formData.category || 'General')
-      
+
       // Append each image file
       uploadedImages.forEach((file) => {
         formDataToSend.append('images', file)
@@ -393,10 +399,10 @@ const AddProduct: React.FC = () => {
         }
       }
       console.log('========================')
-      
+
       const response = await createProduct(formDataToSend)
       console.log('Product created successfully:', response)
-      
+
       toast({
         title: 'Product created!',
         description: 'Your product has been successfully posted',
@@ -404,7 +410,7 @@ const AddProduct: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
-      
+
       navigate('/dashboard')
     } catch (error: any) {
       console.error('=== PRODUCT CREATION ERROR ===')
@@ -415,14 +421,14 @@ const AddProduct: React.FC = () => {
       console.error('Request Headers:', error.config?.headers)
       console.error('Full Error:', error.message)
       console.error('=============================')
-      
-      const errorMessage = 
+
+      const errorMessage =
         error.response?.data?.details ||
-        error.response?.data?.message || 
-        error.response?.data?.error || 
+        error.response?.data?.message ||
+        error.response?.data?.error ||
         error.message ||
         'Failed to create product. Please check the browser console for details.'
-      
+
       toast({
         title: 'Error creating product',
         description: errorMessage,
@@ -439,9 +445,10 @@ const AddProduct: React.FC = () => {
     switch (currentStep) {
       case 1: return uploadedImages.length >= 3
       case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500
-      case 3: return true // Barter options are always valid
-      case 4: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
-      case 5: return true
+      case 3: return formData.wants?.trim() || false // What I Want is required for multi-way trading
+      case 4: return true // Barter options are always valid
+      case 5: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
+      case 6: return true
       default: return false
     }
   }
@@ -454,7 +461,7 @@ const AddProduct: React.FC = () => {
             <Text fontSize="lg" color="gray.600" display={{ base: 'none', md: 'block' }}>
               Upload at least 3 photos of your product. First image will be the cover.
             </Text>
-            
+
             {/* Drag & Drop Area */}
             <Box
               border="2px dashed"
@@ -478,7 +485,7 @@ const AddProduct: React.FC = () => {
                 </VStack>
               </VStack>
             </Box>
-            
+
             <input
               id="image-upload"
               type="file"
@@ -487,7 +494,7 @@ const AddProduct: React.FC = () => {
               onChange={(e) => handleImageUpload(e.target.files)}
               style={{ display: 'none' }}
             />
-            
+
             {/* Image Conversion Messages */}
             {imageConversionMessages.length > 0 && (
               <VStack spacing={2} align="stretch" mb={4}>
@@ -507,7 +514,7 @@ const AddProduct: React.FC = () => {
                 ))}
               </VStack>
             )}
-            
+
             {/* Image Count Status */}
             <Box>
               <HStack justify="space-between" mb={3}>
@@ -526,7 +533,7 @@ const AddProduct: React.FC = () => {
                 )}
               </HStack>
             </Box>
-            
+
             {/* Image Previews */}
             {uploadedImages.length > 0 && (
               <SimpleGrid columns={{ base: 4, md: 4 }} spacing={2}>
@@ -556,7 +563,7 @@ const AddProduct: React.FC = () => {
             )}
           </VStack>
         )
-        
+
       case 2:
         return (
           <VStack spacing={6} align="stretch">
@@ -589,7 +596,6 @@ const AddProduct: React.FC = () => {
                       uploadedImages.slice(0, 3).forEach((file) => {
                         formData.append('images', file)
                       })
-                      const { api } = await import('../services/api')
                       const response = await api.post('/api/products/generate-details', formData)
                       const data = response.data
                       if (data.success && data.data) {
@@ -640,7 +646,7 @@ const AddProduct: React.FC = () => {
                 </Badge>
               </HStack>
             </FormControl>
-            
+
             <FormControl isRequired>
               <FormLabel>
                 <HStack justify="space-between" w="full">
@@ -648,7 +654,7 @@ const AddProduct: React.FC = () => {
                   <Badge
                     colorScheme={
                       descriptionLength < 50 ? 'red' :
-                      descriptionLength <= 500 ? 'green' : 'orange'
+                        descriptionLength <= 500 ? 'green' : 'orange'
                     }
                     fontSize="xs"
                   >
@@ -666,12 +672,12 @@ const AddProduct: React.FC = () => {
                 size="lg"
                 borderColor={
                   descriptionLength < 50 ? 'red.300' :
-                  descriptionLength <= 500 ? 'green.300' : 'orange.300'
+                    descriptionLength <= 500 ? 'green.300' : 'orange.300'
                 }
                 _focus={{
                   borderColor:
                     descriptionLength < 50 ? 'red.500' :
-                    descriptionLength <= 500 ? 'green.500' : 'orange.500',
+                      descriptionLength <= 500 ? 'green.500' : 'orange.500',
                 }}
               />
               <Box
@@ -679,26 +685,26 @@ const AddProduct: React.FC = () => {
                 p={2}
                 bg={
                   descriptionLength < 50 ? 'red.50' :
-                  descriptionLength <= 500 ? 'green.50' : 'orange.50'
+                    descriptionLength <= 500 ? 'green.50' : 'orange.50'
                 }
                 borderRadius="md"
                 borderLeftWidth="4px"
                 borderLeftColor={
                   descriptionLength < 50 ? 'red.400' :
-                  descriptionLength <= 500 ? 'green.400' : 'orange.400'
+                    descriptionLength <= 500 ? 'green.400' : 'orange.400'
                 }
               >
                 <Text fontSize="sm" color="gray.700">
                   {descriptionLength < 50
                     ? `⚠️ Add at least ${50 - descriptionLength} more characters (minimum 50)`
                     : descriptionLength <= 500
-                    ? `✓ Perfect length! ${descriptionLength} characters`
-                    : `❌ Description exceeds limit by ${descriptionLength - 500} characters`
+                      ? `✓ Perfect length! ${descriptionLength} characters`
+                      : `❌ Description exceeds limit by ${descriptionLength - 500} characters`
                   }
                 </Text>
               </Box>
             </FormControl>
-            
+
             <FormControl isRequired>
               <FormLabel>Condition</FormLabel>
               <Select
@@ -741,10 +747,10 @@ const AddProduct: React.FC = () => {
               <FormLabel>Location</FormLabel>
               <VStack spacing={2}>
                 {!locationCoordinates ? (
-                  <Box 
-                    p={3} 
-                    bg="yellow.50" 
-                    borderRadius="md" 
+                  <Box
+                    p={3}
+                    bg="yellow.50"
+                    borderRadius="md"
                     w="full"
                     borderLeft="3px solid"
                     borderLeftColor="yellow.400"
@@ -758,10 +764,10 @@ const AddProduct: React.FC = () => {
                   </Box>
                 ) : (
                   <>
-                    <Box 
-                      p={3} 
-                      bg="green.50" 
-                      borderRadius="md" 
+                    <Box
+                      p={3}
+                      bg="green.50"
+                      borderRadius="md"
                       w="full"
                       borderLeft="3px solid"
                       borderLeftColor="green.400"
@@ -789,10 +795,10 @@ const AddProduct: React.FC = () => {
                   </>
                 )}
                 {locationError && (
-                  <Box 
-                    p={2} 
-                    bg="red.50" 
-                    borderRadius="md" 
+                  <Box
+                    p={2}
+                    bg="red.50"
+                    borderRadius="md"
                     w="full"
                     borderLeft="3px solid"
                     borderLeftColor="red.400"
@@ -812,8 +818,64 @@ const AddProduct: React.FC = () => {
             </FormControl>
           </VStack>
         )
-        
+
       case 3:
+        return (
+          <VStack spacing={6} align="stretch">
+            <Box>
+              <Heading size="sm" mb={2} color="gray.700">
+                What I Want in Exchange
+              </Heading>
+              <Text fontSize="sm" color="gray.500" mb={4}>
+                Specify the items or categories you're interested in trading for. This helps with multi-way trading loops.
+              </Text>
+            </Box>
+
+            <FormControl isRequired>
+              <FormLabel fontWeight="semibold">Desired Items</FormLabel>
+              <Textarea
+                placeholder="e.g., iPhone 12, gaming laptop, DSLR camera, collectible items, electronics..."
+                value={formData.wants}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, wants: e.target.value }))
+                }}
+                size="lg"
+                rows={6}
+                bg="white"
+                borderWidth="2px"
+                _focus={{ borderColor: 'brand.500', shadow: 'md' }}
+                fontSize="md"
+              />
+              <FormHelperText>
+                <VStack align="start" spacing={1} mt={2}>
+                  <Text fontSize="xs" color="gray.600">
+                    Be specific about what you're looking for. This enables advanced multi-way trading algorithms.
+                  </Text>
+                  <Text fontSize="xs" color="red.500" fontWeight="semibold">
+                    ⚠️ Prohibited: nudity, animals, weapons, drugs, illegal items
+                  </Text>
+                </VStack>
+              </FormHelperText>
+            </FormControl>
+
+            <Box p={4} bg="blue.50" borderRadius="lg" borderLeftWidth="4px" borderLeftColor="blue.400">
+              <VStack align="start" spacing={2}>
+                <HStack>
+                  <Box color="blue.600" fontSize="lg">🔄</Box>
+                  <Text fontWeight="semibold" color="blue.800" fontSize="sm">
+                    Multi-Way Trading
+                  </Text>
+                </HStack>
+                <Text fontSize="xs" color="blue.700">
+                  Your "wants" list will be used to find trading loops where multiple users can exchange items in a chain.
+                  For example: You want a laptop → Someone has a laptop but wants a camera → Someone has a camera but wants your item.
+                </Text>
+              </VStack>
+            </Box>
+          </VStack>
+        )
+
+      case 4:
         return (
           <VStack spacing={8} align="stretch">
             <Box>
@@ -826,11 +888,11 @@ const AddProduct: React.FC = () => {
             </Box>
 
             {/* Barter Only - Available to All */}
-            <Box 
-              p={5} 
-              bg="blue.50" 
-              borderRadius="lg" 
-              borderLeft="4px solid" 
+            <Box
+              p={5}
+              bg="blue.50"
+              borderRadius="lg"
+              borderLeft="4px solid"
               borderLeftColor="blue.400"
             >
               <FormControl>
@@ -840,7 +902,7 @@ const AddProduct: React.FC = () => {
                       Barter Only
                     </FormLabel>
                     <Text fontSize="sm" color="gray.600">
-                      Accept item exchanges and barter. 
+                      Accept item exchanges and barter.
                     </Text>
                     <Badge colorScheme="blue" variant="subtle" fontSize="xs" mt={2}>
                       Available to All Users
@@ -855,18 +917,126 @@ const AddProduct: React.FC = () => {
               </FormControl>
             </Box>
 
+
+
+            {/* Bidding Type Section */}
+            <Box>
+              <Heading size="sm" mb={4} color="gray.700">
+                Bidding & Offers Type
+              </Heading>
+              <FormControl>
+                <FormLabel fontWeight="semibold" mb={3}>
+                  How would you like buyers to interact with this item?
+                </FormLabel>
+                <VStack spacing={3} align="start">
+                  <Box
+                    p={3}
+                    borderWidth="2px"
+                    borderRadius="md"
+                    cursor="pointer"
+                    borderColor={formData.bidding_type === 'none' ? 'blue.500' : 'gray.200'}
+                    bg={formData.bidding_type === 'none' ? 'blue.50' : 'white'}
+                    _hover={{ borderColor: 'blue.400' }}
+                    onClick={() => handleInputChange('bidding_type', 'none')}
+                  >
+                    <HStack justify="space-between" w="100%">
+                      <VStack align="start" spacing={1}>
+                        <Text fontWeight="semibold" color="gray.800">
+                          No Bidding
+                        </Text>
+                        <Text fontSize="sm" color="gray.600">
+                          Buyers can only accept/decline your set price or make trade offers
+                        </Text>
+                      </VStack>
+                      <Box>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="none"
+                          checked={formData.bidding_type === 'none'}
+                          onChange={() => { }}
+                        />
+                      </Box>
+                    </HStack>
+                  </Box>
+
+                  <Box
+                    p={3}
+                    borderWidth="2px"
+                    borderRadius="md"
+                    cursor="pointer"
+                    borderColor={formData.bidding_type === 'blind' ? 'blue.500' : 'gray.200'}
+                    bg={formData.bidding_type === 'blind' ? 'blue.50' : 'white'}
+                    _hover={{ borderColor: 'blue.400' }}
+                    onClick={() => handleInputChange('bidding_type', 'blind')}
+                  >
+                    <HStack justify="space-between" w="100%">
+                      <VStack align="start" spacing={1}>
+                        <Text fontWeight="semibold" color="gray.800">
+                          Blind Bidding
+                        </Text>
+                        <Text fontSize="sm" color="gray.600">
+                          Buyers submit private offers without seeing others' bids. You choose the best offer
+                        </Text>
+                      </VStack>
+                      <Box>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="blind"
+                          checked={formData.bidding_type === 'blind'}
+                          onChange={() => { }}
+                        />
+                      </Box>
+                    </HStack>
+                  </Box>
+
+                  <Box
+                    p={3}
+                    borderWidth="2px"
+                    borderRadius="md"
+                    cursor="pointer"
+                    borderColor={formData.bidding_type === 'open' ? 'blue.500' : 'gray.200'}
+                    bg={formData.bidding_type === 'open' ? 'blue.50' : 'white'}
+                    _hover={{ borderColor: 'blue.400' }}
+                    onClick={() => handleInputChange('bidding_type', 'open')}
+                  >
+                    <HStack justify="space-between" w="100%">
+                      <VStack align="start" spacing={1}>
+                        <Text fontWeight="semibold" color="gray.800">
+                          Open Bidding
+                        </Text>
+                        <Text fontSize="sm" color="gray.600">
+                          Buyers can see all bids and counter-bid. Most competitive option for maximum price discovery
+                        </Text>
+                      </VStack>
+                      <Box>
+                        <input
+                          type="radio"
+                          name="bidding_type"
+                          value="open"
+                          checked={formData.bidding_type === 'open'}
+                          onChange={() => { }}
+                        />
+                      </Box>
+                    </HStack>
+                  </Box>
+                </VStack>
+              </FormControl>
+            </Box>
+
             {/* Premium Features Section */}
             <Box>
               <Heading size="sm" mb={3} color="gray.700">
                 Premium Features
               </Heading>
-              
+
               {!user?.is_premium && (
-                <Box 
-                  p={4} 
-                  bg="orange.50" 
-                  borderRadius="lg" 
-                  borderLeft="4px solid" 
+                <Box
+                  p={4}
+                  bg="orange.50"
+                  borderRadius="lg"
+                  borderLeft="4px solid"
                   borderLeftColor="orange.400"
                   mb={4}
                   cursor="pointer"
@@ -890,11 +1060,11 @@ const AddProduct: React.FC = () => {
               )}
 
               {/* Premium Listing */}
-              <Box 
-                p={5} 
+              <Box
+                p={5}
                 bg={user?.is_premium ? "yellow.50" : "gray.50"}
-                borderRadius="lg" 
-                borderLeft="4px solid" 
+                borderRadius="lg"
+                borderLeft="4px solid"
                 borderLeftColor={user?.is_premium ? "yellow.400" : "gray.300"}
                 opacity={user?.is_premium ? 1 : 0.6}
                 mb={3}
@@ -911,7 +1081,7 @@ const AddProduct: React.FC = () => {
                         </Badge>
                       </HStack>
                       <Text fontSize="sm" color={user?.is_premium ? "gray.600" : "gray.500"}>
-                        {user?.is_premium 
+                        {user?.is_premium
                           ? 'Feature your product at the top of search results for maximum visibility'
                           : 'Feature your product at the top of search results'
                         }
@@ -933,11 +1103,11 @@ const AddProduct: React.FC = () => {
               </Box>
 
               {/* Allow Buying */}
-              <Box 
-                p={5} 
+              <Box
+                p={5}
                 bg={user?.is_premium ? "green.50" : "gray.50"}
-                borderRadius="lg" 
-                borderLeft="4px solid" 
+                borderRadius="lg"
+                borderLeft="4px solid"
                 borderLeftColor={user?.is_premium ? "green.400" : "gray.300"}
                 opacity={user?.is_premium ? 1 : 0.6}
               >
@@ -981,8 +1151,8 @@ const AddProduct: React.FC = () => {
             </Box>
           </VStack>
         )
-        
-      case 4:
+
+      case 6:
         return (
           <VStack spacing={6} align="stretch">
             {formData.allow_buying ? (
@@ -1013,14 +1183,14 @@ const AddProduct: React.FC = () => {
             )}
           </VStack>
         )
-        
+
       case 5:
         return (
           <VStack spacing={6} align="stretch">
             <Text fontSize="lg" color="gray.600">
               Review your product details before posting
             </Text>
-            
+
             <Box bg="gray.50" p={6} borderRadius="lg">
               <VStack spacing={4} align="stretch">
                 <HStack justify="space-between">
@@ -1055,7 +1225,7 @@ const AddProduct: React.FC = () => {
             </Box>
           </VStack>
         )
-        
+
       default:
         return null
     }
@@ -1101,7 +1271,7 @@ const AddProduct: React.FC = () => {
             >
               Previous
             </Button>
-            
+
             {currentStep < steps.length ? (
               <Button
                 rightIcon={<ArrowForwardIcon />}
@@ -1147,12 +1317,12 @@ const AddProduct: React.FC = () => {
                   Unlock powerful AI tools and premium features to maximize your trading potential.
                 </Text>
               </Box>
-              
+
               {/* Pricing Box */}
-              <Box 
-                p={4} 
-                bg="gradient.500" 
-                borderRadius="lg" 
+              <Box
+                p={4}
+                bg="gradient.500"
+                borderRadius="lg"
                 textAlign="center"
                 bgGradient="linear(to-br, purple.400, pink.400)"
               >
@@ -1175,16 +1345,16 @@ const AddProduct: React.FC = () => {
               </Box>
 
               {/* Features List */}
-              <Box 
-                p={4} 
-                bg="purple.50" 
+              <Box
+                p={4}
+                bg="purple.50"
                 borderRadius="lg"
               >
                 <VStack align="start" spacing={3}>
                   <Text fontWeight="bold" color="purple.900" fontSize="sm">
                     Premium Features Included:
                   </Text>
-                  
+
                   <HStack spacing={2} align="start">
                     <Box color="purple.600" fontWeight="bold">✓</Box>
                     <VStack align="start" spacing={0}>
@@ -1297,10 +1467,10 @@ const AddProduct: React.FC = () => {
 
               {/* Map Preview */}
               {locationCoordinates && (
-                <Box 
-                  w="full" 
-                  h="300px" 
-                  borderRadius="lg" 
+                <Box
+                  w="full"
+                  h="300px"
+                  borderRadius="lg"
                   overflow="hidden"
                   border="1px"
                   borderColor="gray.200"

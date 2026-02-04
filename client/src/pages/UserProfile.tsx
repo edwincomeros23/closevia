@@ -117,6 +117,11 @@ const UserProfile: React.FC = () => {
   const [reviewComment, setReviewComment] = useState('')
   const [isSubmittingReview, setIsSubmittingReview] = useState(false)
   
+  // Reply state
+  const [replyingTo, setReplyingTo] = useState<number | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false)
+  
   // Fetch reviews from API
   useEffect(() => {
     const fetchReviews = async () => {
@@ -201,6 +206,16 @@ const UserProfile: React.FC = () => {
         }
 
         const apiUser = (res.data?.data || res.data) as Partial<PublicUser>
+        
+        // Log the API response to debug profile picture and name
+        console.log('🔍 API User Response:', {
+          name: apiUser.name,
+          profile_picture: (apiUser as any).profile_picture,
+          org_logo_url: (apiUser as any).org_logo_url,
+          bio: (apiUser as any).bio,
+          verified: apiUser.verified,
+        })
+        
         setUser({
           id: Number(id),
           name: apiUser.name || 'User',
@@ -563,6 +578,81 @@ const UserProfile: React.FC = () => {
     onOpen()
   }
 
+  const handleReplyToReview = async (reviewId: number) => {
+    if (!currentUser) {
+      toast({
+        title: 'Login required',
+        description: 'Please sign in to reply.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
+
+    if (!replyText.trim()) {
+      toast({
+        title: 'Reply required',
+        description: 'Please write a reply.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    setIsSubmittingReply(true)
+    try {
+      const payload = {
+        review_id: reviewId,
+        reply: replyText.trim(),
+      }
+
+      await api.post(`/api/reviews/${reviewId}/reply`, payload)
+
+      // Refresh reviews to show the new reply
+      try {
+        const response = await api.get(`/api/users/${id}/reviews`)
+        setReviews(response.data?.data || response.data || [])
+      } catch (fetchErr) {
+        // Optimistically update
+        setReviews(prev => prev.map(review => 
+          review.id === reviewId 
+            ? { 
+                ...review, 
+                reply: replyText.trim(),
+                reply_author: currentUser?.name || 'You',
+                reply_date: new Date().toISOString().split('T')[0]
+              } 
+            : review
+        ))
+      }
+
+      setReplyText('')
+      setReplyingTo(null)
+
+      toast({
+        title: 'Reply posted',
+        description: 'Your reply has been posted successfully.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    } catch (error: any) {
+      console.error('Failed to post reply:', error)
+      toast({
+        title: 'Failed to post reply',
+        description: error?.response?.data?.message || error?.message || 'Please try again later.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setIsSubmittingReply(false)
+    }
+  }
+
   const badges = useMemo(() => {
     const list: { label: string; color: string }[] = []
     if (stats.completed >= 20) list.push({ label: 'Top Trader', color: 'purple' })
@@ -637,7 +727,7 @@ const UserProfile: React.FC = () => {
                 <Avatar 
                   size="xl" 
                   name={user.name} 
-                  src={user.avatar_url} 
+                  src={user.avatar_url + '?t=' + Date.now()} 
                   bg="brand.500" 
                   color="white" 
                   border="4px solid white"
@@ -975,32 +1065,112 @@ const UserProfile: React.FC = () => {
                         borderBottom={index < reviews.length - 1 ? '1px' : 'none'} 
                         borderColor="gray.100"
                       >
-                        <HStack spacing={3} mb={2}>
+                        <HStack spacing={3} mb={2} align="start">
                           <Avatar 
                             size="sm" 
                             name={review.reviewer} 
                             src={review.avatar} 
                           />
-                          <Box>
-                            <Text fontWeight="medium">{review.reviewer}</Text>
-                            <HStack spacing={1}>
-                              {[...Array(5)].map((_, i) => (
-                                <Icon 
-                                  key={i} 
-                                  as={FiStar} 
-                                  color={i < review.rating ? 'yellow.400' : 'gray.300'} 
-                                  boxSize={4}
-                                />
-                              ))}
-                              <Text fontSize="sm" color="gray.500" ml={1}>
-                                {review.date}
-                              </Text>
+                          <Box flex="1">
+                            <HStack justify="space-between" mb={1}>
+                              <Box>
+                                <Text fontWeight="medium">{review.reviewer}</Text>
+                                <HStack spacing={1}>
+                                  {[...Array(5)].map((_, i) => (
+                                    <Icon 
+                                      key={i} 
+                                      as={FiStar} 
+                                      color={i < review.rating ? 'yellow.400' : 'gray.300'} 
+                                      boxSize={4}
+                                    />
+                                  ))}
+                                  <Text fontSize="sm" color="gray.500" ml={1}>
+                                    {review.date}
+                                  </Text>
+                                </HStack>
+                              </Box>
                             </HStack>
+                            <Text color="gray.700" mb={2}>
+                              {review.comment}
+                            </Text>
+
+                            {/* Show existing reply if any */}
+                            {review.reply && (
+                              <Box 
+                                mt={3} 
+                                pl={4} 
+                                borderLeft="2px" 
+                                borderColor="brand.200" 
+                                bg="gray.50" 
+                                p={3} 
+                                borderRadius="md"
+                              >
+                                <HStack spacing={2} mb={1}>
+                                  <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
+                                  <Text fontSize="sm" fontWeight="semibold" color="brand.600">
+                                    {review.reply_author || user?.name || 'Seller'} replied:
+                                  </Text>
+                                  {review.reply_date && (
+                                    <Text fontSize="xs" color="gray.500">
+                                      {review.reply_date}
+                                    </Text>
+                                  )}
+                                </HStack>
+                                <Text fontSize="sm" color="gray.700">
+                                  {review.reply}
+                                </Text>
+                              </Box>
+                            )}
+
+                            {/* Reply button and form - only show if it's your profile or you're logged in */}
+                            {currentUser && !review.reply && (
+                              <Box mt={2}>
+                                {replyingTo === review.id ? (
+                                  <VStack align="stretch" spacing={2}>
+                                    <Textarea
+                                      placeholder="Write your reply..."
+                                      value={replyText}
+                                      onChange={(e) => setReplyText(e.target.value)}
+                                      size="sm"
+                                      rows={3}
+                                    />
+                                    <HStack>
+                                      <Button
+                                        size="sm"
+                                        colorScheme="brand"
+                                        onClick={() => handleReplyToReview(review.id)}
+                                        isLoading={isSubmittingReply}
+                                        leftIcon={<Icon as={FiMessageSquare} />}
+                                      >
+                                        Post Reply
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          setReplyingTo(null)
+                                          setReplyText('')
+                                        }}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </HStack>
+                                  </VStack>
+                                ) : (
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    leftIcon={<Icon as={FiMessageSquare} />}
+                                    onClick={() => setReplyingTo(review.id)}
+                                    colorScheme="brand"
+                                  >
+                                    Reply
+                                  </Button>
+                                )}
+                              </Box>
+                            )}
                           </Box>
                         </HStack>
-                        <Text color="gray.700" pl={12}>
-                          {review.comment}
-                        </Text>
                       </Box>
                     ))}
                   </Box>
@@ -1020,7 +1190,7 @@ const UserProfile: React.FC = () => {
                   <FormControl>
                     <FormLabel htmlFor="profile-photo-input">Profile Photo</FormLabel>
                     <HStack spacing={4} align="center">
-                      <Avatar size="lg" name={user.name} src={avatarPreview || user.avatar_url} />
+                      <Avatar size="lg" name={user.name} src={(avatarPreview || user.avatar_url) + '?t=' + Date.now()} />
                       <Box>
                         <Input
                           id="profile-photo-input"

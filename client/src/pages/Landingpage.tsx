@@ -30,13 +30,15 @@ const Navbar = ({ navigate }: { navigate: ReturnType<typeof useNavigate> }) => {
     <Box position="fixed" top={0} left={0} right={0} zIndex={3}>
       <Flex
         as="nav"
-        h="80px"
+        h={{ base: '64px', md: '72px', lg: '80px' }}
         align="center"
         justify="space-between"
-        padding="0 2rem"
+        padding={{ base: '0 1rem', md: '0 2rem', lg: '0 3rem', xl: '0 4rem' }}
+        maxW={{ xl: '1920px' }}
+        mx="auto"
       >
         {/* Left Links - Desktop */}
-        <HStack spacing={8} display={{ base: 'none', md: 'flex' }}>
+        <HStack spacing={{ md: 6, lg: 8 }} display={{ base: 'none', md: 'flex' }}>
           <NavLink>Home</NavLink>
           <NavLink>How It Works</NavLink>
           <NavLink>Features</NavLink>
@@ -47,13 +49,13 @@ const Navbar = ({ navigate }: { navigate: ReturnType<typeof useNavigate> }) => {
           <Image
             src="/Group 224.png"
             alt="Clovia Logo"
-            h="50px"
+            h={{ base: '40px', md: '46px', lg: '50px' }}
             objectFit="contain"
           />
         </HStack>
 
         {/* Right Links - Desktop */}
-        <HStack spacing={8} display={{ base: 'none', md: 'flex' }}>
+        <HStack spacing={{ md: 6, lg: 8 }} display={{ base: 'none', md: 'flex' }}>
           <NavLink>Testimonials</NavLink>
           <NavLink>FAQs</NavLink>
           <NavLink>About Us</NavLink>
@@ -177,10 +179,10 @@ const LandingPage: React.FC = () => {
       
       <Navbar navigate={navigate} />
       
-      {/* Main content */}
+      {/* Main content - desktop: larger container and typography */}
       <Container
-        maxW="container.lg"
-        px={{ base: 4, md: 6, lg: 8 }}
+        maxW={{ base: 'container.sm', md: 'container.md', lg: 'container.lg', xl: 'container.xl', '2xl': '1400px' }}
+        px={{ base: 4, md: 6, lg: 8, xl: 10 }}
         position="relative"
         zIndex={2}
         textAlign="center"
@@ -189,30 +191,29 @@ const LandingPage: React.FC = () => {
         alignItems="center"
       >
         <VStack 
-          spacing={{ base: 2, md: 3, lg: 5 }} 
+          spacing={{ base: 2, md: 3, lg: 5, xl: 6 }} 
           align="center"
-          maxW="800px"
+          maxW={{ base: '90%', md: '800px', lg: '900px', xl: '1000px' }}
           mx="auto"
-          mt={20}
+          mt={{ base: 16, md: 20, lg: 24 }}
         >
           <Heading 
             as="h1" 
-            size={{ base: "xl", md: "1xl", lg: "2xl" }}
+            size={{ base: 'xl', md: '2xl', lg: '3xl', xl: '4xl' }}
             color="white" 
             fontWeight="bold"
             lineHeight="1.2"
             fontFamily="Prata, serif"
-            
           >
             Trade what you have, find what you need
             all within your COMMUNITY
           </Heading>
           
           <Text 
-            fontSize={{ base: "md", md: "lg", lg: "lg" }}
+            fontSize={{ base: 'md', md: 'lg', lg: 'xl', xl: 'xl' }}
             color="white" 
             textShadow="1px 1px 4px rgba(0,0,0,0.7)"
-            maxW="600px"
+            maxW={{ base: '100%', md: '600px', lg: '700px' }}
             lineHeight="1.6"
             px={{ base: 2, md: 0 }}
           >
@@ -222,25 +223,25 @@ const LandingPage: React.FC = () => {
           <Image
             src="/Group 9.svg"
             alt="Group 9 Image"
-            maxW={{ base: "300px", md: "400px", lg: "1000px" }}
+            maxW={{ base: '300px', md: '400px', lg: '700px', xl: '900px', '2xl': '1000px' }}
             w="100%"
             objectFit="contain"
-            mt={{ base: 4, md: -6 }}
+            mt={{ base: 4, md: -6, lg: -4 }}
           />
           
           <Button
-            size={{ base: "sm", md: "md", lg: "lg" }}
+            size={{ base: 'sm', md: 'md', lg: 'lg', xl: 'lg' }}
             colorScheme="brand"
             onClick={handleGetStarted}
-            px={{ base: 4, md: 6, lg: 8 }}
-            py={{ base: 2, md: 3, lg: 10 }}
-            fontSize={{ base: "sm", md: "md", lg: "lg" }}
+            px={{ base: 4, md: 6, lg: 8, xl: 10 }}
+            py={{ base: 2, md: 3, lg: 4 }}
+            fontSize={{ base: 'sm', md: 'md', lg: 'lg', xl: 'lg' }}
             fontWeight="bold"
             borderRadius="full"
             bg="brand.500"
             color="white"
             position="absolute"
-            bottom={{ base: "10%", md: "12%" }}  
+            bottom={{ base: '10%', md: '12%', lg: '10%' }}
             left="50%"
             transform="translateX(-50%)"
             _hover={{
@@ -248,8 +249,8 @@ const LandingPage: React.FC = () => {
               bg: 'brand.600'
             }}
             transition="all 0.3s ease"
-            minW={{ base: "150px", md: "180px" }}
-            h={{ base: "35px", md: "40px", lg: "45px" }}
+            minW={{ base: '150px', md: '180px', lg: '200px' }}
+            h={{ base: '35px', md: '40px', lg: '45px', xl: '48px' }}
           >
             Get Started
           </Button>

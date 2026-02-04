@@ -43,6 +43,7 @@ export interface Product {
   created_at: string
   updated_at: string
   wishlist_count?: number;
+  bidding_type?: 'none' | 'blind' | 'open'
   counterfeit_confidence?: number;
   counterfeit_flags?: string[];
   // latitude/longitude are declared on Product above; avoid duplicate declarations
@@ -74,6 +75,8 @@ export interface ProductCreate {
   location?: string
   condition: string
   category?: string
+  bidding_type?: 'none' | 'blind' | 'open'
+  wants?: string
 }
 
 export interface ProductUpdate {
@@ -87,6 +90,7 @@ export interface ProductUpdate {
   barter_only?: boolean
   location?: string
   condition?: string
+  bidding_type?: 'none' | 'blind' | 'open'
 }
 
 export interface OrderCreate {
@@ -159,6 +163,13 @@ export interface Trade {
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
+  // Delivery state fields
+  delivery_type?: 'standard' | 'express' | 'meetup'
+  payment_method?: 'gcash' | 'cod' | 'wallet'
+  payment_confirmed?: boolean
+  proof_of_delivery?: string | null // Base64 encoded image
+  buyer_confirmed_receipt?: boolean
+  seller_confirmed_delivery?: boolean
   delivery_estimated_time?: string // Estimated delivery time
 }
 
@@ -346,4 +357,33 @@ export interface DeliveryUpdate {
   latitude?: number
   longitude?: number
   estimated_eta?: string
+}
+
+export interface Report {
+  id: number
+  reporter_id: number
+  reported_user_id: number
+  product_id?: number
+  reason: string
+  description: string
+  status: string
+  reviewer_id?: number
+  reviewer_comment?: string
+  created_at: string
+  updated_at: string
+  reporter?: User
+  reported_user?: User
+  product?: Product
+}
+
+export interface ReportCreate {
+  reported_user_id: number
+  product_id?: number
+  reason: 'inappropriate' | 'counterfeit' | 'spam' | 'scam'
+  description: string
+}
+
+export interface ReportUpdate {
+  status: 'pending' | 'reviewed' | 'dismissed' | 'resolved'
+  reviewer_comment?: string
 }

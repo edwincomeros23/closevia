@@ -125,9 +125,19 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
           handleAdClick(e as any)
         }
       }}
+      w="full"
     >
       {/* Badge */}
-      <Box position="relative" h={{ base: '170px', md: '265px' }} bg="gray.100" overflow="hidden">
+      {/* Match product-card image sizing: fixed on mobile, square on desktop */}
+      <Box
+        position="relative"
+        w={{ base: '170px', md: 'full' }}
+        h={{ base: '150px', md: 'auto' }}
+        pt={{ base: '0', md: '100%' }}
+        overflow="hidden"
+        bg="gray.100"
+        mx={{ base: 'auto', md: '0' }}
+      >
         <Badge
           position="absolute"
           top={2}
@@ -141,13 +151,16 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
           alignItems="center"
           gap={1}
         >
-          <FaShop size={10} />
+          <FaShop size={14} />
           SHOPEE AD
         </Badge>
 
         <Image
           src={ad.imageUrl || PLACEHOLDER_IMAGE}
           alt={ad.title}
+          position={{ base: 'static', md: 'absolute' }}
+          top={0}
+          left={0}
           w="100%"
           h="100%"
           objectFit="cover"
@@ -159,7 +172,8 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
       </Box>
 
       {/* Content */}
-      <VStack spacing={2} p={3} align="stretch" h={{ base: '80px', md: '180px' }} justify="space-between">
+      {/* Match product-card info sizing */}
+      <VStack spacing={2} p={4} align="stretch" h={{ base: 100, md: 140 }} justify="space-between">
         {/* Title */}
         <Heading
           size="sm"

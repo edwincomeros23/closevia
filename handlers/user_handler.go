@@ -362,11 +362,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if updateData.ProfilePicture != nil {
 		query += ", profile_picture = ?"
 		args = append(args, *updateData.ProfilePicture)
-	}
-
-	if updateData.ProfilePicture != nil {
-		query += ", profile_picture = ?"
-		args = append(args, *updateData.ProfilePicture)
+		fmt.Printf("✅ UpdateProfile: Setting profile_picture to '%s' for user %d\n", *updateData.ProfilePicture, userID)
 	}
 
 	if updateData.Bio != nil {
@@ -422,6 +418,8 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
+	fmt.Printf("🖼️  [UploadProfilePicture] Starting upload for user ID: %d\n", userID)
+
 	file, err := c.FormFile("image")
 	if err != nil {
 		// Debug info: log content-type and underlying error to help diagnose upload issues
@@ -430,14 +428,18 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No file uploaded: " + err.Error()})
 	}
 
+	fmt.Printf("🖼️  [UploadProfilePicture] File received: %s (size: %d bytes)\n", file.Filename, file.Size)
+
 	var finalURL string
 	if url, err := services.UploadFileToCloudinary(file, "profile-pictures"); err == nil && url != "" {
 		finalURL = url
+		fmt.Printf("🖼️  [UploadProfilePicture] Cloudinary upload successful: %s\n", finalURL)
 	} else {
 		if err != nil && err != services.ErrCloudinaryDisabled {
 			fmt.Printf("Cloudinary profile upload failed: %v\n", err)
 		}
 
+		fmt.Printf("🖼️  [UploadProfilePicture] Falling back to local storage\n")
 		fsPath, publicPath := services.GenerateLocalMediaPaths("profile-pictures", file.Filename)
 		if err := os.MkdirAll(filepath.Dir(fsPath), 0o755); err != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to prepare upload directory"})
@@ -447,6 +449,7 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 		}
 
 		finalURL = buildAbsoluteURL(c, publicPath)
+		fmt.Printf("🖼️  [UploadProfilePicture] Local storage URL: %s\n", finalURL)
 	}
 
 	// Ensure profile_picture column exists
@@ -457,11 +460,14 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 	}
 
 	// Save URL to user's profile
+	fmt.Printf("🖼️  [UploadProfilePicture] Saving URL to database for user %d: %s\n", userID, finalURL)
 	_, err = h.db.Exec("UPDATE users SET profile_picture = ? WHERE id = ?", finalURL, userID)
 	if err != nil {
+		fmt.Printf("🖼️  [UploadProfilePicture] Database update FAILED: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update user profile picture"})
 	}
 
+	fmt.Printf("🖼️  [UploadProfilePicture] Successfully updated user %d with profile picture: %s\n", userID, finalURL)
 	return c.JSON(models.APIResponse{Success: true, Data: finalURL, Message: "Uploaded"})
 }
 

@@ -26,3 +26,4 @@ CREATE INDEX IF NOT EXISTS idx_products_counterfeit_confidence ON products(count
 
 
 
+

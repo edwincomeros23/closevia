@@ -1,4 +1,4 @@
-package models
+﻿package models
 
 import (
 	"database/sql/driver"
@@ -108,9 +108,9 @@ type User struct {
 	Department         string    `json:"department,omitempty"`
 	Bio                string    `json:"bio,omitempty"`
 	Badges             IntArray  `json:"badges,omitempty"`
-	ProfilePicture     string    `json:"profile_picture"`
-	BackgroundImage    string    `json:"background_image"`
-	BackgroundPosition string    `json:"background_position"`
+	ProfilePicture     string    `json:"profile_picture,omitempty"`
+	BackgroundImage    string    `json:"background_image,omitempty"`
+	BackgroundPosition string    `json:"background_position,omitempty"`
 	Latitude           *float64  `json:"latitude,omitempty"`
 	Longitude          *float64  `json:"longitude,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -257,6 +257,13 @@ type Trade struct {
 	// Trade option and delivery fields
 	TradeOption     string `json:"trade_option,omitempty" validate:"omitempty,oneof=meetup delivery"`
 	DeliveryAddress string `json:"delivery_address,omitempty"`
+	// Delivery state fields (for progress tracking and persistence)
+	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
+	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet"`
+	PaymentConfirmed        bool   `json:"payment_confirmed"`
+	ProofOfDelivery         string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
+	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
+	SellerConfirmedDelivery bool   `json:"seller_confirmed_delivery"`
 	// Review and proof fields
 	BuyerRating    *int   `json:"buyer_rating,omitempty"`
 	SellerRating   *int   `json:"seller_rating,omitempty"`
@@ -537,4 +544,38 @@ type SellerStats struct {
 	ResponseMetric  string  `json:"response_metric,omitempty"`   // "excellent", "good", etc.
 	MemberSinceYear int     `json:"member_since_year,omitempty"` // Year user joined
 	CompletedTrades int     `json:"completed_trades,omitempty"`
+}
+
+// Report represents a trader report for policy violations
+type Report struct {
+	ID              int       `json:"id"`
+	ReporterID      int       `json:"reporter_id"`
+	ReportedUserID  int       `json:"reported_user_id"`
+	ProductID       *int      `json:"product_id,omitempty"`
+	Reason          string    `json:"reason"`
+	Description     string    `json:"description"`
+	Status          string    `json:"status"`
+	ReviewerID      *int      `json:"reviewer_id,omitempty"`
+	ReviewerComment *string   `json:"reviewer_comment,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+
+	// Related data for context
+	Reporter     *User    `json:"reporter,omitempty"`
+	ReportedUser *User    `json:"reported_user,omitempty"`
+	Product      *Product `json:"product,omitempty"`
+}
+
+// ReportCreate represents payload for submitting a new trader report
+type ReportCreate struct {
+	ReportedUserID int    `json:"reported_user_id" validate:"required"`
+	ProductID      *int   `json:"product_id,omitempty"`
+	Reason         string `json:"reason" validate:"required,oneof=inappropriate counterfeit spam scam"`
+	Description    string `json:"description" validate:"required,min=10,max=1000"`
+}
+
+// ReportUpdate represents data for updating report status (admin use only)
+type ReportUpdate struct {
+	Status          string `json:"status" validate:"required,oneof=pending reviewed dismissed resolved"`
+	ReviewerComment string `json:"reviewer_comment,omitempty"`
 }

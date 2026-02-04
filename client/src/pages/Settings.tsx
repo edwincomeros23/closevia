@@ -199,12 +199,24 @@ const SettingsPage: React.FC = () => {
   const logoutCancelRef = useRef<HTMLButtonElement>(null)
   const deleteCancelRef = useRef<HTMLButtonElement>(null)
 
+  // Helper to strip cache busters from URLs (they should only be added in display, not stored)
+  const stripCacheBuster = (url: string | null): string | null => {
+    if (!url) return null
+    // Remove ?t=... or &t=... cache busters
+    return url.replace(/[?&]t=\d+/g, '')
+  }
+
   // Load initial values from user
   useEffect(() => {
     if (user) {
       setUsername(user.name || '')
       setEmail(user.email || '')
-      setProfileImage((user as any)?.profile_picture || null)
+      // Strip any cache busters that might have been saved
+      const cleanPicture = stripCacheBuster((user as any)?.profile_picture)
+      setProfileImage(cleanPicture)
+      if ((user as any)?.profile_picture) {
+        console.log('📸 Profile picture loaded - Raw:', (user as any)?.profile_picture, 'Cleaned:', cleanPicture)
+      }
     }
   }, [user])
 
@@ -267,6 +279,8 @@ const SettingsPage: React.FC = () => {
     const file = event.target.files?.[0]
     if (!file) return
 
+    console.log('📸 Image file selected:', { name: file.name, size: file.size, type: file.type })
+
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
@@ -294,7 +308,10 @@ const SettingsPage: React.FC = () => {
     setUploadingImage(true)
     const reader = new FileReader()
     reader.onloadend = () => {
-      setProfileImage(reader.result as string)
+      const dataUrl = reader.result as string
+      console.log('📸 Image converted to data URL, length:', dataUrl.length)
+      console.log('📸 Data URL preview (first 100 chars):', dataUrl.substring(0, 100))
+      setProfileImage(dataUrl)
       setUploadingImage(false)
       setHasUnsavedChanges(true)
       toast({
@@ -444,13 +461,20 @@ const SettingsPage: React.FC = () => {
       if (profileImage && profileImage.startsWith('data:')) {
         setUploadingImage(true)
         try {
+          console.log('📸 Uploading profile picture from data URL')
           const blob = await (await fetch(profileImage)).blob()
+          console.log('📸 Blob created:', { size: blob.size, type: blob.type })
           const form = new FormData()
           form.append('image', blob, 'profile.jpg')
           const uploadRes = await api.post('/api/users/profile-picture', form)
-          profileUrlToSave = uploadRes.data?.data || uploadRes.data
+          // API returns { Success: true, Data: url, Message: "Uploaded" }
+          profileUrlToSave = uploadRes.data?.Data || uploadRes.data?.data || uploadRes.data
+          console.log('📸 Profile picture uploaded successfully, URL:', profileUrlToSave)
+          console.log('📸 Full upload response:', uploadRes.data)
+          console.log('📸 Response structure - Data field:', uploadRes.data?.Data)
+          console.log('📸 Response structure - data field:', uploadRes.data?.data)
         } catch (uploadErr: any) {
-          console.error('Profile image upload failed', uploadErr)
+          console.error('❌ Profile image upload failed', uploadErr)
           const serverMsg = uploadErr?.response?.data?.error || uploadErr?.response?.data || uploadErr?.message
           throw new Error(serverMsg || 'Failed to upload profile image')
         } finally {
@@ -462,15 +486,18 @@ const SettingsPage: React.FC = () => {
       }
 
       // Update server-side profile (name/email/profile_picture)
+      console.log('📸 Saving profile with picture URL:', profileUrlToSave)
+      
+      // DON'T save cache busters to the database - they're only for display
       if (updateProfile) {
         await updateProfile({ name: username, email, profile_picture: profileUrlToSave })
-        // Ensure local preview shows the saved URL (not the base64 data URL)
+        // Update local state with the clean URL (no cache buster)
         if (profileUrlToSave) {
           setProfileImage(profileUrlToSave)
         }
       }
 
-      // Persist preferences locally
+      // Persist preferences locally (without cache buster)
       const settings = {
         username,
         email,
@@ -485,7 +512,8 @@ const SettingsPage: React.FC = () => {
       }
       localStorage.setItem('user_settings', JSON.stringify(settings))
 
-      // Update user profile in backend
+      // Update user profile in backend (without cache buster)
+      console.log('📸 Calling PUT /api/users/profile with profile_picture:', profileUrlToSave ?? profileImage)
       const resp = await api.put('/api/users/profile', {
         name: username,
         email: email,
@@ -493,12 +521,16 @@ const SettingsPage: React.FC = () => {
       })
 
       if (resp.data && resp.data.success) {
-        // Ensure persisted settings reflect final profile URL
-        localStorage.setItem('user_settings', JSON.stringify(settings))
+        console.log('📸 Profile updated successfully on backend, response:', resp.data)
         
         // Refresh context user so changes persist across pages
         try {
           await refreshUser()
+          console.log('📸 User context refreshed after profile update')
+          // Update local state from refreshed user data
+          if (user) {
+            setProfileImage((user as any)?.profile_picture || null)
+          }
         } catch (e) {
           console.warn('Failed to refresh user after profile update', e)
         }
@@ -650,8 +682,9 @@ const SettingsPage: React.FC = () => {
                   <FormLabel>Profile Picture</FormLabel>
                   <HStack spacing={4}>
                     <Avatar
+                      key={profileImage || 'no-image'} // Force re-render when image changes
                       size="xl"
-                      src={profileImage || undefined}
+                      src={profileImage ? (profileImage.startsWith('data:') ? profileImage : profileImage + '?t=' + Date.now()) : undefined}
                       name={username || user?.name || 'User'}
                       bg="brand.500"
                     />

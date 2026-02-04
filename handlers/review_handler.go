@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -85,8 +86,10 @@ func (h *ReviewHandler) CreateReview(c *fiber.Ctx) error {
 
 	result, err := h.db.Exec(query, userID, reviewedUserID, req.Rating, req.Comment, time.Now())
 	if err != nil {
+		log.Printf("❌ Failed to create review: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create review",
+			"error":   "Failed to create review",
+			"details": err.Error(),
 		})
 	}
 
@@ -109,6 +112,7 @@ func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
 		})
 	}
 
+	// Try to query with reply fields first, fall back to basic query if columns don't exist
 	query := `
 		SELECT 
 			r.id,
@@ -124,10 +128,39 @@ func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
 		ORDER BY r.created_at DESC
 	`
 
+	// Check if reply columns exist
+	hasReplyColumns := false
+	var columnCheck string
+	checkErr := h.db.QueryRow("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'reviews' AND COLUMN_NAME = 'reply' AND TABLE_SCHEMA = DATABASE()").Scan(&columnCheck)
+	if checkErr == nil {
+		log.Printf("✅ Reply columns exist, using extended query")
+		hasReplyColumns = true
+		query = `
+			SELECT 
+				r.id,
+				r.reviewer_id,
+				u.name as reviewer_name,
+				u.profile_picture as reviewer_avatar,
+				r.rating,
+				r.comment,
+				r.created_at,
+				r.reply,
+				r.reply_date,
+				ru.name as reply_author_name
+			FROM reviews r
+			JOIN users u ON r.reviewer_id = u.id
+			LEFT JOIN users ru ON r.replied_by_user_id = ru.id
+			WHERE r.reviewed_user_id = ?
+			ORDER BY r.created_at DESC
+		`
+	}
+
 	rows, err := h.db.Query(query, userID)
 	if err != nil {
+		log.Printf("❌ Failed to fetch reviews for user %d: %v", userID, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch reviews",
+			"error":   "Failed to fetch reviews",
+			"details": err.Error(),
 		})
 	}
 	defer rows.Close()
@@ -135,24 +168,43 @@ func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
 	var reviews []fiber.Map
 	for rows.Next() {
 		var review struct {
-			ID             int
-			ReviewerID     int
-			ReviewerName   string
-			ReviewerAvatar sql.NullString
-			Rating         int
-			Comment        string
-			CreatedAt      time.Time
+			ID              int
+			ReviewerID      int
+			ReviewerName    string
+			ReviewerAvatar  sql.NullString
+			Rating          int
+			Comment         string
+			CreatedAt       time.Time
+			Reply           sql.NullString
+			ReplyDate       sql.NullTime
+			ReplyAuthorName sql.NullString
 		}
 
-		err := rows.Scan(
-			&review.ID,
-			&review.ReviewerID,
-			&review.ReviewerName,
-			&review.ReviewerAvatar,
-			&review.Rating,
-			&review.Comment,
-			&review.CreatedAt,
-		)
+		var err error
+		if hasReplyColumns {
+			err = rows.Scan(
+				&review.ID,
+				&review.ReviewerID,
+				&review.ReviewerName,
+				&review.ReviewerAvatar,
+				&review.Rating,
+				&review.Comment,
+				&review.CreatedAt,
+				&review.Reply,
+				&review.ReplyDate,
+				&review.ReplyAuthorName,
+			)
+		} else {
+			err = rows.Scan(
+				&review.ID,
+				&review.ReviewerID,
+				&review.ReviewerName,
+				&review.ReviewerAvatar,
+				&review.Rating,
+				&review.Comment,
+				&review.CreatedAt,
+			)
+		}
 
 		if err != nil {
 			continue
@@ -163,14 +215,27 @@ func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
 			avatar = review.ReviewerAvatar.String
 		}
 
-		reviews = append(reviews, fiber.Map{
+		reviewMap := fiber.Map{
 			"id":       review.ID,
 			"reviewer": review.ReviewerName,
 			"avatar":   avatar,
 			"rating":   review.Rating,
 			"comment":  review.Comment,
 			"date":     review.CreatedAt.Format("2006-01-02"),
-		})
+		}
+
+		// Add reply if exists and columns are available
+		if hasReplyColumns && review.Reply.Valid {
+			reviewMap["reply"] = review.Reply.String
+			if review.ReplyDate.Valid {
+				reviewMap["reply_date"] = review.ReplyDate.Time.Format("2006-01-02")
+			}
+			if review.ReplyAuthorName.Valid {
+				reviewMap["reply_author"] = review.ReplyAuthorName.String
+			}
+		}
+
+		reviews = append(reviews, reviewMap)
 	}
 
 	if reviews == nil {
@@ -224,5 +289,86 @@ func (h *ReviewHandler) GetUserRating(c *fiber.Ctx) error {
 			"total_reviews":     stats.TotalReviews,
 			"positive_feedback": int(stats.PositiveFeedback),
 		},
+	})
+}
+
+// ReplyToReview allows users to reply to reviews
+func (h *ReviewHandler) ReplyToReview(c *fiber.Ctx) error {
+	// Get authenticated user
+	userIDInterface := c.Locals("user_id")
+	if userIDInterface == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+	userID, ok := userIDInterface.(int)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	// Get review ID from URL
+	reviewID, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid review ID",
+		})
+	}
+
+	// Parse request body
+	var req struct {
+		Reply string `json:"reply"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	// Validate reply
+	if len(req.Reply) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Reply is required",
+		})
+	}
+
+	// Check if review exists and get the reviewed user ID
+	var reviewedUserID int
+	checkQuery := `SELECT reviewed_user_id FROM reviews WHERE id = ?`
+	err = h.db.QueryRow(checkQuery, reviewID).Scan(&reviewedUserID)
+	if err == sql.ErrNoRows {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Review not found",
+		})
+	}
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to verify review",
+		})
+	}
+
+	// Check if user is authorized to reply (must be the reviewed user or an admin)
+	// For now, allow any authenticated user to reply
+	// You can add more specific authorization logic here
+
+	// Update review with reply
+	updateQuery := `
+		UPDATE reviews 
+		SET reply = ?, reply_date = ?, replied_by_user_id = ?
+		WHERE id = ?
+	`
+
+	_, err = h.db.Exec(updateQuery, req.Reply, time.Now(), userID, reviewID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to post reply",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Reply posted successfully",
 	})
 }

@@ -59,6 +59,7 @@ func main() {
 			"http://localhost:5174",
 			"http://localhost:3000",
 			"https://cloviaph.netlify.app",
+			"https://cloviaph.site",
 			"https://closevia.onrender.com",
 		}, ",")
 	}
@@ -114,6 +115,48 @@ func main() {
 			"product_count": count,
 		})
 	})
+
+	// Check trades table and delivery state columns
+	app.Get("/test-trades-db", func(c *fiber.Ctx) error {
+		// Check if trades table exists
+		var tradeCount int
+		err := database.DB.QueryRow("SELECT COUNT(*) FROM trades").Scan(&tradeCount)
+		if err != nil {
+			return c.JSON(fiber.Map{
+				"success": false,
+				"error":   "Trades table error: " + err.Error(),
+			})
+		}
+
+		// Check delivery state columns
+		columns := []string{
+			"delivery_type", "payment_method", "payment_confirmed",
+			"proof_of_delivery", "buyer_confirmed_receipt", "seller_confirmed_delivery",
+		}
+
+		missingColumns := []string{}
+		for _, col := range columns {
+			var count int
+			err := database.DB.QueryRow(`
+				SELECT COUNT(*)
+				FROM information_schema.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE()
+				AND TABLE_NAME = 'trades'
+				AND COLUMN_NAME = ?
+			`, col).Scan(&count)
+
+			if err != nil || count == 0 {
+				missingColumns = append(missingColumns, col)
+			}
+		}
+
+		return c.JSON(fiber.Map{
+			"success":         true,
+			"trade_count":     tradeCount,
+			"missing_columns": missingColumns,
+			"schema_status":   "OK",
+		})
+	})
 	app.Get("/api/fix-profile-picture", func(c *fiber.Ctx) error {
 		if _, err := database.DB.Exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) NULL"); err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -162,13 +205,15 @@ func main() {
 	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
 
-	// User stats route (must be BEFORE dynamic ":id" route)
-	users.Get("/:id/stats", userHandler.GetSellerStats) // Public route
-
 	// Review routes (must be BEFORE dynamic ":id" route)
-	users.Get("/:id/reviews", reviewHandler.GetUserReviews)                             // Public route
-	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview) // Auth required
-	users.Get("/:id/rating", reviewHandler.GetUserRating)                               // Public route
+	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview)
+	users.Get("/:id/reviews", reviewHandler.GetUserReviews) // Public - get all reviews for a user
+	users.Get("/:id/rating", reviewHandler.GetUserRating)   // Public - get user's average rating
+
+	// Review reply routes
+	api.Post("/reviews/:id/reply", middleware.AuthMiddleware(), reviewHandler.ReplyToReview)
+	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
+	users.Get("/:id/stats", reviewHandler.GetUserRating)          // Alias for stats endpoint
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
@@ -207,12 +252,11 @@ func main() {
 	// Allow optional auth for SSE stream: clients may pass token via query param
 	chat.Get("/stream", middleware.OptionalAuthMiddleware(), chatHandler.Stream)
 
-	// Trade routes
+	// Trade routes (order matters: specific paths before :id)
 	trades := api.Group("/trades")
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
-	// Allow optional auth for counts endpoint so unauthenticated UI polling returns a safe zero value
-	// IMPORTANT: /count must be BEFORE /:id routes to avoid matching "count" as an ID
+	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
 	trades.Get("/:id", middleware.AuthMiddleware(), tradeHandler.GetTrade)
@@ -227,6 +271,9 @@ func main() {
 	notifs.Get("/", middleware.AuthMiddleware(), notificationHandler.GetNotifications)
 	notifs.Put("/:id/read", middleware.AuthMiddleware(), notificationHandler.MarkAsRead)
 	notifs.Put("/read-all", middleware.AuthMiddleware(), notificationHandler.MarkAllAsRead)
+
+	// Dashboard counts (unread notifications, pending offers)
+	api.Get("/dashboard/counts", middleware.AuthMiddleware(), notificationHandler.GetDashboardCounts)
 
 	// Admin routes
 	admin := api.Group("/admin")
