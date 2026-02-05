@@ -684,7 +684,7 @@ const SettingsPage: React.FC = () => {
                     <Avatar
                       key={profileImage || 'no-image'} // Force re-render when image changes
                       size="xl"
-                      src={profileImage ? (profileImage.startsWith('data:') ? profileImage : profileImage + '?t=' + Date.now()) : undefined}
+                      src={profileImage || undefined}
                       name={username || user?.name || 'User'}
                       bg="brand.500"
                     />

@@ -392,9 +392,7 @@ const Home: React.FC = () => {
     const sellerAvatar = product.seller_profile_picture
       ? getImageUrl(product.seller_profile_picture)
       : undefined
-    const sellerAvatarSrc = sellerAvatar && !sellerAvatar.startsWith('data:')
-      ? `${sellerAvatar}?t=${Date.now()}`
-      : sellerAvatar
+    const sellerAvatarSrc = sellerAvatar
 
     return (
     <Box

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react'
 import { User } from '../types'
 import { api, API_BASE_URL } from '../services/api'
 
@@ -35,11 +35,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [authInitialized, setAuthInitialized] = useState(false)
+  const initOnceRef = useRef(false)
+  const lastNetworkErrorRef = useRef<number>(0)
+
+  const normalizeProfilePicture = (pic?: string) => {
+    if (!pic || typeof pic !== 'string') return pic
+    const cleaned = pic.replace(/[?&]t=\d+/g, '')
+    return cleaned.startsWith('/') ? `${API_BASE_URL}${cleaned}` : cleaned
+  }
+
+  const normalizeUser = (data: any) => {
+    if (!data) return data
+    const normalized = { ...data }
+    if (typeof normalized.profile_picture === 'string') {
+      normalized.profile_picture = normalizeProfilePicture(normalized.profile_picture)
+    }
+    return normalized
+  }
 
   // Computed authentication state
   const isAuthenticated = !!(user && token)
 
   useEffect(() => {
+    // Prevent double execution in React StrictMode (dev)
+    if (initOnceRef.current) return
+    initOnceRef.current = true
+
     console.log('AuthContext: Initializing authentication check')
     
     // Initialize auth synchronously from localStorage first
@@ -94,14 +115,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearTimeout(timeoutId)
       console.log('AuthContext: User profile response received:', response.data)
 
-      // Normalize profile_picture: if backend returned a relative path ("/uploads/.."),
-      // prefix it with the API base URL so the browser loads from the backend origin.
-      const userData = response.data.data as any
-      if (userData && userData.profile_picture && typeof userData.profile_picture === 'string') {
-        if (userData.profile_picture.startsWith('/')) {
-          userData.profile_picture = `${API_BASE_URL}${userData.profile_picture}`
-        }
-      }
+      const userData = normalizeUser(response.data.data as any)
       console.log('AuthContext: Setting user data:', userData)
       setUser(userData)
       
@@ -138,7 +152,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error.name === 'AbortError') {
         console.log('AuthContext: Request timeout - backend might be down')
       } else if (error.code === 'NETWORK_ERROR' || !error.response) {
-        console.log('AuthContext: Network error - backend might be down')
+        const now = Date.now()
+        if (now - lastNetworkErrorRef.current > 5000) {
+          console.log('AuthContext: Network error - backend might be down')
+          lastNetworkErrorRef.current = now
+        }
       } else if (error.response?.status === 401) {
         console.log('AuthContext: Token invalid or expired')
       }
@@ -177,7 +195,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Set state - token first, then user
       setToken(newToken)
-      setUser(userData)
+      setUser(normalizeUser(userData))
+
+      if (!userData?.profile_picture) {
+        await fetchUserProfile(newToken)
+      }
       
       console.log('AuthContext: Login successful')
     } catch (error: any) {
@@ -207,7 +229,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('AuthContext: Setting token and user state')
       // Set state - token first, then user
       setToken(newToken)
-      setUser(userDataResponse)
+      setUser(normalizeUser(userDataResponse))
+
+      if (!userDataResponse?.profile_picture) {
+        await fetchUserProfile(newToken)
+      }
       console.log('AuthContext: Google login completed successfully')
     } catch (error: any) {
       console.error('AuthContext: Google login failed:', error)
@@ -263,7 +289,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Set state - token first, then user
       setToken(newToken)
-      setUser(userData)
+      setUser(normalizeUser(userData))
+
+      if (!userData?.profile_picture) {
+        await fetchUserProfile(newToken)
+      }
       
       console.log('AuthContext: Registration successful')
     } catch (error: any) {

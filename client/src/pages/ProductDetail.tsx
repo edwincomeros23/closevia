@@ -1140,20 +1140,13 @@ const ProductDetail: React.FC = () => {
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
-                <Box
-                  w="60px"
-                  h="60px"
-                  rounded="full"
+                <Avatar
+                  size="lg"
+                  src={sellerProfile?.profile_picture}
+                  name={product.seller_name}
                   bg="red.500"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  flexShrink={0}
-                >
-                  <Text fontSize="24px" fontWeight="bold" color="white">
-                    {(product.seller_name ?? '?').charAt(0).toUpperCase()}
-                  </Text>
-                </Box>
+                  color="white"
+                />
                 <Box>
                   <Text
                     as={RouterLink}
@@ -1421,171 +1414,6 @@ const ProductDetail: React.FC = () => {
                       Copy
                     </Button>
                   </HStack>
-                )}
-
-                {/* Unavailable Status Messages */}
-                {isUnavailable && !isOwner && (
-                  <Alert status="warning" borderRadius="md">
-                    <AlertIcon />
-                    <VStack align="start" spacing={1}>
-                      <Text fontWeight="bold">
-                        {product.status === 'traded' 
-                          ? 'This item has already been traded and is no longer available'
-                          : product.status === 'sold'
-                          ? 'This product has been sold'
-                          : 'This item is currently reserved in a trade'}
-                      </Text>
-                      <Text fontSize="sm" color="gray.600">
-                        Only the original owner can view this item.
-                      </Text>
-                    </VStack>
-                  </Alert>
-                )}
-                {product.status === 'sold' && isOwner && (
-                  <Box textAlign="center" py={4} w="full">
-                    <Text color="red.500" fontWeight="bold">
-                      This product has been sold
-                    </Text>
-                  </Box>
-                )}
-                {product.status === 'locked' && isOwner && (
-                  <Box textAlign="center" py={4} w="full">
-                    <Text color="orange.500" fontWeight="bold">
-                      This item is currently reserved in a trade.
-                    </Text>
-                  </Box>
-                )}
-                {product.status === 'traded' && isOwner && (
-                  <Box textAlign="center" py={4} w="full">
-                    <Text color="green.500" fontWeight="bold">
-                      This item has been successfully traded.
-                    </Text>
-                  </Box>
-                )}
-              </VStack>
-            </Box>
-          </SimpleGrid>
-        </Box>
-
-        {/* Seller Information */}
-        <Box bg="white" p={6} rounded="lg" shadow="sm">
-          <Heading size="md" mb={4}>
-            About the Seller
-          </Heading>
-          <Flex justify="space-between" align="stretch" gap={6}>
-              <HStack spacing={4} flex={1}>
-              <Avatar
-                size="lg"
-                src={sellerProfile?.profile_picture ? `${sellerProfile.profile_picture}?t=${Date.now()}` : undefined}
-                name={product.seller_name || 'Seller'}
-                bg="brand.500"
-              />
-              <Box>
-                <Text
-                  as={RouterLink}
-                  to={`/users/${product.seller_id}`}
-                  fontWeight="bold"
-                  color="blue.600"
-                  _hover={{ textDecoration: 'underline' }}
-                >
-                  {product.seller_name}
-                </Text>
-                <Text color="gray.600" fontSize="sm">
-                  Member since {sellerStats?.member_since_year ?? new Date().getFullYear()}
-                </Text>
-                <HStack spacing={2} mt={2}>
-                  {product.seller_id && <ResponseMetricsBadge userId={product.seller_id} />}
-                  {product.seller_id && user && <ProximityBadge type="user" targetId={product.seller_id} />}
-                </HStack>
-              </Box>
-            </HStack>
-
-            {/* Seller Stats */}
-            <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
-              <VStack spacing={1} align="center">
-                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="brand.500">
-                  {sellerStats?.avg_rating?.toFixed(1) ?? 'N/A'}
-                </Text>
-                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
-                  Rating
-                </Text>
-              </VStack>
-              <VStack spacing={1} align="center">
-                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="green.500">
-                  {sellerStats?.positive_percent?.toFixed(0) ?? 'N/A'}%
-                </Text>
-                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
-                  Positive
-                </Text>
-              </VStack>
-              <VStack spacing={1} align="center">
-                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="blue.500">
-                  {sellerStats?.total_trades ?? 0}
-                </Text>
-                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
-                  Trades
-                </Text>
-              </VStack>
-              <VStack spacing={1} align="center">
-                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="purple.500">
-                  {sellerStats?.avg_response_time ?? 'N/A'}
-                </Text>
-                <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
-                  Avg Response
-                </Text>
-              </VStack>
-            </SimpleGrid>
-          </Flex>
-        </Box>
-
-        {/* Seller Products Section */}
-        <Box bg="white" p={6} rounded="lg" shadow="sm">
-          <Heading size="md" mb={6}>
-            Seller Products
-          </Heading>
-          <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={4}>
-            {sellerProducts && sellerProducts.length > 0 ? (
-              sellerProducts.map((p) => (
-                <Box
-                  key={p.id}
-                  borderWidth="1px"
-                  borderRadius="lg"
-                  overflow="hidden"
-                  bg="white"
-                  _hover={{ shadow: 'md', cursor: 'pointer' }}
-                  transition="all 0.3s"
-                  onClick={() => navigate(getProductUrl(p))}
-                >
-                  <Box h="200px" bg="gray.200" position="relative" overflow="hidden">
-                    <Image
-                      src={getFirstImage(p.image_urls)}
-                      alt={p.title}
-                      w="full"
-                      h="full"
-                      objectFit="cover"
-                      fallbackSrc="/barter.jpg"
-                    />
-                    <Badge position="absolute" top={2} right={2} colorScheme={p.status === 'available' ? 'teal' : p.status === 'sold' ? 'red' : 'orange'} fontSize="xs">
-                      {p.status}
-                    </Badge>
-                  </Box>
-                  <Box p={3}>
-                    <HStack justify="space-between" mb={2}>
-                      <Heading size="sm" noOfLines={1}>{p.title}</Heading>
-                      {p.premium && (
-                        <Badge colorScheme="orange" fontSize="xs">Premium</Badge>
-                      )}
-                    </HStack>
-                    <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
-                      {p.description}
-                    </Text>
-                    <Text fontSize="sm" fontWeight="bold" color="brand.500">
-                      ₱{p.price ? p.price.toFixed(2) : '0.00'}
-                    </Text>
-                    {p.barter_only && (
-                      <Badge colorScheme="cyan" mt={2} fontSize="xs">Barter Only</Badge>
-                    )}
-                  </Box>
                 </Box>
 
                 <Divider />
