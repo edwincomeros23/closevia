@@ -56,6 +56,7 @@ import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
+import { useTradeHistory } from '../hooks/useDashboard'
 
   type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
   avatar_url?: string
@@ -402,25 +403,17 @@ const UserProfile: React.FC = () => {
   const displayTotalReviews = sellerStats?.total_feedback ?? user?.total_reviews ?? reviews.length
   const displayPositivePercent = sellerStats?.positive_percent ?? user?.positive_feedback ?? 98
 
-  // Successful trades with more details
-  const successfulTrades = useMemo(() => {
-    const items = products
-      .filter(p => p.status === 'traded' || p.status === 'sold')
-      .slice(0, 8)
-      .map((p, idx) => ({
-        id: `${p.id}-${idx}`,
-        title: p.title,
-        date: new Date(p.updated_at || p.created_at).toLocaleDateString(),
-        counterpart: 'Confidential',
-        beforeImg: getFirstImage(p.image_urls),
-        afterImg: getFirstImage(p.image_urls),
-        tradeDetails: p.status === 'traded' 
-          ? `Traded for ${['book', 'headphones', 'watch'][idx % 3]}`
-          : `Sold for $${(Math.random() * 100 + 20).toFixed(2)}`,
-        timestamp: p.updated_at || p.created_at
-      }))
-    return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-  }, [products])
+  // Fetch real trade history from backend
+  const { data: allTrades, isLoading: tradesLoading, error: tradesError } = useTradeHistory()
+  
+  // Filter trades for this specific user
+  const userTrades = useMemo(() => {
+    if (!allTrades || !id) return []
+    const userId = Number(id)
+    return allTrades.filter(trade => 
+      trade.buyer_id === userId || trade.seller_id === userId
+    )
+  }, [allTrades, id])
 
   // Sort products based on selected option
   const sortedProducts = useMemo(() => {
@@ -727,7 +720,7 @@ const UserProfile: React.FC = () => {
                 <Avatar 
                   size="xl" 
                   name={user.name} 
-                  src={user.avatar_url + '?t=' + Date.now()} 
+                  src={user.avatar_url} 
                   bg="brand.500" 
                   color="white" 
                   border="4px solid white"
@@ -824,7 +817,7 @@ const UserProfile: React.FC = () => {
                 Products ({stats.active})
               </Tab>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Trade History
+                Trade History ({userTrades.length})
               </Tab>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
                 Reviews ({reviews.length})
@@ -944,64 +937,89 @@ const UserProfile: React.FC = () => {
                 <Box p={4} borderBottom="1px" borderColor="gray.100">
                   <Heading size="md" mb={2}>Trade History</Heading>
                   <Text color="gray.500" fontSize="sm">
-                    {successfulTrades.length} completed trades
+                    {userTrades.length} completed trades
                   </Text>
                 </Box>
                 
-                {successfulTrades.length === 0 ? (
+                {tradesLoading ? (
+                  <Center p={10}>
+                    <Spinner size="lg" color="brand.500" />
+                  </Center>
+                ) : tradesError ? (
+                  <Center p={10}>
+                    <Text color="red.500">Failed to load trade history</Text>
+                  </Center>
+                ) : userTrades.length === 0 ? (
                   <Center p={10}>
                     <Text color="gray.500">No trade history yet.</Text>
                   </Center>
                 ) : (
                   <Box>
-                    {successfulTrades.map((trade, index) => (
-                      <Box 
-                        key={trade.id} 
-                        p={4} 
-                        borderBottom={index < successfulTrades.length - 1 ? '1px' : 'none'} 
-                        borderColor="gray.100"
-                        _hover={{ bg: 'gray.50' }}
-                      >
-                        <HStack spacing={4} align="start">
-                          <Box 
-                            w="60px" 
-                            h="60px" 
-                            bg="gray.100" 
-                            borderRadius="md" 
-                            overflow="hidden"
-                            flexShrink={0}
-                          >
-                            <Image 
-                              src={trade.beforeImg || '/placeholder-item.jpg'} 
-                              alt={trade.title}
-                              w="100%"
-                              h="100%"
-                              objectFit="cover"
-                            />
-                          </Box>
-                          
-                          <Box flex="1">
-                            <HStack justify="space-between" mb={1}>
-                              <Text fontWeight="medium">{trade.title}</Text>
-                              <Text fontSize="sm" color="gray.500">{trade.date}</Text>
-                            </HStack>
+                    {userTrades.map((trade, index) => {
+                      const isBuyer = currentUser && trade.buyer_id === currentUser.id
+                      const counterpartName = isBuyer ? trade.seller_name : trade.buyer_name
+                      const completedDate = trade.completed_at 
+                        ? new Date(trade.completed_at).toLocaleDateString()
+                        : new Date(trade.created_at).toLocaleDateString()
+                      
+                      // Get first product image from trade items
+                      const firstItem = trade.items && trade.items.length > 0 ? trade.items[0] : null
+                      const productImage = firstItem?.product_image_url || '/placeholder-item.jpg'
+                      const productTitle = firstItem?.product_title || trade.product_title || 'Trade'
+                      
+                      return (
+                        <Box 
+                          key={trade.id} 
+                          p={4} 
+                          borderBottom={index < userTrades.length - 1 ? '1px' : 'none'} 
+                          borderColor="gray.100"
+                          _hover={{ bg: 'gray.50' }}
+                        >
+                          <HStack spacing={4} align="start">
+                            <Box 
+                              w="60px" 
+                              h="60px" 
+                              bg="gray.100" 
+                              borderRadius="md" 
+                              overflow="hidden"
+                              flexShrink={0}
+                            >
+                              <Image 
+                                src={productImage} 
+                                alt={productTitle}
+                                w="100%"
+                                h="100%"
+                                objectFit="cover"
+                                fallbackSrc="/placeholder-item.jpg"
+                              />
+                            </Box>
                             
-                            <Text fontSize="sm" color="gray.600" mb={2}>
-                              {trade.tradeDetails}
-                            </Text>
-                            
-                            <HStack spacing={2}>
-                              <Badge colorScheme="green" variant="subtle" fontSize="xs">
-                                Completed
-                              </Badge>
-                              <Text fontSize="xs" color="gray.500">
-                                with {trade.counterpart}
+                            <Box flex="1">
+                              <HStack justify="space-between" mb={1}>
+                                <Text fontWeight="medium">{productTitle}</Text>
+                                <Text fontSize="sm" color="gray.500">{completedDate}</Text>
+                              </HStack>
+                              
+                              <Text fontSize="sm" color="gray.600" mb={2}>
+                                {trade.items && trade.items.length > 1 
+                                  ? `Multi-way trade with ${trade.items.length} items`
+                                  : isBuyer ? 'Received item' : 'Sent item'
+                                }
                               </Text>
-                            </HStack>
-                          </Box>
-                        </HStack>
-                      </Box>
-                    ))}
+                              
+                              <HStack spacing={2}>
+                                <Badge colorScheme="green" variant="subtle" fontSize="xs">
+                                  Completed
+                                </Badge>
+                                <Text fontSize="xs" color="gray.500">
+                                  with {counterpartName || 'User'}
+                                </Text>
+                              </HStack>
+                            </Box>
+                          </HStack>
+                        </Box>
+                      )
+                    })}
                   </Box>
                 )}
               </TabPanel>
@@ -1190,7 +1208,7 @@ const UserProfile: React.FC = () => {
                   <FormControl>
                     <FormLabel htmlFor="profile-photo-input">Profile Photo</FormLabel>
                     <HStack spacing={4} align="center">
-                      <Avatar size="lg" name={user.name} src={(avatarPreview || user.avatar_url) + '?t=' + Date.now()} />
+                      <Avatar size="lg" name={user.name} src={avatarPreview || user.avatar_url} />
                       <Box>
                         <Input
                           id="profile-photo-input"
