@@ -37,7 +37,7 @@ import {
   Grid,
   GridItem,
 } from '@chakra-ui/react';
-import { 
+import {
   FiUsers,
   FiStar,
   FiDollarSign,
@@ -49,6 +49,20 @@ import {
   FiRefreshCw,
   FiServer,
 } from 'react-icons/fi';
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 import { api } from '../services/api';
 import { mockAdminStats, simulateApiDelay } from '../utils/mockData';
 import { enhancedApiCall, checkConnectionStatus } from '../utils/apiUtils';
@@ -148,13 +162,13 @@ const AdminDashboard: React.FC = () => {
       }
 
       // Try to fetch real data
-      const response = await enhancedApiCall<{success: boolean; data: AdminStats; error?: string}>('/api/admin/stats', {
+      const response = await enhancedApiCall<{ success: boolean; data: AdminStats; error?: string }>('/api/admin/stats', {
         retryConfig: { maxRetries: 2 },
         useMockData: true,
       });
 
       console.log('Admin stats response:', response);
-      
+
       if (response.success) {
         // If API returned success but no payload, fall back to demo data
         if (!response.data) {
@@ -179,7 +193,7 @@ const AdminDashboard: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error fetching admin stats:', err);
-      
+
       if (err.message === 'API_UNREACHABLE_MOCK_DATA_AVAILABLE') {
         // API is unreachable, use mock data
         await fetchAdminStats(true);
@@ -188,7 +202,7 @@ const AdminDashboard: React.FC = () => {
 
       setError(err.message || 'Error fetching admin statistics');
       setRetryCount(prev => prev + 1);
-      
+
       toast({
         title: 'Error',
         description: err.message || 'Failed to load dashboard data',
@@ -243,9 +257,9 @@ const AdminDashboard: React.FC = () => {
 
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', { 
-      style: 'currency', 
-      currency: 'PHP' 
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP'
     }).format(amount);
   };
 
@@ -281,20 +295,20 @@ const AdminDashboard: React.FC = () => {
               <AlertDescription>{error}</AlertDescription>
             </Box>
           </Alert>
-          
+
           <VStack spacing={4}>
-            <Button 
-              leftIcon={<FiRefreshCw />} 
-              onClick={handleRetry} 
+            <Button
+              leftIcon={<FiRefreshCw />}
+              onClick={handleRetry}
               colorScheme="blue"
               size="lg"
             >
               Retry ({retryCount + 1}/3)
             </Button>
-            
-            <Button 
-              leftIcon={<FiServer />} 
-              onClick={() => fetchAdminStats(true)} 
+
+            <Button
+              leftIcon={<FiServer />}
+              onClick={() => fetchAdminStats(true)}
               variant="outline"
               size="lg"
             >
@@ -501,6 +515,163 @@ const AdminDashboard: React.FC = () => {
             </CardBody>
           </Card>
         </SimpleGrid>
+
+        {/* Charts Section */}
+        <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={8} mb={8}>
+          {/* Revenue Trends Chart */}
+          <GridItem colSpan={{ base: 1, lg: 2 }}>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Heading size="md" color="blue.600">
+                  Revenue Trends (Last 4 Weeks)
+                </Heading>
+              </CardHeader>
+              <CardBody>
+                {stats.revenue_breakdown && stats.revenue_breakdown.length > 0 ? (
+                  <Box h="300px">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={[...stats.revenue_breakdown].reverse()}
+                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3182CE" stopOpacity={0.8} />
+                            <stop offset="95%" stopColor="#3182CE" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                        <XAxis
+                          dataKey="period"
+                          stroke="#718096"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <YAxis
+                          stroke="#718096"
+                          style={{ fontSize: '12px' }}
+                          tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}k`}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'white',
+                            border: '1px solid #E2E8F0',
+                            borderRadius: '8px',
+                            padding: '12px'
+                          }}
+                          formatter={(value: number) => [formatCurrency(value), 'Revenue']}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="amount"
+                          stroke="#3182CE"
+                          strokeWidth={2}
+                          fillOpacity={1}
+                          fill="url(#colorRevenue)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </Box>
+                ) : (
+                  <Flex h="300px" align="center" justify="center">
+                    <Text color="gray.500">No revenue data available</Text>
+                  </Flex>
+                )}
+              </CardBody>
+            </Card>
+          </GridItem>
+
+          {/* User Metrics Comparison Chart */}
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Heading size="md" color="blue.600">
+                  User Metrics Overview
+                </Heading>
+              </CardHeader>
+              <CardBody>
+                <Box h="300px">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={[
+                        { name: 'Total Users', value: stats.total_users || 0, fill: '#3182CE' },
+                        { name: 'Premium', value: stats.premium_users || 0, fill: '#D69E2E' },
+                        { name: 'Verified', value: stats.verified_users || 0, fill: '#38B2AC' },
+                      ]}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                      <XAxis
+                        dataKey="name"
+                        stroke="#718096"
+                        style={{ fontSize: '12px' }}
+                      />
+                      <YAxis
+                        stroke="#718096"
+                        style={{ fontSize: '12px' }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'white',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '8px',
+                          padding: '12px'
+                        }}
+                        formatter={(value: number) => [value.toLocaleString(), 'Count']}
+                      />
+                      <Bar dataKey="value" fill="#3182CE" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
+              </CardBody>
+            </Card>
+          </GridItem>
+
+          {/* Activity Trends Chart */}
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Heading size="md" color="blue.600">
+                  Daily Activity Metrics
+                </Heading>
+              </CardHeader>
+              <CardBody>
+                <Box h="300px">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={[
+                        { name: 'New Users', value: stats.new_users_today || 0, fill: '#ED8936' },
+                        { name: 'New Listings', value: stats.new_listings_today || 0, fill: '#D53F8C' },
+                        { name: 'Trades', value: stats.total_trades || 0, fill: '#38B2AC' },
+                      ]}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                      <XAxis
+                        dataKey="name"
+                        stroke="#718096"
+                        style={{ fontSize: '12px' }}
+                      />
+                      <YAxis
+                        stroke="#718096"
+                        style={{ fontSize: '12px' }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'white',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '8px',
+                          padding: '12px'
+                        }}
+                        formatter={(value: number) => [value.toLocaleString(), 'Count']}
+                      />
+                      <Bar dataKey="value" fill="#ED8936" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
+              </CardBody>
+            </Card>
+          </GridItem>
+        </Grid>
 
         {/* User Management & System Metrics */}
         <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={8} mb={8}>
