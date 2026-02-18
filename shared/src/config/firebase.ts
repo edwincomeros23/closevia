@@ -2,9 +2,25 @@ import { initializeApp, FirebaseApp } from 'firebase/app'
 import { getAnalytics, Analytics } from 'firebase/analytics'
 import { getAuth, Auth } from 'firebase/auth'
 
+// Type declaration for Vite's import.meta.env
+declare global {
+    interface ImportMeta {
+        env: {
+            VITE_FIREBASE_API_KEY?: string
+            VITE_FIREBASE_AUTH_DOMAIN?: string
+            VITE_FIREBASE_PROJECT_ID?: string
+            VITE_FIREBASE_STORAGE_BUCKET?: string
+            VITE_FIREBASE_MESSAGING_SENDER_ID?: string
+            VITE_FIREBASE_APP_ID?: string
+            VITE_FIREBASE_MEASUREMENT_ID?: string
+            [key: string]: string | undefined
+        }
+    }
+}
+
 // Firebase configuration - will use environment variables from the consuming app
 const getFirebaseConfig = () => {
-    // For web (Vite)
+    // For web (Vite) - import.meta.env is defined in Vite projects
     if (typeof import.meta !== 'undefined' && import.meta.env) {
         return {
             apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -54,7 +70,7 @@ try {
     app = initializeApp(firebaseConfig)
 
     // Initialize Analytics (optional - only if measurement ID is available and in browser)
-    if (typeof window !== 'undefined') {
+    if (typeof globalThis !== 'undefined' && 'window' in globalThis) {
         if (firebaseConfig.measurementId) {
             try {
                 analytics = getAnalytics(app)
