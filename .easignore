@@ -1,0 +1,51 @@
+# Inside the Root .easignore
+# Exclude everything except mobile folder
+
+# Web client
+client/
+client
+
+# Shared package (already copied into mobile/shared)
+shared/
+shared
+
+# Backend Go code
+handlers/
+middleware/
+models/
+routes/
+utils/
+*.go
+go.mod
+go.sum
+main.go
+
+# Other root files
+render.yaml
+fly.toml
+Dockerfile
+docker-compose.yml
+README.md
+.env*
+
+# Node modules at root
+node_modules/
+**/node_modules/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Expo cache
+.expo/
+**/.expo/
+
+# Build artifacts
+dist/
+build/
+android/
+ios/
