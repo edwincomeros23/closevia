@@ -633,7 +633,7 @@ const Home: React.FC = () => {
     </Box>
   )
 
-  // Component to render product grid with ad injections
+  // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
     const filteredProducts = products.filter(
       (p) => p.status === 'available' && p.seller_id !== user?.id
@@ -970,17 +970,17 @@ const Home: React.FC = () => {
           )}
         </VStack>
       </Box>
-      {/* slider / visual box - desktop: capped width and taller */}
+      {/* slider / visual box - fully responsive from mobile to 2xl */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
+        maxW={{ base: 'calc(100% - 32px)', sm: 'calc(100% - 24px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
         mx={{ base: 'auto', lg: 0 }}
         mb={8}
-        px={{ base: 2, md: 4, lg: 6 }}
+        px={{ base: 2, sm: 3, md: 4, lg: 6 }}
       >
         <Box
           position="relative"
           overflow="hidden"
-          h={{ base: 28, md: 28, lg: 40, xl: 44, '2xl': 48 }}
+          h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }}
           rounded="lg"
           border="1px"
           borderColor="gray.200"
@@ -1009,19 +1009,19 @@ const Home: React.FC = () => {
             />
           ))}
 
-          {/* Prev / Next controls (desktop only). Mobile users swipe instead. */}
+          {/* Prev / Next controls (tablet+). Mobile users swipe instead. */}
           <IconButton
             aria-label="Previous slide"
             icon={<ArrowLeftIcon />}
             position="absolute"
-            left={3}
+            left={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
             zIndex={5}
-            size="sm"
+            size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
-            display={{ base: 'none', md: 'flex' }}
+            display={{ base: 'none', sm: 'flex' }}
             onClick={(e) => { e.stopPropagation(); goPrev() }}
           />
 
@@ -1029,27 +1029,28 @@ const Home: React.FC = () => {
             aria-label="Next slide"
             icon={<ArrowRightIcon />}
             position="absolute"
-            right={3}
+            right={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
             zIndex={5}
-            size="sm"
+            size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
-            display={{ base: 'none', md: 'flex' }}
+            display={{ base: 'none', sm: 'flex' }}
             onClick={(e) => { e.stopPropagation(); goNext() }}
           />
 
-          {/* Dots */}
-          <HStack spacing={2} position="absolute" bottom={3} left="50%" transform="translateX(-50%)" zIndex={5}>
+          {/* Dots - responsive sizing */}
+          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={5}>
             {sliderImages.map((_, i) => (
               <Box
                 key={i}
                 as="button"
-                w={i === slideIndex ? 3 : 2.5}
-                h={i === slideIndex ? 3 : 2.5}
+                w={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
+                h={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
                 bg={i === slideIndex ? 'brand.500' : 'gray.300'}
                 borderRadius="full"
+                transition="all 0.3s ease"
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); setSlideIndex(i); scheduleResume(2000) }}
               />
             ))}
