@@ -397,7 +397,7 @@ const Home: React.FC = () => {
       overflow="hidden"
       transition="all 0.2s ease"
       w="full"
-      maxW={{ base: "290px", md: "250px" }}
+      maxW={{ base: "100%", md: "250px" }}
       h="full"
       display="flex"
       flexDirection="column"
@@ -409,8 +409,8 @@ const Home: React.FC = () => {
       <Box
         position="relative"
         w="full"
-        maxW={{ base: "270px", md: "250px" }}
-        maxH={{ base: "280px", md: "250px" }}
+        maxW={{ base: "100%", md: "250px" }}
+        maxH={{ base: "100%", md: "250px" }}
         aspectRatio={1}
         overflow="hidden"
         mx="auto"
@@ -672,13 +672,13 @@ const Home: React.FC = () => {
     return (
       <Grid
         templateColumns={{
-          base: 'repeat(1, 1fr)',
+          base: 'repeat(2, 1fr)',
           md: 'repeat(3, 1fr)',
           lg: 'repeat(4, 1fr)',
           xl: 'repeat(5, 1fr)',
           '2xl': 'repeat(5, 1fr)',
         }}
-        gap={{ base: 3, md: 4, lg: 4, xl: 5 }}
+        gap={{ base: 2, md: 4, lg: 4, xl: 5 }}
         alignItems="start"
       >
         {itemsWithAds.map((item, displayIndex) =>
@@ -715,7 +715,7 @@ const Home: React.FC = () => {
           mx={{ base: 'auto', lg: 0 }}
         >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap" ml={-14}>
+          <HStack w="full" spacing={3} wrap="wrap" ml={{ base: 0, md: -14 }}>
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -1370,7 +1370,9 @@ const Home: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      <FloatingTab />
+      <Box mb={{ base: 5, md: 0 }}>
+        <FloatingTab />
+      </Box>
     </Box>
   )
 }
