@@ -267,6 +267,8 @@ func main() {
 	// Admin routes
 	admin := api.Group("/admin")
 	admin.Get("/stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminStats)
+	admin.Get("/daily-stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetDailyStats)
+	admin.Get("/stats-by-date", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetStatsByDate)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
