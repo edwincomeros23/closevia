@@ -83,17 +83,19 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		}
 	}
 
-	// Check if user already has an active trade request for this product
+	// Check if user already has a pending trade request for this product
+	// Layer 3 Backend Validation: Only check for pending status (not accepted/counter)
+	// to prevent duplicate offers on the same product
 	var existingTradeID int
 	err = h.db.QueryRow(`
 		SELECT id FROM trades 
-		WHERE buyer_id = ? AND target_product_id = ? AND status IN ('pending', 'accepted', 'counter')
+		WHERE buyer_id = ? AND target_product_id = ? AND status = 'pending'
 		LIMIT 1
 	`, userID, payload.TargetProductID).Scan(&existingTradeID)
 	
-	// If no error (meaning a row was found), user already has an active trade request
+	// If no error (meaning a row was found), user already has a pending trade request
 	if err == nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You already have an active trade request for this item"})
+		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "You already have a pending offer on this product"})
 	}
 	// Any error other than sql.ErrNoRows is a real error
 	if err != sql.ErrNoRows {

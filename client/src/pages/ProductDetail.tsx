@@ -89,6 +89,8 @@ const ProductDetail: React.FC = () => {
   const [reportReason, setReportReason] = useState('')
   const [reportDescription, setReportDescription] = useState('')
   const [isSubmittingReport, setIsSubmittingReport] = useState(false)
+  const [hasPendingOfferOnProduct, setHasPendingOfferOnProduct] = useState(false)
+  const [loadingPendingOffer, setLoadingPendingOffer] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -203,6 +205,34 @@ const ProductDetail: React.FC = () => {
     if (product) {
       setWishlistCount(product.wishlist_count || 0);
     }
+  }, [product, user]);
+
+  // Check if user has a pending offer on this product
+  useEffect(() => {
+    if (!product || !user) {
+      setHasPendingOfferOnProduct(false)
+      return
+    }
+
+    const checkPendingOffer = async () => {
+      try {
+        setLoadingPendingOffer(true)
+        // Fetch user's outgoing pending trades
+        const response = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
+        const trades = Array.isArray(response.data?.data) ? response.data.data : []
+        
+        // Check if any pending trade matches current product ID
+        const hasPending = trades.some((trade: any) => trade.target_product_id === product.id)
+        setHasPendingOfferOnProduct(hasPending)
+      } catch (error) {
+        console.error('Failed to check pending offers:', error)
+        setHasPendingOfferOnProduct(false)
+      } finally {
+        setLoadingPendingOffer(false)
+      }
+    }
+
+    checkPendingOffer()
   }, [product, user]);
 
   const checkWishlistStatus = async () => {
@@ -1030,14 +1060,18 @@ const ProductDetail: React.FC = () => {
                         </HStack>
                       ) : (
                         <HStack spacing={4} w="full">
-                          <Button
-                            colorScheme="green"
-                            size="lg"
-                            w="full"
-                            onClick={openTrade}
-                          >
-                            Trade Offer
-                          </Button>
+                          <Tooltip label={hasPendingOfferOnProduct ? "You already have a pending offer on this product" : "Propose a trade"}>
+                            <Button
+                              colorScheme={hasPendingOfferOnProduct ? "gray" : "green"}
+                              size="lg"
+                              w="full"
+                              onClick={openTrade}
+                              isDisabled={hasPendingOfferOnProduct}
+                              opacity={hasPendingOfferOnProduct ? 0.6 : 1}
+                            >
+                              {hasPendingOfferOnProduct ? "Pending Offer Sent" : "Trade Offer"}
+                            </Button>
+                          </Tooltip>
                           <Tooltip label={`View current offers (${(product as any).offer_count || 0})`}>
                             <Button
                               variant="outline"

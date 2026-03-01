@@ -23,6 +23,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [cashAmount, setCashAmount] = useState<string>('')
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
+  const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
+  const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const selectedBg = useColorModeValue('brand.50', 'brand.900')
@@ -53,13 +55,22 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setTradeMessage('')
     setCashAmount('')
     setTradeOption(null)
+    setHasPendingOfferOnTarget(false)
     // Auto-set delivery option if user has location
     if (user?.latitude && user?.longitude) {
       setTradeOption('delivery')
     }
-    if (user) {
+    if (user && targetProductId) {
       ;(async () => {
         try {
+          // Fetch user's pending trades to check for existing offer on this product
+          setLoadingPendingCheck(true)
+          const pendingRes = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
+          const trades = Array.isArray(pendingRes.data?.data) ? pendingRes.data.data : []
+          const hasPending = trades.some((trade: any) => trade.target_product_id === targetProductId)
+          setHasPendingOfferOnTarget(hasPending)
+          
+          // Fetch user products
           const res = await api.get(`/api/products/user/${user.id}?page=1&limit=50`)
           const data = res.data?.data
           const list: Product[] = Array.isArray(data?.data) ? data.data : []
@@ -68,12 +79,14 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           setUserProducts(availableProducts)
         } catch (_) {
           setUserProducts([])
+        } finally {
+          setLoadingPendingCheck(false)
         }
       })()
     } else {
       setUserProducts([])
     }
-  }, [isOpen, user])
+  }, [isOpen, user, targetProductId])
 
   useEffect(() => {
     if (!isOpen) return
@@ -94,6 +107,19 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       toast({ title: 'Select trade option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
       return
     }
+    
+    // Layer 2 validation: Check for pending offer before submission
+    if (hasPendingOfferOnTarget) {
+      toast({ 
+        title: 'Pending Offer Already Exists', 
+        description: 'You already have a pending offer on this product. Please wait for the seller to respond to your existing offer before sending another one.', 
+        status: 'warning',
+        duration: 4000,
+        isClosable: true 
+      })
+      return
+    }
+    
     try {
       setSubmittingTrade(true)
       // Use user's coordinates for delivery if available
@@ -119,7 +145,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       setShowConfirmModal(false)
       onClose()
     } catch (e: any) {
-      toast({ title: 'Failed', description: e?.response?.data?.error || 'Failed to send trade', status: 'error' })
+      const errorMessage = e?.response?.data?.error || 'Failed to send trade'
+      toast({ title: 'Failed', description: errorMessage, status: 'error' })
     } finally {
       setSubmittingTrade(false)
     }
@@ -384,6 +411,18 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           <ModalCloseButton onClick={() => setShowConfirmModal(false)} />
           <ModalBody pb={6}>
             <VStack spacing={4} align="stretch">
+              {/* Warning if pending offer exists on target */}
+              {hasPendingOfferOnTarget && (
+                <Box bg="orange.50" borderWidth="1px" borderColor="orange.200" rounded="md" p={3}>
+                  <HStack spacing={2} mb={1}>
+                    <Text fontSize="lg">⚠️</Text>
+                    <Text fontSize="sm" fontWeight="bold" color="orange.800">Pending Offer Already Exists</Text>
+                  </HStack>
+                  <Text fontSize="xs" color="orange.700">
+                    You already have a pending offer on this product. Submitting another offer will override your existing one or be rejected by the system.
+                  </Text>
+                </Box>
+              )}
               <Box>
                 <Text fontWeight="semibold" mb={2}>Your Offer Summary</Text>
                 <Grid templateColumns="repeat(auto-fill, minmax(180px, 220px))" gap={3} justifyContent="start">
