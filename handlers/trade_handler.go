@@ -83,6 +83,24 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		}
 	}
 
+	// Check if user already has an active trade request for this product
+	var existingTradeID int
+	err = h.db.QueryRow(`
+		SELECT id FROM trades 
+		WHERE buyer_id = ? AND target_product_id = ? AND status IN ('pending', 'accepted', 'counter')
+		LIMIT 1
+	`, userID, payload.TargetProductID).Scan(&existingTradeID)
+	
+	// If no error (meaning a row was found), user already has an active trade request
+	if err == nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You already have an active trade request for this item"})
+	}
+	// Any error other than sql.ErrNoRows is a real error
+	if err != sql.ErrNoRows {
+		log.Printf("Error checking existing trades: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check existing trades"})
+	}
+
 	// Use a transaction to ensure trade and items are created together
 	tx, err := h.db.Begin()
 	if err != nil {
