@@ -35,6 +35,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [googleLoginSuccess, setGoogleLoginSuccess] = useState(false)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
 
   const { login, googleLogin, user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
@@ -42,19 +43,24 @@ const Login: React.FC = () => {
 
   // Navigate to dashboard when user state is updated after Google login
   useEffect(() => {
-    if (googleLoginSuccess && isAuthenticated) {
+    if (googleLoginSuccess && isAuthenticated && !isLoggingIn) {
       console.log('Login: Authentication state ready after Google login, navigating to dashboard')
       navigate('/dashboard')
     }
-  }, [googleLoginSuccess, isAuthenticated, navigate])
+  }, [googleLoginSuccess, isAuthenticated, isLoggingIn, navigate])
 
   // Redirect already authenticated users away from login page
+  // ONLY when component first mounts, not on every auth state change
   useEffect(() => {
-    if (isAuthenticated) {
-      console.log('Login: User already authenticated, redirecting to dashboard')
+    // Check if we're actually on the login page before redirecting
+    const isOnLoginPage = window.location.pathname === '/login'
+    
+    if (isAuthenticated && !isLoggingIn && !loading && isOnLoginPage) {
+      console.log('Login: User already authenticated on login page, redirecting to dashboard')
       navigate('/dashboard', { replace: true })
     }
-  }, [isAuthenticated, navigate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run once on mount
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -66,7 +72,12 @@ const Login: React.FC = () => {
 
     try {
       setLoading(true)
+      setIsLoggingIn(true)
       setError('')
+      
+      // Clear any existing auth state before new login
+      localStorage.removeItem('clovia_token')
+      
       await login(email, password)
       
       toast({
@@ -77,18 +88,26 @@ const Login: React.FC = () => {
         isClosable: true,
       })
       
-      navigate('/dashboard')
+      // Small delay to ensure auth state is updated
+      setTimeout(() => {
+        navigate('/dashboard')
+      }, 100)
     } catch (error: any) {
       setError(error.message || 'Login failed')
     } finally {
       setLoading(false)
+      setIsLoggingIn(false)
     }
   }
 
   const handleGoogleLogin = async () => {
     try {
       setLoading(true)
+      setIsLoggingIn(true)
       setError('')
+      
+      // Clear any existing auth state before new login
+      localStorage.removeItem('clovia_token')
 
       // Check if Firebase is initialized
       if (!auth) {
@@ -100,8 +119,20 @@ const Login: React.FC = () => {
       // Create Google Auth Provider
       const googleProvider = new GoogleAuthProvider()
 
+      if (!auth) {
+        setError('Google login is not available in this environment.')
+        setLoading(false)
+        setIsLoggingIn(false)
+        return
+      }
+
       // Set language to English
-      auth.languageCode = 'en'
+      try {
+        // some firebase auth instances allow setting languageCode
+        ;(auth as any).languageCode = 'en'
+      } catch (e) {
+        // ignore if auth object doesn't support languageCode
+      }
 
       // Sign in with Google popup
       const result = await signInWithPopup(auth, googleProvider)
@@ -150,6 +181,7 @@ const Login: React.FC = () => {
       }
     } finally {
       setLoading(false)
+      setIsLoggingIn(false)
     }
   }
     
@@ -285,6 +317,7 @@ const Login: React.FC = () => {
                       icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
                       variant="ghost"
                       size="sm"
+                      onClick={() => setShowPassword(!showPassword)}
                     />
                   </InputRightElement>
                 </InputGroup>

@@ -294,9 +294,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') as profile_picture, COALESCE(bio, '') as bio, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') AS profile_picture, COALESCE(bio, '') AS bio, COALESCE(background_image, '') AS background_image, COALESCE(background_position, '') AS background_position, COALESCE(department, '') AS department, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -362,11 +362,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if updateData.ProfilePicture != nil {
 		query += ", profile_picture = ?"
 		args = append(args, *updateData.ProfilePicture)
-	}
-
-	if updateData.ProfilePicture != nil {
-		query += ", profile_picture = ?"
-		args = append(args, *updateData.ProfilePicture)
+		fmt.Printf("✅ UpdateProfile: Setting profile_picture to '%s' for user %d\n", *updateData.ProfilePicture, userID)
 	}
 
 	if updateData.Bio != nil {
@@ -422,6 +418,8 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
+	fmt.Printf("🖼️  [UploadProfilePicture] Starting upload for user ID: %d\n", userID)
+
 	file, err := c.FormFile("image")
 	if err != nil {
 		// Debug info: log content-type and underlying error to help diagnose upload issues
@@ -430,14 +428,18 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No file uploaded: " + err.Error()})
 	}
 
+	fmt.Printf("🖼️  [UploadProfilePicture] File received: %s (size: %d bytes)\n", file.Filename, file.Size)
+
 	var finalURL string
 	if url, err := services.UploadFileToCloudinary(file, "profile-pictures"); err == nil && url != "" {
 		finalURL = url
+		fmt.Printf("🖼️  [UploadProfilePicture] Cloudinary upload successful: %s\n", finalURL)
 	} else {
 		if err != nil && err != services.ErrCloudinaryDisabled {
 			fmt.Printf("Cloudinary profile upload failed: %v\n", err)
 		}
 
+		fmt.Printf("🖼️  [UploadProfilePicture] Falling back to local storage\n")
 		fsPath, publicPath := services.GenerateLocalMediaPaths("profile-pictures", file.Filename)
 		if err := os.MkdirAll(filepath.Dir(fsPath), 0o755); err != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to prepare upload directory"})
@@ -447,6 +449,7 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 		}
 
 		finalURL = buildAbsoluteURL(c, publicPath)
+		fmt.Printf("🖼️  [UploadProfilePicture] Local storage URL: %s\n", finalURL)
 	}
 
 	// Ensure profile_picture column exists
@@ -457,11 +460,14 @@ func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
 	}
 
 	// Save URL to user's profile
+	fmt.Printf("🖼️  [UploadProfilePicture] Saving URL to database for user %d: %s\n", userID, finalURL)
 	_, err = h.db.Exec("UPDATE users SET profile_picture = ? WHERE id = ?", finalURL, userID)
 	if err != nil {
+		fmt.Printf("🖼️  [UploadProfilePicture] Database update FAILED: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update user profile picture"})
 	}
 
+	fmt.Printf("🖼️  [UploadProfilePicture] Successfully updated user %d with profile picture: %s\n", userID, finalURL)
 	return c.JSON(models.APIResponse{Success: true, Data: finalURL, Message: "Uploaded"})
 }
 
@@ -560,12 +566,15 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	}
 
 	var user models.User
+	var profilePicture, backgroundImage, backgroundPosition, department, bio sql.NullString
 	err = h.db.QueryRow(
-		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, COALESCE(profile_picture, '') as profile_picture, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, profile_picture, background_image, background_position, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &user.ProfilePicture, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.Bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
 
+	fmt.Printf("🔍 GetUserByID(%d) query result - error: %v\n", userID, err)
 	if err != nil {
+		fmt.Printf("❌ Database error for user %d: %v\n", userID, err)
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
 		fallback := models.User{
 			ID:             userID,
@@ -579,6 +588,26 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 			Success: true,
 			Data:    fallback,
 		})
+	}
+
+	// Convert sql.NullString to regular strings AFTER error check
+	if profilePicture.Valid {
+		user.ProfilePicture = profilePicture.String
+		fmt.Printf("✅ Setting profile_picture for user %d: '%s'\n", userID, profilePicture.String)
+	} else {
+		fmt.Printf("⚠️ profile_picture for user %d is NULL/invalid\n", userID)
+	}
+	if backgroundImage.Valid {
+		user.BackgroundImage = backgroundImage.String
+	}
+	if backgroundPosition.Valid {
+		user.BackgroundPosition = backgroundPosition.String
+	}
+	if department.Valid {
+		user.Department = department.String
+	}
+	if bio.Valid {
+		user.Bio = bio.String
 	}
 
 	return c.JSON(models.APIResponse{
@@ -992,25 +1021,25 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		stats.CompletedTrades = 0
 	}
 
-	// Calculate average rating and positive feedback percentage
+	// Calculate average rating and positive feedback percentage from reviews table
 	var avgRating sql.NullFloat64
-	var totalRatings sql.NullInt64
-	var fiveStarRatings sql.NullInt64
+	var totalReviews sql.NullInt64
+	var positivePercent sql.NullFloat64
 
 	err = h.db.QueryRow(`
 		SELECT 
-			AVG(buyer_rating) as avg_rating,
-			COUNT(CASE WHEN buyer_rating IS NOT NULL THEN 1 END) as total_ratings,
-			COUNT(CASE WHEN buyer_rating >= 4 THEN 1 END) as five_star_ratings
-		FROM trades 
-		WHERE seller_id = ? AND buyer_rating IS NOT NULL
-	`, userID).Scan(&avgRating, &totalRatings, &fiveStarRatings)
+			COALESCE(AVG(rating), 0) AS avg_rating,
+			COUNT(*) AS total_reviews,
+			COALESCE(SUM(CASE WHEN rating >= 4 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 0) AS positive_feedback
+		FROM reviews
+		WHERE reviewed_user_id = ?
+	`, userID).Scan(&avgRating, &totalReviews, &positivePercent)
 
 	if err == nil && avgRating.Valid {
 		stats.AvgRating = avgRating.Float64
-		stats.TotalFeedback = int(totalRatings.Int64)
-		if totalRatings.Int64 > 0 {
-			stats.PositivePercent = float64(fiveStarRatings.Int64) / float64(totalRatings.Int64) * 100
+		stats.TotalFeedback = int(totalReviews.Int64)
+		if positivePercent.Valid {
+			stats.PositivePercent = positivePercent.Float64
 		}
 	}
 

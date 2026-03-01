@@ -185,6 +185,7 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
+	reviewHandler := handlers.NewReviewHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -203,6 +204,16 @@ func main() {
 	users.Delete("/saved-products/:id", middleware.AuthMiddleware(), userHandler.UnsaveProduct)
 	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
+
+	// Review routes (must be BEFORE dynamic ":id" route)
+	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview)
+	users.Get("/:id/reviews", reviewHandler.GetUserReviews) // Public - get all reviews for a user
+	users.Get("/:id/rating", reviewHandler.GetUserRating)   // Public - get user's average rating
+
+	// Review reply routes
+	api.Post("/reviews/:id/reply", middleware.AuthMiddleware(), reviewHandler.ReplyToReview)
+	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
+	users.Get("/:id/stats", reviewHandler.GetUserRating)          // Alias for stats endpoint
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
