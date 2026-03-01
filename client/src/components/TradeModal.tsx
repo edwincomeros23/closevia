@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea } from '@chakra-ui/react'
 import { FaMapMarkerAlt, FaTruck, FaCheckCircle } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
+import { useNotification } from '../contexts/NotificationContext'
 import { api } from '../services/api'
 import { Product, TradeCreate, TradeOption } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
@@ -15,6 +16,7 @@ interface TradeModalProps {
 const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductId }) => {
   const { user } = useAuth()
   const toast = useToast()
+  const { showNotification } = useNotification()
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const [targetProduct, setTargetProduct] = useState<Product | null>(null)
   const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([])
@@ -137,7 +139,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       }
       console.log('Submitting trade payload:', payload)
       await api.post('/api/trades', payload)
-      toast({ title: 'Trade sent', description: 'Your trade offer was sent to the seller.', status: 'success' })
+      showNotification('Trade Offer Sent', 'success')
       setSelectedOfferIds([])
       setTradeMessage('')
       setCashAmount('')
