@@ -412,8 +412,15 @@ const Home: React.FC = () => {
       mx="auto"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(product))}
+      sx={{
+        '@media (max-width: 850px)': {
+          width: '100%',
+          minWidth: 0,
+          maxWidth: '100%',
+        },
+      }}
     >
-      {/* Square Product Image - Responsive Aspect Ratio */}
+      {/* Square Product Image - Fixed aspect ratio, object-fit: cover for uniform thumbnails */}
       <Box
         position="relative"
         w="full"
@@ -422,6 +429,15 @@ const Home: React.FC = () => {
         aspectRatio={1}
         overflow="hidden"
         mx="auto"
+        sx={{
+          '@media (max-width: 850px)': {
+            height: '180px',
+            width: '100%',
+            maxHeight: '180px',
+            minHeight: '180px',
+            overflow: 'hidden',
+          },
+        }}
       >
         <Image
           src={getFirstImage(product.image_urls)}
@@ -434,6 +450,13 @@ const Home: React.FC = () => {
           objectFit="cover"
           loading="lazy"
           fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          sx={{
+            '@media (max-width: 850px)': {
+              objectFit: 'cover',
+              width: '100%',
+              height: '100%',
+            },
+          }}
         />
 
         {/* Premium Badge */}
@@ -446,13 +469,14 @@ const Home: React.FC = () => {
             variant="solid"
             borderRadius="full"
             px={2}
+            sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'top right' } }}
           >
             <StarIcon mr={0} />
 
           </Badge>
         )}
 
-        {/* Trade/Buy Badge */}
+        {/* Trade/Buy Badge - Category */}
         <Badge
           position="absolute"
           top={2}
@@ -463,6 +487,7 @@ const Home: React.FC = () => {
           px={1.5}
           py={0.5}
           fontSize="2xs"
+          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'top left' } }}
         >
           {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
         </Badge>
@@ -477,6 +502,7 @@ const Home: React.FC = () => {
             variant="solid"
             borderRadius="full"
             px={2}
+            sx={{ '@media (max-width: 480px)': { transform: 'scale(0.8)', transformOrigin: 'bottom right' } }}
           >
             Sold
           </Badge>
@@ -494,6 +520,7 @@ const Home: React.FC = () => {
           bg="blackAlpha.600"
           color="white"
           fontSize="xs"
+          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'bottom left' } }}
         >
           <Text as="span" mr={1}>📍</Text>
           {product.distance || '1.2km'}
@@ -512,13 +539,21 @@ const Home: React.FC = () => {
           px={1.5}
           py={0.5}
           height="fit-content"
+          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'bottom right' } }}
         >
           {product.condition || 'Used'}
         </Badge>
       </Box>
 
       {/* Product Info (Flexible height) */}
-      <Box p={4} display="flex" flexDirection="column" flex={1} overflow="hidden">
+      <Box
+        p={4}
+        display="flex"
+        flexDirection="column"
+        flex={1}
+        overflow="hidden"
+        sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
+      >
         <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
           <HStack spacing={2}>
             <Avatar
@@ -547,7 +582,15 @@ const Home: React.FC = () => {
           </Badge>
         </Flex>
 
-        <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
+        <Heading
+          size="sm"
+          noOfLines={2}
+          mb={2}
+          color="gray.800"
+          flexShrink={0}
+          textAlign="left"
+          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
+        >
           {product.title}
         </Heading>
 
@@ -557,6 +600,8 @@ const Home: React.FC = () => {
           mb={2}
           fontSize="sm"
           flexShrink={0}
+          textAlign="left"
+          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
         >
           {product.description
             ? product.description
@@ -689,10 +734,18 @@ const Home: React.FC = () => {
         }}
         gap={{ base: 2, md: 4, lg: 4, xl: 5 }}
         alignItems="start"
+        justifyContent="center"
+        mx="auto"
+        sx={{
+          '@media (max-width: 850px)': {
+            gridTemplateColumns: '1fr 1fr !important',
+            gap: '10px',
+          },
+        }}
       >
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
-            <Box key={`product-${item.data.id}`}>
+            <Box key={`product-${item.data.id}`} sx={{ '@media (max-width: 850px)': { minWidth: 0, maxWidth: 'none' } }}>
               {renderProductCard(item.data)}
             </Box>
           ) : (
@@ -1185,6 +1238,7 @@ const Home: React.FC = () => {
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
         py={8}
+        sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px' } }}
         maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
         mx={{ base: 'auto', lg: 0 }}
         w="full"
@@ -1230,6 +1284,7 @@ const Home: React.FC = () => {
     pb={{ base: 20, md: 0 }}
     minH={{ base: '1200px', md: '1600px' }}
     ml={-10}
+    sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
   >
     <ProductGridWithAds products={products} user={user} />
 
