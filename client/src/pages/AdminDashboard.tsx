@@ -79,7 +79,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 // ─── PDF / DOCX imports ───────────────────────────────────────────────────────
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, AlignmentType, WidthType, BorderStyle } from 'docx';
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TableLayoutType, TextRun, HeadingLevel, AlignmentType, WidthType, ShadingType } from 'docx';
 import { saveAs } from 'file-saver';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -171,15 +171,24 @@ function exportToPDF(stats: AdminStats) {
   doc.setFont('helvetica', 'bold');
   doc.text('Core Metrics', 14, 42);
 
+  // usable width = page width minus margins (14 left + 14 right)
+  const usableW = pageW - 28;
+  const col0W = usableW * 0.58; // 58% for label column
+  const col1W = usableW * 0.42; // 42% for value column
+
   autoTable(doc, {
     startY: 46,
     head: [['Metric', 'Value']],
     body: buildReportRows(stats),
     theme: 'striped',
+    tableWidth: usableW,
     headStyles: { fillColor: [49, 130, 206], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-    bodyStyles: { fontSize: 10 },
+    bodyStyles: { fontSize: 10, overflow: 'linebreak' },
     alternateRowStyles: { fillColor: [235, 244, 255] },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 90 }, 1: { halign: 'right' } },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: col0W },
+      1: { halign: 'right', cellWidth: col1W },
+    },
     margin: { left: 14, right: 14 },
   });
 
@@ -196,10 +205,14 @@ function exportToPDF(stats: AdminStats) {
       head: [['Period', 'Revenue (PHP)']],
       body: stats.revenue_breakdown.map(r => [r.period, formatCurrency(r.amount)]),
       theme: 'striped',
+      tableWidth: usableW,
       headStyles: { fillColor: [56, 178, 172], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-      bodyStyles: { fontSize: 10 },
+      bodyStyles: { fontSize: 10, overflow: 'linebreak' },
       alternateRowStyles: { fillColor: [240, 255, 254] },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 90 }, 1: { halign: 'right' } },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: col0W },
+        1: { halign: 'right', cellWidth: col1W },
+      },
       margin: { left: 14, right: 14 },
     });
   }
@@ -222,8 +235,11 @@ async function exportToDOCX(stats: AdminStats) {
 
   const makeCell = (text: string, bold = false, shade?: string) =>
     new TableCell({
-      shading: shade ? { fill: shade, type: 'clear' as any } : undefined,
-      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      shading: shade
+        ? { type: ShadingType.CLEAR, color: 'auto', fill: shade }
+        : { type: ShadingType.CLEAR, color: 'auto', fill: 'FFFFFF' },
+      width: { size: 50, type: WidthType.PERCENTAGE },
+      margins: { top: 80, bottom: 80, left: 140, right: 140 },
       children: [
         new Paragraph({
           children: [new TextRun({ text, bold, size: 20 })],
@@ -296,13 +312,14 @@ async function exportToDOCX(stats: AdminStats) {
           }),
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.FIXED,
             rows: tableRows,
           }),
           ...(revenueRows.length > 0
             ? [
               new Paragraph({ text: '' }),
               new Paragraph({ text: 'Revenue Breakdown (Last 4 Weeks)', heading: HeadingLevel.HEADING_2 }),
-              new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: revenueRows }),
+              new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, layout: TableLayoutType.FIXED, rows: revenueRows }),
             ]
             : []),
           new Paragraph({ text: '' }),

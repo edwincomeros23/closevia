@@ -8,7 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
   googleLogin: (firebaseToken: string, userData: any) => Promise<void>
-  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<void>
+  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<{ requiresVerification: boolean; email: string }>
   logout: () => void
   updateProfile: (payload: { name?: string; email?: string; profile_picture?: string }) => Promise<void>
   refreshUser: () => Promise<void>
@@ -41,7 +41,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     console.log('AuthContext: Initializing authentication check')
-    
+
     // Initialize auth synchronously from localStorage first
     const initializeAuth = async () => {
       try {
@@ -57,13 +57,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Check if user is logged in on app start - restore token FIRST
         const storedToken = localStorage.getItem('clovia_token')
         console.log('AuthContext: Stored token found:', !!storedToken)
-        
+
         if (storedToken) {
           console.log('AuthContext: Restoring token and fetching user profile')
           // Set token and headers immediately without waiting for user fetch to complete
           setToken(storedToken)
           api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
-          
+
           // Now fetch user profile in the background
           await fetchUserProfile(storedToken)
         } else {
@@ -104,7 +104,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       console.log('AuthContext: Setting user data:', userData)
       setUser(userData)
-      
+
       // If token was passed, ensure it's set in state
       if (currentToken && !token) {
         setToken(currentToken)
@@ -165,14 +165,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Store token in localStorage FIRST
       localStorage.setItem('clovia_token', newToken)
-      
+
       // Set authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-      
+
       // Set state - token first, then user
       setToken(newToken)
       setUser(userData)
-      
+
       console.log('AuthContext: Login successful')
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Login failed')
@@ -194,10 +194,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Store token in localStorage FIRST
       localStorage.setItem('clovia_token', newToken)
-      
+
       // Set authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-      
+
       console.log('AuthContext: Setting token and user state')
       // Set state - token first, then user
       setToken(newToken)
@@ -247,19 +247,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => {
     try {
       const response = await api.post('/api/auth/register', payload)
-      const { token: newToken, user: userData } = response.data.data
-      
-      // Store token in localStorage FIRST
+      console.log('AuthContext: Register raw response:', JSON.stringify(response.data))
+
+      const responseData = response.data.data
+      const requiresVerification = !!(responseData?.requires_verification)
+
+      console.log('AuthContext: requires_verification =', requiresVerification, '| responseData keys:', Object.keys(responseData || {}))
+
+      if (requiresVerification) {
+        console.log('AuthContext: Redirecting to /verify-email')
+        return { requiresVerification: true, email: payload.email }
+      }
+
+      // Fallback: if backend skips verification (e.g. Google users), log them in directly
+      const { token: newToken, user: userData } = responseData
       localStorage.setItem('clovia_token', newToken)
-      
-      // Set authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-      
-      // Set state - token first, then user
       setToken(newToken)
       setUser(userData)
-      
-      console.log('AuthContext: Registration successful')
+      return { requiresVerification: false, email: payload.email }
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Registration failed')
     }

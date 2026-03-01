@@ -191,6 +191,8 @@ func main() {
 	auth.Post("/register", userHandler.Register)
 	auth.Post("/login", userHandler.Login)
 	auth.Post("/google", userHandler.GoogleLogin)
+	auth.Post("/verify-email", userHandler.VerifyEmail)
+	auth.Post("/resend-verification", userHandler.ResendVerification)
 
 	// User routes (authentication required)
 	users := api.Group("/users")

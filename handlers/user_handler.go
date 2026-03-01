@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -116,13 +118,15 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	userID, _ := result.LastInsertId()
 
-	// Generate JWT token
-	token, err := utils.GenerateJWT(int(userID), user.Email)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Failed to generate token",
-		})
+	// Generate and store email OTP
+	otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+	if otpErr == nil {
+		h.db.Exec(
+			"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
+			otpHash, otpExpiry, userID,
+		)
+		// Send verification email asynchronously so it doesn't block registration
+		go services.SendOTPEmail(user.Email, user.Name, otpCode)
 	}
 
 	return c.Status(201).JSON(models.APIResponse{
@@ -142,9 +146,147 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				Bio:            user.Bio,
 				ProfilePicture: "",
 			},
-			"token": token,
+			"requires_verification": true,
 		},
 	})
+}
+
+// generateOTP creates a 6-digit code, returns (plainCode, bcryptHash, expiry, error)
+func generateOTP() (string, string, time.Time, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	code := fmt.Sprintf("%06d", n.Int64())
+	hash, err := utils.HashPassword(code)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	expiry := time.Now().Add(10 * time.Minute)
+	return code, hash, expiry, nil
+}
+
+// VerifyEmail verifies the OTP code sent to the user's email.
+// POST /api/auth/verify-email  { email, code }
+func (h *UserHandler) VerifyEmail(c *fiber.Ctx) error {
+	var req struct {
+		Email string `json:"email"`
+		Code  string `json:"code"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	if req.Email == "" || req.Code == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Email and code are required"})
+	}
+
+	var userID int
+	var storedHash string
+	var expires time.Time
+	var verified bool
+
+	err := h.db.QueryRow(
+		"SELECT id, COALESCE(email_otp_hash,''), COALESCE(email_otp_expires, NOW()), verified FROM users WHERE email = ?",
+		req.Email,
+	).Scan(&userID, &storedHash, &expires, &verified)
+
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
+	}
+	if verified {
+		return c.JSON(models.APIResponse{Success: true, Message: "Email is already verified"})
+	}
+	if storedHash == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No verification code found. Please request a new one."})
+	}
+	if time.Now().After(expires) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Verification code has expired. Please request a new one."})
+	}
+	if !utils.CheckPasswordHash(req.Code, storedHash) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid verification code"})
+	}
+
+	// Mark verified and clear OTP
+	_, err = h.db.Exec(
+		"UPDATE users SET verified = true, email_otp_hash = NULL, email_otp_expires = NULL WHERE id = ?",
+		userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify email"})
+	}
+
+	// Generate JWT token now that they are verified
+	token, err := utils.GenerateJWT(userID, req.Email)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate token"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Email verified successfully",
+		Data:    fiber.Map{"token": token},
+	})
+}
+
+// ResendVerification resends the OTP to the user's email.
+// POST /api/auth/resend-verification  { email }
+func (h *UserHandler) ResendVerification(c *fiber.Ctx) error {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	if req.Email == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Email is required"})
+	}
+
+	var userID int
+	var userName string
+	var verified bool
+	var currentExpires sql.NullTime
+
+	err := h.db.QueryRow(
+		"SELECT id, name, verified, email_otp_expires FROM users WHERE email = ?",
+		req.Email,
+	).Scan(&userID, &userName, &verified, &currentExpires)
+
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
+	}
+	if verified {
+		return c.JSON(models.APIResponse{Success: true, Message: "Email is already verified"})
+	}
+
+	// Cooldown: block resend if previous OTP was sent less than 60 seconds ago
+	if currentExpires.Valid {
+		secondsUntilExpiry := time.Until(currentExpires.Time).Seconds()
+		// OTP was set for 10 min; if > 9 min remain it was sent <60s ago
+		if secondsUntilExpiry > float64(9*60) {
+			return c.Status(429).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Please wait 60 seconds before requesting a new code",
+			})
+		}
+	}
+
+	// Generate new OTP
+	otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+	if otpErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate verification code"})
+	}
+
+	_, err = h.db.Exec(
+		"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
+		otpHash, otpExpiry, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update verification code"})
+	}
+
+	go services.SendOTPEmail(req.Email, userName, otpCode)
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Verification code resent"})
 }
 
 // Login handles user authentication

@@ -42,14 +42,14 @@ const Register: React.FC = () => {
   const [bio, setBio] = useState('')
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  
+
   const { register } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
 
   const validateFields = () => {
     const errors: Record<string, string> = {}
-    
+
     if (!isOrganization) {
       if (!firstName) errors.firstName = 'First name is required'
       if (!lastName) errors.lastName = 'Last name is required'
@@ -64,12 +64,12 @@ const Register: React.FC = () => {
       if (!orgName) errors.orgName = 'Organization name is required'
       if (!email) errors.email = 'Email is required'
     }
-    
+
     if (!password) errors.password = 'Password is required'
     if (password && password.length < 6) errors.password = 'Password must be at least 6 characters'
     if (!confirmPassword) errors.confirmPassword = 'Confirm password is required'
     if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match'
-    
+
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -77,14 +77,14 @@ const Register: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    
+
     if (!validateFields()) {
       return
     }
 
     // Combine name fields for backend
     const fullName = !isOrganization
-      ? (middleInitial 
+      ? (middleInitial
         ? `${firstName} ${middleInitial} ${lastName}`.trim()
         : `${firstName} ${lastName}`.trim())
       : orgName
@@ -92,7 +92,7 @@ const Register: React.FC = () => {
     try {
       setLoading(true)
       setError('')
-      await register({
+      const result = await register({
         name: fullName,
         email,
         password,
@@ -101,18 +101,20 @@ const Register: React.FC = () => {
         org_logo_url: isOrganization ? orgLogoUrl : undefined,
         department: !isOrganization ? department : undefined,
         bio: bio || undefined,
-        // profile_picture NOT included - will be added via Settings page
       })
-      
-      toast({
-        title: 'Registration successful!',
-        description: 'Welcome to Clovia',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
-      
-      navigate('/dashboard')
+
+      if (result.requiresVerification) {
+        toast({
+          title: 'Account created!',
+          description: 'Please check your email for a verification code.',
+          status: 'success',
+          duration: 4000,
+          isClosable: true,
+        })
+        navigate('/verify-email', { state: { email: result.email } })
+      } else {
+        navigate('/dashboard')
+      }
     } catch (error: any) {
       setError(error.message || 'Registration failed')
     } finally {
@@ -123,7 +125,7 @@ const Register: React.FC = () => {
   return (
     <Box bg="#FFFDF1" w="100%" minH="100vh" display="flex" flexDirection="column">
       {/* Mobile: Scrollable container */}
-      <Box 
+      <Box
         flex={1}
         overflowY="auto"
         py={{ base: 12, md: 8 }}
@@ -144,18 +146,18 @@ const Register: React.FC = () => {
             size="md"
             zIndex={10}
           />
-          
+
           <VStack spacing={8} align="stretch">
             <Box textAlign="center" mt={{ base: 6, md: 0 }}>
-              <Heading 
-                size="lg" 
-                color="brand.500" 
+              <Heading
+                size="lg"
+                color="brand.500"
                 mb={2}
                 fontSize={{ base: '24px', md: '28px' }}
               >
                 Join Clovia
               </Heading>
-              <Text 
+              <Text
                 color="gray.600"
                 fontSize={{ base: 'sm', md: 'md' }}
               >
@@ -178,7 +180,7 @@ const Register: React.FC = () => {
                   {/* Account Type Selector - Segmented Control */}
                   <FormControl>
                     <FormLabel fontSize="sm" fontWeight="600" mb={3} color="gray.700">Account Type</FormLabel>
-                    <HStack 
+                    <HStack
                       spacing={0}
                       bg="gray.100"
                       borderRadius="lg"
@@ -233,7 +235,7 @@ const Register: React.FC = () => {
                             value={firstName}
                             onChange={(e) => {
                               setFirstName(e.target.value)
-                              if (fieldErrors.firstName) setFieldErrors({...fieldErrors, firstName: ''})
+                              if (fieldErrors.firstName) setFieldErrors({ ...fieldErrors, firstName: '' })
                             }}
                             placeholder="John"
                             size="lg"
@@ -273,7 +275,7 @@ const Register: React.FC = () => {
                             value={lastName}
                             onChange={(e) => {
                               setLastName(e.target.value)
-                              if (fieldErrors.lastName) setFieldErrors({...fieldErrors, lastName: ''})
+                              if (fieldErrors.lastName) setFieldErrors({ ...fieldErrors, lastName: '' })
                             }}
                             placeholder="Doe"
                             size="lg"
@@ -315,7 +317,7 @@ const Register: React.FC = () => {
                           value={email}
                           onChange={(e) => {
                             setEmail(e.target.value)
-                            if (fieldErrors.email) setFieldErrors({...fieldErrors, email: ''})
+                            if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' })
                           }}
                           placeholder="name@wmsu.edu.ph"
                           size="lg"
@@ -334,13 +336,13 @@ const Register: React.FC = () => {
                       {email.toLowerCase().endsWith('@wmsu.edu.ph') && (
                         <FormControl isRequired isInvalid={!!fieldErrors.department}>
                           <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Department / College</FormLabel>
-                          <Input 
-                            value={department} 
+                          <Input
+                            value={department}
                             onChange={(e) => {
                               setDepartment(e.target.value)
-                              if (fieldErrors.department) setFieldErrors({...fieldErrors, department: ''})
-                            }} 
-                            placeholder="e.g., CCS, COE, CTE" 
+                              if (fieldErrors.department) setFieldErrors({ ...fieldErrors, department: '' })
+                            }}
+                            placeholder="e.g., CCS, COE, CTE"
                             size="lg"
                             bg="white"
                             borderColor={fieldErrors.department ? 'red.300' : 'gray.200'}
@@ -357,10 +359,10 @@ const Register: React.FC = () => {
                       {/* Bio */}
                       <FormControl>
                         <FormLabel fontSize="sm" fontWeight="medium">Short Bio</FormLabel>
-                        <Input 
-                          value={bio} 
-                          onChange={(e) => setBio(e.target.value)} 
-                          placeholder="Tell us about yourself" 
+                        <Input
+                          value={bio}
+                          onChange={(e) => setBio(e.target.value)}
+                          placeholder="Tell us about yourself"
                           size="lg"
                           bg="white"
                           borderColor="gray.200"
@@ -379,13 +381,13 @@ const Register: React.FC = () => {
                       {/* Organization Name */}
                       <FormControl isRequired isInvalid={!!fieldErrors.orgName}>
                         <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Organization Name</FormLabel>
-                        <Input 
-                          value={orgName} 
+                        <Input
+                          value={orgName}
                           onChange={(e) => {
                             setOrgName(e.target.value)
-                            if (fieldErrors.orgName) setFieldErrors({...fieldErrors, orgName: ''})
-                          }} 
-                          placeholder="e.g., CCS Student Council" 
+                            if (fieldErrors.orgName) setFieldErrors({ ...fieldErrors, orgName: '' })
+                          }}
+                          placeholder="e.g., CCS Student Council"
                           size="lg"
                           bg="white"
                           borderColor={fieldErrors.orgName ? 'red.300' : 'gray.200'}
@@ -401,10 +403,10 @@ const Register: React.FC = () => {
                       {/* Organization Logo URL */}
                       <FormControl>
                         <FormLabel fontSize="sm" fontWeight="medium">Organization Logo URL</FormLabel>
-                        <Input 
-                          value={orgLogoUrl} 
-                          onChange={(e) => setOrgLogoUrl(e.target.value)} 
-                          placeholder="https://..." 
+                        <Input
+                          value={orgLogoUrl}
+                          onChange={(e) => setOrgLogoUrl(e.target.value)}
+                          placeholder="https://..."
                           size="lg"
                           bg="white"
                           borderColor="gray.200"
@@ -423,7 +425,7 @@ const Register: React.FC = () => {
                           value={email}
                           onChange={(e) => {
                             setEmail(e.target.value)
-                            if (fieldErrors.email) setFieldErrors({...fieldErrors, email: ''})
+                            if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' })
                           }}
                           placeholder="contact@organization.com"
                           size="lg"
@@ -441,10 +443,10 @@ const Register: React.FC = () => {
                       {/* Organization Bio/Description */}
                       <FormControl>
                         <FormLabel fontSize="sm" fontWeight="medium">About Organization</FormLabel>
-                        <Input 
-                          value={bio} 
-                          onChange={(e) => setBio(e.target.value)} 
-                          placeholder="Describe your organization" 
+                        <Input
+                          value={bio}
+                          onChange={(e) => setBio(e.target.value)}
+                          placeholder="Describe your organization"
                           size="lg"
                           bg="white"
                           borderColor="gray.200"
@@ -457,101 +459,101 @@ const Register: React.FC = () => {
                     </>
                   )}
 
-                <FormControl isRequired isInvalid={!!fieldErrors.password}>
-                  <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Password</FormLabel>
-                  <InputGroup size="lg">
-                    <Input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value)
-                        if (fieldErrors.password) setFieldErrors({...fieldErrors, password: ''})
-                      }}
-                      placeholder="Minimum 6 characters"
-                      bg="white"
-                      borderColor={fieldErrors.password ? 'red.300' : 'gray.200'}
-                      _focus={{
-                        borderColor: fieldErrors.password ? 'red.500' : 'brand.400',
-                        boxShadow: fieldErrors.password ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
-                      }}
-                      transition="all 0.2s"
-                    />
-                    <InputRightElement>
-                      <IconButton
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
-                        variant="ghost"
-                        onClick={() => setShowPassword(!showPassword)}
-                        _hover={{ bg: 'gray.100' }}
+                  <FormControl isRequired isInvalid={!!fieldErrors.password}>
+                    <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Password</FormLabel>
+                    <InputGroup size="lg">
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value)
+                          if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: '' })
+                        }}
+                        placeholder="Minimum 6 characters"
+                        bg="white"
+                        borderColor={fieldErrors.password ? 'red.300' : 'gray.200'}
+                        _focus={{
+                          borderColor: fieldErrors.password ? 'red.500' : 'brand.400',
+                          boxShadow: fieldErrors.password ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                        }}
+                        transition="all 0.2s"
                       />
-                    </InputRightElement>
-                  </InputGroup>
-                  {fieldErrors.password && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.password}</FormErrorMessage>}
-                </FormControl>
+                      <InputRightElement>
+                        <IconButton
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
+                          variant="ghost"
+                          onClick={() => setShowPassword(!showPassword)}
+                          _hover={{ bg: 'gray.100' }}
+                        />
+                      </InputRightElement>
+                    </InputGroup>
+                    {fieldErrors.password && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.password}</FormErrorMessage>}
+                  </FormControl>
 
-                <FormControl isRequired isInvalid={!!fieldErrors.confirmPassword}>
-                  <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Confirm Password</FormLabel>
-                  <InputGroup size="lg">
-                    <Input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => {
-                        setConfirmPassword(e.target.value)
-                        if (fieldErrors.confirmPassword) setFieldErrors({...fieldErrors, confirmPassword: ''})
-                      }}
-                      placeholder="Re-enter your password"
-                      bg="white"
-                      borderColor={fieldErrors.confirmPassword ? 'red.300' : 'gray.200'}
-                      _focus={{
-                        borderColor: fieldErrors.confirmPassword ? 'red.500' : 'brand.400',
-                        boxShadow: fieldErrors.confirmPassword ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
-                      }}
-                      transition="all 0.2s"
-                    />
-                    <InputRightElement>
-                      <IconButton
-                        aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                        icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
-                        variant="ghost"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        _hover={{ bg: 'gray.100' }}
+                  <FormControl isRequired isInvalid={!!fieldErrors.confirmPassword}>
+                    <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Confirm Password</FormLabel>
+                    <InputGroup size="lg">
+                      <Input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value)
+                          if (fieldErrors.confirmPassword) setFieldErrors({ ...fieldErrors, confirmPassword: '' })
+                        }}
+                        placeholder="Re-enter your password"
+                        bg="white"
+                        borderColor={fieldErrors.confirmPassword ? 'red.300' : 'gray.200'}
+                        _focus={{
+                          borderColor: fieldErrors.confirmPassword ? 'red.500' : 'brand.400',
+                          boxShadow: fieldErrors.confirmPassword ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                        }}
+                        transition="all 0.2s"
                       />
-                    </InputRightElement>
-                  </InputGroup>
-                  {fieldErrors.confirmPassword && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.confirmPassword}</FormErrorMessage>}
-                </FormControl>
+                      <InputRightElement>
+                        <IconButton
+                          aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                          icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
+                          variant="ghost"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          _hover={{ bg: 'gray.100' }}
+                        />
+                      </InputRightElement>
+                    </InputGroup>
+                    {fieldErrors.confirmPassword && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.confirmPassword}</FormErrorMessage>}
+                  </FormControl>
 
-                <Button
-                  type="submit"
-                  colorScheme="brand"
-                  size="lg"
-                  w="full"
-                  isLoading={loading}
-                  loadingText="Creating account..."
-                  mt={6}
-                  mb={4}
-                  fontWeight="600"
-                  transition="all 0.3s"
-                  _hover={{
-                    transform: 'translateY(-2px)',
-                    boxShadow: '0 8px 12px rgba(0, 0, 0, 0.15)',
-                  }}
-                  _active={{
-                    transform: 'translateY(0)',
-                  }}
-                  isDisabled={loading}
-                >
-                  Create Account
-                </Button>
+                  <Button
+                    type="submit"
+                    colorScheme="brand"
+                    size="lg"
+                    w="full"
+                    isLoading={loading}
+                    loadingText="Creating account..."
+                    mt={6}
+                    mb={4}
+                    fontWeight="600"
+                    transition="all 0.3s"
+                    _hover={{
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 8px 12px rgba(0, 0, 0, 0.15)',
+                    }}
+                    _active={{
+                      transform: 'translateY(0)',
+                    }}
+                    isDisabled={loading}
+                  >
+                    Create Account
+                  </Button>
 
-                <Text textAlign="center" fontSize="sm" color="gray.600">
-                  Already have an account?{' '}
-                  <Link as={RouterLink} to="/login" color="brand.500" fontWeight="600" _hover={{ textDecoration: 'underline' }}>
-                    Sign in here
-                  </Link>
-                </Text>
-              </VStack>
-            </form>
+                  <Text textAlign="center" fontSize="sm" color="gray.600">
+                    Already have an account?{' '}
+                    <Link as={RouterLink} to="/login" color="brand.500" fontWeight="600" _hover={{ textDecoration: 'underline' }}>
+                      Sign in here
+                    </Link>
+                  </Text>
+                </VStack>
+              </form>
             </Box>
           </VStack>
         </Container>
