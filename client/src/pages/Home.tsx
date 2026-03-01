@@ -35,6 +35,7 @@ import {
   PopoverBody,
   Divider,
   Icon,
+  Avatar,
 } from '@chakra-ui/react'
 import {
   SearchIcon,
@@ -56,7 +57,7 @@ import { MdSchool, MdLocalOffer } from 'react-icons/md'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
@@ -151,6 +152,7 @@ const Home: React.FC = () => {
       return
     }
     // Fetch latest 10 available products on mount (default feed)
+    console.log('🔍 Fetching initial products with status: available, limit: 10')
     searchProducts({ status: 'available', limit: 10, page: 1 })
     // empty deps — only once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -386,7 +388,13 @@ const Home: React.FC = () => {
   }
 
   // Product card with square image and fixed info area for uniform height
-  const renderProductCard = (product: any) => (
+  const renderProductCard = (product: any) => {
+    const sellerAvatar = product.seller_profile_picture
+      ? getImageUrl(product.seller_profile_picture)
+      : undefined
+    const sellerAvatarSrc = sellerAvatar
+
+    return (
     <Box
       key={product.id}
       bg="white"
@@ -513,25 +521,18 @@ const Home: React.FC = () => {
       <Box p={4} display="flex" flexDirection="column" flex={1} overflow="hidden">
         <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
           <HStack spacing={2}>
-            <Box
+            <Avatar
               as={RouterLink}
               to={`/users/${product.seller_id}`}
-              w={7}
-              h={7}
-              rounded="full"
+              size="sm"
+              src={sellerAvatarSrc}
+              name={product.seller_name || 'U'}
               bg="brand.500"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
               flexShrink={0}
               cursor="pointer"
               _hover={{ opacity: 0.8 }}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            >
-              <Text fontSize="md" fontWeight="bold" color="white">
-                {(product.seller_name || 'U').charAt(0).toUpperCase()}
-              </Text>
-            </Box>
+            />
             <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
               {product.seller_name || 'Unknown'}
             </Text>
@@ -631,13 +632,21 @@ const Home: React.FC = () => {
         </HStack>
       </Box>
     </Box>
-  )
+    )
+  }
 
   // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
     const filteredProducts = products.filter(
-      (p) => p.status === 'available' && p.seller_id !== user?.id
+      (p) => p.status === 'available' // Show all available products, including your own
     )
+    
+    console.log('📦 ProductGridWithAds - Total products from API:', products.length)
+    console.log('📦 ProductGridWithAds - Current user ID:', user?.id)
+    console.log('📦 ProductGridWithAds - Filtered products (available):', filteredProducts.length)
+    if (products.length > 0) {
+      console.log('📦 Sample product data:', products[0])
+    }
 
     // Use the ad injection hook
     const { shouldInsertAdAt, getAdForPosition, getAdIndexAt } = useStudentAdInjection(

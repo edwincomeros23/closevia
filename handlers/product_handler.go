@@ -413,7 +413,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
 		       p.suggested_value, p.category, p.created_at, p.updated_at,
-		       u.name as seller_name
+		       u.name as seller_name, u.profile_picture as seller_profile_picture
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
 		` + whereClause + `
@@ -440,12 +440,13 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var product models.Product
 		var slugNull sql.NullString
 		var priceNull sql.NullFloat64
+		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName)
+			&product.SellerName, &sellerProfile)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -457,6 +458,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			product.Price = &p
 		} else {
 			product.Price = nil
+		}
+		if sellerProfile.Valid {
+			product.SellerProfilePicture = sellerProfile.String
 		}
 
 		// Parse image URLs from JSON
@@ -591,9 +595,9 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		// It's a numeric ID
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+`condition`+`, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
-			       u.name as seller_name
+			       u.name as seller_name, u.profile_picture as seller_profile_picture
 			FROM products p
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.id = ?
@@ -601,14 +605,14 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName)
+			&product.SellerName, &product.SellerProfilePicture)
 	} else {
 		// It's a slug
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+`condition`+`, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
-			       u.name as seller_name
+			       u.name as seller_name, u.profile_picture as seller_profile_picture
 			FROM products p
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.slug = ?
@@ -616,7 +620,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName)
+			&product.SellerName, &product.SellerProfilePicture)
 	}
 
 	if err != nil {
@@ -983,7 +987,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	}
 	rows, err := h.db.Query(`
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
 		`+where+`
@@ -1004,10 +1008,11 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		var product models.Product
 		var slugNull sql.NullString
 		var priceNull sql.NullFloat64
+		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName)
+			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -1019,6 +1024,9 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 			product.Price = &p
 		} else {
 			product.Price = nil
+		}
+		if sellerProfile.Valid {
+			product.SellerProfilePicture = sellerProfile.String
 		}
 
 		// Parse image URLs from JSON

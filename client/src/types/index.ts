@@ -30,6 +30,7 @@ export interface Product {
   image_urls: string[]
   seller_id: number
   seller_name?: string
+  seller_profile_picture?: string
   premium: boolean
   status: 'available' | 'sold' | 'traded' | 'locked'
   allow_buying: boolean
