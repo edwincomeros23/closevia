@@ -41,6 +41,21 @@ import {
   MenuItem,
   Divider,
   Tooltip,
+  Table as ChakraTable,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  Avatar,
+  Tag,
+  IconButton,
+  AlertDialog,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogBody,
+  AlertDialogFooter,
 } from '@chakra-ui/react';
 import {
   FiUsers,
@@ -59,6 +74,7 @@ import {
   FiCalendar,
   FiFileText,
 } from 'react-icons/fi';
+import { FiTrash2 } from 'react-icons/fi';
 import {
   AreaChart,
   Area,
@@ -75,6 +91,7 @@ import { mockAdminStats, simulateApiDelay } from '../utils/mockData';
 import { enhancedApiCall, checkConnectionStatus } from '../utils/apiUtils';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { User, Product, PaginatedResponse, APIResponse } from '../types';
 
 // ─── PDF / DOCX imports ───────────────────────────────────────────────────────
 import jsPDF from 'jspdf';
@@ -493,7 +510,28 @@ const AdminDashboard: React.FC = () => {
   const [dayDetailLoading, setDayDetailLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
 
+  // Admin lists state
+  const [users, setUsers] = useState<User[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersTotalPages, setUsersTotalPages] = useState(1);
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsPage, setProductsPage] = useState(1);
+  const [productsTotalPages, setProductsTotalPages] = useState(1);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'product'; id: number; name: string } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const { isOpen: isDayModalOpen, onOpen: openDayModal, onClose: closeDayModal } = useDisclosure();
+  const {
+    isOpen: isDeleteDialogOpen,
+    onOpen: openDeleteDialog,
+    onClose: closeDeleteDialog,
+  } = useDisclosure();
+  const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
 
   const toast = useToast();
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -641,12 +679,129 @@ const AdminDashboard: React.FC = () => {
     }
   }, [stats, toast]);
 
+  // ── Fetch users for admin list ──
+  const fetchAdminUsers = useCallback(
+    async (page = 1) => {
+      try {
+        setUsersLoading(true);
+        const response = await api.get<APIResponse<PaginatedResponse<User>>>(`/api/admin/users?page=${page}&limit=10`);
+        if (response.data.success && response.data.data) {
+          const data = response.data.data as PaginatedResponse<User>;
+          setUsers(data.data || []);
+          setUsersPage(data.page || page);
+          setUsersTotalPages(data.total_pages || 1);
+        } else {
+          setUsers([]);
+        }
+      } catch (err: any) {
+        toast({
+          title: 'Failed to load users',
+          description: err?.response?.data?.error || err.message || 'Unable to fetch users',
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
+        setUsers([]);
+      } finally {
+        setUsersLoading(false);
+      }
+    },
+    [toast],
+  );
+
+  // ── Fetch products for admin list ──
+  const fetchAdminProducts = useCallback(
+    async (page = 1) => {
+      try {
+        setProductsLoading(true);
+        const response = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?page=${page}&limit=10`);
+        if (response.data.success && response.data.data) {
+          const data = response.data.data as PaginatedResponse<Product>;
+          setProducts(data.data || []);
+          setProductsPage(data.page || page);
+          setProductsTotalPages(data.total_pages || 1);
+        } else {
+          setProducts([]);
+        }
+      } catch (err: any) {
+        toast({
+          title: 'Failed to load items',
+          description: err?.response?.data?.error || err.message || 'Unable to fetch items',
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
+        setProducts([]);
+      } finally {
+        setProductsLoading(false);
+      }
+    },
+    [toast],
+  );
+
+  // ── Delete handlers ──
+  const askDeleteUser = useCallback((user: User) => {
+    setDeleteTarget({ type: 'user', id: user.id, name: user.name || user.email });
+    openDeleteDialog();
+  }, [openDeleteDialog]);
+
+  const askDeleteProduct = useCallback((product: Product) => {
+    setDeleteTarget({
+      type: 'product',
+      id: product.id,
+      name: product.title || `Item #${product.id}`,
+    });
+    openDeleteDialog();
+  }, [openDeleteDialog]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      setDeleteLoading(true);
+      if (deleteTarget.type === 'user') {
+        await api.delete(`/api/admin/users/${deleteTarget.id}`);
+        setUsers(prev => prev.filter(u => u.id !== deleteTarget.id));
+        toast({
+          title: 'User deleted',
+          description: 'The user and related data have been removed.',
+          status: 'success',
+          duration: 4000,
+          isClosable: true,
+        });
+      } else {
+        await api.delete(`/api/admin/products/${deleteTarget.id}`);
+        setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
+        toast({
+          title: 'Item deleted',
+          description: 'The item has been removed from the marketplace.',
+          status: 'success',
+          duration: 4000,
+          isClosable: true,
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Deletion failed',
+        description: err?.response?.data?.error || err.message || 'Unable to delete record',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setDeleteLoading(false);
+      closeDeleteDialog();
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, toast, closeDeleteDialog]);
+
   useEffect(() => {
     checkConnection();
     fetchAdminStats();
+    fetchAdminUsers(1);
+    fetchAdminProducts(1);
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
-  }, [checkConnection, fetchAdminStats]);
+  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts]);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -935,21 +1090,32 @@ const AdminDashboard: React.FC = () => {
         <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={8} mb={8}>
           <GridItem>
             <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader><Heading size="md" color="blue.600">User Management</Heading></CardHeader>
+              <CardHeader>
+                <Heading size="md" color="blue.600">User Management</Heading>
+                <Text fontSize="sm" color="gray.500" mt={1}>
+                  Review users and remove abusive or inactive accounts.
+                </Text>
+              </CardHeader>
               <CardBody>
                 <VStack spacing={4} align="stretch">
-                  {[
-                    { label: 'Pending Approvals', value: stats.pending_approvals, scheme: 'yellow' },
-                    { label: 'Reports Filed', value: stats.reports_filed, scheme: 'red' },
-                    { label: 'Suspended/Banned Users', value: stats.suspended_users, scheme: 'gray' },
-                  ].map(({ label, value, scheme }) => (
-                    <HStack key={label} justify="space-between">
-                      <Text fontWeight="medium">{label}</Text>
-                      <Badge colorScheme={scheme} fontSize="md" px={3} py={1}>
-                        {value?.toLocaleString() ?? 0}
-                      </Badge>
-                    </HStack>
-                  ))}
+                  <HStack justify="space-between">
+                    <Text fontWeight="medium">Pending Approvals</Text>
+                    <Badge colorScheme="yellow" fontSize="md" px={3} py={1}>
+                      {stats.pending_approvals?.toLocaleString() ?? 0}
+                    </Badge>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text fontWeight="medium">Reports Filed</Text>
+                    <Badge colorScheme="red" fontSize="md" px={3} py={1}>
+                      {stats.reports_filed?.toLocaleString() ?? 0}
+                    </Badge>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text fontWeight="medium">Suspended/Banned Users</Text>
+                    <Badge colorScheme="gray" fontSize="md" px={3} py={1}>
+                      {stats.suspended_users?.toLocaleString() ?? 0}
+                    </Badge>
+                  </HStack>
                 </VStack>
               </CardBody>
             </Card>
@@ -957,7 +1123,9 @@ const AdminDashboard: React.FC = () => {
 
           <GridItem>
             <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader><Heading size="md" color="blue.600">System Metrics</Heading></CardHeader>
+              <CardHeader>
+                <Heading size="md" color="blue.600">System Metrics</Heading>
+              </CardHeader>
               <CardBody>
                 <HStack justify="space-between">
                   <Text fontWeight="medium">Storage Usage</Text>
@@ -965,6 +1133,214 @@ const AdminDashboard: React.FC = () => {
                     {(stats.storage_usage_mb || 0).toFixed(1)} MB
                   </Text>
                 </HStack>
+              </CardBody>
+            </Card>
+          </GridItem>
+        </Grid>
+
+        {/* ── Admin: Users & Items ── */}
+        <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={8} mb={8}>
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Heading size="md" color="blue.600">Users</Heading>
+                <Text fontSize="sm" color="gray.500" mt={1}>
+                  View all registered users and delete accounts if necessary.
+                </Text>
+              </CardHeader>
+              <CardBody>
+                {usersLoading ? (
+                  <Center py={6}>
+                    <VStack spacing={3}>
+                      <Spinner color="blue.500" />
+                      <Text fontSize="sm" color="gray.500">Loading users…</Text>
+                    </VStack>
+                  </Center>
+                ) : users.length === 0 ? (
+                  <Text fontSize="sm" color="gray.500">No users found.</Text>
+                ) : (
+                  <>
+                    <ChakraTable size="sm" variant="simple">
+                      <Thead>
+                        <Tr>
+                          <Th>User</Th>
+                          <Th>Email</Th>
+                          <Th>Role</Th>
+                          <Th>Verified</Th>
+                          <Th textAlign="right">Actions</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {users.map(user => (
+                          <Tr key={user.id}>
+                            <Td>
+                              <HStack spacing={3}>
+                                <Avatar
+                                  size="sm"
+                                  name={user.name}
+                                  src={user.profile_picture || undefined}
+                                />
+                                <VStack spacing={0} align="start">
+                                  <Text fontWeight="medium" fontSize="sm">
+                                    {user.name || 'Unnamed User'}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500">
+                                    ID #{user.id}
+                                  </Text>
+                                </VStack>
+                              </HStack>
+                            </Td>
+                            <Td>
+                              <Text fontSize="sm">{user.email}</Text>
+                            </Td>
+                            <Td>
+                              <Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : 'blue'}>
+                                {user.role}
+                              </Tag>
+                            </Td>
+                            <Td>
+                              <Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'}>
+                                {user.verified ? 'Verified' : 'Unverified'}
+                              </Tag>
+                            </Td>
+                            <Td textAlign="right">
+                              <Tooltip label="Delete user" hasArrow>
+                                <IconButton
+                                  aria-label="Delete user"
+                                  size="sm"
+                                  colorScheme="red"
+                                  variant="ghost"
+                                  icon={<FiTrash2 />}
+                                  onClick={() => askDeleteUser(user)}
+                                />
+                              </Tooltip>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </ChakraTable>
+                    <HStack justify="space-between" mt={4}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fetchAdminUsers(usersPage - 1)}
+                        isDisabled={usersPage <= 1 || usersLoading}
+                      >
+                        Previous
+                      </Button>
+                      <Text fontSize="xs" color="gray.600">
+                        Page {usersPage} of {usersTotalPages}
+                      </Text>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fetchAdminUsers(usersPage + 1)}
+                        isDisabled={usersPage >= usersTotalPages || usersLoading}
+                      >
+                        Next
+                      </Button>
+                    </HStack>
+                  </>
+                )}
+              </CardBody>
+            </Card>
+          </GridItem>
+
+          <GridItem>
+            <Card bg={cardBg} border="1px" borderColor={borderColor}>
+              <CardHeader>
+                <Heading size="md" color="blue.600">Items</Heading>
+                <Text fontSize="sm" color="gray.500" mt={1}>
+                  Inspect marketplace listings and delete problematic items.
+                </Text>
+              </CardHeader>
+              <CardBody>
+                {productsLoading ? (
+                  <Center py={6}>
+                    <VStack spacing={3}>
+                      <Spinner color="blue.500" />
+                      <Text fontSize="sm" color="gray.500">Loading items…</Text>
+                    </VStack>
+                  </Center>
+                ) : products.length === 0 ? (
+                  <Text fontSize="sm" color="gray.500">No items found.</Text>
+                ) : (
+                  <>
+                    <ChakraTable size="sm" variant="simple">
+                      <Thead>
+                        <Tr>
+                          <Th>Item</Th>
+                          <Th>Seller</Th>
+                          <Th>Status</Th>
+                          <Th isNumeric>Price</Th>
+                          <Th textAlign="right">Actions</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {products.map(product => (
+                          <Tr key={product.id}>
+                            <Td>
+                              <VStack spacing={0} align="start">
+                                <Text fontWeight="medium" fontSize="sm">
+                                  {product.title}
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  ID #{product.id}
+                                </Text>
+                              </VStack>
+                            </Td>
+                            <Td>
+                              <Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text>
+                            </Td>
+                            <Td>
+                              <Tag size="sm" colorScheme={product.status === 'available' ? 'green' : 'gray'}>
+                                {product.status}
+                              </Tag>
+                            </Td>
+                            <Td isNumeric>
+                              <Text fontSize="sm">
+                                {product.price != null ? formatCurrency(product.price) : '—'}
+                              </Text>
+                            </Td>
+                            <Td textAlign="right">
+                              <Tooltip label="Delete item" hasArrow>
+                                <IconButton
+                                  aria-label="Delete item"
+                                  size="sm"
+                                  colorScheme="red"
+                                  variant="ghost"
+                                  icon={<FiTrash2 />}
+                                  onClick={() => askDeleteProduct(product)}
+                                />
+                              </Tooltip>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </ChakraTable>
+                    <HStack justify="space-between" mt={4}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fetchAdminProducts(productsPage - 1)}
+                        isDisabled={productsPage <= 1 || productsLoading}
+                      >
+                        Previous
+                      </Button>
+                      <Text fontSize="xs" color="gray.600">
+                        Page {productsPage} of {productsTotalPages}
+                      </Text>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fetchAdminProducts(productsPage + 1)}
+                        isDisabled={productsPage >= productsTotalPages || productsLoading}
+                      >
+                        Next
+                      </Button>
+                    </HStack>
+                  </>
+                )}
               </CardBody>
             </Card>
           </GridItem>
@@ -1098,6 +1474,47 @@ const AdminDashboard: React.FC = () => {
             </ModalBody>
           </ModalContent>
         </Modal>
+
+        {/* ── Delete Confirmation Dialog ── */}
+        <AlertDialog
+          isOpen={isDeleteDialogOpen}
+          leastDestructiveRef={cancelDeleteRef}
+          onClose={closeDeleteDialog}
+        >
+          <AlertDialogOverlay>
+            <AlertDialogContent>
+              <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                Confirm Deletion
+              </AlertDialogHeader>
+
+              <AlertDialogBody>
+                {deleteTarget ? (
+                  <>
+                    Are you sure you want to delete this{' '}
+                    <b>{deleteTarget.type === 'user' ? 'user' : 'item'}</b>{' '}
+                    (<b>{deleteTarget.name}</b>)? This action is permanent and cannot be undone.
+                  </>
+                ) : (
+                  'Are you sure you want to delete this record? This action is permanent.'
+                )}
+              </AlertDialogBody>
+
+              <AlertDialogFooter>
+                <Button ref={cancelDeleteRef} onClick={closeDeleteDialog} disabled={deleteLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  colorScheme="red"
+                  onClick={handleConfirmDelete}
+                  ml={3}
+                  isLoading={deleteLoading}
+                >
+                  Delete
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialogOverlay>
+        </AlertDialog>
       </Container>
     </ErrorBoundary>
   );

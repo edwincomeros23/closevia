@@ -883,6 +883,104 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	})
 }
 
+// GetAdminProducts returns a paginated list of products for admin usage.
+// Unlike the public feed, this can include all statuses.
+func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	// Optional status filter for admin (e.g., ?status=available)
+	status := c.Query("status", "")
+
+	whereClause := "WHERE 1=1"
+	var args []interface{}
+
+	if status != "" {
+		whereClause += " AND p.status = ?"
+		args = append(args, status)
+	}
+
+	// Total count
+	countQuery := "SELECT COUNT(*) FROM products p " + whereClause
+	var total int
+	if err := h.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get product count",
+		})
+	}
+
+	query := `
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `,
+		       p.suggested_value, p.category, p.created_at, p.updated_at,
+		       u.name as seller_name
+		FROM products p
+		LEFT JOIN users u ON p.seller_id = u.id
+		` + whereClause + `
+		ORDER BY p.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	args = append(args, limit, offset)
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get products",
+		})
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		var slugNull sql.NullString
+		var priceNull sql.NullFloat64
+		var imageURLsJSONStr string
+		if err := rows.Scan(
+			&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&product.Condition, &product.SuggestedValue, &product.Category,
+			&product.CreatedAt, &product.UpdatedAt, &product.SellerName,
+		); err != nil {
+			continue
+		}
+		if slugNull.Valid {
+			product.Slug = slugNull.String
+		}
+		if priceNull.Valid {
+			p := priceNull.Float64
+			product.Price = &p
+		}
+		if imageURLsJSONStr != "" {
+			var imageURLs []string
+			if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
+				product.ImageURLs = models.StringArray(imageURLs)
+			}
+		}
+		products = append(products, product)
+	}
+
+	totalPages := (total + limit - 1) / limit
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: models.PaginatedResponse{
+			Data:       products,
+			Total:      total,
+			Page:       page,
+			Limit:      limit,
+			TotalPages: totalPages,
+		},
+	})
+}
+
 // DeleteProduct deletes a product (only by seller)
 func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -939,6 +1037,61 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to delete product",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Product deleted successfully",
+	})
+}
+
+// DeleteProductAdmin permanently deletes a product (admin only).
+// This bypasses seller ownership checks but still respects FK constraints (orders, trades, etc.).
+func (h *ProductHandler) DeleteProductAdmin(c *fiber.Ctx) error {
+	_, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil || productID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	// Ensure product exists
+	var exists int
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM products WHERE id = ?", productID).Scan(&exists); err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to check product existence",
+		})
+	}
+	if exists == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
+		})
+	}
+
+	result, err := h.db.Exec("DELETE FROM products WHERE id = ?", productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to delete product",
+		})
+	}
+
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
 		})
 	}
 

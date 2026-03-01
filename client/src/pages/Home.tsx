@@ -1005,43 +1005,55 @@ const Home: React.FC = () => {
               zIndex={idx === slideIndex ? 2 : 1}
               loading="eager"
               draggable={false}
-              onClick={() => { /* allow click-through if desired */ }}
+              pointerEvents="none"
             />
           ))}
 
           {/* Prev / Next controls (tablet+). Mobile users swipe instead. */}
           <IconButton
+            type="button"
             aria-label="Previous slide"
             icon={<ArrowLeftIcon />}
             position="absolute"
             left={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
-            zIndex={5}
+            zIndex={10}
             size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
             display={{ base: 'none', sm: 'flex' }}
-            onClick={(e) => { e.stopPropagation(); goPrev() }}
+            pointerEvents="auto"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              goPrev()
+            }}
           />
 
           <IconButton
+            type="button"
             aria-label="Next slide"
             icon={<ArrowRightIcon />}
             position="absolute"
             right={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
-            zIndex={5}
+            zIndex={10}
             size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
             display={{ base: 'none', sm: 'flex' }}
-            onClick={(e) => { e.stopPropagation(); goNext() }}
+            pointerEvents="auto"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              goNext()
+            }}
           />
 
           {/* Dots - responsive sizing */}
-          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={5}>
+          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={10} pointerEvents="auto">
             {sliderImages.map((_, i) => (
               <Box
                 key={i}
