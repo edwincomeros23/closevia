@@ -92,7 +92,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		WHERE buyer_id = ? AND target_product_id = ? AND status = 'pending'
 		LIMIT 1
 	`, userID, payload.TargetProductID).Scan(&existingTradeID)
-	
+
 	// If no error (meaning a row was found), user already has a pending trade request
 	if err == nil {
 		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "You already have a pending offer on this product"})

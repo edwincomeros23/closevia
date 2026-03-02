@@ -20,6 +20,7 @@ import {
   useToast,
   SimpleGrid,
   FormErrorMessage,
+  Flex,
 } from '@chakra-ui/react'
 import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -121,14 +122,15 @@ const Register: React.FC = () => {
   }
 
   return (
-    <Box bg="#FFFDF1" w="100%" minH="100vh" display="flex" flexDirection="column">
+    <Box bg={{ base: '#E8F5E9', md: '#FFFDF1' }} w="100%" minH="100vh" display="flex" flexDirection="column">
       {/* Mobile: Scrollable container */}
       <Box 
         flex={1}
         overflowY="auto"
-        py={{ base: 12, md: 8 }}
-        px={{ base: 4, md: 8 }}
+        py={{ base: 8, md: 8 }}
+        px={{ base: 4, md: 20 }}
         position="relative"
+        bg={{ base: '#E8F5E9', md: '#FFFDF1' }}
       >
         <Container maxW="container.sm" position="relative" p={0}>
           {/* Back Button - Mobile Only */}
@@ -136,85 +138,146 @@ const Register: React.FC = () => {
             aria-label="Go back"
             icon={<ArrowBackIcon />}
             position="absolute"
-            top={{ base: -8, md: 0 }}
+            top={{ base: -4, md: 0 }}
             left={{ base: -4, md: 'auto' }}
             display={{ base: 'flex', md: 'none' }}
             variant="ghost"
+            colorScheme="teal"
             onClick={() => navigate(-1)}
             size="md"
             zIndex={10}
           />
           
-          <VStack spacing={8} align="stretch">
-            <Box textAlign="center" mt={{ base: 6, md: 0 }}>
+          <VStack spacing={6} align="stretch">
+            {/* Decorative Header - Mobile Optimized */}
+            <Box textAlign="center" mt={{ base: 8, md: 0 }} mb={{ base: 2, md: 0 }}>
+              {/* Nature Illustration - SVG Plants */}
+              <Flex justify="center" mb={6} h="100px">
+                <svg width="180" height="100" viewBox="0 0 200 120" fill="none">
+                  {/* Left plant */}
+                  <g>
+                    <path d="M 40 100 Q 30 80 35 60 Q 40 40 45 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round"/>
+                    <ellipse cx="30" cy="70" rx="8" ry="15" fill="#66BB6A" transform="rotate(-40 30 70)"/>
+                    <ellipse cx="45" cy="50" rx="8" ry="15" fill="#81C784" transform="rotate(-20 45 50)"/>
+                    <ellipse cx="50" cy="30" rx="8" ry="15" fill="#66BB6A" transform="rotate(0 50 30)"/>
+                    <circle cx="40" cy="95" r="4" fill="#2D876D"/>
+                  </g>
+                  {/* Center plant - Main */}
+                  <g>
+                    <path d="M 100 100 L 100 20" stroke="#2D876D" strokeWidth="4" fill="none"/>
+                    <ellipse cx="75" cy="60" rx="12" ry="20" fill="#4CAF50" transform="rotate(-45 75 60)"/>
+                    <ellipse cx="125" cy="65" rx="12" ry="20" fill="#4CAF50" transform="rotate(45 125 65)"/>
+                    <ellipse cx="70" cy="40" rx="12" ry="20" fill="#66BB6A" transform="rotate(-50 70 40)"/>
+                    <ellipse cx="130" cy="35" rx="12" ry="20" fill="#66BB6A" transform="rotate(50 130 35)"/>
+                    <ellipse cx="85" cy="25" rx="10" ry="18" fill="#81C784" transform="rotate(-35 85 25)"/>
+                    <ellipse cx="115" cy="25" rx="10" ry="18" fill="#81C784" transform="rotate(35 115 25)"/>
+                    <circle cx="100" cy="95" r="5" fill="#2D876D"/>
+                  </g>
+                  {/* Right plant */}
+                  <g>
+                    <path d="M 160 100 Q 170 80 165 60 Q 160 40 155 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round"/>
+                    <ellipse cx="170" cy="70" rx="8" ry="15" fill="#66BB6A" transform="rotate(40 170 70)"/>
+                    <ellipse cx="155" cy="50" rx="8" ry="15" fill="#81C784" transform="rotate(20 155 50)"/>
+                    <ellipse cx="150" cy="30" rx="8" ry="15" fill="#66BB6A" transform="rotate(0 150 30)"/>
+                    <circle cx="160" cy="95" r="4" fill="#2D876D"/>
+                  </g>
+                  {/* Decorative flowers */}
+                  <circle cx="55" cy="35" r="3" fill="#FFD54F"/>
+                  <circle cx="145" cy="40" r="3" fill="#FFD54F"/>
+                  <circle cx="75" cy="15" r="2.5" fill="#FFEB3B"/>
+                </svg>
+              </Flex>
+
               <Heading 
                 size="lg" 
-                color="brand.500" 
+                color="#2D876D" 
                 mb={2}
-                fontSize={{ base: '24px', md: '28px' }}
+                fontSize={{ base: '28px', md: '32px' }}
+                fontWeight="700"
+                letterSpacing="-0.5px"
               >
-                Join Clovia
+                Create Account
               </Heading>
               <Text 
-                color="gray.600"
-                fontSize={{ base: 'sm', md: 'md' }}
+                color="#555"
+                fontSize={{ base: '14px', md: '16px' }}
+                fontWeight="500"
               >
-                Create your account to start buying and selling
+                Join Clovia to start trading
               </Text>
             </Box>
 
-            <Box w="full">
+            {/* Form Card */}
+            <Box
+              w="full"
+              bg="white"
+              borderRadius={{ base: '24px', md: '16px' }}
+              p={{ base: 6, md: 8 }}
+              boxShadow={{ base: 'none', md: '0 4px 20px rgba(0, 0, 0, 0.08)' }}
+              border={{ base: 'none', md: '1px solid' }}
+              borderColor={{ base: 'transparent', md: 'gray.100' }}
+            >
               <form onSubmit={handleSubmit}>
                 <VStack spacing={5}>
                   {error && (
-                    <Alert status="error" borderRadius="lg" bg="red.50" borderLeft="4px solid" borderColor="red.500">
-                      <AlertIcon color="red.500" />
+                    <Alert status="error" borderRadius="12px" bg="#FFEBEE" borderLeft="4px solid" borderColor="#C62828">
+                      <AlertIcon color="#C62828" />
                       <Box ml={2}>
-                        <Text fontWeight="600" color="red.700">{error}</Text>
+                        <Text fontWeight="600" color="#B71C1C" fontSize="sm">{error}</Text>
                       </Box>
                     </Alert>
                   )}
 
                   {/* Account Type Selector - Segmented Control */}
                   <FormControl>
-                    <FormLabel fontSize="sm" fontWeight="600" mb={3} color="gray.700">Account Type</FormLabel>
+                    <FormLabel fontSize="13px" fontWeight="600" mb="12px" color="#333">Account Type</FormLabel>
                     <HStack 
-                      spacing={0}
-                      bg="gray.100"
-                      borderRadius="lg"
-                      p={1}
+                      spacing={2}
+                      bg="#F0F0F0"
+                      borderRadius="12px"
+                      p={1.5}
                       w="full"
                       transition="all 0.2s"
                     >
                       <Button
                         flex={1}
                         variant={isOrganization ? 'ghost' : 'solid'}
-                        colorScheme={isOrganization ? 'gray' : 'brand'}
+                        bg={isOrganization ? 'transparent' : '#2D876D'}
+                        color={isOrganization ? '#666' : 'white'}
                         size="sm"
                         onClick={() => {
                           setIsOrganization(false)
                           setFieldErrors({})
                         }}
-                        borderRadius="md"
+                        borderRadius="10px"
                         fontWeight="600"
+                        fontSize="14px"
+                        height="40px"
                         transition="all 0.3s"
-                        _hover={{ transform: 'translateY(-1px)' }}
+                        _hover={{
+                          bg: isOrganization ? '#F5F5F5' : '#25704d',
+                        }}
                       >
                         Individual
                       </Button>
                       <Button
                         flex={1}
                         variant={isOrganization ? 'solid' : 'ghost'}
-                        colorScheme={isOrganization ? 'brand' : 'gray'}
+                        bg={isOrganization ? '#2D876D' : 'transparent'}
+                        color={isOrganization ? 'white' : '#666'}
                         size="sm"
                         onClick={() => {
                           setIsOrganization(true)
                           setFieldErrors({})
                         }}
-                        borderRadius="md"
+                        borderRadius="10px"
                         fontWeight="600"
+                        fontSize="14px"
+                        height="40px"
                         transition="all 0.3s"
-                        _hover={{ transform: 'translateY(-1px)' }}
+                        _hover={{
+                          bg: isOrganization ? '#25704d' : '#F5F5F5',
+                        }}
                       >
                         Organization
                       </Button>
@@ -227,7 +290,7 @@ const Register: React.FC = () => {
                       {/* Name Fields */}
                       <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} w="full">
                         <FormControl isRequired isInvalid={!!fieldErrors.firstName}>
-                          <FormLabel fontSize="sm" fontWeight="600" color="gray.700">First Name</FormLabel>
+                          <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">First Name</FormLabel>
                           <Input
                             type="text"
                             value={firstName}
@@ -237,11 +300,18 @@ const Register: React.FC = () => {
                             }}
                             placeholder="John"
                             size="lg"
-                            bg="white"
-                            borderColor={fieldErrors.firstName ? 'red.300' : 'gray.200'}
+                            bg="#F5F5F5"
+                            borderColor={fieldErrors.firstName ? '#ef5350' : '#E0E0E0'}
+                            borderWidth="1px"
+                            height="44px"
+                            fontSize="14px"
                             _focus={{
-                              borderColor: fieldErrors.firstName ? 'red.500' : 'brand.400',
-                              boxShadow: fieldErrors.firstName ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                              borderColor: fieldErrors.firstName ? '#ef5350' : '#2D876D',
+                              boxShadow: fieldErrors.firstName ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                              bg: 'white',
+                            }}
+                            _hover={{
+                              borderColor: '#E8E8E8',
                             }}
                             transition="all 0.2s"
                           />
@@ -249,25 +319,33 @@ const Register: React.FC = () => {
                         </FormControl>
 
                         <FormControl>
-                          <FormLabel fontSize="sm" fontWeight="medium">Middle Initial</FormLabel>
+                          <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">M.I.</FormLabel>
                           <Input
                             type="text"
                             value={middleInitial}
                             onChange={(e) => setMiddleInitial(e.target.value)}
-                            placeholder="M.I."
+                            placeholder="M"
                             size="lg"
                             maxLength={1}
-                            bg="white"
-                            borderColor="gray.200"
+                            bg="#F5F5F5"
+                            borderColor="#E0E0E0"
+                            borderWidth="1px"
+                            height="44px"
+                            fontSize="14px"
                             _focus={{
-                              borderColor: 'brand.400',
-                              boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)',
+                              borderColor: '#2D876D',
+                              boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                              bg: 'white',
                             }}
+                            _hover={{
+                              borderColor: '#E8E8E8',
+                            }}
+                            transition="all 0.2s"
                           />
                         </FormControl>
 
                         <FormControl isRequired isInvalid={!!fieldErrors.lastName}>
-                          <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Last Name</FormLabel>
+                          <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Last Name</FormLabel>
                           <Input
                             type="text"
                             value={lastName}
@@ -277,11 +355,18 @@ const Register: React.FC = () => {
                             }}
                             placeholder="Doe"
                             size="lg"
-                            bg="white"
-                            borderColor={fieldErrors.lastName ? 'red.300' : 'gray.200'}
+                            bg="#F5F5F5"
+                            borderColor={fieldErrors.lastName ? '#ef5350' : '#E0E0E0'}
+                            borderWidth="1px"
+                            height="44px"
+                            fontSize="14px"
                             _focus={{
-                              borderColor: fieldErrors.lastName ? 'red.500' : 'brand.400',
-                              boxShadow: fieldErrors.lastName ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                              borderColor: fieldErrors.lastName ? '#ef5350' : '#2D876D',
+                              boxShadow: fieldErrors.lastName ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                              bg: 'white',
+                            }}
+                            _hover={{
+                              borderColor: '#E8E8E8',
                             }}
                             transition="all 0.2s"
                           />
@@ -291,25 +376,33 @@ const Register: React.FC = () => {
 
                       {/* Phone Number */}
                       <FormControl>
-                        <FormLabel fontSize="sm" fontWeight="medium">Phone Number</FormLabel>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">Phone Number</FormLabel>
                         <Input
                           type="tel"
                           value={phoneNumber}
                           onChange={(e) => setPhoneNumber(e.target.value)}
-                          placeholder="Enter your phone number"
+                          placeholder="+63 xxx xxx xxxx"
                           size="lg"
-                          bg="white"
-                          borderColor="gray.200"
+                          bg="#F5F5F5"
+                          borderColor="#E0E0E0"
+                          borderWidth="1px"
+                          height="44px"
+                          fontSize="14px"
                           _focus={{
-                            borderColor: 'brand.400',
-                            boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)',
+                            borderColor: '#2D876D',
+                            boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            bg: 'white',
                           }}
+                          _hover={{
+                            borderColor: '#E8E8E8',
+                          }}
+                          transition="all 0.2s"
                         />
                       </FormControl>
 
                       {/* Email for Individual */}
                       <FormControl isRequired isInvalid={!!fieldErrors.email}>
-                        <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Email</FormLabel>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Email</FormLabel>
                         <Input
                           type="email"
                           value={email}
@@ -319,11 +412,18 @@ const Register: React.FC = () => {
                           }}
                           placeholder="name@wmsu.edu.ph"
                           size="lg"
-                          bg="white"
-                          borderColor={fieldErrors.email ? 'red.300' : 'gray.200'}
+                          bg="#F5F5F5"
+                          borderColor={fieldErrors.email ? '#ef5350' : '#E0E0E0'}
+                          borderWidth="1px"
+                          height="44px"
+                          fontSize="14px"
                           _focus={{
-                            borderColor: fieldErrors.email ? 'red.500' : 'brand.400',
-                            boxShadow: fieldErrors.email ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                            borderColor: fieldErrors.email ? '#ef5350' : '#2D876D',
+                            boxShadow: fieldErrors.email ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            bg: 'white',
+                          }}
+                          _hover={{
+                            borderColor: '#E8E8E8',
                           }}
                           transition="all 0.2s"
                         />
@@ -333,7 +433,7 @@ const Register: React.FC = () => {
                       {/* WMSU Department for students */}
                       {email.toLowerCase().endsWith('@wmsu.edu.ph') && (
                         <FormControl isRequired isInvalid={!!fieldErrors.department}>
-                          <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Department / College</FormLabel>
+                          <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Department / College</FormLabel>
                           <Input 
                             value={department} 
                             onChange={(e) => {
@@ -342,11 +442,18 @@ const Register: React.FC = () => {
                             }} 
                             placeholder="e.g., CCS, COE, CTE" 
                             size="lg"
-                            bg="white"
-                            borderColor={fieldErrors.department ? 'red.300' : 'gray.200'}
+                            bg="#F5F5F5"
+                            borderColor={fieldErrors.department ? '#ef5350' : '#E0E0E0'}
+                            borderWidth="1px"
+                            height="44px"
+                            fontSize="14px"
                             _focus={{
-                              borderColor: fieldErrors.department ? 'red.500' : 'brand.400',
-                              boxShadow: fieldErrors.department ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                              borderColor: fieldErrors.department ? '#ef5350' : '#2D876D',
+                              boxShadow: fieldErrors.department ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                              bg: 'white',
+                            }}
+                            _hover={{
+                              borderColor: '#E8E8E8',
                             }}
                             transition="all 0.2s"
                           />
@@ -356,18 +463,26 @@ const Register: React.FC = () => {
 
                       {/* Bio */}
                       <FormControl>
-                        <FormLabel fontSize="sm" fontWeight="medium">Short Bio</FormLabel>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">Short Bio (Optional)</FormLabel>
                         <Input 
                           value={bio} 
                           onChange={(e) => setBio(e.target.value)} 
                           placeholder="Tell us about yourself" 
                           size="lg"
-                          bg="white"
-                          borderColor="gray.200"
+                          bg="#F5F5F5"
+                          borderColor="#E0E0E0"
+                          borderWidth="1px"
+                          height="44px"
+                          fontSize="14px"
                           _focus={{
-                            borderColor: 'brand.400',
-                            boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)',
+                            borderColor: '#2D876D',
+                            boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            bg: 'white',
                           }}
+                          _hover={{
+                            borderColor: '#E8E8E8',
+                          }}
+                          transition="all 0.2s"
                         />
                       </FormControl>
                     </>
@@ -378,7 +493,7 @@ const Register: React.FC = () => {
                     <>
                       {/* Organization Name */}
                       <FormControl isRequired isInvalid={!!fieldErrors.orgName}>
-                        <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Organization Name</FormLabel>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Organization Name</FormLabel>
                         <Input 
                           value={orgName} 
                           onChange={(e) => {
@@ -387,11 +502,18 @@ const Register: React.FC = () => {
                           }} 
                           placeholder="e.g., CCS Student Council" 
                           size="lg"
-                          bg="white"
-                          borderColor={fieldErrors.orgName ? 'red.300' : 'gray.200'}
+                          bg="#F5F5F5"
+                          borderColor={fieldErrors.orgName ? '#ef5350' : '#E0E0E0'}
+                          borderWidth="1px"
+                          height="44px"
+                          fontSize="14px"
                           _focus={{
-                            borderColor: fieldErrors.orgName ? 'red.500' : 'brand.400',
-                            boxShadow: fieldErrors.orgName ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                            borderColor: fieldErrors.orgName ? '#ef5350' : '#2D876D',
+                            boxShadow: fieldErrors.orgName ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            bg: 'white',
+                          }}
+                          _hover={{
+                            borderColor: '#E8E8E8',
                           }}
                           transition="all 0.2s"
                         />
@@ -400,24 +522,32 @@ const Register: React.FC = () => {
 
                       {/* Organization Logo URL */}
                       <FormControl>
-                        <FormLabel fontSize="sm" fontWeight="medium">Organization Logo URL</FormLabel>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">Logo URL (Optional)</FormLabel>
                         <Input 
                           value={orgLogoUrl} 
                           onChange={(e) => setOrgLogoUrl(e.target.value)} 
                           placeholder="https://..." 
                           size="lg"
-                          bg="white"
-                          borderColor="gray.200"
+                          bg="#F5F5F5"
+                          borderColor="#E0E0E0"
+                          borderWidth="1px"
+                          height="44px"
+                          fontSize="14px"
                           _focus={{
-                            borderColor: 'brand.400',
-                            boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)',
+                            borderColor: '#2D876D',
+                            boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            bg: 'white',
                           }}
+                          _hover={{
+                            borderColor: '#E8E8E8',
+                          }}
+                          transition="all 0.2s"
                         />
                       </FormControl>
 
                       {/* Organization Email */}
                       <FormControl isRequired isInvalid={!!fieldErrors.email}>
-                        <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Email</FormLabel>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Email</FormLabel>
                         <Input
                           type="email"
                           value={email}
@@ -427,11 +557,18 @@ const Register: React.FC = () => {
                           }}
                           placeholder="contact@organization.com"
                           size="lg"
-                          bg="white"
-                          borderColor={fieldErrors.email ? 'red.300' : 'gray.200'}
+                          bg="#F5F5F5"
+                          borderColor={fieldErrors.email ? '#ef5350' : '#E0E0E0'}
+                          borderWidth="1px"
+                          height="44px"
+                          fontSize="14px"
                           _focus={{
-                            borderColor: fieldErrors.email ? 'red.500' : 'brand.400',
-                            boxShadow: fieldErrors.email ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
+                            borderColor: fieldErrors.email ? '#ef5350' : '#2D876D',
+                            boxShadow: fieldErrors.email ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            bg: 'white',
+                          }}
+                          _hover={{
+                            borderColor: '#E8E8E8',
                           }}
                           transition="all 0.2s"
                         />
@@ -440,118 +577,161 @@ const Register: React.FC = () => {
 
                       {/* Organization Bio/Description */}
                       <FormControl>
-                        <FormLabel fontSize="sm" fontWeight="medium">About Organization</FormLabel>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">About (Optional)</FormLabel>
                         <Input 
                           value={bio} 
                           onChange={(e) => setBio(e.target.value)} 
                           placeholder="Describe your organization" 
                           size="lg"
-                          bg="white"
-                          borderColor="gray.200"
+                          bg="#F5F5F5"
+                          borderColor="#E0E0E0"
+                          borderWidth="1px"
+                          height="44px"
+                          fontSize="14px"
                           _focus={{
-                            borderColor: 'brand.400',
-                            boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)',
+                            borderColor: '#2D876D',
+                            boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            bg: 'white',
                           }}
+                          _hover={{
+                            borderColor: '#E8E8E8',
+                          }}
+                          transition="all 0.2s"
                         />
                       </FormControl>
                     </>
                   )}
 
-                <FormControl isRequired isInvalid={!!fieldErrors.password}>
-                  <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Password</FormLabel>
-                  <InputGroup size="lg">
-                    <Input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value)
-                        if (fieldErrors.password) setFieldErrors({...fieldErrors, password: ''})
-                      }}
-                      placeholder="Minimum 6 characters"
-                      bg="white"
-                      borderColor={fieldErrors.password ? 'red.300' : 'gray.200'}
-                      _focus={{
-                        borderColor: fieldErrors.password ? 'red.500' : 'brand.400',
-                        boxShadow: fieldErrors.password ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
-                      }}
-                      transition="all 0.2s"
-                    />
-                    <InputRightElement>
-                      <IconButton
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                        icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
-                        variant="ghost"
-                        onClick={() => setShowPassword(!showPassword)}
-                        _hover={{ bg: 'gray.100' }}
+                  {/* Password Field */}
+                  <FormControl isRequired isInvalid={!!fieldErrors.password}>
+                    <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Password</FormLabel>
+                    <InputGroup size="lg">
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value)
+                          if (fieldErrors.password) setFieldErrors({...fieldErrors, password: ''})
+                        }}
+                        placeholder="Minimum 6 characters"
+                        bg="#F5F5F5"
+                        borderColor={fieldErrors.password ? '#ef5350' : '#E0E0E0'}
+                        borderWidth="1px"
+                        height="44px"
+                        fontSize="14px"
+                        _focus={{
+                          borderColor: fieldErrors.password ? '#ef5350' : '#2D876D',
+                          boxShadow: fieldErrors.password ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                          bg: 'white',
+                        }}
+                        _hover={{
+                          borderColor: '#E8E8E8',
+                        }}
+                        transition="all 0.2s"
                       />
-                    </InputRightElement>
-                  </InputGroup>
-                  {fieldErrors.password && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.password}</FormErrorMessage>}
-                </FormControl>
+                      <InputRightElement h="44px" pr={2}>
+                        <IconButton
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          icon={showPassword ? <ViewOffIcon /> : <ViewIcon />}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowPassword(!showPassword)}
+                          color="#666"
+                          _hover={{ color: '#2D876D', bg: 'transparent' }}
+                        />
+                      </InputRightElement>
+                    </InputGroup>
+                    {fieldErrors.password && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.password}</FormErrorMessage>}
+                  </FormControl>
 
-                <FormControl isRequired isInvalid={!!fieldErrors.confirmPassword}>
-                  <FormLabel fontSize="sm" fontWeight="600" color="gray.700">Confirm Password</FormLabel>
-                  <InputGroup size="lg">
-                    <Input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => {
-                        setConfirmPassword(e.target.value)
-                        if (fieldErrors.confirmPassword) setFieldErrors({...fieldErrors, confirmPassword: ''})
-                      }}
-                      placeholder="Re-enter your password"
-                      bg="white"
-                      borderColor={fieldErrors.confirmPassword ? 'red.300' : 'gray.200'}
-                      _focus={{
-                        borderColor: fieldErrors.confirmPassword ? 'red.500' : 'brand.400',
-                        boxShadow: fieldErrors.confirmPassword ? '0 0 0 1px var(--chakra-colors-red-500)' : '0 0 0 1px var(--chakra-colors-brand-400)',
-                      }}
-                      transition="all 0.2s"
-                    />
-                    <InputRightElement>
-                      <IconButton
-                        aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                        icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
-                        variant="ghost"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        _hover={{ bg: 'gray.100' }}
+                  {/* Confirm Password Field */}
+                  <FormControl isRequired isInvalid={!!fieldErrors.confirmPassword}>
+                    <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Confirm Password</FormLabel>
+                    <InputGroup size="lg">
+                      <Input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value)
+                          if (fieldErrors.confirmPassword) setFieldErrors({...fieldErrors, confirmPassword: ''})
+                        }}
+                        placeholder="Re-enter your password"
+                        bg="#F5F5F5"
+                        borderColor={fieldErrors.confirmPassword ? '#ef5350' : '#E0E0E0'}
+                        borderWidth="1px"
+                        height="44px"
+                        fontSize="14px"
+                        _focus={{
+                          borderColor: fieldErrors.confirmPassword ? '#ef5350' : '#2D876D',
+                          boxShadow: fieldErrors.confirmPassword ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                          bg: 'white',
+                        }}
+                        _hover={{
+                          borderColor: '#E8E8E8',
+                        }}
+                        transition="all 0.2s"
                       />
-                    </InputRightElement>
-                  </InputGroup>
-                  {fieldErrors.confirmPassword && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.confirmPassword}</FormErrorMessage>}
-                </FormControl>
+                      <InputRightElement h="44px" pr={2}>
+                        <IconButton
+                          aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                          icon={showConfirmPassword ? <ViewOffIcon /> : <ViewIcon />}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          color="#666"
+                          _hover={{ color: '#2D876D', bg: 'transparent' }}
+                        />
+                      </InputRightElement>
+                    </InputGroup>
+                    {fieldErrors.confirmPassword && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.confirmPassword}</FormErrorMessage>}
+                  </FormControl>
 
-                <Button
-                  type="submit"
-                  colorScheme="brand"
-                  size="lg"
-                  w="full"
-                  isLoading={loading}
-                  loadingText="Creating account..."
-                  mt={6}
-                  mb={4}
-                  fontWeight="600"
-                  transition="all 0.3s"
-                  _hover={{
-                    transform: 'translateY(-2px)',
-                    boxShadow: '0 8px 12px rgba(0, 0, 0, 0.15)',
-                  }}
-                  _active={{
-                    transform: 'translateY(0)',
-                  }}
-                  isDisabled={loading}
-                >
-                  Create Account
-                </Button>
+                  {/* Create Account Button */}
+                  <Button
+                    type="submit"
+                    bg="#2D876D"
+                    color="white"
+                    size="lg"
+                    w="full"
+                    isLoading={loading}
+                    loadingText="Creating account..."
+                    mt={4}
+                    mb={2}
+                    fontWeight="600"
+                    fontSize="16px"
+                    height="48px"
+                    borderRadius="12px"
+                    transition="all 0.3s ease"
+                    _hover={{
+                      bg: '#25704d',
+                      transform: 'translateY(-2px)',
+                      boxShadow: '0 8px 16px rgba(45, 135, 109, 0.3)',
+                    }}
+                    _active={{
+                      transform: 'translateY(0)',
+                    }}
+                    isDisabled={loading}
+                  >
+                    Create Account
+                  </Button>
 
-                <Text textAlign="center" fontSize="sm" color="gray.600">
-                  Already have an account?{' '}
-                  <Link as={RouterLink} to="/login" color="brand.500" fontWeight="600" _hover={{ textDecoration: 'underline' }}>
-                    Sign in here
-                  </Link>
-                </Text>
-              </VStack>
-            </form>
+                  {/* Sign In Link */}
+                  <Box textAlign="center" w="full" pt={2}>
+                    <Text fontSize="14px" color="#666">
+                      Already have an account?{' '}
+                      <Link 
+                        as={RouterLink} 
+                        to="/login" 
+                        color="#2D876D" 
+                        fontWeight="600" 
+                        _hover={{ textDecoration: 'underline', color: '#1f5c47' }}
+                      >
+                        Sign in
+                      </Link>
+                    </Text>
+                  </Box>
+                </VStack>
+              </form>
             </Box>
           </VStack>
         </Container>
