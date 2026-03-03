@@ -33,6 +33,7 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState('')
   const [googleLoginSuccess, setGoogleLoginSuccess] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
@@ -102,7 +103,7 @@ const Login: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      setLoading(true)
+      setGoogleLoading(true)
       setIsLoggingIn(true)
       setError('')
       
@@ -112,7 +113,7 @@ const Login: React.FC = () => {
       // Check if Firebase is initialized
       if (!auth) {
         setError('Firebase is not properly configured. Please check your environment variables.')
-        setLoading(false)
+        setGoogleLoading(false)
         return
       }
 
@@ -121,7 +122,7 @@ const Login: React.FC = () => {
 
       if (!auth) {
         setError('Google login is not available in this environment.')
-        setLoading(false)
+        setGoogleLoading(false)
         setIsLoggingIn(false)
         return
       }
@@ -180,7 +181,7 @@ const Login: React.FC = () => {
         setError(error.message || 'Google login failed. Please try again.')
       }
     } finally {
-      setLoading(false)
+      setGoogleLoading(false)
       setIsLoggingIn(false)
     }
   }
@@ -352,7 +353,7 @@ const Login: React.FC = () => {
                 borderColor="gray.300"
                 leftIcon={<FaGoogle />}
                 onClick={handleGoogleLogin}
-                isLoading={loading}
+                isLoading={googleLoading}
                 loadingText="Signing in..."
                 size={{ base: 'md', md: 'lg' }}
                 fontSize={{ base: 'sm', md: 'md' }}

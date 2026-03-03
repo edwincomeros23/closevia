@@ -103,6 +103,7 @@ export interface OrderUpdate {
 
 export interface SearchFilters {
   keyword?: string
+  category?: string
   min_price?: number
   max_price?: number
   premium?: boolean

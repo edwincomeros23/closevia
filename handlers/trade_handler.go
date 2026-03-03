@@ -657,11 +657,12 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		// Update meetup location and confirmation status
 		var updateColumn string
-		if userID == buyerID {
+		switch userID {
+		case buyerID:
 			updateColumn = "buyer_meetup_confirmed"
-		} else if userID == sellerID {
+		case sellerID:
 			updateColumn = "seller_meetup_confirmed"
-		} else {
+		default:
 			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 		}
 

@@ -1,19 +1,14 @@
 package services
 
 import (
-	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
-	"os"
-	"sync"
-
-	"googlemaps.github.io/maps"
-)
-
-var (
-	googleMapsClient *maps.Client
-	clientOnce       sync.Once
-	clientErr        error
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
 )
 
 // Coordinates represents a pair of latitude and longitude.
@@ -29,93 +24,67 @@ type DistanceResult struct {
 	DistanceM     float64 `json:"distance_m"`
 }
 
-// initGoogleMapsClient initializes the Google Maps client (singleton pattern)
-func initGoogleMapsClient() (*maps.Client, error) {
-	clientOnce.Do(func() {
-		apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
-		if apiKey == "" {
-			clientErr = errors.New("GOOGLE_MAPS_API_KEY environment variable is not set")
-			return
-		}
-
-		client, err := maps.NewClient(maps.WithAPIKey(apiKey))
-		if err != nil {
-			clientErr = err
-			return
-		}
-		googleMapsClient = client
-	})
-
-	if clientErr != nil {
-		return nil, clientErr
-	}
-
-	return googleMapsClient, nil
+// nominatimResult is the JSON shape returned by Nominatim's /search endpoint.
+type nominatimResult struct {
+	Lat string `json:"lat"`
+	Lon string `json:"lon"`
 }
 
-// GetCoordinates returns the latitude and longitude for a given location string using Google Maps Geocoding API.
+// httpClient with a reasonable timeout for external geocoding calls.
+var geocodeHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+// GetCoordinates returns the latitude and longitude for a given location string
+// using the free OpenStreetMap Nominatim API (no API key required).
 func GetCoordinates(location string) (Coordinates, error) {
 	if location == "" {
 		return Coordinates{}, errors.New("location string cannot be empty")
 	}
 
-	client, err := initGoogleMapsClient()
+	reqURL := fmt.Sprintf(
+		"https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=1",
+		url.QueryEscape(location),
+	)
+
+	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
-		return Coordinates{}, err
+		return Coordinates{}, fmt.Errorf("failed to build geocoding request: %w", err)
 	}
+	// Nominatim requires a User-Agent header identifying the application.
+	req.Header.Set("User-Agent", "Clovia/1.0 (closevia)")
 
-	ctx := context.Background()
-	req := &maps.GeocodingRequest{
-		Address: location,
-	}
-
-	resp, err := client.Geocode(ctx, req)
+	resp, err := geocodeHTTPClient.Do(req)
 	if err != nil {
-		return Coordinates{}, err
+		return Coordinates{}, fmt.Errorf("geocoding request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return Coordinates{}, fmt.Errorf("geocoding returned status %d", resp.StatusCode)
 	}
 
-	if len(resp) == 0 {
+	var results []nominatimResult
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		return Coordinates{}, fmt.Errorf("failed to decode geocoding response: %w", err)
+	}
+
+	if len(results) == 0 {
 		return Coordinates{}, errors.New("no results found for the given location")
 	}
 
-	// Use the first result (most relevant)
-	result := resp[0]
-	if result.Geometry.Location.Lat == 0 && result.Geometry.Location.Lng == 0 {
+	lat, err := strconv.ParseFloat(results[0].Lat, 64)
+	if err != nil {
+		return Coordinates{}, fmt.Errorf("invalid latitude: %w", err)
+	}
+	lon, err := strconv.ParseFloat(results[0].Lon, 64)
+	if err != nil {
+		return Coordinates{}, fmt.Errorf("invalid longitude: %w", err)
+	}
+
+	if lat == 0 && lon == 0 {
 		return Coordinates{}, errors.New("invalid coordinates returned from geocoding API")
 	}
 
-	return Coordinates{
-		Latitude:  result.Geometry.Location.Lat,
-		Longitude: result.Geometry.Location.Lng,
-	}, nil
-}
-
-// GetAddressFromCoordinates performs reverse geocoding to get an address from coordinates.
-func GetAddressFromCoordinates(lat, lng float64) (string, error) {
-	client, err := initGoogleMapsClient()
-	if err != nil {
-		return "", err
-	}
-
-	ctx := context.Background()
-	req := &maps.GeocodingRequest{
-		LatLng: &maps.LatLng{
-			Lat: lat,
-			Lng: lng,
-		},
-	}
-
-	resp, err := client.Geocode(ctx, req)
-	if err != nil {
-		return "", err
-	}
-
-	if len(resp) == 0 {
-		return "", errors.New("no address found for the given coordinates")
-	}
-
-	// Return the formatted address from the first result
-	return resp[0].FormattedAddress, nil
+	return Coordinates{Latitude: lat, Longitude: lon}, nil
 }
 
 // CalculateDistance calculates the distance between two coordinates using the Haversine formula.

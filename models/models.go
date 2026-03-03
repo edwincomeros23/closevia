@@ -158,6 +158,7 @@ type Product struct {
 	Category             string      `json:"category,omitempty"`
 	Latitude             *float64    `json:"latitude,omitempty"`
 	Longitude            *float64    `json:"longitude,omitempty"`
+	Distance             string      `json:"distance,omitempty"` // Computed distance from viewer (e.g. "3.2 KM")
 	CreatedAt            time.Time   `json:"created_at"`
 	UpdatedAt            time.Time   `json:"updated_at"`
 	BiddingType          string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
