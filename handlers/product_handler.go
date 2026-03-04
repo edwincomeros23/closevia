@@ -1104,6 +1104,22 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		})
 	}
 
+	// Check if product has any active trades (as target or offered)
+	var tradeCount int
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades 
+		WHERE (target_product_id = ? OR id IN (
+			SELECT DISTINCT trade_id FROM trade_items WHERE product_id = ?
+		))
+		AND status NOT IN ('declined', 'cancelled', 'completed')
+	`, productID, productID).Scan(&tradeCount)
+	if err == nil && tradeCount > 0 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Cannot delete product with active trades or offers. Please complete or cancel all trades involving this item first.",
+		})
+	}
+
 	// Check if product has any orders
 	var orderCount int
 	err = h.db.QueryRow("SELECT COUNT(*) FROM orders WHERE product_id = ?", productID).Scan(&orderCount)
@@ -1114,11 +1130,24 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		})
 	}
 
+	// Soft delete related trade items and then delete the product
+	// First mark trade items as deleted
+	_, err = h.db.Exec("DELETE FROM trade_items WHERE product_id = ?", productID)
+	if err != nil {
+		log.Printf("Warning: failed to delete trade items for product %d: %v", productID, err)
+		// Continue anyway as this might be due to FK constraints
+	}
+
+	// Double-check by removing wishlist entries and saved products
+	_, _ = h.db.Exec("DELETE FROM wishlists WHERE product_id = ?", productID)
+	_, _ = h.db.Exec("DELETE FROM saved_products WHERE product_id = ?", productID)
+
 	_, err = h.db.Exec("DELETE FROM products WHERE id = ?", productID)
 	if err != nil {
+		log.Printf("Error deleting product %d: %v", productID, err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to delete product",
+			Error:   "Failed to delete product. This may be due to existing orders or trades.",
 		})
 	}
 
