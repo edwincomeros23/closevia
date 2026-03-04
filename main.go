@@ -219,6 +219,7 @@ func main() {
 	api.Post("/reviews/:id/reply", middleware.AuthMiddleware(), reviewHandler.ReplyToReview)
 	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
 	users.Get("/:id/stats", reviewHandler.GetUserRating)          // Alias for stats endpoint
+	users.Get("/:id/trades", tradeHandler.GetUserTradeHistory)    // Public - get completed trades for a user
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route

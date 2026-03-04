@@ -811,7 +811,7 @@ const Home: React.FC = () => {
   // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
     const filteredProducts = products.filter(
-      (p) => p.status === 'available' // Show all available products, including your own
+      (p) => p.status === 'available' && p.seller_id !== user?.id // Hide own products — can't trade with yourself
     )
 
     console.log('📦 ProductGridWithAds - Total products from API:', products.length)
@@ -971,15 +971,25 @@ const Home: React.FC = () => {
             {user && (
               <Popover placement="bottom-end" trigger="hover">
                 <PopoverTrigger>
-                  <IconButton
-                    aria-label="Profile"
-                    icon={<FaUserCircle />}
-                    variant="ghost"
-                    size="lg"
+                  <Box
+                    as="button"
+                    cursor="pointer"
                     display={{ base: 'none', md: 'inline-flex' }}
-                    _hover={{ bg: 'gray.100' }}
+                    alignItems="center"
+                    justifyContent="center"
+                    borderRadius="full"
+                    _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                    transition="all 0.2s"
                     onClick={() => navigate(`/users/${user.id}`)}
-                  />
+                  >
+                    <Avatar
+                      size="sm"
+                      name={user.name || 'User'}
+                      src={user.profile_picture ? getImageUrl(user.profile_picture) : undefined}
+                      bg="teal.500"
+                      color="white"
+                    />
+                  </Box>
                 </PopoverTrigger>
                 <PopoverContent w="72" shadow="lg">
                   <PopoverBody p={4}>
@@ -1038,15 +1048,19 @@ const Home: React.FC = () => {
             )}
 
             {!user && (
-              <IconButton
+              <Box
                 as={RouterLink}
-                to="/profile"
-                aria-label="Profile"
-                icon={<FaUserCircle />}
-                variant="ghost"
-                size="lg"
+                to="/login"
                 display={{ base: 'none', md: 'inline-flex' }}
-              />
+                alignItems="center"
+                justifyContent="center"
+                borderRadius="full"
+                cursor="pointer"
+                _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                transition="all 0.2s"
+              >
+                <Avatar size="sm" bg="gray.400" />
+              </Box>
             )}
           </HStack>
 

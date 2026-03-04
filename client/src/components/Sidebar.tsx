@@ -16,6 +16,7 @@ import {
   DrawerHeader,
   Button,
   Divider,
+  Avatar,
 } from '@chakra-ui/react'
 import {
   AddIcon,
@@ -28,8 +29,9 @@ import { useMobileNav } from '../contexts/MobileNavContext'
 import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
-import { FaUserCircle, FaHome } from 'react-icons/fa'
-import { FiGrid, FiHeart, FiLogOut } from 'react-icons/fi'
+import { FaHome } from 'react-icons/fa'
+import { FiGrid, FiHeart, FiLogOut, FiUser } from 'react-icons/fi'
+import { getImageUrl } from '../utils/imageUtils'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -65,11 +67,11 @@ const Sidebar: React.FC = () => {
         { icon: BellIcon, label: 'Notifications', path: '/notifications' },
         ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
         { icon: SettingsIcon, label: 'Settings', path: '/settings' },
-        { icon: FaUserCircle, label: 'Profile', path: '/profile' },
+        { icon: FiUser, label: 'Profile', path: `/users/${user.id}`, isProfile: true },
       ]
     : [
         { icon: FaHome, label: 'Home', path: '/home' },
-        { icon: FaUserCircle, label: 'Login', path: '/login' },
+        { icon: FiUser, label: 'Login', path: '/login' },
       ]
   
   return (
@@ -114,15 +116,18 @@ const Sidebar: React.FC = () => {
               <Box p={2}>
               </Box>
 
-              {mobileNavItems.map((item) => {
+              {mobileNavItems.map((item: any) => {
                 const Icon = item.icon
                 const needsSoftBg = item.label === 'Add Product' || item.label === 'Notifications' || item.label === 'Settings'
+                const profileIcon = item.isProfile && user?.profile_picture
+                  ? <Avatar size="xs" name={user.name || 'User'} src={getImageUrl(user.profile_picture)} />
+                  : <Icon />
                 return (
                   <Button
                     key={item.path}
                     as={RouterLink}
                     to={item.path}
-                    leftIcon={<Icon />}
+                    leftIcon={profileIcon}
                     variant="ghost"
                     justifyContent="flex-start"
                     onClick={onClose}
