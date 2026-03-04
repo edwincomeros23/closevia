@@ -179,7 +179,14 @@ const SettingsPage: React.FC = () => {
   // Notifications State
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
-  
+  // School ID / COR verification state
+  const [verificationStatus, setVerificationStatus] = useState<'not_verified' | 'pending' | 'verified' | 'rejected'>('not_verified')
+  const [schoolName, setSchoolName] = useState<string>('')
+  const [schoolEmail, setSchoolEmail] = useState<string>('')
+  const [verificationLoading, setVerificationLoading] = useState(false)
+  const [idUploadLoading, setIdUploadLoading] = useState(false)
+  const [verificationReason, setVerificationReason] = useState<string | null>(null)
+  const [documentType, setDocumentType] = useState<'id' | 'cor'>('id')
 
   // UI State
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -220,6 +227,11 @@ const SettingsPage: React.FC = () => {
       if ((user as any)?.profile_picture) {
         console.log('📸 Profile picture loaded - Raw:', (user as any)?.profile_picture, 'Cleaned:', cleanPicture)
       }
+      // Initialize verification state from user when available
+      const vs = (user as any)?.verification_status as ('not_verified' | 'pending' | 'verified' | 'rejected') | undefined
+      if (vs) setVerificationStatus(vs)
+      if ((user as any)?.school_name) setSchoolName((user as any).school_name)
+      if ((user as any)?.school_email) setSchoolEmail((user as any).school_email)
     }
   }, [user])
 
@@ -574,6 +586,112 @@ const SettingsPage: React.FC = () => {
     }
   }
 
+  const handleStartVerification = async () => {
+    if (!schoolName || !schoolEmail) {
+      toast({
+        title: 'School and email required',
+        description: 'Please select your school and enter your official school email.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+    setVerificationLoading(true)
+    try {
+      await api.post('/api/users/verification/start', {
+        school_name: schoolName,
+        school_email: schoolEmail,
+      })
+      toast({
+        title: 'School email verified',
+        description: 'You can now upload your school ID.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+      // Refresh auth user
+      await refreshUser()
+      setVerificationStatus('not_verified')
+      setVerificationReason(null)
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Failed to start verification'
+      toast({
+        title: 'Verification error',
+        description: message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setVerificationLoading(false)
+    }
+  }
+
+  const handleUploadSchoolID = async (file: File | null) => {
+    if (!file) return
+
+    // Basic client-side validation for ID/COR upload
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload a clear image of your school ID or COR.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'File too large',
+        description: 'Please upload an image smaller than 5MB.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+    if (!schoolName || !schoolEmail) {
+      toast({
+        title: 'Email verification required',
+        description: 'Please verify your school email before uploading your ID.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+    setIdUploadLoading(true)
+    try {
+      const form = new FormData()
+      form.append('id_image', file)
+      form.append('document_type', documentType)
+      await api.post('/api/users/verification/upload-id', form)
+      toast({
+        title: 'ID submitted',
+        description: 'Your school ID has been submitted for review.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+      await refreshUser()
+      setVerificationStatus('pending')
+      setVerificationReason(null)
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Failed to upload school ID'
+      toast({
+        title: 'Upload error',
+        description: message,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setIdUploadLoading(false)
+    }
+  }
+
   // Handle logout — clear tokens/cookies and notify backend if possible
   const handleLogout = async () => {
     // Clear common client-side storage keys
@@ -769,6 +887,155 @@ const SettingsPage: React.FC = () => {
                   <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
                     Keep your account secure by updating your password regularly.
                   </Text>
+                </FormControl>
+              </VStack>
+            </CardBody>
+          </Card>
+
+          {/* School ID Verification Section */}
+          <Card
+            bg={cardBg}
+            borderRadius="lg"
+            overflow="hidden"
+            variant="outline"
+            borderColor={borderColor}
+            _hover={{ boxShadow: 'md' }}
+            transition="all 0.2s"
+          >
+            <CardHeader pb={3}>
+              <HStack spacing={3} justify="space-between">
+                <HStack spacing={3}>
+                  <Icon as={FaEnvelope} color="brand.500" boxSize={5} />
+                  <Heading size="md">School Verification (Optional)</Heading>
+                </HStack>
+                <Badge
+                  colorScheme={
+                    verificationStatus === 'verified'
+                      ? 'green'
+                      : verificationStatus === 'pending'
+                      ? 'orange'
+                      : verificationStatus === 'rejected'
+                      ? 'red'
+                      : 'gray'
+                  }
+                  borderRadius="full"
+                  px={3}
+                  py={1}
+                  fontSize="xs"
+                >
+                  {verificationStatus === 'verified'
+                    ? 'Verified Student'
+                    : verificationStatus === 'pending'
+                    ? 'Pending Review'
+                    : verificationStatus === 'rejected'
+                    ? 'Rejected'
+                    : 'Not Verified'}
+                </Badge>
+              </HStack>
+            </CardHeader>
+            <CardBody pt={0}>
+              <VStack spacing={4} align="stretch">
+                <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.300')}>
+                  Verifying your school ID helps other students trust your listings and trades.
+                  This is optional – you can continue using Clovia without verification.
+                </Text>
+
+                <FormControl>
+                  <FormLabel>School</FormLabel>
+                  <Select
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    maxW="300px"
+                  >
+                    <option value="">Select your school</option>
+                    <option value="WMSU">Western Mindanao State University (WMSU)</option>
+                  </Select>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Official School Email</FormLabel>
+                  <HStack spacing={2} align="flex-end">
+                    <Input
+                      type="email"
+                      value={schoolEmail}
+                      onChange={(e) => setSchoolEmail(e.target.value)}
+                      placeholder="you@wmsu.edu.ph"
+                    />
+                    <Button
+                      size="sm"
+                      colorScheme="brand"
+                      onClick={handleStartVerification}
+                      isLoading={verificationLoading}
+                    >
+                      Verify Email
+                    </Button>
+                  </HStack>
+                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                    Only official school emails from approved schools (currently WMSU) are accepted.
+                  </Text>
+                </FormControl>
+
+                <Divider />
+
+                <FormControl isDisabled={verificationStatus === 'pending'}>
+                  <FormLabel>Upload School ID or COR (front)</FormLabel>
+                  <HStack spacing={3} align="center">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      id="school-id-upload"
+                      display="none"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null
+                        if (file) {
+                          handleUploadSchoolID(file)
+                          // Reset input so the same file can be re-selected if needed
+                          e.target.value = ''
+                        }
+                      }}
+                    />
+                    <Select
+                      value={documentType}
+                      onChange={(e) => setDocumentType(e.target.value as 'id' | 'cor')}
+                      maxW="160px"
+                      size="sm"
+                    >
+                      <option value="id">School ID</option>
+                      <option value="cor">COR</option>
+                    </Select>
+                    <Button
+                      as="label"
+                      htmlFor="school-id-upload"
+                      leftIcon={<FaUpload />}
+                      variant="outline"
+                      size="sm"
+                      isLoading={idUploadLoading}
+                      loadingText="Uploading..."
+                    >
+                      Upload ID Image
+                    </Button>
+                    {verificationStatus === 'pending' && (
+                      <HStack spacing={1}>
+                        <Spinner size="sm" color="orange.400" />
+                        <Text fontSize="xs" color={useColorModeValue('orange.600', 'orange.300')}>
+                          Under review by admin
+                        </Text>
+                      </HStack>
+                    )}
+                  </HStack>
+                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                    Upload a clear photo of your school ID or COR showing your full name, school name, and student details.
+                  </Text>
+                  {verificationStatus === 'rejected' && verificationReason && (
+                    <Box mt={2}>
+                      <Text fontSize="xs" color="red.500" fontWeight="semibold">
+                        Rejection reason:
+                      </Text>
+                      <Text fontSize="xs" color="red.500">
+                        {verificationReason}
+                      </Text>
+                    </Box>
+                  )}
                 </FormControl>
               </VStack>
             </CardBody>

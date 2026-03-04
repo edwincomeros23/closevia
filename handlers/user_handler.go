@@ -296,9 +296,26 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') AS profile_picture, COALESCE(bio, '') AS bio, COALESCE(background_image, '') AS background_image, COALESCE(background_position, '') AS background_position, COALESCE(department, '') AS department, COALESCE(language_preference, 'en') AS language_preference, created_at, updated_at FROM users WHERE id = ?",
+		`SELECT id, name, email, role, verified, org_logo_url,
+		        COALESCE(profile_picture, '') AS profile_picture,
+		        COALESCE(bio, '') AS bio,
+		        COALESCE(background_image, '') AS background_image,
+		        COALESCE(background_position, '') AS background_position,
+		        COALESCE(department, '') AS department,
+		        COALESCE(verification_status, 'not_verified') AS verification_status,
+		        COALESCE(school_name, '') AS school_name,
+		        COALESCE(school_email, '') AS school_email,
+		        school_email_verified_at,
+		        COALESCE(verification_rejection_reason, '') AS verification_rejection_reason,
+		        created_at, updated_at
+		 FROM users WHERE id = ?`,
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.LanguagePreference, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(
+		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL,
+		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department,
+		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.SchoolEmailVerifiedAt, &user.VerificationRejectionReason,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -584,10 +601,22 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 
 	var user models.User
 	var profilePicture, backgroundImage, backgroundPosition, department, bio sql.NullString
+	var verificationStatus, schoolName, schoolEmail, rejectionReason sql.NullString
+	var emailVerifiedAt sql.NullTime
 	err = h.db.QueryRow(
-		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, profile_picture, background_image, background_position, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
+		`SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url,
+		        profile_picture, background_image, background_position, department, bio, badges,
+		        verification_status, school_name, school_email, school_email_verified_at, verification_rejection_reason,
+		        created_at, updated_at
+		   FROM users WHERE id = ?`,
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(
+		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified,
+		&user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL,
+		&profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges,
+		&verificationStatus, &schoolName, &schoolEmail, &emailVerifiedAt, &rejectionReason,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
 
 	fmt.Printf("🔍 GetUserByID(%d) query result - error: %v\n", userID, err)
 	if err != nil {
@@ -625,6 +654,22 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	}
 	if bio.Valid {
 		user.Bio = bio.String
+	}
+	if verificationStatus.Valid && verificationStatus.String != "" {
+		user.VerificationStatus = verificationStatus.String
+	}
+	if schoolName.Valid {
+		user.SchoolName = schoolName.String
+	}
+	if schoolEmail.Valid {
+		user.SchoolEmail = schoolEmail.String
+	}
+	if emailVerifiedAt.Valid {
+		t := emailVerifiedAt.Time
+		user.SchoolEmailVerifiedAt = &t
+	}
+	if rejectionReason.Valid {
+		user.VerificationRejectionReason = rejectionReason.String
 	}
 
 	return c.JSON(models.APIResponse{
