@@ -1229,9 +1229,27 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	}
 	offset := (page - 1) * limit
 
-	// Get total count
+	// Build WHERE clause
+	where := "WHERE p.seller_id = ?"
+	args := []interface{}{userID}
+
+	// Filter by status if active is set
+	active := c.Query("active", "") == "true"
+	if active {
+		where += " AND p.status = 'available'"
+	}
+
+	// Filter by category if provided
+	category := c.Query("category", "")
+	if category != "" {
+		where += " AND p.category = ?"
+		args = append(args, category)
+	}
+
+	// Get total count with filters
+	countQuery := "SELECT COUNT(*) FROM products p " + where
 	var total int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM products WHERE seller_id = ?", userID).Scan(&total)
+	err = h.db.QueryRow(countQuery, args...).Scan(&total)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
@@ -1239,21 +1257,17 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get products (use image_urls)
-	active := c.Query("active", "") == "true"
-	where := "WHERE p.seller_id = ?"
-	if active {
-		where += " AND p.status = 'available'"
-	}
+	// Get products (use image_urls) with category field
+	queryArgs := append(args, limit, offset)
 	rows, err := h.db.Query(`
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.category, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
 		`+where+`
 		ORDER BY p.created_at DESC
 		LIMIT ? OFFSET ?
-	`, userID, limit, offset)
+	`, queryArgs...)
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -1272,7 +1286,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		var imageURLsJSONStr string
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile)
+			&product.AllowBuying, &product.BarterOnly, &product.Category, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
