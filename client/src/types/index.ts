@@ -19,6 +19,9 @@ export interface User {
   latitude?: number
   longitude?: number
   is_premium?: boolean
+  verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
+  school_name?: string
+  school_email?: string
 }
 
 export interface Product {

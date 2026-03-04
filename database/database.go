@@ -445,6 +445,13 @@ func ensureUserColumns() {
 		{"badges", "JSON NULL"},
 		{"latitude", "DECIMAL(10,8) NULL"},
 		{"longitude", "DECIMAL(11,8) NULL"},
+		// School ID verification columns
+		{"verification_status", "ENUM('not_verified','pending','verified','rejected') NOT NULL DEFAULT 'not_verified'"},
+		{"school_name", "VARCHAR(255) NULL"},
+		{"school_email", "VARCHAR(255) NULL"},
+		{"school_email_verified_at", "TIMESTAMP NULL"},
+		{"school_id_image_path", "VARCHAR(512) NULL"},
+		{"verification_rejection_reason", "TEXT NULL"},
 	}
 
 	for _, col := range columns {
