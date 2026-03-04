@@ -1518,7 +1518,7 @@ const AddProduct: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      <FloatingTab />
+      <FloatingTab showAddButton={false} />
     </Box>
   )
 }
