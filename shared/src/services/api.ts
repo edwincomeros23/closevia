@@ -3,7 +3,7 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 // Use environment variable for API URL, default to production
 export const API_BASE_URL = process.env.REACT_APP_API_URL ||
     process.env.VITE_API_URL ||
-    'https://closevia.onrender.com'
+    'https://clovia-backend.onrender.com'
 
 // Storage abstraction - will be overridden in mobile with AsyncStorage
 export interface StorageAdapter {

@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
 // API Base URL - hardcoded to production for React Native
 // (Environment variables in React Native/Expo require different setup via app.config.js)
-export const API_BASE_URL = 'https://closevia.onrender.com'
+export const API_BASE_URL = 'https://clovia-backend.onrender.com'
 
 // Storage abstraction - will be overridden in mobile with AsyncStorage
 export interface StorageAdapter {
