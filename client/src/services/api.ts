@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
 // Use environment variable for API URL, default to localhost for development
 export const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  import.meta.env.PROD 
+  import.meta.env.PROD
     ? 'https://closevia.onrender.com'  // Update with your actual Render backend URL
     : 'http://localhost:4000'                        // Development localhost
 )
@@ -52,7 +52,7 @@ api.interceptors.request.use(
         console.log('Data:', config.data)
         // eslint-disable-next-line no-console
         console.groupEnd()
-      } catch {}
+      } catch { }
     }
 
     return config
@@ -74,7 +74,7 @@ api.interceptors.response.use(
         console.log('Data:', response.data)
         // eslint-disable-next-line no-console
         console.groupEnd()
-      } catch {}
+      } catch { }
     }
     return response
   },
@@ -98,7 +98,7 @@ api.interceptors.response.use(
         console.log('Headers on request:', cfg?.headers)
         // eslint-disable-next-line no-console
         console.groupEnd()
-      } catch {}
+      } catch { }
     }
 
     // Simple one-time retry on 401 if token exists but header was missing/not set
@@ -130,3 +130,10 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+export const tradeService = {
+  getTradeLoops: async () => {
+    const response = await api.get('/api/trades/loops')
+    return response.data
+  }
+}

@@ -159,7 +159,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
       return
     }
 
-    if (!deliveryAddress.trim() && !deliveryLongitude) {
+    if (!deliveryAddress.trim()) {
       toast({
         title: 'Delivery address required',
         description: 'Please provide a delivery address.',

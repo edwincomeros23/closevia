@@ -12,6 +12,8 @@ import {
 } from '@chakra-ui/icons'
 import { FaHome } from 'react-icons/fa'
 import { FiShoppingBag } from 'react-icons/fi'
+import { Badge as CBadge } from '@chakra-ui/react'
+import { useRealtime } from '../contexts/RealtimeContext'
 
 interface FloatingTabProps {
   dashboardLink?: string
@@ -24,6 +26,8 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
   homeLink = '/home',
   addProductLink = '/add-product',
 }) => {
+  const { notificationCount } = useRealtime()
+
   return (
     <>
       {/* Mobile Bottom Navigation Bar - Floating Tab */}
@@ -48,21 +52,36 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
           border="1px solid rgba(255, 255, 255, 0.3)"
         >
           {/* Dashboard Button */}
-          <Button
-            as={RouterLink}
-            to={dashboardLink}
-            variant="ghost"
-            h="full"
-            flex={1}
-            bg="brand.500"
-            flexDirection="column"
-            gap={1}
-            px={7}
-            borderRadius="none"
-            _hover={{ bg: 'gray.50' }}
-          >
-            <Icon as={FiShoppingBag} boxSize={6} color="white" />
-          </Button>
+          <Box position="relative" h="full" flex={1}>
+            <Button
+              as={RouterLink}
+              to={dashboardLink}
+              variant="ghost"
+              h="full"
+              w="full"
+              bg="brand.500"
+              flexDirection="column"
+              gap={1}
+              borderRadius="none"
+              _hover={{ bg: 'gray.50' }}
+            >
+              <Icon as={FiShoppingBag} boxSize={6} color="white" />
+            </Button>
+            {notificationCount > 0 && (
+              <CBadge
+                position="absolute"
+                top="4px"
+                right="calc(50% - 16px)"
+                colorScheme="red"
+                borderRadius="full"
+                fontSize="0.6em"
+                px={1.5}
+                zIndex={1}
+              >
+                {notificationCount}
+              </CBadge>
+            )}
+          </Box>
 
           {/* Home Button (Primary/Center) */}
           <Button

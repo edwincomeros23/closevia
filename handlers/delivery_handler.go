@@ -650,13 +650,17 @@ func (h *DeliveryHandler) loadDeliveryItems(d *models.Delivery) {
 	}
 	defer rows.Close()
 
+	var items []models.DeliveryItem
+
 	for rows.Next() {
 		var item models.DeliveryItem
 		err := rows.Scan(&item.ID, &item.DeliveryID, &item.ProductID, &item.ProductName, &item.IsFragile, &item.CreatedAt)
 		if err != nil {
 			continue
 		}
-		_ = item // Item data loaded but not currently used
+		items = append(items, item)
 	}
-	// Note: Delivery model doesn't have Items field, but we could add it if needed
+	if len(items) > 0 {
+		d.Items = items
+	}
 }

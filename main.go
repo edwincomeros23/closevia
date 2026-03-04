@@ -191,6 +191,8 @@ func main() {
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
 	reviewHandler := handlers.NewReviewHandler()
+	reportHandler := handlers.NewReportHandler()
+	uploadHandler := handlers.NewUploadHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -263,6 +265,12 @@ func main() {
 	trades := api.Group("/trades")
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
+	// Loops endpoint must come before any :id routes to avoid shadowing
+	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
+	trades.Get("/loops/:id", middleware.AuthMiddleware(), tradeHandler.GetTradeLoop)
+	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
+	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
+	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
@@ -293,6 +301,10 @@ func main() {
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)
+	// Admin reports management
+	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
+	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)
+	admin.Put("/reports/:id/status", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.UpdateReport)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -307,6 +319,12 @@ func main() {
 	deliveries.Get("/:id", middleware.AuthMiddleware(), deliveryHandler.GetDelivery)
 	deliveries.Put("/:id/status", middleware.AuthMiddleware(), deliveryHandler.UpdateDeliveryStatus)
 	deliveries.Post("/:id/assign", middleware.AuthMiddleware(), deliveryHandler.AssignRider)
+
+	// Generic image upload route (used by TradeCompletionModal, etc.)
+	api.Post("/upload", middleware.AuthMiddleware(), uploadHandler.UploadImage)
+
+	// Reports route (user-facing: submit a report)
+	api.Post("/reports", middleware.AuthMiddleware(), reportHandler.CreateReport)
 
 	// AI Features routes
 	ai := api.Group("/ai")

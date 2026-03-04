@@ -1,4 +1,4 @@
-﻿package models
+package models
 
 import (
 	"database/sql/driver"
@@ -163,6 +163,7 @@ type Product struct {
 	UpdatedAt            time.Time   `json:"updated_at"`
 	BiddingType          string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
 	WishlistCount        int         `json:"wishlist_count,omitempty"`
+	WantCount            int         `json:"want_count"`
 }
 
 // ProductCreate represents data for creating a product
@@ -480,6 +481,8 @@ type Delivery struct {
 	RiderRating    *float64 `json:"rider_rating,omitempty"`
 	RiderLatitude  *float64 `json:"rider_latitude,omitempty"`
 	RiderLongitude *float64 `json:"rider_longitude,omitempty"`
+	// Items included in this delivery
+	Items []DeliveryItem `json:"items,omitempty"`
 }
 
 // DeliveryItem represents an item in a delivery
@@ -498,10 +501,10 @@ type DeliveryRequest struct {
 	DeliveryType        string   `json:"delivery_type" validate:"required,oneof=standard express"`
 	PickupLatitude      *float64 `json:"pickup_latitude,omitempty"`
 	PickupLongitude     *float64 `json:"pickup_longitude,omitempty"`
-	PickupAddress       string   `json:"pickup_address" validate:"required"`
+	PickupAddress       string   `json:"pickup_address"`
 	DeliveryLatitude    *float64 `json:"delivery_latitude,omitempty"`
 	DeliveryLongitude   *float64 `json:"delivery_longitude,omitempty"`
-	DeliveryAddress     string   `json:"delivery_address" validate:"required"`
+	DeliveryAddress     string   `json:"delivery_address"`
 	SpecialInstructions string   `json:"special_instructions,omitempty"`
 	ProductIDs          []int    `json:"product_ids" validate:"required,min=1"` // Products to deliver
 }

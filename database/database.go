@@ -445,6 +445,8 @@ func ensureUserColumns() {
 		{"badges", "JSON NULL"},
 		{"latitude", "DECIMAL(10,8) NULL"},
 		{"longitude", "DECIMAL(11,8) NULL"},
+		{"email_otp_hash", "VARCHAR(255) NULL"},
+		{"email_otp_expires", "DATETIME NULL"},
 	}
 
 	for _, col := range columns {

@@ -422,7 +422,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
 		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
-		       u.latitude as seller_latitude, u.longitude as seller_longitude
+		       u.latitude as seller_latitude, u.longitude as seller_longitude,
+			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
 		` + whereClause + `
@@ -470,11 +471,12 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull)
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
 		if err != nil {
+			fmt.Printf("GetProducts row scan error: %v\n", err)
 			continue
 		}
 		if priceNull.Valid {
@@ -675,7 +677,8 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
-			       u.name as seller_name, u.profile_picture as seller_profile_picture
+			       u.name as seller_name, u.profile_picture as seller_profile_picture,
+			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 			FROM products p
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.id = ?
@@ -683,14 +686,15 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &product.SellerProfilePicture)
+			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
 	} else {
 		// It's a slug
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
-			       u.name as seller_name, u.profile_picture as seller_profile_picture
+			       u.name as seller_name, u.profile_picture as seller_profile_picture,
+			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 			FROM products p
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.slug = ?
@@ -698,7 +702,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &product.SellerProfilePicture)
+			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
 	}
 
 	if err != nil {
@@ -997,18 +1001,16 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 	}
 
 	query := `
-		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `,
-		       p.suggested_value, p.category, p.created_at, p.updated_at,
-		       u.name as seller_name
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
 		FROM products p
-		LEFT JOIN users u ON p.seller_id = u.id
+		JOIN users u ON p.seller_id = u.id
 		` + whereClause + `
 		ORDER BY p.created_at DESC
 		LIMIT ? OFFSET ?
 	`
-	args = append(args, limit, offset)
 
+	args = append(args, limit, offset)
 	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -1023,13 +1025,12 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 		var product models.Product
 		var slugNull sql.NullString
 		var priceNull sql.NullFloat64
+		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		if err := rows.Scan(
 			&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-			&product.AllowBuying, &product.BarterOnly, &product.Location,
-			&product.Condition, &product.SuggestedValue, &product.Category,
-			&product.CreatedAt, &product.UpdatedAt, &product.SellerName,
+			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile,
 		); err != nil {
 			continue
 		}
@@ -1039,6 +1040,9 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 		if priceNull.Valid {
 			p := priceNull.Float64
 			product.Price = &p
+		}
+		if sellerProfile.Valid {
+			product.SellerProfilePicture = sellerProfile.String
 		}
 		if imageURLsJSONStr != "" {
 			var imageURLs []string
@@ -1218,7 +1222,8 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	}
 	rows, err := h.db.Query(`
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture,
+		       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
 		`+where+`
@@ -1243,7 +1248,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		var imageURLsJSONStr string
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile)
+			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile, &product.WantCount)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
