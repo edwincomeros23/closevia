@@ -214,6 +214,9 @@ const SettingsPage: React.FC = () => {
       // Strip any cache busters that might have been saved
       const cleanPicture = stripCacheBuster((user as any)?.profile_picture)
       setProfileImage(cleanPicture)
+      // Load language preference from user object
+      const userLanguage = (user as any)?.language_preference || 'en'
+      setLanguage(userLanguage)
       if ((user as any)?.profile_picture) {
         console.log('📸 Profile picture loaded - Raw:', (user as any)?.profile_picture, 'Cleaned:', cleanPicture)
       }
@@ -241,7 +244,7 @@ const SettingsPage: React.FC = () => {
       email !== (user?.email || '') ||
       profileImage !== ((user as any)?.profile_picture || null) ||
       darkMode !== (colorMode === 'dark') ||
-      language !== 'en' ||
+      language !== ((user as any)?.language_preference || 'en') ||
       dashboardLayout !== 'default' ||
       fontSize !== initializeFontSize() ||
       highContrast !== false ||
@@ -518,6 +521,7 @@ const SettingsPage: React.FC = () => {
         name: username,
         email: email,
         profile_picture: profileUrlToSave ?? profileImage,
+        language_preference: language,
       })
 
       if (resp.data && resp.data.success) {
@@ -1105,9 +1109,9 @@ const SettingsPage: React.FC = () => {
                       setUsername(user.name || '')
                       setEmail(user.email || '')
                       setProfileImage((user as any)?.profile_picture || null)
+                      setLanguage((user as any)?.language_preference || 'en')
                     }
                     setDarkMode(colorMode === 'dark')
-                    setLanguage('en')
                     setEmailNotifications(true)
                     setPushNotifications(true)
                     setHasUnsavedChanges(false)

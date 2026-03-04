@@ -111,6 +111,7 @@ type User struct {
 	ProfilePicture     string    `json:"profile_picture,omitempty"`
 	BackgroundImage    string    `json:"background_image,omitempty"`
 	BackgroundPosition string    `json:"background_position,omitempty"`
+	LanguagePreference string    `json:"language_preference,omitempty"`
 	Latitude           *float64  `json:"latitude,omitempty"`
 	Longitude          *float64  `json:"longitude,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`

@@ -92,7 +92,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	// Insert new user
 	result, err := h.db.Exec(
-		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
+		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?)",
 		user.Name,
 		user.Email,
 		hashedPassword,
@@ -104,6 +104,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		nullableString(user.Department),
 		user.Bio,
 		"",
+		"en",
 	)
 	if err != nil {
 		// Log the actual error for debugging
@@ -232,7 +233,7 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	if err == sql.ErrNoRows {
 		// Create new user from Google info
 		result, err := h.db.Exec(
-			"INSERT INTO users (name, email, role, verified, profile_picture, is_organization, org_verified, badges) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_ARRAY())",
+			"INSERT INTO users (name, email, role, verified, profile_picture, is_organization, org_verified, badges, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
 			req.DisplayName,
 			req.Email,
 			"user",
@@ -240,6 +241,7 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 			req.PhotoURL,
 			false,
 			false,
+			"en",
 		)
 		if err != nil {
 			return c.Status(500).JSON(models.APIResponse{
@@ -294,9 +296,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') AS profile_picture, COALESCE(bio, '') AS bio, COALESCE(background_image, '') AS background_image, COALESCE(background_position, '') AS background_position, COALESCE(department, '') AS department, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') AS profile_picture, COALESCE(bio, '') AS bio, COALESCE(background_image, '') AS background_image, COALESCE(background_position, '') AS background_position, COALESCE(department, '') AS department, COALESCE(language_preference, 'en') AS language_preference, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.LanguagePreference, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -338,6 +340,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		Bio                *string `json:"bio"`
 		BackgroundImage    *string `json:"background_image"`
 		BackgroundPosition *string `json:"background_position"`
+		LanguagePreference *string `json:"language_preference"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -381,6 +384,12 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, *updateData.BackgroundPosition)
 	}
 
+	if updateData.LanguagePreference != nil {
+		query += ", language_preference = ?"
+		args = append(args, *updateData.LanguagePreference)
+		fmt.Printf("✅ UpdateProfile: Setting language_preference to '%s' for user %d\n", *updateData.LanguagePreference, userID)
+	}
+
 	query += " WHERE id = ?"
 	args = append(args, userID)
 
@@ -388,12 +397,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if err != nil {
 		// Handle missing columns: try to add any known columns then retry once
 		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
-			// Try adding profile_picture, background_image, background_position, bio as needed
+			// Try adding profile_picture, background_image, background_position, bio, language_preference as needed
 			// Note: guard each ALTER with best-effort; ignore errors to let retry attempt proceed
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_image VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS language_preference VARCHAR(10) NULL DEFAULT 'en'")
 			// retry update
 			_, err = h.db.Exec(query, args...)
 		}
