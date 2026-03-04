@@ -391,6 +391,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		args = append(args, "%"+location+"%")
 	}
 
+	// Dedicated category filter: exact match on category OR keyword match in title/description
+	categoryFilter := c.Query("category", "")
+	if categoryFilter != "" {
+		whereClause += " AND (p.category = ? OR p.title LIKE ? OR p.description LIKE ?)"
+		catLike := "%" + categoryFilter + "%"
+		args = append(args, categoryFilter, catLike, catLike)
+	}
+
 	// Get total count
 	// NOTE: join users table here because WHERE can reference u.* fields
 	countQuery := "SELECT COUNT(*) FROM products p LEFT JOIN users u ON p.seller_id = u.id " + whereClause
@@ -412,8 +420,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
-		       p.suggested_value, p.category, p.created_at, p.updated_at,
-		       u.name as seller_name, u.profile_picture as seller_profile_picture
+		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at,
+		       u.name as seller_name, u.profile_picture as seller_profile_picture,
+		       u.latitude as seller_latitude, u.longitude as seller_longitude
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
 		` + whereClause + `
@@ -435,6 +444,19 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
+	// Parse optional viewer coordinates for distance calculation (must be before row loop)
+	viewerLatStr := c.Query("viewer_lat", "")
+	viewerLonStr := c.Query("viewer_lng", "")
+	var viewerLat, viewerLon *float64
+	if viewerLatStr != "" && viewerLonStr != "" {
+		if lat, err := strconv.ParseFloat(viewerLatStr, 64); err == nil {
+			if lon, err := strconv.ParseFloat(viewerLonStr, 64); err == nil {
+				viewerLat = &lat
+				viewerLon = &lon
+			}
+		}
+	}
+
 	var products []models.Product
 	for rows.Next() {
 		var product models.Product
@@ -442,11 +464,13 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var priceNull sql.NullFloat64
 		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
+		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
-			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &sellerProfile)
+			&product.Condition, &product.SuggestedValue, &product.Category,
+			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt,
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -463,6 +487,28 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			product.SellerProfilePicture = sellerProfile.String
 		}
 
+		// Use product coords or fallback to seller coords
+		var finalLat, finalLon *float64
+		if latNull.Valid {
+			l := latNull.Float64
+			product.Latitude = &l
+			finalLat = &l
+		} else if sLatNull.Valid {
+			l := sLatNull.Float64
+			product.Latitude = &l // fallback to seller coords
+			finalLat = &l
+		}
+
+		if lonNull.Valid {
+			l := lonNull.Float64
+			product.Longitude = &l
+			finalLon = &l
+		} else if sLonNull.Valid {
+			l := sLonNull.Float64
+			product.Longitude = &l // fallback to seller coords
+			finalLon = &l
+		}
+
 		// Parse image URLs from JSON
 		if imageURLsJSONStr != "" {
 			var imageURLs []string
@@ -471,7 +517,39 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			}
 		}
 
+		// Compute distance if we have both viewer and product (or seller) coordinates
+		if viewerLat != nil && viewerLon != nil && finalLat != nil && finalLon != nil {
+			result := services.CalculateDistance(*viewerLat, *viewerLon, *finalLat, *finalLon)
+			product.Distance = fmt.Sprintf("%.1f KM", result.DistanceKm)
+		}
+
 		products = append(products, product)
+	}
+
+	// Background geocode products that have location text but no coordinates
+	for i := range products {
+		p := &products[i]
+		if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
+			// Geocode in background and save to DB for future requests
+			go func(productID int, loc string) {
+				coords, err := services.GetCoordinates(loc)
+				if err != nil {
+					return
+				}
+				_, _ = h.db.Exec(
+					"UPDATE products SET latitude = ?, longitude = ? WHERE id = ?",
+					coords.Latitude, coords.Longitude, productID,
+				)
+				fmt.Printf("📍 Geocoded product %d (%s) -> %.6f, %.6f\n", productID, loc, coords.Latitude, coords.Longitude)
+			}(p.ID, p.Location)
+		}
+
+		// Compute distance from viewer if both viewer and product have coordinates
+		if viewerLat != nil && viewerLon != nil && p.Latitude != nil && p.Longitude != nil {
+			result := services.CalculateDistance(*viewerLat, *viewerLon, *p.Latitude, *p.Longitude)
+			distStr := fmt.Sprintf("%.1f KM", result.DistanceKm)
+			p.Distance = distStr
+		}
 	}
 
 	totalPages := (total + limit - 1) / limit

@@ -145,7 +145,10 @@ func (s *CloudinaryService) uploadStream(reader io.ReadSeeker, originalName, fol
 		return "", err
 	}
 
-	ctx := context.Background()
+	// Use a 60-second timeout to prevent hanging uploads from holding the connection open
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
 	// For profile pictures, use a unique identifier to avoid caching issues
 	publicID := strings.TrimSuffix(SanitizeFileName(originalName), filepath.Ext(originalName))
 	if folder == "profile-pictures" {

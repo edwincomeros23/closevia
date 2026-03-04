@@ -129,14 +129,6 @@ func CloseDatabase() {
 	}
 }
 
-// getEnv gets an environment variable or returns a default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 // CreateTables creates all necessary tables if they don't exist
 func CreateTables() error {
 	queries := []string{
@@ -451,6 +443,8 @@ func ensureUserColumns() {
 		{"department", "VARCHAR(255) NULL"},
 		{"bio", "TEXT NULL"},
 		{"badges", "JSON NULL"},
+		{"latitude", "DECIMAL(10,8) NULL"},
+		{"longitude", "DECIMAL(11,8) NULL"},
 	}
 
 	for _, col := range columns {

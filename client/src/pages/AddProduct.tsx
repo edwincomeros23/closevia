@@ -40,6 +40,7 @@ import { api } from '../services/api'
 import { ProductCreate } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { prepareImageForUpload, isUnsupportedFormat, getFileTypeDescription } from '../utils/imageConverter'
+import { PRODUCT_CATEGORIES } from '../utils/categories'
 
 
 const AddProduct: React.FC = () => {
@@ -728,18 +729,9 @@ const AddProduct: React.FC = () => {
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('category', e.target.value)}
                 size="lg"
               >
-                <option value="General">General</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Mobile Phones">Mobile Phones</option>
-                <option value="Computers">Computers</option>
-                <option value="Home Appliances">Home Appliances</option>
-                <option value="Fashion">Fashion</option>
-                <option value="Collectibles">Collectibles</option>
-                <option value="Sports">Sports</option>
-                <option value="Toys">Toys</option>
-                <option value="Books">Books</option>
-                <option value="Automotive">Automotive</option>
-                <option value="Other">Other</option>
+                {PRODUCT_CATEGORIES.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
               </Select>
             </FormControl>
 

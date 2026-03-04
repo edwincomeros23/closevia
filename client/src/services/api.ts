@@ -112,15 +112,17 @@ api.interceptors.response.use(
       }
     }
 
-    // On 401, clear token and redirect to login unless handled by caller (e.g., review submissions)
+    // On 401 after retry failed, let the AuthContext handle cleanup.
+    // Do NOT remove the token or hard-redirect here — it causes refresh-logout on mobile.
     if (status === 401) {
       if (isReviewEndpoint) {
         return Promise.reject(error)
       }
 
-      localStorage.removeItem('clovia_token')
-      // Avoid infinite redirect loops in debug
-      if (window.location.pathname !== '/login') {
+      // Only redirect if there is no stored token (i.e. truly logged out)
+      // AuthContext will clear the token when it detects the 401
+      const hasToken = localStorage.getItem('clovia_token')
+      if (!hasToken && window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
     }
