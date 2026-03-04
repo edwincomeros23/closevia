@@ -30,6 +30,7 @@ export interface Product {
   image_urls: string[]
   seller_id: number
   seller_name?: string
+  seller_profile_picture?: string
   premium: boolean
   status: 'available' | 'sold' | 'traded' | 'locked'
   allow_buying: boolean
@@ -84,7 +85,7 @@ export interface ProductUpdate {
   price?: number
   image_urls?: string[]
   premium?: boolean
-  status?: 'available' | 'sold' | 'traded'
+  status?: 'available' | 'sold' | 'traded' | 'locked'
   allow_buying?: boolean
   barter_only?: boolean
   location?: string
@@ -102,6 +103,7 @@ export interface OrderUpdate {
 
 export interface SearchFilters {
   keyword?: string
+  category?: string
   min_price?: number
   max_price?: number
   premium?: boolean

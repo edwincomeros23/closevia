@@ -129,14 +129,6 @@ func CloseDatabase() {
 	}
 }
 
-// getEnv gets an environment variable or returns a default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 // CreateTables creates all necessary tables if they don't exist
 func CreateTables() error {
 	queries := []string{
@@ -402,6 +394,20 @@ func CreateTables() error {
 			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS reviews (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			reviewer_id INT NOT NULL,
+			reviewed_user_id INT NOT NULL,
+			rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+			comment TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reviewed_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_reviewed_user (reviewed_user_id),
+			INDEX idx_reviewer (reviewer_id),
+			INDEX idx_created_at (created_at)
+		)`,
 	}
 
 	// Execute table creation queries
@@ -437,8 +443,8 @@ func ensureUserColumns() {
 		{"department", "VARCHAR(255) NULL"},
 		{"bio", "TEXT NULL"},
 		{"badges", "JSON NULL"},
-		{"email_otp_hash", "VARCHAR(255) NULL"},
-		{"email_otp_expires", "DATETIME NULL"},
+		{"latitude", "DECIMAL(10,8) NULL"},
+		{"longitude", "DECIMAL(11,8) NULL"},
 	}
 
 	for _, col := range columns {

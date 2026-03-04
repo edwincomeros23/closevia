@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
-import { useParams, Link as RouterLink } from 'react-router-dom'
+import { useParams, Link as RouterLink, useNavigate } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -56,8 +56,9 @@ import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
+import { useTradeHistory } from '../hooks/useDashboard'
 
-  type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
+type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
   avatar_url?: string
   bio?: string
     background_url?: string
@@ -75,8 +76,29 @@ import { getProductUrl } from '../utils/productUtils'
   is_following?: boolean
 }
 
-const UserProfile: React.FC = () => {
-  const { id } = useParams<{ id: string }>()
+interface UserProfileProps {
+  /**
+   * Optional explicit user ID. When provided, this overrides the route param
+   * so the same component can be reused for the logged-in user's profile
+   * (e.g. on the `/profile` route) and for public profiles (`/users/:id`).
+   */
+  userId?: number
+}
+
+type SellerStats = {
+  avg_rating?: number
+  positive_percent?: number
+  total_feedback?: number
+  total_trades?: number
+  completed_trades?: number
+  avg_response_time?: string
+}
+
+const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
+  const { id: routeId } = useParams<{ id: string }>()
+  const effectiveId = userId ?? (routeId ? Number(routeId) : undefined)
+  const id = effectiveId != null ? String(effectiveId) : ''
+  const navigate = useNavigate()
   const { user: currentUser } = useAuth()
   const [user, setUser] = useState<PublicUser | null>(null)
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -97,33 +119,67 @@ const UserProfile: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0)
   const [sortBy, setSortBy] = useState('newest')
   const [reviews, setReviews] = useState<any[]>([])
+  const [sellerStats, setSellerStats] = useState<SellerStats | null>(null)
   const { getUserProducts } = useProducts()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const toast = useToast()
   
-  // Mock reviews data - replace with actual API call
+  // Review form state
+  const [reviewRating, setReviewRating] = useState(0)
+  const [reviewComment, setReviewComment] = useState('')
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false)
+  
+  // Reply state
+  const [replyingTo, setReplyingTo] = useState<number | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false)
+  
+  // Fetch reviews from API
   useEffect(() => {
-    // In a real app, fetch reviews from API
-    const mockReviews = [
-      {
-        id: 1,
-        reviewer: 'John D.',
-        avatar: 'https://randomuser.me/api/portraits/men/1.jpg',
-        rating: 5,
-        comment: 'Great seller! Item was exactly as described.',
-        date: '2023-10-15',
-      },
-      {
-        id: 2,
-        reviewer: 'Sarah M.',
-        avatar: 'https://randomuser.me/api/portraits/women/1.jpg',
-        rating: 4,
-        comment: 'Smooth transaction, would trade again!',
-        date: '2023-10-10',
-      },
-    ]
-    setReviews(mockReviews)
-  }, [])
+    const fetchReviews = async () => {
+      if (!id) return
+      try {
+        const response = await api.get(`/api/users/${id}/reviews`)
+        setReviews(response.data?.data || response.data || [])
+      } catch (error) {
+        console.error('Failed to fetch reviews:', error)
+        // Fallback to mock data if API fails
+        const mockReviews = [
+          {
+            id: 1,
+            reviewer: 'John D.',
+            avatar: 'https://randomuser.me/api/portraits/men/1.jpg',
+            rating: 5,
+            comment: 'Great seller! Item was exactly as described.',
+            date: '2023-10-15',
+          },
+          {
+            id: 2,
+            reviewer: 'Sarah M.',
+            avatar: 'https://randomuser.me/api/portraits/women/1.jpg',
+            rating: 4,
+            comment: 'Smooth transaction, would trade again!',
+            date: '2023-10-10',
+          },
+        ]
+        setReviews(mockReviews)
+      }
+    }
+    fetchReviews()
+  }, [id])
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!id) return
+      try {
+        const res = await api.get(`/api/users/${id}/stats`)
+        setSellerStats(res.data?.data || res.data || null)
+      } catch (err) {
+        setSellerStats(null)
+      }
+    }
+    fetchStats()
+  }, [id])
 
   useEffect(() => {
     const run = async () => {
@@ -162,6 +218,16 @@ const UserProfile: React.FC = () => {
         }
 
         const apiUser = (res.data?.data || res.data) as Partial<PublicUser>
+        
+        // Log the API response to debug profile picture and name
+        console.log('🔍 API User Response:', {
+          name: apiUser.name,
+          profile_picture: (apiUser as any).profile_picture,
+          org_logo_url: (apiUser as any).org_logo_url,
+          bio: (apiUser as any).bio,
+          verified: apiUser.verified,
+        })
+        
         setUser({
           id: Number(id),
           name: apiUser.name || 'User',
@@ -180,7 +246,7 @@ const UserProfile: React.FC = () => {
           org_verified: (apiUser as any).org_verified,
           org_name: (apiUser as any).org_name,
           org_logo_url: (apiUser as any).org_logo_url,
-          department: (apiUser as any).department,
+          department: (apiUser as any).department || 'Unknown',
         })
 
         // Fetch user's products to infer stats and successful trades
@@ -338,29 +404,27 @@ const UserProfile: React.FC = () => {
     const total = products.length
     const active = products.filter(p => p.status === 'available').length
     const completed = products.filter(p => p.status === 'sold' || p.status === 'traded').length
-    const rating = user?.rating ?? 4.6
-    return { total, active, completed, rating }
-  }, [products, user])
+    const rating = sellerStats?.avg_rating ?? user?.rating ?? 4.6
+    const tradesCompleted = sellerStats?.completed_trades ?? completed
+    const avgResponse = sellerStats?.avg_response_time ?? `${user?.response_time_minutes || 30} min`
+    return { total, active, completed: tradesCompleted, rating, avgResponse }
+  }, [products, user, sellerStats])
 
-  // Successful trades with more details
-  const successfulTrades = useMemo(() => {
-    const items = products
-      .filter(p => p.status === 'traded' || p.status === 'sold')
-      .slice(0, 8)
-      .map((p, idx) => ({
-        id: `${p.id}-${idx}`,
-        title: p.title,
-        date: new Date(p.updated_at || p.created_at).toLocaleDateString(),
-        counterpart: 'Confidential',
-        beforeImg: getFirstImage(p.image_urls),
-        afterImg: getFirstImage(p.image_urls),
-        tradeDetails: p.status === 'traded' 
-          ? `Traded for ${['book', 'headphones', 'watch'][idx % 3]}`
-          : `Sold for $${(Math.random() * 100 + 20).toFixed(2)}`,
-        timestamp: p.updated_at || p.created_at
-      }))
-    return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-  }, [products])
+  const displayRating = sellerStats?.avg_rating ?? user?.rating ?? 4.8
+  const displayTotalReviews = sellerStats?.total_feedback ?? user?.total_reviews ?? reviews.length
+  const displayPositivePercent = sellerStats?.positive_percent ?? user?.positive_feedback ?? 98
+
+  // Fetch real trade history from backend
+  const { data: allTrades, isLoading: tradesLoading, error: tradesError } = useTradeHistory()
+  
+  // Filter trades for this specific user
+  const userTrades = useMemo(() => {
+    if (!allTrades || !id) return []
+    const userId = Number(id)
+    return allTrades.filter(trade => 
+      trade.buyer_id === userId || trade.seller_id === userId
+    )
+  }, [allTrades, id])
 
   // Sort products based on selected option
   const sortedProducts = useMemo(() => {
@@ -398,6 +462,199 @@ const UserProfile: React.FC = () => {
       duration: 3000,
       isClosable: true,
     })
+  }
+
+  const handleSubmitReview = async () => {
+    const token = localStorage.getItem('clovia_token')
+    if (!currentUser || !token) {
+      toast({
+        title: 'Login required',
+        description: 'Please sign in to leave a review.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
+
+    if (!reviewRating || reviewRating === 0) {
+      toast({
+        title: 'Rating required',
+        description: 'Please select a star rating before submitting.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    if (!reviewComment.trim()) {
+      toast({
+        title: 'Review required',
+        description: 'Please write a review before submitting.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    setIsSubmittingReview(true)
+    try {
+      const payload = {
+        user_id: Number(id),
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      }
+
+      await api.post(`/api/users/${id}/reviews`, payload)
+
+      // Refresh reviews list; if it fails, fall back to optimistic append to avoid duplicates
+      try {
+        const response = await api.get(`/api/users/${id}/reviews`)
+        setReviews(response.data?.data || response.data || [])
+      } catch (fetchErr) {
+        const newReview = {
+          id: Date.now(),
+          reviewer: currentUser?.name || 'Anonymous',
+          avatar: currentUser?.profile_picture || '',
+          rating: reviewRating,
+          comment: reviewComment.trim(),
+          date: new Date().toISOString().split('T')[0],
+        }
+        setReviews(prev => [newReview, ...prev])
+      }
+
+      // Reset form
+      setReviewRating(0)
+      setReviewComment('')
+      onClose()
+
+      toast({
+        title: 'Review submitted',
+        description: 'Thank you for your feedback!',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    } catch (error: any) {
+      console.error('Failed to submit review:', error)
+      const status = error?.response?.status
+      if (status === 401) {
+        toast({
+          title: 'Login required',
+          description: 'Your session expired. Please sign in and try again.',
+          status: 'warning',
+          duration: 3000,
+          isClosable: true,
+        })
+        navigate('/login')
+      } else {
+        toast({
+          title: 'Failed to submit review',
+          description: error?.response?.data?.message || error?.message || 'Please try again later.',
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        })
+      }
+    } finally {
+      setIsSubmittingReview(false)
+    }
+  }
+
+  const handleOpenReviewModal = () => {
+    const token = localStorage.getItem('clovia_token')
+    if (!currentUser || !token) {
+      toast({
+        title: 'Login required',
+        description: 'Please sign in to leave a review.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
+    setReviewRating(0)
+    setReviewComment('')
+    onOpen()
+  }
+
+  const handleReplyToReview = async (reviewId: number) => {
+    if (!currentUser) {
+      toast({
+        title: 'Login required',
+        description: 'Please sign in to reply.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
+
+    if (!replyText.trim()) {
+      toast({
+        title: 'Reply required',
+        description: 'Please write a reply.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    setIsSubmittingReply(true)
+    try {
+      const payload = {
+        review_id: reviewId,
+        reply: replyText.trim(),
+      }
+
+      await api.post(`/api/reviews/${reviewId}/reply`, payload)
+
+      // Refresh reviews to show the new reply
+      try {
+        const response = await api.get(`/api/users/${id}/reviews`)
+        setReviews(response.data?.data || response.data || [])
+      } catch (fetchErr) {
+        // Optimistically update
+        setReviews(prev => prev.map(review => 
+          review.id === reviewId 
+            ? { 
+                ...review, 
+                reply: replyText.trim(),
+                reply_author: currentUser?.name || 'You',
+                reply_date: new Date().toISOString().split('T')[0]
+              } 
+            : review
+        ))
+      }
+
+      setReplyText('')
+      setReplyingTo(null)
+
+      toast({
+        title: 'Reply posted',
+        description: 'Your reply has been posted successfully.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    } catch (error: any) {
+      console.error('Failed to post reply:', error)
+      toast({
+        title: 'Failed to post reply',
+        description: error?.response?.data?.message || error?.message || 'Please try again later.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setIsSubmittingReply(false)
+    }
   }
 
   const badges = useMemo(() => {
@@ -501,10 +758,10 @@ const UserProfile: React.FC = () => {
                   <HStack spacing={6} mb={4} flexWrap="wrap">
                     <HStack>
                       <Icon as={FiStar} color="yellow.400" />
-                      <Text>{user.rating?.toFixed(1) || '4.8'} <Text as="span" color="gray.500">({user.total_reviews || 98} reviews)</Text></Text>
+                      <Text>{displayRating.toFixed(1)} <Text as="span" color="gray.500">({displayTotalReviews} reviews)</Text></Text>
                     </HStack>
                     <HStack>
-                      <Text color="green.500">{user.positive_feedback || 98}%</Text>
+                      <Text color="green.500">{Math.round(displayPositivePercent)}%</Text>
                       <Text color="gray.500">Positive Feedback</Text>
                     </HStack>
                     <HStack>
@@ -513,7 +770,7 @@ const UserProfile: React.FC = () => {
                     </HStack>
                     <HStack>
                       <Icon as={FiClock} color="gray.500" />
-                      <Text color="gray.500">Avg. Response: {user.response_time_minutes || 30} min</Text>
+                      <Text color="gray.500">Avg. Response: {stats.avgResponse}</Text>
                     </HStack>
                   </HStack>
                   
@@ -546,12 +803,10 @@ const UserProfile: React.FC = () => {
                       <Text color="gray.600">Member Since</Text>
                       <Text fontWeight="medium">{new Date(user.created_at).toLocaleDateString()}</Text>
                     </HStack>
-                    {user.department && (
-                      <HStack justify="space-between">
-                        <Text color="gray.600">Department</Text>
-                        <Text fontWeight="medium">{user.department}</Text>
-                      </HStack>
-                    )}
+                    <HStack justify="space-between">
+                      <Text color="gray.600">Department</Text>
+                      <Text fontWeight="medium">{user.department || 'Unknown'}</Text>
+                    </HStack>
                     <HStack justify="space-between">
                       <Text color="gray.600">Items for Sale</Text>
                       <Text fontWeight="medium">{stats.active}</Text>
@@ -573,7 +828,7 @@ const UserProfile: React.FC = () => {
                 Products ({stats.active})
               </Tab>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Trade History
+                Trade History ({userTrades.length})
               </Tab>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
                 Reviews ({reviews.length})
@@ -693,64 +948,89 @@ const UserProfile: React.FC = () => {
                 <Box p={4} borderBottom="1px" borderColor="gray.100">
                   <Heading size="md" mb={2}>Trade History</Heading>
                   <Text color="gray.500" fontSize="sm">
-                    {successfulTrades.length} completed trades
+                    {userTrades.length} completed trades
                   </Text>
                 </Box>
                 
-                {successfulTrades.length === 0 ? (
+                {tradesLoading ? (
+                  <Center p={10}>
+                    <Spinner size="lg" color="brand.500" />
+                  </Center>
+                ) : tradesError ? (
+                  <Center p={10}>
+                    <Text color="red.500">Failed to load trade history</Text>
+                  </Center>
+                ) : userTrades.length === 0 ? (
                   <Center p={10}>
                     <Text color="gray.500">No trade history yet.</Text>
                   </Center>
                 ) : (
                   <Box>
-                    {successfulTrades.map((trade, index) => (
-                      <Box 
-                        key={trade.id} 
-                        p={4} 
-                        borderBottom={index < successfulTrades.length - 1 ? '1px' : 'none'} 
-                        borderColor="gray.100"
-                        _hover={{ bg: 'gray.50' }}
-                      >
-                        <HStack spacing={4} align="start">
-                          <Box 
-                            w="60px" 
-                            h="60px" 
-                            bg="gray.100" 
-                            borderRadius="md" 
-                            overflow="hidden"
-                            flexShrink={0}
-                          >
-                            <Image 
-                              src={trade.beforeImg || '/placeholder-item.jpg'} 
-                              alt={trade.title}
-                              w="100%"
-                              h="100%"
-                              objectFit="cover"
-                            />
-                          </Box>
-                          
-                          <Box flex="1">
-                            <HStack justify="space-between" mb={1}>
-                              <Text fontWeight="medium">{trade.title}</Text>
-                              <Text fontSize="sm" color="gray.500">{trade.date}</Text>
-                            </HStack>
+                    {userTrades.map((trade, index) => {
+                      const isBuyer = currentUser && trade.buyer_id === currentUser.id
+                      const counterpartName = isBuyer ? trade.seller_name : trade.buyer_name
+                      const completedDate = trade.completed_at 
+                        ? new Date(trade.completed_at).toLocaleDateString()
+                        : new Date(trade.created_at).toLocaleDateString()
+                      
+                      // Get first product image from trade items
+                      const firstItem = trade.items && trade.items.length > 0 ? trade.items[0] : null
+                      const productImage = firstItem?.product_image_url || '/placeholder-item.jpg'
+                      const productTitle = firstItem?.product_title || trade.product_title || 'Trade'
+                      
+                      return (
+                        <Box 
+                          key={trade.id} 
+                          p={4} 
+                          borderBottom={index < userTrades.length - 1 ? '1px' : 'none'} 
+                          borderColor="gray.100"
+                          _hover={{ bg: 'gray.50' }}
+                        >
+                          <HStack spacing={4} align="start">
+                            <Box 
+                              w="60px" 
+                              h="60px" 
+                              bg="gray.100" 
+                              borderRadius="md" 
+                              overflow="hidden"
+                              flexShrink={0}
+                            >
+                              <Image 
+                                src={productImage} 
+                                alt={productTitle}
+                                w="100%"
+                                h="100%"
+                                objectFit="cover"
+                                fallbackSrc="/placeholder-item.jpg"
+                              />
+                            </Box>
                             
-                            <Text fontSize="sm" color="gray.600" mb={2}>
-                              {trade.tradeDetails}
-                            </Text>
-                            
-                            <HStack spacing={2}>
-                              <Badge colorScheme="green" variant="subtle" fontSize="xs">
-                                Completed
-                              </Badge>
-                              <Text fontSize="xs" color="gray.500">
-                                with {trade.counterpart}
+                            <Box flex="1">
+                              <HStack justify="space-between" mb={1}>
+                                <Text fontWeight="medium">{productTitle}</Text>
+                                <Text fontSize="sm" color="gray.500">{completedDate}</Text>
+                              </HStack>
+                              
+                              <Text fontSize="sm" color="gray.600" mb={2}>
+                                {trade.items && trade.items.length > 1 
+                                  ? `Multi-way trade with ${trade.items.length} items`
+                                  : isBuyer ? 'Received item' : 'Sent item'
+                                }
                               </Text>
-                            </HStack>
-                          </Box>
-                        </HStack>
-                      </Box>
-                    ))}
+                              
+                              <HStack spacing={2}>
+                                <Badge colorScheme="green" variant="subtle" fontSize="xs">
+                                  Completed
+                                </Badge>
+                                <Text fontSize="xs" color="gray.500">
+                                  with {counterpartName || 'User'}
+                                </Text>
+                              </HStack>
+                            </Box>
+                          </HStack>
+                        </Box>
+                      )
+                    })}
                   </Box>
                 )}
               </TabPanel>
@@ -764,25 +1044,27 @@ const UserProfile: React.FC = () => {
                       <HStack spacing={1} mb={2}>
                         <Icon as={FiStar} color="yellow.400" boxSize={5} />
                         <Text fontSize="xl" fontWeight="bold">
-                          {user.rating?.toFixed(1) || '4.8'}
+                          {displayRating.toFixed(1)}
                           <Text as="span" fontSize="md" fontWeight="normal" color="gray.600" ml={1}>
-                            ({reviews.length} reviews)
+                            ({displayTotalReviews} reviews)
                           </Text>
                         </Text>
                       </HStack>
                       <Text color="green.600" fontSize="sm">
-                        {user.positive_feedback || 98}% positive feedback
+                        {Math.round(displayPositivePercent)}% positive feedback
                       </Text>
                     </Box>
                     
-                    <Button 
-                      colorScheme="brand" 
-                      size="sm" 
-                      onClick={onOpen}
-                      leftIcon={<Icon as={FiStar} />}
-                    >
-                      Leave a Review
-                    </Button>
+                    {!(currentUser && Number(id) === currentUser.id) && (
+                      <Button 
+                        colorScheme="brand" 
+                        size="sm" 
+                        onClick={handleOpenReviewModal}
+                        leftIcon={<Icon as={FiStar} />}
+                      >
+                        Leave a Review
+                      </Button>
+                    )}
                   </HStack>
                 </Box>
                 
@@ -790,15 +1072,17 @@ const UserProfile: React.FC = () => {
                   <Center p={10}>
                     <VStack>
                       <Text color="gray.500">No reviews yet.</Text>
-                      <Button 
-                        colorScheme="brand" 
-                        variant="outline" 
-                        size="sm" 
-                        mt={2}
-                        onClick={onOpen}
-                      >
-                        Be the first to review
-                      </Button>
+                      {!(currentUser && Number(id) === currentUser.id) && (
+                        <Button 
+                          colorScheme="brand" 
+                          variant="outline" 
+                          size="sm" 
+                          mt={2}
+                          onClick={handleOpenReviewModal}
+                        >
+                          Be the first to review
+                        </Button>
+                      )}
                     </VStack>
                   </Center>
                 ) : (
@@ -810,32 +1094,112 @@ const UserProfile: React.FC = () => {
                         borderBottom={index < reviews.length - 1 ? '1px' : 'none'} 
                         borderColor="gray.100"
                       >
-                        <HStack spacing={3} mb={2}>
+                        <HStack spacing={3} mb={2} align="start">
                           <Avatar 
                             size="sm" 
                             name={review.reviewer} 
                             src={review.avatar} 
                           />
-                          <Box>
-                            <Text fontWeight="medium">{review.reviewer}</Text>
-                            <HStack spacing={1}>
-                              {[...Array(5)].map((_, i) => (
-                                <Icon 
-                                  key={i} 
-                                  as={FiStar} 
-                                  color={i < review.rating ? 'yellow.400' : 'gray.300'} 
-                                  boxSize={4}
-                                />
-                              ))}
-                              <Text fontSize="sm" color="gray.500" ml={1}>
-                                {review.date}
-                              </Text>
+                          <Box flex="1">
+                            <HStack justify="space-between" mb={1}>
+                              <Box>
+                                <Text fontWeight="medium">{review.reviewer}</Text>
+                                <HStack spacing={1}>
+                                  {[...Array(5)].map((_, i) => (
+                                    <Icon 
+                                      key={i} 
+                                      as={FiStar} 
+                                      color={i < review.rating ? 'yellow.400' : 'gray.300'} 
+                                      boxSize={4}
+                                    />
+                                  ))}
+                                  <Text fontSize="sm" color="gray.500" ml={1}>
+                                    {review.date}
+                                  </Text>
+                                </HStack>
+                              </Box>
                             </HStack>
+                            <Text color="gray.700" mb={2}>
+                              {review.comment}
+                            </Text>
+
+                            {/* Show existing reply if any */}
+                            {review.reply && (
+                              <Box 
+                                mt={3} 
+                                pl={4} 
+                                borderLeft="2px" 
+                                borderColor="brand.200" 
+                                bg="gray.50" 
+                                p={3} 
+                                borderRadius="md"
+                              >
+                                <HStack spacing={2} mb={1}>
+                                  <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
+                                  <Text fontSize="sm" fontWeight="semibold" color="brand.600">
+                                    {review.reply_author || user?.name || 'Seller'} replied:
+                                  </Text>
+                                  {review.reply_date && (
+                                    <Text fontSize="xs" color="gray.500">
+                                      {review.reply_date}
+                                    </Text>
+                                  )}
+                                </HStack>
+                                <Text fontSize="sm" color="gray.700">
+                                  {review.reply}
+                                </Text>
+                              </Box>
+                            )}
+
+                            {/* Reply button and form - only show if it's your profile or you're logged in */}
+                            {currentUser && !review.reply && (
+                              <Box mt={2}>
+                                {replyingTo === review.id ? (
+                                  <VStack align="stretch" spacing={2}>
+                                    <Textarea
+                                      placeholder="Write your reply..."
+                                      value={replyText}
+                                      onChange={(e) => setReplyText(e.target.value)}
+                                      size="sm"
+                                      rows={3}
+                                    />
+                                    <HStack>
+                                      <Button
+                                        size="sm"
+                                        colorScheme="brand"
+                                        onClick={() => handleReplyToReview(review.id)}
+                                        isLoading={isSubmittingReply}
+                                        leftIcon={<Icon as={FiMessageSquare} />}
+                                      >
+                                        Post Reply
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          setReplyingTo(null)
+                                          setReplyText('')
+                                        }}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </HStack>
+                                  </VStack>
+                                ) : (
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    leftIcon={<Icon as={FiMessageSquare} />}
+                                    onClick={() => setReplyingTo(review.id)}
+                                    colorScheme="brand"
+                                  >
+                                    Reply
+                                  </Button>
+                                )}
+                              </Box>
+                            )}
                           </Box>
                         </HStack>
-                        <Text color="gray.700" pl={12}>
-                          {review.comment}
-                        </Text>
                       </Box>
                     ))}
                   </Box>
@@ -917,14 +1281,37 @@ const UserProfile: React.FC = () => {
                     </Box>
                   </FormControl>
 
-                  <FormControl>
-                    <FormLabel>Bio</FormLabel>
-                    <Textarea value={draftBio} onChange={(e) => setDraftBio(e.target.value)} rows={4} />
+                  <FormControl isRequired>
+                    <HStack justify="space-between" mb={2}>
+                      <FormLabel mb={0}>Bio</FormLabel>
+                      <Text fontSize="sm" color={draftBio.length < 30 ? 'red.500' : draftBio.length > 50 ? 'red.500' : 'green.500'}>
+                        {draftBio.length}/50 {draftBio.length >= 30 ? '✓' : '(min 30)'}
+                      </Text>
+                    </HStack>
+                    <Textarea 
+                      value={draftBio} 
+                      onChange={(e) => {
+                        if (e.target.value.length <= 50) {
+                          setDraftBio(e.target.value)
+                        }
+                      }} 
+                      rows={4}
+                      placeholder="Tell buyers about yourself (30-50 characters required)"
+                      maxLength={50}
+                      borderColor={draftBio.length < 30 ? 'red.300' : 'gray.300'}
+                    />
                   </FormControl>
 
                   <HStack justify="flex-end">
                     <Button onClick={closeEdit} variant="ghost">Cancel</Button>
-                    <Button colorScheme="brand" onClick={handleSaveProfile}>Save Changes</Button>
+                    <Button 
+                      colorScheme="brand" 
+                      onClick={handleSaveProfile}
+                      isDisabled={draftBio.length < 30}
+                      title={draftBio.length < 30 ? `Bio must be at least 30 characters (${30 - draftBio.length} more needed)` : ''}
+                    >
+                      Save Changes
+                    </Button>
                   </HStack>
                 </VStack>
               </ModalBody>
@@ -935,7 +1322,7 @@ const UserProfile: React.FC = () => {
           <Modal isOpen={isOpen} onClose={onClose} size="lg">
             <ModalOverlay />
             <ModalContent>
-              <ModalHeader>Leave a Review</ModalHeader>
+              <ModalHeader>Leave a Review for {user.name}</ModalHeader>
               <ModalCloseButton />
               <ModalBody pb={6}>
                 <VStack spacing={4} align="stretch">
@@ -946,32 +1333,60 @@ const UserProfile: React.FC = () => {
                         <IconButton
                           key={star}
                           aria-label={`${star} star`}
-                          icon={<FiStar />}
+                          icon={<Icon as={FiStar} />}
                           variant="ghost"
-                          color={star <= 5 ? 'yellow.400' : 'gray.300'}
-                          _hover={{ color: 'yellow.500' }}
+                          color={star <= reviewRating ? 'yellow.400' : 'gray.300'}
+                          _hover={{ color: 'yellow.500', transform: 'scale(1.1)' }}
+                          transition="all 0.2s"
                           size="lg"
-                          onClick={() => {}}
+                          onClick={() => setReviewRating(star)}
                         />
                       ))}
                     </HStack>
+                    {reviewRating > 0 && (
+                      <Text fontSize="sm" color="gray.600">
+                        {reviewRating === 1 && 'Poor'}
+                        {reviewRating === 2 && 'Fair'}
+                        {reviewRating === 3 && 'Good'}
+                        {reviewRating === 4 && 'Very Good'}
+                        {reviewRating === 5 && 'Excellent'}
+                      </Text>
+                    )}
                   </FormControl>
                   
                   <FormControl isRequired>
                     <FormLabel>Your Review</FormLabel>
                     <Textarea 
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
                       placeholder="Share details about your experience with this seller..." 
                       rows={5}
+                      maxLength={500}
                     />
+                    <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
+                      {reviewComment.length}/500 characters
+                    </Text>
                   </FormControl>
                   
-                  <Button 
-                    colorScheme="brand" 
-                    leftIcon={<Icon as={FiSend} />}
-                    alignSelf="flex-end"
-                  >
-                    Submit Review
-                  </Button>
+                  <HStack justify="flex-end" spacing={3}>
+                    <Button 
+                      variant="ghost"
+                      onClick={onClose}
+                      isDisabled={isSubmittingReview}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      colorScheme="brand" 
+                      leftIcon={<Icon as={FiSend} />}
+                      onClick={handleSubmitReview}
+                      isLoading={isSubmittingReview}
+                      loadingText="Submitting..."
+                      isDisabled={reviewRating === 0 || !reviewComment.trim()}
+                    >
+                      Submit Review
+                    </Button>
+                  </HStack>
                 </VStack>
               </ModalBody>
             </ModalContent>

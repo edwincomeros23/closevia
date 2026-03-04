@@ -81,6 +81,10 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const cfg = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined
     const status = error.response?.status
+    const url = cfg?.url || ''
+
+    // Detect review submissions so we don't hard-redirect on 401; the UI can prompt login
+    const isReviewEndpoint = typeof url === 'string' && /\/api\/users\/\d+\/reviews/i.test(url)
 
     if (DEBUG_API) {
       try {
@@ -108,11 +112,17 @@ api.interceptors.response.use(
       }
     }
 
-    // On 401, clear token and redirect to login
+    // On 401 after retry failed, let the AuthContext handle cleanup.
+    // Do NOT remove the token or hard-redirect here — it causes refresh-logout on mobile.
     if (status === 401) {
-      localStorage.removeItem('clovia_token')
-      // Avoid infinite redirect loops in debug
-      if (window.location.pathname !== '/login') {
+      if (isReviewEndpoint) {
+        return Promise.reject(error)
+      }
+
+      // Only redirect if there is no stored token (i.e. truly logged out)
+      // AuthContext will clear the token when it detects the 401
+      const hasToken = localStorage.getItem('clovia_token')
+      if (!hasToken && window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
     }

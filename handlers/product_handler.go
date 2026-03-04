@@ -391,6 +391,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		args = append(args, "%"+location+"%")
 	}
 
+	// Dedicated category filter: exact match on category OR keyword match in title/description
+	categoryFilter := c.Query("category", "")
+	if categoryFilter != "" {
+		whereClause += " AND (p.category = ? OR p.title LIKE ? OR p.description LIKE ?)"
+		catLike := "%" + categoryFilter + "%"
+		args = append(args, categoryFilter, catLike, catLike)
+	}
+
 	// Get total count
 	// NOTE: join users table here because WHERE can reference u.* fields
 	countQuery := "SELECT COUNT(*) FROM products p LEFT JOIN users u ON p.seller_id = u.id " + whereClause
@@ -412,8 +420,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
-		       p.suggested_value, p.category, p.created_at, p.updated_at,
-		       u.name as seller_name
+		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at,
+		       u.name as seller_name, u.profile_picture as seller_profile_picture,
+		       u.latitude as seller_latitude, u.longitude as seller_longitude
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
 		` + whereClause + `
@@ -435,17 +444,33 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
+	// Parse optional viewer coordinates for distance calculation (must be before row loop)
+	viewerLatStr := c.Query("viewer_lat", "")
+	viewerLonStr := c.Query("viewer_lng", "")
+	var viewerLat, viewerLon *float64
+	if viewerLatStr != "" && viewerLonStr != "" {
+		if lat, err := strconv.ParseFloat(viewerLatStr, 64); err == nil {
+			if lon, err := strconv.ParseFloat(viewerLonStr, 64); err == nil {
+				viewerLat = &lat
+				viewerLon = &lon
+			}
+		}
+	}
+
 	var products []models.Product
 	for rows.Next() {
 		var product models.Product
 		var slugNull sql.NullString
 		var priceNull sql.NullFloat64
+		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
+		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
-			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName)
+			&product.Condition, &product.SuggestedValue, &product.Category,
+			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt,
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -458,6 +483,31 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		} else {
 			product.Price = nil
 		}
+		if sellerProfile.Valid {
+			product.SellerProfilePicture = sellerProfile.String
+		}
+
+		// Use product coords or fallback to seller coords
+		var finalLat, finalLon *float64
+		if latNull.Valid {
+			l := latNull.Float64
+			product.Latitude = &l
+			finalLat = &l
+		} else if sLatNull.Valid {
+			l := sLatNull.Float64
+			product.Latitude = &l // fallback to seller coords
+			finalLat = &l
+		}
+
+		if lonNull.Valid {
+			l := lonNull.Float64
+			product.Longitude = &l
+			finalLon = &l
+		} else if sLonNull.Valid {
+			l := sLonNull.Float64
+			product.Longitude = &l // fallback to seller coords
+			finalLon = &l
+		}
 
 		// Parse image URLs from JSON
 		if imageURLsJSONStr != "" {
@@ -467,7 +517,39 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			}
 		}
 
+		// Compute distance if we have both viewer and product (or seller) coordinates
+		if viewerLat != nil && viewerLon != nil && finalLat != nil && finalLon != nil {
+			result := services.CalculateDistance(*viewerLat, *viewerLon, *finalLat, *finalLon)
+			product.Distance = fmt.Sprintf("%.1f KM", result.DistanceKm)
+		}
+
 		products = append(products, product)
+	}
+
+	// Background geocode products that have location text but no coordinates
+	for i := range products {
+		p := &products[i]
+		if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
+			// Geocode in background and save to DB for future requests
+			go func(productID int, loc string) {
+				coords, err := services.GetCoordinates(loc)
+				if err != nil {
+					return
+				}
+				_, _ = h.db.Exec(
+					"UPDATE products SET latitude = ?, longitude = ? WHERE id = ?",
+					coords.Latitude, coords.Longitude, productID,
+				)
+				fmt.Printf("📍 Geocoded product %d (%s) -> %.6f, %.6f\n", productID, loc, coords.Latitude, coords.Longitude)
+			}(p.ID, p.Location)
+		}
+
+		// Compute distance from viewer if both viewer and product have coordinates
+		if viewerLat != nil && viewerLon != nil && p.Latitude != nil && p.Longitude != nil {
+			result := services.CalculateDistance(*viewerLat, *viewerLon, *p.Latitude, *p.Longitude)
+			distStr := fmt.Sprintf("%.1f KM", result.DistanceKm)
+			p.Distance = distStr
+		}
 	}
 
 	totalPages := (total + limit - 1) / limit
@@ -591,9 +673,9 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		// It's a numeric ID
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+`condition`+`, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
-			       u.name as seller_name
+			       u.name as seller_name, u.profile_picture as seller_profile_picture
 			FROM products p
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.id = ?
@@ -601,14 +683,14 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName)
+			&product.SellerName, &product.SellerProfilePicture)
 	} else {
 		// It's a slug
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+`condition`+`, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
-			       u.name as seller_name
+			       u.name as seller_name, u.profile_picture as seller_profile_picture
 			FROM products p
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.slug = ?
@@ -616,7 +698,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName)
+			&product.SellerName, &product.SellerProfilePicture)
 	}
 
 	if err != nil {
@@ -883,6 +965,104 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	})
 }
 
+// GetAdminProducts returns a paginated list of products for admin usage.
+// Unlike the public feed, this can include all statuses.
+func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	// Optional status filter for admin (e.g., ?status=available)
+	status := c.Query("status", "")
+
+	whereClause := "WHERE 1=1"
+	var args []interface{}
+
+	if status != "" {
+		whereClause += " AND p.status = ?"
+		args = append(args, status)
+	}
+
+	// Total count
+	countQuery := "SELECT COUNT(*) FROM products p " + whereClause
+	var total int
+	if err := h.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get product count",
+		})
+	}
+
+	query := `
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `,
+		       p.suggested_value, p.category, p.created_at, p.updated_at,
+		       u.name as seller_name
+		FROM products p
+		LEFT JOIN users u ON p.seller_id = u.id
+		` + whereClause + `
+		ORDER BY p.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	args = append(args, limit, offset)
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to get products",
+		})
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		var slugNull sql.NullString
+		var priceNull sql.NullFloat64
+		var imageURLsJSONStr string
+		if err := rows.Scan(
+			&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&product.Condition, &product.SuggestedValue, &product.Category,
+			&product.CreatedAt, &product.UpdatedAt, &product.SellerName,
+		); err != nil {
+			continue
+		}
+		if slugNull.Valid {
+			product.Slug = slugNull.String
+		}
+		if priceNull.Valid {
+			p := priceNull.Float64
+			product.Price = &p
+		}
+		if imageURLsJSONStr != "" {
+			var imageURLs []string
+			if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
+				product.ImageURLs = models.StringArray(imageURLs)
+			}
+		}
+		products = append(products, product)
+	}
+
+	totalPages := (total + limit - 1) / limit
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: models.PaginatedResponse{
+			Data:       products,
+			Total:      total,
+			Page:       page,
+			Limit:      limit,
+			TotalPages: totalPages,
+		},
+	})
+}
+
 // DeleteProduct deletes a product (only by seller)
 func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -948,6 +1128,61 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 	})
 }
 
+// DeleteProductAdmin permanently deletes a product (admin only).
+// This bypasses seller ownership checks but still respects FK constraints (orders, trades, etc.).
+func (h *ProductHandler) DeleteProductAdmin(c *fiber.Ctx) error {
+	_, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil || productID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	// Ensure product exists
+	var exists int
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM products WHERE id = ?", productID).Scan(&exists); err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to check product existence",
+		})
+	}
+	if exists == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
+		})
+	}
+
+	result, err := h.db.Exec("DELETE FROM products WHERE id = ?", productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to delete product",
+		})
+	}
+
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Product deleted successfully",
+	})
+}
+
 // GetUserProducts gets all products for a specific user
 func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	userID, err := strconv.Atoi(c.Params("id"))
@@ -983,7 +1218,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	}
 	rows, err := h.db.Query(`
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
 		`+where+`
@@ -1004,10 +1239,11 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		var product models.Product
 		var slugNull sql.NullString
 		var priceNull sql.NullFloat64
+		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName)
+			&product.AllowBuying, &product.BarterOnly, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -1019,6 +1255,9 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 			product.Price = &p
 		} else {
 			product.Price = nil
+		}
+		if sellerProfile.Valid {
+			product.SellerProfilePicture = sellerProfile.String
 		}
 
 		// Parse image URLs from JSON

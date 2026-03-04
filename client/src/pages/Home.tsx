@@ -35,6 +35,7 @@ import {
   PopoverBody,
   Divider,
   Icon,
+  Avatar,
 } from '@chakra-ui/react'
 import {
   SearchIcon,
@@ -50,13 +51,12 @@ import {
   CloseIcon,
 } from '@chakra-ui/icons'
 import { FaUserCircle, FaHandshake, FaHome } from 'react-icons/fa'
-import { FaBagShopping, FaBook, FaClock, FaShirt, FaShop, FaGem, FaHouse, FaBox, FaStar } from 'react-icons/fa6'
 import { FiShoppingBag } from 'react-icons/fi'
-import { MdSchool, MdLocalOffer } from 'react-icons/md'
+import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
 import { SearchFilters } from '../types'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
@@ -114,53 +114,33 @@ const Home: React.FC = () => {
 
   const toast = useToast()
 
-  // Category pills state with enhanced metadata
-  const categories = [
-    { name: 'All', icon: MdLocalOffer, color: 'brand', lightColor: 'brand.50', accentColor: 'brand.600' },
-    { name: 'Bag', icon: FaBagShopping, color: 'orange', lightColor: 'orange.50', accentColor: 'orange.600' },
-    { name: 'School Supply', icon: MdSchool, color: 'cyan', lightColor: 'cyan.50', accentColor: 'cyan.600' },
-    { name: 'Book', icon: FaBook, color: 'purple', lightColor: 'purple.50', accentColor: 'purple.600' },
-    { name: 'Electronic', icon: FaClock, color: 'indigo', lightColor: 'indigo.50', accentColor: 'indigo.600' },
-    { name: 'Clothing', icon: FaShirt, color: 'pink', lightColor: 'pink.50', accentColor: 'pink.600' },
-    { name: 'Shoe', icon: FaShop, color: 'red', lightColor: 'red.50', accentColor: 'red.600' },
-    { name: 'Accessory', icon: FaGem, color: 'yellow', lightColor: 'yellow.50', accentColor: 'yellow.600' },
-    { name: 'Home & Living', icon: FaHouse, color: 'green', lightColor: 'green.50', accentColor: 'green.600' },
-    { name: 'Toy', icon: FaBox, color: 'teal', lightColor: 'teal.50', accentColor: 'teal.600' },
-    { name: 'Beauty', icon: FaStar, color: 'rose', lightColor: 'rose.50', accentColor: 'rose.600' },
-  ]
+  // Category pills - shared config
+  const categories = FILTER_CATEGORIES
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
 
-  const handleCategorySelect = (categoryName: string) => {
-    setSelectedCategory(categoryName)
-    if (categoryName === 'All') {
+  const handleCategorySelect = (categoryValue: string) => {
+    setSelectedCategory(categoryValue)
+    if (categoryValue === 'All') {
       setSearchTerm('')
-      setFilters(prev => ({ ...prev, keyword: '', page: 1 }))
+      setFilters(prev => ({ ...prev, keyword: '', category: '', page: 1 }))
       setHasSearched(true)
       return
     }
-    setSearchTerm(categoryName)
-    setFilters(prev => ({ ...prev, keyword: categoryName, page: 1 }))
+    setSearchTerm('')
+    setFilters(prev => ({ ...prev, keyword: '', category: categoryValue, page: 1 }))
     setHasSearched(true)
   }
 
-  // Load products immediately on component mount (only once)
+  // Load products on component mount or when navigating back to /home
   useEffect(() => {
-    // Check if we already have cached products
-    if (products.length > 0) {
-      console.log('Using cached products, skipping initial fetch')
-      return
-    }
-    // Fetch latest 10 available products on mount (default feed)
-    searchProducts({ status: 'available', limit: 10, page: 1 })
-    // empty deps — only once on mount
+    // Reset category and search state to defaults on mount
+    setSelectedCategory('All')
+    setSearchTerm('')
+    // Fetch the default "All" feed every time the Home page mounts
+    console.log('🔍 Fetching initial products with status: available, limit: 20')
+    searchProducts({ status: 'available', limit: 20, page: 1 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // DO NOT refetch when navigating back to home - use persistent cache instead
-  useEffect(() => {
-    // Navigation doesn't trigger refetch; cached data persists
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname])
 
   // Infinite scroll: IntersectionObserver for sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -188,7 +168,18 @@ const Home: React.FC = () => {
 
   // Update filters when debounced search term changes
   useEffect(() => {
-    if (debouncedSearchTerm.trim() === '') return
+    if (debouncedSearchTerm.trim() === '') {
+      // Search was cleared — reset to show all products
+      setFilters(prev => {
+        // Only trigger refetch if there was a keyword before
+        if (prev.keyword) {
+          return { ...prev, keyword: '', page: 1 }
+        }
+        return prev
+      })
+      setHasSearched(true)
+      return
+    }
     setFilters(prev => ({ ...prev, keyword: debouncedSearchTerm, page: 1 }))
     setHasSearched(true)
   }, [debouncedSearchTerm])
@@ -206,7 +197,8 @@ const Home: React.FC = () => {
   }, [filters, hasSearched])
 
   const handleSearch = () => {
-    setFilters(prev => ({ ...prev, keyword: searchTerm, page: 1 }))
+    setSelectedCategory('All')
+    setFilters(prev => ({ ...prev, keyword: searchTerm, category: '', page: 1 }))
     setHasSearched(true)
   }
 
@@ -343,8 +335,10 @@ const Home: React.FC = () => {
 
   const clearFilters = () => {
     setSearchTerm('')
+    setSelectedCategory('All')
     setFilters({
       keyword: '',
+      category: '',
       min_price: undefined,
       max_price: undefined,
       premium: undefined,
@@ -386,258 +380,245 @@ const Home: React.FC = () => {
   }
 
   // Product card with square image and fixed info area for uniform height
-  const renderProductCard = (product: any) => (
-    <Box
-      key={product.id}
-      bg="white"
-      rounded="lg"
-      shadow="sm"
-      borderWidth="1px"
-      borderColor="gray.100"
-      overflow="hidden"
-      transition="all 0.2s ease"
-      w="full"
-      maxW={{ base: "100%", md: "250px" }}
-      h="full"
-      display="flex"
-      flexDirection="column"
-      mx="auto"
-      _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
-      onClick={() => navigate(getProductUrl(product))}
-    >
-      {/* Square Product Image - Responsive Aspect Ratio */}
+  const renderProductCard = (product: any) => {
+    const sellerAvatar = product.seller_profile_picture
+      ? getImageUrl(product.seller_profile_picture)
+      : undefined
+    const sellerAvatarSrc = sellerAvatar
+
+    return (
       <Box
-        position="relative"
-        w="full"
-        maxW={{ base: "100%", md: "250px" }}
-        maxH={{ base: "100%", md: "250px" }}
-        aspectRatio={1}
+        key={product.id}
+        bg="white"
+        rounded="lg"
+        shadow="sm"
+        borderWidth="1px"
+        borderColor="gray.100"
         overflow="hidden"
+        transition="all 0.2s ease"
+        w="full"
+        maxW={{ base: '100%', md: '250px' }}
+        h="full"
+        display="flex"
+        flexDirection="column"
         mx="auto"
+        _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
+        onClick={() => navigate(getProductUrl(product))}
+        sx={{
+          '@media (max-width: 850px)': {
+            width: '100%',
+            minWidth: 0,
+            maxWidth: '100%',
+          },
+        }}
       >
-        <Image
-          src={getFirstImage(product.image_urls)}
-          alt={product.title}
-          position="absolute"
-          top={0}
-          left={0}
-          w="100%"
-          h="100%"
-          objectFit="cover"
-          loading="lazy"
-          fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
-        />
-
-        {/* Premium Badge */}
-        {product.premium && (
-          <Badge
+        {/* Image section */}
+        <Box position="relative" w="full" aspectRatio={1} overflow="hidden">
+          <Image
+            src={getFirstImage(product.image_urls)}
+            alt={product.title}
             position="absolute"
-            top={2}
-            right={2}
-            colorScheme="yellow"
-            variant="solid"
-            borderRadius="full"
-            px={2}
-          >
-            <StarIcon mr={0} />
+            top={0}
+            left={0}
+            w="100%"
+            h="100%"
+            objectFit="cover"
+            loading="lazy"
+            fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          />
 
-          </Badge>
-        )}
+          {/* Premium / type badge */}
+          {product.premium && (
+            <Badge
+              position="absolute"
+              top={2}
+              right={2}
+              colorScheme="yellow"
+              variant="solid"
+              borderRadius="full"
+              px={2}
+            >
+              <StarIcon mr={0} />
+            </Badge>
+          )}
 
-        {/* Trade/Buy Badge */}
-        <Badge
-          position="absolute"
-          top={2}
-          left={2}
-          colorScheme={product.allow_buying && product.price && !product.barter_only ? "blue" : "green"}
-          variant="solid"
-          borderRadius="full"
-          px={1.5}
-          py={0.5}
-          fontSize="2xs"
-        >
-          {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
-        </Badge>
+          {/* Status badge (e.g. sold) */}
+          {product.status === 'sold' && (
+            <Badge
+              position="absolute"
+              bottom={2}
+              right={2}
+              colorScheme="red"
+              variant="solid"
+              borderRadius="full"
+              px={2}
+            >
+              Sold
+            </Badge>
+          )}
 
-        {/* Status Badge */}
-        {product.status === 'sold' && (
+          {/* Location badge */}
           <Badge
             position="absolute"
             bottom={2}
-            right={2}
-            colorScheme="red"
+            left={2}
+            colorScheme="gray"
             variant="solid"
             borderRadius="full"
             px={2}
+            bg="blackAlpha.600"
+            color="white"
+            fontSize="xs"
           >
-            Sold
+            <Text as="span" mr={1}>📍</Text>
+            {product.distance || 'Nearby'}
           </Badge>
-        )}
+        </Box>
 
-        {/* Location Badge - New */}
-        <Badge
-          position="absolute"
-          bottom={2}
-          left={2}
-          colorScheme="gray"
-          variant="solid"
-          borderRadius="full"
-          px={2}
-          bg="blackAlpha.600"
-          color="white"
-          fontSize="xs"
+        {/* Info section */}
+        <Box
+          p={4}
+          display="flex"
+          flexDirection="column"
+          flex={1}
+          overflow="hidden"
+          sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
         >
-          <Text as="span" mr={1}>📍</Text>
-          {product.distance || '1.2km'}
-        </Badge>
-
-        {/* Condition Badge for Image Section */}
-        <Badge
-          position="absolute"
-          bottom={2}
-          right={2}
-          fontSize="3xs"
-          colorScheme="blue"
-          variant="subtle"
-          borderWidth="0"
-          display={{ base: 'inline-flex', md: 'none' }}
-          px={1.5}
-          py={0.5}
-          height="fit-content"
-        >
-          {product.condition || 'Used'}
-        </Badge>
-      </Box>
-
-      {/* Product Info (Flexible height) */}
-      <Box p={4} display="flex" flexDirection="column" flex={1} overflow="hidden">
-        <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-          <HStack spacing={2}>
-            <Box
-              as={RouterLink}
-              to={`/users/${product.seller_id}`}
-              w={7}
-              h={7}
-              rounded="full"
-              bg="brand.500"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              flexShrink={0}
-              cursor="pointer"
-              _hover={{ opacity: 0.8 }}
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            >
-              <Text fontSize="md" fontWeight="bold" color="white">
-                {(product.seller_name || 'U').charAt(0).toUpperCase()}
+          {/* Seller row (desktop) */}
+          <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
+            <HStack spacing={2}>
+              <Avatar
+                as={RouterLink}
+                to={`/users/${product.seller_id}`}
+                size="sm"
+                src={sellerAvatarSrc}
+                name={product.seller_name || 'U'}
+                bg="brand.500"
+                flexShrink={0}
+                cursor="pointer"
+                _hover={{ opacity: 0.8 }}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              />
+              <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
+                {product.seller_name || 'Unknown'}
               </Text>
-            </Box>
-            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
-              {product.seller_name || 'Unknown'}
-            </Text>
-          </HStack>
-          <Badge
-            fontSize={{ base: 'xs', md: '2xs' }}
-            colorScheme="blue"
-            flexShrink={0}
-            borderWidth="1px"
-          >
-            {product.condition || 'Used'}
-          </Badge>
-        </Flex>
-
-        <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
-          {product.title}
-        </Heading>
-
-        <Text
-          color="gray.600"
-          noOfLines={{ base: 1, md: 2 }}
-          mb={2}
-          fontSize="sm"
-          flexShrink={0}
-        >
-          {product.description
-            ? product.description
-              .split(' ')
-              .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-              .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
-            : 'No description available'
-          }
-        </Text>
-
-        {/* Wishlist Count Badge */}
-        {product.wishlist_count > 0 && (
-          <Flex mb={2} align="center" gap={1}>
-            <Badge
-              colorScheme="pink"
-              variant="subtle"
-              borderRadius="full"
-              px={2}
-              py={0.5}
-              fontSize="xs"
-            >
-              ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
+            </HStack>
+            <Badge fontSize={{ base: 'xs', md: '2xs' }} colorScheme="blue" flexShrink={0} borderWidth="1px">
+              {product.condition || 'Used'}
             </Badge>
           </Flex>
-        )}
 
-        {/* Action Buttons */}
-        <HStack spacing={2} mt="auto">
-          <Button
+          {/* Title */}
+          <Heading
             size="sm"
-            variant="outline"
-            colorScheme="brand"
-            flex={1}
-            onClick={(e) => {
-              e.stopPropagation()
-              handleTradeClick(product.id)
-            }}
-            isDisabled={product.status === 'sold'}
+            noOfLines={2}
+            mb={2}
+            color="gray.800"
+            flexShrink={0}
+            textAlign="left"
+            sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
           >
-            {product.status === 'sold' ? 'Sold' : 'Trade'}
-          </Button>
+            {product.title}
+          </Heading>
 
-          {product.allow_buying && product.price && !product.barter_only && (
+          {/* Description */}
+          <Text
+            color="gray.600"
+            noOfLines={{ base: 1, md: 2 }}
+            mb={2}
+            fontSize="sm"
+            flexShrink={0}
+            textAlign="left"
+            sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
+          >
+            {product.description
+              ? product.description
+                  .split(' ')
+                  .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+                  .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+              : 'No description available'}
+          </Text>
+
+          {/* Wishlist badge */}
+          {product.wishlist_count > 0 && (
+            <Flex mb={2} align="center" gap={1}>
+              <Badge
+                colorScheme="pink"
+                variant="subtle"
+                borderRadius="full"
+                px={2}
+                py={0.5}
+                fontSize="xs"
+              >
+                ❤️ {product.wishlist_count}{' '}
+                {product.wishlist_count === 1 ? 'person wants' : 'people want'}
+              </Badge>
+            </Flex>
+          )}
+
+          {/* Action buttons */}
+          <HStack spacing={2} mt="auto">
             <Button
               size="sm"
+              variant="outline"
               colorScheme="brand"
               flex={1}
               onClick={(e) => {
                 e.stopPropagation()
-                handleBuyClick(product.id)
+                handleTradeClick(product.id)
               }}
               isDisabled={product.status === 'sold'}
             >
-              {product.status === 'sold' ? 'Sold' : 'Buy'}
+              {product.status === 'sold' ? 'Sold' : 'Trade'}
             </Button>
-          )}
 
-          {/* New: View Offers Button */}
-          <Tooltip label={`View offers (${product.offer_count || 0})`} placement="top">
-            <IconButton
-              aria-label="View offers"
-              icon={<FaHandshake />}
-              size="sm"
-              variant="outline"
-              colorScheme="blue"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleViewOffers(product.id)
-              }}
-              isDisabled={product.status === 'sold'}
-            />
-          </Tooltip>
-        </HStack>
+            {product.allow_buying && product.price && !product.barter_only && (
+              <Button
+                size="sm"
+                colorScheme="brand"
+                flex={1}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleBuyClick(product.id)
+                }}
+                isDisabled={product.status === 'sold'}
+              >
+                {product.status === 'sold' ? 'Sold' : 'Buy'}
+              </Button>
+            )}
+
+            <Tooltip label={`View offers (${product.offer_count || 0})`} placement="top">
+              <IconButton
+                aria-label="View offers"
+                icon={<FaHandshake />}
+                size="sm"
+                variant="outline"
+                colorScheme="blue"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleViewOffers(product.id)
+                }}
+                isDisabled={product.status === 'sold'}
+              />
+            </Tooltip>
+          </HStack>
+        </Box>
       </Box>
-    </Box>
-  )
+    )
+  }
 
   // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
     const filteredProducts = products.filter(
-      (p) => p.status === 'available' && p.seller_id !== user?.id
+      (p) => p.status === 'available' // Show all available products, including your own
     )
+
+    console.log('📦 ProductGridWithAds - Total products from API:', products.length)
+    console.log('📦 ProductGridWithAds - Current user ID:', user?.id)
+    console.log('📦 ProductGridWithAds - Filtered products (available):', filteredProducts.length)
+    if (products.length > 0) {
+      console.log('📦 Sample product data:', products[0])
+    }
 
     // Use the ad injection hook
     const { shouldInsertAdAt, getAdForPosition, getAdIndexAt } = useStudentAdInjection(
@@ -680,10 +661,18 @@ const Home: React.FC = () => {
         }}
         gap={{ base: 2, md: 4, lg: 4, xl: 5 }}
         alignItems="start"
+        justifyContent="center"
+        mx="auto"
+        sx={{
+          '@media (max-width: 850px)': {
+            gridTemplateColumns: '1fr 1fr !important',
+            gap: '10px',
+          },
+        }}
       >
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
-            <Box key={`product-${item.data.id}`}>
+            <Box key={`product-${item.data.id}`} sx={{ '@media (max-width: 850px)': { minWidth: 0, maxWidth: 'none' } }}>
               {renderProductCard(item.data)}
             </Box>
           ) : (
@@ -1005,43 +994,55 @@ const Home: React.FC = () => {
               zIndex={idx === slideIndex ? 2 : 1}
               loading="eager"
               draggable={false}
-              onClick={() => { /* allow click-through if desired */ }}
+              pointerEvents="none"
             />
           ))}
 
           {/* Prev / Next controls (tablet+). Mobile users swipe instead. */}
           <IconButton
+            type="button"
             aria-label="Previous slide"
             icon={<ArrowLeftIcon />}
             position="absolute"
             left={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
-            zIndex={5}
+            zIndex={10}
             size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
             display={{ base: 'none', sm: 'flex' }}
-            onClick={(e) => { e.stopPropagation(); goPrev() }}
+            pointerEvents="auto"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              goPrev()
+            }}
           />
 
           <IconButton
+            type="button"
             aria-label="Next slide"
             icon={<ArrowRightIcon />}
             position="absolute"
             right={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
-            zIndex={5}
+            zIndex={10}
             size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
             display={{ base: 'none', sm: 'flex' }}
-            onClick={(e) => { e.stopPropagation(); goNext() }}
+            pointerEvents="auto"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              goNext()
+            }}
           />
 
           {/* Dots - responsive sizing */}
-          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={5}>
+          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={10} pointerEvents="auto">
             {sliderImages.map((_, i) => (
               <Box
                 key={i}
@@ -1058,8 +1059,8 @@ const Home: React.FC = () => {
         </Box>
       </Box>
       {/* Horizontal category pills - desktop: centered max-width */}
-      <Box 
-        px={{ base: 3, md: 6, lg: 8, xl: 10 }} 
+      <Box
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
         bg="linear-gradient(135deg, #FFFDF1 0%, #FFFCF0 100%)"
         borderBottomColor="gray.100"
       >
@@ -1087,15 +1088,15 @@ const Home: React.FC = () => {
             }}
           >
             {categories.map((category) => {
-              const isSelected = selectedCategory === category.name
+              const isSelected = selectedCategory === category.value
               const IconComponent = category.icon
 
               return (
                 <Box
-                  key={category.name}
+                  key={category.value}
                   flexShrink={0}
                   as="button"
-                  onClick={() => handleCategorySelect(category.name)}
+                  onClick={() => handleCategorySelect(category.value)}
                   cursor="pointer"
                   transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
                   _active={{
@@ -1109,7 +1110,7 @@ const Home: React.FC = () => {
                     px={{ base: 3, md: 5 }}
                     py={{ base: 2, md: 3 }}
                     rounded="full"
-                    bg={isSelected ? (category.name === 'All' ? 'brand.600' : category.color) : 'white'}
+                    bg={isSelected ? (category.value === 'All' ? 'brand.600' : category.color) : 'white'}
                     color={isSelected ? 'white' : 'gray.700'}
                     fontWeight={isSelected ? '600' : '500'}
                     fontSize={{ base: 'xs', md: 'sm' }}
@@ -1130,7 +1131,7 @@ const Home: React.FC = () => {
                       transform: 'translateY(-0.5px)',
                       boxShadow: '0 6px 12px rgba(0, 0, 0, 0.1)',
                       borderColor: category.accentColor,
-                      bg: isSelected ? (category.name === 'All' ? 'brand.600' : category.color) : category.lightColor,
+                      bg: isSelected ? (category.value === 'All' ? 'brand.600' : category.color) : category.lightColor,
                     }}
                     _focusVisible={{
                       outline: '2px solid',
@@ -1149,9 +1150,9 @@ const Home: React.FC = () => {
                     <Text
                       as="span"
                       transition="all 0.3s ease"
-                      display={{ base: category.name === 'All' ? 'inline' : 'none', md: 'inline' }}
+                      display={{ base: category.value === 'All' ? 'inline' : 'none', md: 'inline' }}
                     >
-                      {category.name}
+                      {category.label}
                     </Text>
                   </Box>
                 </Box>
@@ -1164,6 +1165,7 @@ const Home: React.FC = () => {
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
         py={8}
+        sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px' } }}
         maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
         mx={{ base: 'auto', lg: 0 }}
         w="full"
@@ -1200,17 +1202,18 @@ const Home: React.FC = () => {
           </Box>
         )}
 
-     {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
-     {!loading && products.length > 0 && (
-  <Box
-    w="full"
-    mx="auto"
-    px={{ base: 2, md: 4, lg: 0 }}
-    pb={{ base: 20, md: 0 }}
-    minH={{ base: '1200px', md: '1600px' }}
-    ml={-10}
-  >
-    <ProductGridWithAds products={products} user={user} />
+        {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
+        {!loading && products.length > 0 && (
+          <Box
+            w="full"
+            mx="auto"
+            px={{ base: 2, md: 4, lg: 0 }}
+            pb={{ base: 20, md: 0 }}
+            minH={{ base: '1200px', md: '1600px' }}
+            ml={-10}
+            sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
+          >
+            <ProductGridWithAds products={products} user={user} />
 
             {/* Sentinel for infinite scroll */}
             <Box ref={sentinelRef} h="1px" />
@@ -1378,18 +1381,3 @@ const Home: React.FC = () => {
 }
 
 export default Home
-
-{/*}
-import React from 'react';
-import { DotLottieReact } from '@lottiefiles/dotlottie-react';
-
-const App = () => {
-  return (
-    <DotLottieReact
-      src="path/to/animation.lottie"
-      loop
-      autoplay
-    />
-  );
-};
-*/}

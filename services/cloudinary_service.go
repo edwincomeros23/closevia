@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cloudinary/cloudinary-go/v2"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
@@ -144,8 +145,18 @@ func (s *CloudinaryService) uploadStream(reader io.ReadSeeker, originalName, fol
 		return "", err
 	}
 
-	ctx := context.Background()
+	// Use a 60-second timeout to prevent hanging uploads from holding the connection open
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// For profile pictures, use a unique identifier to avoid caching issues
 	publicID := strings.TrimSuffix(SanitizeFileName(originalName), filepath.Ext(originalName))
+	if folder == "profile-pictures" {
+		// Add timestamp to ensure unique ID for profile pictures (prevents browser caching of old image)
+		publicID = fmt.Sprintf("%s-%d", publicID, time.Now().UnixNano())
+	}
+	fmt.Printf("🖼️  [Cloudinary] Uploading with publicID: %s to folder: %s\n", publicID, folder)
+
 	params := uploader.UploadParams{
 		Folder:       buildFolderPath(s.conf.folderPrefix, folder),
 		PublicID:     publicID,

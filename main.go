@@ -2,6 +2,7 @@ package main
 
 // hallo :3
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -36,11 +37,15 @@ func main() {
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
+		BodyLimit:       50 * 1024 * 1024, // 50 MB — allows large image uploads from mobile
+		ReadBufferSize:  8192,             // 8 KB read buffer (handles large multipart headers)
+		WriteBufferSize: 8192,             // 8 KB write buffer
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {
 				code = e.Code
 			}
+			fmt.Printf("❌ Fiber error handler: %v (path: %s)\n", err, c.Path())
 			return c.Status(code).JSON(fiber.Map{
 				"success": false,
 				"error":   err.Error(),
@@ -185,6 +190,7 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
+	reviewHandler := handlers.NewReviewHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -205,6 +211,16 @@ func main() {
 	users.Delete("/saved-products/:id", middleware.AuthMiddleware(), userHandler.UnsaveProduct)
 	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
+
+	// Review routes (must be BEFORE dynamic ":id" route)
+	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview)
+	users.Get("/:id/reviews", reviewHandler.GetUserReviews) // Public - get all reviews for a user
+	users.Get("/:id/rating", reviewHandler.GetUserRating)   // Public - get user's average rating
+
+	// Review reply routes
+	api.Post("/reviews/:id/reply", middleware.AuthMiddleware(), reviewHandler.ReplyToReview)
+	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
+	users.Get("/:id/stats", reviewHandler.GetUserRating)          // Alias for stats endpoint
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
@@ -271,6 +287,12 @@ func main() {
 	admin.Get("/stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminStats)
 	admin.Get("/daily-stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetDailyStats)
 	admin.Get("/stats-by-date", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetStatsByDate)
+	// Admin user management
+	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
+	admin.Delete("/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.DeleteUser)
+	// Admin product management
+	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
+	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")

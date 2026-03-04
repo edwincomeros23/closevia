@@ -32,6 +32,8 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AdminRoute from './components/AdminRoute'
 import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
+import { NotificationProvider } from './contexts/NotificationContext'
+import ToastNotification from './components/ToastNotification'
 
 // Theme applier component - loads and applies saved theme preference
 const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -179,11 +181,14 @@ function App() {
         <AuthProvider>
           <ProductProvider>
             <MobileNavProvider>
-              <RealtimeProvider>
-                <Router>
-                  <AppContent />
-                </Router>
-              </RealtimeProvider>
+              <NotificationProvider>
+                <RealtimeProvider>
+                  <Router>
+                    <AppContent />
+                    <ToastNotification />
+                  </Router>
+                </RealtimeProvider>
+              </NotificationProvider>
             </MobileNavProvider>
           </ProductProvider>
         </AuthProvider>

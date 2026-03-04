@@ -83,6 +83,26 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		}
 	}
 
+	// Check if user already has a pending trade request for this product
+	// Layer 3 Backend Validation: Only check for pending status (not accepted/counter)
+	// to prevent duplicate offers on the same product
+	var existingTradeID int
+	err = h.db.QueryRow(`
+		SELECT id FROM trades 
+		WHERE buyer_id = ? AND target_product_id = ? AND status = 'pending'
+		LIMIT 1
+	`, userID, payload.TargetProductID).Scan(&existingTradeID)
+
+	// If no error (meaning a row was found), user already has a pending trade request
+	if err == nil {
+		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "You already have a pending offer on this product"})
+	}
+	// Any error other than sql.ErrNoRows is a real error
+	if err != sql.ErrNoRows {
+		log.Printf("Error checking existing trades: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check existing trades"})
+	}
+
 	// Use a transaction to ensure trade and items are created together
 	tx, err := h.db.Begin()
 	if err != nil {
@@ -657,11 +677,12 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		// Update meetup location and confirmation status
 		var updateColumn string
-		if userID == buyerID {
+		switch userID {
+		case buyerID:
 			updateColumn = "buyer_meetup_confirmed"
-		} else if userID == sellerID {
+		case sellerID:
 			updateColumn = "seller_meetup_confirmed"
-		} else {
+		default:
 			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 		}
 
