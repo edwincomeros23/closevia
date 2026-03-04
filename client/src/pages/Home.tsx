@@ -394,59 +394,26 @@ const Home: React.FC = () => {
         shadow="sm"
         borderWidth="1px"
         borderColor="gray.100"
-    <Box
-      key={product.id}
-      bg="white"
-      rounded="lg"
-      shadow="sm"
-      borderWidth="1px"
-      borderColor="gray.100"
-      overflow="hidden"
-      transition="all 0.2s ease"
-      w="full"
-      maxW={{ base: "100%", md: "250px" }}
-      h="full"
-      display="flex"
-      flexDirection="column"
-      mx="auto"
-      _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
-      onClick={() => navigate(getProductUrl(product))}
-      sx={{
-        '@media (max-width: 850px)': {
-          width: '100%',
-          minWidth: 0,
-          maxWidth: '100%',
-        },
-      }}
-    >
-      {/* Square Product Image - Fixed aspect ratio, object-fit: cover for uniform thumbnails */}
-      <Box
-        position="relative"
-        w="full"
-        maxW={{ base: "100%", md: "250px" }}
-        maxH={{ base: "100%", md: "250px" }}
-        aspectRatio={1}
         overflow="hidden"
         transition="all 0.2s ease"
         w="full"
-        maxW={{ base: "290px", md: "250px" }}
+        maxW={{ base: '100%', md: '250px' }}
         h="full"
         display="flex"
         flexDirection="column"
         mx="auto"
         _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
         onClick={() => navigate(getProductUrl(product))}
+        sx={{
+          '@media (max-width: 850px)': {
+            width: '100%',
+            minWidth: 0,
+            maxWidth: '100%',
+          },
+        }}
       >
-        {/* Square Product Image - Responsive Aspect Ratio */}
-        <Box
-          position="relative"
-          w="full"
-          maxW={{ base: "270px", md: "250px" }}
-          maxH={{ base: "280px", md: "250px" }}
-          aspectRatio={1}
-          overflow="hidden"
-          mx="auto"
-        >
+        {/* Image section */}
+        <Box position="relative" w="full" aspectRatio={1} overflow="hidden">
           <Image
             src={getFirstImage(product.image_urls)}
             alt={product.title}
@@ -460,7 +427,7 @@ const Home: React.FC = () => {
             fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
           />
 
-          {/* Premium Badge */}
+          {/* Premium / type badge */}
           {product.premium && (
             <Badge
               position="absolute"
@@ -472,60 +439,10 @@ const Home: React.FC = () => {
               px={2}
             >
               <StarIcon mr={0} />
-
             </Badge>
           )}
 
-          {/* Trade/Buy Badge */}
-        sx={{
-          '@media (max-width: 850px)': {
-            height: '180px',
-            width: '100%',
-            maxHeight: '180px',
-            minHeight: '180px',
-            overflow: 'hidden',
-          },
-        }}
-      >
-        <Image
-          src={getFirstImage(product.image_urls)}
-          alt={product.title}
-          position="absolute"
-          top={0}
-          left={0}
-          w="100%"
-          h="100%"
-          objectFit="cover"
-          loading="lazy"
-          fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
-          sx={{
-            '@media (max-width: 850px)': {
-              objectFit: 'cover',
-              width: '100%',
-              height: '100%',
-            },
-          }}
-        />
-
-        {/* Premium Badge */}
-        {product.premium && (
-          <Badge
-            position="absolute"
-            top={2}
-            left={2}
-            colorScheme={product.allow_buying && product.price && !product.barter_only ? "blue" : "green"}
-            variant="solid"
-            borderRadius="full"
-            px={1.5}
-            py={0.5}
-            fontSize="2xs"
-            px={2}
-            sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'top right' } }}
-          >
-            {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
-          </Badge>
-
-          {/* Status Badge */}
+          {/* Status badge (e.g. sold) */}
           {product.status === 'sold' && (
             <Badge
               position="absolute"
@@ -539,23 +456,8 @@ const Home: React.FC = () => {
               Sold
             </Badge>
           )}
-        {/* Trade/Buy Badge - Category */}
-        <Badge
-          position="absolute"
-          top={2}
-          left={2}
-          colorScheme={product.allow_buying && product.price && !product.barter_only ? "blue" : "green"}
-          variant="solid"
-          borderRadius="full"
-          px={1.5}
-          py={0.5}
-          fontSize="2xs"
-          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'top left' } }}
-        >
-          {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
-        </Badge>
 
-          {/* Location Badge - New */}
+          {/* Location badge */}
           <Badge
             position="absolute"
             bottom={2}
@@ -567,96 +469,22 @@ const Home: React.FC = () => {
             bg="blackAlpha.600"
             color="white"
             fontSize="xs"
-            sx={{ '@media (max-width: 480px)': { transform: 'scale(0.8)', transformOrigin: 'bottom right' } }}
           >
             <Text as="span" mr={1}>📍</Text>
             {product.distance || 'Nearby'}
           </Badge>
-
-          {/* Condition Badge for Image Section */}
-        {/* Location Badge - New */}
-        <Badge
-          position="absolute"
-          bottom={2}
-          left={2}
-          colorScheme="gray"
-          variant="solid"
-          borderRadius="full"
-          px={2}
-          bg="blackAlpha.600"
-          color="white"
-          fontSize="xs"
-          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'bottom left' } }}
-        >
-          <Text as="span" mr={1}>📍</Text>
-          {product.distance || '1.2km'}
-        </Badge>
-
-        {/* Condition Badge for Image Section */}
-        <Badge
-          position="absolute"
-          bottom={2}
-          right={2}
-          fontSize="3xs"
-          colorScheme="blue"
-          variant="subtle"
-          borderWidth="0"
-          display={{ base: 'inline-flex', md: 'none' }}
-          px={1.5}
-          py={0.5}
-          height="fit-content"
-          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'bottom right' } }}
-        >
-          {product.condition || 'Used'}
-        </Badge>
-      </Box>
-
-      {/* Product Info (Flexible height) */}
-      <Box
-        p={4}
-        display="flex"
-        flexDirection="column"
-        flex={1}
-        overflow="hidden"
-        sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
-      >
-        <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-          <HStack spacing={2}>
-            <Avatar
-              as={RouterLink}
-              to={`/users/${product.seller_id}`}
-              size="sm"
-              src={sellerAvatarSrc}
-              name={product.seller_name || 'U'}
-              bg="brand.500"
-              flexShrink={0}
-              cursor="pointer"
-              _hover={{ opacity: 0.8 }}
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            />
-            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
-              {product.seller_name || 'Unknown'}
-            </Text>
-          </HStack>
-          <Badge
-            position="absolute"
-            bottom={2}
-            right={2}
-            fontSize="3xs"
-            colorScheme="blue"
-            variant="subtle"
-            borderWidth="0"
-            display={{ base: 'inline-flex', md: 'none' }}
-            px={1.5}
-            py={0.5}
-            height="fit-content"
-          >
-            {product.condition || 'Used'}
-          </Badge>
         </Box>
 
-        {/* Product Info (Flexible height) */}
-        <Box p={4} display="flex" flexDirection="column" flex={1} overflow="hidden">
+        {/* Info section */}
+        <Box
+          p={4}
+          display="flex"
+          flexDirection="column"
+          flex={1}
+          overflow="hidden"
+          sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
+        >
+          {/* Seller row (desktop) */}
           <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
             <HStack spacing={2}>
               <Avatar
@@ -675,72 +503,43 @@ const Home: React.FC = () => {
                 {product.seller_name || 'Unknown'}
               </Text>
             </HStack>
-        </Flex>
-
-        <Heading
-          size="sm"
-          noOfLines={2}
-          mb={2}
-          color="gray.800"
-          flexShrink={0}
-          textAlign="left"
-          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
-        >
-          {product.title}
-        </Heading>
-
-        <Text
-          color="gray.600"
-          noOfLines={{ base: 1, md: 2 }}
-          mb={2}
-          fontSize="sm"
-          flexShrink={0}
-          textAlign="left"
-          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
-        >
-          {product.description
-            ? product.description
-              .split(' ')
-              .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-              .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
-            : 'No description available'
-          }
-        </Text>
-
-        {/* Wishlist Count Badge */}
-        {product.wishlist_count > 0 && (
-          <Flex mb={2} align="center" gap={1}>
-            <Badge
-              fontSize={{ base: 'xs', md: '2xs' }}
-              colorScheme="blue"
-              flexShrink={0}
-              borderWidth="1px"
-            >
+            <Badge fontSize={{ base: 'xs', md: '2xs' }} colorScheme="blue" flexShrink={0} borderWidth="1px">
               {product.condition || 'Used'}
             </Badge>
           </Flex>
 
-          <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
+          {/* Title */}
+          <Heading
+            size="sm"
+            noOfLines={2}
+            mb={2}
+            color="gray.800"
+            flexShrink={0}
+            textAlign="left"
+            sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
+          >
             {product.title}
           </Heading>
 
+          {/* Description */}
           <Text
             color="gray.600"
             noOfLines={{ base: 1, md: 2 }}
             mb={2}
             fontSize="sm"
             flexShrink={0}
+            textAlign="left"
+            sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
           >
             {product.description
               ? product.description
-                .split(' ')
-                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
-              : 'No description available'
-            }
+                  .split(' ')
+                  .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+                  .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+              : 'No description available'}
           </Text>
 
-          {/* Wishlist Count Badge */}
+          {/* Wishlist badge */}
           {product.wishlist_count > 0 && (
             <Flex mb={2} align="center" gap={1}>
               <Badge
@@ -751,12 +550,13 @@ const Home: React.FC = () => {
                 py={0.5}
                 fontSize="xs"
               >
-                ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
+                ❤️ {product.wishlist_count}{' '}
+                {product.wishlist_count === 1 ? 'person wants' : 'people want'}
               </Badge>
             </Flex>
           )}
 
-          {/* Action Buttons */}
+          {/* Action buttons */}
           <HStack spacing={2} mt="auto">
             <Button
               size="sm"
@@ -787,7 +587,6 @@ const Home: React.FC = () => {
               </Button>
             )}
 
-            {/* New: View Offers Button */}
             <Tooltip label={`View offers (${product.offer_count || 0})`} placement="top">
               <IconButton
                 aria-label="View offers"
@@ -1412,20 +1211,9 @@ const Home: React.FC = () => {
             pb={{ base: 20, md: 0 }}
             minH={{ base: '1200px', md: '1600px' }}
             ml={-10}
+            sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
           >
             <ProductGridWithAds products={products} user={user} />
-     {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
-     {!loading && products.length > 0 && (
-  <Box
-    w="full"
-    mx="auto"
-    px={{ base: 2, md: 4, lg: 0 }}
-    pb={{ base: 20, md: 0 }}
-    minH={{ base: '1200px', md: '1600px' }}
-    ml={-10}
-    sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
-  >
-    <ProductGridWithAds products={products} user={user} />
 
             {/* Sentinel for infinite scroll */}
             <Box ref={sentinelRef} h="1px" />
@@ -1593,18 +1381,3 @@ const Home: React.FC = () => {
 }
 
 export default Home
-
-{/*}
-import React from 'react';
-import { DotLottieReact } from '@lottiefiles/dotlottie-react';
-
-const App = () => {
-  return (
-    <DotLottieReact
-      src="path/to/animation.lottie"
-      loop
-      autoplay
-    />
-  );
-};
-*/}
