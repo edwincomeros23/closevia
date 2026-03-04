@@ -413,6 +413,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 
 // UploadProfilePicture handles uploading a single profile image and returns its URL
 func (h *UserHandler) UploadProfilePicture(c *fiber.Ctx) error {
+	// Extra safety net: catch any panic in this handler to avoid connection resets
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("🔴 [UploadProfilePicture] PANIC recovered: %v\n", r)
+		}
+	}()
+
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})

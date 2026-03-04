@@ -20,12 +20,8 @@ export const useDashboardProducts = (userId: number | undefined) => {
     queryFn: async (): Promise<Product[]> => {
       if (!userId) throw new Error('User ID required')
       try {
-        // Use same method as UserProfile - direct API call with auth headers
-        const response = await api.get(`/api/products/user/${userId}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        })
+        // Use same method as UserProfile - direct API call (auth header set by interceptor)
+        const response = await api.get(`/api/products/user/${userId}`)
         console.log('Products API Response:', response.data)
         
         // response.data = { success: true, data: { data: [...], total, page, totalPages } }

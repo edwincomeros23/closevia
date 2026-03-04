@@ -55,7 +55,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const [currentFilters, setCurrentFilters] = useState<SearchFilters | null>(null)
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const locationRequested = useRef(false)
-  
+
   // Cache management refs
   const cacheRef = useRef<{ filters: string; products: Product[]; timestamp: number } | null>(null)
   const pendingRequestRef = useRef<Promise<void> | null>(null)
@@ -120,21 +120,22 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2)
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2)
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
     return R * c
   }
 
-  // Format distance for display
+  // Format distance for display - show in KM or meters for close distance
   const formatDistance = (distanceKm: number): string => {
     if (distanceKm < 1) {
-      return `${Math.round(distanceKm * 1000)}m nearby`
+      const meters = Math.round(distanceKm * 1000)
+      return meters < 100 ? `${meters} m` : `${(distanceKm).toFixed(1)} KM`
     } else if (distanceKm < 10) {
-      return `${distanceKm.toFixed(1)}km nearby`
+      return `${distanceKm.toFixed(1)} KM`
     } else {
-      return `${Math.round(distanceKm)}km away`
+      return `${Math.round(distanceKm)} KM`
     }
   }
 
@@ -182,7 +183,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     try {
       console.log('Searching products with filters:', filters)
       const filterKey = JSON.stringify(filters)
-      
+
       // Return cached data if available and identical filters
       if (cacheRef.current && cacheRef.current.filters === filterKey) {
         console.log('Using cached products for filters:', filters)
@@ -190,21 +191,22 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         setHasMore(true)
         return
       }
-      
+
       // Return pending request if same request is already in flight
       if (pendingRequestRef.current) {
         console.log('Request already pending, returning existing promise')
         return pendingRequestRef.current
       }
-      
+
       // Create the fetch promise
       const fetchPromise = (async () => {
         setLoading(true)
         setError(null)
         setCurrentFilters(filters)
-        
+
         const params = new URLSearchParams()
         if (filters.keyword) params.append('keyword', filters.keyword)
+        if (filters.category) params.append('category', filters.category)
         if (filters.min_price) params.append('min_price', filters.min_price.toString())
         if (filters.max_price) params.append('max_price', filters.max_price.toString())
         if (filters.premium !== undefined) params.append('premium', filters.premium.toString())
@@ -213,15 +215,20 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
         if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
         if (filters.location) params.append('location', filters.location)
+        // Pass viewer coordinates for server-side distance calculation
+        if (userLocation) {
+          params.append('viewer_lat', userLocation.lat.toString())
+          params.append('viewer_lng', userLocation.lng.toString())
+        }
         params.append('page', (filters.page || 1).toString())
         params.append('limit', (filters.limit || 10).toString())
 
         const response = await api.get(`/api/products?${params.toString()}`, {
           headers: getAuthHeaders(),
         })
-        
+
         console.log('API Response:', response.data)
-        
+
         // Handle different response structures safely
         if (response.data && response.data.data) {
           const data = response.data.data as PaginatedResponse<Product>
@@ -255,7 +262,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
           setHasMore(false)
         }
       })()
-      
+
       pendingRequestRef.current = fetchPromise
       try {
         await fetchPromise
@@ -264,7 +271,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       }
     } catch (error: any) {
       console.error('Error fetching products:', error)
-      
+
       // Handle different types of errors
       let errorMessage = 'Failed to fetch products'
       if (error.response?.data?.error) {
@@ -274,7 +281,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       } else if (error.code === 'NETWORK_ERROR') {
         errorMessage = 'Network error. Please check your connection.'
       }
-      
+
       setError(errorMessage)
       safeSetProducts([]) // Ensure products is always an array
       setHasMore(false)
@@ -293,6 +300,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       const params = new URLSearchParams()
       const filters = currentFilters
       if (filters.keyword) params.append('keyword', filters.keyword)
+      if (filters.category) params.append('category', filters.category)
       if (filters.min_price) params.append('min_price', filters.min_price.toString())
       if (filters.max_price) params.append('max_price', filters.max_price.toString())
       if (filters.premium !== undefined) params.append('premium', filters.premium.toString())
@@ -301,6 +309,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
       if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
       if (filters.location) params.append('location', filters.location)
+      // Pass viewer coordinates for server-side distance calculation
+      if (userLocation) {
+        params.append('viewer_lat', userLocation.lat.toString())
+        params.append('viewer_lng', userLocation.lng.toString())
+      }
       params.append('page', nextPage.toString())
       params.append('limit', (filters.limit || 10).toString())
 
@@ -343,11 +356,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     try {
       setError(null)
       console.log(`🔍 Fetching product: ${idOrSlug}`)
-      
+
       const response = await api.get(`/api/products/${idOrSlug}`, {
         headers: getAuthHeaders(),
       })
-      
+
       console.log(`✓ Product ${idOrSlug} fetched successfully`)
       // Handle different response structures
       if (response.data && response.data.data) {
@@ -355,11 +368,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       } else if (response.data) {
         return response.data
       }
-      
+
       return null
     } catch (error: any) {
       console.error(`❌ Error fetching product ${idOrSlug}:`, error)
-      
+
       // Provide specific error messages
       if (error.response?.status === 404) {
         const message = `Product not found. It may have been deleted or doesn't exist.`
@@ -373,7 +386,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       } else {
         setError(error.response?.data?.error || `Failed to fetch product: ${error.message}`)
       }
-      
+
       return null
     }
   }
@@ -381,9 +394,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
   const createProduct = async (product: ProductCreate | FormData): Promise<Product> => {
     try {
       setError(null)
-      
+
       let formData: FormData
-      
+
       if (product instanceof FormData) {
         // If FormData is already provided, use it directly
         formData = product
@@ -407,7 +420,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if ((product as any).category) {
           formData.append('category', (product as any).category as string)
         }
-        
+
         // Add images if they exist
         if (product.image_urls && product.image_urls.length > 0) {
           // Convert base64 data URLs to files
@@ -423,7 +436,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
           }
         }
       }
-      
+
       const response = await api.post('/api/products', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',

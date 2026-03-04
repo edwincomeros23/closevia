@@ -2,6 +2,7 @@ package main
 
 // hallo :3
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -36,11 +37,15 @@ func main() {
 
 	// Create Fiber app
 	app := fiber.New(fiber.Config{
+		BodyLimit:       50 * 1024 * 1024, // 50 MB — allows large image uploads from mobile
+		ReadBufferSize:  8192,             // 8 KB read buffer (handles large multipart headers)
+		WriteBufferSize: 8192,             // 8 KB write buffer
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {
 				code = e.Code
 			}
+			fmt.Printf("❌ Fiber error handler: %v (path: %s)\n", err, c.Path())
 			return c.Status(code).JSON(fiber.Map{
 				"success": false,
 				"error":   err.Error(),
