@@ -8,6 +8,7 @@ import Company from './pages/Company'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import VerifyEmail from './pages/VerifyEmail'
 import Dashboard from './pages/Dashboard'
 import ProductDetail from './pages/ProductDetail'
 import AddProduct from './pages/AddProduct'
@@ -37,7 +38,7 @@ import ToastNotification from './components/ToastNotification'
 // Theme applier component - loads and applies saved theme preference
 const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { colorMode, setColorMode } = useColorMode()
-  
+
   React.useEffect(() => {
     try {
       const saved = localStorage.getItem('user_settings')
@@ -54,7 +55,7 @@ const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       // ignore
     }
   }, [])
-  
+
   return <>{children}</>
 }
 // Lazy load delivery option components with error handling
@@ -67,14 +68,14 @@ const TaskStepper = lazy(() => import('./delivery_option/TaskStepper').catch(() 
 // Loading overlay component
 const LoadingOverlay: React.FC = () => {
   const { user, loading } = useAuth()
-  
+
   const handleSkip = () => {
     // Enable development mode and reload
     localStorage.setItem('skip_auth', 'true')
     localStorage.removeItem('clovia_token')
     window.location.reload()
   }
-  
+
   return (
     <Box
       position="fixed"
@@ -128,7 +129,7 @@ const AppContent: React.FC = () => {
       {/* Landing page route - no sidebar or app layout */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/company" element={<Company />} />
-      
+
       {/* Rider routes - no sidebar */}
       <Route path="/rider" element={<RiderOption />} />
       <Route path="/rider-queue" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderQueue /></Suspense>} />
@@ -137,7 +138,7 @@ const AppContent: React.FC = () => {
       <Route path="/remittance-ledger" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RemittanceLedger /></Suspense>} />
       <Route path="/task-stepper/:batchId" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><TaskStepper /></Suspense>} />
       <Route path="/delivery" element={<DeliveryOption />} />
-      
+
       {/* App routes with sidebar and layout */}
       <Route path="/*" element={
         <Box minH="100vh" bg="gray.50">
@@ -147,6 +148,7 @@ const AppContent: React.FC = () => {
               <Route path="/home" element={<Home />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/products/:id" element={<ProductDetail />} />
               <Route path="/products" element={<ProductsList />} />
               <Route path="/dashboard" element={<Dashboard key="dashboard-route" />} />

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from './AuthContext'
 import { useNotification } from './NotificationContext'
 import { api, API_BASE_URL } from '../services/api'
@@ -9,13 +10,14 @@ type RealtimeContextValue = {
   refreshCounts: () => void
 }
 
-const RealtimeContext = createContext<RealtimeContextValue>({ offerCount: 0, notificationCount: 0, refreshCounts: () => {} })
+const RealtimeContext = createContext<RealtimeContextValue>({ offerCount: 0, notificationCount: 0, refreshCounts: () => { } })
 
 const POLL_INTERVAL_MS = 25000
 
 export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth()
   const { showNotification } = useNotification()
+  const queryClient = useQueryClient()
   const esRef = useRef<EventSource | null>(null)
   const seenNotifIdsRef = useRef<Set<number>>(new Set())
   const hasInitializedSeenRef = useRef(false)
@@ -51,7 +53,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const ids = [...seenNotifIdsRef.current].slice(-25)
         seenNotifIdsRef.current = new Set(ids)
       }
-    } catch {}
+    } catch { }
   }, [showNotification])
 
   useEffect(() => {
@@ -80,11 +82,16 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const message = data.message ?? payload.message
         switch (payload.type) {
           case 'trade_created':
-            // Backend also sends 'notification' with the user-friendly message; avoid duplicate by only showing notification
+            // Invalidate offers/trades in React Query cache so Dashboard refreshes immediately
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+            queryClient.invalidateQueries({ queryKey: ['trades'] })
             refreshCounts()
             break
           case 'trade_updated':
             showNotification(message || `Trade ${data.status || 'updated'}`, 'info')
+            // Invalidate offers/trades cache so updated trade appears immediately
+            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+            queryClient.invalidateQueries({ queryKey: ['trades'] })
             refreshCounts()
             break
           case 'notification':
@@ -96,7 +103,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           default:
             break
         }
-      } catch {}
+      } catch { }
     }
 
     es.onerror = () => {

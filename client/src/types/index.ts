@@ -53,7 +53,7 @@ export interface Product {
   latitude?: number;
   longitude?: number;
   offer_count?: number;
-
+  want_count?: number;
 }
 
 export interface Order {

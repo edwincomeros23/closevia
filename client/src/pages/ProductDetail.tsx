@@ -97,6 +97,7 @@ const ProductDetail: React.FC = () => {
   const [isSubmittingReport, setIsSubmittingReport] = useState(false)
   const [hasPendingOfferOnProduct, setHasPendingOfferOnProduct] = useState(false)
   const [loadingPendingOffer, setLoadingPendingOffer] = useState(false)
+  const [isBuyModalOpen, setIsBuyModalOpen] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -176,7 +177,7 @@ const ProductDetail: React.FC = () => {
         console.log('🔍 User data extracted:', userData)
         console.log('🔍 Profile picture value:', userData?.profile_picture)
         console.log('🔍 Profile picture type:', typeof userData?.profile_picture)
-        
+
         if (userData) {
           // Normalize profile picture URL if it exists and is not empty
           const profilePic = userData.profile_picture
@@ -226,7 +227,7 @@ const ProductDetail: React.FC = () => {
         // Fetch user's outgoing pending trades
         const response = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
         const trades = Array.isArray(response.data?.data) ? response.data.data : []
-        
+
         // Check if any pending trade matches current product ID
         const hasPending = trades.some((trade: any) => trade.target_product_id === product.id)
         setHasPendingOfferOnProduct(hasPending)
@@ -371,7 +372,7 @@ const ProductDetail: React.FC = () => {
     }
   }
 
-  const handlePurchase = async () => {
+  const handlePurchase = () => {
     if (!user) {
       toast({
         title: 'Authentication required',
@@ -383,24 +384,25 @@ const ProductDetail: React.FC = () => {
       navigate('/login')
       return
     }
-
     if (!product) return
+    setIsBuyModalOpen(true)
+  }
 
+  const confirmPurchase = async () => {
+    if (!product) return
     try {
       setPurchasing(true)
-      const response = await api.post('/api/orders', {
+      await api.post('/api/orders', {
         product_id: product.id,
       })
-
+      setIsBuyModalOpen(false)
       toast({
         title: 'Order placed successfully!',
-        description: 'Your order has been created and is pending confirmation',
+        description: 'Your order has been created and is pending seller confirmation.',
         status: 'success',
         duration: 5000,
         isClosable: true,
       })
-
-      // Redirect to dashboard to view the order
       navigate('/dashboard')
     } catch (err: unknown) {
       let description = 'Failed to place order';
@@ -977,6 +979,21 @@ const ProductDetail: React.FC = () => {
                           {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
                         </Badge>
                       )}
+                      {(product.want_count && product.want_count > 0) ? (
+                        <Badge
+                          colorScheme="red"
+                          variant="subtle"
+                          borderRadius="8px"
+                          px={2}
+                          py={0.5}
+                          fontSize="xs"
+                        >
+                          <HStack spacing={1}>
+                            <FiHeart />
+                            <Text as="span">{product.want_count} {product.want_count === 1 ? 'user wants' : 'users want'} this</Text>
+                          </HStack>
+                        </Badge>
+                      ) : null}
                       <Text fontSize="xs" color="gray.500">
                         · Listed {new Date(product.created_at).toLocaleDateString()}
                       </Text>
@@ -1723,6 +1740,90 @@ const ProductDetail: React.FC = () => {
           </ModalContent>
         </Modal>
       </Container>
+
+      {/* Buy Confirmation Modal */}
+      <Modal isOpen={isBuyModalOpen} onClose={() => setIsBuyModalOpen(false)} isCentered size="sm">
+        <ModalOverlay backdropFilter="blur(4px)" />
+        <ModalContent borderRadius="16px" overflow="hidden">
+          <ModalHeader
+            bgGradient="linear(to-r, gray.800, gray.700)"
+            color="white"
+            py={4}
+            px={6}
+            fontSize="lg"
+          >
+            Confirm Purchase
+          </ModalHeader>
+          <ModalCloseButton color="white" />
+          <ModalBody py={6} px={6}>
+            <VStack spacing={4} align="stretch">
+              {product && (
+                <HStack spacing={4} p={3} bg="gray.50" borderRadius="12px" borderWidth="1px" borderColor="gray.100">
+                  {product.image_urls && product.image_urls.length > 0 && (
+                    <Image
+                      src={getImageUrl(product.image_urls[0])}
+                      alt={product.title}
+                      w="60px"
+                      h="60px"
+                      objectFit="cover"
+                      borderRadius="8px"
+                      fallbackSrc="https://via.placeholder.com/60x60?text=?"
+                    />
+                  )}
+                  <VStack align="start" spacing={0} flex={1} minW={0}>
+                    <Text fontWeight="600" fontSize="sm" noOfLines={2} color="gray.800">
+                      {product.title}
+                    </Text>
+                    <Text fontWeight="800" fontSize="xl" color="gray.800" mt={1}>
+                      ₱{product.price?.toFixed(2) ?? '0.00'}
+                    </Text>
+                  </VStack>
+                </HStack>
+              )}
+              <VStack align="stretch" spacing={1}>
+                <HStack justify="space-between">
+                  <Text fontSize="sm" color="gray.600">Seller</Text>
+                  <Text fontSize="sm" fontWeight="500">{product?.seller_name ?? 'Unknown'}</Text>
+                </HStack>
+                <HStack justify="space-between">
+                  <Text fontSize="sm" color="gray.600">Status</Text>
+                  <Badge colorScheme="green" borderRadius="6px" px={2}>Available</Badge>
+                </HStack>
+              </VStack>
+              <Alert status="info" borderRadius="10px" fontSize="sm">
+                <AlertIcon />
+                The seller will confirm your order. You will be notified once it is accepted.
+              </Alert>
+            </VStack>
+          </ModalBody>
+          <Box px={6} py={4} borderTop="1px" borderColor="gray.100">
+            <HStack spacing={3}>
+              <Button
+                flex={1}
+                variant="outline"
+                borderRadius="10px"
+                onClick={() => setIsBuyModalOpen(false)}
+                isDisabled={purchasing}
+              >
+                Cancel
+              </Button>
+              <Button
+                flex={2}
+                bg="gray.800"
+                color="white"
+                borderRadius="10px"
+                _hover={{ bg: 'gray.700' }}
+                onClick={confirmPurchase}
+                isLoading={purchasing}
+                loadingText="Placing Order..."
+                leftIcon={<FiBookmark />}
+              >
+                Confirm ₱{product?.price?.toFixed(2) ?? '0.00'}
+              </Button>
+            </HStack>
+          </Box>
+        </ModalContent>
+      </Modal>
 
       <FloatingTab />
     </Box>

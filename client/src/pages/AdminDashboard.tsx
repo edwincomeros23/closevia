@@ -97,7 +97,7 @@ import { User, Product, PaginatedResponse, APIResponse } from '../types';
 // ─── PDF / DOCX imports ───────────────────────────────────────────────────────
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, AlignmentType, WidthType, BorderStyle } from 'docx';
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TableLayoutType, TextRun, HeadingLevel, AlignmentType, WidthType, ShadingType } from 'docx';
 import { saveAs } from 'file-saver';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -189,15 +189,24 @@ function exportToPDF(stats: AdminStats) {
   doc.setFont('helvetica', 'bold');
   doc.text('Core Metrics', 14, 42);
 
+  // usable width = page width minus margins (14 left + 14 right)
+  const usableW = pageW - 28;
+  const col0W = usableW * 0.58; // 58% for label column
+  const col1W = usableW * 0.42; // 42% for value column
+
   autoTable(doc, {
     startY: 46,
     head: [['Metric', 'Value']],
     body: buildReportRows(stats),
     theme: 'striped',
+    tableWidth: usableW,
     headStyles: { fillColor: [49, 130, 206], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-    bodyStyles: { fontSize: 10 },
+    bodyStyles: { fontSize: 10, overflow: 'linebreak' },
     alternateRowStyles: { fillColor: [235, 244, 255] },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 90 }, 1: { halign: 'right' } },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: col0W },
+      1: { halign: 'right', cellWidth: col1W },
+    },
     margin: { left: 14, right: 14 },
   });
 
@@ -214,10 +223,14 @@ function exportToPDF(stats: AdminStats) {
       head: [['Period', 'Revenue (PHP)']],
       body: stats.revenue_breakdown.map(r => [r.period, formatCurrency(r.amount)]),
       theme: 'striped',
+      tableWidth: usableW,
       headStyles: { fillColor: [56, 178, 172], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-      bodyStyles: { fontSize: 10 },
+      bodyStyles: { fontSize: 10, overflow: 'linebreak' },
       alternateRowStyles: { fillColor: [240, 255, 254] },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 90 }, 1: { halign: 'right' } },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: col0W },
+        1: { halign: 'right', cellWidth: col1W },
+      },
       margin: { left: 14, right: 14 },
     });
   }
@@ -240,8 +253,11 @@ async function exportToDOCX(stats: AdminStats) {
 
   const makeCell = (text: string, bold = false, shade?: string) =>
     new TableCell({
-      shading: shade ? { fill: shade, type: 'clear' as any } : undefined,
-      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      shading: shade
+        ? { type: ShadingType.CLEAR, color: 'auto', fill: shade }
+        : { type: ShadingType.CLEAR, color: 'auto', fill: 'FFFFFF' },
+      width: { size: 50, type: WidthType.PERCENTAGE },
+      margins: { top: 80, bottom: 80, left: 140, right: 140 },
       children: [
         new Paragraph({
           children: [new TextRun({ text, bold, size: 20 })],
@@ -314,13 +330,14 @@ async function exportToDOCX(stats: AdminStats) {
           }),
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.FIXED,
             rows: tableRows,
           }),
           ...(revenueRows.length > 0
             ? [
               new Paragraph({ text: '' }),
               new Paragraph({ text: 'Revenue Breakdown (Last 4 Weeks)', heading: HeadingLevel.HEADING_2 }),
-              new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: revenueRows }),
+              new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, layout: TableLayoutType.FIXED, rows: revenueRows }),
             ]
             : []),
           new Paragraph({ text: '' }),
@@ -522,6 +539,13 @@ const AdminDashboard: React.FC = () => {
   const [productsPage, setProductsPage] = useState(1);
   const [productsTotalPages, setProductsTotalPages] = useState(1);
 
+  // Reports state
+  const [reports, setReports] = useState<any[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsPage, setReportsPage] = useState(1);
+  const [reportsTotalPages, setReportsTotalPages] = useState(1);
+  const [reportsStatusFilter, setReportsStatusFilter] = useState('');
+
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'product'; id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -680,6 +704,55 @@ const AdminDashboard: React.FC = () => {
     }
   }, [stats, toast]);
 
+  // ── Fetch reports for admin ──
+  const fetchAdminReports = useCallback(
+    async (page = 1, status = '') => {
+      try {
+        setReportsLoading(true);
+        const params = new URLSearchParams({ page: String(page), limit: '10' });
+        if (status) params.append('status', status);
+        const response = await api.get(`/api/admin/reports?${params.toString()}`);
+        if (response.data.success && response.data.data) {
+          const data = response.data.data;
+          setReports(Array.isArray(data.data) ? data.data : []);
+          setReportsPage(data.page || page);
+          setReportsTotalPages(data.total_pages || 1);
+        } else {
+          setReports([]);
+        }
+      } catch (err: any) {
+        toast({
+          title: 'Failed to load reports',
+          description: err?.response?.data?.error || err.message || 'Unable to fetch reports',
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
+        setReports([]);
+      } finally {
+        setReportsLoading(false);
+      }
+    },
+    [toast],
+  );
+
+  // ── Update report status ──
+  const handleUpdateReportStatus = useCallback(async (reportId: number, newStatus: string) => {
+    try {
+      await api.put(`/api/admin/reports/${reportId}/status`, { status: newStatus });
+      toast({ title: 'Report updated', status: 'success', duration: 2000, isClosable: true });
+      fetchAdminReports(reportsPage, reportsStatusFilter);
+    } catch (err: any) {
+      toast({
+        title: 'Failed to update report',
+        description: err?.response?.data?.error || 'Update failed',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [reportsPage, reportsStatusFilter, fetchAdminReports, toast]);
+
   // ── Fetch users for admin list ──
   const fetchAdminUsers = useCallback(
     async (page = 1) => {
@@ -800,9 +873,10 @@ const AdminDashboard: React.FC = () => {
     fetchAdminStats();
     fetchAdminUsers(1);
     fetchAdminProducts(1);
+    fetchAdminReports(1);
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
-  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts]);
+  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports]);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -1475,6 +1549,128 @@ const AdminDashboard: React.FC = () => {
             </ModalBody>
           </ModalContent>
         </Modal>
+
+        {/* ── Reports Table Section ── */}
+        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack spacing={2}>
+                <Icon as={FiFileText} color="red.500" boxSize={5} />
+                <Heading size="md" color="red.600">User Reports</Heading>
+                {reports.length > 0 && (
+                  <Badge colorScheme="red" borderRadius="full" px={2}>{reports.length}</Badge>
+                )}
+              </HStack>
+              <HStack spacing={3}>
+                <select
+                  value={reportsStatusFilter}
+                  onChange={(e) => {
+                    setReportsStatusFilter(e.target.value);
+                    fetchAdminReports(1, e.target.value);
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '14px',
+                    background: 'white',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="dismissed">Dismissed</option>
+                </select>
+                <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchAdminReports(reportsPage, reportsStatusFilter)} isLoading={reportsLoading}>
+                  Refresh
+                </Button>
+              </HStack>
+            </Flex>
+          </CardHeader>
+          <CardBody overflowX="auto" px={0}>
+            {reportsLoading ? (
+              <Center py={8}><Spinner color="red.500" /></Center>
+            ) : reports.length === 0 ? (
+              <Center py={8}>
+                <VStack spacing={2}>
+                  <Icon as={FiShield} boxSize={10} color="gray.300" />
+                  <Text color="gray.500">No reports found</Text>
+                </VStack>
+              </Center>
+            ) : (
+              <ChakraTable variant="simple" size="sm">
+                <Thead bg="red.50">
+                  <Tr>
+                    <Th>#</Th>
+                    <Th>Reporter ID</Th>
+                    <Th>Reported User ID</Th>
+                    <Th>Reason</Th>
+                    <Th>Status</Th>
+                    <Th>Date</Th>
+                    <Th>Action</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {reports.map((report: any) => (
+                    <Tr key={report.id} _hover={{ bg: 'gray.50' }}>
+                      <Td fontWeight="bold">#{report.id}</Td>
+                      <Td>{report.reporter_id}</Td>
+                      <Td>{report.reported_user_id}</Td>
+                      <Td>
+                        <Badge colorScheme={
+                          report.reason === 'scam' ? 'red' :
+                            report.reason === 'counterfeit' ? 'orange' :
+                              report.reason === 'spam' ? 'yellow' : 'gray'
+                        } borderRadius="full" px={2} textTransform="capitalize">
+                          {report.reason || 'Other'}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <Badge colorScheme={
+                          report.status === 'pending' ? 'orange' :
+                            report.status === 'reviewed' ? 'blue' :
+                              report.status === 'resolved' ? 'green' : 'gray'
+                        } borderRadius="full" px={2} textTransform="capitalize">
+                          {report.status}
+                        </Badge>
+                      </Td>
+                      <Td fontSize="xs" color="gray.500">
+                        {report.created_at ? new Date(report.created_at).toLocaleDateString() : '-'}
+                      </Td>
+                      <Td>
+                        {report.status === 'pending' && (
+                          <HStack spacing={1}>
+                            <Button size="xs" colorScheme="blue" onClick={() => handleUpdateReportStatus(report.id, 'reviewed')}>
+                              Review
+                            </Button>
+                            <Button size="xs" colorScheme="green" onClick={() => handleUpdateReportStatus(report.id, 'resolved')}>
+                              Resolve
+                            </Button>
+                            <Button size="xs" colorScheme="gray" onClick={() => handleUpdateReportStatus(report.id, 'dismissed')}>
+                              Dismiss
+                            </Button>
+                          </HStack>
+                        )}
+                        {report.status !== 'pending' && (
+                          <Text fontSize="xs" color="gray.400">No action needed</Text>
+                        )}
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </ChakraTable>
+            )}
+            {reportsTotalPages > 1 && (
+              <HStack spacing={3} justify="center" mt={4} pb={4}>
+                <Button size="sm" isDisabled={reportsPage <= 1} onClick={() => { setReportsPage(p => p - 1); fetchAdminReports(reportsPage - 1, reportsStatusFilter); }}>Prev</Button>
+                <Text fontSize="sm">Page {reportsPage} of {reportsTotalPages}</Text>
+                <Button size="sm" isDisabled={reportsPage >= reportsTotalPages} onClick={() => { setReportsPage(p => p + 1); fetchAdminReports(reportsPage + 1, reportsStatusFilter); }}>Next</Button>
+              </HStack>
+            )}
+          </CardBody>
+        </Card>
 
         {/* ── Delete Confirmation Dialog ── */}
         <AlertDialog

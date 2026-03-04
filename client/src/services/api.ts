@@ -52,7 +52,7 @@ api.interceptors.request.use(
         console.log('Data:', config.data)
         // eslint-disable-next-line no-console
         console.groupEnd()
-      } catch {}
+      } catch { }
     }
 
     return config
@@ -74,7 +74,7 @@ api.interceptors.response.use(
         console.log('Data:', response.data)
         // eslint-disable-next-line no-console
         console.groupEnd()
-      } catch {}
+      } catch { }
     }
     return response
   },
@@ -98,7 +98,7 @@ api.interceptors.response.use(
         console.log('Headers on request:', cfg?.headers)
         // eslint-disable-next-line no-console
         console.groupEnd()
-      } catch {}
+      } catch { }
     }
 
     // Simple one-time retry on 401 if token exists but header was missing/not set
@@ -130,3 +130,10 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+export const tradeService = {
+  getTradeLoops: async () => {
+    const response = await api.get('/api/trades/loops')
+    return response.data
+  }
+}
