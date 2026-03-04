@@ -48,6 +48,7 @@ import {
   Fade,
   Tooltip,
   useColorModeValue,
+  Checkbox,
 } from '@chakra-ui/react'
 import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon, SearchIcon, ViewIcon, StarIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -57,7 +58,7 @@ import { Product, Order, Trade, TradeAction } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
 import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
-import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown } from 'react-icons/fi'
+import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import OfferDetailsModal from '../components/OfferDetailsModal'
@@ -80,7 +81,7 @@ import {
 
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth()
-  const { deleteProduct } = useProducts()
+  const { deleteProduct, updateProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
 
@@ -124,6 +125,8 @@ const Dashboard: React.FC = () => {
   const [productFilter, setProductFilter] = useState<'all' | 'available' | 'sold' | 'traded' | 'locked'>('all')
   const [productSearch, setProductSearch] = useState('')
   const [productSort, setProductSort] = useState<'newest' | 'oldest'>('newest')
+  const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('grid')
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set())
 
   // Unified search - searches across all content
   const [unifiedSearch, setUnifiedSearch] = useState('')
@@ -916,6 +919,98 @@ const Dashboard: React.FC = () => {
     })
   }
 
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedProductIds)
+    if (ids.length === 0) return
+    showPopup({
+      type: 'warning',
+      title: 'Delete Selected Products',
+      message: `Are you sure you want to delete ${ids.length} product(s)? This cannot be undone.`,
+      confirmText: 'Delete All',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          setDeleting(true)
+          for (const id of ids) {
+            await deleteProduct(id)
+          }
+          invalidateProducts()
+          invalidateOffers()
+          setSelectedProductIds(new Set())
+          setPopupOpen(false)
+          toast({ title: 'Deleted', description: `${ids.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
+        } catch (e: any) {
+          toast({ title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
+        } finally {
+          setDeleting(false)
+        }
+      },
+      onCancel: () => setPopupOpen(false),
+      icon: WarningIcon,
+      confirmColorScheme: 'red'
+    })
+  }
+
+  const handleBatchLock = async () => {
+    const ids = Array.from(selectedProductIds)
+    if (ids.length === 0) return
+    const productsToLock = filteredProducts.filter(p => ids.includes(p.id) && p.status === 'available')
+    const productsToUnlock = filteredProducts.filter(p => ids.includes(p.id) && p.status === 'locked')
+    if (productsToLock.length === 0 && productsToUnlock.length === 0) {
+      toast({ title: 'No action', description: 'Selected items are not available or locked', status: 'info', duration: 2000, isClosable: true })
+      return
+    }
+    try {
+      setDeleting(true)
+      for (const p of productsToLock) {
+        await updateProduct(p.id, { status: 'locked' })
+      }
+      for (const p of productsToUnlock) {
+        await updateProduct(p.id, { status: 'available' })
+      }
+      invalidateProducts()
+      setSelectedProductIds(new Set())
+      const locked = productsToLock.length
+      const unlocked = productsToUnlock.length
+      const msg = [locked && `${locked} locked`, unlocked && `${unlocked} unlocked`].filter(Boolean).join(', ')
+      toast({ title: 'Updated', description: msg, status: 'success', duration: 3000, isClosable: true })
+    } catch (e: any) {
+      toast({ title: 'Error', description: e?.message || 'Failed to update products', status: 'error', duration: 3000, isClosable: true })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const toggleProductSelection = (id: number) => {
+    setSelectedProductIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllProducts = () => {
+    const paginated = getPaginatedItems(
+      [...filteredProducts].sort((a, b) => {
+        const aDate = new Date(a.created_at).getTime()
+        const bDate = new Date(b.created_at).getTime()
+        return productSort === 'newest' ? bDate - aDate : aDate - bDate
+      }),
+      currentPage
+    )
+    const selectableIds = paginated.filter(p => p.status === 'available' || p.status === 'locked').map(p => p.id)
+    setSelectedProductIds(prev => {
+      const allSelected = selectableIds.length > 0 && selectableIds.every(id => prev.has(id))
+      if (allSelected) {
+        const next = new Set(prev)
+        selectableIds.forEach(id => next.delete(id))
+        return next
+      }
+      return new Set([...prev, ...selectableIds])
+    })
+  }
+
   const handleConfirmDelete = async () => {
     if (!productToDelete) return
 
@@ -1185,6 +1280,109 @@ const Dashboard: React.FC = () => {
           )}
         </Card>
       </ScaleFade>
+    )
+  })
+
+  // Product List Row - compact row layout for list view
+  const ProductListRow = React.memo(({
+    product,
+    showActions,
+    isSelected,
+    onToggleSelect,
+    onDelete,
+    offersCount,
+    viewsCount = 0,
+  }: {
+    product: Product
+    showActions: boolean
+    isSelected: boolean
+    onToggleSelect: () => void
+    onDelete: () => void
+    offersCount: number
+    viewsCount?: number
+  }) => {
+    const statusColor = product.status === 'available' ? 'green' : product.status === 'locked' ? 'orange' : product.status === 'sold' ? 'red' : 'blue'
+    return (
+      <Flex
+        align="center"
+        gap={{ base: 2, md: 4 }}
+        p={3}
+        borderBottom="1px"
+        borderColor={borderColor}
+        _hover={{ bg: 'gray.50' }}
+        minW={0}
+        flexWrap={{ base: 'nowrap', md: 'nowrap' }}
+      >
+        {showActions && (product.status === 'available' || product.status === 'locked') && (
+          <Checkbox
+            isChecked={isSelected}
+            onChange={onToggleSelect}
+            flexShrink={0}
+            aria-label={`Select ${product.title}`}
+          />
+        )}
+        <Box
+          w="60px"
+          h="60px"
+          flexShrink={0}
+          borderRadius="md"
+          overflow="hidden"
+          bg="gray.100"
+        >
+          <Image
+            src={getFirstImage(product.image_urls)}
+            alt={product.title}
+            w="full"
+            h="full"
+            objectFit="cover"
+            fallbackSrc="https://via.placeholder.com/60?text=No+Image"
+          />
+        </Box>
+        <VStack align="start" spacing={0} flex={1} minW={0}>
+          <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+            {product.title}
+          </Text>
+          <HStack spacing={2} flexWrap="wrap" mt={1}>
+            <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+              {product.status}
+            </Badge>
+            <HStack spacing={3} fontSize="xs" color="gray.500">
+              <HStack spacing={1}>
+                <Icon as={ViewIcon} boxSize={3} />
+                <Text>{viewsCount} views</Text>
+              </HStack>
+              <HStack spacing={1}>
+                <Icon as={FaHandshake} boxSize={3} />
+                <Text>{offersCount} offers</Text>
+              </HStack>
+            </HStack>
+          </HStack>
+        </VStack>
+        {showActions && (
+          <HStack spacing={1} flexShrink={0}>
+            <Button
+              as={RouterLink}
+              to={`/edit-product/${product.id}`}
+              leftIcon={<EditIcon />}
+              variant="outline"
+              colorScheme="brand"
+              size="sm"
+              fontSize={{ base: 'xs', md: 'sm' }}
+              px={{ base: 2, md: 3 }}
+            >
+              Edit
+            </Button>
+            <IconButton
+              aria-label="Delete"
+              icon={<DeleteIcon />}
+              variant="outline"
+              colorScheme="red"
+              size="sm"
+              onClick={onDelete}
+            />
+          </HStack>
+        )}
+      </Flex>
     )
   })
 
@@ -1661,7 +1859,9 @@ const Dashboard: React.FC = () => {
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container maxW="container.xl" py={8}>
         <VStack spacing={6} align="stretch">
-          <VStack spacing={4} align="stretch">
+          {/* Sticky header: search bar + view toggle stay visible when scrolling long product lists */}
+          <Box position="sticky" top={0} zIndex={20} bg="#FFFDF1" py={2} mt={-2} mb={-2}>
+            <VStack spacing={4} align="stretch">
             <Flex
               align="center"
               justify="space-between"
@@ -1876,6 +2076,16 @@ const Dashboard: React.FC = () => {
               <HStack spacing={1} flexShrink={0}>
                 {activeTab === 0 && (
                   <>
+                    <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                      <IconButton
+                        aria-label={productViewMode === 'grid' ? 'List view' : 'Grid view'}
+                        icon={<Icon as={productViewMode === 'grid' ? FiList : FiGrid} />}
+                        size="sm"
+                        variant={productViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                      />
+                    </Tooltip>
                     <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
                       <IconButton
                         aria-label="Filter products"
@@ -1900,6 +2110,29 @@ const Dashboard: React.FC = () => {
                           setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
                           setCurrentPage(1)
                         }}
+                      />
+                    </Tooltip>
+                    <Button
+                      as={RouterLink}
+                      to="/add-product"
+                      size="sm"
+                      colorScheme="brand"
+                      leftIcon={<AddIcon />}
+                      ml={2}
+                      display={{ base: 'none', sm: 'inline-flex' }}
+                    >
+                      Add Product
+                    </Button>
+                    <Tooltip label="Add Product" hasArrow>
+                      <IconButton
+                        as={RouterLink}
+                        to="/add-product"
+                        aria-label="Add Product"
+                        icon={<AddIcon />}
+                        size="sm"
+                        colorScheme="brand"
+                        ml={1}
+                        display={{ base: 'flex', sm: 'none' }}
                       />
                     </Tooltip>
                   </>
@@ -1997,6 +2230,7 @@ const Dashboard: React.FC = () => {
               </HStack>
             </Flex>
           </VStack>
+          </Box>
 
           {/* Tabs with Sticky Navigation */}
           <Box bg="white" rounded="lg" shadow="sm" position="relative">
@@ -2143,13 +2377,57 @@ const Dashboard: React.FC = () => {
                       </HStack>
                     </HStack>
 
-                    {/* Products Grid - Apply Sort */}
+                    {/* Batch Actions Bar - List View only */}
+                    {productViewMode === 'list' && selectedProductIds.size > 0 && (
+                      <Flex
+                        align="center"
+                        justify="space-between"
+                        p={3}
+                        bg="brand.50"
+                        borderRadius="md"
+                        border="1px"
+                        borderColor="brand.200"
+                        flexWrap="wrap"
+                        gap={2}
+                      >
+                        <Text fontSize="sm" fontWeight="medium">
+                          {selectedProductIds.size} selected
+                        </Text>
+                        <HStack spacing={2}>
+                          <Button size="sm" colorScheme="orange" variant="outline" onClick={handleBatchLock} isLoading={deleting}>
+                            Lock/Unlock
+                          </Button>
+                          <Button size="sm" colorScheme="red" variant="outline" onClick={handleBatchDelete} isLoading={deleting}>
+                            Delete
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setSelectedProductIds(new Set())}>
+                            Clear
+                          </Button>
+                        </HStack>
+                      </Flex>
+                    )}
+
+                    {/* Products Grid or List - Apply Sort */}
                     {productsLoading ? (
-                      <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
-                        {Array.from({ length: 8 }).map((_, i) => (
-                          <ProductCardSkeleton key={i} />
-                        ))}
-                      </SimpleGrid>
+                      productViewMode === 'grid' ? (
+                        <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                          {Array.from({ length: 8 }).map((_, i) => (
+                            <ProductCardSkeleton key={i} />
+                          ))}
+                        </SimpleGrid>
+                      ) : (
+                        <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <Flex key={i} p={3} borderBottom={i < 5 ? '1px' : 'none'} borderColor={borderColor} align="center" gap={4}>
+                              <Box w="60px" h="60px" bg="gray.200" borderRadius="md" />
+                              <VStack align="start" spacing={1} flex={1}>
+                                <Box h="16px" bg="gray.200" borderRadius="md" w="60%" />
+                                <Box h="12px" bg="gray.200" borderRadius="md" w="40%" />
+                              </VStack>
+                            </Flex>
+                          ))}
+                        </Box>
+                      )
                     ) : filteredProducts.length === 0 ? (
                       <Fade in={true}>
                         <Box
@@ -2184,11 +2462,83 @@ const Dashboard: React.FC = () => {
                           )}
                         </Box>
                       </Fade>
+                    ) : productViewMode === 'list' ? (
+                      <>
+                        <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                          {/* Select All header row - only in list view */}
+                          <Flex
+                            align="center"
+                            gap={{ base: 2, md: 4 }}
+                            p={3}
+                            borderBottom="1px"
+                            borderColor={borderColor}
+                            bg="gray.50"
+                          >
+                            <Checkbox
+                              isChecked={getPaginatedItems(
+                                [...filteredProducts].sort((a, b) => {
+                                  const aDate = new Date(a.created_at).getTime()
+                                  const bDate = new Date(b.created_at).getTime()
+                                  return productSort === 'newest' ? bDate - aDate : aDate - bDate
+                                }),
+                                currentPage
+                              ).filter(p => p.status === 'available' || p.status === 'locked').every(p => selectedProductIds.has(p.id))}
+                              isIndeterminate={
+                                getPaginatedItems(
+                                  [...filteredProducts].sort((a, b) => {
+                                    const aDate = new Date(a.created_at).getTime()
+                                    const bDate = new Date(b.created_at).getTime()
+                                    return productSort === 'newest' ? bDate - aDate : aDate - bDate
+                                  }),
+                                  currentPage
+                                ).filter(p => p.status === 'available' || p.status === 'locked').some(p => selectedProductIds.has(p.id)) &&
+                                !getPaginatedItems(
+                                  [...filteredProducts].sort((a, b) => {
+                                    const aDate = new Date(a.created_at).getTime()
+                                    const bDate = new Date(b.created_at).getTime()
+                                    return productSort === 'newest' ? bDate - aDate : aDate - bDate
+                                  }),
+                                  currentPage
+                                ).filter(p => p.status === 'available' || p.status === 'locked').every(p => selectedProductIds.has(p.id))
+                              }
+                              onChange={toggleSelectAllProducts}
+                              flexShrink={0}
+                            />
+                            <Text fontSize="sm" color="gray.600" fontWeight="medium">
+                              Select all on page
+                            </Text>
+                          </Flex>
+                          {getPaginatedItems(
+                            [...filteredProducts].sort((a, b) => {
+                              const aDate = new Date(a.created_at).getTime()
+                              const bDate = new Date(b.created_at).getTime()
+                              return productSort === 'newest' ? bDate - aDate : aDate - bDate
+                            }),
+                            currentPage
+                          ).map((product) => (
+                            <ProductListRow
+                              key={product.id}
+                              product={product}
+                              showActions={product.status !== 'traded' && product.status !== 'sold'}
+                              isSelected={selectedProductIds.has(product.id)}
+                              onToggleSelect={() => toggleProductSelection(product.id)}
+                              onDelete={() => handleDeleteProductClick(product)}
+                              offersCount={getProductOffersCount(product.id)}
+                            />
+                          ))}
+                        </Box>
+                        <PaginationControls
+                          currentPage={currentPage}
+                          totalPages={getTotalPages(filteredProducts)}
+                          onPageChange={setCurrentPage}
+                          itemsCount={filteredProducts.length}
+                        />
+                      </>
                     ) : (
                       <>
                         <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
                           {getPaginatedItems(
-                            filteredProducts.sort((a, b) => {
+                            [...filteredProducts].sort((a, b) => {
                               const aDate = new Date(a.created_at).getTime()
                               const bDate = new Date(b.created_at).getTime()
                               return productSort === 'newest' ? bDate - aDate : aDate - bDate

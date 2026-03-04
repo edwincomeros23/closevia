@@ -34,6 +34,7 @@ import {
   Tooltip,
   Grid,
   Avatar,
+  ButtonGroup,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -44,7 +45,11 @@ import {
   FiInstagram,
   FiMail,
   FiMessageCircle,
-  FiBookmark
+  FiBookmark,
+  FiCalendar,
+  FiTrendingUp,
+  FiTrendingDown,
+  FiFlag,
 } from 'react-icons/fi'
 import { FaHandshake } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
@@ -59,7 +64,7 @@ import ProximityBadge from '../components/ProximityBadge'
 import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
 import FloatingTab from '../components/FloatingTab'
 import axios from 'axios';
-import { ChevronUpIcon, ChevronDownIcon, CloseIcon, StarIcon } from '@chakra-ui/icons'
+import { CloseIcon } from '@chakra-ui/icons'
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -81,6 +86,7 @@ const ProductDetail: React.FC = () => {
   const [isWishlisted, setIsWishlisted] = useState<boolean>(false)
   const [votes, setVotes] = useState<{ under: number; over: number }>({ under: 0, over: 0 })
   const [userVote, setUserVote] = useState<string>('')
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
   const [offersForProduct, setOffersForProduct] = useState<any[]>([])
   const [loadingOffers, setLoadingOffers] = useState(false)
   const [offersModalOpen, setOffersModalOpen] = useState(false)
@@ -89,6 +95,8 @@ const ProductDetail: React.FC = () => {
   const [reportReason, setReportReason] = useState('')
   const [reportDescription, setReportDescription] = useState('')
   const [isSubmittingReport, setIsSubmittingReport] = useState(false)
+  const [hasPendingOfferOnProduct, setHasPendingOfferOnProduct] = useState(false)
+  const [loadingPendingOffer, setLoadingPendingOffer] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -203,6 +211,34 @@ const ProductDetail: React.FC = () => {
     if (product) {
       setWishlistCount(product.wishlist_count || 0);
     }
+  }, [product, user]);
+
+  // Check if user has a pending offer on this product
+  useEffect(() => {
+    if (!product || !user) {
+      setHasPendingOfferOnProduct(false)
+      return
+    }
+
+    const checkPendingOffer = async () => {
+      try {
+        setLoadingPendingOffer(true)
+        // Fetch user's outgoing pending trades
+        const response = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
+        const trades = Array.isArray(response.data?.data) ? response.data.data : []
+        
+        // Check if any pending trade matches current product ID
+        const hasPending = trades.some((trade: any) => trade.target_product_id === product.id)
+        setHasPendingOfferOnProduct(hasPending)
+      } catch (error) {
+        console.error('Failed to check pending offers:', error)
+        setHasPendingOfferOnProduct(false)
+      } finally {
+        setLoadingPendingOffer(false)
+      }
+    }
+
+    checkPendingOffer()
   }, [product, user]);
 
   const checkWishlistStatus = async () => {
@@ -763,6 +799,23 @@ const ProductDetail: React.FC = () => {
   const isUnavailable = product.status === 'traded' || product.status === 'sold' || product.status === 'locked'
   const canTradeOrPurchase = !isOwner && product.status === 'available'
 
+  const totalVotes = votes.under + votes.over
+  let priceFeedbackLabel = 'No community price feedback yet'
+  let priceFeedbackColor: string = 'gray.500'
+
+  if (totalVotes > 0) {
+    if (votes.under > votes.over) {
+      priceFeedbackLabel = 'Community thinks this is underpriced'
+      priceFeedbackColor = 'green.500'
+    } else if (votes.over > votes.under) {
+      priceFeedbackLabel = 'Community thinks this is overpriced'
+      priceFeedbackColor = 'orange.500'
+    } else {
+      priceFeedbackLabel = 'Community thinks this price is fair'
+      priceFeedbackColor = 'blue.500'
+    }
+  }
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%" pb={{ base: 20, lg: 6 }}>
       <Container maxW="container.xl" py={8}>
@@ -838,123 +891,193 @@ const ProductDetail: React.FC = () => {
               </VStack>
 
               {/* Product Details */}
-              <Box p={8} display="flex" flexDirection="column">
+              <Box
+                p={{ base: 4, md: 6, lg: 8 }}
+                display="flex"
+                flexDirection="column"
+                bg="white"
+                borderRadius="8px"
+                borderWidth="1px"
+                borderColor="gray.100"
+              >
                 <VStack spacing={6} align="stretch" flex={1}>
                   {/* Counterfeit Warning */}
                   {product && <CounterfeitWarning productId={product.id} />}
 
                   <Box>
-
-                    {/* Title on the left, Price on the right (noticeable) */}
-                    <Flex justify="space-between" align="center">
-                      <HStack>
-                        <Heading size="lg" color="brand.500" mb={0}>
-                          {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
-                        </Heading>
-                        <Text color="gray.500">({wishlistCount} wants)</Text>
-                      </HStack>
+                    {/* Title and price on same horizontal axis */}
+                    <Flex justify="space-between" align="center" gap={3} flexWrap="wrap">
+                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0}>
+                        {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
+                      </Heading>
                       <Text
-                        fontSize={{ base: 'xl', md: '3xl' }}
+                        fontSize={{ base: 'xl', md: '2xl' }}
                         fontWeight="extrabold"
-                        color="brand.500"
-                        textAlign="right"
+                        color="gray.800"
+                        whiteSpace="nowrap"
                       >
                         ₱{product.price ? product.price.toFixed(2) : '0.00'}
                       </Text>
                     </Flex>
-
-                    {/* Price voting */}
-                    <Box mt={3} mb={2}>
-                      <Text fontSize="sm" color="gray.600" mb={2}>Price feedback</Text>
-                      <HStack spacing={3}>
-                        <Button
-                          size="md"
-                          colorScheme={userVote === 'under' ? 'green' : 'gray'}
-                          variant={userVote === 'under' ? 'solid' : 'outline'}
-                          leftIcon={<ChevronDownIcon />}
-                          onClick={() => handleVote('under')}
-                          isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
+                    {/* Wants, Popularity, and metadata (condition/category) on same line */}
+                    <HStack spacing={2} mt={2} flexWrap="wrap" align="center">
+                      <Badge
+                        colorScheme="pink"
+                        variant="subtle"
+                        borderRadius="8px"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                      >
+                        <HStack spacing={1}>
+                          <FiHeart />
+                          <Text as="span">{wishlistCount} wants</Text>
+                        </HStack>
+                      </Badge>
+                      <Badge
+                        colorScheme="gray"
+                        variant="subtle"
+                        borderRadius="8px"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                      >
+                        <HStack spacing={1}>
+                          <FiTrendingUp />
+                          <Text as="span">Popularity</Text>
+                        </HStack>
+                      </Badge>
+                      {product.condition && (
+                        <Badge colorScheme="blue" variant="subtle" borderRadius="8px" px={2} py={0.5} fontSize="xs">
+                          {product.condition}
+                        </Badge>
+                      )}
+                      {product.category && (
+                        <Badge colorScheme="purple" variant="subtle" borderRadius="8px" px={2} py={0.5} fontSize="xs">
+                          {product.category}
+                        </Badge>
+                      )}
+                      {product.bidding_type && product.bidding_type !== 'none' && (
+                        <Badge
+                          colorScheme="gray"
+                          variant="subtle"
+                          borderRadius="8px"
+                          px={2}
+                          py={0.5}
+                          fontSize="xs"
                         >
-                          Underpriced ({votes.under})
-                        </Button>
-                        <Button
-                          size="md"
-                          colorScheme={userVote === 'over' ? 'orange' : 'gray'}
-                          variant={userVote === 'over' ? 'solid' : 'outline'}
-                          leftIcon={<ChevronUpIcon />}
-                          onClick={() => handleVote('over')}
-                          isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
-                        >
-                          Overpriced ({votes.over})
-                        </Button>
-                      </HStack>
-                    </Box>
+                          {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
+                        </Badge>
+                      )}
+                      <Text fontSize="xs" color="gray.500">
+                        · Listed {new Date(product.created_at).toLocaleDateString()}
+                      </Text>
+                    </HStack>
+                    {product.suggested_value != null && product.suggested_value > 0 && (
+                      <Text mt={1} fontSize="xs" color="gray.500">
+                        Trade points: {product.suggested_value}
+                      </Text>
+                    )}
 
-                    {/* Save/Watch and Share buttons */}
-                    <Flex justify="space-between" align="center" gap={6} mt={4}>
-                      <HStack spacing={2}>
+                    {/* Action row: Love, Share, Flag on left; Price Feedback on far right (under price) */}
+                    <Flex justify="space-between" align="center" mt={4} flexWrap="wrap" gap={2}>
+                      <HStack spacing={1}>
                         <Tooltip label={isSaved ? "Remove from saved" : "Save to watchlist"}>
                           <IconButton
-                            aria-label={isSaved ? "Remove from saved" : "Save to watchlist"}
+                            aria-label={isSaved ? "Remove from saved" : "Save"}
                             icon={<FiHeart />}
-                            colorScheme={isSaved ? "red" : "gray"}
+                            size="sm"
                             variant={isSaved ? "solid" : "outline"}
-                            color={isSaved ? "white" : "red.500"}
+                            colorScheme="red"
+                            borderRadius="8px"
                             isLoading={isSaving}
                             onClick={handleSaveToggle}
-                            size="md"
+                            _hover={isSaved ? { bg: 'red.600' } : { bg: 'red.50', borderColor: 'red.400' }}
+                            _active={{ transform: 'scale(0.98)' }}
+                            transition="all 0.15s"
                           />
                         </Tooltip>
-                        <Text fontSize="sm" color="gray.600">
-                          {isSaved ? "Saved" : "Save"}
-                        </Text>
-                      </HStack>
-
-                      <HStack spacing={2}>
-                        <Tooltip label="Share this product">
+                        <Tooltip label="Share">
                           <IconButton
-                            aria-label="Share product"
+                            aria-label="Share"
                             icon={<FiShare2 />}
-                            colorScheme="blue"
+                            size="sm"
                             variant="outline"
+                            colorScheme="blue"
+                            borderRadius="8px"
+                            borderColor="blue.300"
+                            color="blue.500"
                             onClick={handleShare}
-                            size="md"
+                            _hover={{ bg: 'blue.50', borderColor: 'blue.400' }}
+                            _active={{ transform: 'scale(0.98)' }}
+                            transition="all 0.15s"
                           />
                         </Tooltip>
-                        <Text fontSize="sm" color="gray.600">
-                          Share
-                        </Text>
+                        {!isOwner && (
+                          <Tooltip label="Report">
+                            <IconButton
+                              aria-label="Report"
+                              icon={<FiFlag />}
+                              size="sm"
+                              variant="solid"
+                              colorScheme="red"
+                              borderRadius="8px"
+                              bg="red.600"
+                              color="white"
+                              onClick={() => setIsReportOpen(true)}
+                              _hover={{ bg: 'red.700' }}
+                              _active={{ transform: 'scale(0.98)' }}
+                              transition="all 0.15s"
+                            />
+                          </Tooltip>
+                        )}
                       </HStack>
-
-                      <VStack spacing={0} align="flex-end" ml="auto">
-                        <Text fontSize="sm" color="gray.500">
-                          Listed: {new Date(product.created_at).toLocaleDateString()}
-                        </Text>
-                        <Text fontSize="sm" color="gray.500">
-                          Last updated: {new Date(product.updated_at).toLocaleDateString()}
+                      <VStack align="flex-end" spacing={0}>
+                        <ButtonGroup
+                          isAttached
+                          size="sm"
+                          borderRadius="8px"
+                          overflow="hidden"
+                          borderWidth="1px"
+                          borderColor="gray.200"
+                          bg="white"
+                        >
+                          <Tooltip label={`Underpriced (${votes.under})`}>
+                            <IconButton
+                              aria-label="Underpriced"
+                              icon={<FiTrendingDown />}
+                              variant={userVote === 'under' ? 'solid' : 'ghost'}
+                              colorScheme={userVote === 'under' ? 'green' : 'gray'}
+                              borderRadius={0}
+                              borderRightWidth="1px"
+                              borderRightColor="gray.200"
+                              onClick={() => handleVote('under')}
+                              isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
+                              _hover={{ bg: userVote === 'under' ? undefined : 'gray.50' }}
+                              _active={{ transform: 'scale(0.98)' }}
+                              transition="all 0.15s"
+                            />
+                          </Tooltip>
+                          <Tooltip label={`Overpriced (${votes.over})`}>
+                            <IconButton
+                              aria-label="Overpriced"
+                              icon={<FiTrendingUp />}
+                              variant={userVote === 'over' ? 'solid' : 'ghost'}
+                              colorScheme={userVote === 'over' ? 'orange' : 'gray'}
+                              borderRadius={0}
+                              onClick={() => handleVote('over')}
+                              isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
+                              _hover={{ bg: userVote === 'over' ? undefined : 'gray.50' }}
+                              _active={{ transform: 'scale(0.98)' }}
+                              transition="all 0.15s"
+                            />
+                          </Tooltip>
+                        </ButtonGroup>
+                        <Text fontSize="xs" color={priceFeedbackColor} mt={1} fontWeight="medium">
+                          {priceFeedbackLabel}
                         </Text>
                       </VStack>
                     </Flex>
-
-                    {/* Premium + Status badges aligned together with gap 2 */}
-                    <HStack spacing={2} align="center">
-                      {product.condition && (
-                        <Badge colorScheme="blue">{product.condition}</Badge>
-                      )}
-                      {product.category && (
-                        <Badge colorScheme="purple">{product.category}</Badge>
-                      )}
-                      {product.bidding_type && product.bidding_type !== 'none' && (
-                        <Badge colorScheme={product.bidding_type === 'blind' ? 'orange' : 'green'}>
-                          {product.bidding_type === 'blind' ? '🤐 Blind Bidding' : '🏆 Open Bidding'}
-                        </Badge>
-                      )}
-                    </HStack>
-                    {product.suggested_value && product.suggested_value > 0 && (
-                      <Text mt={2} color="gray.600" fontSize="sm">
-                        Suggested Value: {product.suggested_value} points
-                      </Text>
-                    )}
 
                     {/* Consolidated seller + dates block for better UX (responsive) */}
                     <Flex
@@ -966,20 +1089,40 @@ const ProductDetail: React.FC = () => {
                     </Flex>
                   </Box>
 
-                  <Divider />
+                  <Divider borderColor="gray.200" />
 
-                  <Box>
-                    <Flex align="center" justify="space-between" mb={3}>
-                      <Heading size="md">
-                        Description
-                      </Heading>
-                      <Badge colorScheme="blue" fontSize="sm">
-                        {product.condition || 'Used'}
-                      </Badge>
-                    </Flex>
-                    <Text color="gray.700" lineHeight="tall">
+                  <Box
+                    p={4}
+                    borderRadius="8px"
+                    bg="gray.50"
+                    borderWidth="1px"
+                    borderColor="gray.100"
+                  >
+                    <Heading size="sm" mb={3} color="gray.800" fontWeight="600">
+                      Description
+                    </Heading>
+                    <Text
+                      color="gray.700"
+                      lineHeight="tall"
+                      fontSize="sm"
+                      whiteSpace="pre-line"
+                      noOfLines={isDescriptionExpanded ? undefined : 6}
+                    >
                       {product.description}
                     </Text>
+                    {product.description && product.description.length > 260 && (
+                      <Button
+                        mt={2}
+                        size="xs"
+                        variant="ghost"
+                        color="gray.600"
+                        fontWeight="500"
+                        _hover={{ bg: 'gray.100' }}
+                        onClick={() => setIsDescriptionExpanded(prev => !prev)}
+                      >
+                        {isDescriptionExpanded ? 'Show less' : 'Show more'}
+                      </Button>
+                    )}
                   </Box>
 
 
@@ -1000,88 +1143,106 @@ const ProductDetail: React.FC = () => {
                   </Box>
                 </VStack>
 
-                {/* Action Buttons - Fixed at Bottom */}
+                {/* Action Buttons: full-width primary + compact Offers icon square */}
                 <VStack spacing={4} mt={8} pt={6}>
                   {!isOwner && product.status === 'available' && (
-                    <>
+                    <VStack spacing={3} w="full">
                       {product.allow_buying && product.price && !product.barter_only ? (
-                        <HStack spacing={4} w="full">
+                        <HStack w="full" spacing={2} align="stretch">
                           <Button
-                            colorScheme="brand"
+                            flex={1}
                             size="lg"
-                            w="full"
+                            borderRadius="8px"
+                            bg="gray.800"
+                            color="white"
+                            _hover={{ bg: 'gray.700' }}
+                            _active={{ transform: 'scale(0.98)' }}
+                            transition="all 0.15s"
                             onClick={handlePurchase}
                             isLoading={purchasing}
                             loadingText="Processing..."
                           >
                             Buy Now - ₱{product.price.toFixed(2)}
                           </Button>
-                          <Tooltip label={`View current offers (${(product as any).offer_count || 0})`}>
-                            <Button
+                          <Tooltip label={`Offers (${(product as any).offer_count || 0})`}>
+                            <IconButton
+                              aria-label="View offers"
+                              icon={<FaHandshake />}
+                              w="48px"
+                              h="48px"
+                              minW="48px"
+                              borderRadius="8px"
                               variant="outline"
-                              colorScheme="blue"
-                              size="lg"
-                              leftIcon={<FaHandshake />}
+                              borderColor="gray.200"
+                              color="gray.700"
+                              bg="white"
                               onClick={handleViewOffers}
-                            >
-                              Offers
-                            </Button>
+                              _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                              _active={{ transform: 'scale(0.98)' }}
+                              transition="all 0.15s"
+                            />
                           </Tooltip>
                         </HStack>
                       ) : (
-                        <HStack spacing={4} w="full">
-                          <Button
-                            colorScheme="green"
-                            size="lg"
-                            w="full"
-                            onClick={openTrade}
-                          >
-                            Trade Offer
-                          </Button>
-                          <Tooltip label={`View current offers (${(product as any).offer_count || 0})`}>
+                        <HStack w="full" spacing={2} align="stretch">
+                          <Tooltip label={hasPendingOfferOnProduct ? "You already have a pending offer on this product" : "Propose a trade"}>
                             <Button
-                              variant="outline"
-                              colorScheme="blue"
+                              flex={1}
                               size="lg"
-                              leftIcon={<FaHandshake />}
-                              onClick={handleViewOffers}
+                              borderRadius="8px"
+                              colorScheme={hasPendingOfferOnProduct ? "gray" : "green"}
+                              _active={{ transform: 'scale(0.98)' }}
+                              transition="all 0.15s"
+                              onClick={openTrade}
+                              isDisabled={hasPendingOfferOnProduct}
+                              opacity={hasPendingOfferOnProduct ? 0.6 : 1}
                             >
-                              Offers
+                              {hasPendingOfferOnProduct ? "Pending Offer Sent" : "Trade Offer"}
                             </Button>
+                          </Tooltip>
+                          <Tooltip label={`Offers (${(product as any).offer_count || 0})`}>
+                            <IconButton
+                              aria-label="View offers"
+                              icon={<FaHandshake />}
+                              w="48px"
+                              h="48px"
+                              minW="48px"
+                              borderRadius="8px"
+                              variant="outline"
+                              borderColor="gray.200"
+                              color="gray.700"
+                              bg="white"
+                              onClick={handleViewOffers}
+                              _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                              _active={{ transform: 'scale(0.98)' }}
+                              transition="all 0.15s"
+                            />
                           </Tooltip>
                         </HStack>
                       )}
-                    </>
-                  )}
-
-                  {/* Report Button - allows users to report policy violations */}
-                  {!isOwner && product.status === 'available' && (
-                    <Button
-                      variant="outline"
-                      colorScheme="red"
-                      w="full"
-                      onClick={() => setIsReportOpen(true)}
-                    >
-                      Report this Trader
-                    </Button>
+                    </VStack>
                   )}
 
                   {isOwner && (
                     <HStack spacing={4} w="full">
                       <Button
                         variant="outline"
-                        colorScheme="brand"
+                        colorScheme="gray"
                         size="lg"
                         flex={1}
+                        borderRadius="8px"
+                        borderColor="gray.200"
                         onClick={() => navigate(`/edit-product/${product.id}`)}
                       >
                         Edit Product
                       </Button>
                       <Button
                         variant="outline"
-                        colorScheme="brand"
+                        colorScheme="gray"
                         size="lg"
                         flex={1}
+                        borderRadius="8px"
+                        borderColor="gray.200"
                         onClick={() => navigate('/dashboard')}
                       >
                         View Dashboard
