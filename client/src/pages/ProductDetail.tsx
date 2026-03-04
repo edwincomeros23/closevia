@@ -1310,11 +1310,16 @@ const ProductDetail: React.FC = () => {
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
                 <Avatar
+                  as={RouterLink}
+                  to={`/users/${product.seller_id}`}
                   size="lg"
                   src={sellerProfile?.profile_picture}
                   name={product.seller_name}
                   bg="red.500"
                   color="white"
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                  transition="all 0.2s"
                 />
                 <Box>
                   <Text
