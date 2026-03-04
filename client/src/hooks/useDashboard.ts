@@ -23,7 +23,7 @@ export const useDashboardProducts = (userId: number | undefined) => {
         // Use same method as UserProfile - direct API call (auth header set by interceptor)
         const response = await api.get(`/api/products/user/${userId}`)
         console.log('Products API Response:', response.data)
-        
+
         // response.data = { success: true, data: { data: [...], total, page, totalPages } }
         const paginatedResponse = response.data?.data
         if (paginatedResponse && Array.isArray(paginatedResponse.data)) {
@@ -47,8 +47,8 @@ export const useDashboardProducts = (userId: number | undefined) => {
       }
     },
     enabled: !!userId,
-    // Products data can be cached longer since it doesn't change frequently
-    staleTime: 1000 * 60 * 10, // 10 minutes
+    // Products data reduced to 1 minute to avoid stale dashboard
+    staleTime: 1000 * 60, // 1 minute
   })
 }
 
@@ -193,12 +193,12 @@ export const usePrefetchDashboard = (userId: number | undefined) => {
     // Prefetch all dashboard data in parallel
     await Promise.all([
       queryClient.prefetchQuery({
-        queryKey: DASHBOARD_QUERY_KEYS.products,
+        queryKey: [...DASHBOARD_QUERY_KEYS.products, userId],
         queryFn: async (): Promise<Product[]> => {
           const response = await api.get(`/api/products/user/${userId}`)
-          return response.data.data || []
+          return response.data?.data?.data || response.data?.data || []
         },
-        staleTime: 1000 * 60 * 10,
+        staleTime: 1000 * 60,
       }),
       queryClient.prefetchQuery({
         queryKey: DASHBOARD_QUERY_KEYS.orders,

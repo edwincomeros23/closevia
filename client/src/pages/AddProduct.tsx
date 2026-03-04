@@ -78,6 +78,7 @@ const AddProduct: React.FC = () => {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [imageConversionMessages, setImageConversionMessages] = useState<Array<{ file: string; message: string; type: 'info' | 'warning' | 'error' }>>([])
+  const [wantsValidationError, setWantsValidationError] = useState<string | null>(null)
   const { isOpen: isPremiumModalOpen, onOpen: onOpenPremiumModal, onClose: onClosePremiumModal } = useDisclosure()
   const { isOpen: isLocationModalOpen, onOpen: onOpenLocationModal, onClose: onCloseLocationModal } = useDisclosure()
 
@@ -85,6 +86,44 @@ const AddProduct: React.FC = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   // page background color (applies to entire viewport)
   const pageBg = '#FFFDF1'
+
+  // Validation function for inappropriate/illegal item names
+  const validateDesiredItems = (text: string): string | null => {
+    const trimmedText = text.trim().toLowerCase()
+    if (!trimmedText) return null
+
+    // List of prohibited keywords and patterns
+    const prohibitedPatterns = [
+      // Weapons and explosives
+      /\b(gun|rifle|pistol|shotgun|firearm|ammunition|ammo|bomb|explosive|explosive device|grenade|rocket|missile|landmine)\b/gi,
+      // Drugs and controlled substances
+      /\b(cocaine|heroin|meth|methamphetamine|fentanyl|lsd|ecstasy|mdma|cannabis|marijuana|weed|drug)\b/gi,
+      // Weapons (blades)
+      /\b(machete|sword|blade|knife|sharp weapon)\b/gi,
+      // Sexual content
+      /\b(porn|pornography|adult content|sex content|nude|nudes|sex toy)\b/gi,
+      // Animals (living creatures for inappropriate trading)
+      /\b(dog|cat|puppy|kitten|animal|pet|livestock|bird|horse|reptile|endangered animal)\b/gi,
+      // Body parts/organs (trafficking)
+      /\b(kidney|liver|organ|heart|lung|body part)\b/gi,
+      // Counterfeit/stolen goods
+      /\b(counterfeit|fake|stolen|stole|replica)\b/gi,
+      // Explosives and hazardous materials
+      /\b(explosives|hazardous|toxic|poison|radioactive|chemical weapon)\b/gi,
+      // Human trafficking
+      /\b(person|human|slave|slavery|human trafficking)\b/gi,
+    ]
+
+    // Check against each prohibited pattern
+    for (const pattern of prohibitedPatterns) {
+      if (pattern.test(trimmedText)) {
+        const match = trimmedText.match(pattern)
+        return `❌ Prohibited item detected: "${match?.[0]?.toUpperCase()}". Please use appropriate item names only.`
+      }
+    }
+
+    return null
+  }
 
   const steps = [
     { number: 1, title: 'Upload Photos', description: 'Add product images' },
@@ -355,6 +394,20 @@ const AddProduct: React.FC = () => {
       return
     }
 
+    // Validate desired items (wants field)
+    const wantsError = validateDesiredItems(formData.wants || '')
+    if (wantsError) {
+      toast({
+        title: 'Invalid desired items',
+        description: wantsError,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+      setCurrentStep(3)
+      return
+    }
+
     // Validate file sizes (5MB per image)
     const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
     for (const file of uploadedImages) {
@@ -449,8 +502,8 @@ const AddProduct: React.FC = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1: return uploadedImages.length >= 3
-      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500 && !!formData.condition && !!formData.category
-      case 3: return formData.wants?.trim() || false // What I Want is required for multi-way trading
+      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500
+      case 3: return (formData.wants?.trim() || false) && !wantsValidationError // What I Want is required and must be valid
       case 4: return true // Barter options are always valid
       case 5: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
       case 6: return true
@@ -829,31 +882,47 @@ const AddProduct: React.FC = () => {
               </Text>
             </Box>
 
-            <FormControl isRequired>
+            <FormControl isRequired isInvalid={!!wantsValidationError}>
               <FormLabel fontWeight="semibold">Desired Items</FormLabel>
               <Textarea
                 placeholder="e.g., iPhone 12, gaming laptop, DSLR camera, collectible items, electronics..."
                 value={formData.wants}
                 onChange={(e) => {
-                  setFormData(prev => ({ ...prev, wants: e.target.value }))
+                  const newValue = e.target.value
+                  setFormData(prev => ({ ...prev, wants: newValue }))
+                  // Real-time validation
+                  const error = validateDesiredItems(newValue)
+                  setWantsValidationError(error)
                 }}
                 size="lg"
                 rows={6}
                 bg="white"
                 borderWidth="2px"
-                _focus={{ borderColor: 'brand.500', shadow: 'md' }}
+                borderColor={wantsValidationError ? 'red.500' : 'gray.200'}
+                _focus={{ borderColor: wantsValidationError ? 'red.600' : 'brand.500', shadow: 'md' }}
                 fontSize="md"
               />
-              <FormHelperText>
-                <VStack align="start" spacing={1} mt={2}>
-                  <Text fontSize="xs" color="gray.600">
-                    Be specific about what you're looking for. This enables advanced multi-way trading algorithms.
+              {wantsValidationError ? (
+                <Box mt={2} p={3} bg="red.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="red.500">
+                  <Text fontSize="sm" color="red.700" fontWeight="600">
+                    {wantsValidationError}
                   </Text>
-                  <Text fontSize="xs" color="red.500" fontWeight="semibold">
-                    ⚠️ Prohibited: nudity, animals, weapons, drugs, illegal items
+                  <Text fontSize="xs" color="red.600" mt={1}>
+                    Please remove prohibited items and only list legitimate items you want to trade for.
                   </Text>
-                </VStack>
-              </FormHelperText>
+                </Box>
+              ) : (
+                <FormHelperText>
+                  <VStack align="start" spacing={1} mt={2}>
+                    <Text fontSize="xs" color="gray.600">
+                      Be specific about what you're looking for. This enables advanced multi-way trading algorithms.
+                    </Text>
+                    <Text fontSize="xs" color="green.600" fontWeight="semibold">
+                      ✓ Items look good!
+                    </Text>
+                  </VStack>
+                </FormHelperText>
+              )}
             </FormControl>
 
             <Box p={4} bg="blue.50" borderRadius="lg" borderLeftWidth="4px" borderLeftColor="blue.400">
@@ -1524,7 +1593,7 @@ const AddProduct: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      <FloatingTab />
+      <FloatingTab showAddButton={false} />
     </Box>
   )
 }

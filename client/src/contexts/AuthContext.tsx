@@ -8,7 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
   googleLogin: (firebaseToken: string, userData: any) => Promise<void>
-  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<void>
+  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<{ requiresVerification: boolean; email: string; token?: string }>
   logout: () => void
   updateProfile: (payload: { name?: string; email?: string; profile_picture?: string }) => Promise<void>
   refreshUser: () => Promise<void>
@@ -99,7 +99,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     initOnceRef.current = true
 
     console.log('AuthContext: Initializing authentication check')
-    
+
     // Initialize auth synchronously from localStorage first
     const initializeAuth = async () => {
       try {
@@ -115,7 +115,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Check if user is logged in on app start
         const storedToken = localStorage.getItem('clovia_token')
         console.log('AuthContext: Stored token found:', !!storedToken, 'Cached user:', !!getCachedUser())
-        
+
         if (storedToken) {
           console.log('AuthContext: Token exists, refreshing user profile in background')
           // Token and user are already set from sync initialization.
@@ -153,7 +153,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const userData = normalizeUser(response.data.data as any)
       console.log('AuthContext: Setting user data:', userData)
       setUser(userData)
-      
+
       // If token was passed, ensure it's set in state
       if (currentToken && !token) {
         setToken(currentToken)
@@ -164,7 +164,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log('AuthContext: Request canceled (navigation or unmount)')
         return
       }
-      
+
       console.error('AuthContext: Failed to fetch user profile:', error)
 
       // Only clear auth if it's a genuine 401 (unauthorized) error
@@ -220,7 +220,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Set authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-      
+
       // Set state (also persists to localStorage via wrappers)
       setToken(newToken)
       setUser(normalizeUser(userData))
@@ -228,7 +228,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!userData?.profile_picture) {
         await fetchUserProfile(newToken)
       }
-      
+
       console.log('AuthContext: Login successful')
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Login failed')
@@ -250,7 +250,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Set authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-      
+
       console.log('AuthContext: Setting token and user state')
       // Set state (also persists to localStorage via wrappers)
       setToken(newToken)
@@ -301,14 +301,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }
 
-  const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => {
+  const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }): Promise<{ requiresVerification: boolean; email: string; token?: string }> => {
     try {
       const response = await api.post('/api/auth/register', payload)
-      const { token: newToken, user: userData } = response.data.data
-      
+      console.log('AuthContext: Register raw response:', JSON.stringify(response.data))
+
+      const responseData = response.data.data
+      const requiresVerification = !!(responseData?.requires_verification)
+
+      console.log('AuthContext: requires_verification =', requiresVerification, '| responseData keys:', Object.keys(responseData || {}))
+
+      if (requiresVerification) {
+        console.log('AuthContext: Redirecting to /verify-email')
+        return { requiresVerification: true, email: payload.email }
+      }
+
+      // Fallback: backend skipped verification (e.g. existing flow), log in directly
+      const { token: newToken, user: userData } = responseData
+
       // Set authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-      
+
       // Set state (also persists to localStorage via wrappers)
       setToken(newToken)
       setUser(normalizeUser(userData))
@@ -316,8 +329,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!userData?.profile_picture) {
         await fetchUserProfile(newToken)
       }
-      
+
       console.log('AuthContext: Registration successful')
+      return { requiresVerification: false, email: payload.email, token: newToken }
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Registration failed')
     }

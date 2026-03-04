@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
-import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden } from '@chakra-ui/react'
+import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden, SimpleGrid, IconButton, Tooltip } from '@chakra-ui/react'
 import { FaHandshake, FaTimes, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
+import { FiGrid, FiList } from 'react-icons/fi'
 import { api } from '../services/api'
 import { Trade, TradeAction } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
@@ -12,6 +13,7 @@ const Offers: React.FC = () => {
   const [outgoing, setOutgoing] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
   const [sort, setSort] = useState<'newest' | 'oldest'>('newest')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list')
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [completionModalOpen, setCompletionModalOpen] = useState(false)
@@ -418,6 +420,134 @@ const Offers: React.FC = () => {
     )
   }
 
+  // Grid Card Component for offers
+  const OfferGridCard = React.memo(({ trade, type, onViewDetails, onAction, onSecondaryAction }: {
+    trade: Trade
+    type: 'received' | 'sent' | 'progress'
+    onViewDetails: () => void
+    onAction?: () => void
+    onSecondaryAction?: () => void
+  }) => {
+    const borderColorMap = {
+      'pending': 'yellow.400',
+      'countered': 'purple.400',
+      'accepted': 'green.400',
+      'active': 'green.400',
+      'declined': 'red.400',
+      'cancelled': 'orange.400',
+      'completed': 'teal.400'
+    }
+    const borderColor = borderColorMap[trade.status.toLowerCase() as keyof typeof borderColorMap] || 'gray.200'
+
+    return (
+      <ScaleFade in={true}>
+        <Box
+          bg="white"
+          borderWidth="2px"
+          borderColor={borderColor}
+          rounded="lg"
+          overflow="hidden"
+          boxShadow="md"
+          _hover={{
+            boxShadow: 'lg',
+            transform: 'translateY(-4px)',
+          }}
+          transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+          h="100%"
+          display="flex"
+          flexDirection="column"
+        >
+          {/* Header with badge and status */}
+          <Box p={3} bg="gray.50" borderBottomWidth="1px" borderColor="gray.200">
+            <HStack justify="space-between" mb={2}>
+              <Badge colorScheme="blue" variant="subtle" fontSize="xs">
+                {type === 'received' ? '💬 Received' : type === 'sent' ? '📤 Sent' : '🔄 In Progress'}
+              </Badge>
+              {getStatusBadge(trade.status)}
+            </HStack>
+          </Box>
+
+          {/* Content */}
+          <Box p={4} flex="1" display="flex" flexDirection="column">
+            <VStack align="start" spacing={3} h="100%">
+              <VStack align="start" spacing={1} w="100%">
+                <Text fontWeight="semibold" fontSize="md" noOfLines={2}>
+                  {getProductTitle(trade.target_product_id, trade.product_title)}
+                </Text>
+                {trade.trade_option && (
+                  <Badge 
+                    colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
+                    variant="subtle"
+                    fontSize="xs"
+                    display="flex"
+                    alignItems="center"
+                    gap={1}
+                  >
+                    <Icon as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                    {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                  </Badge>
+                )}
+              </VStack>
+
+              <VStack align="start" spacing={1} w="100%" fontSize="sm" color="gray.600">
+                {type === 'received' && <Text><strong>From:</strong> {trade.buyer_name || 'Anonymous User'}</Text>}
+                {type === 'sent' && <Text><strong>To:</strong> {trade.seller_name || 'Anonymous User'}</Text>}
+                {type === 'progress' && (
+                  <>
+                    <Text><strong>Buyer:</strong> {trade.buyer_name || 'Anonymous User'}</Text>
+                    <Text><strong>Seller:</strong> {trade.seller_name || 'Anonymous User'}</Text>
+                  </>
+                )}
+                <Text fontSize="xs" color="gray.500">{new Date(trade.created_at).toLocaleDateString()}</Text>
+              </VStack>
+
+              <Box flex="1" />
+
+              {/* Actions */}
+              <HStack spacing={2} w="100%" pt={2}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  colorScheme="brand"
+                  flex={1}
+                  onClick={onViewDetails}
+                  fontSize="xs"
+                >
+                  View
+                </Button>
+                {onAction && (
+                  <Button
+                    size="sm"
+                    colorScheme={type === 'sent' ? 'red' : onSecondaryAction ? 'green' : 'blue'}
+                    variant={type === 'sent' ? 'outline' : 'solid'}
+                    flex={1}
+                    onClick={onAction}
+                    fontSize="xs"
+                    isDisabled={type === 'sent' && trade.status !== 'pending'}
+                  >
+                    {type === 'sent' ? 'Cancel' : type === 'progress' ? 'Complete' : 'Accept'}
+                  </Button>
+                )}
+                {onSecondaryAction && type === 'received' && (
+                  <Button
+                    size="sm"
+                    colorScheme="red"
+                    variant="outline"
+                    fontSize="xs"
+                    onClick={onSecondaryAction}
+                    isDisabled={trade.status !== 'pending'}
+                  >
+                    Decline
+                  </Button>
+                )}
+              </HStack>
+            </VStack>
+          </Box>
+        </Box>
+      </ScaleFade>
+    )
+  })
+
   return (
     <Box minH="100vh" bg="#FFFDF1">
       <Box px={8} py={20}>
@@ -455,6 +585,16 @@ const Offers: React.FC = () => {
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
               </Select>
+              <Tooltip label={viewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                <IconButton
+                  aria-label={viewMode === 'grid' ? 'List view' : 'Grid view'}
+                  icon={<Icon as={viewMode === 'grid' ? FiList : FiGrid} />}
+                  size="sm"
+                  variant={viewMode === 'list' ? 'solid' : 'ghost'}
+                  colorScheme="brand"
+                  onClick={() => setViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                />
+              </Tooltip>
             </HStack>
           </HStack>
         </Slide>
@@ -567,150 +707,51 @@ const Offers: React.FC = () => {
           </TabList>
           <TabPanels bg={cardBg} p={5}>
           <TabPanel p={0}>
-            <VStack spacing={3} align="stretch">
-              {offersReceivedSorted.length === 0 ? (
-                <Text color="gray.500" textAlign="center" py={8}>No offers received.</Text>
-              ) : offersReceivedSorted.map((t) => (
-                <ScaleFade in={true} key={t.id}>
-                  <Box
-                    bg="white"
-                    borderWidth="1px"
-                    borderLeftWidth="4px"
-                    borderColor={
-                      t.status === 'countered' ? 'purple.400' :
-                      t.status === 'pending' ? 'yellow.400' :
-                      t.status === 'accepted' || t.status === 'active' ? 'green.400' :
-                      'gray.200'
-                    }
-                    rounded="lg"
-                    p={6}
-                    position="relative"
-                    boxShadow="md"
-                    _hover={{
-                      boxShadow: 'lg',
-                      transform: 'translateY(-2px)',
-                      borderColor: t.status === 'countered' ? 'purple.500' :
-                                 t.status === 'pending' ? 'yellow.500' :
-                                 t.status === 'accepted' || t.status === 'active' ? 'green.500' : 'gray.300'
+            {offersReceivedSorted.length === 0 ? (
+              <Text color="gray.500" textAlign="center" py={8}>No offers received.</Text>
+            ) : viewMode === 'grid' ? (
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                {offersReceivedSorted.map((t) => (
+                  <OfferGridCard
+                    key={t.id}
+                    trade={t}
+                    type="received"
+                    onViewDetails={() => {
+                      setSelectedTrade(t)
+                      setDetailsOpen(true)
                     }}
-                    transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                  >
-                  {/* Top-left: Trade type indicator */}
-                  <Badge 
-                    position="absolute" 
-                    top={3} 
-                    left={3} 
-                    colorScheme="blue"
-                    variant="subtle"
-                    px={2}
-                    py={1}
-                    rounded="md"
-                    fontSize="xs"
-                    textTransform="none"
-                  >
-                    <HStack spacing={2} align="center">
-                      <Box as="span">💬</Box>
-                      <Box>Received</Box>
-                    </HStack>
-                  </Badge>
-
-                  {/* Top-right: status */}
-                  <Box position="absolute" top={3} right={3}>
-                    {getStatusBadge(t.status)}
-                  </Box>
-
-                  {/* Main content with extra right padding for actions */}
-                  <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
-                    <VStack align="start" spacing={2}>
-                      <HStack spacing={2} align="center" flexWrap="wrap">
-                        <Text fontWeight="semibold" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                        {t.trade_option && (
-                          <Badge 
-                            colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
-                            variant="subtle"
-                            fontSize="xs"
-                            display="flex"
-                            alignItems="center"
-                            gap={1}
-                          >
-                            <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
-                            {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                          </Badge>
-                        )}
-                      </HStack>
-                      <Text fontSize="sm" color="gray.600">From: <Text as="span" fontWeight="medium">{t.buyer_name || 'Anonymous User'}</Text></Text>
-                      <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
-                      {renderOfferedItems(t)}
-                    </VStack>
-                  </Box>
-
-                    {/* Actions positioned bottom-right */}
-                    <Box position="absolute" right={4} bottom={4}>
-                      <HStack spacing={2}>
-                        <Button 
-                          size="sm" 
-                          variant="ghost"
-                          onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}
-                          _hover={{ bg: "gray.100" }}
-                        >
-                          View
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          colorScheme="green" 
-                          variant="solid"
-                          onClick={() => updateTrade(t.id, { action: 'accept' })} 
-                          isDisabled={t.status !== 'pending'}
-                          _hover={{ transform: "translateY(-1px)" }}
-                        >
-                          Accept
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          colorScheme="red" 
-                          variant="outline" 
-                          onClick={() => handleDeclineTradeClick(t)} 
-                          isDisabled={t.status !== 'pending'}
-                          _hover={{ transform: "translateY(-1px)" }}
-                        >
-                          Decline
-                        </Button>
-                      </HStack>
-                    </Box>
-                  </Box>
-                </ScaleFade>
-              ))}
-            </VStack>
-          </TabPanel>
-          <TabPanel p={0}>
-            <VStack spacing={3} align="stretch">
-              {offersSentSorted.length === 0 ? (
-                <Text color="gray.500" textAlign="center" py={8}>No offers sent.</Text>
-              ) : offersSentSorted.map((t) => (
-                <ScaleFade in={true} key={t.id}>
-                  <Box 
-                    bg="white" 
-                    borderWidth="1px"
-                    borderLeftWidth="4px"
-                    borderColor={
-                      t.status === 'countered' ? 'purple.400' :
-                      t.status === 'pending' ? 'yellow.400' :
-                      t.status === 'accepted' || t.status === 'active' ? 'green.400' :
-                      'gray.200'
-                    }
-                    rounded="lg" 
-                    p={6}
-                    position="relative"
-                    boxShadow="md"
-                    _hover={{
-                      boxShadow: 'lg',
-                      transform: 'translateY(-2px)',
-                      borderColor: t.status === 'countered' ? 'purple.500' :
-                                 t.status === 'pending' ? 'yellow.500' :
-                                 t.status === 'accepted' || t.status === 'active' ? 'green.500' : 'gray.300'
-                    }}
-                    transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                  >
+                    onAction={() => updateTrade(t.id, { action: 'accept' })}
+                    onSecondaryAction={() => handleDeclineTradeClick(t)}
+                  />
+                ))}
+              </SimpleGrid>
+            ) : (
+              <VStack spacing={3} align="stretch">
+                {offersReceivedSorted.map((t) => (
+                  <ScaleFade in={true} key={t.id}>
+                    <Box
+                      bg="white"
+                      borderWidth="1px"
+                      borderLeftWidth="4px"
+                      borderColor={
+                        t.status === 'countered' ? 'purple.400' :
+                        t.status === 'pending' ? 'yellow.400' :
+                        t.status === 'accepted' || t.status === 'active' ? 'green.400' :
+                        'gray.200'
+                      }
+                      rounded="lg"
+                      p={6}
+                      position="relative"
+                      boxShadow="md"
+                      _hover={{
+                        boxShadow: 'lg',
+                        transform: 'translateY(-2px)',
+                        borderColor: t.status === 'countered' ? 'purple.500' :
+                                   t.status === 'pending' ? 'yellow.500' :
+                                   t.status === 'accepted' || t.status === 'active' ? 'green.500' : 'gray.300'
+                      }}
+                      transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                    >
                     {/* Top-left: Trade type indicator */}
                     <Badge 
                       position="absolute" 
@@ -725,19 +766,13 @@ const Offers: React.FC = () => {
                       textTransform="none"
                     >
                       <HStack spacing={2} align="center">
-                        <Box as="span">📤</Box>
-                        <Box>Sent</Box>
+                        <Box as="span">💬</Box>
+                        <Box>Received</Box>
                       </HStack>
                     </Badge>
 
                     {/* Top-right: status */}
-                    <Box 
-                      position="absolute" 
-                      top={3} 
-                      right={3}
-                      className="status-badge"
-                      transition="transform 0.2s ease-out"
-                    >
+                    <Box position="absolute" top={3} right={3}>
                       {getStatusBadge(t.status)}
                     </Box>
 
@@ -745,7 +780,7 @@ const Offers: React.FC = () => {
                     <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
                       <VStack align="start" spacing={2}>
                         <HStack spacing={2} align="center" flexWrap="wrap">
-                          <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                          <Text fontWeight="semibold" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
                           {t.trade_option && (
                             <Badge 
                               colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
@@ -760,137 +795,294 @@ const Offers: React.FC = () => {
                             </Badge>
                           )}
                         </HStack>
-                        <Text fontSize="sm" color="gray.600">To: <Text as="span" fontWeight="medium">{t.seller_name || 'Anonymous User'}</Text></Text>
+                        <Text fontSize="sm" color="gray.600">From: <Text as="span" fontWeight="medium">{t.buyer_name || 'Anonymous User'}</Text></Text>
                         <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
                         {renderOfferedItems(t)}
                       </VStack>
                     </Box>
 
-                    {/* Bottom-right actions: Cancel button for pending offers */}
-                    {t.status === 'pending' && (
+                      {/* Actions positioned bottom-right */}
+                      <Box position="absolute" right={4} bottom={4}>
+                        <HStack spacing={2}>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}
+                            _hover={{ bg: "gray.100" }}
+                          >
+                            View
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            colorScheme="green" 
+                            variant="solid"
+                            onClick={() => updateTrade(t.id, { action: 'accept' })} 
+                            isDisabled={t.status !== 'pending'}
+                            _hover={{ transform: "translateY(-1px)" }}
+                          >
+                            Accept
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            colorScheme="red" 
+                            variant="outline" 
+                            onClick={() => handleDeclineTradeClick(t)} 
+                            isDisabled={t.status !== 'pending'}
+                            _hover={{ transform: "translateY(-1px)" }}
+                          >
+                            Decline
+                          </Button>
+                        </HStack>
+                      </Box>
+                    </Box>
+                  </ScaleFade>
+                ))}
+              </VStack>
+            )}
+          </TabPanel>
+          <TabPanel p={0}>
+            {offersSentSorted.length === 0 ? (
+              <Text color="gray.500" textAlign="center" py={8}>No offers sent.</Text>
+            ) : viewMode === 'grid' ? (
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                {offersSentSorted.map((t) => (
+                  <OfferGridCard
+                    key={t.id}
+                    trade={t}
+                    type="sent"
+                    onViewDetails={() => {
+                      setSelectedTrade(t)
+                      setDetailsOpen(true)
+                    }}
+                    onAction={() => handleCancelTradeClick(t)}
+                  />
+                ))}
+              </SimpleGrid>
+            ) : (
+              <VStack spacing={3} align="stretch">
+                {offersSentSorted.map((t) => (
+                  <ScaleFade in={true} key={t.id}>
+                    <Box 
+                      bg="white" 
+                      borderWidth="1px"
+                      borderLeftWidth="4px"
+                      borderColor={
+                        t.status === 'countered' ? 'purple.400' :
+                        t.status === 'pending' ? 'yellow.400' :
+                        t.status === 'accepted' || t.status === 'active' ? 'green.400' :
+                        'gray.200'
+                      }
+                      rounded="lg" 
+                      p={6}
+                      position="relative"
+                      boxShadow="md"
+                      _hover={{
+                        boxShadow: 'lg',
+                        transform: 'translateY(-2px)',
+                        borderColor: t.status === 'countered' ? 'purple.500' :
+                                   t.status === 'pending' ? 'yellow.500' :
+                                   t.status === 'accepted' || t.status === 'active' ? 'green.500' : 'gray.300'
+                      }}
+                      transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                    >
+                      {/* Top-left: Trade type indicator */}
+                      <Badge 
+                        position="absolute" 
+                        top={3} 
+                        left={3} 
+                        colorScheme="blue"
+                        variant="subtle"
+                        px={2}
+                        py={1}
+                        rounded="md"
+                        fontSize="xs"
+                        textTransform="none"
+                      >
+                        <HStack spacing={2} align="center">
+                          <Box as="span">📤</Box>
+                          <Box>Sent</Box>
+                        </HStack>
+                      </Badge>
+
+                      {/* Top-right: status */}
+                      <Box 
+                        position="absolute" 
+                        top={3} 
+                        right={3}
+                        className="status-badge"
+                        transition="transform 0.2s ease-out"
+                      >
+                        {getStatusBadge(t.status)}
+                      </Box>
+
+                      {/* Main content with extra right padding for actions */}
+                      <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
+                        <VStack align="start" spacing={2}>
+                          <HStack spacing={2} align="center" flexWrap="wrap">
+                            <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                            {t.trade_option && (
+                              <Badge 
+                                colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                                variant="subtle"
+                                fontSize="xs"
+                                display="flex"
+                                alignItems="center"
+                                gap={1}
+                              >
+                                <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                                {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                              </Badge>
+                            )}
+                          </HStack>
+                          <Text fontSize="sm" color="gray.600">To: <Text as="span" fontWeight="medium">{t.seller_name || 'Anonymous User'}</Text></Text>
+                          <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
+                          {renderOfferedItems(t)}
+                        </VStack>
+                      </Box>
+
+                      {/* Bottom-right actions: Cancel button for pending offers */}
+                      {t.status === 'pending' && (
+                        <Box position="absolute" right={4} bottom={4}>
+                          <Button
+                            size="sm"
+                            colorScheme="red"
+                            variant="outline"
+                            onClick={() => handleCancelTradeClick(t)}
+                            _hover={{ 
+                              bg: "red.50",
+                              transform: "translateY(-1px)"
+                            }}
+                            leftIcon={<Icon as={FaTimes} />}
+                          >
+                            Cancel Offer
+                          </Button>
+                        </Box>
+                      )}
+                    </Box>
+                  </ScaleFade>
+                ))}
+              </VStack>
+            )}
+          </TabPanel>
+          <TabPanel p={0}>
+            {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').length === 0 ? (
+              <Text color="gray.500" textAlign="center" py={8}>No trades in progress.</Text>
+            ) : viewMode === 'grid' ? (
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').map((t) => (
+                  <OfferGridCard
+                    key={t.id}
+                    trade={t}
+                    type="progress"
+                    onViewDetails={() => {
+                      setSelectedTrade(t)
+                      setDetailsOpen(true)
+                    }}
+                    onAction={() => handleCompleteTradeClick(t)}
+                  />
+                ))}
+              </SimpleGrid>
+            ) : (
+              <VStack spacing={3} align="stretch">
+                {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').map((t) => (
+                  <ScaleFade in={true} key={t.id}>
+                    <Box 
+                      bg="white" 
+                      borderWidth="1px"
+                      borderLeftWidth="4px"
+                      borderColor={
+                        t.status === 'countered' ? 'purple.400' :
+                        t.status === 'pending' ? 'yellow.400' :
+                        t.status === 'accepted' || t.status === 'active' ? 'green.400' :
+                        'gray.200'
+                      }
+                      rounded="lg" 
+                      p={6}
+                      position="relative"
+                      boxShadow="md"
+                      _hover={{
+                        boxShadow: 'lg',
+                        transform: 'translateY(-2px)',
+                        borderColor: t.status === 'countered' ? 'purple.500' :
+                                   t.status === 'pending' ? 'yellow.500' :
+                                   t.status === 'accepted' || t.status === 'active' ? 'green.500' : 'gray.300'
+                      }}
+                      transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                    >
+                      {/* Top-left: Trade type indicator */}
+                      <Badge 
+                        position="absolute" 
+                        top={3} 
+                        left={3} 
+                        colorScheme="blue"
+                        variant="subtle"
+                        px={2}
+                        py={1}
+                        rounded="md"
+                        fontSize="xs"
+                        textTransform="none"
+                      >
+                        <HStack spacing={2} align="center">
+                          <Box as="span">🔄</Box>
+                          <Box>In Progress</Box>
+                        </HStack>
+                      </Badge>
+
+                      {/* Top-right: status */}
+                      <Box 
+                        position="absolute" 
+                        top={3} 
+                        right={3}
+                        className="status-badge"
+                        transition="transform 0.2s ease-out"
+                      >
+                        {getStatusBadge(t.status)}
+                      </Box>
+
+                      {/* Main content with extra right padding for actions */}
+                      <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
+                        <VStack align="start" spacing={2}>
+                          <HStack spacing={2} align="center" flexWrap="wrap">
+                            <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                            {t.trade_option && (
+                              <Badge 
+                                colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                                variant="subtle"
+                                fontSize="xs"
+                                display="flex"
+                                alignItems="center"
+                                gap={1}
+                              >
+                                <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                                {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                              </Badge>
+                            )}
+                          </HStack>
+                          <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Seller: {t.seller_name || 'Anonymous User'}</Text>
+                          {renderOfferedItems(t)}
+                        </VStack>
+                      </Box>
+
+                      {/* Bottom-right actions: Complete button */}
                       <Box position="absolute" right={4} bottom={4}>
                         <Button
                           size="sm"
-                          colorScheme="red"
-                          variant="outline"
-                          onClick={() => handleCancelTradeClick(t)}
-                          _hover={{ 
-                            bg: "red.50",
-                            transform: "translateY(-1px)"
-                          }}
-                          leftIcon={<Icon as={FaTimes} />}
+                          colorScheme="blue"
+                          variant="solid"
+                          onClick={() => handleCompleteTradeClick(t)}
+                          isDisabled={['completed', 'cancelled', 'declined'].includes(t.status)}
+                          title="Click to open trade completion modal"
+                          _hover={{ transform: "translateY(-1px)" }}
+                          leftIcon={<Icon as={FaHandshake} />}
                         >
-                          Cancel Offer
+                          Complete Trade
                         </Button>
                       </Box>
-                    )}
-                  </Box>
-                </ScaleFade>
-              ))}
-            </VStack>
-          </TabPanel>
-          <TabPanel p={0}>
-            <VStack spacing={3} align="stretch">
-              {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').length === 0 ? (
-                <Text color="gray.500" textAlign="center" py={8}>No trades in progress.</Text>
-              ) : incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').map((t) => (
-                <ScaleFade in={true} key={t.id}>
-                  <Box 
-                    bg="white" 
-                    borderWidth="1px"
-                    borderLeftWidth="4px"
-                    borderColor={
-                      t.status === 'countered' ? 'purple.400' :
-                      t.status === 'pending' ? 'yellow.400' :
-                      t.status === 'accepted' || t.status === 'active' ? 'green.400' :
-                      'gray.200'
-                    }
-                    rounded="lg" 
-                    p={6}
-                    position="relative"
-                    boxShadow="md"
-                    _hover={{
-                      boxShadow: 'lg',
-                      transform: 'translateY(-2px)',
-                      borderColor: t.status === 'countered' ? 'purple.500' :
-                                 t.status === 'pending' ? 'yellow.500' :
-                                 t.status === 'accepted' || t.status === 'active' ? 'green.500' : 'gray.300'
-                    }}
-                    transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                  >
-                    {/* Top-left: Trade type indicator */}
-                    <Badge 
-                      position="absolute" 
-                      top={3} 
-                      left={3} 
-                      colorScheme="blue"
-                      variant="subtle"
-                      px={2}
-                      py={1}
-                      rounded="md"
-                      fontSize="xs"
-                      textTransform="none"
-                    >
-                      <HStack spacing={2} align="center">
-                        <Box as="span">🔄</Box>
-                        <Box>In Progress</Box>
-                      </HStack>
-                    </Badge>
-
-                    {/* Top-right: status */}
-                    <Box 
-                      position="absolute" 
-                      top={3} 
-                      right={3}
-                      className="status-badge"
-                      transition="transform 0.2s ease-out"
-                    >
-                      {getStatusBadge(t.status)}
                     </Box>
-
-                    {/* Main content with extra right padding for actions */}
-                    <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
-                      <VStack align="start" spacing={2}>
-                        <HStack spacing={2} align="center" flexWrap="wrap">
-                          <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                          {t.trade_option && (
-                            <Badge 
-                              colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
-                              variant="subtle"
-                              fontSize="xs"
-                              display="flex"
-                              alignItems="center"
-                              gap={1}
-                            >
-                              <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
-                              {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                            </Badge>
-                          )}
-                        </HStack>
-                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Seller: {t.seller_name || 'Anonymous User'}</Text>
-                        {renderOfferedItems(t)}
-                      </VStack>
-                    </Box>
-
-                    {/* Bottom-right actions: Complete button */}
-                    <Box position="absolute" right={4} bottom={4}>
-                      <Button
-                        size="sm"
-                        colorScheme="blue"
-                        variant="solid"
-                        onClick={() => handleCompleteTradeClick(t)}
-                        isDisabled={['completed', 'cancelled', 'declined'].includes(t.status)}
-                        title="Click to open trade completion modal"
-                        _hover={{ transform: "translateY(-1px)" }}
-                        leftIcon={<Icon as={FaHandshake} />}
-                      >
-                        Complete Trade
-                      </Button>
-                    </Box>
-                  </Box>
-                </ScaleFade>
-              ))}
-            </VStack>
+                  </ScaleFade>
+                ))}
+              </VStack>
+            )}
           </TabPanel>
           <TabPanel p={0}>
             <VStack spacing={3} align="stretch">

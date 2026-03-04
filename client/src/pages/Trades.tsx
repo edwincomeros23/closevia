@@ -16,8 +16,17 @@ const Trades: React.FC = () => {
   const fetchTrades = async () => {
     try {
       setLoading(true)
-      const res = await api.get('/api/trades')
-      setTrades(Array.isArray(res.data?.data) ? res.data.data : [])
+      // Fetch both incoming AND outgoing trades
+      const [incomingRes, outgoingRes] = await Promise.all([
+        api.get('/api/trades', { params: { direction: 'incoming' } }),
+        api.get('/api/trades', { params: { direction: 'outgoing' } }),
+      ])
+      
+      const incomingTrades = Array.isArray(incomingRes.data?.data) ? incomingRes.data.data : []
+      const outgoingTrades = Array.isArray(outgoingRes.data?.data) ? outgoingRes.data.data : []
+      
+      // Combine both incoming and outgoing trades
+      setTrades([...incomingTrades, ...outgoingTrades])
     } catch (e: any) {
       toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load trades', status: 'error' })
     } finally {

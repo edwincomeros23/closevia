@@ -180,6 +180,7 @@ func main() {
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler()
+	verificationHandler := handlers.NewVerificationHandler()
 	productHandler := handlers.NewProductHandler()
 	orderHandler := handlers.NewOrderHandler()
 	chatHandler := handlers.NewChatHandler()
@@ -191,18 +192,26 @@ func main() {
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
 	reviewHandler := handlers.NewReviewHandler()
+	reportHandler := handlers.NewReportHandler()
+	uploadHandler := handlers.NewUploadHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
 	auth.Post("/register", userHandler.Register)
 	auth.Post("/login", userHandler.Login)
 	auth.Post("/google", userHandler.GoogleLogin)
+	auth.Post("/verify-email", userHandler.VerifyEmail)
+	auth.Post("/resend-verification", userHandler.ResendVerification)
 
 	// User routes (authentication required)
 	users := api.Group("/users")
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
 	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
 	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
+	// School ID verification (optional)
+	users.Post("/verification/start", middleware.AuthMiddleware(), verificationHandler.StartVerification)
+	users.Post("/verification/upload-id", middleware.AuthMiddleware(), verificationHandler.UploadSchoolID)
+	users.Get("/verification/status", middleware.AuthMiddleware(), verificationHandler.GetVerificationStatus)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
 	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
@@ -262,6 +271,12 @@ func main() {
 	trades := api.Group("/trades")
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
+	// Loops endpoint must come before any :id routes to avoid shadowing
+	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
+	trades.Get("/loops/:id", middleware.AuthMiddleware(), tradeHandler.GetTradeLoop)
+	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
+	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
+	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
@@ -289,9 +304,18 @@ func main() {
 	// Admin user management
 	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
 	admin.Delete("/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.DeleteUser)
+	// Admin: school ID verification review
+	admin.Get("/verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListVerifications)
+	admin.Get("/verifications/:id/image", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminGetIDImage)
+	admin.Post("/verifications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminApproveVerification)
+	admin.Post("/verifications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminRejectVerification)
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)
+	// Admin reports management
+	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
+	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)
+	admin.Put("/reports/:id/status", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.UpdateReport)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -306,6 +330,12 @@ func main() {
 	deliveries.Get("/:id", middleware.AuthMiddleware(), deliveryHandler.GetDelivery)
 	deliveries.Put("/:id/status", middleware.AuthMiddleware(), deliveryHandler.UpdateDeliveryStatus)
 	deliveries.Post("/:id/assign", middleware.AuthMiddleware(), deliveryHandler.AssignRider)
+
+	// Generic image upload route (used by TradeCompletionModal, etc.)
+	api.Post("/upload", middleware.AuthMiddleware(), uploadHandler.UploadImage)
+
+	// Reports route (user-facing: submit a report)
+	api.Post("/reports", middleware.AuthMiddleware(), reportHandler.CreateReport)
 
 	// AI Features routes
 	ai := api.Group("/ai")

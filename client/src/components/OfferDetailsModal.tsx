@@ -75,20 +75,33 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   // Resilient extraction of buyer-offered items and their product IDs
   const buyerItems = useMemo(() => {
     const items = (effectiveTrade?.items || []) as Array<any>
-    return items.filter((i: any) => {
+    // eslint-disable-next-line no-console
+    console.log('🔍 [MODAL] Extracting buyer items from trade items:', items)
+    const filtered = items.filter((i: any) => {
+      // Log each item's offered_by value
       const offeredBy = (i?.offered_by ?? i?.offeredBy ?? i?.sender ?? i?.from_user_role)
+      // eslint-disable-next-line no-console
+      console.log(`  Item ${i.id}: offered_by=${offeredBy}`)
       if (typeof offeredBy === 'string') {
-        const v = offeredBy.toLowerCase()
+        const v = offeredBy.toLowerCase().trim()
         return v === 'buyer' || v === 'from_buyer' || v === 'sender'
       }
       return false
     })
+    // eslint-disable-next-line no-console
+    console.log('🔍 [MODAL] Filtered buyer items count:', filtered.length)
+    return filtered
   }, [effectiveTrade])
   const offeredItemIds = useMemo(() => {
-    const ids = buyerItems.map((i: any) => (i?.product_id ?? i?.productId))
-    return ids
-      .map((x: any) => (typeof x === 'string' ? Number(x) : x))
+    const ids = buyerItems.map((i: any) => {
+      const pid = (i?.product_id ?? i?.productId)
+      return typeof pid === 'string' ? Number(pid) : pid
+    })
+    const filtered = ids
       .filter((x: any) => typeof x === 'number' && !Number.isNaN(x)) as number[]
+    // eslint-disable-next-line no-console
+    console.log('🔍 [MODAL] Offered item IDs:', filtered)
+    return filtered
   }, [buyerItems])
 
   // Immediately set placeholder data from trade object (no API call needed)
@@ -125,14 +138,28 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     ;(async () => {
       try {
         setLoading(true)
-        // Fetch all products in parallel for speed
-        const [req, ...offeredResults] = await Promise.all([
-          getProduct(effectiveTrade.target_product_id),
-          ...offeredItemIds.map(pid => getProduct(pid))
-        ])
-        if (req) setRequested(req)
-        const validOffered = offeredResults.filter(Boolean) as Product[]
-        if (validOffered.length > 0) setOffered(validOffered)
+        // eslint-disable-next-line no-console
+        console.log('🔍 [MODAL] Loading product details for trade', effectiveTrade.id)
+        // eslint-disable-next-line no-console
+        console.log('🔍 [MODAL] Target product ID:', effectiveTrade.target_product_id)
+        // eslint-disable-next-line no-console
+        console.log('🔍 [MODAL] Offered item IDs:', offeredItemIds)
+        const req = await getProduct(effectiveTrade.target_product_id)
+        // eslint-disable-next-line no-console
+        console.log('🔍 [MODAL] Loaded requested product:', req)
+        setRequested(req)
+        const details: Product[] = []
+        for (const pid of offeredItemIds) {
+          // eslint-disable-next-line no-console
+          console.log(`🔍 [MODAL] Loading product ${pid}`)
+          const p = await getProduct(pid)
+          // eslint-disable-next-line no-console
+          console.log(`🔍 [MODAL] Loaded product ${pid}:`, p)
+          if (p) details.push(p)
+        }
+        // eslint-disable-next-line no-console
+        console.log('🔍 [MODAL] Final loaded products:', details.length)
+        setOffered(details)
       } finally {
         setLoading(false)
       }
@@ -300,21 +327,37 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     if (!p) return null
     const compact = !!opts?.compact
     const showPrice = !!p.allow_buying && !p.barter_only && typeof p.price === 'number'
+    const imageHeight = compact ? '80px' : '150px'
+    const padding = compact ? 2 : 3
+    const titleSize = compact ? 'sm' : 'md'
+    const titleFontWeight = compact ? 'semibold' : 'semibold'
+    const priceFontSize = compact ? 'sm' : 'md'
 
     const imgSrc = resolveImage(p)
-    if (!imgSrc && compact) {
+    if (!imgSrc) {
       // eslint-disable-next-line no-console
-      console.log(`OfferDetailsModal: product ${p.id} has no image source`)
+      console.log(`OfferDetailsModal: product ${p.id} (${p.title}) has no image source`)
     }
 
     return (
-      <Box borderWidth="1px" borderColor="gray.200" rounded="lg" overflow="hidden" bg="white" shadow="sm">
-        <Box bg="gray.50" display="flex" alignItems="center" justifyContent="center" h="160px" borderBottom="1px solid" borderColor="gray.100">
-          <Image src={imgSrc || ''} alt={p.title} maxW="full" maxH="160px" objectFit="contain" fallbackSrc="https://via.placeholder.com/400x300?text=No+Image" />
-        </Box>
-        <Box p={3}>
-          <Text fontWeight="semibold" fontSize="sm" noOfLines={2}>{p.title}</Text>
+      <Box borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden" bg="white" height="100%">
+        <Image 
+          src={imgSrc || ''} 
+          alt={p.title} 
+          w="full" 
+          h={imageHeight} 
+          objectFit="cover" 
+          fallbackSrc="https://via.placeholder.com/400x300?text=No+Image" 
+          bg="gray.100"
+        />
+        <Box p={padding}>
+          <HStack justify="space-between">
+            <Text fontWeight={titleFontWeight} fontSize={titleSize}>{p.title}</Text>
+            {/* Show premium only on full (requested) cards, hide for compact (offered) */}
+            {p.premium && !compact && <Badge colorScheme="yellow" fontSize={compact ? 'xs' : undefined}>Premium</Badge>}
+          </HStack>
 
+          {/* Hide status / barter badges in compact (offered) mode */}
           {!compact && (
             <HStack spacing={2} mt={1}>
               <Badge colorScheme={p.status === 'available' ? 'green' : 'red'} fontSize="2xs">{p.status}</Badge>
@@ -339,38 +382,71 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const disableAccept = (offeredItemIds.length === 0) && (!effectiveTrade?.offered_cash_amount || effectiveTrade.offered_cash_amount === 0)
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="5xl" isCentered>
+    <Modal isOpen={isOpen} onClose={onClose} size="full" isCentered>
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader fontSize="md">Offer Details</ModalHeader>
+      <ModalContent maxW="95%" h="auto" maxH="95vh" overflowY="auto">
+        <ModalHeader fontSize="lg" fontWeight="bold">Offer Details</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
           <VStack align="stretch" spacing={4}>
-            <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={6}>
-              <Box>
-                <Text fontWeight="bold" mb={2} fontSize="sm" color="gray.700">Requested Item (yours)</Text>
-                {renderProductCard(requested)}
+            <HStack align="flex-start" spacing={6} wrap="wrap">
+              <Box flex={1} minW="300px">
+                <Text fontWeight="bold" mb={3} fontSize="md">Your Requested Item</Text>
+                {loading ? (
+                  <Box borderWidth="1px" borderColor="gray.200" rounded="md" p={4}>
+                    <Text color="gray.600" textAlign="center">Loading...</Text>
+                  </Box>
+                ) : (
+                  renderProductCard(requested)
+                )}
               </Box>
-              <Box>
-                <Text fontWeight="bold" mb={2} fontSize="sm" color="gray.700">Offered Item(s)</Text>
-                <VStack spacing={3} align="stretch">
-                  {buyerItems.length > 0 ? (
-                    buyerItems.map((item: any, idx: number) => {
-                        const product = offered.find(p => p.id === (item.product_id ?? item.productId));
-                        return (
-                          <Box key={item.id || idx}>
-                            {product ? renderProductCard(product, { compact: true }) : (
-                              <Box borderWidth="1px" borderColor="gray.200" rounded="lg" p={4} bg="gray.50">
-                                <Text color="gray.500" fontSize="sm">Product not found (ID: {item.product_id ?? item.productId})</Text>
+              <Box flex={1} minW="300px">
+                <Text fontWeight="bold" mb={3} fontSize="md">Their Offered Item(s)</Text>
+                <Box>
+                  <HStack align="start" spacing={3} flexWrap="wrap">
+                    {buyerItems.length > 0 ? (
+                      buyerItems.map((item: any, idx: number) => {
+                          // Find the product details for this item
+                          const product = offered.find(p => p.id === (item.product_id ?? item.productId));
+                          
+                          // If product not found in context, render from trade item directly
+                          if (!product) {
+                            const itemImg = item.product_image_url || item.productImageUrl || item.image || ''
+                            const itemTitle = item.product_title || item.productTitle || 'Unknown Item'
+                            const itemStatus = item.product_status || item.productStatus || 'unknown'
+                            return (
+                              <Box key={item.id || idx} minW="120px" maxW="140px" flex="1 1 180px">
+                                <Box borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
+                                  <Image 
+                                    src={itemImg} 
+                                    alt={itemTitle} 
+                                    w="full" 
+                                    h="80px" 
+                                    objectFit="cover" 
+                                    fallbackSrc="https://via.placeholder.com/400x300?text=No+Image" 
+                                  />
+                                  <Box p={2}>
+                                    <Text fontWeight="semibold" fontSize="sm" noOfLines={2}>{itemTitle}</Text>
+                                    <Badge colorScheme={itemStatus === 'available' ? 'green' : 'orange'} fontSize="xs" mt={1}>
+                                      {itemStatus}
+                                    </Badge>
+                                  </Box>
+                                </Box>
                               </Box>
-                            )}
-                          </Box>
-                        );
-                      })
-                  ) : (
-                    <Text color="gray.500" fontSize="sm">No offered items found.</Text>
-                  )}
-                </VStack>
+                            )
+                          }
+                          
+                          return (
+                            <Box key={item.id || idx} minW="120px" maxW="140px" flex="1 1 180px">
+                              {renderProductCard(product, { compact: true })}
+                            </Box>
+                          );
+                        })
+                    ) : (
+                      <Text color="gray.500" fontSize="sm">No offered items found.</Text>
+                    )}
+                  </HStack>
+                </Box>
               </Box>
             </Grid>
 

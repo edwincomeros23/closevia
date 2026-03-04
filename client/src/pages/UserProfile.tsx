@@ -57,7 +57,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 
-type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
+type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verification_status'> & {
   avatar_url?: string
   bio?: string
     background_url?: string
@@ -755,13 +755,21 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
             <CardBody pt="60px">
               <Flex justify="space-between" wrap="wrap">
                 <Box flex="1" minW="200px" mr={4}>
-                  <HStack spacing={3} align="center" mb={2}>
+                  <HStack spacing={3} align="center" mb={2} flexWrap="wrap">
                     <Heading size="lg" color="gray.800">{user.name}</Heading>
                     {user.verified && (
                       <Badge colorScheme="green">
                         <HStack spacing={1}>
                           <Icon as={FiCheckCircle} boxSize={3} />
                           <Text>Verified Seller</Text>
+                        </HStack>
+                      </Badge>
+                    )}
+                    {user.verification_status === 'verified' && (
+                      <Badge colorScheme="teal" variant="subtle">
+                        <HStack spacing={1}>
+                          <Icon as={FiCheckCircle} boxSize={3} />
+                          <Text>Verified Student</Text>
                         </HStack>
                       </Badge>
                     )}
