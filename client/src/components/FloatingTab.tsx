@@ -29,16 +29,24 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
       {/* Mobile Bottom Navigation Bar - Floating Tab */}
       <Box
         position="fixed"
-        bottom={6}
+        bottom="44px"
         left="50%"
         transform="translateX(-50%)"
         display={{ base: 'block', sm: 'none' }}
         zIndex={200}
         boxShadow="0 4px 20px rgba(0,0,0,0.15)"
-        borderRadius="lg"
+        borderRadius="full"
         overflow="hidden"
       >
-        <HStack spacing={0} h="55px" justify="space-around" align="center" bg="white">
+        <HStack
+          spacing={0}
+          h="48px"
+          justify="space-around"
+          align="center"
+          bg="rgba(255, 255, 255, 0.2)"
+          backdropFilter="blur(10px)"
+          border="1px solid rgba(255, 255, 255, 0.3)"
+        >
           {/* Dashboard Button */}
           <Button
             as={RouterLink}

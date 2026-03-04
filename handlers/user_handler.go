@@ -687,6 +687,69 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	})
 }
 
+// DeleteUser permanently deletes a user (admin only).
+// This uses ON DELETE CASCADE/SET NULL constraints to clean up related records.
+func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
+	adminID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil || userID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid user ID",
+		})
+	}
+
+	// Prevent admins from deleting their own account from the admin panel
+	if userID == adminID {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "You cannot delete your own admin account from the admin panel",
+		})
+	}
+
+	// Ensure user exists
+	var exists int
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM users WHERE id = ?", userID).Scan(&exists); err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to check user existence",
+		})
+	}
+	if exists == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
+		})
+	}
+
+	result, err := h.db.Exec("DELETE FROM users WHERE id = ?", userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to delete user",
+		})
+	}
+
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "User deleted successfully",
+	})
+}
+
 // SaveProduct saves a product to user's watchlist
 func (h *UserHandler) SaveProduct(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)

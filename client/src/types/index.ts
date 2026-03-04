@@ -85,7 +85,7 @@ export interface ProductUpdate {
   price?: number
   image_urls?: string[]
   premium?: boolean
-  status?: 'available' | 'sold' | 'traded'
+  status?: 'available' | 'sold' | 'traded' | 'locked'
   allow_buying?: boolean
   barter_only?: boolean
   location?: string

@@ -394,6 +394,38 @@ const Home: React.FC = () => {
         shadow="sm"
         borderWidth="1px"
         borderColor="gray.100"
+    <Box
+      key={product.id}
+      bg="white"
+      rounded="lg"
+      shadow="sm"
+      borderWidth="1px"
+      borderColor="gray.100"
+      overflow="hidden"
+      transition="all 0.2s ease"
+      w="full"
+      maxW={{ base: "100%", md: "250px" }}
+      h="full"
+      display="flex"
+      flexDirection="column"
+      mx="auto"
+      _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
+      onClick={() => navigate(getProductUrl(product))}
+      sx={{
+        '@media (max-width: 850px)': {
+          width: '100%',
+          minWidth: 0,
+          maxWidth: '100%',
+        },
+      }}
+    >
+      {/* Square Product Image - Fixed aspect ratio, object-fit: cover for uniform thumbnails */}
+      <Box
+        position="relative"
+        w="full"
+        maxW={{ base: "100%", md: "250px" }}
+        maxH={{ base: "100%", md: "250px" }}
+        aspectRatio={1}
         overflow="hidden"
         transition="all 0.2s ease"
         w="full"
@@ -445,6 +477,38 @@ const Home: React.FC = () => {
           )}
 
           {/* Trade/Buy Badge */}
+        sx={{
+          '@media (max-width: 850px)': {
+            height: '180px',
+            width: '100%',
+            maxHeight: '180px',
+            minHeight: '180px',
+            overflow: 'hidden',
+          },
+        }}
+      >
+        <Image
+          src={getFirstImage(product.image_urls)}
+          alt={product.title}
+          position="absolute"
+          top={0}
+          left={0}
+          w="100%"
+          h="100%"
+          objectFit="cover"
+          loading="lazy"
+          fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          sx={{
+            '@media (max-width: 850px)': {
+              objectFit: 'cover',
+              width: '100%',
+              height: '100%',
+            },
+          }}
+        />
+
+        {/* Premium Badge */}
+        {product.premium && (
           <Badge
             position="absolute"
             top={2}
@@ -455,6 +519,8 @@ const Home: React.FC = () => {
             px={1.5}
             py={0.5}
             fontSize="2xs"
+            px={2}
+            sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'top right' } }}
           >
             {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
           </Badge>
@@ -473,6 +539,21 @@ const Home: React.FC = () => {
               Sold
             </Badge>
           )}
+        {/* Trade/Buy Badge - Category */}
+        <Badge
+          position="absolute"
+          top={2}
+          left={2}
+          colorScheme={product.allow_buying && product.price && !product.barter_only ? "blue" : "green"}
+          variant="solid"
+          borderRadius="full"
+          px={1.5}
+          py={0.5}
+          fontSize="2xs"
+          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'top left' } }}
+        >
+          {product.allow_buying && product.price && !product.barter_only ? "Buy Available" : "Barter Only"}
+        </Badge>
 
           {/* Location Badge - New */}
           <Badge
@@ -486,12 +567,77 @@ const Home: React.FC = () => {
             bg="blackAlpha.600"
             color="white"
             fontSize="xs"
+            sx={{ '@media (max-width: 480px)': { transform: 'scale(0.8)', transformOrigin: 'bottom right' } }}
           >
             <Text as="span" mr={1}>📍</Text>
             {product.distance || 'Nearby'}
           </Badge>
 
           {/* Condition Badge for Image Section */}
+        {/* Location Badge - New */}
+        <Badge
+          position="absolute"
+          bottom={2}
+          left={2}
+          colorScheme="gray"
+          variant="solid"
+          borderRadius="full"
+          px={2}
+          bg="blackAlpha.600"
+          color="white"
+          fontSize="xs"
+          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'bottom left' } }}
+        >
+          <Text as="span" mr={1}>📍</Text>
+          {product.distance || '1.2km'}
+        </Badge>
+
+        {/* Condition Badge for Image Section */}
+        <Badge
+          position="absolute"
+          bottom={2}
+          right={2}
+          fontSize="3xs"
+          colorScheme="blue"
+          variant="subtle"
+          borderWidth="0"
+          display={{ base: 'inline-flex', md: 'none' }}
+          px={1.5}
+          py={0.5}
+          height="fit-content"
+          sx={{ '@media (max-width: 850px)': { transform: 'scale(0.75)', transformOrigin: 'bottom right' } }}
+        >
+          {product.condition || 'Used'}
+        </Badge>
+      </Box>
+
+      {/* Product Info (Flexible height) */}
+      <Box
+        p={4}
+        display="flex"
+        flexDirection="column"
+        flex={1}
+        overflow="hidden"
+        sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
+      >
+        <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
+          <HStack spacing={2}>
+            <Avatar
+              as={RouterLink}
+              to={`/users/${product.seller_id}`}
+              size="sm"
+              src={sellerAvatarSrc}
+              name={product.seller_name || 'U'}
+              bg="brand.500"
+              flexShrink={0}
+              cursor="pointer"
+              _hover={{ opacity: 0.8 }}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            />
+            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
+              {product.seller_name || 'Unknown'}
+            </Text>
+          </HStack>
           <Badge
             position="absolute"
             bottom={2}
@@ -529,6 +675,41 @@ const Home: React.FC = () => {
                 {product.seller_name || 'Unknown'}
               </Text>
             </HStack>
+        </Flex>
+
+        <Heading
+          size="sm"
+          noOfLines={2}
+          mb={2}
+          color="gray.800"
+          flexShrink={0}
+          textAlign="left"
+          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
+        >
+          {product.title}
+        </Heading>
+
+        <Text
+          color="gray.600"
+          noOfLines={{ base: 1, md: 2 }}
+          mb={2}
+          fontSize="sm"
+          flexShrink={0}
+          textAlign="left"
+          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
+        >
+          {product.description
+            ? product.description
+              .split(' ')
+              .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+              .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+            : 'No description available'
+          }
+        </Text>
+
+        {/* Wishlist Count Badge */}
+        {product.wishlist_count > 0 && (
+          <Flex mb={2} align="center" gap={1}>
             <Badge
               fontSize={{ base: 'xs', md: '2xs' }}
               colorScheme="blue"
@@ -627,7 +808,7 @@ const Home: React.FC = () => {
     )
   }
 
-  // Component to render product grid with ad injections
+  // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
     const filteredProducts = products.filter(
       (p) => p.status === 'available' && p.seller_id !== user?.id // Hide own products — can't trade with yourself
@@ -673,18 +854,26 @@ const Home: React.FC = () => {
     return (
       <Grid
         templateColumns={{
-          base: 'repeat(1, 1fr)',
+          base: 'repeat(2, 1fr)',
           md: 'repeat(3, 1fr)',
           lg: 'repeat(4, 1fr)',
           xl: 'repeat(5, 1fr)',
           '2xl': 'repeat(5, 1fr)',
         }}
-        gap={{ base: 3, md: 4, lg: 4, xl: 5 }}
+        gap={{ base: 2, md: 4, lg: 4, xl: 5 }}
         alignItems="start"
+        justifyContent="center"
+        mx="auto"
+        sx={{
+          '@media (max-width: 850px)': {
+            gridTemplateColumns: '1fr 1fr !important',
+            gap: '10px',
+          },
+        }}
       >
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
-            <Box key={`product-${item.data.id}`}>
+            <Box key={`product-${item.data.id}`} sx={{ '@media (max-width: 850px)': { minWidth: 0, maxWidth: 'none' } }}>
               {renderProductCard(item.data)}
             </Box>
           ) : (
@@ -716,7 +905,7 @@ const Home: React.FC = () => {
           mx={{ base: 'auto', lg: 0 }}
         >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap" ml={-14}>
+          <HStack w="full" spacing={3} wrap="wrap" ml={{ base: 0, md: -14 }}>
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -985,17 +1174,17 @@ const Home: React.FC = () => {
           )}
         </VStack>
       </Box>
-      {/* slider / visual box - desktop: capped width and taller */}
+      {/* slider / visual box - fully responsive from mobile to 2xl */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
+        maxW={{ base: 'calc(100% - 32px)', sm: 'calc(100% - 24px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
         mx={{ base: 'auto', lg: 0 }}
         mb={8}
-        px={{ base: 2, md: 4, lg: 6 }}
+        px={{ base: 2, sm: 3, md: 4, lg: 6 }}
       >
         <Box
           position="relative"
           overflow="hidden"
-          h={{ base: 28, md: 28, lg: 40, xl: 44, '2xl': 48 }}
+          h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }}
           rounded="lg"
           border="1px"
           borderColor="gray.200"
@@ -1020,51 +1209,64 @@ const Home: React.FC = () => {
               zIndex={idx === slideIndex ? 2 : 1}
               loading="eager"
               draggable={false}
-              onClick={() => { /* allow click-through if desired */ }}
+              pointerEvents="none"
             />
           ))}
 
-          {/* Prev / Next controls (desktop only). Mobile users swipe instead. */}
+          {/* Prev / Next controls (tablet+). Mobile users swipe instead. */}
           <IconButton
+            type="button"
             aria-label="Previous slide"
             icon={<ArrowLeftIcon />}
             position="absolute"
-            left={3}
+            left={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
-            zIndex={5}
-            size="sm"
+            zIndex={10}
+            size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
-            display={{ base: 'none', md: 'flex' }}
-            onClick={(e) => { e.stopPropagation(); goPrev() }}
+            display={{ base: 'none', sm: 'flex' }}
+            pointerEvents="auto"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              goPrev()
+            }}
           />
 
           <IconButton
+            type="button"
             aria-label="Next slide"
             icon={<ArrowRightIcon />}
             position="absolute"
-            right={3}
+            right={{ base: 2, md: 3, lg: 4 }}
             top="50%"
             transform="translateY(-50%)"
-            zIndex={5}
-            size="sm"
+            zIndex={10}
+            size={{ base: 'xs', md: 'sm', lg: 'md' }}
             colorScheme="blackAlpha"
             variant="ghost"
-            display={{ base: 'none', md: 'flex' }}
-            onClick={(e) => { e.stopPropagation(); goNext() }}
+            display={{ base: 'none', sm: 'flex' }}
+            pointerEvents="auto"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              goNext()
+            }}
           />
 
-          {/* Dots */}
-          <HStack spacing={2} position="absolute" bottom={3} left="50%" transform="translateX(-50%)" zIndex={5}>
+          {/* Dots - responsive sizing */}
+          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={10} pointerEvents="auto">
             {sliderImages.map((_, i) => (
               <Box
                 key={i}
                 as="button"
-                w={i === slideIndex ? 3 : 2.5}
-                h={i === slideIndex ? 3 : 2.5}
+                w={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
+                h={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
                 bg={i === slideIndex ? 'brand.500' : 'gray.300'}
                 borderRadius="full"
+                transition="all 0.3s ease"
                 onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); setSlideIndex(i); scheduleResume(2000) }}
               />
             ))}
@@ -1178,6 +1380,7 @@ const Home: React.FC = () => {
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
         py={8}
+        sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px' } }}
         maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
         mx={{ base: 'auto', lg: 0 }}
         w="full"
@@ -1225,6 +1428,18 @@ const Home: React.FC = () => {
             ml={-10}
           >
             <ProductGridWithAds products={products} user={user} />
+     {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
+     {!loading && products.length > 0 && (
+  <Box
+    w="full"
+    mx="auto"
+    px={{ base: 2, md: 4, lg: 0 }}
+    pb={{ base: 20, md: 0 }}
+    minH={{ base: '1200px', md: '1600px' }}
+    ml={-10}
+    sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
+  >
+    <ProductGridWithAds products={products} user={user} />
 
             {/* Sentinel for infinite scroll */}
             <Box ref={sentinelRef} h="1px" />
@@ -1384,7 +1599,9 @@ const Home: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      <FloatingTab />
+      <Box mb={{ base: 5, md: 0 }}>
+        <FloatingTab />
+      </Box>
     </Box>
   )
 }

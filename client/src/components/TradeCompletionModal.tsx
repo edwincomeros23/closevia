@@ -301,6 +301,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         boxShadow="xl"
         mx={4}
         mt={50}
+        maxW="500px"
         display="flex"
         flexDirection="column"
         justifyContent="center"
@@ -472,6 +473,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                             <Image
                               src={transactionProof}
                               alt="Transaction proof"
+                              maxW="100%"
                               maxH="200px"
                               borderRadius="md"
                               objectFit="contain"

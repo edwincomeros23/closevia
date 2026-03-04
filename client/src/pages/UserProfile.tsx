@@ -57,7 +57,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 
-  type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
+type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
   avatar_url?: string
   bio?: string
     background_url?: string
@@ -75,6 +75,15 @@ import { getProductUrl } from '../utils/productUtils'
   is_following?: boolean
 }
 
+interface UserProfileProps {
+  /**
+   * Optional explicit user ID. When provided, this overrides the route param
+   * so the same component can be reused for the logged-in user's profile
+   * (e.g. on the `/profile` route) and for public profiles (`/users/:id`).
+   */
+  userId?: number
+}
+
 type SellerStats = {
   avg_rating?: number
   positive_percent?: number
@@ -84,8 +93,10 @@ type SellerStats = {
   avg_response_time?: string
 }
 
-const UserProfile: React.FC = () => {
-  const { id } = useParams<{ id: string }>()
+const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
+  const { id: routeId } = useParams<{ id: string }>()
+  const effectiveId = userId ?? (routeId ? Number(routeId) : undefined)
+  const id = effectiveId != null ? String(effectiveId) : ''
   const navigate = useNavigate()
   const { user: currentUser } = useAuth()
   const [user, setUser] = useState<PublicUser | null>(null)
