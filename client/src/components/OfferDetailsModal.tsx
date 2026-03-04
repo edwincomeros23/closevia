@@ -38,13 +38,19 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   useEffect(() => {
     // eslint-disable-next-line no-console
     console.log('🔍 [DEEP DEBUG] FULL TRADE OBJECT:', JSON.stringify(trade, null, 2))
-    // eslint-disable-next-line no-console
-    console.log('🔍 [DEEP DEBUG] Trade items array:', trade?.items)
-    // eslint-disable-next-line no-console
-    console.log('🔍 [DEEP DEBUG] Offered array:', offered)
-    // eslint-disable-next-line no-console
-    console.log('🔍 [DEEP DEBUG] Trade object keys:', trade ? Object.keys(trade as any) : 'null')
   }, [trade])
+
+  // Build instant placeholder products from trade data to avoid blink
+  const buildPlaceholderProduct = (id: number, title?: string, imageUrl?: string): Product => ({
+    id,
+    title: title || `Product #${id}`,
+    description: '',
+    status: 'available',
+    seller_id: 0,
+    image_urls: imageUrl ? [imageUrl] : [],
+    created_at: '',
+    updated_at: '',
+  } as Product)
 
   // If incoming trade from list lacks items, fetch detailed trade
   useEffect(() => {
@@ -55,8 +61,6 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
           const res = await api.get(`/api/trades/${trade.id}`)
           const dt: Trade | null = res.data?.data || null
           setDetailedTrade(dt)
-          // eslint-disable-next-line no-console
-          console.log('🔍 [DEEP DEBUG] Loaded detailed trade:', dt)
         } catch (e) {
           setDetailedTrade(null)
         }
@@ -100,14 +104,35 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     return filtered
   }, [buyerItems])
 
+  // Immediately set placeholder data from trade object (no API call needed)
   useEffect(() => {
-    if (!isOpen) return
-    // eslint-disable-next-line no-console
-    console.log('🔍 [DEEP DEBUG] Derived buyerItems:', buyerItems)
-    // eslint-disable-next-line no-console
-    console.log('🔍 [DEEP DEBUG] Offered item IDs:', offeredItemIds)
-  }, [isOpen, buyerItems, offeredItemIds])
+    if (!isOpen || !effectiveTrade) return
 
+    // Instant placeholder for requested (target) product
+    const tradeAny = effectiveTrade as any
+    const targetImg = tradeAny.product_image_url || tradeAny.productImageUrl || ''
+    const targetTitle = effectiveTrade.product_title || ''
+    if (effectiveTrade.target_product_id) {
+      setRequested(prev => prev?.id === effectiveTrade.target_product_id ? prev :
+        buildPlaceholderProduct(effectiveTrade.target_product_id, targetTitle, targetImg)
+      )
+    }
+
+    // Instant placeholders for offered items
+    if (buyerItems.length > 0) {
+      const placeholders = buyerItems.map((item: any) => {
+        const pid = item.product_id ?? item.productId
+        const pTitle = item.product_title ?? item.productTitle ?? ''
+        const pImg = item.product_image_url ?? item.productImageUrl ?? ''
+        return buildPlaceholderProduct(Number(pid), pTitle, pImg)
+      }).filter((p: Product) => p.id > 0)
+      if (placeholders.length > 0) {
+        setOffered(placeholders)
+      }
+    }
+  }, [isOpen, effectiveTrade, buyerItems])
+
+  // Then fetch full product details in background (upgrades placeholder data)
   useEffect(() => {
     if (!isOpen || !effectiveTrade) return
     ;(async () => {
@@ -335,22 +360,20 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
           {/* Hide status / barter badges in compact (offered) mode */}
           {!compact && (
             <HStack spacing={2} mt={1}>
-              <Badge colorScheme={p.status === 'available' ? 'green' : 'red'}>{p.status}</Badge>
-              {p.barter_only ? <Badge colorScheme="purple">Barter</Badge> : <Badge colorScheme="blue">For Sale</Badge>}
+              <Badge colorScheme={p.status === 'available' ? 'green' : 'red'} fontSize="2xs">{p.status}</Badge>
+              {p.barter_only ? <Badge colorScheme="purple" fontSize="2xs">Barter</Badge> : <Badge colorScheme="blue" fontSize="2xs">For Sale</Badge>}
             </HStack>
           )}
 
-          {/* Hide description in compact mode */}
-          {!compact && <Text color="gray.600" mt={2} noOfLines={3}>{p.description}</Text>}
+          {!compact && p.description && <Text color="gray.600" mt={1} fontSize="xs" noOfLines={2}>{p.description}</Text>}
 
           {showPrice && (
-            <Text mt={2} fontWeight="bold" fontSize={priceFontSize}>{formatPHP(p.price as number)}</Text>
+            <Text mt={1} fontWeight="bold" fontSize="sm" color="brand.600">{formatPHP(p.price as number)}</Text>
           )}
 
-          {/* Remove seller info in compact (offered) mode */}
-          {!compact && <Text mt={1} fontSize="sm" color="gray.600">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
+          {!compact && <Text mt={1} fontSize="xs" color="gray.500">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
 
-          <Button as={'a'} href={getProductUrl(p)} variant="link" colorScheme="brand" mt={2} size={compact ? 'sm' : 'md'}>View listing</Button>
+          <Button as={'a'} href={getProductUrl(p)} variant="link" colorScheme="brand" mt={1} size="sm" fontSize="xs">View listing</Button>
         </Box>
       </Box>
     )
@@ -425,7 +448,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                   </HStack>
                 </Box>
               </Box>
-            </HStack>
+            </Grid>
 
 
             {/* Trade Option Display - Prominent */}

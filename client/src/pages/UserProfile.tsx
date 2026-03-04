@@ -56,7 +56,6 @@ import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
-import { useTradeHistory } from '../hooks/useDashboard'
 
 type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verification_status'> & {
   avatar_url?: string
@@ -414,17 +413,30 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const displayTotalReviews = sellerStats?.total_feedback ?? user?.total_reviews ?? reviews.length
   const displayPositivePercent = sellerStats?.positive_percent ?? user?.positive_feedback ?? 98
 
-  // Fetch real trade history from backend
-  const { data: allTrades, isLoading: tradesLoading, error: tradesError } = useTradeHistory()
-  
-  // Filter trades for this specific user
-  const userTrades = useMemo(() => {
-    if (!allTrades || !id) return []
-    const userId = Number(id)
-    return allTrades.filter(trade => 
-      trade.buyer_id === userId || trade.seller_id === userId
-    )
-  }, [allTrades, id])
+  // Fetch real trade history from backend for this specific user
+  const [userTrades, setUserTrades] = useState<any[]>([])
+  const [tradesLoading, setTradesLoading] = useState(true)
+  const [tradesError, setTradesError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchTradeHistory = async () => {
+      if (!id) return
+      setTradesLoading(true)
+      setTradesError(null)
+      try {
+        const res = await api.get(`/api/users/${id}/trades`)
+        const data = res.data?.data || res.data || []
+        setUserTrades(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error('Failed to fetch trade history:', err)
+        setTradesError(err)
+        setUserTrades([])
+      } finally {
+        setTradesLoading(false)
+      }
+    }
+    fetchTradeHistory()
+  }, [id])
 
   // Sort products based on selected option
   const sortedProducts = useMemo(() => {

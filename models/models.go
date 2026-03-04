@@ -286,6 +286,7 @@ type Trade struct {
 	BuyerName             string `json:"buyer_name,omitempty"`
 	SellerName            string `json:"seller_name,omitempty"`
 	ProductTitle          string `json:"product_title,omitempty"`
+	ProductImageURL       string `json:"product_image_url,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade

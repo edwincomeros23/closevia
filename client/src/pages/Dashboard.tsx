@@ -529,10 +529,11 @@ const Dashboard: React.FC = () => {
         src={img ?? ''}
         alt={alt ?? 'Product Image'}
         w={isLarge ? "full" : size}
-        h={isLarge ? "120px" : size}
-        objectFit="cover"
-        borderRadius="md"
+        h={isLarge ? "180px" : size}
+        objectFit={isLarge ? "contain" : "cover"}
+        borderRadius={isLarge ? "0" : "md"}
         loading="lazy"
+        bg={isLarge ? "gray.100" : "transparent"}
         fallbackSrc={isLarge ? "https://via.placeholder.com/300x200?text=No+Image" : "https://via.placeholder.com/40x40?text=?"}
       />
     )
@@ -1747,7 +1748,19 @@ const Dashboard: React.FC = () => {
           role="article"
           aria-label={`Offer for ${getProductTitle(trade.target_product_id, trade.product_title)}`}
         >
-          <Box position="relative" w="full" h="120px" overflow="hidden" borderRadius="lg">
+          <Box
+            position="relative"
+            w="full"
+            h="180px"
+            overflow="hidden"
+            borderTopRadius="md"
+            bg="gray.100"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            borderBottom="1px solid"
+            borderColor="gray.200"
+          >
             <ProductThumb
               pid={trade.target_product_id}
               alt={getProductTitle(trade.target_product_id, trade.product_title)}
@@ -2506,20 +2519,14 @@ const Dashboard: React.FC = () => {
                       <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
                         <Icon as={FiMessageCircle} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
                         <Text display={{ base: 'none', sm: 'block' }}>Offers</Text>
-                        {unreadOffers > 0 && (
+                        {(sentOffers.length + receivedOffers.length + ongoingTrades.length) > 0 && (
                           <Badge
-                            bg="orange.500"
-                            color="white"
+                            colorScheme="orange"
                             borderRadius="full"
-                            fontSize="2xs"
-                            minW={{ base: '16px', md: '18px' }}
-                            h={{ base: '16px', md: '18px' }}
-                            display="inline-flex"
-                            alignItems="center"
-                            justifyContent="center"
-                            fontWeight="bold"
+                            fontSize="xs"
+                            display={{ base: 'none', sm: 'inline-flex' }}
                           >
-                            {unreadOffers > 99 ? '99+' : unreadOffers}
+                            {sentOffers.length + receivedOffers.length + ongoingTrades.length}
                           </Badge>
                         )}
                       </HStack>
