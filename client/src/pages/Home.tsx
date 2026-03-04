@@ -317,8 +317,16 @@ const Home: React.FC = () => {
     try {
       setLoadingOffers(true)
       setSelectedProductForOffers(productId)
-      const response = await api.get(`/api/trades?target_product_id=${productId}`)
-      setOffersForProduct(response.data?.data || [])
+      const response = await api.get(`/api/trades`, {
+        params: {
+          direction: 'incoming',
+          status: 'pending',
+          limit: 100
+        }
+      })
+      // Filter for this specific product
+      const filteredOffers = (response.data?.data || []).filter((trade: any) => trade.target_product_id === productId)
+      setOffersForProduct(filteredOffers)
       setOffersModalOpen(true)
     } catch (error) {
       toast({

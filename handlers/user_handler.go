@@ -94,7 +94,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	// Insert new user
 	result, err := h.db.Exec(
-		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
+		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?)",
 		user.Name,
 		user.Email,
 		hashedPassword,
@@ -106,6 +106,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		nullableString(user.Department),
 		user.Bio,
 		"",
+		"en",
 	)
 	if err != nil {
 		// Log the actual error for debugging
@@ -382,7 +383,7 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	if err == sql.ErrNoRows {
 		// Create new user from Google info
 		result, err := h.db.Exec(
-			"INSERT INTO users (name, email, role, verified, profile_picture, is_organization, org_verified, badges) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_ARRAY())",
+			"INSERT INTO users (name, email, role, verified, profile_picture, is_organization, org_verified, badges, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
 			req.DisplayName,
 			req.Email,
 			"user",
@@ -390,6 +391,7 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 			req.PhotoURL,
 			false,
 			false,
+			"en",
 		)
 		if err != nil {
 			return c.Status(500).JSON(models.APIResponse{
@@ -444,9 +446,26 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') AS profile_picture, COALESCE(bio, '') AS bio, COALESCE(background_image, '') AS background_image, COALESCE(background_position, '') AS background_position, COALESCE(department, '') AS department, created_at, updated_at FROM users WHERE id = ?",
+		`SELECT id, name, email, role, verified, org_logo_url,
+		        COALESCE(profile_picture, '') AS profile_picture,
+		        COALESCE(bio, '') AS bio,
+		        COALESCE(background_image, '') AS background_image,
+		        COALESCE(background_position, '') AS background_position,
+		        COALESCE(department, '') AS department,
+		        COALESCE(verification_status, 'not_verified') AS verification_status,
+		        COALESCE(school_name, '') AS school_name,
+		        COALESCE(school_email, '') AS school_email,
+		        school_email_verified_at,
+		        COALESCE(verification_rejection_reason, '') AS verification_rejection_reason,
+		        created_at, updated_at
+		 FROM users WHERE id = ?`,
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(
+		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL,
+		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department,
+		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.SchoolEmailVerifiedAt, &user.VerificationRejectionReason,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -488,6 +507,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		Bio                *string `json:"bio"`
 		BackgroundImage    *string `json:"background_image"`
 		BackgroundPosition *string `json:"background_position"`
+		LanguagePreference *string `json:"language_preference"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -531,6 +551,12 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, *updateData.BackgroundPosition)
 	}
 
+	if updateData.LanguagePreference != nil {
+		query += ", language_preference = ?"
+		args = append(args, *updateData.LanguagePreference)
+		fmt.Printf("✅ UpdateProfile: Setting language_preference to '%s' for user %d\n", *updateData.LanguagePreference, userID)
+	}
+
 	query += " WHERE id = ?"
 	args = append(args, userID)
 
@@ -538,12 +564,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if err != nil {
 		// Handle missing columns: try to add any known columns then retry once
 		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
-			// Try adding profile_picture, background_image, background_position, bio as needed
+			// Try adding profile_picture, background_image, background_position, bio, language_preference as needed
 			// Note: guard each ALTER with best-effort; ignore errors to let retry attempt proceed
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_image VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS language_preference VARCHAR(10) NULL DEFAULT 'en'")
 			// retry update
 			_, err = h.db.Exec(query, args...)
 		}
@@ -724,10 +751,22 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 
 	var user models.User
 	var profilePicture, backgroundImage, backgroundPosition, department, bio sql.NullString
+	var verificationStatus, schoolName, schoolEmail, rejectionReason sql.NullString
+	var emailVerifiedAt sql.NullTime
 	err = h.db.QueryRow(
-		"SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url, profile_picture, background_image, background_position, department, bio, badges, created_at, updated_at FROM users WHERE id = ?",
+		`SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url,
+		        profile_picture, background_image, background_position, department, bio, badges,
+		        verification_status, school_name, school_email, school_email_verified_at, verification_rejection_reason,
+		        created_at, updated_at
+		   FROM users WHERE id = ?`,
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL, &profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(
+		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified,
+		&user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL,
+		&profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges,
+		&verificationStatus, &schoolName, &schoolEmail, &emailVerifiedAt, &rejectionReason,
+		&user.CreatedAt, &user.UpdatedAt,
+	)
 
 	fmt.Printf("🔍 GetUserByID(%d) query result - error: %v\n", userID, err)
 	if err != nil {
@@ -765,6 +804,22 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	}
 	if bio.Valid {
 		user.Bio = bio.String
+	}
+	if verificationStatus.Valid && verificationStatus.String != "" {
+		user.VerificationStatus = verificationStatus.String
+	}
+	if schoolName.Valid {
+		user.SchoolName = schoolName.String
+	}
+	if schoolEmail.Valid {
+		user.SchoolEmail = schoolEmail.String
+	}
+	if emailVerifiedAt.Valid {
+		t := emailVerifiedAt.Time
+		user.SchoolEmailVerifiedAt = &t
+	}
+	if rejectionReason.Valid {
+		user.VerificationRejectionReason = rejectionReason.String
 	}
 
 	return c.JSON(models.APIResponse{

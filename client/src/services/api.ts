@@ -2,8 +2,8 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
 // Use environment variable for API URL, default to localhost for development
 export const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  import.meta.env.PROD
-    ? 'https://closevia.onrender.com'  // Update with your actual Render backend URL
+  import.meta.env.PROD 
+    ? 'https://clovia-backend.onrender.com'  // Update with your actual Render backend URL
     : 'http://localhost:4000'                        // Development localhost
 )
 
