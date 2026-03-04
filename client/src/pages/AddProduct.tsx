@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Box,
   VStack,
@@ -45,6 +46,7 @@ import { PRODUCT_CATEGORIES } from '../utils/categories'
 
 const AddProduct: React.FC = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { user } = useAuth()
   const { createProduct } = useProducts()
   const toast = useToast()
@@ -59,8 +61,8 @@ const AddProduct: React.FC = () => {
     allow_buying: false,
     barter_only: true,
     location: '',
-    condition: 'Used',
-    category: 'General',
+    condition: '',
+    category: '',
     wants: '',
     bidding_type: 'none',
 
@@ -412,6 +414,8 @@ const AddProduct: React.FC = () => {
         isClosable: true,
       })
 
+      // Invalidate dashboard products cache so the new product appears immediately
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
       navigate('/dashboard')
     } catch (error: any) {
       console.error('=== PRODUCT CREATION ERROR ===')
@@ -445,7 +449,7 @@ const AddProduct: React.FC = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1: return uploadedImages.length >= 3
-      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500
+      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500 && !!formData.condition && !!formData.category
       case 3: return formData.wants?.trim() || false // What I Want is required for multi-way trading
       case 4: return true // Barter options are always valid
       case 5: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
@@ -707,12 +711,13 @@ const AddProduct: React.FC = () => {
             </FormControl>
 
             <FormControl isRequired>
-              <FormLabel>Condition</FormLabel>
+              <FormLabel>Condition <Text as="span" color="red.500">*</Text></FormLabel>
               <Select
                 placeholder="Select condition"
                 value={formData.condition}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('condition', e.target.value)}
                 size="lg"
+                borderColor={!formData.condition ? 'red.300' : 'inherit'}
               >
                 <option value="New">New</option>
                 <option value="Like-New">Like-New</option>
@@ -721,13 +726,14 @@ const AddProduct: React.FC = () => {
               </Select>
             </FormControl>
 
-            <FormControl>
-              <FormLabel>Category</FormLabel>
+            <FormControl isRequired>
+              <FormLabel>Category <Text as="span" color="red.500">*</Text></FormLabel>
               <Select
                 placeholder="Select category"
                 value={formData.category}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('category', e.target.value)}
                 size="lg"
+                borderColor={!formData.category ? 'red.300' : 'inherit'}
               >
                 {PRODUCT_CATEGORIES.map(cat => (
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
@@ -1254,7 +1260,7 @@ const AddProduct: React.FC = () => {
           </Box>
 
           {/* Navigation */}
-          <HStack justify="space-between">
+          <HStack justify="space-between" pb={{ base: 20, sm: 0 }}>
             <Button
               leftIcon={<ArrowBackIcon />}
               onClick={prevStep}

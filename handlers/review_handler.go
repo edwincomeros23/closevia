@@ -334,6 +334,11 @@ func (h *ReviewHandler) ReplyToReview(c *fiber.Ctx) error {
 		})
 	}
 
+	// Ensure reply columns exist (auto-migrate)
+	h.db.Exec("ALTER TABLE reviews ADD COLUMN reply TEXT")
+	h.db.Exec("ALTER TABLE reviews ADD COLUMN reply_date DATETIME")
+	h.db.Exec("ALTER TABLE reviews ADD COLUMN replied_by_user_id INT")
+
 	// Check if review exists and get the reviewed user ID
 	var reviewedUserID int
 	checkQuery := `SELECT reviewed_user_id FROM reviews WHERE id = ?`
@@ -344,6 +349,7 @@ func (h *ReviewHandler) ReplyToReview(c *fiber.Ctx) error {
 		})
 	}
 	if err != nil {
+		log.Printf("❌ ReplyToReview: Failed to verify review %d: %v", reviewID, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to verify review",
 		})
@@ -362,6 +368,7 @@ func (h *ReviewHandler) ReplyToReview(c *fiber.Ctx) error {
 
 	_, err = h.db.Exec(updateQuery, req.Reply, time.Now(), userID, reviewID)
 	if err != nil {
+		log.Printf("❌ ReplyToReview: Failed to update review %d: %v", reviewID, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to post reply",
 		})

@@ -97,7 +97,10 @@ export const useSentOffers = () => {
       })
       return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 15, // 15 seconds - offers should feel fresh
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: 1000 * 30, // Background refetch every 30 seconds
   })
 }
 
@@ -116,7 +119,10 @@ export const useReceivedOffers = () => {
       })
       return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 15, // 15 seconds - offers should feel fresh
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: 1000 * 30, // Background refetch every 30 seconds
   })
 }
 
@@ -152,7 +158,10 @@ export const useOngoingTrades = () => {
 
       return Array.from(uniqueTrades.values())
     },
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 15, // 15 seconds
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    refetchInterval: 1000 * 30, // Background refetch every 30 seconds
   })
 }
 

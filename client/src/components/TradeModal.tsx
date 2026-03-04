@@ -13,7 +13,7 @@ interface TradeModalProps {
 }
 
 const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductId }) => {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const toast = useToast()
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const [targetProduct, setTargetProduct] = useState<Product | null>(null)
@@ -23,6 +23,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [cashAmount, setCashAmount] = useState<string>('')
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
+  const [detectingLocation, setDetectingLocation] = useState(false)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const selectedBg = useColorModeValue('brand.50', 'brand.900')
@@ -73,7 +74,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     } else {
       setUserProducts([])
     }
-  }, [isOpen, user])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, user?.id])
 
   useEffect(() => {
     if (!isOpen) return
@@ -323,8 +325,42 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                             ⚠️ Location not set
                           </Text>
                           <Text fontSize="xs" color="yellow.700" mt={1}>
-                            Please set your location in your profile to use delivery option
+                            Click below to automatically detect your location
                           </Text>
+                          <Button
+                            size="sm"
+                            colorScheme="blue"
+                            mt={2}
+                            isLoading={detectingLocation}
+                            loadingText="Detecting..."
+                            onClick={async () => {
+                              if (!navigator.geolocation) {
+                                toast({ title: 'Geolocation not supported', status: 'error', duration: 3000 })
+                                return
+                              }
+                              setDetectingLocation(true)
+                              navigator.geolocation.getCurrentPosition(
+                                async (position) => {
+                                  const { latitude, longitude } = position.coords
+                                  try {
+                                    await api.put('/api/users/profile', { latitude, longitude })
+                                    if (refreshUser) await refreshUser()
+                                    toast({ title: 'Location saved!', description: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`, status: 'success', duration: 3000 })
+                                  } catch {
+                                    toast({ title: 'Failed to save location', status: 'error', duration: 3000 })
+                                  }
+                                  setDetectingLocation(false)
+                                },
+                                () => {
+                                  toast({ title: 'Location access denied', description: 'Please allow location access in your browser', status: 'warning', duration: 4000 })
+                                  setDetectingLocation(false)
+                                },
+                                { enableHighAccuracy: true, timeout: 10000 }
+                              )
+                            }}
+                          >
+                            📍 Detect My Location
+                          </Button>
                         </Box>
                       )}
                     </FormControl>

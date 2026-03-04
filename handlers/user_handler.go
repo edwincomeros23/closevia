@@ -294,9 +294,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') AS profile_picture, COALESCE(bio, '') AS bio, COALESCE(background_image, '') AS background_image, COALESCE(background_position, '') AS background_position, COALESCE(department, '') AS department, created_at, updated_at FROM users WHERE id = ?",
+		"SELECT id, name, email, role, verified, org_logo_url, COALESCE(profile_picture, '') AS profile_picture, COALESCE(bio, '') AS bio, COALESCE(background_image, '') AS background_image, COALESCE(background_position, '') AS background_position, COALESCE(department, '') AS department, latitude, longitude, created_at, updated_at FROM users WHERE id = ?",
 		userID,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.Latitude, &user.Longitude, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
@@ -332,12 +332,14 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	var updateData struct {
-		Name               *string `json:"name"`
-		Email              *string `json:"email"`
-		ProfilePicture     *string `json:"profile_picture"`
-		Bio                *string `json:"bio"`
-		BackgroundImage    *string `json:"background_image"`
-		BackgroundPosition *string `json:"background_position"`
+		Name               *string  `json:"name"`
+		Email              *string  `json:"email"`
+		ProfilePicture     *string  `json:"profile_picture"`
+		Bio                *string  `json:"bio"`
+		BackgroundImage    *string  `json:"background_image"`
+		BackgroundPosition *string  `json:"background_position"`
+		Latitude           *float64 `json:"latitude"`
+		Longitude          *float64 `json:"longitude"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -379,6 +381,15 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if updateData.BackgroundPosition != nil {
 		query += ", background_position = ?"
 		args = append(args, *updateData.BackgroundPosition)
+	}
+
+	if updateData.Latitude != nil {
+		query += ", latitude = ?"
+		args = append(args, *updateData.Latitude)
+	}
+	if updateData.Longitude != nil {
+		query += ", longitude = ?"
+		args = append(args, *updateData.Longitude)
 	}
 
 	query += " WHERE id = ?"
