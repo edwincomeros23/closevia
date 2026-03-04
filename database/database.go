@@ -148,6 +148,7 @@ func CreateTables() error {
 			department VARCHAR(255) NULL,
 			bio TEXT NULL,
 			badges JSON NULL,
+			language_preference VARCHAR(10) NULL DEFAULT 'en',
 			verified BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

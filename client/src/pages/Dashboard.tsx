@@ -178,6 +178,11 @@ const Dashboard: React.FC = () => {
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
 
+  // View mode states for different tabs
+  const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('grid')
+  const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
+  const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
+
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -1386,6 +1391,118 @@ const Dashboard: React.FC = () => {
     )
   })
 
+  // Offer List Row - compact row layout for offers list view
+  const OfferListRow = React.memo(({
+    trade,
+    isIncoming,
+    onView,
+    onAccept,
+    onDecline,
+    onCancel,
+  }: {
+    trade: Trade
+    isIncoming: boolean
+    onView: () => void
+    onAccept?: () => void
+    onDecline?: () => void
+    onCancel?: () => void
+  }) => {
+    const statusColor = badgeColor(trade.status).color
+    const userName = isIncoming ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous')
+    
+    return (
+      <Flex
+        align="center"
+        gap={{ base: 2, md: 4 }}
+        p={3}
+        borderBottom="1px"
+        borderColor={borderColor}
+        _hover={{ bg: 'gray.50' }}
+        minW={0}
+        flexWrap="wrap"
+      >
+        <Box
+          w="60px"
+          h="60px"
+          flexShrink={0}
+          borderRadius="md"
+          overflow="hidden"
+          bg="gray.100"
+        >
+          <ProductThumb
+            pid={trade.target_product_id}
+            alt={getProductTitle(trade.target_product_id, trade.product_title)}
+            size="100%"
+          />
+        </Box>
+        <VStack align="start" spacing={0} flex={1} minW={0}>
+          <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+            {getProductTitle(trade.target_product_id, trade.product_title)}
+          </Text>
+          <HStack spacing={2} mt={1}>
+            <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+              {trade.status}
+            </Badge>
+            <Text fontSize="xs" color="gray.600">from {userName}</Text>
+            {trade.created_at && (
+              <Text fontSize="xs" color="gray.500">
+                {getTimeAgo(trade.created_at)}
+              </Text>
+            )}
+          </HStack>
+        </VStack>
+        <HStack spacing={1} flexShrink={0}>
+          <Button
+            size="sm"
+            variant="outline"
+            colorScheme="brand"
+            fontSize={{ base: 'xs', md: 'sm' }}
+            px={{ base: 2, md: 3 }}
+            onClick={onView}
+          >
+            View
+          </Button>
+          {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
+            <>
+              <Button
+                size="sm"
+                colorScheme="green"
+                variant="solid"
+                fontSize={{ base: 'xs', md: 'sm' }}
+                px={{ base: 2, md: 3 }}
+                onClick={onAccept}
+              >
+                Accept
+              </Button>
+              <Button
+                size="sm"
+                colorScheme="red"
+                variant="outline"
+                fontSize={{ base: 'xs', md: 'sm' }}
+                px={{ base: 2, md: 3 }}
+                onClick={onDecline}
+              >
+                Decline
+              </Button>
+            </>
+          )}
+          {!isIncoming && trade.status === 'pending' && onCancel && (
+            <Button
+              size="sm"
+              colorScheme="red"
+              variant="outline"
+              fontSize={{ base: 'xs', md: 'sm' }}
+              px={{ base: 2, md: 3 }}
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+          )}
+        </HStack>
+      </Flex>
+    )
+  })
+
   // Enhanced Ongoing Trade Card Component - memoized for performance
   const OngoingTradeCard: React.FC<{
     trade: Trade
@@ -2112,6 +2229,46 @@ const Dashboard: React.FC = () => {
                         }}
                       />
                     </Tooltip>
+                  </>
+                )}
+
+                {activeTab === 1 && (
+                  <>
+                    <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                      <IconButton
+                        aria-label={offersViewMode === 'grid' ? 'List view' : 'Grid view'}
+                        icon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
+                        size="sm"
+                        variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                      />
+                    </Tooltip>
+                    <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
+                      <IconButton
+                        aria-label="Filter offers"
+                        icon={<FiFilter />}
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+                          const currentIndex = statuses.indexOf(offersStatusFilter)
+                          setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+                          setOffersPage(1)
+                        }}
+                      />
+                    </Tooltip>
+                    <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                      <IconButton
+                        aria-label="Sort offers"
+                        icon={<FiArrowDown />}
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                        }}
+                      />
+                    </Tooltip>
                     <Button
                       as={RouterLink}
                       to="/add-product"
@@ -2138,25 +2295,21 @@ const Dashboard: React.FC = () => {
                   </>
                 )}
 
-                {activeTab === 1 && (
+                {activeTab === 2 && (
                   <>
-                    <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
+                    <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                       <IconButton
-                        aria-label="Filter offers"
-                        icon={<FiFilter />}
+                        aria-label={multiWayTradesViewMode === 'grid' ? 'List view' : 'Grid view'}
+                        icon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
                         size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
-                          const currentIndex = statuses.indexOf(offersStatusFilter)
-                          setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
-                          setOffersPage(1)
-                        }}
+                        variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
                       />
                     </Tooltip>
                     <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                       <IconButton
-                        aria-label="Sort offers"
+                        aria-label="Sort multi-way trades"
                         icon={<FiArrowDown />}
                         size="sm"
                         variant="ghost"
@@ -2165,22 +2318,80 @@ const Dashboard: React.FC = () => {
                         }}
                       />
                     </Tooltip>
+                    <Button
+                      as={RouterLink}
+                      to="/add-product"
+                      size="sm"
+                      colorScheme="brand"
+                      leftIcon={<AddIcon />}
+                      ml={2}
+                      display={{ base: 'none', sm: 'inline-flex' }}
+                    >
+                      Add Product
+                    </Button>
+                    <Tooltip label="Add Product" hasArrow>
+                      <IconButton
+                        as={RouterLink}
+                        to="/add-product"
+                        aria-label="Add Product"
+                        icon={<AddIcon />}
+                        size="sm"
+                        colorScheme="brand"
+                        ml={1}
+                        display={{ base: 'flex', sm: 'none' }}
+                      />
+                    </Tooltip>
                   </>
                 )}
 
-                {activeTab === 2 && (
-                  <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                    <IconButton
-                      aria-label="Sort trade history"
-                      icon={<FiArrowDown />}
+                {activeTab === 3 && (
+                  <>
+                    <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                      <IconButton
+                        aria-label={tradeHistoryViewMode === 'grid' ? 'List view' : 'Grid view'}
+                        icon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
+                        size="sm"
+                        variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                      />
+                    </Tooltip>
+                    <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                      <IconButton
+                        aria-label="Sort trade history"
+                        icon={<FiArrowDown />}
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
+                          setTradeHistoryPage(1)
+                        }}
+                      />
+                    </Tooltip>
+                    <Button
+                      as={RouterLink}
+                      to="/add-product"
                       size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
-                        setTradeHistoryPage(1)
-                      }}
-                    />
-                  </Tooltip>
+                      colorScheme="brand"
+                      leftIcon={<AddIcon />}
+                      ml={2}
+                      display={{ base: 'none', sm: 'inline-flex' }}
+                    >
+                      Add Product
+                    </Button>
+                    <Tooltip label="Add Product" hasArrow>
+                      <IconButton
+                        as={RouterLink}
+                        to="/add-product"
+                        aria-label="Add Product"
+                        icon={<AddIcon />}
+                        size="sm"
+                        colorScheme="brand"
+                        ml={1}
+                        display={{ base: 'flex', sm: 'none' }}
+                      />
+                    </Tooltip>
+                  </>
                 )}
               </HStack>
 
@@ -2651,6 +2862,43 @@ const Dashboard: React.FC = () => {
                                 </Text>
                               </Box>
                             </Fade>
+                          ) : offersViewMode === 'list' ? (
+                            <>
+                              <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                                {paginatedTrades.map((trade, idx) => (
+                                  <OfferListRow
+                                    key={trade.id}
+                                    trade={trade}
+                                    isIncoming={false}
+                                    onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
+                                    onCancel={() => handleCancelTradeClick(trade)}
+                                  />
+                                ))}
+                              </Box>
+                              {totalPages > 1 && (
+                                <HStack justify="center" spacing={2} mt={4}>
+                                  <Button
+                                    size="sm"
+                                    leftIcon={<ChevronLeftIcon />}
+                                    onClick={() => setOffersPage(p => Math.max(1, p - 1))}
+                                    isDisabled={offersPage === 1}
+                                  >
+                                    Previous
+                                  </Button>
+                                  <Text fontSize="sm" color="gray.600">
+                                    Page {offersPage} of {totalPages}
+                                  </Text>
+                                  <Button
+                                    size="sm"
+                                    rightIcon={<ChevronRightIcon />}
+                                    onClick={() => setOffersPage(p => Math.min(totalPages, p + 1))}
+                                    isDisabled={offersPage === totalPages}
+                                  >
+                                    Next
+                                  </Button>
+                                </HStack>
+                              )}
+                            </>
                           ) : (
                             <>
                               <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
@@ -2726,6 +2974,44 @@ const Dashboard: React.FC = () => {
                                 </Text>
                               </Box>
                             </Fade>
+                          ) : offersViewMode === 'list' ? (
+                            <>
+                              <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                                {paginatedTrades.map((trade) => (
+                                  <OfferListRow
+                                    key={trade.id}
+                                    trade={trade}
+                                    isIncoming={true}
+                                    onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
+                                    onAccept={() => updateTrade(trade.id, { action: 'accept' })}
+                                    onDecline={() => handleDeclineTradeClick(trade)}
+                                  />
+                                ))}
+                              </Box>
+                              {totalPages > 1 && (
+                                <HStack justify="center" spacing={2} mt={4}>
+                                  <Button
+                                    size="sm"
+                                    leftIcon={<ChevronLeftIcon />}
+                                    onClick={() => setOffersPage(p => Math.max(1, p - 1))}
+                                    isDisabled={offersPage === 1}
+                                  >
+                                    Previous
+                                  </Button>
+                                  <Text fontSize="sm" color="gray.600">
+                                    Page {offersPage} of {totalPages}
+                                  </Text>
+                                  <Button
+                                    size="sm"
+                                    rightIcon={<ChevronRightIcon />}
+                                    onClick={() => setOffersPage(p => Math.min(totalPages, p + 1))}
+                                    isDisabled={offersPage === totalPages}
+                                  >
+                                    Next
+                                  </Button>
+                                </HStack>
+                              )}
+                            </>
                           ) : (
                             <>
                               <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
@@ -2801,6 +3087,99 @@ const Dashboard: React.FC = () => {
                                 </Text>
                               </Box>
                             </Fade>
+                          ) : offersViewMode === 'list' ? (
+                            <>
+                              <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                                <Box
+                                  px={4}
+                                  py={3}
+                                  bg="gray.50"
+                                  borderBottomWidth="1px"
+                                  borderColor="gray.200"
+                                  fontSize="xs"
+                                  fontWeight="semibold"
+                                  color="gray.600"
+                                  textTransform="uppercase"
+                                  display={{ base: 'none', md: 'block' }}
+                                >
+                                  Product • Partner • Status • Action
+                                </Box>
+                                {paginatedTrades.map((trade) => {
+                                  const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
+                                  const userName = isIncoming ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous')
+                                  return (
+                                    <Flex
+                                      key={trade.id}
+                                      align="center"
+                                      gap={{ base: 2, md: 4 }}
+                                      p={3}
+                                      borderBottom="1px"
+                                      borderColor={borderColor}
+                                      _hover={{ bg: 'gray.50' }}
+                                      minW={0}
+                                      flexWrap="wrap"
+                                    >
+                                      <Box
+                                        w="60px"
+                                        h="60px"
+                                        flexShrink={0}
+                                        borderRadius="md"
+                                        overflow="hidden"
+                                        bg="gray.100"
+                                      >
+                                        <ProductThumb
+                                          pid={trade.target_product_id}
+                                          alt={getProductTitle(trade.target_product_id, trade.product_title)}
+                                          size="100%"
+                                        />
+                                      </Box>
+                                      <VStack align="start" spacing={0} flex={1} minW={0}>
+                                        <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+                                          {getProductTitle(trade.target_product_id, trade.product_title)}
+                                        </Text>
+                                        <Text fontSize="xs" color="gray.600">{userName}</Text>
+                                      </VStack>
+                                      <Badge colorScheme="green" variant="subtle" fontSize="2xs" px={2} py={1}>
+                                        Active
+                                      </Badge>
+                                      <Button
+                                        size="sm"
+                                        colorScheme="brand"
+                                        variant="outline"
+                                        fontSize={{ base: 'xs', md: 'sm' }}
+                                        px={{ base: 2, md: 3 }}
+                                        onClick={() => { setSelectedTrade(trade); setViewTradeModalOpen(true) }}
+                                      >
+                                        View
+                                      </Button>
+                                    </Flex>
+                                  )
+                                })}
+                              </Box>
+                              {totalPages > 1 && (
+                                <HStack justify="center" spacing={2} mt={4}>
+                                  <Button
+                                    size="sm"
+                                    leftIcon={<ChevronLeftIcon />}
+                                    onClick={() => setOffersPage(p => Math.max(1, p - 1))}
+                                    isDisabled={offersPage === 1}
+                                  >
+                                    Previous
+                                  </Button>
+                                  <Text fontSize="sm" color="gray.600">
+                                    Page {offersPage} of {totalPages}
+                                  </Text>
+                                  <Button
+                                    size="sm"
+                                    rightIcon={<ChevronRightIcon />}
+                                    onClick={() => setOffersPage(p => Math.min(totalPages, p + 1))}
+                                    isDisabled={offersPage === totalPages}
+                                  >
+                                    Next
+                                  </Button>
+                                </HStack>
+                              )}
+                            </>
                           ) : (
                             <>
                               <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
@@ -2856,55 +3235,121 @@ const Dashboard: React.FC = () => {
                       <Spinner size="lg" color="brand.500" />
                     </Center>
                   ) : multiWayTrades.length === 0 ? (
-                    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
-                      {/* Mock Trade Loop 1 */}
-                      <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                        <MultiWayTradeUI
-                          participants={[
-                            { id: 1, user_name: 'John Doe', product_id: 1, product_title: 'PlayStation 5' },
-                            { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
-                            { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
-                          ]}
-                          onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
-                          onViewDetails={() => { }}
-                          onDecline={() => { }}
-                          isLoading={false}
-                        />
+                    multiWayTradesViewMode === 'list' ? (
+                      <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={6} textAlign="center">
+                        <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
+                        <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                          No multi-way trades available
+                        </Text>
+                        <Text color="gray.500" fontSize="sm">
+                          Multi-way trade opportunities will appear here. Check back soon!
+                        </Text>
                       </Box>
+                    ) : (
+                      <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                        {/* Mock Trade Loop 1 */}
+                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                          <MultiWayTradeUI
+                            participants={[
+                              { id: 1, user_name: 'John Doe', product_id: 1, product_title: 'PlayStation 5' },
+                              { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
+                              { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
+                            ]}
+                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onViewDetails={() => { }}
+                            onDecline={() => { }}
+                            isLoading={false}
+                          />
+                        </Box>
 
-                      {/* Mock Trade Loop 2 */}
-                      <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                        <MultiWayTradeUI
-                          participants={[
-                            { id: 4, user_name: 'Emma Wilson', product_id: 4, product_title: 'Galaxy S23' },
-                            { id: 5, user_name: 'Alex Chen', product_id: 5, product_title: 'iPad Air' },
-                            { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
-                            { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
-                          ]}
-                          onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
-                          onViewDetails={() => { }}
-                          onDecline={() => { }}
-                          isLoading={false}
-                        />
-                      </Box>
+                        {/* Mock Trade Loop 2 */}
+                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                          <MultiWayTradeUI
+                            participants={[
+                              { id: 4, user_name: 'Emma Wilson', product_id: 4, product_title: 'Galaxy S23' },
+                              { id: 5, user_name: 'Alex Chen', product_id: 5, product_title: 'iPad Air' },
+                              { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
+                              { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
+                            ]}
+                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onViewDetails={() => { }}
+                            onDecline={() => { }}
+                            isLoading={false}
+                          />
+                        </Box>
 
-                      {/* Mock Trade Loop 3 */}
-                      <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                        <MultiWayTradeUI
-                          participants={[
-                            { id: 8, user_name: 'Chris Martin', product_id: 8, product_title: 'Nintendo Switch' },
-                            { id: 9, user_name: 'Jessica Brown', product_id: 9, product_title: 'Bicycle' },
-                            { id: 10, user_name: 'Robert Taylor', product_id: 10, product_title: 'Guitar' },
-                            { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
-                            { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
-                          ]}
-                          onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
-                          onViewDetails={() => { }}
-                          onDecline={() => { }}
-                          isLoading={false}
-                        />
+                        {/* Mock Trade Loop 3 */}
+                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                          <MultiWayTradeUI
+                            participants={[
+                              { id: 8, user_name: 'Chris Martin', product_id: 8, product_title: 'Nintendo Switch' },
+                              { id: 9, user_name: 'Jessica Brown', product_id: 9, product_title: 'Bicycle' },
+                              { id: 10, user_name: 'Robert Taylor', product_id: 10, product_title: 'Guitar' },
+                              { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
+                              { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
+                            ]}
+                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onViewDetails={() => { }}
+                            onDecline={() => { }}
+                            isLoading={false}
+                          />
+                        </Box>
+                      </SimpleGrid>
+                    )
+                  ) : multiWayTradesViewMode === 'list' ? (
+                    <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                      <Box
+                        px={4}
+                        py={3}
+                        bg="gray.50"
+                        borderBottomWidth="1px"
+                        borderColor="gray.200"
+                        fontSize="xs"
+                        fontWeight="semibold"
+                        color="gray.600"
+                        textTransform="uppercase"
+                        display={{ base: 'none', md: 'flex' }}
+                      >
+                        Trade Loop • Participants • Action
                       </Box>
-                    </SimpleGrid>
+                      {multiWayTrades.map((trade, idx) => (
+                        <Flex
+                          key={trade.id}
+                          align="center"
+                          gap={{ base: 2, md: 4 }}
+                          p={3}
+                          borderBottom={idx < multiWayTrades.length - 1 ? '1px' : 'none'}
+                          borderColor={borderColor}
+                          _hover={{ bg: 'gray.50' }}
+                          minW={0}
+                          flexWrap="wrap"
+                        >
+                          <VStack align="start" spacing={0} flex={1} minW={0}>
+                            <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }}>
+                              Trade Loop #{trade.id}
+                            </Text>
+                            <Text fontSize="xs" color="gray.600">
+                              {trade.participants?.length || 0} participants
+                            </Text>
+                          </VStack>
+                          <HStack spacing={2} flexShrink={0}>
+                            <Badge colorScheme="purple" variant="subtle" fontSize="2xs" px={2} py={1}>
+                              {trade.participants?.length || 0} in loop
+                            </Badge>
+                            <Button
+                              size="sm"
+                              colorScheme="purple"
+                              variant="outline"
+                              fontSize={{ base: 'xs', md: 'sm' }}
+                              px={{ base: 2, md: 3 }}
+                              onClick={() => setSelectedMultiWayTrade(trade)}
+                            >
+                              View
+                            </Button>
+                          </HStack>
+                        </Flex>
+                      ))}
+                    </Box>
                   ) : (
                     <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
                       {multiWayTrades.map((trade) => (
@@ -2947,6 +3392,93 @@ const Dashboard: React.FC = () => {
                           </Text>
                         </Box>
                       </Fade>
+                    ) : tradeHistoryViewMode === 'list' ? (
+                      <>
+                        {/* List View for Trade History */}
+                        <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                          <Box
+                            px={4}
+                            py={3}
+                            bg="gray.50"
+                            borderBottomWidth="1px"
+                            borderColor="gray.200"
+                            fontSize="xs"
+                            fontWeight="semibold"
+                            color="gray.600"
+                            textTransform="uppercase"
+                            display={{ base: 'none', md: 'flex' }}
+                          >
+                            Product • Partner • Date • Action
+                          </Box>
+                          {paginatedTradeHistory.map((trade, idx) => {
+                            const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
+                            const tradingPartner = isIncoming
+                              ? (trade.buyer_name || 'Anonymous')
+                              : (trade.seller_name || 'Anonymous')
+
+                            return (
+                              <Flex
+                                key={trade.id}
+                                align="center"
+                                gap={{ base: 2, md: 4 }}
+                                p={3}
+                                borderBottom={idx < paginatedTradeHistory.length - 1 ? '1px' : 'none'}
+                                borderColor={borderColor}
+                                _hover={{ bg: 'gray.50' }}
+                                minW={0}
+                                flexWrap="wrap"
+                              >
+                                <Box
+                                  w="60px"
+                                  h="60px"
+                                  flexShrink={0}
+                                  borderRadius="md"
+                                  overflow="hidden"
+                                  bg="gray.100"
+                                >
+                                  <ProductThumb
+                                    pid={trade.target_product_id}
+                                    alt={getProductTitle(trade.target_product_id, trade.product_title)}
+                                    size="100%"
+                                  />
+                                </Box>
+                                <VStack align="start" spacing={0} flex={1} minW={0}>
+                                  <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+                                    {getProductTitle(trade.target_product_id, trade.product_title)}
+                                  </Text>
+                                  <HStack spacing={2} mt={1}>
+                                    <Text fontSize="xs" color="gray.600">{tradingPartner}</Text>
+                                    <Badge colorScheme={isIncoming ? 'green' : 'blue'} fontSize="2xs" px={1.5} py={0.5}>
+                                      {isIncoming ? 'Received' : 'Sent'}
+                                    </Badge>
+                                  </HStack>
+                                </VStack>
+                                {trade.completed_at && (
+                                  <Text fontSize="xs" color="gray.600" flexShrink={0}>
+                                    {new Date(trade.completed_at).toLocaleDateString()}
+                                  </Text>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  colorScheme="brand"
+                                  fontSize={{ base: 'xs', md: 'sm' }}
+                                  px={{ base: 2, md: 3 }}
+                                  onClick={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
+                                >
+                                  View
+                                </Button>
+                              </Flex>
+                            )
+                          })}
+                        </Box>
+                        <PaginationControls
+                          currentPage={tradeHistoryPage}
+                          totalPages={tradeHistoryTotalPages}
+                          onPageChange={setTradeHistoryPage}
+                          itemsCount={allCompletedTrades.length}
+                        />
+                      </>
                     ) : (
                       <>
                         {/* Desktop Table View */}
@@ -3454,7 +3986,7 @@ const Dashboard: React.FC = () => {
         </VStack>
       </Container>
 
-      <FloatingTab />
+      <FloatingTab showAddButton={actualUserProducts.length > 0} />
     </Box>
   )
 }

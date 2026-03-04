@@ -485,8 +485,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       })
       safeSetProducts((products || []).filter(p => p.id !== id))
     } catch (error: any) {
-      setError(error.response?.data?.error || 'Failed to delete product')
-      throw error
+      const errorMsg = error.response?.data?.error || 'Failed to delete product'
+      setError(errorMsg)
+      const err = new Error(errorMsg)
+      throw err
     }
   }
 

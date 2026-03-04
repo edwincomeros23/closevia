@@ -737,8 +737,16 @@ const ProductDetail: React.FC = () => {
   const handleViewOffers = async () => {
     try {
       setLoadingOffers(true)
-      const response = await api.get(`/api/trades?target_product_id=${product?.id}`)
-      setOffersForProduct(response.data?.data || [])
+      const response = await api.get(`/api/trades`, {
+        params: {
+          direction: 'incoming',
+          status: 'pending',
+          limit: 100
+        }
+      })
+      // Filter for this specific product
+      const filteredOffers = (response.data?.data || []).filter((trade: any) => trade.target_product_id === product?.id)
+      setOffersForProduct(filteredOffers)
       setOffersModalOpen(true)
     } catch (error) {
       toast({
@@ -1302,11 +1310,16 @@ const ProductDetail: React.FC = () => {
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
                 <Avatar
+                  as={RouterLink}
+                  to={`/users/${product.seller_id}`}
                   size="lg"
                   src={sellerProfile?.profile_picture}
                   name={product.seller_name}
                   bg="red.500"
                   color="white"
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                  transition="all 0.2s"
                 />
                 <Box>
                   <Text
