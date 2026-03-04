@@ -118,15 +118,22 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	userID, _ := result.LastInsertId()
 
-	// Generate and store email OTP
-	otpCode, otpHash, otpExpiry, otpErr := generateOTP()
-	if otpErr == nil {
-		h.db.Exec(
-			"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
-			otpHash, otpExpiry, userID,
-		)
-		// Send verification email asynchronously so it doesn't block registration
-		go services.SendOTPEmail(user.Email, user.Name, otpCode)
+	// ── EMAIL VERIFICATION TEMPORARILY DISABLED (Mailgun key not yet configured) ──
+	// To re-enable: remove the verified=TRUE line below and uncomment the OTP block.
+	h.db.Exec("UPDATE users SET verified = TRUE WHERE id = ?", userID)
+	// otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+	// if otpErr == nil {
+	// 	h.db.Exec(
+	// 		"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
+	// 		otpHash, otpExpiry, userID,
+	// 	)
+	// 	go services.SendOTPEmail(user.Email, user.Name, otpCode)
+	// }
+
+	// Generate JWT token immediately so user is logged in right after registration
+	token, err := utils.GenerateJWT(int(userID), user.Email)
+	if err != nil {
+		token = ""
 	}
 
 	return c.Status(201).JSON(models.APIResponse{
@@ -137,7 +144,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				ID:             int(userID),
 				Name:           user.Name,
 				Email:          user.Email,
-				Verified:       false,
+				Verified:       true,
 				IsOrganization: user.IsOrganization,
 				OrgVerified:    false,
 				OrgName:        user.OrgName,
@@ -146,7 +153,8 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				Bio:            user.Bio,
 				ProfilePicture: "",
 			},
-			"requires_verification": true,
+			"requires_verification": false,
+			"token":                 token,
 		},
 	})
 }

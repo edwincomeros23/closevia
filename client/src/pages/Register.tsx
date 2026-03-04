@@ -114,7 +114,18 @@ const Register: React.FC = () => {
         })
         navigate('/verify-email', { state: { email: result.email } })
       } else {
-        navigate('/dashboard')
+        // Verification disabled — token returned directly; store it and log the user in
+        if (result.token) {
+          localStorage.setItem('clovia_token', result.token)
+        }
+        toast({
+          title: 'Welcome!',
+          description: 'Your account has been created.',
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        })
+        navigate('/home')
       }
     } catch (error: any) {
       setError(error.message || 'Registration failed')
@@ -149,7 +160,7 @@ const Register: React.FC = () => {
             size="md"
             zIndex={10}
           />
-          
+
           <VStack spacing={6} align="stretch">
             {/* Decorative Header - Mobile Optimized */}
             <Box textAlign="center" mt={{ base: 8, md: 0 }} mb={{ base: 2, md: 0 }}>
@@ -158,41 +169,41 @@ const Register: React.FC = () => {
                 <svg width="180" height="100" viewBox="0 0 200 120" fill="none">
                   {/* Left plant */}
                   <g>
-                    <path d="M 40 100 Q 30 80 35 60 Q 40 40 45 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round"/>
-                    <ellipse cx="30" cy="70" rx="8" ry="15" fill="#66BB6A" transform="rotate(-40 30 70)"/>
-                    <ellipse cx="45" cy="50" rx="8" ry="15" fill="#81C784" transform="rotate(-20 45 50)"/>
-                    <ellipse cx="50" cy="30" rx="8" ry="15" fill="#66BB6A" transform="rotate(0 50 30)"/>
-                    <circle cx="40" cy="95" r="4" fill="#2D876D"/>
+                    <path d="M 40 100 Q 30 80 35 60 Q 40 40 45 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round" />
+                    <ellipse cx="30" cy="70" rx="8" ry="15" fill="#66BB6A" transform="rotate(-40 30 70)" />
+                    <ellipse cx="45" cy="50" rx="8" ry="15" fill="#81C784" transform="rotate(-20 45 50)" />
+                    <ellipse cx="50" cy="30" rx="8" ry="15" fill="#66BB6A" transform="rotate(0 50 30)" />
+                    <circle cx="40" cy="95" r="4" fill="#2D876D" />
                   </g>
                   {/* Center plant - Main */}
                   <g>
-                    <path d="M 100 100 L 100 20" stroke="#2D876D" strokeWidth="4" fill="none"/>
-                    <ellipse cx="75" cy="60" rx="12" ry="20" fill="#4CAF50" transform="rotate(-45 75 60)"/>
-                    <ellipse cx="125" cy="65" rx="12" ry="20" fill="#4CAF50" transform="rotate(45 125 65)"/>
-                    <ellipse cx="70" cy="40" rx="12" ry="20" fill="#66BB6A" transform="rotate(-50 70 40)"/>
-                    <ellipse cx="130" cy="35" rx="12" ry="20" fill="#66BB6A" transform="rotate(50 130 35)"/>
-                    <ellipse cx="85" cy="25" rx="10" ry="18" fill="#81C784" transform="rotate(-35 85 25)"/>
-                    <ellipse cx="115" cy="25" rx="10" ry="18" fill="#81C784" transform="rotate(35 115 25)"/>
-                    <circle cx="100" cy="95" r="5" fill="#2D876D"/>
+                    <path d="M 100 100 L 100 20" stroke="#2D876D" strokeWidth="4" fill="none" />
+                    <ellipse cx="75" cy="60" rx="12" ry="20" fill="#4CAF50" transform="rotate(-45 75 60)" />
+                    <ellipse cx="125" cy="65" rx="12" ry="20" fill="#4CAF50" transform="rotate(45 125 65)" />
+                    <ellipse cx="70" cy="40" rx="12" ry="20" fill="#66BB6A" transform="rotate(-50 70 40)" />
+                    <ellipse cx="130" cy="35" rx="12" ry="20" fill="#66BB6A" transform="rotate(50 130 35)" />
+                    <ellipse cx="85" cy="25" rx="10" ry="18" fill="#81C784" transform="rotate(-35 85 25)" />
+                    <ellipse cx="115" cy="25" rx="10" ry="18" fill="#81C784" transform="rotate(35 115 25)" />
+                    <circle cx="100" cy="95" r="5" fill="#2D876D" />
                   </g>
                   {/* Right plant */}
                   <g>
-                    <path d="M 160 100 Q 170 80 165 60 Q 160 40 155 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round"/>
-                    <ellipse cx="170" cy="70" rx="8" ry="15" fill="#66BB6A" transform="rotate(40 170 70)"/>
-                    <ellipse cx="155" cy="50" rx="8" ry="15" fill="#81C784" transform="rotate(20 155 50)"/>
-                    <ellipse cx="150" cy="30" rx="8" ry="15" fill="#66BB6A" transform="rotate(0 150 30)"/>
-                    <circle cx="160" cy="95" r="4" fill="#2D876D"/>
+                    <path d="M 160 100 Q 170 80 165 60 Q 160 40 155 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round" />
+                    <ellipse cx="170" cy="70" rx="8" ry="15" fill="#66BB6A" transform="rotate(40 170 70)" />
+                    <ellipse cx="155" cy="50" rx="8" ry="15" fill="#81C784" transform="rotate(20 155 50)" />
+                    <ellipse cx="150" cy="30" rx="8" ry="15" fill="#66BB6A" transform="rotate(0 150 30)" />
+                    <circle cx="160" cy="95" r="4" fill="#2D876D" />
                   </g>
                   {/* Decorative flowers */}
-                  <circle cx="55" cy="35" r="3" fill="#FFD54F"/>
-                  <circle cx="145" cy="40" r="3" fill="#FFD54F"/>
-                  <circle cx="75" cy="15" r="2.5" fill="#FFEB3B"/>
+                  <circle cx="55" cy="35" r="3" fill="#FFD54F" />
+                  <circle cx="145" cy="40" r="3" fill="#FFD54F" />
+                  <circle cx="75" cy="15" r="2.5" fill="#FFEB3B" />
                 </svg>
               </Flex>
 
-              <Heading 
-                size="lg" 
-                color="#2D876D" 
+              <Heading
+                size="lg"
+                color="#2D876D"
                 mb={2}
                 fontSize={{ base: '28px', md: '32px' }}
                 fontWeight="700"
@@ -200,7 +211,7 @@ const Register: React.FC = () => {
               >
                 Create Account
               </Heading>
-              <Text 
+              <Text
                 color="#555"
                 fontSize={{ base: '14px', md: '16px' }}
                 fontWeight="500"
@@ -233,7 +244,7 @@ const Register: React.FC = () => {
                   {/* Account Type Selector - Segmented Control */}
                   <FormControl>
                     <FormLabel fontSize="13px" fontWeight="600" mb="12px" color="#333">Account Type</FormLabel>
-                    <HStack 
+                    <HStack
                       spacing={2}
                       bg="#F0F0F0"
                       borderRadius="12px"
@@ -436,8 +447,8 @@ const Register: React.FC = () => {
                       {email.toLowerCase().endsWith('@wmsu.edu.ph') && (
                         <FormControl isRequired isInvalid={!!fieldErrors.department}>
                           <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Department / College</FormLabel>
-                          <Input 
-                            value={department} 
+                          <Input
+                            value={department}
                             onChange={(e) => {
                               setDepartment(e.target.value)
                               if (fieldErrors.department) setFieldErrors({ ...fieldErrors, department: '' })
@@ -466,10 +477,10 @@ const Register: React.FC = () => {
                       {/* Bio */}
                       <FormControl>
                         <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">Short Bio (Optional)</FormLabel>
-                        <Input 
-                          value={bio} 
-                          onChange={(e) => setBio(e.target.value)} 
-                          placeholder="Tell us about yourself" 
+                        <Input
+                          value={bio}
+                          onChange={(e) => setBio(e.target.value)}
+                          placeholder="Tell us about yourself"
                           size="lg"
                           bg="#F5F5F5"
                           borderColor="#E0E0E0"
@@ -496,8 +507,8 @@ const Register: React.FC = () => {
                       {/* Organization Name */}
                       <FormControl isRequired isInvalid={!!fieldErrors.orgName}>
                         <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Organization Name</FormLabel>
-                        <Input 
-                          value={orgName} 
+                        <Input
+                          value={orgName}
                           onChange={(e) => {
                             setOrgName(e.target.value)
                             if (fieldErrors.orgName) setFieldErrors({ ...fieldErrors, orgName: '' })
@@ -525,10 +536,10 @@ const Register: React.FC = () => {
                       {/* Organization Logo URL */}
                       <FormControl>
                         <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">Logo URL (Optional)</FormLabel>
-                        <Input 
-                          value={orgLogoUrl} 
-                          onChange={(e) => setOrgLogoUrl(e.target.value)} 
-                          placeholder="https://..." 
+                        <Input
+                          value={orgLogoUrl}
+                          onChange={(e) => setOrgLogoUrl(e.target.value)}
+                          placeholder="https://..."
                           size="lg"
                           bg="#F5F5F5"
                           borderColor="#E0E0E0"
@@ -580,10 +591,10 @@ const Register: React.FC = () => {
                       {/* Organization Bio/Description */}
                       <FormControl>
                         <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">About (Optional)</FormLabel>
-                        <Input 
-                          value={bio} 
-                          onChange={(e) => setBio(e.target.value)} 
-                          placeholder="Describe your organization" 
+                        <Input
+                          value={bio}
+                          onChange={(e) => setBio(e.target.value)}
+                          placeholder="Describe your organization"
                           size="lg"
                           bg="#F5F5F5"
                           borderColor="#E0E0E0"
@@ -613,7 +624,7 @@ const Register: React.FC = () => {
                         value={password}
                         onChange={(e) => {
                           setPassword(e.target.value)
-                          if (fieldErrors.password) setFieldErrors({...fieldErrors, password: ''})
+                          if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: '' })
                         }}
                         placeholder="Minimum 6 characters"
                         bg="#F5F5F5"
@@ -655,7 +666,7 @@ const Register: React.FC = () => {
                         value={confirmPassword}
                         onChange={(e) => {
                           setConfirmPassword(e.target.value)
-                          if (fieldErrors.confirmPassword) setFieldErrors({...fieldErrors, confirmPassword: ''})
+                          if (fieldErrors.confirmPassword) setFieldErrors({ ...fieldErrors, confirmPassword: '' })
                         }}
                         placeholder="Re-enter your password"
                         bg="#F5F5F5"
@@ -721,11 +732,11 @@ const Register: React.FC = () => {
                   <Box textAlign="center" w="full" pt={2}>
                     <Text fontSize="14px" color="#666">
                       Already have an account?{' '}
-                      <Link 
-                        as={RouterLink} 
-                        to="/login" 
-                        color="#2D876D" 
-                        fontWeight="600" 
+                      <Link
+                        as={RouterLink}
+                        to="/login"
+                        color="#2D876D"
+                        fontWeight="600"
                         _hover={{ textDecoration: 'underline', color: '#1f5c47' }}
                       >
                         Sign in
