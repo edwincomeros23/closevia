@@ -107,6 +107,13 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		pendingApprovals = 0
 	}
 
+	// Pending ID/COR verifications (users who submitted ID/COR awaiting admin review)
+	var pendingVerifications int
+	err = h.db.QueryRow(`SELECT COUNT(*) FROM users WHERE verification_status = 'pending'`).Scan(&pendingVerifications)
+	if err != nil {
+		pendingVerifications = 0
+	}
+
 	// Reports Filed
 	var reportsFiled int
 	err = h.db.QueryRow(`SELECT COUNT(*) FROM reports`).Scan(&reportsFiled)
@@ -213,9 +220,10 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		"new_listings_today": newListingsToday,
 
 		// User Management
-		"verified_users":    verifiedUsers,
-		"pending_approvals": pendingApprovals,
-		"reports_filed":     reportsFiled,
+		"verified_users":       verifiedUsers,
+		"pending_approvals":    pendingApprovals,
+		"pending_verifications": pendingVerifications,
+		"reports_filed":        reportsFiled,
 		"suspended_users":   suspendedUsers,
 
 		// System Metrics

@@ -65,6 +65,7 @@ import TradeModal from '../components/TradeModal'
 import { useRealtime } from '../contexts/RealtimeContext' // added import
 import FloatingTab from '../components/FloatingTab'
 import { useStudentAdInjection, StudentAdCard } from '../components/StudentAdInjector'
+import VerifiedAvatar from '../components/VerifiedAvatar'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -495,7 +496,7 @@ const Home: React.FC = () => {
           {/* Seller row (desktop) */}
           <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
             <HStack spacing={2}>
-              <Avatar
+              <VerifiedAvatar
                 as={RouterLink}
                 to={`/users/${product.seller_id}`}
                 size="sm"
@@ -506,6 +507,7 @@ const Home: React.FC = () => {
                 cursor="pointer"
                 _hover={{ opacity: 0.8 }}
                 onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                isVerified={product.seller_verified || false}
               />
               <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
                 {product.seller_name || 'Unknown'}
@@ -789,12 +791,13 @@ const Home: React.FC = () => {
                     transition="all 0.2s"
                     onClick={() => navigate(`/users/${user.id}`)}
                   >
-                    <Avatar
+                    <VerifiedAvatar
                       size="sm"
                       name={user.name || 'User'}
                       src={user.profile_picture ? getImageUrl(user.profile_picture) : undefined}
                       bg="teal.500"
                       color="white"
+                      isVerified={user.verified || (user as any).verification_status === 'verified'}
                     />
                   </Box>
                 </PopoverTrigger>

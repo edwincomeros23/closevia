@@ -52,6 +52,7 @@ import {
 import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend } from 'react-icons/fi'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import VerifiedAvatar from '../components/VerifiedAvatar'
 import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
@@ -740,7 +741,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               )}
 
               <Box position="absolute" bottom="-50px" left="6">
-                <Avatar 
+                <VerifiedAvatar 
                   size="xl" 
                   name={user.name} 
                   src={user.avatar_url} 
@@ -748,6 +749,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   color="white" 
                   border="4px solid white"
                   boxShadow="md"
+                  isVerified={user.verification_status === 'verified' || user.verified}
                 />
               </Box>
             </Box>
@@ -757,19 +759,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 <Box flex="1" minW="200px" mr={4}>
                   <HStack spacing={3} align="center" mb={2} flexWrap="wrap">
                     <Heading size="lg" color="gray.800">{user.name}</Heading>
-                    {user.verified && (
-                      <Badge colorScheme="green">
-                        <HStack spacing={1}>
-                          <Icon as={FiCheckCircle} boxSize={3} />
-                          <Text>Verified Seller</Text>
-                        </HStack>
-                      </Badge>
-                    )}
-                    {user.verification_status === 'verified' && (
-                      <Badge colorScheme="teal" variant="subtle">
-                        <HStack spacing={1}>
-                          <Icon as={FiCheckCircle} boxSize={3} />
-                          <Text>Verified Student</Text>
+                    {(user.verification_status === 'verified' || user.verified) && (
+                      <Badge colorScheme="teal" borderRadius="full" px={3} py={1} fontSize="sm">
+                        <HStack spacing={1.5}>
+                          <Icon as={FiCheckCircle} boxSize={4} />
+                          <Text as="span">Verified</Text>
                         </HStack>
                       </Badge>
                     )}
@@ -1115,10 +1109,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         borderColor="gray.100"
                       >
                         <HStack spacing={3} mb={2} align="start">
-                          <Avatar 
+                          <VerifiedAvatar 
                             size="sm" 
                             name={review.reviewer} 
-                            src={review.avatar} 
+                            src={review.avatar}
+                            isVerified={false}
                           />
                           <Box flex="1">
                             <HStack justify="space-between" mb={1}>
@@ -1239,7 +1234,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <FormControl>
                     <FormLabel htmlFor="profile-photo-input">Profile Photo</FormLabel>
                     <HStack spacing={4} align="center">
-                      <Avatar size="lg" name={user.name} src={avatarPreview || user.avatar_url} />
+                      <VerifiedAvatar size="lg" name={user.name} src={avatarPreview || user.avatar_url} isVerified={user.verification_status === 'verified' || user.verified} />
                       <Box>
                         <Input
                           id="profile-photo-input"

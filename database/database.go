@@ -453,6 +453,9 @@ func ensureUserColumns() {
 		{"school_email_verified_at", "TIMESTAMP NULL"},
 		{"school_id_image_path", "VARCHAR(512) NULL"},
 		{"verification_rejection_reason", "TEXT NULL"},
+		{"school_email_otp_hash", "VARCHAR(255) NULL"},
+		{"school_email_otp_expires", "TIMESTAMP NULL"},
+		{"school_id_document_type", "VARCHAR(20) NULL"},
 	}
 
 	for _, col := range columns {

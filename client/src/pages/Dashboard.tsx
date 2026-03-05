@@ -61,6 +61,7 @@ import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag,
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
+import VerifiedAvatar from '../components/VerifiedAvatar'
 import OfferDetailsModal from '../components/OfferDetailsModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
 import ViewTradeModal from '../components/ViewTradeModal'
@@ -2368,11 +2369,11 @@ const Dashboard: React.FC = () => {
                       justifyContent="center"
                       fontWeight="bold"
                     >
-                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                      {unreadNotifications > 99 ? '99+' : unreadNotifications}  
                     </Badge>
                   )}
                 </Box>
-                <Avatar
+                <VerifiedAvatar
                   name={user?.name || 'User'}
                   src={user?.profile_picture || undefined}
                   size="md"
@@ -2381,6 +2382,7 @@ const Dashboard: React.FC = () => {
                   cursor="pointer"
                   onClick={() => navigate('/UserProfile')}
                   _hover={{ opacity: 0.8 }}
+                  isVerified={user?.verified || (user as any)?.verification_status === 'verified' || false}
                 />
               </HStack>
             </Flex>

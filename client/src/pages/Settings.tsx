@@ -54,6 +54,8 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { getImageUrl } from '../utils/imageUtils'
+import VerifiedAvatar from '../components/VerifiedAvatar'
 import FloatingTab from '../components/FloatingTab'
 import { 
   FaUserCircle, 
@@ -85,6 +87,7 @@ const SettingsPage: React.FC = () => {
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const schoolOtpBoxBg = useColorModeValue('gray.50', 'gray.700')
   const isMobile = useBreakpointValue({ base: true, md: false })
 
   // Account State
@@ -187,6 +190,11 @@ const SettingsPage: React.FC = () => {
   const [idUploadLoading, setIdUploadLoading] = useState(false)
   const [verificationReason, setVerificationReason] = useState<string | null>(null)
   const [documentType, setDocumentType] = useState<'id' | 'cor'>('id')
+  // School email OTP step (code sent to .edu email)
+  const [schoolEmailCode, setSchoolEmailCode] = useState('')
+  const [schoolEmailVerifyLoading, setSchoolEmailVerifyLoading] = useState(false)
+  const [resendSchoolCooldown, setResendSchoolCooldown] = useState(0)
+  const [showSchoolOtpStep, setShowSchoolOtpStep] = useState(false)
 
   // UI State
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
@@ -232,6 +240,8 @@ const SettingsPage: React.FC = () => {
       if (vs) setVerificationStatus(vs)
       if ((user as any)?.school_name) setSchoolName((user as any).school_name)
       if ((user as any)?.school_email) setSchoolEmail((user as any).school_email)
+      // Show OTP step if they have school email set but not yet verified
+      if ((user as any)?.school_email && !(user as any)?.school_email_verified_at) setShowSchoolOtpStep(true)
     }
   }, [user])
 
@@ -604,18 +614,16 @@ const SettingsPage: React.FC = () => {
         school_email: schoolEmail,
       })
       toast({
-        title: 'School email verified',
-        description: 'You can now upload your school ID.',
+        title: 'Code sent',
+        description: 'Enter the 6-digit code we sent to your school email.',
         status: 'success',
-        duration: 3000,
+        duration: 4000,
         isClosable: true,
       })
-      // Refresh auth user
-      await refreshUser()
-      setVerificationStatus('not_verified')
-      setVerificationReason(null)
+      setResendSchoolCooldown(60)
+      setShowSchoolOtpStep(true)
     } catch (err: any) {
-      const message = err?.response?.data?.error || err?.message || 'Failed to start verification'
+      const message = err?.response?.data?.error || err?.message || 'Failed to send code'
       toast({
         title: 'Verification error',
         description: message,
@@ -623,6 +631,57 @@ const SettingsPage: React.FC = () => {
         duration: 4000,
         isClosable: true,
       })
+    } finally {
+      setVerificationLoading(false)
+    }
+  }
+
+  // Resend cooldown timer for school email code
+  useEffect(() => {
+    if (resendSchoolCooldown <= 0) return
+    const t = setInterval(() => setResendSchoolCooldown((c) => Math.max(0, c - 1)), 1000)
+    return () => clearInterval(t)
+  }, [resendSchoolCooldown])
+
+  const handleVerifySchoolEmailCode = async () => {
+    const code = schoolEmailCode.trim()
+    if (code.length !== 6) {
+      toast({ title: 'Enter 6-digit code', description: 'The code from your email has 6 digits.', status: 'warning', duration: 3000, isClosable: true })
+      return
+    }
+    setSchoolEmailVerifyLoading(true)
+    try {
+      await api.post('/api/users/verification/verify-school-email', { code })
+      toast({
+        title: 'School email verified',
+        description: 'You can now upload your school ID or COR.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+      setSchoolEmailCode('')
+      setShowSchoolOtpStep(false)
+      await refreshUser()
+      setVerificationStatus('not_verified')
+      setVerificationReason(null)
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Invalid or expired code'
+      toast({ title: 'Verification failed', description: message, status: 'error', duration: 4000, isClosable: true })
+    } finally {
+      setSchoolEmailVerifyLoading(false)
+    }
+  }
+
+  const handleResendSchoolEmailCode = async () => {
+    if (resendSchoolCooldown > 0) return
+    setVerificationLoading(true)
+    try {
+      await api.post('/api/users/verification/resend-school-email-code')
+      toast({ title: 'Code resent', description: 'Check your school email for the new code.', status: 'success', duration: 3000, isClosable: true })
+      setResendSchoolCooldown(60)
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Could not resend'
+      toast({ title: 'Resend failed', description: message, status: 'error', duration: 4000, isClosable: true })
     } finally {
       setVerificationLoading(false)
     }
@@ -803,12 +862,13 @@ const SettingsPage: React.FC = () => {
                 <FormControl>
                   <FormLabel>Profile Picture</FormLabel>
                   <HStack spacing={4}>
-                    <Avatar
+                    <VerifiedAvatar
                       key={profileImage || 'no-image'} // Force re-render when image changes
                       size="xl"
                       src={profileImage || undefined}
                       name={username || user?.name || 'User'}
                       bg="brand.500"
+                      isVerified={user?.verification_status === 'verified' || user?.verified || false}
                     />
                     <VStack align="start" spacing={2}>
                       <Input
@@ -960,24 +1020,59 @@ const SettingsPage: React.FC = () => {
                       value={schoolEmail}
                       onChange={(e) => setSchoolEmail(e.target.value)}
                       placeholder="you@wmsu.edu.ph"
+                      isDisabled={!!(user as any)?.school_email_verified_at}
                     />
                     <Button
                       size="sm"
                       colorScheme="brand"
-                      onClick={handleStartVerification}
+                      onClick={showSchoolOtpStep ? handleResendSchoolEmailCode : handleStartVerification}
                       isLoading={verificationLoading}
+                      isDisabled={!!(user as any)?.school_email_verified_at || (showSchoolOtpStep && resendSchoolCooldown > 0)}
                     >
-                      Verify Email
+                      {showSchoolOtpStep ? (resendSchoolCooldown > 0 ? `Resend in ${resendSchoolCooldown}s` : 'Resend Code') : 'Send Code'}
                     </Button>
                   </HStack>
                   <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
-                    Only official school emails from approved schools (currently WMSU) are accepted.
+                    Only official school emails from approved schools (currently WMSU). We'll send a verification code to confirm it's your email.
                   </Text>
                 </FormControl>
 
+                {showSchoolOtpStep && !(user as any)?.school_email_verified_at && (
+                  <Box p={4} bg={schoolOtpBoxBg} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+                    <Text fontSize="sm" fontWeight="medium" mb={3}>Enter the 6-digit code we sent to your school email</Text>
+                    <HStack spacing={2} align="flex-end" flexWrap="wrap">
+                      <Input
+                        maxLength={6}
+                        value={schoolEmailCode}
+                        onChange={(e) => setSchoolEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        fontFamily="mono"
+                        fontSize="lg"
+                        w="120px"
+                      />
+                      <Button
+                        size="sm"
+                        colorScheme="green"
+                        onClick={handleVerifySchoolEmailCode}
+                        isLoading={schoolEmailVerifyLoading}
+                        isDisabled={schoolEmailCode.trim().length !== 6}
+                      >
+                        Verify Code
+                      </Button>
+                    </HStack>
+                  </Box>
+                )}
+
+                {(user as any)?.school_email_verified_at && (
+                  <HStack color="green.600" fontSize="sm">
+                    <Icon as={FaCheckCircle} />
+                    <Text>School email verified. You can upload your ID or COR below.</Text>
+                  </HStack>
+                )}
+
                 <Divider />
 
-                <FormControl isDisabled={verificationStatus === 'pending'}>
+                <FormControl isDisabled={verificationStatus === 'pending' || !(user as any)?.school_email_verified_at}>
                   <FormLabel>Upload School ID or COR (front)</FormLabel>
                   <HStack spacing={3} align="center">
                     <Input

@@ -27,6 +27,7 @@ import {
   SimpleGrid,
   Button,
 } from '@chakra-ui/react'
+import VerifiedAvatar from './VerifiedAvatar'
 import {
   FaTruck,
   FaMapMarkerAlt,
@@ -296,7 +297,7 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
                         <Text fontWeight="semibold">Rider Information</Text>
                       </HStack>
                       <HStack spacing={3}>
-                        <Avatar size="md" name={delivery.rider_name || 'Rider'} />
+                        <VerifiedAvatar size="md" name={delivery.rider_name || 'Rider'} isVerified={false} />
                         <VStack align="start" spacing={0} flex={1}>
                           <Text fontWeight="semibold">{delivery.rider_name || 'Rider'}</Text>
                           <HStack spacing={2}>

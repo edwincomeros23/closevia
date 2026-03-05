@@ -18,6 +18,7 @@ import {
   Divider,
   SimpleGrid,
   useToast,
+  Icon,
   IconButton,
   Menu,
   MenuButton,
@@ -40,6 +41,7 @@ import {
   FiHeart,
   FiShare2,
   FiCopy,
+  FiCheckCircle,
   FiFacebook,
   FiTwitter,
   FiInstagram,
@@ -63,6 +65,7 @@ import CounterfeitWarning from '../components/CounterfeitWarning'
 import ProximityBadge from '../components/ProximityBadge'
 import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
 import FloatingTab from '../components/FloatingTab'
+import VerifiedAvatar from '../components/VerifiedAvatar'
 import axios from 'axios';
 import { CloseIcon } from '@chakra-ui/icons'
 
@@ -1326,7 +1329,7 @@ const ProductDetail: React.FC = () => {
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
-                <Avatar
+                <VerifiedAvatar
                   as={RouterLink}
                   to={`/users/${product.seller_id}`}
                   size="lg"
@@ -1337,17 +1340,28 @@ const ProductDetail: React.FC = () => {
                   cursor="pointer"
                   _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
                   transition="all 0.2s"
+                  isVerified={sellerProfile?.verification_status === 'verified' || sellerProfile?.verified || false}
                 />
                 <Box>
-                  <Text
-                    as={RouterLink}
-                    to={`/users/${product.seller_id}`}
-                    fontWeight="bold"
-                    color="blue.600"
-                    _hover={{ textDecoration: 'underline' }}
-                  >
-                    {product.seller_name}
-                  </Text>
+                  <HStack spacing={2} align="center" flexWrap="wrap">
+                    <Text
+                      as={RouterLink}
+                      to={`/users/${product.seller_id}`}
+                      fontWeight="bold"
+                      color="blue.600"
+                      _hover={{ textDecoration: 'underline' }}
+                    >
+                      {product.seller_name}
+                    </Text>
+                    {(sellerProfile as any)?.verification_status === 'verified' && (
+                      <Badge colorScheme="teal" borderRadius="full" px={2} py={0.5} fontSize="xs">
+                        <HStack spacing={1}>
+                          <Icon as={FiCheckCircle} boxSize={3} />
+                          <Text as="span" fontSize="xs">Verified</Text>
+                        </HStack>
+                      </Badge>
+                    )}
+                  </HStack>
                   <Text color="gray.600" fontSize="sm">
                     Member since {sellerStats?.member_since_year ?? new Date().getFullYear()}
                   </Text>
