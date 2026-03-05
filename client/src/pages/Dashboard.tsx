@@ -2282,29 +2282,6 @@ const Dashboard: React.FC = () => {
                         }}
                       />
                     </Tooltip>
-                    <Button
-                      as={RouterLink}
-                      to="/add-product"
-                      size="sm"
-                      colorScheme="brand"
-                      leftIcon={<AddIcon />}
-                      ml={2}
-                      display={{ base: 'none', sm: 'inline-flex' }}
-                    >
-                      Add Product
-                    </Button>
-                    <Tooltip label="Add Product" hasArrow>
-                      <IconButton
-                        as={RouterLink}
-                        to="/add-product"
-                        aria-label="Add Product"
-                        icon={<AddIcon />}
-                        size="sm"
-                        colorScheme="brand"
-                        ml={1}
-                        display={{ base: 'flex', sm: 'none' }}
-                      />
-                    </Tooltip>
                   </>
                 )}
 
@@ -2329,29 +2306,6 @@ const Dashboard: React.FC = () => {
                         onClick={() => {
                           setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
                         }}
-                      />
-                    </Tooltip>
-                    <Button
-                      as={RouterLink}
-                      to="/add-product"
-                      size="sm"
-                      colorScheme="brand"
-                      leftIcon={<AddIcon />}
-                      ml={2}
-                      display={{ base: 'none', sm: 'inline-flex' }}
-                    >
-                      Add Product
-                    </Button>
-                    <Tooltip label="Add Product" hasArrow>
-                      <IconButton
-                        as={RouterLink}
-                        to="/add-product"
-                        aria-label="Add Product"
-                        icon={<AddIcon />}
-                        size="sm"
-                        colorScheme="brand"
-                        ml={1}
-                        display={{ base: 'flex', sm: 'none' }}
                       />
                     </Tooltip>
                   </>
@@ -2379,29 +2333,6 @@ const Dashboard: React.FC = () => {
                           setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
                           setTradeHistoryPage(1)
                         }}
-                      />
-                    </Tooltip>
-                    <Button
-                      as={RouterLink}
-                      to="/add-product"
-                      size="sm"
-                      colorScheme="brand"
-                      leftIcon={<AddIcon />}
-                      ml={2}
-                      display={{ base: 'none', sm: 'inline-flex' }}
-                    >
-                      Add Product
-                    </Button>
-                    <Tooltip label="Add Product" hasArrow>
-                      <IconButton
-                        as={RouterLink}
-                        to="/add-product"
-                        aria-label="Add Product"
-                        icon={<AddIcon />}
-                        size="sm"
-                        colorScheme="brand"
-                        ml={1}
-                        display={{ base: 'flex', sm: 'none' }}
                       />
                     </Tooltip>
                   </>
