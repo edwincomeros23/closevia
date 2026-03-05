@@ -27,6 +27,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
   const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
+  const [detectingLocation, setDetectingLocation] = useState(false)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const selectedBg = useColorModeValue('brand.50', 'brand.900')
