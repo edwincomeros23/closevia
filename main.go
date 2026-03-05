@@ -210,6 +210,8 @@ func main() {
 	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
 	// School ID verification (optional)
 	users.Post("/verification/start", middleware.AuthMiddleware(), verificationHandler.StartVerification)
+	users.Post("/verification/verify-school-email", middleware.AuthMiddleware(), verificationHandler.VerifySchoolEmail)
+	users.Post("/verification/resend-school-email-code", middleware.AuthMiddleware(), verificationHandler.ResendSchoolEmailCode)
 	users.Post("/verification/upload-id", middleware.AuthMiddleware(), verificationHandler.UploadSchoolID)
 	users.Get("/verification/status", middleware.AuthMiddleware(), verificationHandler.GetVerificationStatus)
 
@@ -227,7 +229,7 @@ func main() {
 	// Review reply routes
 	api.Post("/reviews/:id/reply", middleware.AuthMiddleware(), reviewHandler.ReplyToReview)
 	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
-	users.Get("/:id/stats", reviewHandler.GetUserRating)          // Alias for stats endpoint
+	users.Get("/:id/stats", userHandler.GetSellerStats)           // Full seller stats endpoint
 	users.Get("/:id/trades", tradeHandler.GetUserTradeHistory)    // Public - get completed trades for a user
 
 	// Dynamic and list routes placed after static subpaths

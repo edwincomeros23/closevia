@@ -61,6 +61,7 @@ import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag,
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
+import VerifiedAvatar from '../components/VerifiedAvatar'
 import OfferDetailsModal from '../components/OfferDetailsModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
 import ViewTradeModal from '../components/ViewTradeModal'
@@ -86,14 +87,21 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate()
 
   // Use React Query hooks for cached data
-  const { data: userProducts = [], isLoading: productsLoading } = useDashboardProducts(user?.id)
+  const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched } = useDashboardProducts(user?.id)
   const actualUserProducts = Array.isArray(userProducts) ? userProducts : []
-  const { data: orders = [] } = useDashboardOrders()
-  const { data: counts = { unread_notifications: 0, pending_offers: 0 } } = useDashboardCounts()
-  const { data: sentOffersData = [] } = useSentOffers()
-  const { data: receivedOffersData = [] } = useReceivedOffers()
-  const { data: ongoingTradesData = [] } = useOngoingTrades()
-  const { data: tradeHistoryData = [] } = useTradeHistory()
+  const { data: orders = [], isFetched: ordersFetched } = useDashboardOrders()
+  const { data: counts = { unread_notifications: 0, pending_offers: 0 }, isFetched: countsFetched } = useDashboardCounts()
+  const { data: sentOffersData = [], isFetched: sentFetched } = useSentOffers()
+  const { data: receivedOffersData = [], isFetched: receivedFetched } = useReceivedOffers()
+  const { data: ongoingTradesData = [], isFetched: ongoingFetched } = useOngoingTrades()
+  const { data: tradeHistoryData = [], isFetched: historyFetched } = useTradeHistory()
+
+  // Unified initial loading: true until all critical queries have fetched at least once
+  // Once set to false, stays false (via ref) so background refetches never re-trigger loading
+  const hasInitiallyLoaded = useRef(false)
+  const allFetched = productsFetched && countsFetched && sentFetched && receivedFetched && ongoingFetched
+  if (allFetched) hasInitiallyLoaded.current = true
+  const initialLoading = !hasInitiallyLoaded.current && !allFetched
 
   const { prefetchDashboardData } = usePrefetchDashboard(user?.id)
   const { invalidateDashboard, invalidateProducts, invalidateOffers } = useInvalidateDashboard()
@@ -208,13 +216,6 @@ const Dashboard: React.FC = () => {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
-
-  // Prefetch dashboard data when component mounts (only if not already cached)
-  useEffect(() => {
-    if (user?.id) {
-      prefetchDashboardData()
-    }
-  }, [user?.id, prefetchDashboardData])
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
@@ -1972,7 +1973,7 @@ const Dashboard: React.FC = () => {
     )
   }
 
-  if (loading) {
+  if (loading || initialLoading) {
     return (
       <Center h="50vh">
         <Spinner size="xl" color="brand.500" />
@@ -2282,29 +2283,6 @@ const Dashboard: React.FC = () => {
                         }}
                       />
                     </Tooltip>
-                    <Button
-                      as={RouterLink}
-                      to="/add-product"
-                      size="sm"
-                      colorScheme="brand"
-                      leftIcon={<AddIcon />}
-                      ml={2}
-                      display={{ base: 'none', sm: 'inline-flex' }}
-                    >
-                      Add Product
-                    </Button>
-                    <Tooltip label="Add Product" hasArrow>
-                      <IconButton
-                        as={RouterLink}
-                        to="/add-product"
-                        aria-label="Add Product"
-                        icon={<AddIcon />}
-                        size="sm"
-                        colorScheme="brand"
-                        ml={1}
-                        display={{ base: 'flex', sm: 'none' }}
-                      />
-                    </Tooltip>
                   </>
                 )}
 
@@ -2329,29 +2307,6 @@ const Dashboard: React.FC = () => {
                         onClick={() => {
                           setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
                         }}
-                      />
-                    </Tooltip>
-                    <Button
-                      as={RouterLink}
-                      to="/add-product"
-                      size="sm"
-                      colorScheme="brand"
-                      leftIcon={<AddIcon />}
-                      ml={2}
-                      display={{ base: 'none', sm: 'inline-flex' }}
-                    >
-                      Add Product
-                    </Button>
-                    <Tooltip label="Add Product" hasArrow>
-                      <IconButton
-                        as={RouterLink}
-                        to="/add-product"
-                        aria-label="Add Product"
-                        icon={<AddIcon />}
-                        size="sm"
-                        colorScheme="brand"
-                        ml={1}
-                        display={{ base: 'flex', sm: 'none' }}
                       />
                     </Tooltip>
                   </>
@@ -2379,29 +2334,6 @@ const Dashboard: React.FC = () => {
                           setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
                           setTradeHistoryPage(1)
                         }}
-                      />
-                    </Tooltip>
-                    <Button
-                      as={RouterLink}
-                      to="/add-product"
-                      size="sm"
-                      colorScheme="brand"
-                      leftIcon={<AddIcon />}
-                      ml={2}
-                      display={{ base: 'none', sm: 'inline-flex' }}
-                    >
-                      Add Product
-                    </Button>
-                    <Tooltip label="Add Product" hasArrow>
-                      <IconButton
-                        as={RouterLink}
-                        to="/add-product"
-                        aria-label="Add Product"
-                        icon={<AddIcon />}
-                        size="sm"
-                        colorScheme="brand"
-                        ml={1}
-                        display={{ base: 'flex', sm: 'none' }}
                       />
                     </Tooltip>
                   </>
@@ -2437,11 +2369,11 @@ const Dashboard: React.FC = () => {
                       justifyContent="center"
                       fontWeight="bold"
                     >
-                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                      {unreadNotifications > 99 ? '99+' : unreadNotifications}  
                     </Badge>
                   )}
                 </Box>
-                <Avatar
+                <VerifiedAvatar
                   name={user?.name || 'User'}
                   src={user?.profile_picture || undefined}
                   size="md"
@@ -2450,6 +2382,7 @@ const Dashboard: React.FC = () => {
                   cursor="pointer"
                   onClick={() => navigate('/UserProfile')}
                   _hover={{ opacity: 0.8 }}
+                  isVerified={user?.verified || (user as any)?.verification_status === 'verified' || false}
                 />
               </HStack>
             </Flex>
@@ -2626,8 +2559,9 @@ const Dashboard: React.FC = () => {
                     )}
 
                     {/* Products Grid or List - Apply Sort */}
-                    {productsLoading ? (
-                      productViewMode === 'grid' ? (
+                    {productsLoading && !hasInitiallyLoaded.current ? (
+                      <Fade in={true}>
+                      {productViewMode === 'grid' ? (
                         <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
                           {Array.from({ length: 8 }).map((_, i) => (
                             <ProductCardSkeleton key={i} />
@@ -2645,7 +2579,8 @@ const Dashboard: React.FC = () => {
                             </Flex>
                           ))}
                         </Box>
-                      )
+                      )}
+                      </Fade>
                     ) : filteredProducts.length === 0 ? (
                       <Fade in={true}>
                         <Box

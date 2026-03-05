@@ -90,7 +90,7 @@ const SavedProducts: React.FC = () => {
 
     try {
       const response = await api.get<SavedProductsResponse>('/api/users/saved-products', {
-        timeout: 12000,
+        timeout: 30000,
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -284,7 +284,7 @@ const SavedProducts: React.FC = () => {
                   </Text>
                   <Button 
                     colorScheme="brand" 
-                    onClick={() => navigate('/')}
+                    onClick={() => navigate('/home')}
                     leftIcon={<FiEye />}
                   >
                     Browse Products

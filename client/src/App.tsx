@@ -33,6 +33,7 @@ import AdminRoute from './components/AdminRoute'
 import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
 import { NotificationProvider } from './contexts/NotificationContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import ToastNotification from './components/ToastNotification'
 
 // Theme applier component - loads and applies saved theme preference
@@ -184,7 +185,9 @@ function App() {
               <NotificationProvider>
                 <RealtimeProvider>
                   <Router>
-                    <AppContent />
+                    <ErrorBoundary>
+                      <AppContent />
+                    </ErrorBoundary>
                     <ToastNotification />
                   </Router>
                 </RealtimeProvider>

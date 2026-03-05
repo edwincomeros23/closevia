@@ -78,7 +78,7 @@ func InitDatabase() error {
 	// Configure connection pool
 	DB.SetMaxOpenConns(25)
 	DB.SetMaxIdleConns(25)
-	DB.SetConnMaxLifetime(5 * time.Minute)
+	DB.SetConnMaxLifetime(10 * time.Minute)
 
 	// Test the connection
 	if err := DB.Ping(); err != nil {
@@ -174,6 +174,7 @@ func CreateTables() error {
 			category VARCHAR(100),
 			latitude FLOAT,
 			longitude FLOAT,
+			video_url VARCHAR(500) NULL,
 			bidding_type ENUM('none', 'blind', 'open') DEFAULT 'none',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -409,6 +410,26 @@ func CreateTables() error {
 			INDEX idx_reviewer (reviewer_id),
 			INDEX idx_created_at (created_at)
 		)`,
+		`CREATE TABLE IF NOT EXISTS reports (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			reporter_id INT NOT NULL,
+			reported_user_id INT NOT NULL,
+			product_id INT NULL,
+			reason VARCHAR(100) NOT NULL,
+			description TEXT NOT NULL,
+			status ENUM('pending', 'reviewed', 'resolved', 'dismissed') NOT NULL DEFAULT 'pending',
+			reviewer_id INT NULL,
+			reviewer_comment TEXT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reported_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+			FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_reporter (reporter_id),
+			INDEX idx_reported_user (reported_user_id),
+			INDEX idx_status (status)
+		)`,
 	}
 
 	// Execute table creation queries
@@ -453,6 +474,9 @@ func ensureUserColumns() {
 		{"school_email_verified_at", "TIMESTAMP NULL"},
 		{"school_id_image_path", "VARCHAR(512) NULL"},
 		{"verification_rejection_reason", "TEXT NULL"},
+		{"school_email_otp_hash", "VARCHAR(255) NULL"},
+		{"school_email_otp_expires", "TIMESTAMP NULL"},
+		{"school_id_document_type", "VARCHAR(20) NULL"},
 	}
 
 	for _, col := range columns {
@@ -500,6 +524,7 @@ func ensureProductColumns() {
 		{"suggested_value", "INT NULL"},
 		{"category", "VARCHAR(255) DEFAULT 'General'"},
 		{"authenticity_verified", "TINYINT(1) DEFAULT 0"},
+		{"video_url", "VARCHAR(500) NULL"},
 	}
 
 	for _, col := range columns {

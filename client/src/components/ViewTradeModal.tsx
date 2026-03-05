@@ -43,6 +43,7 @@ import {
   FormLabel,
   Grid,
 } from '@chakra-ui/react'
+import VerifiedAvatar from './VerifiedAvatar'
 import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar } from 'react-icons/fa'
 import {
   FiMapPin,
@@ -1178,6 +1179,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       if (error?.response?.data) {
         console.error('Backend error details:', error.response.data)
       }
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to save delivery state',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
     }
   }
 
@@ -1713,11 +1721,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     borderColor={borderColor}
                   >
                     <HStack spacing={4}>
-                      <Avatar
+                      <VerifiedAvatar
                         name={tradingPartner}
                         size="md"
                         bg={isUserBuyer ? 'green.500' : 'blue.500'}
                         color="white"
+                        isVerified={false}
                       />
                       <Box flex={1}>
                         <Text fontWeight="semibold">{tradingPartner}</Text>
@@ -1795,11 +1804,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <Card variant="outline" borderColor="orange.300" bg="orange.50">
                             <CardBody p={4}>
                               <HStack spacing={3} mb={2}>
-                                <Avatar
+                                <VerifiedAvatar
                                   name="Juan Dela Cruz"
                                   size="sm"
                                   bg="orange.500"
                                   color="white"
+                                  isVerified={false}
                                 />
                                 <Box flex={1}>
                                   <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
@@ -1856,11 +1866,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               spacing={2}
                             >
                               {!isOwnMessage && (
-                                <Avatar
+                                <VerifiedAvatar
                                   name={msg.sender_name || 'User'}
                                   size="sm"
                                   bg="brand.500"
                                   color="white"
+                                  isVerified={false}
                                 />
                               )}
                               <Box
@@ -2103,11 +2114,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       </Text>
                       <HStack spacing={6} justify="center" align="center">
                         <VStack spacing={2}>
-                          <Avatar
+                          <VerifiedAvatar
                             name={trade.buyer_name || 'Buyer'}
                             size="md"
                             bg="blue.500"
                             color="white"
+                            isVerified={false}
                           />
                           <VStack spacing={1}>
                             <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
@@ -2128,11 +2140,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <Box h="12" w="0.5px" bg={borderColor} />
 
                         <VStack spacing={2}>
-                          <Avatar
+                          <VerifiedAvatar
                             name={trade.seller_name || 'Seller'}
                             size="md"
                             bg="green.500"
                             color="white"
+                            isVerified={false}
                           />
                           <VStack spacing={1}>
                             <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>

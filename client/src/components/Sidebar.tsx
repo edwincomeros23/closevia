@@ -32,6 +32,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { FaHome } from 'react-icons/fa'
 import { FiGrid, FiHeart, FiLogOut, FiUser } from 'react-icons/fi'
 import { getImageUrl } from '../utils/imageUtils'
+import VerifiedAvatar from './VerifiedAvatar'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -120,7 +121,7 @@ const Sidebar: React.FC = () => {
                 const Icon = item.icon
                 const needsSoftBg = item.label === 'Add Product' || item.label === 'Notifications' || item.label === 'Settings'
                 const profileIcon = item.isProfile && user?.profile_picture
-                  ? <Avatar size="xs" name={user.name || 'User'} src={getImageUrl(user.profile_picture)} />
+                  ? <VerifiedAvatar size="xs" name={user.name || 'User'} src={getImageUrl(user.profile_picture)} isVerified={user?.verification_status === 'verified' || user?.verified || false} />
                   : <Icon />
                 return (
                   <Button

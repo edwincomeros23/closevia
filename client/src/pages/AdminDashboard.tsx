@@ -57,6 +57,8 @@ import {
   AlertDialogBody,
   AlertDialogFooter,
   Center,
+  Input,
+  Textarea,
 } from '@chakra-ui/react';
 import {
   FiUsers,
@@ -75,7 +77,7 @@ import {
   FiCalendar,
   FiFileText,
 } from 'react-icons/fi';
-import { FiTrash2 } from 'react-icons/fi';
+import { FiTrash2, FiEye, FiCheck, FiX } from 'react-icons/fi';
 import {
   AreaChart,
   Area,
@@ -92,6 +94,7 @@ import { mockAdminStats, simulateApiDelay } from '../utils/mockData';
 import { enhancedApiCall, checkConnectionStatus } from '../utils/apiUtils';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ErrorBoundary from '../components/ErrorBoundary';
+import VerifiedAvatar from '../components/VerifiedAvatar';
 import { User, Product, PaginatedResponse, APIResponse } from '../types';
 
 // ─── PDF / DOCX imports ───────────────────────────────────────────────────────
@@ -111,6 +114,7 @@ interface AdminStats {
   new_listings_today: number;
   verified_users: number;
   pending_approvals: number;
+  pending_verifications?: number;
   reports_filed: number;
   suspended_users: number;
   storage_usage_mb: number;
@@ -550,6 +554,27 @@ const AdminDashboard: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'product'; id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // ID/COR verifications (admin review)
+  type VerificationItem = {
+    id: number;
+    name: string;
+    email: string;
+    verification_status: string;
+    school_name: string;
+    school_email: string;
+    school_email_verified_at?: string;
+    verification_rejection_reason?: string;
+    document_type?: string;
+    has_id_image: boolean;
+  };
+  const [verifications, setVerifications] = useState<VerificationItem[]>([]);
+  const [verificationsLoading, setVerificationsLoading] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<VerificationItem | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectLoading, setRejectLoading] = useState(false);
+  const [idImageModal, setIdImageModal] = useState<{ userId: number; name: string } | null>(null);
+  const [idImageUrl, setIdImageUrl] = useState<string | null>(null);
+
   const { isOpen: isDayModalOpen, onOpen: openDayModal, onClose: closeDayModal } = useDisclosure();
   const {
     isOpen: isDeleteDialogOpen,
@@ -813,6 +838,101 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
+  // ── Fetch ID/COR verifications (pending & rejected) ──
+  const fetchAdminVerifications = useCallback(async () => {
+    try {
+      setVerificationsLoading(true);
+      const response = await api.get<APIResponse<VerificationItem[]>>('/api/admin/verifications');
+      if (response.data?.success && Array.isArray(response.data.data)) {
+        setVerifications(response.data.data);
+      } else {
+        setVerifications([]);
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Failed to load verifications',
+        description: err?.response?.data?.error || err.message || 'Unable to fetch verifications',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+      setVerifications([]);
+    } finally {
+      setVerificationsLoading(false);
+    }
+  }, [toast]);
+
+  // ── View ID image (fetch as blob and show in modal) ──
+  const handleViewIdImage = useCallback(async (userId: number, name: string) => {
+    setIdImageModal({ userId, name });
+    setIdImageUrl(null);
+    try {
+      const response = await api.get(`/api/admin/verifications/${userId}/image`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      setIdImageUrl(url);
+    } catch (err: any) {
+      toast({
+        title: 'Could not load image',
+        description: err?.response?.data?.error || 'Image not found or access denied',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      setIdImageModal(null);
+    }
+  }, [toast]);
+
+  const closeIdImageModal = useCallback(() => {
+    if (idImageUrl) URL.revokeObjectURL(idImageUrl);
+    setIdImageUrl(null);
+    setIdImageModal(null);
+  }, [idImageUrl]);
+
+  // ── Approve verification ──
+  const handleApproveVerification = useCallback(async (userId: number) => {
+    try {
+      await api.post(`/api/admin/verifications/${userId}/approve`);
+      toast({ title: 'User verified', description: 'Verification approved.', status: 'success', duration: 3000, isClosable: true });
+      fetchAdminVerifications();
+    } catch (err: any) {
+      toast({
+        title: 'Approve failed',
+        description: err?.response?.data?.error || 'Could not approve',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [toast, fetchAdminVerifications]);
+
+  // ── Reject verification (open modal to enter reason) ──
+  const openRejectModal = useCallback((item: VerificationItem) => {
+    setRejectTarget(item);
+    setRejectReason('');
+  }, []);
+
+  const handleConfirmReject = useCallback(async () => {
+    if (!rejectTarget) return;
+    try {
+      setRejectLoading(true);
+      await api.post(`/api/admin/verifications/${rejectTarget.id}/reject`, { reason: rejectReason || 'Not specified' });
+      toast({ title: 'Verification declined', description: 'User has been notified.', status: 'success', duration: 3000, isClosable: true });
+      setRejectTarget(null);
+      setRejectReason('');
+      fetchAdminVerifications();
+    } catch (err: any) {
+      toast({
+        title: 'Reject failed',
+        description: err?.response?.data?.error || 'Could not reject',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setRejectLoading(false);
+    }
+  }, [rejectTarget, rejectReason, toast, fetchAdminVerifications]);
+
   // ── Delete handlers ──
   const askDeleteUser = useCallback((user: User) => {
     setDeleteTarget({ type: 'user', id: user.id, name: user.name || user.email });
@@ -874,9 +994,10 @@ const AdminDashboard: React.FC = () => {
     fetchAdminUsers(1);
     fetchAdminProducts(1);
     fetchAdminReports(1);
+    fetchAdminVerifications();
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
-  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports]);
+  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports, fetchAdminVerifications]);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -1174,7 +1295,13 @@ const AdminDashboard: React.FC = () => {
               <CardBody>
                 <VStack spacing={4} align="stretch">
                   <HStack justify="space-between">
-                    <Text fontWeight="medium">Pending Approvals</Text>
+                    <Text fontWeight="medium">Pending ID/COR Verifications</Text>
+                    <Badge colorScheme="teal" fontSize="md" px={3} py={1}>
+                      {stats.pending_verifications?.toLocaleString() ?? 0}
+                    </Badge>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text fontWeight="medium">Pending Approvals (listings)</Text>
                     <Badge colorScheme="yellow" fontSize="md" px={3} py={1}>
                       {stats.pending_approvals?.toLocaleString() ?? 0}
                     </Badge>
@@ -1250,10 +1377,11 @@ const AdminDashboard: React.FC = () => {
                           <Tr key={user.id}>
                             <Td>
                               <HStack spacing={3}>
-                                <Avatar
+                                <VerifiedAvatar
                                   size="sm"
                                   name={user.name}
                                   src={user.profile_picture || undefined}
+                                  isVerified={user.verified || user.verification_status === 'verified' || false}
                                 />
                                 <VStack spacing={0} align="start">
                                   <Text fontWeight="medium" fontSize="sm">
@@ -1550,6 +1678,101 @@ const AdminDashboard: React.FC = () => {
           </ModalContent>
         </Modal>
 
+        {/* ── ID/COR Verifications (Admin review: approve or decline) ── */}
+        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack spacing={2}>
+                <Icon as={FiShield} color="teal.500" boxSize={5} />
+                <Heading size="md" color="teal.600">ID / COR Verifications</Heading>
+                {verifications.filter(v => v.verification_status === 'pending').length > 0 && (
+                  <Badge colorScheme="orange" borderRadius="full" px={2}>
+                    {verifications.filter(v => v.verification_status === 'pending').length} pending
+                  </Badge>
+                )}
+              </HStack>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminVerifications} isLoading={verificationsLoading}>
+                Refresh
+              </Button>
+            </Flex>
+            <Text fontSize="sm" color="gray.500" mt={1}>
+              Review submitted school ID or COR. Verify if legitimate or decline with a reason (e.g. fake or invalid document).
+            </Text>
+          </CardHeader>
+          <CardBody overflowX="auto" px={0}>
+            {verificationsLoading ? (
+              <Center py={8}><Spinner color="teal.500" /></Center>
+            ) : verifications.length === 0 ? (
+              <Center py={8}>
+                <VStack spacing={2}>
+                  <Icon as={FiShield} boxSize={10} color="gray.300" />
+                  <Text color="gray.500">No pending or rejected verifications</Text>
+                </VStack>
+              </Center>
+            ) : (
+              <ChakraTable variant="simple" size="sm">
+                <Thead bg="teal.50">
+                  <Tr>
+                    <Th>User</Th>
+                    <Th>School</Th>
+                    <Th>School Email</Th>
+                    <Th>Doc</Th>
+                    <Th>Status</Th>
+                    <Th>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {verifications.map((item) => (
+                    <Tr key={item.id} _hover={{ bg: 'gray.50' }}>
+                      <Td>
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="medium" fontSize="sm">{item.name || `User #${item.id}`}</Text>
+                          <Text fontSize="xs" color="gray.500">{item.email}</Text>
+                        </VStack>
+                      </Td>
+                      <Td fontSize="sm">{item.school_name || '-'}</Td>
+                      <Td fontSize="sm">{item.school_email || '-'}</Td>
+                      <Td>
+                        <Tag size="sm" colorScheme="blue" textTransform="uppercase">{item.document_type || 'id'}</Tag>
+                      </Td>
+                      <Td>
+                        <Badge colorScheme={item.verification_status === 'pending' ? 'orange' : 'red'} borderRadius="full" px={2}>
+                          {item.verification_status === 'pending' ? 'Pending' : 'Rejected'}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <HStack spacing={2}>
+                          {item.has_id_image && (
+                            <Tooltip label="View ID/COR image" hasArrow>
+                              <IconButton
+                                aria-label="View ID"
+                                size="sm"
+                                variant="outline"
+                                icon={<FiEye />}
+                                onClick={() => handleViewIdImage(item.id, item.name)}
+                              />
+                            </Tooltip>
+                          )}
+                          {item.verification_status === 'pending' && (
+                            <>
+                              <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveVerification(item.id)}>
+                                Verify
+                              </Button>
+                              <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => openRejectModal(item)}>
+                                Decline
+                              </Button>
+                            </>
+                          )}
+                        </HStack>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </ChakraTable>
+            )}
+          </CardBody>
+        </Card>
+
         {/* ── Reports Table Section ── */}
         <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
           <CardHeader>
@@ -1671,6 +1894,50 @@ const AdminDashboard: React.FC = () => {
             )}
           </CardBody>
         </Card>
+
+        {/* ── ID Image modal ── */}
+        <Modal isOpen={!!idImageModal} onClose={closeIdImageModal} size="xl">
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>ID / COR — {idImageModal?.name}</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody pb={4}>
+              {idImageUrl ? (
+                <Box as="img" src={idImageUrl} alt="Submitted ID" maxH="70vh" mx="auto" borderRadius="md" />
+              ) : (
+                <Center py={8}><Spinner size="lg" color="teal.500" /></Center>
+              )}
+            </ModalBody>
+          </ModalContent>
+        </Modal>
+
+        {/* ── Reject verification modal ── */}
+        <Modal isOpen={!!rejectTarget} onClose={() => { setRejectTarget(null); setRejectReason(''); }}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Decline verification</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Text fontSize="sm" color="gray.600" mb={3}>
+                User: <strong>{rejectTarget?.name}</strong> ({rejectTarget?.email}). Provide a reason (e.g. fake/invalid COR or ID).
+              </Text>
+              <Textarea
+                placeholder="e.g. Document does not appear to be a valid school ID or COR"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+              />
+            </ModalBody>
+            <Box px={6} pb={4} pt={0}>
+              <HStack justify="flex-end" spacing={3}>
+                <Button variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(''); }}>Cancel</Button>
+                <Button colorScheme="red" onClick={handleConfirmReject} isLoading={rejectLoading}>
+                  Decline verification
+                </Button>
+              </HStack>
+            </Box>
+          </ModalContent>
+        </Modal>
 
         {/* ── Delete Confirmation Dialog ── */}
         <AlertDialog

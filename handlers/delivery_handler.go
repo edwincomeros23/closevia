@@ -593,8 +593,8 @@ func (h *DeliveryHandler) getDeliveryByID(deliveryID, userID int) (*models.Deliv
 	args := []interface{}{deliveryID}
 
 	if userID > 0 {
-		query += " AND d.user_id = ?"
-		args = append(args, userID)
+		query += " AND (d.user_id = ? OR d.rider_id = ?)"
+		args = append(args, userID, userID)
 	}
 
 	err := h.db.QueryRow(query, args...).Scan(

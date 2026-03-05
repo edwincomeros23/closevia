@@ -1048,7 +1048,7 @@ func (h *UserHandler) UnsaveProduct(c *fiber.Ctx) error {
 	}
 
 	// Soft delete the saved product
-	result, err := h.db.Exec("UPDATE saved_products SET deleted_at = NOW() WHERE user_id = ? AND product_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')", userID, productID)
+	result, err := h.db.Exec("UPDATE saved_products SET deleted_at = NOW() WHERE user_id = ? AND product_id = ? AND deleted_at IS NULL", userID, productID)
 	if err != nil {
 		fmt.Printf("❌ UnsaveProduct query failed!\n")
 		fmt.Printf("UserID: %d, ProductID: %d\n", userID, productID)
@@ -1092,7 +1092,7 @@ func (h *UserHandler) CheckSavedProduct(c *fiber.Ctx) error {
 	}
 	var isSaved bool
 	// Keep check that excludes soft-deleted saved_products
-	query := "SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00'))"
+	query := "SELECT EXISTS(SELECT 1 FROM saved_products WHERE user_id = ? AND product_id = ? AND deleted_at IS NULL)"
 	if err := h.db.QueryRow(query, userID, productID).Scan(&isSaved); err != nil {
 		// Log for debugging
 		fmt.Printf("❌ Failed to check saved status (user=%d, product=%d): %v\n", userID, productID, err)
@@ -1125,7 +1125,7 @@ func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
 
 	// Get total count (excluding soft-deleted)
 	var total int
-	err := h.db.QueryRow("SELECT COUNT(*) FROM saved_products WHERE user_id = ? AND (deleted_at IS NULL OR deleted_at = '0000-00-00 00:00:00')", userID).Scan(&total)
+	err := h.db.QueryRow("SELECT COUNT(*) FROM saved_products WHERE user_id = ? AND deleted_at IS NULL", userID).Scan(&total)
 	if err != nil {
 		fmt.Printf("❌ GetSavedProducts count query failed!\n")
 		fmt.Printf("UserID: %d\n", userID)
@@ -1147,7 +1147,7 @@ func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
 		FROM saved_products sp
 		JOIN products p ON p.id = sp.product_id
 		JOIN users u ON u.id = p.seller_id
-		WHERE sp.user_id = ? AND (sp.deleted_at IS NULL OR sp.deleted_at = '0000-00-00 00:00:00')
+		WHERE sp.user_id = ? AND sp.deleted_at IS NULL
 		ORDER BY sp.created_at DESC
 		LIMIT ? OFFSET ?
 	`, userID, limit, offset)
@@ -1266,13 +1266,13 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		stats.ResponseMetric = "poor"
 	}
 
-	// Calculate average response time (estimated as hours from trade creation to first completion activity)
+	// Calculate average response time (estimated as minutes from trade creation to first completion activity)
 	var avgResponseTimeMinutes sql.NullFloat64
 	err = h.db.QueryRow(`
-		SELECT AVG(EXTRACT(EPOCH FROM (CASE 
+		SELECT AVG(TIMESTAMPDIFF(MINUTE, created_at, CASE 
 			WHEN seller_completed THEN COALESCE(updated_at, NOW())
 			ELSE NOW()
-		END - created_at)) / 60) as avg_response_minutes
+		END)) as avg_response_minutes
 		FROM trades
 		WHERE seller_id = ? AND created_at > DATE_SUB(NOW(), INTERVAL 90 DAY)
 		LIMIT 100

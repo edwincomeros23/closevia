@@ -448,7 +448,10 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                   </HStack>
                 </Box>
               </Box>
-            </Grid>
+            </HStack>
+
+
+            <Divider />
 
 
             {/* Trade Option Display - Prominent */}
