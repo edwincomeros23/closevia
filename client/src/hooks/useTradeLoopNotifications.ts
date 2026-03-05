@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useToast } from '@chakra-ui/react'
 import { api } from '../services/api'
 
@@ -22,12 +22,15 @@ export const useTradeLoopNotifications = () => {
   const toast = useToast()
 
   // Subscribe to trade loop notifications via SSE or polling
+  const notificationsRef = useRef<TradeLoopNotification[]>([])
+  notificationsRef.current = notifications
+
   useEffect(() => {
     let pollInterval: ReturnType<typeof setInterval> | null = null
 
     const startPolling = () => {
       setIsListening(true)
-      // Poll for trade loop notifications every 15 seconds
+      // Poll for trade loop notifications every 60 seconds
       pollInterval = setInterval(async () => {
         try {
           const response = await api.get('/api/trades/loops/notifications')
@@ -38,7 +41,7 @@ export const useTradeLoopNotifications = () => {
           // Check for new notifications (that we haven't shown yet)
           const newNotifications = data.filter(
             (n) =>
-              !notifications.some((existing) => existing.id === n.id) &&
+              !notificationsRef.current.some((existing) => existing.id === n.id) &&
               n.type === 'trade_loop' &&
               !n.read
           )
@@ -59,7 +62,7 @@ export const useTradeLoopNotifications = () => {
         } catch (error) {
           console.error('Failed to poll trade loop notifications:', error)
         }
-      }, 15000)
+      }, 60000)
     }
 
     startPolling()
@@ -70,7 +73,7 @@ export const useTradeLoopNotifications = () => {
       }
       setIsListening(false)
     }
-  }, [notifications, toast])
+  }, [toast])
 
   const markAsRead = useCallback(async (notificationId: string) => {
     try {

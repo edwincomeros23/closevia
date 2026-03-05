@@ -496,19 +496,18 @@ const Home: React.FC = () => {
           {/* Seller row (desktop) */}
           <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
             <HStack spacing={2}>
-              <VerifiedAvatar
-                as={RouterLink}
-                to={`/users/${product.seller_id}`}
-                size="sm"
-                src={sellerAvatarSrc}
-                name={product.seller_name || 'U'}
-                bg="brand.500"
-                flexShrink={0}
-                cursor="pointer"
-                _hover={{ opacity: 0.8 }}
-                onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                isVerified={product.seller_verified || false}
-              />
+              <RouterLink to={`/users/${product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                <VerifiedAvatar
+                  size="sm"
+                  src={sellerAvatarSrc}
+                  name={product.seller_name || 'U'}
+                  bg="brand.500"
+                  flexShrink={0}
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8 }}
+                  isVerified={product.seller_verified || false}
+                />
+              </RouterLink>
               <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
                 {product.seller_name || 'Unknown'}
               </Text>
