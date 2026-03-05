@@ -1179,6 +1179,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       if (error?.response?.data) {
         console.error('Backend error details:', error.response.data)
       }
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to save delivery state',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
     }
   }
 

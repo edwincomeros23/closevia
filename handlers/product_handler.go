@@ -144,6 +144,25 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		imagePaths = append(imagePaths, localURL)
 	}
 
+	// Handle optional video upload (single file)
+	var videoURL string
+	videoFiles := form.File["video"]
+	if len(videoFiles) > 0 {
+		videoFile := videoFiles[0]
+		// Limit video to 50MB
+		if videoFile.Size > 50*1024*1024 {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Video file must be under 50MB",
+			})
+		}
+		if url, err := services.UploadFileToCloudinary(videoFile, "product-videos"); err == nil && url != "" {
+			videoURL = url
+		} else if err != nil {
+			fmt.Printf("Video upload failed: %v\n", err)
+		}
+	}
+
 	// Convert imagePaths to JSON
 	imageURLsJSONBytes, err := json.Marshal(imagePaths)
 	if err != nil {
@@ -212,6 +231,13 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
 	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category}
 
+	// Include video_url if a video was uploaded
+	if videoURL != "" {
+		cols = append(cols, "video_url")
+		placeholders = append(placeholders, "?")
+		args = append(args, videoURL)
+	}
+
 	// Only include latitude/longitude if geocoding produced values
 	if lat != nil && lon != nil {
 		// insert latitude and longitude after 'location' (which is index 9)
@@ -255,16 +281,20 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Get the created product
 	var createdProduct models.Product
 	var slugNull sql.NullString
+	var createdVideoURL sql.NullString
 	err = h.db.QueryRow(
-		"SELECT id, slug, title, description, price, image_urls, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
+		"SELECT id, slug, title, description, price, image_urls, video_url, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
 		productID,
 	).Scan(&createdProduct.ID, &slugNull, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
-		&createdProduct.ImageURLs, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
+		&createdProduct.ImageURLs, &createdVideoURL, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
 		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if slugNull.Valid {
 		createdProduct.Slug = slugNull.String
+	}
+	if createdVideoURL.Valid {
+		createdProduct.VideoURL = createdVideoURL.String
 	}
 
 	if err != nil {
@@ -522,7 +552,13 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		// Compute distance if we have both viewer and product (or seller) coordinates
 		if viewerLat != nil && viewerLon != nil && finalLat != nil && finalLon != nil {
 			result := services.CalculateDistance(*viewerLat, *viewerLon, *finalLat, *finalLon)
-			product.Distance = fmt.Sprintf("%.1f KM", result.DistanceKm)
+			if result.DistanceKm < 1 {
+				product.Distance = fmt.Sprintf("%d M", int(result.DistanceM))
+			} else if result.DistanceKm < 10 {
+				product.Distance = fmt.Sprintf("%.1f KM", result.DistanceKm)
+			} else {
+				product.Distance = fmt.Sprintf("%d KM", int(result.DistanceKm))
+			}
 		}
 
 		products = append(products, product)
@@ -549,7 +585,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		// Compute distance from viewer if both viewer and product have coordinates
 		if viewerLat != nil && viewerLon != nil && p.Latitude != nil && p.Longitude != nil {
 			result := services.CalculateDistance(*viewerLat, *viewerLon, *p.Latitude, *p.Longitude)
-			distStr := fmt.Sprintf("%.1f KM", result.DistanceKm)
+			var distStr string
+			if result.DistanceKm < 1 {
+				distStr = fmt.Sprintf("%d M", int(result.DistanceM))
+			} else if result.DistanceKm < 10 {
+				distStr = fmt.Sprintf("%.1f KM", result.DistanceKm)
+			} else {
+				distStr = fmt.Sprintf("%d KM", int(result.DistanceKm))
+			}
 			p.Distance = distStr
 		}
 	}
@@ -668,13 +711,14 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var slugNull sql.NullString
 	var priceNull sql.NullFloat64
 	var imageURLsJSON sql.NullString
+	var videoURLNull sql.NullString
 	var err error
 
 	productID, parseErr := strconv.Atoi(idOrSlug)
 	if parseErr == nil {
 		// It's a numeric ID
 		err = h.db.QueryRow(`
-			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
@@ -683,14 +727,14 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.id = ?
 		`, productID).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
-			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
+			&imageURLsJSON, &videoURLNull, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
 			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
 	} else {
 		// It's a slug
 		err = h.db.QueryRow(`
-			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
@@ -699,7 +743,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			LEFT JOIN users u ON p.seller_id = u.id
 			WHERE p.slug = ?
 		`, idOrSlug).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
-			&imageURLsJSON, &product.SellerID, &product.Premium, &product.Status,
+			&imageURLsJSON, &videoURLNull, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
 			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
@@ -724,6 +768,9 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	if priceNull.Valid {
 		p := priceNull.Float64
 		product.Price = &p
+	}
+	if videoURLNull.Valid {
+		product.VideoURL = videoURLNull.String
 	}
 
 	// Parse image URLs JSON if present

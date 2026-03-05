@@ -12,7 +12,7 @@ type RealtimeContextValue = {
 
 const RealtimeContext = createContext<RealtimeContextValue>({ offerCount: 0, notificationCount: 0, refreshCounts: () => { } })
 
-const POLL_INTERVAL_MS = 25000
+const POLL_INTERVAL_MS = 60000
 
 export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth()

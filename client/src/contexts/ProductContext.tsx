@@ -140,11 +140,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     return R * c
   }
 
-  // Format distance for display - show in KM or meters for close distance
+  // Format distance for display - show in M for < 1 KM, KM otherwise
   const formatDistance = (distanceKm: number): string => {
     if (distanceKm < 1) {
       const meters = Math.round(distanceKm * 1000)
-      return meters < 100 ? `${meters} m` : `${(distanceKm).toFixed(1)} KM`
+      return `${meters} M`
     } else if (distanceKm < 10) {
       return `${distanceKm.toFixed(1)} KM`
     } else {
@@ -152,13 +152,13 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
-  // Add distance to products
+  // Add distance to products and sort by nearest first
   const addDistanceToProducts = (productsList: Product[]): Product[] => {
     if (!userLocation) return productsList
 
-    return productsList.map((product) => {
+    const withDistance = productsList.map((product) => {
       if (product.latitude && product.longitude) {
-        const distance = calculateDistance(
+        const dist = calculateDistance(
           userLocation.lat,
           userLocation.lng,
           product.latitude,
@@ -166,11 +166,17 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         )
         return {
           ...product,
-          distance: formatDistance(distance),
+          distance: formatDistance(dist),
+          distanceKm: dist,
         }
       }
-      return product
+      return { ...product, distanceKm: Infinity }
     })
+
+    // Sort by distance (nearest first), premium products stay prioritized within same distance tier
+    withDistance.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+
+    return withDistance
   }
 
   // Helper function to ensure products is always an array

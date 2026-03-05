@@ -52,6 +52,7 @@ import {
   FiTrendingUp,
   FiTrendingDown,
   FiFlag,
+  FiStar,
 } from 'react-icons/fi'
 import { FaHandshake } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
@@ -840,66 +841,144 @@ const ProductDetail: React.FC = () => {
 
             {/* Product Content */}
 
-            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={0}>
+            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={product.video_url ? 4 : 6}>
               {/* Product Image Gallery */}
-              <VStack spacing={4} align="stretch">
-                <Box position="relative" h="400px" bg="gray.100" rounded="md">
-                  <Image
-                    src={selectedImage || getFirstImage(product.image_urls)}
-                    alt={product.title}
-                    w="full"
-                    h="full"
-                    objectFit="contain"
-                    fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
-                  />
-                  <HStack position="absolute" top={3} left={3} spacing={2}>
-                    {product.premium && (
-                      <Badge colorScheme="orange" px={2} py={1} fontSize="sm">
-                        Premium Listing
-                      </Badge>
-                    )}
-                    <Badge
-                      colorScheme={
-                        product.status === 'available'
-                          ? 'teal'
-                          : product.status === 'locked'
-                            ? 'orange'
-                            : 'red'
-                      }
-                      px={2}
-                      py={1}
-                      fontSize="sm"
-                    >
-                      {product.status}
-                    </Badge>
-                    {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
-                  </HStack>
-                </Box>
-                {product.image_urls && product.image_urls.length > 1 && (
-                  <HStack spacing={2} overflowX="auto">
-                    {product.image_urls.map((url, index) => (
-                      <Box
-                        key={index}
-                        as="button"
-                        w="80px"
-                        h="80px"
-                        p={1}
-                        border="2px solid"
-                        borderColor={selectedImage === getImageUrl(url) ? 'brand.500' : 'transparent'}
-                        rounded="md"
-                        onClick={() => setSelectedImage(getImageUrl(url))}
-                      >
+              <VStack spacing={3} align="stretch" p={{ base: 2, md: 4 }}>
+                {/* When video exists: image and video side by side */}
+                {product.video_url ? (
+                  <>
+                    <SimpleGrid columns={2} spacing={3}>
+                      <Box position="relative" h="280px" bg="gray.100" rounded="md" overflow="hidden">
                         <Image
-                          src={getImageUrl(url)}
-                          alt={`Thumbnail ${index + 1}`}
+                          src={selectedImage || getFirstImage(product.image_urls)}
+                          alt={product.title}
                           w="full"
                           h="full"
-                          objectFit="cover"
-                          fallbackSrc="https://via.placeholder.com/80x80"
+                          objectFit="contain"
+                          fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                        />
+                        <HStack position="absolute" top={2} left={2} spacing={1}>
+                          {product.premium && (
+                            <Badge colorScheme="orange" px={1.5} py={0.5} fontSize="xs">
+                              Premium
+                            </Badge>
+                          )}
+                          <Badge
+                            colorScheme={
+                              product.status === 'available'
+                                ? 'teal'
+                                : product.status === 'locked'
+                                  ? 'orange'
+                                  : 'red'
+                            }
+                            px={1.5}
+                            py={0.5}
+                            fontSize="xs"
+                          >
+                            {product.status}
+                          </Badge>
+                        </HStack>
+                      </Box>
+                      <Box borderRadius="md" overflow="hidden" bg="black" h="280px">
+                        <video
+                          src={product.video_url}
+                          controls
+                          playsInline
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         />
                       </Box>
-                    ))}
-                  </HStack>
+                    </SimpleGrid>
+                    {product.image_urls && product.image_urls.length > 1 && (
+                      <HStack spacing={2} overflowX="auto">
+                        {product.image_urls.map((url, index) => (
+                          <Box
+                            key={index}
+                            as="button"
+                            w="70px"
+                            h="70px"
+                            flexShrink={0}
+                            p={1}
+                            border="2px solid"
+                            borderColor={selectedImage === getImageUrl(url) ? 'brand.500' : 'transparent'}
+                            rounded="md"
+                            onClick={() => setSelectedImage(getImageUrl(url))}
+                          >
+                            <Image
+                              src={getImageUrl(url)}
+                              alt={`Thumbnail ${index + 1}`}
+                              w="full"
+                              h="full"
+                              objectFit="cover"
+                              fallbackSrc="https://via.placeholder.com/80x80"
+                            />
+                          </Box>
+                        ))}
+                      </HStack>
+                    )}
+                    {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
+                  </>
+                ) : (
+                  <>
+                    <Box position="relative" h="400px" bg="gray.100" rounded="md" overflow="hidden">
+                      <Image
+                        src={selectedImage || getFirstImage(product.image_urls)}
+                        alt={product.title}
+                        w="full"
+                        h="full"
+                        objectFit="contain"
+                        fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                      />
+                      <HStack position="absolute" top={3} left={3} spacing={2}>
+                        {product.premium && (
+                          <Badge colorScheme="orange" px={2} py={1} fontSize="sm">
+                            Premium Listing
+                          </Badge>
+                        )}
+                        <Badge
+                          colorScheme={
+                            product.status === 'available'
+                              ? 'teal'
+                              : product.status === 'locked'
+                                ? 'orange'
+                                : 'red'
+                          }
+                          px={2}
+                          py={1}
+                          fontSize="sm"
+                        >
+                          {product.status}
+                        </Badge>
+                        {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
+                      </HStack>
+                    </Box>
+                    {product.image_urls && product.image_urls.length > 1 && (
+                      <HStack spacing={2} overflowX="auto">
+                        {product.image_urls.map((url, index) => (
+                          <Box
+                            key={index}
+                            as="button"
+                            w="80px"
+                            h="80px"
+                            flexShrink={0}
+                            p={1}
+                            border="2px solid"
+                            borderColor={selectedImage === getImageUrl(url) ? 'brand.500' : 'transparent'}
+                            rounded="md"
+                            onClick={() => setSelectedImage(getImageUrl(url))}
+                          >
+                            <Image
+                              src={getImageUrl(url)}
+                              alt={`Thumbnail ${index + 1}`}
+                              w="full"
+                              h="full"
+                              objectFit="cover"
+                              fallbackSrc="https://via.placeholder.com/80x80"
+                            />
+                          </Box>
+                        ))}
+                      </HStack>
+                    )}
+                  </>
                 )}
               </VStack>
 
@@ -1329,19 +1408,19 @@ const ProductDetail: React.FC = () => {
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
-                <VerifiedAvatar
-                  as={RouterLink}
-                  to={`/users/${product.seller_id}`}
-                  size="lg"
-                  src={sellerProfile?.profile_picture}
-                  name={product.seller_name}
-                  bg="red.500"
-                  color="white"
-                  cursor="pointer"
-                  _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
-                  transition="all 0.2s"
-                  isVerified={sellerProfile?.verification_status === 'verified' || sellerProfile?.verified || false}
-                />
+                <RouterLink to={`/users/${product.seller_id}`}>
+                  <VerifiedAvatar
+                    size="lg"
+                    src={sellerProfile?.profile_picture}
+                    name={product.seller_name}
+                    bg="red.500"
+                    color="white"
+                    cursor="pointer"
+                    _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                    transition="all 0.2s"
+                    isVerified={sellerProfile?.verification_status === 'verified' || sellerProfile?.verified || false}
+                  />
+                </RouterLink>
                 <Box>
                   <HStack spacing={2} align="center" flexWrap="wrap">
                     <Text
@@ -1375,16 +1454,28 @@ const ProductDetail: React.FC = () => {
               {/* Seller Stats */}
               <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
                 <VStack spacing={1} align="center">
-                  <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="brand.500">
-                    {sellerStats?.avg_rating?.toFixed(1) ?? 'N/A'}
-                  </Text>
+                  {sellerStats?.avg_rating ? (
+                    <HStack spacing={1}>
+                      <Icon as={FiStar} color="yellow.400" boxSize={{ base: 4, md: 5 }} />
+                      <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="brand.500">
+                        {sellerStats.avg_rating.toFixed(1)}
+                      </Text>
+                    </HStack>
+                  ) : (
+                    <HStack spacing={1}>
+                      <Icon as={FiStar} color="yellow.400" boxSize={{ base: 4, md: 5 }} />
+                      <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="gray.400">
+                        New
+                      </Text>
+                    </HStack>
+                  )}
                   <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                     Rating
                   </Text>
                 </VStack>
                 <VStack spacing={1} align="center">
                   <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="green.500">
-                    {sellerStats?.positive_percent?.toFixed(0) ?? 'N/A'}%
+                    {sellerStats?.positive_percent != null ? `${sellerStats.positive_percent.toFixed(0)}%` : '100%'}
                   </Text>
                   <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                     Positive
@@ -1400,7 +1491,7 @@ const ProductDetail: React.FC = () => {
                 </VStack>
                 <VStack spacing={1} align="center">
                   <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color="purple.500">
-                    {sellerStats?.avg_response_time ?? 'N/A'}
+                    {sellerStats?.avg_response_time ?? '< 1 hr'}
                   </Text>
                   <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                     Avg Response

@@ -52,9 +52,10 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 	}
 
 	if !userLat.Valid || !userLon.Valid {
-		return c.Status(400).JSON(models.APIResponse{
-			Success: false,
-			Error:   "User location not set. Please update your profile with location information.",
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data:    nil,
+			Message: "User location not set",
 		})
 	}
 
@@ -70,9 +71,10 @@ func (h *AIFeaturesHandler) GetProximity(c *fiber.Ctx) error {
 		}
 
 		if !targetLat.Valid || !targetLon.Valid {
-			return c.Status(400).JSON(models.APIResponse{
-				Success: false,
-				Error:   "Target user location not set",
+			return c.JSON(models.APIResponse{
+				Success: true,
+				Data:    nil,
+				Message: "Target user location not set",
 			})
 		}
 

@@ -87,14 +87,21 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate()
 
   // Use React Query hooks for cached data
-  const { data: userProducts = [], isLoading: productsLoading } = useDashboardProducts(user?.id)
+  const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched } = useDashboardProducts(user?.id)
   const actualUserProducts = Array.isArray(userProducts) ? userProducts : []
-  const { data: orders = [] } = useDashboardOrders()
-  const { data: counts = { unread_notifications: 0, pending_offers: 0 } } = useDashboardCounts()
-  const { data: sentOffersData = [] } = useSentOffers()
-  const { data: receivedOffersData = [] } = useReceivedOffers()
-  const { data: ongoingTradesData = [] } = useOngoingTrades()
-  const { data: tradeHistoryData = [] } = useTradeHistory()
+  const { data: orders = [], isFetched: ordersFetched } = useDashboardOrders()
+  const { data: counts = { unread_notifications: 0, pending_offers: 0 }, isFetched: countsFetched } = useDashboardCounts()
+  const { data: sentOffersData = [], isFetched: sentFetched } = useSentOffers()
+  const { data: receivedOffersData = [], isFetched: receivedFetched } = useReceivedOffers()
+  const { data: ongoingTradesData = [], isFetched: ongoingFetched } = useOngoingTrades()
+  const { data: tradeHistoryData = [], isFetched: historyFetched } = useTradeHistory()
+
+  // Unified initial loading: true until all critical queries have fetched at least once
+  // Once set to false, stays false (via ref) so background refetches never re-trigger loading
+  const hasInitiallyLoaded = useRef(false)
+  const allFetched = productsFetched && countsFetched && sentFetched && receivedFetched && ongoingFetched
+  if (allFetched) hasInitiallyLoaded.current = true
+  const initialLoading = !hasInitiallyLoaded.current && !allFetched
 
   const { prefetchDashboardData } = usePrefetchDashboard(user?.id)
   const { invalidateDashboard, invalidateProducts, invalidateOffers } = useInvalidateDashboard()
@@ -209,13 +216,6 @@ const Dashboard: React.FC = () => {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
-
-  // Prefetch dashboard data when component mounts (only if not already cached)
-  useEffect(() => {
-    if (user?.id) {
-      prefetchDashboardData()
-    }
-  }, [user?.id, prefetchDashboardData])
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
@@ -1973,7 +1973,7 @@ const Dashboard: React.FC = () => {
     )
   }
 
-  if (loading) {
+  if (loading || initialLoading) {
     return (
       <Center h="50vh">
         <Spinner size="xl" color="brand.500" />
@@ -2559,8 +2559,9 @@ const Dashboard: React.FC = () => {
                     )}
 
                     {/* Products Grid or List - Apply Sort */}
-                    {productsLoading ? (
-                      productViewMode === 'grid' ? (
+                    {productsLoading && !hasInitiallyLoaded.current ? (
+                      <Fade in={true}>
+                      {productViewMode === 'grid' ? (
                         <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
                           {Array.from({ length: 8 }).map((_, i) => (
                             <ProductCardSkeleton key={i} />
@@ -2578,7 +2579,8 @@ const Dashboard: React.FC = () => {
                             </Flex>
                           ))}
                         </Box>
-                      )
+                      )}
+                      </Fade>
                     ) : filteredProducts.length === 0 ? (
                       <Fade in={true}>
                         <Box

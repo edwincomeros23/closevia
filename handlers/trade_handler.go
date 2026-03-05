@@ -61,6 +61,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs"})
 	}
 
+	// Validate delivery address is provided when trade option is delivery
+	if payload.TradeOption == "delivery" && strings.TrimSpace(payload.DeliveryAddress) == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Delivery address is required when choosing delivery option"})
+	}
+
 	// Check if target product is still available
 	var targetStatus string
 	err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
@@ -751,13 +756,8 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")
 		log.Printf("User %d attempting to update delivery state for trade %d", userID, tradeID)
 
-		// Check if required delivery state columns exist
-		log.Printf("About to ensure delivery state columns exist...")
-		if err := h.ensureDeliveryStateColumns(); err != nil {
-			log.Printf("Failed to ensure delivery state columns exist: %v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database schema error"})
-		}
-		log.Printf("Delivery state columns check completed")
+		// Delivery state columns are ensured at database init (database.go)
+		log.Printf("Processing delivery state update for trade %d", tradeID)
 
 		// Prepare update query and arguments
 		updateFields := []string{}
@@ -1677,43 +1677,6 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 		}
 	}
 
-	return nil
-}
-
-// ensureDeliveryStateColumns ensures that delivery state columns exist in the trades table
-func (h *TradeHandler) ensureDeliveryStateColumns() error {
-	log.Printf("Ensuring delivery state columns exist...")
-
-	columns := []struct {
-		name       string
-		definition string
-	}{
-		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
-		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
-		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
-		{"proof_of_delivery", "LONGTEXT NULL"},
-		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
-		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
-	}
-
-	for _, col := range columns {
-		query := fmt.Sprintf("ALTER TABLE trades ADD COLUMN %s %s", col.name, col.definition)
-		if _, err := h.db.Exec(query); err != nil {
-			// Check if it's a "duplicate column" error - this is OK, column already exists
-			if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") ||
-				strings.Contains(strings.ToLower(err.Error()), "column already exists") ||
-				strings.Contains(strings.ToLower(err.Error()), "1060") { // MySQL error code for duplicate column
-				log.Printf("Column %s already exists, skipping", col.name)
-				continue
-			}
-			log.Printf("Failed to add delivery state column %s: %v", col.name, err)
-			return fmt.Errorf("failed to add column %s: %w", col.name, err)
-		} else {
-			log.Printf("Successfully added delivery state column: %s", col.name)
-		}
-	}
-
-	log.Printf("All delivery state columns ensured")
 	return nil
 }
 
