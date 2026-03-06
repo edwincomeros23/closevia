@@ -929,23 +929,41 @@ const Dashboard: React.FC = () => {
   const handleBatchDelete = async () => {
     const ids = Array.from(selectedProductIds)
     if (ids.length === 0) return
+    
+    // Filter out locked products
+    const lockedIds = ids.filter(id => {
+      const product = filteredProducts.find(p => p.id === id)
+      return product?.status === 'locked'
+    })
+    const deletableIds = ids.filter(id => {
+      const product = filteredProducts.find(p => p.id === id)
+      return product?.status !== 'locked'
+    })
+    
+    if (deletableIds.length === 0) {
+      toast({ title: 'Cannot delete', description: 'Selected products are locked. Locked products cannot be deleted.', status: 'warning', duration: 3000, isClosable: true })
+      return
+    }
+    
+    const warningMsg = lockedIds.length > 0 ? ` (${lockedIds.length} locked item(s) skipped)` : ''
+    
     showPopup({
       type: 'warning',
       title: 'Delete Selected Products',
-      message: `Are you sure you want to delete ${ids.length} product(s)? This cannot be undone.`,
-      confirmText: 'Delete All',
+      message: `Are you sure you want to delete ${deletableIds.length} product(s)?${warningMsg} This cannot be undone.`,
+      confirmText: 'Delete',
       cancelText: 'Cancel',
       onConfirm: async () => {
         try {
           setDeleting(true)
-          for (const id of ids) {
+          for (const id of deletableIds) {
             await deleteProduct(id)
           }
           invalidateProducts()
           invalidateOffers()
           setSelectedProductIds(new Set())
           setPopupOpen(false)
-          toast({ title: 'Deleted', description: `${ids.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
+          toast({ title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
         } catch (e: any) {
           toast({ title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
         } finally {
@@ -1270,18 +1288,25 @@ const Dashboard: React.FC = () => {
                 >
                   Edit
                 </Button>
-                <Button
-                  leftIcon={<DeleteIcon />}
-                  variant="outline"
-                  colorScheme="red"
-                  size="sm"
-                  flex={1}
-                  onClick={() => handleDeleteProductClick(product)}
-                  _hover={{ transform: 'scale(1.02)' }}
-                  transition="all 0.2s"
+                <Tooltip
+                  label={product.status === 'locked' ? 'Cannot delete locked products' : ''}
+                  isDisabled={product.status !== 'locked'}
+                  hasArrow
                 >
-                  Delete
-                </Button>
+                  <Button
+                    leftIcon={<DeleteIcon />}
+                    variant="outline"
+                    colorScheme="red"
+                    size="sm"
+                    flex={1}
+                    onClick={() => handleDeleteProductClick(product)}
+                    isDisabled={product.status === 'locked'}
+                    _hover={{ transform: 'scale(1.02)' }}
+                    transition="all 0.2s"
+                  >
+                    Delete
+                  </Button>
+                </Tooltip>
               </HStack>
             </CardFooter>
           )}
@@ -1379,14 +1404,21 @@ const Dashboard: React.FC = () => {
             >
               Edit
             </Button>
-            <IconButton
-              aria-label="Delete"
-              icon={<DeleteIcon />}
-              variant="outline"
-              colorScheme="red"
-              size="sm"
-              onClick={onDelete}
-            />
+            <Tooltip
+              label={product.status === 'locked' ? 'Cannot delete locked products' : ''}
+              isDisabled={product.status !== 'locked'}
+              hasArrow
+            >
+              <IconButton
+                aria-label="Delete"
+                icon={<DeleteIcon />}
+                variant="outline"
+                colorScheme="red"
+                size="sm"
+                isDisabled={product.status === 'locked'}
+                onClick={onDelete}
+              />
+            </Tooltip>
           </HStack>
         )}
       </Flex>
