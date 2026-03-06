@@ -804,7 +804,7 @@ const Home: React.FC = () => {
                     <VStack align="stretch" spacing={3}>
                       {/* User Info */}
                       <Box>
-                        <Text fontWeight="semibold" fontSize="sm" color="gray.800">
+                        <Text fontWeight="semibold" fontSize="sm" color="gray.800" textTransform="capitalize">
                           {user.name || 'User'}
                         </Text>
                         <Text fontSize="xs" color="gray.500">

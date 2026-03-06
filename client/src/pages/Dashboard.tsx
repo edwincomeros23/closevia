@@ -2051,7 +2051,7 @@ const Dashboard: React.FC = () => {
               {/* Left: Welcome Message */}
               <Box minW="fit-content" display={{ base: 'none', md: 'block' }}>
                 <Heading size="md" color="brand.500" mb={1}>
-                  Welcome, {user?.name}!
+                  Welcome, <Box as="span" textTransform="capitalize">{user?.name}</Box>!
                 </Heading>
                 <Text color="gray.600" fontSize="sm">
                   Manage your products, trades, and offers
