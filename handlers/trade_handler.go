@@ -57,8 +57,13 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	}
 
 	log.Printf("Received trade payload: %+v", payload)
-	if payload.TargetProductID <= 0 || len(payload.OfferedProductIDs) == 0 {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs"})
+	if payload.TargetProductID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid target product ID"})
+	}
+	hasItems := len(payload.OfferedProductIDs) > 0
+	hasCash := payload.OfferedCashAmount != nil && *payload.OfferedCashAmount > 0
+	if !hasItems && !hasCash {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You must offer at least one item or a cash amount"})
 	}
 
 	// Validate delivery address is provided when trade option is delivery
