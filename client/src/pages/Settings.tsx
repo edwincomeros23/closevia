@@ -42,14 +42,6 @@ import {
   Flex,
   Icon,
   Spinner,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverArrow,
-  PopoverHeader,
-  PopoverBody,
-  PopoverFooter,
-  PopoverCloseButton,
 } from '@chakra-ui/react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
@@ -69,13 +61,10 @@ import {
   FaUpload,
   FaCheckCircle,
   FaGlobe,
-  FaClock,
   FaDesktop,
   FaAccessibleIcon,
   FaEnvelope,
   FaMobile,
-  FaExchangeAlt,
-  FaHandshake,
 } from 'react-icons/fa'
 import { FiSettings, FiSave } from 'react-icons/fi'
 
@@ -202,17 +191,13 @@ const SettingsPage: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [changingPassword, setChangingPassword] = useState(false)
 
-  // Danger Zone UI state (confirmation input)
-  const [deleteConfirmInput, setDeleteConfirmInput] = useState('')
-  const isDeleteValidated = deleteConfirmInput.trim() !== '' && deleteConfirmInput === (user?.name || '')
+
   
   // Modals
   const { isOpen: isPasswordModalOpen, onOpen: onPasswordModalOpen, onClose: onPasswordModalClose } = useDisclosure()
   const { isOpen: isLogoutModalOpen, onOpen: onLogoutModalOpen, onClose: onLogoutModalClose } = useDisclosure()
-  const { isOpen: isDeleteModalOpen, onOpen: onDeleteModalOpen, onClose: onDeleteModalClose } = useDisclosure()
   const cancelRef = useRef<HTMLButtonElement>(null)
   const logoutCancelRef = useRef<HTMLButtonElement>(null)
-  const deleteCancelRef = useRef<HTMLButtonElement>(null)
 
   // Helper to strip cache busters from URLs (they should only be added in display, not stored)
   const stripCacheBuster = (url: string | null): string | null => {
@@ -788,21 +773,6 @@ const SettingsPage: React.FC = () => {
     navigate('/login')
     try { onLogoutModalClose() } catch {}
   }
- 
-  // Handle delete account
-  const handleDeleteAccount = () => {
-    // Simulate account deletion (frontend only)
-    toast({
-      title: 'Account deleted',
-      description: 'Your account has been deleted. (Frontend simulation only)',
-      status: 'info',
-      duration: 5000,
-      isClosable: true,
-    })
-    logout()
-    navigate('/login')
-    onDeleteModalClose()
-  }
 
   return (
     <Box minH="100vh" bg={pageBg} py={6} position="relative" pb={{ base: '100px', md: '80px' }}>
@@ -1341,99 +1311,7 @@ const SettingsPage: React.FC = () => {
                 </Flex>
 
                 <Divider />
-
-                {/* Trade & offer notifications removed per request */}
-
-                
               </VStack>
-            </CardBody>
-          </Card>
-
-          {/* Danger Zone — enhanced UI */}
-          <Card
-            bg={cardBg}
-            borderRadius="lg"
-            overflow="hidden"
-            variant="outline"
-            borderColor="red.300"
-            _hover={{ boxShadow: 'md' }}
-            transition="all 0.2s"
-          >
-            <CardHeader
-              pb={3}
-              bgGradient="linear(to-r, red.50, rgba(255,240,240,0))"
-            >
-              <HStack spacing={3} justify="space-between" w="full">
-                <HStack spacing={3}>
-                  <Icon as={FaTrash} color="red.500" boxSize={5} />
-                  <Heading size="md" color="red.600">Danger Zone</Heading>
-                  <Badge colorScheme="red">Danger</Badge>
-                </HStack>
-                <Text fontSize="sm" color="red.600" fontWeight="semibold">
-                  Irreversible actions below
-                </Text>
-              </HStack>
-            </CardHeader>
-            <CardBody pt={4}>
-             <VStack spacing={6} align="stretch">
- 
-                 {/* Delete Account with explicit confirmation */}
-                 <Box>
-                   <Heading size="sm" mb={2} color="red.600">Delete Account</Heading>
-                   <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')} mb={3}>
-                     Permanently delete your account and all associated data. This action cannot be undone.
-                   </Text>
-                   <Text fontSize="xs" color="red.500" mb={2}>
-                     Click Delete to open a confirmation popout. You will need to type your username to enable deletion.
-                   </Text>
-                   <Popover placement="right" isLazy>
-                     <PopoverTrigger>
-                       <Button leftIcon={<FaTrash />} colorScheme="red" variant="outline" size="sm">
-                         Delete Account
-                       </Button>
-                     </PopoverTrigger>
-                     <PopoverContent>
-                       <PopoverArrow />
-                       <PopoverHeader fontWeight="bold" color="red.600">Confirm Deletion</PopoverHeader>
-                       <PopoverCloseButton />
-                       <PopoverBody>
-                         <VStack align="stretch" spacing={3}>
-                           <Text fontSize="sm" color={useColorModeValue('gray.700', 'gray.200')}>
-                             This action is irreversible. To confirm, type your exact username below:
-                           </Text>
-                           <Input
-                             placeholder={user?.name ? `Type "${user?.name}"` : 'Type your username'}
-                             value={deleteConfirmInput}
-                             onChange={(e) => setDeleteConfirmInput(e.target.value)}
-                           />
-                         </VStack>
-                       </PopoverBody>
-                       <PopoverFooter display="flex" justifyContent="flex-end">
-                         <Button
-                           variant="outline"
-                           mr={2}
-                           size="sm"
-                           onClick={() => {
-                             setDeleteConfirmInput('')
-                           }}
-                         >
-                           Clear
-                         </Button>
-                         <Button
-                           colorScheme="red"
-                           size="sm"
-                           isDisabled={!isDeleteValidated}
-                           onClick={() => {
-                             handleDeleteAccount()
-                           }}
-                         >
-                           Confirm Delete
-                         </Button>
-                       </PopoverFooter>
-                     </PopoverContent>
-                   </Popover>
-                 </Box>
-               </VStack>
             </CardBody>
           </Card>
         </VStack>
