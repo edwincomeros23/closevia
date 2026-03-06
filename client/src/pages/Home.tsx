@@ -140,6 +140,9 @@ const Home: React.FC = () => {
     // Fetch the default "All" feed every time the Home page mounts
     console.log('🔍 Fetching initial products with status: available, limit: 20')
     searchProducts({ status: 'available', limit: 20, page: 1 })
+    
+    // Set flag so returning users bypass landing page
+    localStorage.setItem('has_visited', 'true')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -542,9 +545,9 @@ const Home: React.FC = () => {
           >
             {product.description
               ? product.description
-                  .split(' ')
-                  .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                  .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+                .split(' ')
+                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
               : 'No description available'}
           </Text>
 
@@ -711,9 +714,10 @@ const Home: React.FC = () => {
           w="full"
           maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
           mx={{ base: 'auto', lg: 0 }}
+          ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap" ml={{ base: 0, md: -14 }}>
+          <HStack w="full" spacing={3} wrap="wrap">
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -985,14 +989,18 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box - fully responsive from mobile to 2xl */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', sm: 'calc(100% - 24px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
+        w="full"
+        maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
         mx={{ base: 'auto', lg: 0 }}
+        ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         mb={8}
-        px={{ base: 2, sm: 3, md: 4, lg: 6 }}
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
       >
         <Box
           position="relative"
           overflow="hidden"
+          w="calc(100% - 30px)"
+          mx="15px"
           h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }}
           rounded="lg"
           border="1px"
@@ -1092,6 +1100,7 @@ const Home: React.FC = () => {
           w="full"
           maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
           mx={{ base: 'auto', lg: 0 }}
+          ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         >
           <HStack
             spacing={{ base: 2.5, md: 3 }}
@@ -1192,6 +1201,7 @@ const Home: React.FC = () => {
         sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px' } }}
         maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
         mx={{ base: 'auto', lg: 0 }}
+        ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         w="full"
       >
         {/* Loading State */}
@@ -1234,7 +1244,6 @@ const Home: React.FC = () => {
             px={{ base: 2, md: 4, lg: 0 }}
             pb={{ base: 20, md: 0 }}
             minH={{ base: '1200px', md: '1600px' }}
-            ml={-10}
             sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
           >
             <ProductGridWithAds products={products} user={user} />

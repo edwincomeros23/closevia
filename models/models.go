@@ -591,3 +591,48 @@ type ReportUpdate struct {
 	Status          string `json:"status" validate:"required,oneof=pending reviewed dismissed resolved"`
 	ReviewerComment string `json:"reviewer_comment,omitempty"`
 }
+
+// Campaign represents a popup ad campaign
+type Campaign struct {
+	ID          int        `json:"id"`
+	Title       string     `json:"title" validate:"required"`
+	Description string     `json:"description,omitempty"`
+	ImageURL    string     `json:"image_url,omitempty"`
+	ButtonText  string     `json:"button_text,omitempty"`
+	ButtonLink  string     `json:"button_link,omitempty"`
+	StartDate   *time.Time `json:"start_date,omitempty"`
+	EndDate     *time.Time `json:"end_date,omitempty"`
+	TargetUsers string     `json:"target_users" validate:"oneof=all new verified unverified"`
+	Frequency   string     `json:"frequency" validate:"oneof=once_per_user once_per_day every_login"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// CampaignCreate represents data for creating a campaign
+type CampaignCreate struct {
+	Title       string     `json:"title" validate:"required"`
+	Description string     `json:"description,omitempty"`
+	ImageURL    string     `json:"image_url,omitempty"`
+	ButtonText  string     `json:"button_text,omitempty"`
+	ButtonLink  string     `json:"button_link,omitempty"`
+	StartDate   *time.Time `json:"start_date,omitempty"`
+	EndDate     *time.Time `json:"end_date,omitempty"`
+	TargetUsers string     `json:"target_users" validate:"required,oneof=all new verified unverified"`
+	Frequency   string     `json:"frequency" validate:"required,oneof=once_per_user once_per_day every_login"`
+	IsActive    bool       `json:"is_active"`
+}
+
+// CampaignUpdate represents data for updating a campaign
+type CampaignUpdate struct {
+	Title       *string    `json:"title,omitempty"`
+	Description *string    `json:"description,omitempty"`
+	ImageURL    *string    `json:"image_url,omitempty"`
+	ButtonText  *string    `json:"button_text,omitempty"`
+	ButtonLink  *string    `json:"button_link,omitempty"`
+	StartDate   *time.Time `json:"start_date,omitempty"`
+	EndDate     *time.Time `json:"end_date,omitempty"`
+	TargetUsers *string    `json:"target_users,omitempty" validate:"omitempty,oneof=all new verified unverified"`
+	Frequency   *string    `json:"frequency,omitempty" validate:"omitempty,oneof=once_per_user once_per_day every_login"`
+	IsActive    *bool      `json:"is_active,omitempty"`
+}

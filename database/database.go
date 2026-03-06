@@ -430,6 +430,23 @@ func CreateTables() error {
 			INDEX idx_reported_user (reported_user_id),
 			INDEX idx_status (status)
 		)`,
+		`CREATE TABLE IF NOT EXISTS campaigns (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			title VARCHAR(255) NOT NULL,
+			description TEXT,
+			image_url VARCHAR(500),
+			button_text VARCHAR(100),
+			button_link VARCHAR(500),
+			start_date TIMESTAMP NULL,
+			end_date TIMESTAMP NULL,
+			target_users VARCHAR(50) DEFAULT 'all',
+			frequency VARCHAR(50) DEFAULT 'once_per_user',
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_campaigns_active (is_active),
+			INDEX idx_campaigns_dates (start_date, end_date)
+		)`,
 	}
 
 	// Execute table creation queries

@@ -153,6 +153,7 @@ const LandingPage: React.FC = () => {
   const navigate = useNavigate()
 
   const handleGetStarted = () => {
+    localStorage.setItem('has_visited', 'true')
     navigate('/home')
   }
 

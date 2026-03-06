@@ -194,6 +194,7 @@ func main() {
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
+	campaignHandler := handlers.NewCampaignHandler()
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -318,6 +319,11 @@ func main() {
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
 	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)
 	admin.Put("/reports/:id/status", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.UpdateReport)
+	// Admin campaigns management
+	admin.Get("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.GetAdminCampaigns)
+	admin.Post("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.CreateCampaign)
+	admin.Put("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.UpdateCampaign)
+	admin.Delete("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.DeleteCampaign)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -346,6 +352,10 @@ func main() {
 	ai.Get("/profile-analysis", middleware.AuthMiddleware(), aiFeaturesHandler.GetProfileAnalysis)
 	ai.Get("/profile-analysis/all", middleware.AuthMiddleware(), aiFeaturesHandler.AnalyzeAllProfiles)
 	ai.Get("/counterfeit/:id", aiFeaturesHandler.GetCounterfeitReport)
+
+	// Campaigns route (public-facing for fetching active campaigns)
+	campaigns := api.Group("/campaigns")
+	campaigns.Get("/active", middleware.OptionalAuthMiddleware(), campaignHandler.GetActiveCampaigns)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")
