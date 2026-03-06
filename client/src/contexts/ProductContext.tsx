@@ -226,14 +226,14 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         const params = new URLSearchParams()
         if (filters.keyword) params.append('keyword', filters.keyword)
         if (filters.category) params.append('category', filters.category)
-        if (filters.min_price) params.append('min_price', filters.min_price.toString())
-        if (filters.max_price) params.append('max_price', filters.max_price.toString())
+        if (filters.condition) params.append('condition', filters.condition)
+        if (filters.verified_seller_only !== undefined) params.append('verified_seller_only', filters.verified_seller_only.toString())
+        if (filters.has_active_offers !== undefined) params.append('has_active_offers', filters.has_active_offers.toString())
+        if (filters.sort_by) params.append('sort_by', filters.sort_by)
         if (filters.premium !== undefined) params.append('premium', filters.premium.toString())
-        if (filters.status) params.append('status', filters.status)
         if (filters.seller_id) params.append('seller_id', filters.seller_id.toString())
         if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
         if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
-        if (filters.location) params.append('location', filters.location)
         // Pass viewer coordinates for server-side distance calculation
         if (userLocation) {
           params.append('viewer_lat', userLocation.lat.toString())
@@ -320,14 +320,14 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       const filters = currentFilters
       if (filters.keyword) params.append('keyword', filters.keyword)
       if (filters.category) params.append('category', filters.category)
-      if (filters.min_price) params.append('min_price', filters.min_price.toString())
-      if (filters.max_price) params.append('max_price', filters.max_price.toString())
+      if (filters.condition) params.append('condition', filters.condition)
+      if (filters.verified_seller_only !== undefined) params.append('verified_seller_only', filters.verified_seller_only.toString())
+      if (filters.has_active_offers !== undefined) params.append('has_active_offers', filters.has_active_offers.toString())
+      if (filters.sort_by) params.append('sort_by', filters.sort_by)
       if (filters.premium !== undefined) params.append('premium', filters.premium.toString())
-      if (filters.status) params.append('status', filters.status)
       if (filters.seller_id) params.append('seller_id', filters.seller_id.toString())
       if (filters.barter_only !== undefined) params.append('barter_only', filters.barter_only.toString())
       if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
-      if (filters.location) params.append('location', filters.location)
       // Pass viewer coordinates for server-side distance calculation
       if (userLocation) {
         params.append('viewer_lat', userLocation.lat.toString())

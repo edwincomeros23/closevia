@@ -171,6 +171,7 @@ type Product struct {
 	BiddingType          string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
 	WishlistCount        int         `json:"wishlist_count,omitempty"`
 	WantCount            int         `json:"want_count"`
+	OfferCount           int         `json:"offer_count,omitempty"` // Number of active offers/trades on this product
 }
 
 // ProductCreate represents data for creating a product

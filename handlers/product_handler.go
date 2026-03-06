@@ -315,14 +315,14 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	// Parse query parameters
 	keyword := c.Query("keyword", "")
-	minPriceStr := c.Query("min_price", "")
-	maxPriceStr := c.Query("max_price", "")
+	condition := c.Query("condition", "")
+	verifiedSellerOnlyStr := c.Query("verified_seller_only", "")
+	hasActiveOffersStr := c.Query("has_active_offers", "")
+	sortBy := c.Query("sort_by", "most_relevant")
 	premiumStr := c.Query("premium", "")
-	status := c.Query("status", "")
 	sellerIDStr := c.Query("seller_id", "")
 	barterOnlyStr := c.Query("barter_only", "")
 	allowBuyingStr := c.Query("allow_buying", "")
-	location := c.Query("location", "")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
 	// Support optional offset-based pagination (limit & offset)
@@ -352,30 +352,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	if keyword != "" {
 		// Broaden keyword search across product attributes and seller/org details
-		whereClause += " AND ("
-		whereClause += "p.title LIKE ? OR p.description LIKE ?"
-		whereClause += " OR p.location LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ?"
-		whereClause += " OR u.name LIKE ? OR u.org_name LIKE ? OR u.department LIKE ?"
-		whereClause += ")"
-		like := "%" + keyword + "%"
-		args = append(args, like, like, like, like, like, like, like, like)
+		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ? OR u.name LIKE ?)"
 		searchPattern := "%" + keyword + "%"
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.condition LIKE ? OR u.name LIKE ?)"
 		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
 	}
 
-	if minPriceStr != "" {
-		if minPrice, err := strconv.ParseFloat(minPriceStr, 64); err == nil {
-			whereClause += " AND p.price >= ?"
-			args = append(args, minPrice)
-		}
-	}
-
-	if maxPriceStr != "" {
-		if maxPrice, err := strconv.ParseFloat(maxPriceStr, 64); err == nil {
-			whereClause += " AND p.price <= ?"
-			args = append(args, maxPrice)
-		}
+	if condition != "" {
+		whereClause += " AND p.`condition` = ?"
+		args = append(args, condition)
 	}
 
 	if premiumStr != "" {
@@ -385,21 +369,16 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 	}
 
-	// Only apply the default 'available' status filter if no specific seller is requested.
-	// This allows a user to see all of their own products (sold, traded, etc.).
+	// For the general public feed, default to 'available' status
 	if sellerIDStr != "" {
+		// If filtering by seller, show all their products
 		if sellerID, err := strconv.Atoi(sellerIDStr); err == nil {
 			whereClause += " AND p.seller_id = ?"
 			args = append(args, sellerID)
 		}
 	} else {
-		// For the general public feed, default to 'available' if no status is specified.
-		if status != "" {
-			whereClause += " AND p.status = ?"
-			args = append(args, status)
-		} else {
-			whereClause += " AND p.status = 'available'"
-		}
+		// For the general public feed, default to 'available' status
+		whereClause += " AND p.status = 'available'"
 	}
 
 	if barterOnlyStr != "" {
@@ -416,9 +395,23 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 	}
 
-	if location != "" {
-		whereClause += " AND p.location LIKE ?"
-		args = append(args, "%"+location+"%")
+	if verifiedSellerOnlyStr != "" {
+		if verifiedOnly, err := strconv.ParseBool(verifiedSellerOnlyStr); err == nil && verifiedOnly {
+			// Filter for only verified sellers - assuming verified field exists in users table
+			whereClause += " AND u.verified = true"
+		}
+	}
+
+	if hasActiveOffersStr != "" {
+		if hasOffers, err := strconv.ParseBool(hasActiveOffersStr); err == nil {
+			if hasOffers {
+				// Products with active offers/trades
+				whereClause += " AND (SELECT COUNT(*) FROM trades WHERE target_product_id = p.id AND status NOT IN ('declined', 'cancelled', 'completed')) > 0"
+			} else {
+				// Products without active offers
+				whereClause += " AND (SELECT COUNT(*) FROM trades WHERE target_product_id = p.id AND status NOT IN ('declined', 'cancelled', 'completed')) = 0"
+			}
+		}
 	}
 
 	// Dedicated category filter: exact match on category OR keyword match in title/description
@@ -453,13 +446,25 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
-			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
+			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
+			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined', 'cancelled', 'completed')) as offer_count
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
-		` + whereClause + `
-		ORDER BY p.premium DESC, p.created_at DESC
-		LIMIT ? OFFSET ?
-	`
+		` + whereClause
+
+	// Apply sorting based on sort_by parameter
+	switch sortBy {
+	case "newest":
+		query += ` ORDER BY p.created_at DESC`
+	case "most_offers":
+		query += ` ORDER BY (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined', 'cancelled', 'completed')) DESC, p.created_at DESC`
+	case "trending":
+		query += ` ORDER BY (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) DESC, p.created_at DESC`
+	default: // most_relevant
+		query += ` ORDER BY p.premium DESC, p.created_at DESC`
+	}
+
+	query += ` LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
 	rows, err := h.db.Query(query, args...)
@@ -496,12 +501,13 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
+		var offerCount int
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount)
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &offerCount)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -560,6 +566,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 				product.Distance = fmt.Sprintf("%d KM", int(result.DistanceKm))
 			}
 		}
+
+		// Set the offer count from the query result
+		product.OfferCount = offerCount
 
 		products = append(products, product)
 	}
