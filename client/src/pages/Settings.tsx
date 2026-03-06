@@ -814,9 +814,6 @@ const SettingsPage: React.FC = () => {
               <Heading size="lg" mb={1} color={useColorModeValue('gray.800', 'white')}>
                 Settings
               </Heading>
-              <Text color={useColorModeValue('gray.600', 'gray.400')} fontSize="sm">
-                Manage your account, preferences, and notification settings.
-              </Text>
             </Box>
             <HStack spacing={3}>
               {saveStatus === 'saved' && (

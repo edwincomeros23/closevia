@@ -48,6 +48,7 @@ import {
   Fade,
   Tooltip,
   useColorModeValue,
+  useBreakpointValue,
   Checkbox,
 } from '@chakra-ui/react'
 import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon, SearchIcon, ViewIcon, StarIcon } from '@chakra-ui/icons'
@@ -133,7 +134,7 @@ const Dashboard: React.FC = () => {
   const [productFilter, setProductFilter] = useState<'all' | 'available' | 'sold' | 'traded' | 'locked'>('all')
   const [productSearch, setProductSearch] = useState('')
   const [productSort, setProductSort] = useState<'newest' | 'oldest'>('newest')
-  const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('grid')
+  const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('list')
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set())
 
   // Unified search - searches across all content
@@ -187,13 +188,29 @@ const Dashboard: React.FC = () => {
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
 
   // View mode states for different tabs
-  const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('grid')
+  const defaultOffersViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
+  const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
   const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
 
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+
+  // Set offers view mode based on screen size
+  useEffect(() => {
+    if (defaultOffersViewMode) {
+      setOffersViewMode(defaultOffersViewMode)
+    }
+  }, [defaultOffersViewMode])
+
+  // Set products view mode based on screen size
+  const defaultProductViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
+  useEffect(() => {
+    if (defaultProductViewMode) {
+      setProductViewMode(defaultProductViewMode)
+    }
+  }, [defaultProductViewMode])
 
   useEffect(() => {
     if (user && user?.id) {
