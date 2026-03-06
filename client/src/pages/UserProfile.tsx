@@ -796,7 +796,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               <Flex justify="space-between" wrap="wrap">
                 <Box flex="1" minW="200px" mr={4}>
                   <HStack spacing={3} align="center" mb={2} flexWrap="wrap">
-                    <Heading size="lg" color="gray.800">{user.name}</Heading>
+                    <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
                     {(user.verification_status === 'verified' || user.verified) && (
                       <Badge colorScheme="teal" borderRadius="full" px={3} py={1} fontSize="sm">
                         <HStack spacing={1.5}>
@@ -1185,7 +1185,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                 <HStack spacing={2} mb={1}>
                                   <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
                                   <Text fontSize="sm" fontWeight="semibold" color="brand.600">
-                                    {review.reply_author || user?.name || 'Seller'} replied:
+                                    <Box as="span" textTransform="capitalize">{review.reply_author || user?.name || 'Seller'}</Box> replied:
                                   </Text>
                                   {review.reply_date && (
                                     <Text fontSize="xs" color="gray.500">
@@ -1370,7 +1370,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           <Modal isOpen={isOpen} onClose={onClose} size="lg">
             <ModalOverlay />
             <ModalContent>
-              <ModalHeader>Leave a Review for {user.name}</ModalHeader>
+              <ModalHeader>Leave a Review for <Box as="span" textTransform="capitalize">{user.name}</Box></ModalHeader>
               <ModalCloseButton />
               <ModalBody pb={6}>
                 <VStack spacing={4} align="stretch">
