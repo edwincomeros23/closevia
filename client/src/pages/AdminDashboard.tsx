@@ -79,7 +79,7 @@ import {
   FiCalendar,
   FiFileText,
 } from 'react-icons/fi';
-import { FiTrash2, FiEye, FiCheck, FiX } from 'react-icons/fi';
+import { FiTrash2, FiEye, FiCheck, FiX, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import {
   AreaChart,
   Area,
@@ -862,6 +862,37 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
+  // ── Suspend handler ──
+  const handleToggleSuspend = useCallback(async (user: User) => {
+    try {
+      const isSuspended = user.role === 'suspended';
+      const endpoint = `/api/admin/users/${user.id}/${isSuspended ? 'unsuspend' : 'suspend'}`;
+
+      await api.put(endpoint);
+
+      // Update local state without full refresh
+      setUsers(prev => prev.map(u =>
+        u.id === user.id ? { ...u, role: isSuspended ? 'user' : 'suspended' } : u
+      ));
+
+      toast({
+        title: isSuspended ? 'User Unsuspended' : 'User Suspended',
+        description: `Successfully ${isSuspended ? 'restored' : 'suspended'} ${user.name}'s account.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Action failed',
+        description: err?.response?.data?.error || `Failed to modify user status.`,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  }, [toast]);
+
   // ── Fetch campaigns for admin list ──
   const fetchAdminCampaigns = useCallback(async () => {
     try {
@@ -890,12 +921,12 @@ const AdminDashboard: React.FC = () => {
       toast({ title: 'Title is required', status: 'warning', duration: 2000 });
       return;
     }
-    
+
     // Convert empty strings to null/undefined for optional dates to avoid parse errors
     const payload = { ...editingCampaign };
     if (payload.start_date === '') payload.start_date = undefined as any;
     if (payload.end_date === '') payload.end_date = undefined as any;
-    
+
     // Convert string to date format expected by Go if they exist
     if (payload.start_date) {
       payload.start_date = new Date(payload.start_date).toISOString() as any;
@@ -1519,7 +1550,10 @@ const AdminDashboard: React.FC = () => {
                               <Text fontSize="sm">{user.email}</Text>
                             </Td>
                             <Td>
-                              <Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : 'blue'}>
+                              <Tag size="sm" colorScheme={
+                                user.role === 'admin' ? 'purple' :
+                                  user.role === 'suspended' ? 'red' : 'blue'
+                              }>
                                 {user.role}
                               </Tag>
                             </Td>
@@ -1529,16 +1563,30 @@ const AdminDashboard: React.FC = () => {
                               </Tag>
                             </Td>
                             <Td textAlign="right">
-                              <Tooltip label="Delete user" hasArrow>
-                                <IconButton
-                                  aria-label="Delete user"
-                                  size="sm"
-                                  colorScheme="red"
-                                  variant="ghost"
-                                  icon={<FiTrash2 />}
-                                  onClick={() => askDeleteUser(user)}
-                                />
-                              </Tooltip>
+                              <HStack spacing={2} justify="flex-end">
+                                {user.role !== 'admin' && (
+                                  <Tooltip label={user.role === 'suspended' ? "Unsuspend user" : "Suspend user"} hasArrow>
+                                    <IconButton
+                                      aria-label="Toggle user suspension"
+                                      size="sm"
+                                      colorScheme={user.role === 'suspended' ? 'green' : 'orange'}
+                                      variant="ghost"
+                                      icon={user.role === 'suspended' ? <FiCheckCircle /> : <FiXCircle />}
+                                      onClick={() => handleToggleSuspend(user)}
+                                    />
+                                  </Tooltip>
+                                )}
+                                <Tooltip label="Delete user" hasArrow>
+                                  <IconButton
+                                    aria-label="Delete user"
+                                    size="sm"
+                                    colorScheme="red"
+                                    variant="ghost"
+                                    icon={<FiTrash2 />}
+                                    onClick={() => askDeleteUser(user)}
+                                  />
+                                </Tooltip>
+                              </HStack>
                             </Td>
                           </Tr>
                         ))}
@@ -1605,14 +1653,22 @@ const AdminDashboard: React.FC = () => {
                         {products.map(product => (
                           <Tr key={product.id}>
                             <Td>
-                              <VStack spacing={0} align="start">
-                                <Text fontWeight="medium" fontSize="sm">
-                                  {product.title}
-                                </Text>
-                                <Text fontSize="xs" color="gray.500">
-                                  ID #{product.id}
-                                </Text>
-                              </VStack>
+                              <HStack spacing={3}>
+                                <Avatar
+                                  size="sm"
+                                  variant="rounded"
+                                  name={product.title}
+                                  src={product.image_urls?.[0] || undefined}
+                                />
+                                <VStack spacing={0} align="start">
+                                  <Text fontWeight="medium" fontSize="sm" noOfLines={1} maxW="150px">
+                                    {product.title}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500">
+                                    ID #{product.id}
+                                  </Text>
+                                </VStack>
+                              </HStack>
                             </Td>
                             <Td>
                               <Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text>

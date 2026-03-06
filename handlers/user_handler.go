@@ -131,6 +131,12 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 	// 	go services.SendOTPEmail(user.Email, user.Name, otpCode)
 	// }
 
+	// Auto-grant premium for WMSU students (@wmsu.edu.ph email)
+	isWmsuStudent := !user.IsOrganization && strings.HasSuffix(strings.ToLower(user.Email), "@wmsu.edu.ph")
+	if isWmsuStudent {
+		h.db.Exec("UPDATE users SET is_premium = TRUE WHERE id = ?", userID)
+	}
+
 	// Generate JWT token immediately so user is logged in right after registration
 	token, err := utils.GenerateJWT(int(userID), user.Email)
 	if err != nil {
@@ -153,6 +159,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				Department:     derefString(user.Department),
 				Bio:            user.Bio,
 				ProfilePicture: "",
+				IsPremium:      isWmsuStudent,
 			},
 			"requires_verification": false,
 			"token":                 token,
@@ -443,6 +450,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		})
 	}
 
+	// Ensure is_premium column exists (safe migration)
+	h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE")
+
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
@@ -451,7 +461,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(bio, '') AS bio,
 		        COALESCE(background_image, '') AS background_image,
 		        COALESCE(background_position, '') AS background_position,
-		        COALESCE(department, '') AS department,
+		        COALESCE(department, '') AS department, COALESCE(is_premium, FALSE) AS is_premium,
 		        COALESCE(verification_status, 'not_verified') AS verification_status,
 		        COALESCE(school_name, '') AS school_name,
 		        COALESCE(school_email, '') AS school_email,
@@ -462,7 +472,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		userID,
 	).Scan(
 		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL,
-		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department,
+		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.SchoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
@@ -822,6 +832,9 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		user.VerificationRejectionReason = rejectionReason.String
 	}
 
+	// SECURITY: Strip sensitive fields from public profile payload
+	user.Email = ""
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    user,
@@ -846,7 +859,7 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 
 	// Get users
 	rows, err := h.db.Query(
-		"SELECT id, name, email, verified, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
+		"SELECT id, name, email, role, verified, profile_picture, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
 		limit, offset,
 	)
 	if err != nil {
@@ -860,7 +873,13 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	var users []models.User
 	for rows.Next() {
 		var user models.User
-		err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Verified, &user.CreatedAt)
+		var profilePicture sql.NullString
+		err := rows.Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &profilePicture, &user.CreatedAt)
+
+		if profilePicture.Valid {
+			user.ProfilePicture = profilePicture.String
+		}
+
 		if err != nil {
 			continue
 		}
@@ -1296,5 +1315,65 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    stats,
+	})
+}
+
+// SuspendUser updates a user's role to 'suspended' (admin only)
+func (h *UserHandler) SuspendUser(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	// Ensure we don't suspend the main admin accidentally, although we trust the admin UI
+	if userID == "1" {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Cannot suspend the primary admin account",
+		})
+	}
+
+	result, err := h.db.Exec("UPDATE users SET role = 'suspended', updated_at = NOW() WHERE id = ?", userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to suspend user: " + err.Error(),
+		})
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "User has been suspended successfully",
+	})
+}
+
+// UnsuspendUser restores a suspended user's role to 'user' (admin only)
+func (h *UserHandler) UnsuspendUser(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	result, err := h.db.Exec("UPDATE users SET role = 'user', updated_at = NOW() WHERE id = ?", userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to unsuspend user: " + err.Error(),
+		})
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "User has been unsuspended successfully",
 	})
 }

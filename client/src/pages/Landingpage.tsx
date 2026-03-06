@@ -1,6 +1,6 @@
 import "@fontsource/prata/400.css";   // regular
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import {
   Box, Container, VStack, Heading, Text, Button,
   Flex, HStack, Image, IconButton, useDisclosure,
@@ -9,6 +9,7 @@ import {
 } from '@chakra-ui/react'
 import { HamburgerIcon } from '@chakra-ui/icons'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import '@fontsource/prata'
 
 const Navbar = ({ navigate }: { navigate: ReturnType<typeof useNavigate> }) => {
@@ -151,6 +152,13 @@ const Navbar = ({ navigate }: { navigate: ReturnType<typeof useNavigate> }) => {
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate()
+  const { isAuthenticated } = useAuth()
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/home', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
 
   const handleGetStarted = () => {
     localStorage.setItem('has_visited', 'true')
@@ -177,9 +185,9 @@ const LandingPage: React.FC = () => {
         bg="rgba(0, 0, 0, 0.3)"
         zIndex={1}
       />
-      
+
       <Navbar navigate={navigate} />
-      
+
       {/* Main content - desktop: larger container and typography */}
       <Container
         maxW={{ base: 'container.sm', md: 'container.md', lg: 'container.lg', xl: 'container.xl', '2xl': '1400px' }}
@@ -191,17 +199,17 @@ const LandingPage: React.FC = () => {
         display="flex"
         alignItems="center"
       >
-        <VStack 
-          spacing={{ base: 2, md: 3, lg: 5, xl: 6 }} 
+        <VStack
+          spacing={{ base: 2, md: 3, lg: 5, xl: 6 }}
           align="center"
           maxW={{ base: '90%', md: '800px', lg: '900px', xl: '1000px' }}
           mx="auto"
           mt={{ base: 16, md: 20, lg: 24 }}
         >
-          <Heading 
-            as="h1" 
+          <Heading
+            as="h1"
             size={{ base: 'xl', md: '2xl', lg: '3xl', xl: '4xl' }}
-            color="white" 
+            color="white"
             fontWeight="bold"
             lineHeight="1.2"
             fontFamily="Prata, serif"
@@ -209,10 +217,10 @@ const LandingPage: React.FC = () => {
             Trade what you have, find what you need
             all within your COMMUNITY
           </Heading>
-          
-          <Text 
+
+          <Text
             fontSize={{ base: 'md', md: 'lg', lg: 'xl', xl: 'xl' }}
-            color="white" 
+            color="white"
             textShadow="1px 1px 4px rgba(0,0,0,0.7)"
             maxW={{ base: '100%', md: '600px', lg: '700px' }}
             lineHeight="1.6"
@@ -229,7 +237,7 @@ const LandingPage: React.FC = () => {
             objectFit="contain"
             mt={{ base: 4, md: -6, lg: -4 }}
           />
-          
+
           <Button
             size={{ base: 'sm', md: 'md', lg: 'lg', xl: 'lg' }}
             colorScheme="brand"

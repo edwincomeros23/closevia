@@ -113,6 +113,7 @@ type User struct {
 	BackgroundPosition          string     `json:"background_position,omitempty"`
 	Latitude                    *float64   `json:"latitude,omitempty"`
 	Longitude                   *float64   `json:"longitude,omitempty"`
+	IsPremium                   bool       `json:"is_premium"`
 	CreatedAt                   time.Time  `json:"created_at"`
 	UpdatedAt                   time.Time  `json:"updated_at"`
 	VerificationStatus          string     `json:"verification_status,omitempty"`

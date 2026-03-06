@@ -462,6 +462,36 @@ func CreateTables() error {
 	ensureProductColumns()
 	ensureTradeColumns()
 
+	// Seed Mock Rider: Wynry Perian
+	mockRiderEmail := "wynry@clovia.com"
+	var riderUserID int
+	err := DB.QueryRow("SELECT id FROM users WHERE email = ?", mockRiderEmail).Scan(&riderUserID)
+	if err == sql.ErrNoRows {
+		res, execErr := DB.Exec("INSERT INTO users (name, email, password_hash, role, verified) VALUES (?, ?, ?, ?, ?)",
+			"Wynry Perian", mockRiderEmail, "mock_password", "rider", true)
+		if execErr == nil {
+			id, _ := res.LastInsertId()
+			riderUserID = int(id)
+			log.Printf("Created mock rider user profile with ID: %d", riderUserID)
+		} else {
+			log.Printf("Failed to create mock rider user: %v", execErr)
+		}
+	}
+
+	if riderUserID > 0 {
+		var riderCount int
+		DB.QueryRow("SELECT COUNT(*) FROM riders WHERE user_id = ?", riderUserID).Scan(&riderCount)
+		if riderCount == 0 {
+			_, err := DB.Exec("INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, rating, is_active, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				riderUserID, "Wynry Perian", "motorcycle", "WMSU-RX7", "09991234567", 5.0, true, 6.9214, 122.0790)
+			if err == nil {
+				log.Println("Seeded mock rider Wynry Perian into the database.")
+			} else {
+				log.Printf("Failed to seed mock rider: %v", err)
+			}
+		}
+	}
+
 	log.Println("Database tables and indexes created successfully")
 	return nil
 }
