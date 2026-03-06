@@ -19,12 +19,14 @@ interface FloatingTabProps {
   dashboardLink?: string
   homeLink?: string
   addProductLink?: string
+  showAddButton?: boolean
 }
 
 const FloatingTab: React.FC<FloatingTabProps> = ({
   dashboardLink = '/dashboard',
   homeLink = '/home',
   addProductLink = '/add-product',
+  showAddButton = true,
 }) => {
   const { notificationCount } = useRealtime()
 
@@ -104,43 +106,47 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
           </Button>
 
           {/* Add Product Button */}
-          <Button
-            as={RouterLink}
-            to={addProductLink}
-            variant="ghost"
-            h="full"
-            flex={1}
-            bg="brand.500"
-            flexDirection="column"
-            gap={1}
-            px={7}
-            borderRadius="none"
-            _hover={{ bg: 'gray.50' }}
-          >
-            <Icon as={AddIcon} boxSize={6} color="white" />
-          </Button>
+          {showAddButton && (
+            <Button
+              as={RouterLink}
+              to={addProductLink}
+              variant="ghost"
+              h="full"
+              flex={1}
+              bg="brand.500"
+              flexDirection="column"
+              gap={1}
+              px={7}
+              borderRadius="none"
+              _hover={{ bg: 'gray.50' }}
+            >
+              <Icon as={AddIcon} boxSize={6} color="white" />
+            </Button>
+          )}
         </HStack>
       </Box>
 
       {/* Floating Add Product FAB - Desktop/Tablet */}
-      <IconButton
-        as={RouterLink}
-        to={addProductLink}
-        aria-label="Add product"
-        icon={<AddIcon />}
-        position="fixed"
-        bottom={12}
-        right={6}
-        h={14}
-        w={14}
-        bgGradient="linear(to-br, brand.500, teal.400)"
-        color="white"
-        borderRadius="full"
-        zIndex={200}
-        boxShadow="lg"
-        display={{ base: 'none', sm: 'flex' }}
-        _hover={{ transform: 'scale(1.05)' }}
-      />
+      {showAddButton && (
+        <IconButton
+          as={RouterLink}
+          to={addProductLink}
+          aria-label="Add product"
+          icon={<AddIcon />}
+          position="fixed"
+          bottom={12}
+          right={6}
+          h={14}
+          w={14}
+          bgGradient="linear(to-br, brand.500, teal.400)"
+          color="white"
+          borderRadius="full"
+          zIndex={200}
+          boxShadow="lg"
+          display={{ base: 'none', sm: 'flex' }}
+          _hover={{ transform: 'scale(1.05)' }}
+        />
+      )}
     </>
   )
 }

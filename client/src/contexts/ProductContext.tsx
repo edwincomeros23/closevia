@@ -19,14 +19,27 @@ interface ProductContextType {
   clearError: () => void
 }
 
-const ProductContext = createContext<ProductContextType | undefined>(undefined)
+// Default no-op context so HMR / out-of-provider renders never crash
+const defaultContext: ProductContextType = {
+  products: [],
+  loading: false,
+  error: null,
+  hasMore: false,
+  isLoadingMore: false,
+  searchProducts: async () => {},
+  loadMore: async () => {},
+  getProduct: async () => null,
+  createProduct: async () => ({ id: 0, title: '', description: '', seller_id: 0, status: 'available', created_at: '', updated_at: '' } as any),
+  updateProduct: async () => {},
+  deleteProduct: async () => {},
+  getUserProducts: async () => ({ data: [], total: 0, page: 1, limit: 20, total_pages: 0 }),
+  clearError: () => {},
+}
+
+const ProductContext = createContext<ProductContextType>(defaultContext)
 
 export const useProducts = () => {
-  const context = useContext(ProductContext)
-  if (context === undefined) {
-    throw new Error('useProducts must be used within a ProductProvider')
-  }
-  return context
+  return useContext(ProductContext)
 }
 
 interface ProductProviderProps {
@@ -127,11 +140,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     return R * c
   }
 
-  // Format distance for display - show in KM or meters for close distance
+  // Format distance for display - show in M for < 1 KM, KM otherwise
   const formatDistance = (distanceKm: number): string => {
     if (distanceKm < 1) {
       const meters = Math.round(distanceKm * 1000)
-      return meters < 100 ? `${meters} m` : `${(distanceKm).toFixed(1)} KM`
+      return `${meters} M`
     } else if (distanceKm < 10) {
       return `${distanceKm.toFixed(1)} KM`
     } else {
@@ -139,13 +152,13 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     }
   }
 
-  // Add distance to products
+  // Add distance to products and sort by nearest first
   const addDistanceToProducts = (productsList: Product[]): Product[] => {
     if (!userLocation) return productsList
 
-    return productsList.map((product) => {
+    const withDistance = productsList.map((product) => {
       if (product.latitude && product.longitude) {
-        const distance = calculateDistance(
+        const dist = calculateDistance(
           userLocation.lat,
           userLocation.lng,
           product.latitude,
@@ -153,11 +166,17 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         )
         return {
           ...product,
-          distance: formatDistance(distance),
+          distance: formatDistance(dist),
+          distanceKm: dist,
         }
       }
-      return product
+      return { ...product, distanceKm: Infinity }
     })
+
+    // Sort by distance (nearest first), premium products stay prioritized within same distance tier
+    withDistance.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+
+    return withDistance
   }
 
   // Helper function to ensure products is always an array
@@ -363,10 +382,15 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
 
       console.log(`✓ Product ${idOrSlug} fetched successfully`)
       // Handle different response structures
-      if (response.data && response.data.data) {
-        return response.data.data
+      // API returns { data: { product: {...}, votes: {...}, user_vote: "" } }
+      // We need to extract the actual product object
+      const data = response.data?.data
+      if (data?.product) {
+        return data.product as Product
+      } else if (data) {
+        return data as Product
       } else if (response.data) {
-        return response.data
+        return response.data as Product
       }
 
       return null
@@ -485,8 +509,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       })
       safeSetProducts((products || []).filter(p => p.id !== id))
     } catch (error: any) {
-      setError(error.response?.data?.error || 'Failed to delete product')
-      throw error
+      const errorMsg = error.response?.data?.error || 'Failed to delete product'
+      setError(errorMsg)
+      const err = new Error(errorMsg)
+      throw err
     }
   }
 

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { Product, Order, Trade } from '../types'
 
@@ -49,6 +49,7 @@ export const useDashboardProducts = (userId: number | undefined) => {
     enabled: !!userId,
     // Products data reduced to 1 minute to avoid stale dashboard
     staleTime: 1000 * 60, // 1 minute
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -62,6 +63,7 @@ export const useDashboardOrders = () => {
     },
     // Orders change less frequently
     staleTime: 1000 * 60 * 15, // 15 minutes
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -77,8 +79,9 @@ export const useDashboardCounts = () => {
       }
     },
     // Counts should refresh more frequently
-    staleTime: 1000 * 30, // 30 seconds
-    refetchInterval: 1000 * 60, // Background refetch every minute
+    staleTime: 1000 * 60, // 1 minute
+    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -98,6 +101,10 @@ export const useSentOffers = () => {
       return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -117,6 +124,10 @@ export const useReceivedOffers = () => {
       return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -153,6 +164,10 @@ export const useOngoingTrades = () => {
       return Array.from(uniqueTrades.values())
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -171,6 +186,7 @@ export const useTradeHistory = () => {
       return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
     },
     staleTime: 1000 * 60 * 5, // 5 minutes (completed trades don't change)
+    placeholderData: keepPreviousData,
   })
 }
 

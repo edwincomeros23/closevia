@@ -14,7 +14,7 @@ interface TradeModalProps {
 }
 
 const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductId }) => {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const toast = useToast()
   const { showNotification } = useNotification()
   const [userProducts, setUserProducts] = useState<Product[]>([])
@@ -27,10 +27,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
   const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
+  const [detectingLocation, setDetectingLocation] = useState(false)
   // Delivery location state
   const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [manualAddress, setManualAddress] = useState('')
-  const [detectingLocation, setDetectingLocation] = useState(false)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const selectedBg = useColorModeValue('brand.50', 'brand.900')
@@ -380,32 +380,46 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                           <Text fontSize="xs" color="green.700" mt={1}>Location detected from your device</Text>
                         </Box>
                       ) : (
-                        <VStack spacing={3} align="stretch">
-                          <Box p={3} bg="yellow.50" borderWidth="1px" borderColor="yellow.200" rounded="md" borderLeftWidth="4px" borderLeftColor="yellow.500">
-                            <Text fontSize="sm" color="yellow.900" fontWeight="medium">⚠️ Location not set</Text>
-                            <Text fontSize="xs" color="yellow.700" mt={1}>Detect your location or enter an address below</Text>
-                          </Box>
-                          <Button
-                            leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
-                            size="sm"
-                            colorScheme="brand"
-                            variant="outline"
-                            onClick={handleDetectLocation}
-                            isLoading={detectingLocation}
-                            loadingText="Detecting..."
-                          >
-                            Detect My Location
-                          </Button>
-                          <Text fontSize="xs" color="gray.500" textAlign="center">— or enter address manually —</Text>
-                          <Textarea
-                            placeholder="e.g., Barangay Maasin, Zamboanga City"
-                            value={manualAddress}
-                            onChange={(e) => setManualAddress(e.target.value)}
-                            size="sm"
-                            rows={2}
-                            resize="none"
-                          />
-                        </VStack>
+                        <>
+                          <VStack spacing={3} align="stretch">
+                            <Box
+                              p={3}
+                              bg="yellow.50"
+                              borderWidth="1px"
+                              borderColor="yellow.200"
+                              rounded="md"
+                              borderLeftWidth="4px"
+                              borderLeftColor="yellow.500"
+                            >
+                              <Text fontSize="sm" color="yellow.900" fontWeight="medium">
+                                ⚠️ Location not set
+                              </Text>
+                              <Text fontSize="xs" color="yellow.700" mt={1}>
+                                Detect your location or enter an address below
+                              </Text>
+                            </Box>
+                            <Button
+                              leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
+                              size="sm"
+                              colorScheme="brand"
+                              variant="outline"
+                              onClick={handleDetectLocation}
+                              isLoading={detectingLocation}
+                              loadingText="Detecting..."
+                            >
+                              Detect My Location
+                            </Button>
+                            <Text fontSize="xs" color="gray.500" textAlign="center">— or enter address manually —</Text>
+                            <Textarea
+                              placeholder="e.g., Barangay Maasin, Zamboanga City"
+                              value={manualAddress}
+                              onChange={(e) => setManualAddress(e.target.value)}
+                              size="sm"
+                              rows={2}
+                              resize="none"
+                            />
+                          </VStack>
+                        </>
                       )}
                     </FormControl>
                   </Box>

@@ -50,15 +50,16 @@ import {
   useToast,
 } from '@chakra-ui/react'
 import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend } from 'react-icons/fi'
+import { FaHeart } from 'react-icons/fa'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import VerifiedAvatar from '../components/VerifiedAvatar'
 import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
-import { useTradeHistory } from '../hooks/useDashboard'
 
-type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
+type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verification_status'> & {
   avatar_url?: string
   bio?: string
     background_url?: string
@@ -73,7 +74,6 @@ type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at'> & {
   response_time_minutes?: number
   positive_feedback?: number
   total_reviews?: number
-  is_following?: boolean
 }
 
 interface UserProfileProps {
@@ -128,6 +128,9 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const [reviewRating, setReviewRating] = useState(0)
   const [reviewComment, setReviewComment] = useState('')
   const [isSubmittingReview, setIsSubmittingReview] = useState(false)
+  
+  // Saved/wishlist state for product cards
+  const [savedProductIds, setSavedProductIds] = useState<Set<number>>(new Set())
   
   // Reply state
   const [replyingTo, setReplyingTo] = useState<number | null>(null)
@@ -205,7 +208,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   positive_feedback: 98,
                   response_time_minutes: 30,
                   total_reviews: 42,
-                  is_following: false,
                   bio: 'This user prefers to keep an air of mystery about them.',
                   department: 'Unknown',
                   verified: false,
@@ -238,7 +240,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
             background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || null),
             background_position: (apiUser as any).background_position || (apiUser as any).background_position || '50% 50%',
           // If the current user and API returned an email/name, prefer those
-          is_following: (apiUser as any).is_following ?? false,
           bio: (apiUser as any).bio || 'No bio provided yet.',
           rating: apiUser.rating ?? 4.6,
           rank: apiUser.rank || 'Rising Trader',
@@ -260,6 +261,56 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     }
     run()
   }, [id, getUserProducts])
+
+  // Fetch which products are saved by current user
+  useEffect(() => {
+    if (!currentUser || products.length === 0) return
+    const checkSaved = async () => {
+      const ids = new Set<number>()
+      await Promise.all(
+        products.map(async (p) => {
+          try {
+            const res = await api.get(`/api/users/saved-products/${p.id}`)
+            if (res.data?.data?.isSaved) ids.add(p.id)
+          } catch { /* ignore */ }
+        })
+      )
+      setSavedProductIds(ids)
+    }
+    checkSaved()
+  }, [currentUser, products])
+
+  const handleToggleSave = async (productId: number) => {
+    if (!currentUser) {
+      toast({ title: 'Please log in to save items', status: 'warning', duration: 2000 })
+      navigate('/login')
+      return
+    }
+    const isSaved = savedProductIds.has(productId)
+    try {
+      if (isSaved) {
+        await api.delete(`/api/users/saved-products/${productId}`)
+        setSavedProductIds(prev => { const n = new Set(prev); n.delete(productId); return n })
+        toast({ title: 'Removed from saved', status: 'info', duration: 1500 })
+      } else {
+        await api.post(`/api/users/saved-products`, { product_id: productId })
+        setSavedProductIds(prev => new Set(prev).add(productId))
+        toast({ title: 'Saved!', status: 'success', duration: 1500 })
+      }
+    } catch {
+      toast({ title: 'Failed to update', status: 'error', duration: 2000 })
+    }
+  }
+
+  const handleShareProduct = (product: Product) => {
+    const url = `${window.location.origin}${getProductUrl(product)}`
+    if (navigator.share) {
+      navigator.share({ title: product.title, url }).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(url)
+      toast({ title: 'Link copied!', status: 'success', duration: 1500 })
+    }
+  }
 
   const openEdit = () => {
     if (!user) return
@@ -411,20 +462,33 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   }, [products, user, sellerStats])
 
   const displayRating = sellerStats?.avg_rating ?? user?.rating ?? 4.8
-  const displayTotalReviews = sellerStats?.total_feedback ?? user?.total_reviews ?? reviews.length
+  const displayTotalReviews = reviews.length || sellerStats?.total_feedback || user?.total_reviews || 0
   const displayPositivePercent = sellerStats?.positive_percent ?? user?.positive_feedback ?? 98
 
-  // Fetch real trade history from backend
-  const { data: allTrades, isLoading: tradesLoading, error: tradesError } = useTradeHistory()
-  
-  // Filter trades for this specific user
-  const userTrades = useMemo(() => {
-    if (!allTrades || !id) return []
-    const userId = Number(id)
-    return allTrades.filter(trade => 
-      trade.buyer_id === userId || trade.seller_id === userId
-    )
-  }, [allTrades, id])
+  // Fetch real trade history from backend for this specific user
+  const [userTrades, setUserTrades] = useState<any[]>([])
+  const [tradesLoading, setTradesLoading] = useState(true)
+  const [tradesError, setTradesError] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchTradeHistory = async () => {
+      if (!id) return
+      setTradesLoading(true)
+      setTradesError(null)
+      try {
+        const res = await api.get(`/api/users/${id}/trades`)
+        const data = res.data?.data || res.data || []
+        setUserTrades(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error('Failed to fetch trade history:', err)
+        setTradesError(err)
+        setUserTrades([])
+      } finally {
+        setTradesLoading(false)
+      }
+    }
+    fetchTradeHistory()
+  }, [id])
 
   // Sort products based on selected option
   const sortedProducts = useMemo(() => {
@@ -439,19 +503,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     }
   }, [products, sortBy])
-
-  const toggleFollow = () => {
-    if (user) {
-      setUser({...user, is_following: !user.is_following})
-      toast({
-        title: user.is_following ? 'Unfollowed' : 'Following',
-        description: user.is_following ? `You've unfollowed ${user.name}` : `You're now following ${user.name}`,
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
-    }
-  }
 
   const handleSendMessage = () => {
     // In a real app, this would open a chat with the user
@@ -728,7 +779,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               )}
 
               <Box position="absolute" bottom="-50px" left="6">
-                <Avatar 
+                <VerifiedAvatar 
                   size="xl" 
                   name={user.name} 
                   src={user.avatar_url} 
@@ -736,6 +787,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   color="white" 
                   border="4px solid white"
                   boxShadow="md"
+                  isVerified={user.verification_status === 'verified' || user.verified}
                 />
               </Box>
             </Box>
@@ -743,13 +795,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
             <CardBody pt="60px">
               <Flex justify="space-between" wrap="wrap">
                 <Box flex="1" minW="200px" mr={4}>
-                  <HStack spacing={3} align="center" mb={2}>
+                  <HStack spacing={3} align="center" mb={2} flexWrap="wrap">
                     <Heading size="lg" color="gray.800">{user.name}</Heading>
-                    {user.verified && (
-                      <Badge colorScheme="green">
-                        <HStack spacing={1}>
-                          <Icon as={FiCheckCircle} boxSize={3} />
-                          <Text>Verified Seller</Text>
+                    {(user.verification_status === 'verified' || user.verified) && (
+                      <Badge colorScheme="teal" borderRadius="full" px={3} py={1} fontSize="sm">
+                        <HStack spacing={1.5}>
+                          <Icon as={FiCheckCircle} boxSize={4} />
+                          <Text as="span">Verified</Text>
                         </HStack>
                       </Badge>
                     )}
@@ -785,13 +837,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         onClick={handleSendMessage}
                       >
                         Message Seller
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        colorScheme={user.is_following ? 'gray' : 'brand'}
-                        onClick={toggleFollow}
-                      >
-                        {user.is_following ? 'Following' : 'Follow'}
                       </Button>
                     </HStack>
                   )}
@@ -897,12 +942,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                           <Box position="absolute" top="2" right="2">
                             <IconButton
                               aria-label="Save item"
-                              icon={<FiHeart />}
+                              icon={savedProductIds.has(product.id) ? <FaHeart /> : <FiHeart />}
                               size="sm"
                               borderRadius="full"
                               bg="white"
-                              color="gray.600"
-                              _hover={{ color: 'red.500', bg: 'white' }}
+                              color={savedProductIds.has(product.id) ? 'red.500' : 'gray.600'}
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleSave(product.id) }}
+                              _hover={{ color: savedProductIds.has(product.id) ? 'red.600' : 'red.500', bg: 'white' }}
                             />
                           </Box>
                           <Box position="absolute" top="2" left="2">
@@ -934,6 +980,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                               size="sm"
                               variant="ghost"
                               color="gray.500"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShareProduct(product) }}
                             />
                           </HStack>
                         </Box>
@@ -1095,10 +1142,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         borderColor="gray.100"
                       >
                         <HStack spacing={3} mb={2} align="start">
-                          <Avatar 
+                          <VerifiedAvatar 
                             size="sm" 
                             name={review.reviewer} 
-                            src={review.avatar} 
+                            src={review.avatar}
+                            isVerified={false}
                           />
                           <Box flex="1">
                             <HStack justify="space-between" mb={1}>
@@ -1219,7 +1267,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <FormControl>
                     <FormLabel htmlFor="profile-photo-input">Profile Photo</FormLabel>
                     <HStack spacing={4} align="center">
-                      <Avatar size="lg" name={user.name} src={avatarPreview || user.avatar_url} />
+                      <VerifiedAvatar size="lg" name={user.name} src={avatarPreview || user.avatar_url} isVerified={user.verification_status === 'verified' || user.verified} />
                       <Box>
                         <Input
                           id="profile-photo-input"

@@ -19,6 +19,9 @@ export interface User {
   latitude?: number
   longitude?: number
   is_premium?: boolean
+  verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
+  school_name?: string
+  school_email?: string
 }
 
 export interface Product {
@@ -28,6 +31,7 @@ export interface Product {
   description: string
   price?: number
   image_urls: string[]
+  video_url?: string
   seller_id: number
   seller_name?: string
   seller_profile_picture?: string
@@ -40,6 +44,7 @@ export interface Product {
   suggested_value?: number
   category?: string
   distance?: string // Calculated distance from user (e.g., "1.2km nearby")
+  distanceKm?: number // Numeric distance in km for sorting
   created_at: string
   updated_at: string
   wishlist_count?: number;

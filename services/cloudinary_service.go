@@ -160,7 +160,7 @@ func (s *CloudinaryService) uploadStream(reader io.ReadSeeker, originalName, fol
 	params := uploader.UploadParams{
 		Folder:       buildFolderPath(s.conf.folderPrefix, folder),
 		PublicID:     publicID,
-		ResourceType: "image",
+		ResourceType: "auto",
 	}
 
 	if s.conf.uploadPreset != "" {

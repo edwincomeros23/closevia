@@ -180,6 +180,7 @@ func main() {
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler()
+	verificationHandler := handlers.NewVerificationHandler()
 	productHandler := handlers.NewProductHandler()
 	orderHandler := handlers.NewOrderHandler()
 	chatHandler := handlers.NewChatHandler()
@@ -193,6 +194,7 @@ func main() {
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
+	campaignHandler := handlers.NewCampaignHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 
 	// Auth routes (no authentication required)
@@ -208,6 +210,12 @@ func main() {
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
 	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
 	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
+	// School ID verification (optional)
+	users.Post("/verification/start", middleware.AuthMiddleware(), verificationHandler.StartVerification)
+	users.Post("/verification/verify-school-email", middleware.AuthMiddleware(), verificationHandler.VerifySchoolEmail)
+	users.Post("/verification/resend-school-email-code", middleware.AuthMiddleware(), verificationHandler.ResendSchoolEmailCode)
+	users.Post("/verification/upload-id", middleware.AuthMiddleware(), verificationHandler.UploadSchoolID)
+	users.Get("/verification/status", middleware.AuthMiddleware(), verificationHandler.GetVerificationStatus)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
 	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
@@ -223,7 +231,8 @@ func main() {
 	// Review reply routes
 	api.Post("/reviews/:id/reply", middleware.AuthMiddleware(), reviewHandler.ReplyToReview)
 	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
-	users.Get("/:id/stats", reviewHandler.GetUserRating)          // Alias for stats endpoint
+	users.Get("/:id/stats", userHandler.GetSellerStats)           // Full seller stats endpoint
+	users.Get("/:id/trades", tradeHandler.GetUserTradeHistory)    // Public - get completed trades for a user
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
@@ -306,6 +315,11 @@ func main() {
 	admin.Put("/users/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.SuspendUser)
 	admin.Put("/users/:id/unsuspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.UnsuspendUser)
 	admin.Delete("/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.DeleteUser)
+	// Admin: school ID verification review
+	admin.Get("/verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListVerifications)
+	admin.Get("/verifications/:id/image", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminGetIDImage)
+	admin.Post("/verifications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminApproveVerification)
+	admin.Post("/verifications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminRejectVerification)
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)
@@ -313,6 +327,11 @@ func main() {
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
 	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)
 	admin.Put("/reports/:id/status", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.UpdateReport)
+	// Admin campaigns management
+	admin.Get("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.GetAdminCampaigns)
+	admin.Post("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.CreateCampaign)
+	admin.Put("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.UpdateCampaign)
+	admin.Delete("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.DeleteCampaign)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -341,6 +360,10 @@ func main() {
 	ai.Get("/profile-analysis", middleware.AuthMiddleware(), aiFeaturesHandler.GetProfileAnalysis)
 	ai.Get("/profile-analysis/all", middleware.AuthMiddleware(), aiFeaturesHandler.AnalyzeAllProfiles)
 	ai.Get("/counterfeit/:id", aiFeaturesHandler.GetCounterfeitReport)
+
+	// Campaigns route (public-facing for fetching active campaigns)
+	campaigns := api.Group("/campaigns")
+	campaigns.Get("/active", middleware.OptionalAuthMiddleware(), campaignHandler.GetActiveCampaigns)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")

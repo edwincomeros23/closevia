@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Box,
   VStack,
@@ -45,6 +46,7 @@ import { PRODUCT_CATEGORIES } from '../utils/categories'
 
 const AddProduct: React.FC = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { user } = useAuth()
   const { createProduct } = useProducts()
   const toast = useToast()
@@ -59,8 +61,8 @@ const AddProduct: React.FC = () => {
     allow_buying: false,
     barter_only: true,
     location: '',
-    condition: 'Used',
-    category: 'General',
+    condition: '',
+    category: '',
     wants: '',
     bidding_type: 'none',
 
@@ -68,6 +70,8 @@ const AddProduct: React.FC = () => {
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
+  const [uploadedVideo, setUploadedVideo] = useState<File | null>(null)
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [descriptionLength, setDescriptionLength] = useState(0)
   const [titleLength, setTitleLength] = useState(0)
@@ -76,6 +80,8 @@ const AddProduct: React.FC = () => {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [imageConversionMessages, setImageConversionMessages] = useState<Array<{ file: string; message: string; type: 'info' | 'warning' | 'error' }>>([])
+  const [wantsValidationError, setWantsValidationError] = useState<string | null>(null)
+  const [wantedCategories, setWantedCategories] = useState<string[]>([])
   const { isOpen: isPremiumModalOpen, onOpen: onOpenPremiumModal, onClose: onClosePremiumModal } = useDisclosure()
   const { isOpen: isLocationModalOpen, onOpen: onOpenLocationModal, onClose: onCloseLocationModal } = useDisclosure()
 
@@ -83,6 +89,44 @@ const AddProduct: React.FC = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   // page background color (applies to entire viewport)
   const pageBg = '#FFFDF1'
+
+  // Validation function for inappropriate/illegal item names
+  const validateDesiredItems = (text: string): string | null => {
+    const trimmedText = text.trim().toLowerCase()
+    if (!trimmedText) return null
+
+    // List of prohibited keywords and patterns
+    const prohibitedPatterns = [
+      // Weapons and explosives
+      /\b(gun|rifle|pistol|shotgun|firearm|ammunition|ammo|bomb|explosive|explosive device|grenade|rocket|missile|landmine)\b/gi,
+      // Drugs and controlled substances
+      /\b(cocaine|heroin|meth|methamphetamine|fentanyl|lsd|ecstasy|mdma|cannabis|marijuana|weed|drug)\b/gi,
+      // Weapons (blades)
+      /\b(machete|sword|blade|knife|sharp weapon)\b/gi,
+      // Sexual content
+      /\b(porn|pornography|adult content|sex content|nude|nudes|sex toy)\b/gi,
+      // Animals (living creatures for inappropriate trading)
+      /\b(dog|cat|puppy|kitten|animal|pet|livestock|bird|horse|reptile|endangered animal)\b/gi,
+      // Body parts/organs (trafficking)
+      /\b(kidney|liver|organ|heart|lung|body part)\b/gi,
+      // Counterfeit/stolen goods
+      /\b(counterfeit|fake|stolen|stole|replica)\b/gi,
+      // Explosives and hazardous materials
+      /\b(explosives|hazardous|toxic|poison|radioactive|chemical weapon)\b/gi,
+      // Human trafficking
+      /\b(person|human|slave|slavery|human trafficking)\b/gi,
+    ]
+
+    // Check against each prohibited pattern
+    for (const pattern of prohibitedPatterns) {
+      if (pattern.test(trimmedText)) {
+        const match = trimmedText.match(pattern)
+        return `❌ Prohibited item detected: "${match?.[0]?.toUpperCase()}". Please use appropriate item names only.`
+      }
+    }
+
+    return null
+  }
 
   const steps = [
     { number: 1, title: 'Upload Photos', description: 'Add product images' },
@@ -191,6 +235,64 @@ const AddProduct: React.FC = () => {
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
     setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleVideoUpload = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const file = files[0]
+
+    if (!file.type.startsWith('video/')) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please select a video file (MP4, MOV, etc.)',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    // 50MB limit
+    if (file.size > 50 * 1024 * 1024) {
+      toast({
+        title: 'Video too large',
+        description: 'Video must be under 50MB',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    // Validate duration (5-15 seconds)
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src)
+      if (video.duration < 3 || video.duration > 20) {
+        toast({
+          title: 'Invalid video length',
+          description: 'Video should be between 5-15 seconds long',
+          status: 'warning',
+          duration: 3000,
+          isClosable: true,
+        })
+      }
+      setUploadedVideo(file)
+      setVideoPreviewUrl(URL.createObjectURL(file))
+    }
+    video.onerror = () => {
+      URL.revokeObjectURL(video.src)
+      setUploadedVideo(file)
+      setVideoPreviewUrl(URL.createObjectURL(file))
+    }
+    video.src = URL.createObjectURL(file)
+  }, [toast])
+
+  const removeVideo = () => {
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
+    setUploadedVideo(null)
+    setVideoPreviewUrl('')
   }
 
   const handleInputChange = (field: keyof ProductCreate, value: any) => {
@@ -353,6 +455,20 @@ const AddProduct: React.FC = () => {
       return
     }
 
+    // Validate desired items (wants field)
+    const wantsError = validateDesiredItems(formData.wants || '')
+    if (wantsError) {
+      toast({
+        title: 'Invalid desired items',
+        description: wantsError,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+      setCurrentStep(3)
+      return
+    }
+
     // Validate file sizes (5MB per image)
     const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
     for (const file of uploadedImages) {
@@ -384,11 +500,22 @@ const AddProduct: React.FC = () => {
       formDataToSend.append('location', formData.location?.trim() || '')
       formDataToSend.append('condition', formData.condition || 'Used')
       formDataToSend.append('category', formData.category || 'General')
+      if (formData.wants?.trim()) {
+        formDataToSend.append('wants', formData.wants.trim())
+      }
+      if (wantedCategories.length > 0) {
+        formDataToSend.append('wanted_categories', JSON.stringify(wantedCategories))
+      }
 
       // Append each image file
       uploadedImages.forEach((file) => {
         formDataToSend.append('images', file)
       })
+
+      // Append video if uploaded
+      if (uploadedVideo) {
+        formDataToSend.append('video', uploadedVideo)
+      }
 
       // Log what we're sending
       console.log('=== FORM DATA CONTENTS ===')
@@ -412,6 +539,8 @@ const AddProduct: React.FC = () => {
         isClosable: true,
       })
 
+      // Invalidate dashboard products cache so the new product appears immediately
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
       navigate('/dashboard')
     } catch (error: any) {
       console.error('=== PRODUCT CREATION ERROR ===')
@@ -445,8 +574,8 @@ const AddProduct: React.FC = () => {
   const canProceed = () => {
     switch (currentStep) {
       case 1: return uploadedImages.length >= 3
-      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500
-      case 3: return formData.wants?.trim() || false // What I Want is required for multi-way trading
+      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500 && !!formData.condition && !!formData.category && !!formData.location?.trim()
+      case 3: return (formData.wants?.trim() || false) && !wantsValidationError // What I Want is required and must be valid
       case 4: return true // Barter options are always valid
       case 5: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
       case 6: return true
@@ -562,6 +691,59 @@ const AddProduct: React.FC = () => {
                 ))}
               </SimpleGrid>
             )}
+
+            {/* Video Upload Section */}
+            <Box mt={4}>
+              <Text fontWeight="semibold" color="gray.700" mb={2}>
+                Product Video (Optional)
+              </Text>
+              <Text fontSize="xs" color="gray.500" mb={2}>
+                Add a short 5-15 second video of your product
+              </Text>
+              {!uploadedVideo ? (
+                <Box
+                  border="2px dashed"
+                  borderColor={borderColor}
+                  borderRadius="lg"
+                  p={4}
+                  textAlign="center"
+                  cursor="pointer"
+                  _hover={{ borderColor: 'brand.500' }}
+                  onClick={() => document.getElementById('video-upload')?.click()}
+                >
+                  <VStack spacing={1}>
+                    <AddIcon boxSize={5} color="gray.400" />
+                    <Text fontSize="sm" color="gray.600">Upload Video</Text>
+                    <Text fontSize="xs" color="gray.500">MP4, MOV up to 50MB</Text>
+                  </VStack>
+                </Box>
+              ) : (
+                <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" maxH="200px">
+                  <video
+                    src={videoPreviewUrl}
+                    controls
+                    style={{ width: '100%', maxHeight: '200px', objectFit: 'contain' }}
+                  />
+                  <IconButton
+                    icon={<CloseIcon />}
+                    aria-label="Remove video"
+                    size="xs"
+                    position="absolute"
+                    top={2}
+                    right={2}
+                    colorScheme="red"
+                    onClick={removeVideo}
+                  />
+                </Box>
+              )}
+              <input
+                id="video-upload"
+                type="file"
+                accept="video/*"
+                onChange={(e) => handleVideoUpload(e.target.files)}
+                style={{ display: 'none' }}
+              />
+            </Box>
           </VStack>
         )
 
@@ -707,12 +889,13 @@ const AddProduct: React.FC = () => {
             </FormControl>
 
             <FormControl isRequired>
-              <FormLabel>Condition</FormLabel>
+              <FormLabel>Condition <Text as="span" color="red.500">*</Text></FormLabel>
               <Select
                 placeholder="Select condition"
                 value={formData.condition}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('condition', e.target.value)}
                 size="lg"
+                borderColor={!formData.condition ? 'red.300' : 'inherit'}
               >
                 <option value="New">New</option>
                 <option value="Like-New">Like-New</option>
@@ -721,13 +904,14 @@ const AddProduct: React.FC = () => {
               </Select>
             </FormControl>
 
-            <FormControl>
-              <FormLabel>Category</FormLabel>
+            <FormControl isRequired>
+              <FormLabel>Category <Text as="span" color="red.500">*</Text></FormLabel>
               <Select
                 placeholder="Select category"
                 value={formData.category}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('category', e.target.value)}
                 size="lg"
+                borderColor={!formData.category ? 'red.300' : 'inherit'}
               >
                 {PRODUCT_CATEGORIES.map(cat => (
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
@@ -735,10 +919,10 @@ const AddProduct: React.FC = () => {
               </Select>
             </FormControl>
 
-            <FormControl>
-              <FormLabel>Location</FormLabel>
+            <FormControl isRequired isInvalid={!formData.location?.trim() && !isGettingLocation}>
+              <FormLabel>Location <Text as="span" color="red.500">*</Text></FormLabel>
               <VStack spacing={2}>
-                {!locationCoordinates ? (
+                {isGettingLocation ? (
                   <Box
                     p={3}
                     bg="yellow.50"
@@ -754,7 +938,7 @@ const AddProduct: React.FC = () => {
                       </Text>
                     </HStack>
                   </Box>
-                ) : (
+                ) : locationCoordinates && formData.location ? (
                   <>
                     <Box
                       p={3}
@@ -785,6 +969,30 @@ const AddProduct: React.FC = () => {
                       Detect Location Again
                     </Button>
                   </>
+                ) : (
+                  <>
+                    <Input
+                      placeholder="e.g., Cebu City, Cebu"
+                      value={formData.location}
+                      onChange={(e) => handleInputChange('location', e.target.value)}
+                      size="lg"
+                      borderColor={!formData.location?.trim() ? 'red.300' : 'inherit'}
+                    />
+                    <Button
+                      variant="outline"
+                      w="full"
+                      size="sm"
+                      colorScheme="brand"
+                      onClick={() => {
+                        setLocationCoordinates(null)
+                        setLocationError(null)
+                        handleInputChange('location', '')
+                        handleGetCurrentLocation()
+                      }}
+                    >
+                      🔄 Try Auto-Detect Again
+                    </Button>
+                  </>
                 )}
                 {locationError && (
                   <Box
@@ -798,13 +1006,27 @@ const AddProduct: React.FC = () => {
                     <HStack spacing={2}>
                       <WarningIcon color="red.600" boxSize={3} />
                       <Text fontSize="xs" color="red.700">
-                        {locationError}
+                        {locationError} — Please type your location manually below.
                       </Text>
                     </HStack>
                   </Box>
                 )}
+                {!formData.location?.trim() && !isGettingLocation && (
+                  <Box
+                    p={2}
+                    bg="red.50"
+                    borderRadius="md"
+                    w="full"
+                    borderLeftWidth="4px"
+                    borderLeftColor="red.400"
+                  >
+                    <Text fontSize="sm" color="red.700">
+                      ⚠️ Location is required to proceed
+                    </Text>
+                  </Box>
+                )}
                 <FormHelperText fontSize="xs">
-                  Location is required. Your location will be automatically detected via GPS.
+                  Your location helps buyers find nearby items. Auto-detected via GPS or enter manually.
                 </FormHelperText>
               </VStack>
             </FormControl>
@@ -823,31 +1045,90 @@ const AddProduct: React.FC = () => {
               </Text>
             </Box>
 
-            <FormControl isRequired>
+            <FormControl isRequired isInvalid={!!wantsValidationError}>
               <FormLabel fontWeight="semibold">Desired Items</FormLabel>
               <Textarea
                 placeholder="e.g., iPhone 12, gaming laptop, DSLR camera, collectible items, electronics..."
                 value={formData.wants}
                 onChange={(e) => {
-                  setFormData(prev => ({ ...prev, wants: e.target.value }))
+                  const newValue = e.target.value
+                  setFormData(prev => ({ ...prev, wants: newValue }))
+                  // Real-time validation
+                  const error = validateDesiredItems(newValue)
+                  setWantsValidationError(error)
                 }}
                 size="lg"
                 rows={6}
                 bg="white"
                 borderWidth="2px"
-                _focus={{ borderColor: 'brand.500', shadow: 'md' }}
+                borderColor={wantsValidationError ? 'red.500' : 'gray.200'}
+                _focus={{ borderColor: wantsValidationError ? 'red.600' : 'brand.500', shadow: 'md' }}
                 fontSize="md"
               />
-              <FormHelperText>
-                <VStack align="start" spacing={1} mt={2}>
-                  <Text fontSize="xs" color="gray.600">
-                    Be specific about what you're looking for. This enables advanced multi-way trading algorithms.
+              {wantsValidationError ? (
+                <Box mt={2} p={3} bg="red.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="red.500">
+                  <Text fontSize="sm" color="red.700" fontWeight="600">
+                    {wantsValidationError}
                   </Text>
-                  <Text fontSize="xs" color="red.500" fontWeight="semibold">
-                    ⚠️ Prohibited: nudity, animals, weapons, drugs, illegal items
+                  <Text fontSize="xs" color="red.600" mt={1}>
+                    Please remove prohibited items and only list legitimate items you want to trade for.
                   </Text>
-                </VStack>
-              </FormHelperText>
+                </Box>
+              ) : (
+                <FormHelperText>
+                  <VStack align="start" spacing={1} mt={2}>
+                    <Text fontSize="xs" color="gray.600">
+                      Be specific about what you're looking for. This enables advanced multi-way trading algorithms.
+                    </Text>
+                    <Text fontSize="xs" color="green.600" fontWeight="semibold">
+                      ✓ Items look good!
+                    </Text>
+                  </VStack>
+                </FormHelperText>
+              )}
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontWeight="semibold">Desired Categories</FormLabel>
+              <Text fontSize="xs" color="gray.500" mb={3}>
+                Tap categories you're interested in. This helps match you with relevant trades.
+              </Text>
+              <Box display="flex" flexWrap="wrap" gap={2}>
+                {PRODUCT_CATEGORIES.map((cat) => {
+                  const isSelected = wantedCategories.includes(cat.value)
+                  return (
+                    <Badge
+                      key={cat.value}
+                      px={3}
+                      py={1.5}
+                      borderRadius="full"
+                      cursor="pointer"
+                      fontSize="xs"
+                      fontWeight="semibold"
+                      bg={isSelected ? 'brand.500' : 'gray.100'}
+                      color={isSelected ? 'white' : 'gray.600'}
+                      borderWidth="1px"
+                      borderColor={isSelected ? 'brand.600' : 'gray.200'}
+                      _hover={{ bg: isSelected ? 'brand.600' : 'gray.200' }}
+                      transition="all 0.15s"
+                      onClick={() => {
+                        setWantedCategories(prev =>
+                          isSelected
+                            ? prev.filter(c => c !== cat.value)
+                            : [...prev, cat.value]
+                        )
+                      }}
+                    >
+                      {cat.label}
+                    </Badge>
+                  )
+                })}
+              </Box>
+              {wantedCategories.length > 0 && (
+                <Text fontSize="xs" color="green.600" fontWeight="semibold" mt={2}>
+                  ✓ {wantedCategories.length} {wantedCategories.length === 1 ? 'category' : 'categories'} selected
+                </Text>
+              )}
             </FormControl>
 
             <Box p={4} bg="blue.50" borderRadius="lg" borderLeftWidth="4px" borderLeftColor="blue.400">
@@ -859,7 +1140,7 @@ const AddProduct: React.FC = () => {
                   </Text>
                 </HStack>
                 <Text fontSize="xs" color="blue.700">
-                  Your "wants" list will be used to find trading loops where multiple users can exchange items in a chain.
+                  Your "wants" list and desired categories will be used to find trading loops where multiple users can exchange items in a chain.
                   For example: You want a laptop → Someone has a laptop but wants a camera → Someone has a camera but wants your item.
                 </Text>
               </VStack>
@@ -1194,6 +1475,10 @@ const AddProduct: React.FC = () => {
                   <Text>{uploadedImages.length} photo(s)</Text>
                 </HStack>
                 <HStack justify="space-between">
+                  <Text fontWeight="semibold">Video:</Text>
+                  <Text>{uploadedVideo ? '1 video attached' : 'None'}</Text>
+                </HStack>
+                <HStack justify="space-between">
                   <Text fontWeight="semibold">Premium:</Text>
                   <Badge colorScheme={formData.premium ? 'yellow' : 'gray'}>
                     {formData.premium ? 'Yes' : 'No'}
@@ -1254,7 +1539,7 @@ const AddProduct: React.FC = () => {
           </Box>
 
           {/* Navigation */}
-          <HStack justify="space-between">
+          <HStack justify="space-between" pb={{ base: 20, sm: 0 }}>
             <Button
               leftIcon={<ArrowBackIcon />}
               onClick={prevStep}
@@ -1518,7 +1803,7 @@ const AddProduct: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      <FloatingTab />
+      <FloatingTab showAddButton={false} />
     </Box>
   )
 }

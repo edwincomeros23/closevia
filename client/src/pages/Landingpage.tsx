@@ -161,6 +161,7 @@ const LandingPage: React.FC = () => {
   }, [isAuthenticated, navigate])
 
   const handleGetStarted = () => {
+    localStorage.setItem('has_visited', 'true')
     navigate('/home')
   }
 

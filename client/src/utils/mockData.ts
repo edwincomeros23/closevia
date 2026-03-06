@@ -14,6 +14,7 @@ export const mockAdminStats = {
   // User Management
   verified_users: 987,
   pending_approvals: 15,
+  pending_verifications: 3,
   reports_filed: 23,
   suspended_users: 7,
 

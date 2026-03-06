@@ -436,27 +436,6 @@ const Login: React.FC = () => {
                   </HStack>
 
               {/* Google Login Button */}
-              <Button
-                w="full"
-                variant="outline"
-                borderColor="gray.300"
-                leftIcon={<FaGoogle />}
-                onClick={handleGoogleLogin}
-                isLoading={googleLoading}
-                loadingText="Signing in..."
-                size={{ base: 'md', md: 'lg' }}
-                fontSize={{ base: 'sm', md: 'md' }}
-                _hover={{
-                  bg: 'gray.50',
-                  borderColor: 'gray.400',
-                }}
-                _active={{
-                  bg: 'gray.100',
-                }}
-              >
-                Google
-              </Button>
-                  {/* Google Login Button */}
                   <Button
                     w="full"
                     variant="outline"
@@ -464,7 +443,7 @@ const Login: React.FC = () => {
                     borderWidth="1px"
                     leftIcon={<FaGoogle size={18} />}
                     onClick={handleGoogleLogin}
-                    isLoading={loading}
+                    isLoading={googleLoading}
                     loadingText="Signing in..."
                     size={{ base: 'lg', md: 'lg' }}
                     fontSize={{ base: '16px', md: '15px' }}

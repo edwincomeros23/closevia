@@ -51,8 +51,8 @@ const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ showDetails = false
   useEffect(() => {
     checkStatus();
 
-    // Check status every 30 seconds
-    const interval = setInterval(checkStatus, 30000);
+    // Check status every 2 minutes
+    const interval = setInterval(checkStatus, 120000);
 
     // Listen for online/offline events
     const handleOnline = () => {

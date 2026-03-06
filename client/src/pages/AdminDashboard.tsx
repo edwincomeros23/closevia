@@ -57,6 +57,10 @@ import {
   AlertDialogBody,
   AlertDialogFooter,
   Center,
+  Input,
+  Textarea,
+  Switch,
+  Select,
 } from '@chakra-ui/react';
 import {
   FiUsers,
@@ -75,7 +79,7 @@ import {
   FiCalendar,
   FiFileText,
 } from 'react-icons/fi';
-import { FiTrash2, FiXCircle, FiCheckCircle } from 'react-icons/fi';
+import { FiTrash2, FiEye, FiCheck, FiX, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import {
   AreaChart,
   Area,
@@ -92,6 +96,7 @@ import { mockAdminStats, simulateApiDelay } from '../utils/mockData';
 import { enhancedApiCall, checkConnectionStatus } from '../utils/apiUtils';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ErrorBoundary from '../components/ErrorBoundary';
+import VerifiedAvatar from '../components/VerifiedAvatar';
 import { User, Product, PaginatedResponse, APIResponse } from '../types';
 
 // ─── PDF / DOCX imports ───────────────────────────────────────────────────────
@@ -111,6 +116,7 @@ interface AdminStats {
   new_listings_today: number;
   verified_users: number;
   pending_approvals: number;
+  pending_verifications?: number;
   reports_filed: number;
   suspended_users: number;
   storage_usage_mb: number;
@@ -135,6 +141,21 @@ interface DayDetail {
   reports_filed: number;
   revenue: number;
   active_listings: number;
+}
+
+export interface Campaign {
+  id: number;
+  title: string;
+  description: string;
+  image_url: string;
+  button_text: string;
+  button_link: string;
+  start_date: string;
+  end_date: string;
+  target_users: string;
+  frequency: string;
+  is_active: boolean;
+  created_at: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -547,8 +568,36 @@ const AdminDashboard: React.FC = () => {
   const [reportsStatusFilter, setReportsStatusFilter] = useState('');
 
   // Delete confirmation state
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'product'; id: number; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'product' | 'campaign'; id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Campaigns state
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const { isOpen: isCampaignModalOpen, onOpen: openCampaignModal, onClose: closeCampaignModal } = useDisclosure();
+  const [editingCampaign, setEditingCampaign] = useState<Partial<Campaign> | null>(null);
+  const [campaignFormLoading, setCampaignFormLoading] = useState(false);
+
+  // ID/COR verifications (admin review)
+  type VerificationItem = {
+    id: number;
+    name: string;
+    email: string;
+    verification_status: string;
+    school_name: string;
+    school_email: string;
+    school_email_verified_at?: string;
+    verification_rejection_reason?: string;
+    document_type?: string;
+    has_id_image: boolean;
+  };
+  const [verifications, setVerifications] = useState<VerificationItem[]>([]);
+  const [verificationsLoading, setVerificationsLoading] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<VerificationItem | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectLoading, setRejectLoading] = useState(false);
+  const [idImageModal, setIdImageModal] = useState<{ userId: number; name: string } | null>(null);
+  const [idImageUrl, setIdImageUrl] = useState<string | null>(null);
 
   const { isOpen: isDayModalOpen, onOpen: openDayModal, onClose: closeDayModal } = useDisclosure();
   const {
@@ -844,6 +893,190 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
+  // ── Fetch campaigns for admin list ──
+  const fetchAdminCampaigns = useCallback(async () => {
+    try {
+      setCampaignsLoading(true);
+      const response = await api.get('/api/admin/campaigns');
+      if (response.data?.success) {
+        setCampaigns(response.data.data || []);
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Failed to load campaigns',
+        description: err?.response?.data?.error || err.message || 'Unable to fetch campaigns',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setCampaignsLoading(false);
+    }
+  }, [toast]);
+
+  // ── Save campaign (Create/Update) ──
+  const handleSaveCampaign = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCampaign?.title) {
+      toast({ title: 'Title is required', status: 'warning', duration: 2000 });
+      return;
+    }
+
+    // Convert empty strings to null/undefined for optional dates to avoid parse errors
+    const payload = { ...editingCampaign };
+    if (payload.start_date === '') payload.start_date = undefined as any;
+    if (payload.end_date === '') payload.end_date = undefined as any;
+
+    // Convert string to date format expected by Go if they exist
+    if (payload.start_date) {
+      payload.start_date = new Date(payload.start_date).toISOString() as any;
+    }
+    if (payload.end_date) {
+      payload.end_date = new Date(payload.end_date).toISOString() as any;
+    }
+
+    try {
+      setCampaignFormLoading(true);
+      if (editingCampaign.id) {
+        // Update
+        await api.put(`/api/admin/campaigns/${editingCampaign.id}`, payload);
+        toast({ title: 'Campaign updated', status: 'success', duration: 3000 });
+      } else {
+        // Create
+        await api.post('/api/admin/campaigns', Object.assign({
+          target_users: 'all',
+          frequency: 'once_per_user',
+          is_active: true,
+        }, payload));
+        toast({ title: 'Campaign created', status: 'success', duration: 3000 });
+      }
+      closeCampaignModal();
+      setEditingCampaign(null);
+      fetchAdminCampaigns();
+    } catch (err: any) {
+      toast({
+        title: 'Save failed',
+        description: err?.response?.data?.error || 'Could not save campaign',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setCampaignFormLoading(false);
+    }
+  }, [editingCampaign, toast, closeCampaignModal, fetchAdminCampaigns]);
+
+  const askDeleteCampaign = useCallback((camp: Campaign) => {
+    setDeleteTarget({ type: 'campaign', id: camp.id, name: camp.title });
+    openDeleteDialog();
+  }, [openDeleteDialog]);
+
+  // ── Toggle campaign active status ──
+  const handleToggleCampaignStatus = useCallback(async (camp: Campaign) => {
+    try {
+      await api.put(`/api/admin/campaigns/${camp.id}`, { is_active: !camp.is_active });
+      toast({ title: `Campaign ${!camp.is_active ? 'activated' : 'deactivated'}`, status: 'success', duration: 2000 });
+      fetchAdminCampaigns();
+    } catch (err: any) {
+      toast({ title: 'Status update failed', status: 'error', duration: 3000 });
+    }
+  }, [toast, fetchAdminCampaigns]);
+
+  // ── Fetch ID/COR verifications (pending & rejected) ──
+  const fetchAdminVerifications = useCallback(async () => {
+    try {
+      setVerificationsLoading(true);
+      const response = await api.get<APIResponse<VerificationItem[]>>('/api/admin/verifications');
+      if (response.data?.success && Array.isArray(response.data.data)) {
+        setVerifications(response.data.data);
+      } else {
+        setVerifications([]);
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Failed to load verifications',
+        description: err?.response?.data?.error || err.message || 'Unable to fetch verifications',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+      setVerifications([]);
+    } finally {
+      setVerificationsLoading(false);
+    }
+  }, [toast]);
+
+  // ── View ID image (fetch as blob and show in modal) ──
+  const handleViewIdImage = useCallback(async (userId: number, name: string) => {
+    setIdImageModal({ userId, name });
+    setIdImageUrl(null);
+    try {
+      const response = await api.get(`/api/admin/verifications/${userId}/image`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      setIdImageUrl(url);
+    } catch (err: any) {
+      toast({
+        title: 'Could not load image',
+        description: err?.response?.data?.error || 'Image not found or access denied',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      setIdImageModal(null);
+    }
+  }, [toast]);
+
+  const closeIdImageModal = useCallback(() => {
+    if (idImageUrl) URL.revokeObjectURL(idImageUrl);
+    setIdImageUrl(null);
+    setIdImageModal(null);
+  }, [idImageUrl]);
+
+  // ── Approve verification ──
+  const handleApproveVerification = useCallback(async (userId: number) => {
+    try {
+      await api.post(`/api/admin/verifications/${userId}/approve`);
+      toast({ title: 'User verified', description: 'Verification approved.', status: 'success', duration: 3000, isClosable: true });
+      fetchAdminVerifications();
+    } catch (err: any) {
+      toast({
+        title: 'Approve failed',
+        description: err?.response?.data?.error || 'Could not approve',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [toast, fetchAdminVerifications]);
+
+  // ── Reject verification (open modal to enter reason) ──
+  const openRejectModal = useCallback((item: VerificationItem) => {
+    setRejectTarget(item);
+    setRejectReason('');
+  }, []);
+
+  const handleConfirmReject = useCallback(async () => {
+    if (!rejectTarget) return;
+    try {
+      setRejectLoading(true);
+      await api.post(`/api/admin/verifications/${rejectTarget.id}/reject`, { reason: rejectReason || 'Not specified' });
+      toast({ title: 'Verification declined', description: 'User has been notified.', status: 'success', duration: 3000, isClosable: true });
+      setRejectTarget(null);
+      setRejectReason('');
+      fetchAdminVerifications();
+    } catch (err: any) {
+      toast({
+        title: 'Reject failed',
+        description: err?.response?.data?.error || 'Could not reject',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setRejectLoading(false);
+    }
+  }, [rejectTarget, rejectReason, toast, fetchAdminVerifications]);
+
   // ── Delete handlers ──
   const askDeleteUser = useCallback((user: User) => {
     setDeleteTarget({ type: 'user', id: user.id, name: user.name || user.email });
@@ -873,7 +1106,7 @@ const AdminDashboard: React.FC = () => {
           duration: 4000,
           isClosable: true,
         });
-      } else {
+      } else if (deleteTarget.type === 'product') {
         await api.delete(`/api/admin/products/${deleteTarget.id}`);
         setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
         toast({
@@ -882,6 +1115,14 @@ const AdminDashboard: React.FC = () => {
           status: 'success',
           duration: 4000,
           isClosable: true,
+        });
+      } else if (deleteTarget.type === 'campaign') {
+        await api.delete(`/api/admin/campaigns/${deleteTarget.id}`);
+        setCampaigns(prev => prev.filter(c => c.id !== deleteTarget.id));
+        toast({
+          title: 'Campaign deleted',
+          status: 'success',
+          duration: 3000,
         });
       }
     } catch (err: any) {
@@ -905,9 +1146,11 @@ const AdminDashboard: React.FC = () => {
     fetchAdminUsers(1);
     fetchAdminProducts(1);
     fetchAdminReports(1);
+    fetchAdminVerifications();
+    fetchAdminCampaigns();
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
-  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports]);
+  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports, fetchAdminVerifications, fetchAdminCampaigns]);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -1205,7 +1448,13 @@ const AdminDashboard: React.FC = () => {
               <CardBody>
                 <VStack spacing={4} align="stretch">
                   <HStack justify="space-between">
-                    <Text fontWeight="medium">Pending Approvals</Text>
+                    <Text fontWeight="medium">Pending ID/COR Verifications</Text>
+                    <Badge colorScheme="teal" fontSize="md" px={3} py={1}>
+                      {stats.pending_verifications?.toLocaleString() ?? 0}
+                    </Badge>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text fontWeight="medium">Pending Approvals (listings)</Text>
                     <Badge colorScheme="yellow" fontSize="md" px={3} py={1}>
                       {stats.pending_approvals?.toLocaleString() ?? 0}
                     </Badge>
@@ -1281,10 +1530,11 @@ const AdminDashboard: React.FC = () => {
                           <Tr key={user.id}>
                             <Td>
                               <HStack spacing={3}>
-                                <Avatar
+                                <VerifiedAvatar
                                   size="sm"
                                   name={user.name}
                                   src={user.profile_picture || undefined}
+                                  isVerified={user.verified || user.verification_status === 'verified' || false}
                                 />
                                 <VStack spacing={0} align="start">
                                   <Text fontWeight="medium" fontSize="sm">
@@ -1606,6 +1856,198 @@ const AdminDashboard: React.FC = () => {
           </ModalContent>
         </Modal>
 
+        {/* ── Campaigns Management ── */}
+        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack spacing={2}>
+                <Icon as={FiStar} color="orange.500" boxSize={5} />
+                <Heading size="md" color="orange.600">Popup Campaigns</Heading>
+              </HStack>
+              <HStack spacing={3}>
+                <Button size="sm" colorScheme="blue" onClick={() => { setEditingCampaign({}); openCampaignModal(); }}>
+                  Create Campaign
+                </Button>
+                <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminCampaigns} isLoading={campaignsLoading}>
+                  Refresh
+                </Button>
+              </HStack>
+            </Flex>
+            <Text fontSize="sm" color="gray.500" mt={1}>
+              Manage popup ad campaigns displayed to users across the platform.
+            </Text>
+          </CardHeader>
+          <CardBody overflowX="auto" px={0}>
+            {campaignsLoading ? (
+              <Center py={8}><Spinner color="orange.500" /></Center>
+            ) : campaigns.length === 0 ? (
+              <Center py={8}>
+                <VStack spacing={2}>
+                  <Icon as={FiStar} boxSize={10} color="gray.300" />
+                  <Text color="gray.500">No campaigns found</Text>
+                </VStack>
+              </Center>
+            ) : (
+              <ChakraTable variant="simple" size="sm">
+                <Thead bg="orange.50">
+                  <Tr>
+                    <Th>Title</Th>
+                    <Th>Targets</Th>
+                    <Th>Frequency</Th>
+                    <Th>Dates</Th>
+                    <Th>Status</Th>
+                    <Th>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {campaigns.map((camp) => (
+                    <Tr key={camp.id} _hover={{ bg: 'gray.50' }}>
+                      <Td>
+                        <Text fontWeight="medium" fontSize="sm">{camp.title}</Text>
+                      </Td>
+                      <Td>
+                        <Tag size="sm" colorScheme="blue" textTransform="capitalize">
+                          {camp.target_users}
+                        </Tag>
+                      </Td>
+                      <Td>
+                        <Text fontSize="xs">{camp.frequency.replace(/_/g, ' ')}</Text>
+                      </Td>
+                      <Td fontSize="xs" color="gray.600">
+                        {camp.start_date ? new Date(camp.start_date).toLocaleDateString() : 'Always'} - {camp.end_date ? new Date(camp.end_date).toLocaleDateString() : 'Forever'}
+                      </Td>
+                      <Td>
+                        <Switch
+                          colorScheme="green"
+                          isChecked={camp.is_active}
+                          onChange={() => handleToggleCampaignStatus(camp)}
+                        />
+                      </Td>
+                      <Td>
+                        <HStack spacing={2}>
+                          <Button size="xs" onClick={() => {
+                            setEditingCampaign({
+                              ...camp,
+                              start_date: camp.start_date ? new Date(camp.start_date).toISOString().slice(0, 16) : '',
+                              end_date: camp.end_date ? new Date(camp.end_date).toISOString().slice(0, 16) : '',
+                            });
+                            openCampaignModal();
+                          }}>
+                            Edit
+                          </Button>
+                          <IconButton
+                            aria-label="Delete campaign"
+                            size="xs"
+                            colorScheme="red"
+                            variant="ghost"
+                            icon={<FiTrash2 />}
+                            onClick={() => askDeleteCampaign(camp)}
+                          />
+                        </HStack>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </ChakraTable>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* ── ID/COR Verifications (Admin review: approve or decline) ── */}
+        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack spacing={2}>
+                <Icon as={FiShield} color="teal.500" boxSize={5} />
+                <Heading size="md" color="teal.600">ID / COR Verifications</Heading>
+                {verifications.filter(v => v.verification_status === 'pending').length > 0 && (
+                  <Badge colorScheme="orange" borderRadius="full" px={2}>
+                    {verifications.filter(v => v.verification_status === 'pending').length} pending
+                  </Badge>
+                )}
+              </HStack>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminVerifications} isLoading={verificationsLoading}>
+                Refresh
+              </Button>
+            </Flex>
+            <Text fontSize="sm" color="gray.500" mt={1}>
+              Review submitted school ID or COR. Verify if legitimate or decline with a reason (e.g. fake or invalid document).
+            </Text>
+          </CardHeader>
+          <CardBody overflowX="auto" px={0}>
+            {verificationsLoading ? (
+              <Center py={8}><Spinner color="teal.500" /></Center>
+            ) : verifications.length === 0 ? (
+              <Center py={8}>
+                <VStack spacing={2}>
+                  <Icon as={FiShield} boxSize={10} color="gray.300" />
+                  <Text color="gray.500">No pending or rejected verifications</Text>
+                </VStack>
+              </Center>
+            ) : (
+              <ChakraTable variant="simple" size="sm">
+                <Thead bg="teal.50">
+                  <Tr>
+                    <Th>User</Th>
+                    <Th>School</Th>
+                    <Th>School Email</Th>
+                    <Th>Doc</Th>
+                    <Th>Status</Th>
+                    <Th>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {verifications.map((item) => (
+                    <Tr key={item.id} _hover={{ bg: 'gray.50' }}>
+                      <Td>
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="medium" fontSize="sm">{item.name || `User #${item.id}`}</Text>
+                          <Text fontSize="xs" color="gray.500">{item.email}</Text>
+                        </VStack>
+                      </Td>
+                      <Td fontSize="sm">{item.school_name || '-'}</Td>
+                      <Td fontSize="sm">{item.school_email || '-'}</Td>
+                      <Td>
+                        <Tag size="sm" colorScheme="blue" textTransform="uppercase">{item.document_type || 'id'}</Tag>
+                      </Td>
+                      <Td>
+                        <Badge colorScheme={item.verification_status === 'pending' ? 'orange' : 'red'} borderRadius="full" px={2}>
+                          {item.verification_status === 'pending' ? 'Pending' : 'Rejected'}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <HStack spacing={2}>
+                          {item.has_id_image && (
+                            <Tooltip label="View ID/COR image" hasArrow>
+                              <IconButton
+                                aria-label="View ID"
+                                size="sm"
+                                variant="outline"
+                                icon={<FiEye />}
+                                onClick={() => handleViewIdImage(item.id, item.name)}
+                              />
+                            </Tooltip>
+                          )}
+                          {item.verification_status === 'pending' && (
+                            <>
+                              <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveVerification(item.id)}>
+                                Verify
+                              </Button>
+                              <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => openRejectModal(item)}>
+                                Decline
+                              </Button>
+                            </>
+                          )}
+                        </HStack>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </ChakraTable>
+            )}
+          </CardBody>
+        </Card>
+
         {/* ── Reports Table Section ── */}
         <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
           <CardHeader>
@@ -1727,6 +2169,168 @@ const AdminDashboard: React.FC = () => {
             )}
           </CardBody>
         </Card>
+
+        {/* ── ID Image modal ── */}
+        <Modal isOpen={!!idImageModal} onClose={closeIdImageModal} size="xl">
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>ID / COR — {idImageModal?.name}</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody pb={4}>
+              {idImageUrl ? (
+                <Box as="img" src={idImageUrl} alt="Submitted ID" maxH="70vh" mx="auto" borderRadius="md" />
+              ) : (
+                <Center py={8}><Spinner size="lg" color="teal.500" /></Center>
+              )}
+            </ModalBody>
+          </ModalContent>
+        </Modal>
+
+        {/* ── Reject verification modal ── */}
+        <Modal isOpen={!!rejectTarget} onClose={() => { setRejectTarget(null); setRejectReason(''); }}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Decline verification</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Text fontSize="sm" color="gray.600" mb={3}>
+                User: <strong>{rejectTarget?.name}</strong> ({rejectTarget?.email}). Provide a reason (e.g. fake/invalid COR or ID).
+              </Text>
+              <Textarea
+                placeholder="e.g. Document does not appear to be a valid school ID or COR"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+              />
+            </ModalBody>
+            <Box px={6} pb={4} pt={0}>
+              <HStack justify="flex-end" spacing={3}>
+                <Button variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(''); }}>Cancel</Button>
+                <Button colorScheme="red" onClick={handleConfirmReject} isLoading={rejectLoading}>
+                  Decline verification
+                </Button>
+              </HStack>
+            </Box>
+          </ModalContent>
+        </Modal>
+
+        {/* ── Campaign Create/Edit Modal ── */}
+        <Modal isOpen={isCampaignModalOpen} onClose={() => { closeCampaignModal(); setEditingCampaign(null); }} size="lg">
+          <ModalOverlay />
+          <ModalContent>
+            <form onSubmit={handleSaveCampaign}>
+              <ModalHeader>{editingCampaign?.id ? 'Edit Campaign' : 'Create Campaign'}</ModalHeader>
+              <ModalCloseButton />
+              <ModalBody>
+                <VStack spacing={4} align="stretch">
+                  <Box>
+                    <Text fontSize="sm" fontWeight="medium" mb={1}>Title *</Text>
+                    <Input
+                      placeholder="e.g. Free Premium Promotion"
+                      value={editingCampaign?.title || ''}
+                      onChange={(e) => setEditingCampaign({ ...editingCampaign, title: e.target.value })}
+                      required
+                    />
+                  </Box>
+                  <Box>
+                    <Text fontSize="sm" fontWeight="medium" mb={1}>Description</Text>
+                    <Textarea
+                      placeholder="Enter the main content of the popup"
+                      value={editingCampaign?.description || ''}
+                      onChange={(e) => setEditingCampaign({ ...editingCampaign, description: e.target.value })}
+                      rows={3}
+                    />
+                  </Box>
+                  <Box>
+                    <Text fontSize="sm" fontWeight="medium" mb={1}>Image URL (Optional)</Text>
+                    <Input
+                      placeholder="https://example.com/image.jpg"
+                      value={editingCampaign?.image_url || ''}
+                      onChange={(e) => setEditingCampaign({ ...editingCampaign, image_url: e.target.value })}
+                    />
+                  </Box>
+                  <SimpleGrid columns={2} spacing={4}>
+                    <Box>
+                      <Text fontSize="sm" fontWeight="medium" mb={1}>Button Text</Text>
+                      <Input
+                        placeholder="Click Here"
+                        value={editingCampaign?.button_text || ''}
+                        onChange={(e) => setEditingCampaign({ ...editingCampaign, button_text: e.target.value })}
+                      />
+                    </Box>
+                    <Box>
+                      <Text fontSize="sm" fontWeight="medium" mb={1}>Button Link</Text>
+                      <Input
+                        placeholder="/premium"
+                        value={editingCampaign?.button_link || ''}
+                        onChange={(e) => setEditingCampaign({ ...editingCampaign, button_link: e.target.value })}
+                      />
+                    </Box>
+                  </SimpleGrid>
+                  <SimpleGrid columns={2} spacing={4}>
+                    <Box>
+                      <Text fontSize="sm" fontWeight="medium" mb={1}>Start Date</Text>
+                      <Input
+                        type="datetime-local"
+                        value={editingCampaign?.start_date || ''}
+                        onChange={(e) => setEditingCampaign({ ...editingCampaign, start_date: e.target.value })}
+                      />
+                    </Box>
+                    <Box>
+                      <Text fontSize="sm" fontWeight="medium" mb={1}>End Date</Text>
+                      <Input
+                        type="datetime-local"
+                        value={editingCampaign?.end_date || ''}
+                        onChange={(e) => setEditingCampaign({ ...editingCampaign, end_date: e.target.value })}
+                      />
+                    </Box>
+                  </SimpleGrid>
+                  <SimpleGrid columns={2} spacing={4}>
+                    <Box>
+                      <Text fontSize="sm" fontWeight="medium" mb={1}>Target Users</Text>
+                      <Select
+                        value={editingCampaign?.target_users || 'all'}
+                        onChange={(e) => setEditingCampaign({ ...editingCampaign, target_users: e.target.value as any })}
+                      >
+                        <option value="all">All Users</option>
+                        <option value="new">New / Unregistered</option>
+                        <option value="verified">Verified Students</option>
+                        <option value="unverified">Unverified Users</option>
+                      </Select>
+                    </Box>
+                    <Box>
+                      <Text fontSize="sm" fontWeight="medium" mb={1}>Frequency</Text>
+                      <Select
+                        value={editingCampaign?.frequency || 'once_per_user'}
+                        onChange={(e) => setEditingCampaign({ ...editingCampaign, frequency: e.target.value as any })}
+                      >
+                        <option value="once_per_user">Once per user</option>
+                        <option value="once_per_day">Once per day</option>
+                        <option value="every_login">Every time</option>
+                      </Select>
+                    </Box>
+                  </SimpleGrid>
+                  <HStack justify="space-between" pt={2}>
+                    <Text fontSize="sm" fontWeight="medium">Active Status</Text>
+                    <Switch
+                      colorScheme="green"
+                      isChecked={editingCampaign?.is_active ?? true}
+                      onChange={(e) => setEditingCampaign({ ...editingCampaign, is_active: e.target.checked })}
+                    />
+                  </HStack>
+                </VStack>
+              </ModalBody>
+              <Box px={6} pb={4} pt={4}>
+                <HStack justify="flex-end" spacing={3}>
+                  <Button variant="ghost" onClick={() => { closeCampaignModal(); setEditingCampaign(null); }}>Cancel</Button>
+                  <Button type="submit" colorScheme="blue" isLoading={campaignFormLoading}>
+                    Save Campaign
+                  </Button>
+                </HStack>
+              </Box>
+            </form>
+          </ModalContent>
+        </Modal>
 
         {/* ── Delete Confirmation Dialog ── */}
         <AlertDialog

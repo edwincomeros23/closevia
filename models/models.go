@@ -95,27 +95,33 @@ func (a StringArray) Value() (driver.Value, error) {
 
 // User represents a user in the system
 type User struct {
-	ID                 int       `json:"id"`
-	Name               string    `json:"name" validate:"required,min=2,max=255"`
-	Email              string    `json:"email" validate:"required,email"`
-	PasswordHash       string    `json:"-" validate:"required"`
-	Role               string    `json:"role" validate:"oneof=user admin"`
-	Verified           bool      `json:"verified"`
-	IsOrganization     bool      `json:"is_organization"`
-	OrgVerified        bool      `json:"org_verified"`
-	OrgName            string    `json:"org_name,omitempty"`
-	OrgLogoURL         string    `json:"org_logo_url,omitempty"`
-	Department         string    `json:"department,omitempty"`
-	Bio                string    `json:"bio,omitempty"`
-	Badges             IntArray  `json:"badges,omitempty"`
-	ProfilePicture     string    `json:"profile_picture,omitempty"`
-	BackgroundImage    string    `json:"background_image,omitempty"`
-	BackgroundPosition string    `json:"background_position,omitempty"`
-	Latitude           *float64  `json:"latitude,omitempty"`
-	Longitude          *float64  `json:"longitude,omitempty"`
-	IsPremium          bool      `json:"is_premium"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID                          int        `json:"id"`
+	Name                        string     `json:"name" validate:"required,min=2,max=255"`
+	Email                       string     `json:"email" validate:"required,email"`
+	PasswordHash                string     `json:"-" validate:"required"`
+	Role                        string     `json:"role" validate:"oneof=user admin"`
+	Verified                    bool       `json:"verified"`
+	IsOrganization              bool       `json:"is_organization"`
+	OrgVerified                 bool       `json:"org_verified"`
+	OrgName                     string     `json:"org_name,omitempty"`
+	OrgLogoURL                  string     `json:"org_logo_url,omitempty"`
+	Department                  string     `json:"department,omitempty"`
+	Bio                         string     `json:"bio,omitempty"`
+	Badges                      IntArray   `json:"badges,omitempty"`
+	ProfilePicture              string     `json:"profile_picture,omitempty"`
+	BackgroundImage             string     `json:"background_image,omitempty"`
+	BackgroundPosition          string     `json:"background_position,omitempty"`
+	Latitude                    *float64   `json:"latitude,omitempty"`
+	Longitude                   *float64   `json:"longitude,omitempty"`
+	IsPremium                   bool       `json:"is_premium"`
+	CreatedAt                   time.Time  `json:"created_at"`
+	UpdatedAt                   time.Time  `json:"updated_at"`
+	VerificationStatus          string     `json:"verification_status,omitempty"`
+	SchoolName                  string     `json:"school_name,omitempty"`
+	SchoolEmail                 string     `json:"school_email,omitempty"`
+	SchoolEmailVerifiedAt       *time.Time `json:"school_email_verified_at,omitempty"`
+	SchoolIDImagePath           string     `json:"school_id_image_path,omitempty"`
+	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
 }
 
 // UserLogin represents login credentials
@@ -159,6 +165,7 @@ type Product struct {
 	Category             string      `json:"category,omitempty"`
 	Latitude             *float64    `json:"latitude,omitempty"`
 	Longitude            *float64    `json:"longitude,omitempty"`
+	VideoURL             string      `json:"video_url,omitempty"`
 	Distance             string      `json:"distance,omitempty"` // Computed distance from viewer (e.g. "3.2 KM")
 	CreatedAt            time.Time   `json:"created_at"`
 	UpdatedAt            time.Time   `json:"updated_at"`
@@ -281,6 +288,7 @@ type Trade struct {
 	BuyerName             string `json:"buyer_name,omitempty"`
 	SellerName            string `json:"seller_name,omitempty"`
 	ProductTitle          string `json:"product_title,omitempty"`
+	ProductImageURL       string `json:"product_image_url,omitempty"`
 }
 
 // TradeItem represents an item offered in a trade
@@ -299,7 +307,7 @@ type TradeItem struct {
 // TradeCreate represents payload to create a trade
 type TradeCreate struct {
 	TargetProductID   int      `json:"target_product_id" validate:"required"`
-	OfferedProductIDs []int    `json:"offered_product_ids" validate:"required,min=1,dive,gt=0"`
+	OfferedProductIDs []int    `json:"offered_product_ids" validate:"omitempty,dive,gt=0"`
 	Message           string   `json:"message"`
 	OfferedCashAmount *float64 `json:"offered_cash_amount,omitempty"`
 	TradeOption       string   `json:"trade_option" validate:"required,oneof=meetup delivery"`
@@ -583,4 +591,49 @@ type ReportCreate struct {
 type ReportUpdate struct {
 	Status          string `json:"status" validate:"required,oneof=pending reviewed dismissed resolved"`
 	ReviewerComment string `json:"reviewer_comment,omitempty"`
+}
+
+// Campaign represents a popup ad campaign
+type Campaign struct {
+	ID          int        `json:"id"`
+	Title       string     `json:"title" validate:"required"`
+	Description string     `json:"description,omitempty"`
+	ImageURL    string     `json:"image_url,omitempty"`
+	ButtonText  string     `json:"button_text,omitempty"`
+	ButtonLink  string     `json:"button_link,omitempty"`
+	StartDate   *time.Time `json:"start_date,omitempty"`
+	EndDate     *time.Time `json:"end_date,omitempty"`
+	TargetUsers string     `json:"target_users" validate:"oneof=all new verified unverified"`
+	Frequency   string     `json:"frequency" validate:"oneof=once_per_user once_per_day every_login"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// CampaignCreate represents data for creating a campaign
+type CampaignCreate struct {
+	Title       string     `json:"title" validate:"required"`
+	Description string     `json:"description,omitempty"`
+	ImageURL    string     `json:"image_url,omitempty"`
+	ButtonText  string     `json:"button_text,omitempty"`
+	ButtonLink  string     `json:"button_link,omitempty"`
+	StartDate   *time.Time `json:"start_date,omitempty"`
+	EndDate     *time.Time `json:"end_date,omitempty"`
+	TargetUsers string     `json:"target_users" validate:"required,oneof=all new verified unverified"`
+	Frequency   string     `json:"frequency" validate:"required,oneof=once_per_user once_per_day every_login"`
+	IsActive    bool       `json:"is_active"`
+}
+
+// CampaignUpdate represents data for updating a campaign
+type CampaignUpdate struct {
+	Title       *string    `json:"title,omitempty"`
+	Description *string    `json:"description,omitempty"`
+	ImageURL    *string    `json:"image_url,omitempty"`
+	ButtonText  *string    `json:"button_text,omitempty"`
+	ButtonLink  *string    `json:"button_link,omitempty"`
+	StartDate   *time.Time `json:"start_date,omitempty"`
+	EndDate     *time.Time `json:"end_date,omitempty"`
+	TargetUsers *string    `json:"target_users,omitempty" validate:"omitempty,oneof=all new verified unverified"`
+	Frequency   *string    `json:"frequency,omitempty" validate:"omitempty,oneof=once_per_user once_per_day every_login"`
+	IsActive    *bool      `json:"is_active,omitempty"`
 }

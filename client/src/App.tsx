@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from 'react'
 import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text, useColorMode } from '@chakra-ui/react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { theme } from './theme'
 import Sidebar from './components/Sidebar'
 import LandingPage from './pages/Landingpage'
@@ -12,6 +12,7 @@ import VerifyEmail from './pages/VerifyEmail'
 import Dashboard from './pages/Dashboard'
 import ProductDetail from './pages/ProductDetail'
 import AddProduct from './pages/AddProduct'
+import GlobalPopup from './components/GlobalPopup';
 import EditProduct from './pages/EditProduct'
 import Notifications from './pages/Notifications'
 import Settings from './pages/Settings'
@@ -33,6 +34,7 @@ import AdminRoute from './components/AdminRoute'
 import PrivateRoute from './components/PrivateRoute'
 import { MobileNavProvider } from './contexts/MobileNavContext'
 import { NotificationProvider } from './contexts/NotificationContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import ToastNotification from './components/ToastNotification'
 
 // Theme applier component - loads and applies saved theme preference
@@ -127,7 +129,7 @@ const AppContent: React.FC = () => {
   return (
     <Routes>
       {/* Landing page route - no sidebar or app layout */}
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={localStorage.getItem('has_visited') === 'true' ? <Navigate to="/home" replace /> : <LandingPage />} />
       <Route path="/company" element={<Company />} />
 
       {/* Rider routes - no sidebar */}
@@ -165,6 +167,7 @@ const AppContent: React.FC = () => {
               <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
               <Route path="/premium" element={<ProtectedRoute><Premium /></ProtectedRoute>} />
 
+
               <Route path="*" element={<Home />} />
             </Routes>
           </Box>
@@ -184,7 +187,10 @@ function App() {
               <NotificationProvider>
                 <RealtimeProvider>
                   <Router>
-                    <AppContent />
+                    <ErrorBoundary>
+                      <AppContent />
+                    </ErrorBoundary>
+                    <GlobalPopup />
                     <ToastNotification />
                   </Router>
                 </RealtimeProvider>

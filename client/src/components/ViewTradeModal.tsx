@@ -43,6 +43,7 @@ import {
   FormLabel,
   Grid,
 } from '@chakra-ui/react'
+import VerifiedAvatar from './VerifiedAvatar'
 import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar } from 'react-icons/fa'
 import {
   FiMapPin,
@@ -1178,6 +1179,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       if (error?.response?.data) {
         console.error('Backend error details:', error.response.data)
       }
+      toast({
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to save delivery state',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
     }
   }
 
@@ -1636,85 +1644,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                     <Divider />
 
-                    {/* Products Overview */}
-                    <Box>
-                      <Text fontWeight="semibold" mb={4} fontSize="md">
-                        Trade Items
-                      </Text>
-                      {loadingProducts ? (
-                        <Spinner />
-                      ) : (
-                        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                          <Card variant="outline" borderColor="blue.300">
-                            <CardBody>
-                              <VStack spacing={3} align="stretch">
-                                <HStack>
-                                  <Badge colorScheme="blue">Requested</Badge>
-                                  <Text fontSize="sm" color="gray.600">
-                                    (Your Item)
-                                  </Text>
-                                </HStack>
-                                {requestedProduct ? (
-                                  <>
-                                    <Image
-                                      src={getFirstImage(requestedProduct.image_urls)}
-                                      alt={requestedProduct.title}
-                                      w="full"
-                                      h="150px"
-                                      objectFit="cover"
-                                      borderRadius="md"
-                                      fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
-                                    />
-                                    <Text fontWeight="semibold">{requestedProduct.title}</Text>
-                                    <Text fontSize="sm" color="gray.600" noOfLines={2}>
-                                      {requestedProduct.description}
-                                    </Text>
-                                  </>
-                                ) : (
-                                  <Text color="gray.500">Loading...</Text>
-                                )}
-                              </VStack>
-                            </CardBody>
-                          </Card>
-
-                          <Card variant="outline" borderColor="green.300">
-                            <CardBody>
-                              <VStack spacing={3} align="stretch">
-                                <HStack>
-                                  <Badge colorScheme="green">Offered</Badge>
-                                  <Text fontSize="sm" color="gray.600">
-                                    ({tradingPartner}'s Item{offeredProducts.length > 1 ? 's' : ''})
-                                  </Text>
-                                </HStack>
-                                {offeredProducts.length > 0 ? (
-                                  <SimpleGrid columns={offeredProducts.length > 1 ? 2 : 1} spacing={2}>
-                                    {offeredProducts.map((product) => (
-                                      <Box key={`offered-${product.id}`}>
-                                        <Image
-                                          src={getFirstImage(product.image_urls)}
-                                          alt={product.title}
-                                          w="full"
-                                          h="150px"
-                                          objectFit="cover"
-                                          borderRadius="md"
-                                          fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
-                                        />
-                                        <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
-                                          {product.title}
-                                        </Text>
-                                      </Box>
-                                    ))}
-                                  </SimpleGrid>
-                                ) : (
-                                  <Text color="gray.500">Loading...</Text>
-                                )}
-                              </VStack>
-                            </CardBody>
-                          </Card>
-                        </SimpleGrid>
-                      )}
-                    </Box>
-
                     {/* Trade Partner Info */}
                     <Box
                       p={4}
@@ -1724,11 +1653,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       borderColor={borderColor}
                     >
                       <HStack spacing={4}>
-                        <Avatar
+                        <VerifiedAvatar
                           name={tradingPartner}
                           size="md"
                           bg={isUserBuyer ? 'green.500' : 'blue.500'}
                           color="white"
+                          isVerified={false}
                         />
                         <Box flex={1}>
                           <Text fontWeight="semibold">{tradingPartner}</Text>
@@ -1737,10 +1667,92 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           </Text>
                         </Box>
                         <Text fontSize="xs" color="gray.500">
-                          Accepted {new Date(trade.created_at).toLocaleDateString()}
+                          Accepted {new Date((trade as any).created_at).toLocaleDateString()}
                         </Text>
                       </HStack>
                     </Box>
+
+                    <Divider />
+
+                    {/* Products Overview */}
+                    <Box>
+                      <Text fontWeight="semibold" mb={4} fontSize="md">
+                        Trade Items
+                      </Text>
+                    </Box>
+
+                    {loadingProducts ? (
+                      <Spinner />
+                    ) : (
+                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                        <Card variant="outline" borderColor="blue.300">
+                          <CardBody>
+                            <VStack spacing={3} align="stretch">
+                              <HStack>
+                                <Badge colorScheme="blue">Requested</Badge>
+                                <Text fontSize="sm" color="gray.600">
+                                  (Your Item)
+                                </Text>
+                              </HStack>
+                              {requestedProduct ? (
+                                <>
+                                  <Image
+                                    src={getFirstImage(requestedProduct.image_urls)}
+                                    alt={requestedProduct.title}
+                                    w="full"
+                                    h="150px"
+                                    objectFit="cover"
+                                    borderRadius="md"
+                                    fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                  />
+                                  <Text fontWeight="semibold">{requestedProduct.title}</Text>
+                                  <Text fontSize="sm" color="gray.600" noOfLines={2}>
+                                    {requestedProduct.description}
+                                  </Text>
+                                </>
+                              ) : (
+                                <Text color="gray.500">Loading...</Text>
+                              )}
+                            </VStack>
+                          </CardBody>
+                        </Card>
+
+                        <Card variant="outline" borderColor="green.300">
+                          <CardBody>
+                            <VStack spacing={3} align="stretch">
+                              <HStack>
+                                <Badge colorScheme="green">Offered</Badge>
+                                <Text fontSize="sm" color="gray.600">
+                                  ({tradingPartner}'s Item{offeredProducts.length > 1 ? 's' : ''})
+                                </Text>
+                              </HStack>
+                              {offeredProducts.length > 0 ? (
+                                <SimpleGrid columns={offeredProducts.length > 1 ? 2 : 1} spacing={2}>
+                                  {offeredProducts.map((product) => (
+                                    <Box key={`offered-${product.id}`}>
+                                      <Image
+                                        src={getFirstImage(product.image_urls)}
+                                        alt={product.title}
+                                        w="full"
+                                        h="150px"
+                                        objectFit="cover"
+                                        borderRadius="md"
+                                        fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                      />
+                                      <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
+                                        {product.title}
+                                      </Text>
+                                    </Box>
+                                  ))}
+                                </SimpleGrid>
+                              ) : (
+                                <Text color="gray.500">Loading...</Text>
+                              )}
+                            </VStack>
+                          </CardBody>
+                        </Card>
+                      </SimpleGrid>
+                    )}
 
                     {/* Delivery Information - Show for delivery trades after payment confirmed */}
                     {trade?.trade_option === 'delivery' && deliveryState.paymentConfirmed && (
@@ -1832,6 +1844,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     )}
                   </VStack>
                 </TabPanel>
+
 
                 {/* Chat Tab */}
                 <TabPanel px={0}>
@@ -2164,39 +2177,42 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       </Box>
 
                       {/* Confirm Button */}
-                      {selectedLocation && (
-                        <Button
-                          colorScheme="green"
-                          size="lg"
-                          onClick={confirmMeetup}
-                          isLoading={confirmingMeetup}
-                          leftIcon={<FaCheckCircle />}
-                          isDisabled={Boolean(
-                            (isUserBuyer && buyerMeetupConfirmed) ||
-                            (isUserSeller && sellerMeetupConfirmed)
-                          )}
-                          w="full"
-                          transition="all 0.2s"
-                          _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                        >
-                          {isUserBuyer && buyerMeetupConfirmed
-                            ? 'You Confirmed ✓'
-                            : isUserSeller && sellerMeetupConfirmed
+                      {
+                        selectedLocation && (
+                          <Button
+                            colorScheme="green"
+                            size="lg"
+                            onClick={confirmMeetup}
+                            isLoading={confirmingMeetup}
+                            leftIcon={<FaCheckCircle />}
+                            isDisabled={Boolean(
+                              (isUserBuyer && buyerMeetupConfirmed) ||
+                              (isUserSeller && sellerMeetupConfirmed)
+                            )}
+                            w="full"
+                            transition="all 0.2s"
+                            _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                          >
+                            {isUserBuyer && buyerMeetupConfirmed
                               ? 'You Confirmed ✓'
-                              : 'Confirm Meetup Location'}
-                        </Button>
-                      )}
-                    </VStack>
+                              : isUserSeller && sellerMeetupConfirmed
+                                ? 'You Confirmed ✓'
+                                : 'Confirm Meetup Location'}
+                          </Button>
+                        )
+                      }
+                    </VStack >
                   )}
-                </TabPanel>
-              </TabPanels>
-            </Tabs>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+                </TabPanel >
+              </TabPanels >
+            </Tabs >
+          </ModalBody >
+        </ModalContent >
+      </Modal >
+
 
       {/* Review Modal - Appears when both parties confirmed meetup */}
-      <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="2xl" isCentered>
+      < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="2xl" isCentered >
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl">
           <ModalHeader>
@@ -2219,7 +2235,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
             />
           </ModalBody>
         </ModalContent>
-      </Modal>
+      </Modal >
     </>
   )
 }

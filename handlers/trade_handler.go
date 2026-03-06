@@ -57,8 +57,18 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	}
 
 	log.Printf("Received trade payload: %+v", payload)
-	if payload.TargetProductID <= 0 || len(payload.OfferedProductIDs) == 0 {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs"})
+	if payload.TargetProductID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid target product ID"})
+	}
+	hasItems := len(payload.OfferedProductIDs) > 0
+	hasCash := payload.OfferedCashAmount != nil && *payload.OfferedCashAmount > 0
+	if !hasItems && !hasCash {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You must offer at least one item or a cash amount"})
+	}
+
+	// Validate delivery address is provided when trade option is delivery
+	if payload.TradeOption == "delivery" && strings.TrimSpace(payload.DeliveryAddress) == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Delivery address is required when choosing delivery option"})
 	}
 
 	// Check if target product is still available
@@ -308,7 +318,8 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 
 	query += `,
           COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
-          ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
+          ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title,
+          p.image_url AS product_image_url, p.image_urls AS product_image_urls
         FROM trades t
         JOIN users ub ON ub.id = t.buyer_id
         JOIN users us ON us.id = t.seller_id
@@ -330,8 +341,9 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		var deliveryType, paymentMethod string
 		var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
 		var proofOfDelivery sql.NullString
+		var pimg, pimgs sql.NullString
 
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle); err == nil {
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
 			// Set delivery state fields
 			tr.DeliveryType = deliveryType
 			tr.PaymentMethod = paymentMethod
@@ -341,6 +353,15 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 			}
 			tr.BuyerConfirmedReceipt = buyerConfirmedReceipt
 			tr.SellerConfirmedDelivery = sellerConfirmedDelivery
+
+			// Prefer image_url; fall back to first of image_urls JSON array
+			if pimg.Valid && pimg.String != "" {
+				tr.ProductImageURL = pimg.String
+			} else if pimgs.Valid && pimgs.String != "" {
+				if first := extractFirstImage(pimgs.String); first != "" {
+					tr.ProductImageURL = first
+				}
+			}
 
 			tr.Items = []models.TradeItem{}
 			trCopy := tr
@@ -362,7 +383,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 
 		itemQuery := fmt.Sprintf(`
             SELECT ti.id, ti.trade_id, ti.product_id, ti.offered_by, ti.created_at,
-                   p.title, p.status, p.image_url
+                   p.title, p.status, p.image_url, p.image_urls
             FROM trade_items ti
             LEFT JOIN products p ON p.id = ti.product_id
             WHERE ti.trade_id IN (%s)
@@ -378,8 +399,9 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 				var it models.TradeItem
 				var offeredBy sql.NullString
 				var title, pstatus, pimg sql.NullString
+				var pimgs sql.NullString
 
-				if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg); err != nil {
+				if err := itemRows.Scan(&it.ID, &it.TradeID, &it.ProductID, &offeredBy, &it.CreatedAt, &title, &pstatus, &pimg, &pimgs); err != nil {
 					log.Printf("batch trade item scan error: %v", err)
 					continue
 				}
@@ -395,8 +417,13 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 				if pstatus.Valid {
 					it.ProductStatus = pstatus.String
 				}
-				if pimg.Valid {
+				// Prefer image_url; fall back to first of image_urls JSON array
+				if pimg.Valid && pimg.String != "" {
 					it.ProductImageURL = pimg.String
+				} else if pimgs.Valid && pimgs.String != "" {
+					if first := extractFirstImage(pimgs.String); first != "" {
+						it.ProductImageURL = first
+					}
 				}
 
 				if tr := tradeMap[it.TradeID]; tr != nil {
@@ -734,13 +761,8 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")
 		log.Printf("User %d attempting to update delivery state for trade %d", userID, tradeID)
 
-		// Check if required delivery state columns exist
-		log.Printf("About to ensure delivery state columns exist...")
-		if err := h.ensureDeliveryStateColumns(); err != nil {
-			log.Printf("Failed to ensure delivery state columns exist: %v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database schema error"})
-		}
-		log.Printf("Delivery state columns check completed")
+		// Delivery state columns are ensured at database init (database.go)
+		log.Printf("Processing delivery state update for trade %d", tradeID)
 
 		// Prepare update query and arguments
 		updateFields := []string{}
@@ -1181,6 +1203,141 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: tr})
 }
 
+// GetUserTradeHistory returns completed trades for a specific user (public endpoint)
+func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
+	targetUserID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid user ID"})
+	}
+
+	query := `
+		SELECT
+			t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status,
+			COALESCE(t.message, '') as message,
+			t.created_at, t.completed_at,
+			ub.name AS buyer_name, us.name AS seller_name,
+			p.title AS product_title,
+			p.image_url AS product_image_url,
+			p.image_urls AS product_image_urls
+		FROM trades t
+		JOIN users ub ON ub.id = t.buyer_id
+		JOIN users us ON us.id = t.seller_id
+		JOIN products p ON p.id = t.target_product_id
+		WHERE (t.buyer_id = ? OR t.seller_id = ?) AND t.status = 'completed'
+		ORDER BY COALESCE(t.completed_at, t.updated_at) DESC
+		LIMIT 50
+	`
+
+	rows, err := h.db.Query(query, targetUserID, targetUserID)
+	if err != nil {
+		log.Printf("❌ GetUserTradeHistory: query error for user %d: %v", targetUserID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch trade history"})
+	}
+	defer rows.Close()
+
+	type PublicTrade struct {
+		ID           int         `json:"id"`
+		BuyerID      int         `json:"buyer_id"`
+		SellerID     int         `json:"seller_id"`
+		ProductID    int         `json:"target_product_id"`
+		Status       string      `json:"status"`
+		Message      string      `json:"message,omitempty"`
+		CreatedAt    time.Time   `json:"created_at"`
+		CompletedAt  *time.Time  `json:"completed_at,omitempty"`
+		BuyerName    string      `json:"buyer_name"`
+		SellerName   string      `json:"seller_name"`
+		ProductTitle string      `json:"product_title"`
+		ProductImage string      `json:"product_image_url,omitempty"`
+		Items        []fiber.Map `json:"items"`
+	}
+
+	var trades []PublicTrade
+	tradeIDs := []int{}
+
+	for rows.Next() {
+		var t PublicTrade
+		var pimg, pimgs sql.NullString
+		var completedAt sql.NullTime
+
+		if err := rows.Scan(
+			&t.ID, &t.BuyerID, &t.SellerID, &t.ProductID, &t.Status, &t.Message,
+			&t.CreatedAt, &completedAt,
+			&t.BuyerName, &t.SellerName, &t.ProductTitle,
+			&pimg, &pimgs,
+		); err != nil {
+			log.Printf("⚠️ GetUserTradeHistory: scan error: %v", err)
+			continue
+		}
+
+		if completedAt.Valid {
+			t.CompletedAt = &completedAt.Time
+		}
+
+		// Resolve product image
+		if pimg.Valid && pimg.String != "" {
+			t.ProductImage = pimg.String
+		} else if pimgs.Valid && pimgs.String != "" {
+			t.ProductImage = extractFirstImage(pimgs.String)
+		}
+
+		t.Items = []fiber.Map{}
+		trades = append(trades, t)
+		tradeIDs = append(tradeIDs, t.ID)
+	}
+
+	// Batch-fetch trade items
+	if len(tradeIDs) > 0 {
+		placeholders := make([]string, len(tradeIDs))
+		itemArgs := make([]interface{}, len(tradeIDs))
+		for i, tid := range tradeIDs {
+			placeholders[i] = "?"
+			itemArgs[i] = tid
+		}
+		itemQuery := `
+			SELECT ti.trade_id, ti.product_id, p.title, p.image_url, p.image_urls
+			FROM trade_items ti
+			JOIN products p ON p.id = ti.product_id
+			WHERE ti.trade_id IN (` + strings.Join(placeholders, ",") + `)
+			ORDER BY ti.trade_id, ti.id
+		`
+		itemRows, err := h.db.Query(itemQuery, itemArgs...)
+		if err == nil {
+			defer itemRows.Close()
+			// Build map of trade_id -> items
+			tradeItemsMap := make(map[int][]fiber.Map)
+			for itemRows.Next() {
+				var tradeID, productID int
+				var title string
+				var iimg, iimgs sql.NullString
+				if err := itemRows.Scan(&tradeID, &productID, &title, &iimg, &iimgs); err == nil {
+					imgURL := ""
+					if iimg.Valid && iimg.String != "" {
+						imgURL = iimg.String
+					} else if iimgs.Valid && iimgs.String != "" {
+						imgURL = extractFirstImage(iimgs.String)
+					}
+					tradeItemsMap[tradeID] = append(tradeItemsMap[tradeID], fiber.Map{
+						"product_id":        productID,
+						"product_title":     title,
+						"product_image_url": imgURL,
+					})
+				}
+			}
+			for i := range trades {
+				if items, ok := tradeItemsMap[trades[i].ID]; ok {
+					trades[i].Items = items
+				}
+			}
+		}
+	}
+
+	if trades == nil {
+		trades = []PublicTrade{}
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: trades})
+}
+
 // GetTradeHistory returns the history of events for a trade
 func (h *TradeHandler) GetTradeHistory(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -1525,43 +1682,6 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 		}
 	}
 
-	return nil
-}
-
-// ensureDeliveryStateColumns ensures that delivery state columns exist in the trades table
-func (h *TradeHandler) ensureDeliveryStateColumns() error {
-	log.Printf("Ensuring delivery state columns exist...")
-
-	columns := []struct {
-		name       string
-		definition string
-	}{
-		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
-		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
-		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
-		{"proof_of_delivery", "LONGTEXT NULL"},
-		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
-		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
-	}
-
-	for _, col := range columns {
-		query := fmt.Sprintf("ALTER TABLE trades ADD COLUMN %s %s", col.name, col.definition)
-		if _, err := h.db.Exec(query); err != nil {
-			// Check if it's a "duplicate column" error - this is OK, column already exists
-			if strings.Contains(strings.ToLower(err.Error()), "duplicate column name") ||
-				strings.Contains(strings.ToLower(err.Error()), "column already exists") ||
-				strings.Contains(strings.ToLower(err.Error()), "1060") { // MySQL error code for duplicate column
-				log.Printf("Column %s already exists, skipping", col.name)
-				continue
-			}
-			log.Printf("Failed to add delivery state column %s: %v", col.name, err)
-			return fmt.Errorf("failed to add column %s: %w", col.name, err)
-		} else {
-			log.Printf("Successfully added delivery state column: %s", col.name)
-		}
-	}
-
-	log.Printf("All delivery state columns ensured")
 	return nil
 }
 
