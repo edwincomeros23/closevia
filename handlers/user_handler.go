@@ -450,9 +450,6 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		})
 	}
 
-	// Ensure is_premium column exists (safe migration)
-	h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE")
-
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(

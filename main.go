@@ -249,6 +249,8 @@ func main() {
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id/comments", commentHandler.GetComments)
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
+	// Voting endpoint (must be before generic :id route)
+	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)

@@ -453,7 +453,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
-			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
+			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
+			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
 		` + whereClause + `
@@ -501,7 +502,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount)
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
