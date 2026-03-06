@@ -30,7 +30,7 @@ export const addCacheBuster = (url: string | null | undefined): string => {
 export const getImageUrl = (imagePath: string | null | undefined, cacheBust: boolean = false, optimize: boolean = false): string => {
   if (!imagePath) {
     // Use a local static fallback to avoid external network failures
-    return '/barter.jpg'
+    return '/placeholder.svg'
   }
   
   // If it's already a full URL, optionally optimize if Cloudinary
@@ -49,7 +49,7 @@ export const getImageUrl = (imagePath: string | null | undefined, cacheBust: boo
 export const getFirstImage = (imageUrls: string[] | null | undefined): string => {
   if (!imageUrls || imageUrls.length === 0) {
     // Use a local static fallback to avoid external network failures
-    return '/barter.jpg'
+    return '/placeholder.svg'
   }
   
   return getImageUrl(imageUrls[0])
