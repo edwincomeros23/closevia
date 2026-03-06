@@ -193,6 +193,7 @@ func main() {
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
+	paymentHandler := handlers.NewPaymentHandler(database.DB)
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -281,6 +282,11 @@ func main() {
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 
+	// Payment routes
+	payments := api.Group("/payments")
+	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
+	payments.Post("/webhook/xendit", paymentHandler.XenditWebhook) // Public webhook endpoint
+
 	// Notifications routes
 	notifs := api.Group("/notifications")
 	notifs.Get("/", middleware.AuthMiddleware(), notificationHandler.GetNotifications)
@@ -297,6 +303,8 @@ func main() {
 	admin.Get("/stats-by-date", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetStatsByDate)
 	// Admin user management
 	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
+	admin.Put("/users/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.SuspendUser)
+	admin.Put("/users/:id/unsuspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.UnsuspendUser)
 	admin.Delete("/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.DeleteUser)
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)

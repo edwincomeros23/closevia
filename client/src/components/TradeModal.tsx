@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaTruck, FaCheckCircle } from 'react-icons/fa'
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner } from '@chakra-ui/react'
+import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaLocationArrow } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { api } from '../services/api'
@@ -27,6 +27,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
   const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
+  // Delivery location state
+  const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [manualAddress, setManualAddress] = useState('')
+  const [detectingLocation, setDetectingLocation] = useState(false)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const selectedBg = useColorModeValue('brand.50', 'brand.900')
@@ -40,7 +44,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       setTargetProduct(null)
       return
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const res = await api.get(`/api/products/${targetProductId}`)
         const product = res.data?.data?.product || res.data?.data
@@ -58,12 +62,15 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setCashAmount('')
     setTradeOption(null)
     setHasPendingOfferOnTarget(false)
+    setDetectedCoords(null)
+    setManualAddress('')
+    setDetectingLocation(false)
     // Auto-set delivery option if user has location
     if (user?.latitude && user?.longitude) {
       setTradeOption('delivery')
     }
     if (user && targetProductId) {
-      ;(async () => {
+      ; (async () => {
         try {
           // Fetch user's pending trades to check for existing offer on this product
           setLoadingPendingCheck(true)
@@ -71,7 +78,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           const trades = Array.isArray(pendingRes.data?.data) ? pendingRes.data.data : []
           const hasPending = trades.some((trade: any) => trade.target_product_id === targetProductId)
           setHasPendingOfferOnTarget(hasPending)
-          
+
           // Fetch user products
           const res = await api.get(`/api/products/user/${user.id}?page=1&limit=50`)
           const data = res.data?.data
@@ -100,6 +107,43 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setSelectedOfferIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
+  // Resolved delivery address for payload submission
+  const resolvedDeliveryAddress = (): string | undefined => {
+    if (user?.latitude && user?.longitude) return `${user.latitude}, ${user.longitude}`
+    if (detectedCoords) return `${detectedCoords.lat.toFixed(6)}, ${detectedCoords.lng.toFixed(6)}`
+    if (manualAddress.trim()) return manualAddress.trim()
+    return undefined
+  }
+
+  const hasDeliveryLocation = !!(
+    (user?.latitude && user?.longitude) || detectedCoords || manualAddress.trim()
+  )
+
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      toast({ title: 'Geolocation not supported', description: 'Your browser does not support location detection.', status: 'error' })
+      return
+    }
+    setDetectingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setDetectedCoords({ lat: position.coords.latitude, lng: position.coords.longitude })
+        setDetectingLocation(false)
+        toast({ title: '📍 Location detected!', status: 'success', duration: 2000 })
+      },
+      (error) => {
+        setDetectingLocation(false)
+        const messages: Record<number, string> = {
+          1: 'Location permission denied. Please enter your address manually.',
+          2: 'Unable to determine your position. Please enter your address manually.',
+          3: 'Location request timed out. Please enter your address manually.',
+        }
+        toast({ title: 'Location error', description: messages[error.code] || 'Could not detect location.', status: 'warning', duration: 4000 })
+      },
+      { timeout: 10000 }
+    )
+  }
+
   const submitTrade = async () => {
     if (!targetProductId || selectedOfferIds.length === 0) {
       toast({ title: 'Select items', description: 'Please select at least one of your items to offer.', status: 'warning' })
@@ -109,33 +153,32 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       toast({ title: 'Select trade option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
       return
     }
-    
+    if (tradeOption === 'delivery' && !hasDeliveryLocation) {
+      toast({ title: 'Delivery location required', description: 'Please detect your location or enter an address to use delivery.', status: 'warning' })
+      return
+    }
+
     // Layer 2 validation: Check for pending offer before submission
     if (hasPendingOfferOnTarget) {
-      toast({ 
-        title: 'Pending Offer Already Exists', 
-        description: 'You already have a pending offer on this product. Please wait for the seller to respond to your existing offer before sending another one.', 
+      toast({
+        title: 'Pending Offer Already Exists',
+        description: 'You already have a pending offer on this product. Please wait for the seller to respond to your existing offer before sending another one.',
         status: 'warning',
         duration: 4000,
-        isClosable: true 
+        isClosable: true
       })
       return
     }
-    
+
     try {
       setSubmittingTrade(true)
-      // Use user's coordinates for delivery if available
-      const deliveryAddress = user?.latitude && user?.longitude 
-        ? `${user.latitude}, ${user.longitude}`
-        : undefined
-      
       const payload: TradeCreate = {
         target_product_id: targetProductId,
         offered_product_ids: selectedOfferIds,
         message: tradeMessage,
         offered_cash_amount: cashAmount ? Number(cashAmount) : undefined,
         trade_option: tradeOption,
-        delivery_address: tradeOption === 'delivery' ? deliveryAddress : undefined,
+        delivery_address: tradeOption === 'delivery' ? resolvedDeliveryAddress() : undefined,
       }
       console.log('Submitting trade payload:', payload)
       await api.post('/api/trades', payload)
@@ -144,6 +187,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       setTradeMessage('')
       setCashAmount('')
       setTradeOption(null)
+      setDetectedCoords(null)
+      setManualAddress('')
       setShowConfirmModal(false)
       onClose()
     } catch (e: any) {
@@ -322,39 +367,45 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                     <FormControl>
                       <FormLabel fontSize="sm">Delivery Location</FormLabel>
                       {user?.latitude && user?.longitude ? (
-                        <Box
-                          p={3}
-                          bg="blue.50"
-                          borderWidth="1px"
-                          borderColor="blue.200"
-                          rounded="md"
-                          borderLeftWidth="4px"
-                          borderLeftColor="blue.500"
-                        >
-                          <Text fontSize="sm" color="blue.900" fontWeight="medium">
-                            📍 {user.latitude.toFixed(4)}, {user.longitude.toFixed(4)}
-                          </Text>
-                          <Text fontSize="xs" color="blue.700" mt={1}>
-                            This is your predefined delivery location from your profile
-                          </Text>
+                        <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
+                          <Text fontSize="sm" color="blue.900" fontWeight="medium">📍 {user.latitude.toFixed(4)}, {user.longitude.toFixed(4)}</Text>
+                          <Text fontSize="xs" color="blue.700" mt={1}>Your predefined delivery location from your profile</Text>
+                        </Box>
+                      ) : detectedCoords ? (
+                        <Box p={3} bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" borderLeftWidth="4px" borderLeftColor="green.500">
+                          <HStack justify="space-between">
+                            <Text fontSize="sm" color="green.900" fontWeight="medium">📍 {detectedCoords.lat.toFixed(4)}, {detectedCoords.lng.toFixed(4)}</Text>
+                            <Button size="xs" variant="ghost" colorScheme="red" onClick={() => setDetectedCoords(null)}>Clear</Button>
+                          </HStack>
+                          <Text fontSize="xs" color="green.700" mt={1}>Location detected from your device</Text>
                         </Box>
                       ) : (
-                        <Box
-                          p={3}
-                          bg="yellow.50"
-                          borderWidth="1px"
-                          borderColor="yellow.200"
-                          rounded="md"
-                          borderLeftWidth="4px"
-                          borderLeftColor="yellow.500"
-                        >
-                          <Text fontSize="sm" color="yellow.900" fontWeight="medium">
-                            ⚠️ Location not set
-                          </Text>
-                          <Text fontSize="xs" color="yellow.700" mt={1}>
-                            Please set your location in your profile to use delivery option
-                          </Text>
-                        </Box>
+                        <VStack spacing={3} align="stretch">
+                          <Box p={3} bg="yellow.50" borderWidth="1px" borderColor="yellow.200" rounded="md" borderLeftWidth="4px" borderLeftColor="yellow.500">
+                            <Text fontSize="sm" color="yellow.900" fontWeight="medium">⚠️ Location not set</Text>
+                            <Text fontSize="xs" color="yellow.700" mt={1}>Detect your location or enter an address below</Text>
+                          </Box>
+                          <Button
+                            leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
+                            size="sm"
+                            colorScheme="brand"
+                            variant="outline"
+                            onClick={handleDetectLocation}
+                            isLoading={detectingLocation}
+                            loadingText="Detecting..."
+                          >
+                            Detect My Location
+                          </Button>
+                          <Text fontSize="xs" color="gray.500" textAlign="center">— or enter address manually —</Text>
+                          <Textarea
+                            placeholder="e.g., Barangay Maasin, Zamboanga City"
+                            value={manualAddress}
+                            onChange={(e) => setManualAddress(e.target.value)}
+                            size="sm"
+                            rows={2}
+                            resize="none"
+                          />
+                        </VStack>
                       )}
                     </FormControl>
                   </Box>
@@ -365,11 +416,11 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
               <HStack justify="flex-end">
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                <Button 
-                  colorScheme="brand" 
-                  isLoading={submittingTrade} 
-                  onClick={() => setShowConfirmModal(true)} 
-                  isDisabled={selectedOfferIds.length === 0 || !tradeOption}
+                <Button
+                  colorScheme="brand"
+                  isLoading={submittingTrade}
+                  onClick={() => setShowConfirmModal(true)}
+                  isDisabled={selectedOfferIds.length === 0 || !tradeOption || (tradeOption === 'delivery' && !hasDeliveryLocation)}
                 >
                   Proceed
                 </Button>
@@ -458,10 +509,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                 <Box mt={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" p={3}>
                   <Text fontSize="sm" fontWeight="semibold" mb={2}>Trade Option</Text>
                   <HStack spacing={2}>
-                    <Icon 
-                      as={tradeOption === 'meetup' ? FaMapMarkerAlt : FaTruck} 
-                      color="blue.600" 
-                      boxSize={4} 
+                    <Icon
+                      as={tradeOption === 'meetup' ? FaMapMarkerAlt : FaTruck}
+                      color="blue.600"
+                      boxSize={4}
                     />
                     <Text fontSize="sm" color="blue.700" fontWeight="medium">
                       {tradeOption === 'meetup' ? 'Meetup' : 'Delivery'}
@@ -469,7 +520,15 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                   </HStack>
                   {tradeOption === 'delivery' && (
                     <Text fontSize="xs" color="blue.600" mt={2}>
-                      📍 Location: {user?.latitude && user?.longitude ? `${user.latitude.toFixed(4)}, ${user.longitude.toFixed(4)}` : 'Location not set'}
+                      📍 Location: {
+                        user?.latitude && user?.longitude
+                          ? `${user.latitude.toFixed(4)}, ${user.longitude.toFixed(4)}`
+                          : detectedCoords
+                            ? `Detected: ${detectedCoords.lat.toFixed(4)}, ${detectedCoords.lng.toFixed(4)}`
+                            : manualAddress.trim()
+                              ? manualAddress.trim()
+                              : 'Location not set'
+                      }
                     </Text>
                   )}
                 </Box>
