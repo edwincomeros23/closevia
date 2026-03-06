@@ -119,11 +119,11 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	})
 
 	// Execute Request
-	resp, _, err := req.Execute()
-	if err != nil {
+	resp, _, execErr := req.Execute()
+	if execErr != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to generate payment link: " + err.Error(),
+			Error:   "Failed to generate payment link: " + execErr.Error(),
 		})
 	}
 

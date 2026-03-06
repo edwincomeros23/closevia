@@ -524,6 +524,7 @@ func ensureUserColumns() {
 		{"school_email_otp_hash", "VARCHAR(255) NULL"},
 		{"school_email_otp_expires", "TIMESTAMP NULL"},
 		{"school_id_document_type", "VARCHAR(20) NULL"},
+		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 	}
 
 	for _, col := range columns {
