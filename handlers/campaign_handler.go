@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/xashathebest/clovia/database"
+	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
 )
 
@@ -210,14 +211,13 @@ func (h *CampaignHandler) GetActiveCampaigns(c *fiber.Ctx) error {
 	
 	now := time.Now()
 
-	claims := c.Locals("user")
 	targetConditions := []string{"'all'"}
 	
-	if claims != nil {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if ok {
 		// User is logged in
-		userClaims := claims.(*models.JWTClaims)
 		var verified bool
-		err := database.DB.QueryRow("SELECT verified FROM users WHERE id = ?", userClaims.UserID).Scan(&verified)
+		err := database.DB.QueryRow("SELECT verified FROM users WHERE id = ?", userID).Scan(&verified)
 		if err == nil {
 			if verified {
 				targetConditions = append(targetConditions, "'verified'")

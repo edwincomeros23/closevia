@@ -13,6 +13,7 @@ import {
   VStack,
   useDisclosure,
   Box,
+  Heading,
 } from '@chakra-ui/react';
 import { api } from '../services/api';
 import { Campaign } from '../pages/AdminDashboard';
@@ -21,7 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 const GlobalPopup: React.FC = () => {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
-  const { user } = useAuth(); // Needed to determine if user is logged in, verified, etc if needed on frontend, though backend filters it.
+  const { user } = useAuth(); // Needed to re-trigger if auth state changes
 
   useEffect(() => {
     const fetchActiveCampaignParams = async () => {
@@ -59,13 +60,13 @@ const GlobalPopup: React.FC = () => {
       }
     };
 
-    // Delay popup slightly for better UX
+    // Delay popup slightly for better UX (allows page to load first)
     const timer = setTimeout(() => {
       fetchActiveCampaignParams();
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [onOpen, user]); // Re-evaluate if user changes (log in/out)
+  }, [onOpen, user]);
 
   const handleClose = () => {
     if (activeCampaign) {
@@ -97,60 +98,120 @@ const GlobalPopup: React.FC = () => {
   if (!activeCampaign) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} isCentered size="md" motionPreset="slideInBottom">
-      <ModalOverlay backdropFilter="blur(2px)" />
-      <ModalContent overflow="hidden" borderRadius="xl" mx={4}>
-        {activeCampaign.image_url && (
-          <Box pos="relative">
+    <Modal isOpen={isOpen} onClose={handleClose} isCentered size="md" motionPreset="scale">
+      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(5px)" />
+      <ModalContent 
+        overflow="hidden" 
+        borderRadius="2xl" 
+        mx={4} 
+        boxShadow="2xl"
+        bg="white"
+      >
+        {activeCampaign.image_url ? (
+          <Box pos="relative" w="full" h="240px">
             <Image
               src={activeCampaign.image_url}
               alt={activeCampaign.title}
               width="100%"
-              height="200px"
+              height="100%"
               objectFit="cover"
+            />
+            {/* Gradient Dark Overlay for text readability if needed & to blend image into the card */}
+            <Box
+              pos="absolute"
+              bottom={0}
+              w="full"
+              h="50%"
+              bgGradient="linear(to-t, white, transparent)"
             />
             <ModalCloseButton
               color="white"
-              bg="blackAlpha.600"
-              _hover={{ bg: 'blackAlpha.800' }}
+              bg="blackAlpha.500"
+              backdropFilter="blur(4px)"
+              _hover={{ bg: 'blackAlpha.700', transform: 'scale(1.1)' }}
+              _active={{ bg: 'blackAlpha.800' }}
               borderRadius="full"
-              top={2}
-              right={2}
+              size="sm"
+              top={3}
+              right={3}
+              transition="all 0.2s"
             />
           </Box>
+        ) : (
+          <ModalCloseButton 
+             color="gray.400" 
+             _hover={{ color: "gray.600", bg: "gray.100" }} 
+             borderRadius="full" 
+          />
         )}
-        {!activeCampaign.image_url && <ModalCloseButton />}
         
         <ModalHeader
-          pt={activeCampaign.image_url ? 4 : 6}
-          pb={2}
+          pt={activeCampaign.image_url ? 2 : 8}
+          pb={1}
           textAlign="center"
-          fontSize="xl"
-          fontWeight="bold"
         >
-          {activeCampaign.title}
+          <Heading 
+            size="lg" 
+            fontWeight="extrabold" 
+            bgGradient="linear(to-r, blue.500, brand.500, purple.500)"
+            bgClip="text"
+            letterSpacing="tight"
+          >
+            {activeCampaign.title}
+          </Heading>
         </ModalHeader>
         
-        <ModalBody pb={6} px={6}>
-          <VStack spacing={4} align="stretch" textAlign="center">
+        <ModalBody pb={6} px={8}>
+          <VStack spacing={5} align="stretch" textAlign="center">
             {activeCampaign.description && (
-              <Text color="gray.600" fontSize="md">
+              <Text color="gray.500" fontSize="md" lineHeight="tall">
                 {activeCampaign.description}
               </Text>
             )}
           </VStack>
         </ModalBody>
 
-        <ModalFooter bg="gray.50" borderTop="1px" borderColor="gray.100" justifyContent="center">
+        <ModalFooter 
+          bg="white" 
+          pb={8} 
+          px={8}
+          pt={2} 
+          flexDirection="column" 
+          gap={3}
+        >
           {activeCampaign.button_text ? (
-            <Button colorScheme="blue" width="full" onClick={handleAction}>
+            <Button 
+              w="full" 
+              size="lg"
+              rounded="full"
+              bgGradient="linear(to-r, blue.400, purple.500)"
+              color="white"
+              fontWeight="bold"
+              boxShadow="lg"
+              _hover={{ 
+                bgGradient: "linear(to-r, blue.500, purple.600)", 
+                transform: "translateY(-2px)", 
+                boxShadow: "xl" 
+              }}
+              _active={{
+                transform: "translateY(0)",
+              }}
+              transition="all 0.2s"
+              onClick={handleAction}
+            >
               {activeCampaign.button_text}
             </Button>
-          ) : (
-            <Button variant="outline" width="full" onClick={handleClose}>
-              Dismiss
-            </Button>
-          )}
+          ) : null}
+          <Button 
+            variant="ghost" 
+            size="md"
+            rounded="full"
+            color="gray.400"
+            _hover={{ color: "gray.600", bg: "gray.50" }}
+            onClick={handleClose}
+          >
+            {activeCampaign.button_text ? "No thanks" : "Dismiss"}
+          </Button>
         </ModalFooter>
       </ModalContent>
     </Modal>

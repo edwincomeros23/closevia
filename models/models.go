@@ -306,7 +306,7 @@ type TradeItem struct {
 // TradeCreate represents payload to create a trade
 type TradeCreate struct {
 	TargetProductID   int      `json:"target_product_id" validate:"required"`
-	OfferedProductIDs []int    `json:"offered_product_ids" validate:"required,min=1,dive,gt=0"`
+	OfferedProductIDs []int    `json:"offered_product_ids" validate:"omitempty,dive,gt=0"`
 	Message           string   `json:"message"`
 	OfferedCashAmount *float64 `json:"offered_cash_amount,omitempty"`
 	TradeOption       string   `json:"trade_option" validate:"required,oneof=meetup delivery"`
