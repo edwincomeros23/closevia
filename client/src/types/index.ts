@@ -109,14 +109,14 @@ export interface OrderUpdate {
 export interface SearchFilters {
   keyword?: string
   category?: string
-  min_price?: number
-  max_price?: number
   premium?: boolean
-  status?: string
+  condition?: string // 'new' | 'like_new' | 'good' | 'fair' | 'poor'
+  verified_seller_only?: boolean
+  has_active_offers?: boolean // Filter for items with active bidding/offers
+  sort_by?: string // 'most_relevant' | 'newest' | 'most_offers' | 'trending'
   seller_id?: number
   barter_only?: boolean
   allow_buying?: boolean
-  location?: string
   page?: number
   limit?: number
 }

@@ -625,26 +625,6 @@ const AddProduct: React.FC = () => {
               style={{ display: 'none' }}
             />
 
-            {/* Image Conversion Messages */}
-            {imageConversionMessages.length > 0 && (
-              <VStack spacing={2} align="stretch" mb={4}>
-                {imageConversionMessages.map((msg, idx) => (
-                  <Alert
-                    key={idx}
-                    status={msg.type === 'error' ? 'error' : msg.type === 'warning' ? 'warning' : 'info'}
-                    borderRadius="lg"
-                    fontSize="sm"
-                  >
-                    <AlertIcon />
-                    <VStack align="start" spacing={0}>
-                      <Text fontWeight="600">{msg.file}</Text>
-                      <Text fontSize="xs">{msg.message}</Text>
-                    </VStack>
-                  </Alert>
-                ))}
-              </VStack>
-            )}
-
             {/* Image Count Status */}
             <Box>
               <HStack justify="space-between" mb={3}>

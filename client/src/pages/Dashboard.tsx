@@ -48,6 +48,7 @@ import {
   Fade,
   Tooltip,
   useColorModeValue,
+  useBreakpointValue,
   Checkbox,
 } from '@chakra-ui/react'
 import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon, SearchIcon, ViewIcon, StarIcon } from '@chakra-ui/icons'
@@ -133,7 +134,7 @@ const Dashboard: React.FC = () => {
   const [productFilter, setProductFilter] = useState<'all' | 'available' | 'sold' | 'traded' | 'locked'>('all')
   const [productSearch, setProductSearch] = useState('')
   const [productSort, setProductSort] = useState<'newest' | 'oldest'>('newest')
-  const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('grid')
+  const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('list')
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set())
 
   // Unified search - searches across all content
@@ -187,13 +188,29 @@ const Dashboard: React.FC = () => {
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
 
   // View mode states for different tabs
-  const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('grid')
+  const defaultOffersViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
+  const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
   const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
 
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+
+  // Set offers view mode based on screen size
+  useEffect(() => {
+    if (defaultOffersViewMode) {
+      setOffersViewMode(defaultOffersViewMode)
+    }
+  }, [defaultOffersViewMode])
+
+  // Set products view mode based on screen size
+  const defaultProductViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
+  useEffect(() => {
+    if (defaultProductViewMode) {
+      setProductViewMode(defaultProductViewMode)
+    }
+  }, [defaultProductViewMode])
 
   useEffect(() => {
     if (user && user?.id) {
@@ -929,23 +946,41 @@ const Dashboard: React.FC = () => {
   const handleBatchDelete = async () => {
     const ids = Array.from(selectedProductIds)
     if (ids.length === 0) return
+    
+    // Filter out locked products
+    const lockedIds = ids.filter(id => {
+      const product = filteredProducts.find(p => p.id === id)
+      return product?.status === 'locked'
+    })
+    const deletableIds = ids.filter(id => {
+      const product = filteredProducts.find(p => p.id === id)
+      return product?.status !== 'locked'
+    })
+    
+    if (deletableIds.length === 0) {
+      toast({ title: 'Cannot delete', description: 'Selected products are locked. Locked products cannot be deleted.', status: 'warning', duration: 3000, isClosable: true })
+      return
+    }
+    
+    const warningMsg = lockedIds.length > 0 ? ` (${lockedIds.length} locked item(s) skipped)` : ''
+    
     showPopup({
       type: 'warning',
       title: 'Delete Selected Products',
-      message: `Are you sure you want to delete ${ids.length} product(s)? This cannot be undone.`,
-      confirmText: 'Delete All',
+      message: `Are you sure you want to delete ${deletableIds.length} product(s)?${warningMsg} This cannot be undone.`,
+      confirmText: 'Delete',
       cancelText: 'Cancel',
       onConfirm: async () => {
         try {
           setDeleting(true)
-          for (const id of ids) {
+          for (const id of deletableIds) {
             await deleteProduct(id)
           }
           invalidateProducts()
           invalidateOffers()
           setSelectedProductIds(new Set())
           setPopupOpen(false)
-          toast({ title: 'Deleted', description: `${ids.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
+          toast({ title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
         } catch (e: any) {
           toast({ title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
         } finally {
@@ -1270,18 +1305,25 @@ const Dashboard: React.FC = () => {
                 >
                   Edit
                 </Button>
-                <Button
-                  leftIcon={<DeleteIcon />}
-                  variant="outline"
-                  colorScheme="red"
-                  size="sm"
-                  flex={1}
-                  onClick={() => handleDeleteProductClick(product)}
-                  _hover={{ transform: 'scale(1.02)' }}
-                  transition="all 0.2s"
+                <Tooltip
+                  label={product.status === 'locked' ? 'Cannot delete locked products' : ''}
+                  isDisabled={product.status !== 'locked'}
+                  hasArrow
                 >
-                  Delete
-                </Button>
+                  <Button
+                    leftIcon={<DeleteIcon />}
+                    variant="outline"
+                    colorScheme="red"
+                    size="sm"
+                    flex={1}
+                    onClick={() => handleDeleteProductClick(product)}
+                    isDisabled={product.status === 'locked'}
+                    _hover={{ transform: 'scale(1.02)' }}
+                    transition="all 0.2s"
+                  >
+                    Delete
+                  </Button>
+                </Tooltip>
               </HStack>
             </CardFooter>
           )}
@@ -1379,14 +1421,21 @@ const Dashboard: React.FC = () => {
             >
               Edit
             </Button>
-            <IconButton
-              aria-label="Delete"
-              icon={<DeleteIcon />}
-              variant="outline"
-              colorScheme="red"
-              size="sm"
-              onClick={onDelete}
-            />
+            <Tooltip
+              label={product.status === 'locked' ? 'Cannot delete locked products' : ''}
+              isDisabled={product.status !== 'locked'}
+              hasArrow
+            >
+              <IconButton
+                aria-label="Delete"
+                icon={<DeleteIcon />}
+                variant="outline"
+                colorScheme="red"
+                size="sm"
+                isDisabled={product.status === 'locked'}
+                onClick={onDelete}
+              />
+            </Tooltip>
           </HStack>
         )}
       </Flex>
@@ -2002,7 +2051,7 @@ const Dashboard: React.FC = () => {
               {/* Left: Welcome Message */}
               <Box minW="fit-content" display={{ base: 'none', md: 'block' }}>
                 <Heading size="md" color="brand.500" mb={1}>
-                  Welcome, {user?.name}!
+                  Welcome, <Box as="span" textTransform="capitalize">{user?.name}</Box>!
                 </Heading>
                 <Text color="gray.600" fontSize="sm">
                   Manage your products, trades, and offers

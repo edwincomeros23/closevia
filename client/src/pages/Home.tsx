@@ -99,12 +99,12 @@ const Home: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<SearchFilters>({
     keyword: '',
-    min_price: undefined,
-    max_price: undefined,
     premium: undefined,
-    status: 'available', // default to available so home shows items
+    condition: undefined,
+    verified_seller_only: undefined,
+    has_active_offers: undefined,
+    sort_by: 'most_relevant',
     barter_only: undefined, // Show all by default
-    location: '',
     page: 1,
     limit: 20, // Load more products
   })
@@ -351,13 +351,12 @@ const Home: React.FC = () => {
     setSelectedCategory('All')
     setFilters({
       keyword: '',
-      category: '',
-      min_price: undefined,
-      max_price: undefined,
       premium: undefined,
-      status: 'available',
+      condition: undefined,
+      verified_seller_only: undefined,
+      has_active_offers: undefined,
+      sort_by: 'most_relevant',
       barter_only: undefined,
-      location: '',
       page: 1,
       limit: 20,
     })
@@ -814,7 +813,7 @@ const Home: React.FC = () => {
                     <VStack align="stretch" spacing={3}>
                       {/* User Info */}
                       <Box>
-                        <Text fontWeight="semibold" fontSize="sm" color="gray.800">
+                        <Text fontWeight="semibold" fontSize="sm" color="gray.800" textTransform="capitalize">
                           {user.name || 'User'}
                         </Text>
                         <Text fontSize="xs" color="gray.500">
@@ -901,34 +900,37 @@ const Home: React.FC = () => {
             >
               <Grid templateColumns="repeat(auto-fit, minmax(150px, 1fr))" gap={3}>
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Price Range</FormLabel>
-                  <HStack>
-                    <Input
-                      placeholder="Min"
-                      type="number"
-                      value={filters.min_price || ''}
-                      onChange={(e) => handleFilterChange('min_price', e.target.value ? Number(e.target.value) : undefined)}
-                      size="sm"
-                    />
-                    <Text fontSize="sm" color="gray.500">-</Text>
-                    <Input
-                      placeholder="Max"
-                      type="number"
-                      value={filters.max_price || ''}
-                      onChange={(e) => handleFilterChange('max_price', e.target.value ? Number(e.target.value) : undefined)}
-                      size="sm"
-                    />
-                  </HStack>
+                  <FormLabel fontSize="sm" color="gray.600">Sort By</FormLabel>
+                  <Select
+                    aria-label="Sort by"
+                    title="Sort by"
+                    value={filters.sort_by || 'most_relevant'}
+                    onChange={(e) => handleFilterChange('sort_by', e.target.value)}
+                    size="sm"
+                  >
+                    <option value="most_relevant">Most Relevant</option>
+                    <option value="newest">Newest First</option>
+                    <option value="most_offers">Most Offers</option>
+                    <option value="trending">Trending</option>
+                  </Select>
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Location</FormLabel>
-                  <Input
-                    placeholder="Enter location"
-                    value={filters.location || ''}
-                    onChange={(e) => handleFilterChange('location', e.target.value)}
+                  <FormLabel fontSize="sm" color="gray.600">Condition</FormLabel>
+                  <Select
+                    aria-label="Condition"
+                    title="Condition"
+                    value={filters.condition || ''}
+                    onChange={(e) => handleFilterChange('condition', e.target.value || undefined)}
                     size="sm"
-                  />
+                  >
+                    <option value="">All Conditions</option>
+                    <option value="new">New</option>
+                    <option value="like_new">Like New</option>
+                    <option value="good">Good</option>
+                    <option value="fair">Fair</option>
+                    <option value="poor">Poor</option>
+                  </Select>
                 </FormControl>
 
                 <FormControl>
@@ -947,32 +949,31 @@ const Home: React.FC = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Trade Type</FormLabel>
+                  <FormLabel fontSize="sm" color="gray.600">Bidding & Offers</FormLabel>
                   <Select
-                    aria-label="Trade type"
-                    title="Trade type"
-                    value={filters.barter_only === undefined ? '' : filters.barter_only.toString()}
-                    onChange={(e) => handleFilterChange('barter_only', e.target.value === '' ? undefined : e.target.value === 'true')}
+                    aria-label="Bidding & offers"
+                    title="Bidding & offers"
+                    value={filters.has_active_offers === undefined ? '' : filters.has_active_offers.toString()}
+                    onChange={(e) => handleFilterChange('has_active_offers', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
                   >
-                    <option value="">All options</option>
-                    <option value="true">Barter only</option>
-                    <option value="false">Buy available</option>
+                    <option value="">All items</option>
+                    <option value="true">With active offers</option>
+                    <option value="false">No offers yet</option>
                   </Select>
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Status</FormLabel>
+                  <FormLabel fontSize="sm" color="gray.600">Seller</FormLabel>
                   <Select
-                    aria-label="Listing status"
-                    title="Listing status"
-                    value={filters.status || ''}
-                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                    aria-label="Seller verification"
+                    title="Seller verification"
+                    value={filters.verified_seller_only === undefined ? '' : filters.verified_seller_only.toString()}
+                    onChange={(e) => handleFilterChange('verified_seller_only', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
                   >
-                    <option value="available">Available</option>
-                    <option value="sold">Sold</option>
-                    <option value="traded">Traded</option>
+                    <option value="">All sellers</option>
+                    <option value="true">Verified sellers only</option>
                   </Select>
                 </FormControl>
 
@@ -984,7 +985,7 @@ const Home: React.FC = () => {
                     onClick={clearFilters}
                     w="full"
                   >
-                    Clear Filters
+                    Reset Filters
                   </Button>
                 </FormControl>
               </Grid>
@@ -1277,8 +1278,8 @@ const Home: React.FC = () => {
                   No products found
                 </Heading>
                 <Text color="gray.500" fontSize="lg">
-                  {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
-                    ? "Try adjusting your search criteria or clearing filters to see all products."
+                  {filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
+                    ? "Try adjusting your search criteria or resetting filters to see all products."
                     : "No products are currently available. Check back later!"
                   }
                 </Text>
@@ -1288,8 +1289,8 @@ const Home: React.FC = () => {
                 colorScheme="brand"
                 onClick={clearFilters}
               >
-                {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
-                  ? "Clear All Filters"
+                {filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
+                  ? "Reset All Filters"
                   : "Refresh Page"
                 }
               </Button>

@@ -81,70 +81,129 @@ const Sidebar: React.FC = () => {
       <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
         <DrawerOverlay />
         <DrawerContent display="flex" flexDirection="column" h="100%">
-          <DrawerCloseButton />
-          <DrawerHeader display="flex" alignItems="center" gap={3} justifyContent="space-between">
+          <DrawerCloseButton position="absolute" right={3} top={3} zIndex={10} />
+          
+          {/* Clean Header - Just Logo */}
+          <DrawerHeader borderBottom="2px solid" borderColor={borderColor} py={4}>
             <Box display="flex" alignItems="center" gap={2}>
               <Image
                 src={logo}
                 alt="Clovia"
-                w="35px"
-                h="35px"
+                w="40px"
+                h="40px"
                 objectFit="contain"
                 cursor="pointer"
                 onClick={() => {
                   window.location.href = '/'
                   onClose()
                 }}
+                _hover={{ opacity: 0.8 }}
               />
-              <Box fontWeight="bold">Clovia</Box>
+              <Box fontWeight="bold" fontSize="lg">Clovia</Box>
             </Box>
-            <Image
-              src="/logoimage.png"
-              alt="ECODE"
-              h="28px"
-              objectFit="contain"
-              cursor="pointer"
-              _hover={{ opacity: 0.8 }}
-              onClick={() => {
-                navigate('/company')
-                onClose()
-              }}
-            />
           </DrawerHeader>
 
-          <DrawerBody flex={1} overflowY="auto" pb={user ? 20 : 4}>
-            <VStack spacing={4} align="stretch" mt={4}>
-              <Box p={2}>
+          {/* Main Content Area */}
+          <DrawerBody flex={1} overflowY="auto" pb={user ? 4 : 4} px={0}>
+            <VStack spacing={0} align="stretch">
+              
+              {/* User Profile Card - Only when logged in */}
+              {user && (
+                <Box 
+                  bg={useColorModeValue('brand.50', 'gray.700')}
+                  p={4}
+                  mb={4}
+                  borderRadius="lg"
+                  mx={4}
+                  mt={4}
+                >
+                  <Box display="flex" alignItems="center" gap={3} mb={3}>
+                    <VerifiedAvatar 
+                      size="lg" 
+                      name={user.name || 'User'} 
+                      src={getImageUrl(user.profile_picture)} 
+                      isVerified={user?.verification_status === 'verified' || user?.verified || false} 
+                    />
+                    <Box flex={1}>
+                      <Box fontWeight="bold" fontSize="md" noOfLines={1}>{user.name}</Box>
+                      <Box fontSize="xs" color="gray.500" noOfLines={1}>{user.email}</Box>
+                    </Box>
+                  </Box>
+                  <Button
+                    as={RouterLink}
+                    to={`/users/${user.id}`}
+                    size="sm"
+                    w="full"
+                    colorScheme="brand"
+                    variant="outline"
+                    onClick={onClose}
+                  >
+                    View Profile
+                  </Button>
+                </Box>
+              )}
+
+              {/* ECODE Branding */}
+              <Box 
+                px={4}
+                py={2}
+                mb={3}
+                display="flex"
+                alignItems="center"
+                gap={2}
+                cursor="pointer"
+                onClick={() => {
+                  navigate('/company')
+                  onClose()
+                }}
+                _hover={{ opacity: 0.8 }}
+                justifyContent="flex-start"
+              >
+                <Image
+                  src="/logoimage.png"
+                  alt="ECODE"
+                  h="24px"
+                  objectFit="contain"
+                />
+                <Box fontSize="xs" color="gray.500">Powered by ECODE</Box>
               </Box>
 
-              {mobileNavItems.map((item: any) => {
-                const Icon = item.icon
-                const needsSoftBg = item.label === 'Add Product' || item.label === 'Notifications' || item.label === 'Settings'
-                const profileIcon = item.isProfile && user?.profile_picture
-                  ? <VerifiedAvatar size="xs" name={user.name || 'User'} src={getImageUrl(user.profile_picture)} isVerified={user?.verification_status === 'verified' || user?.verified || false} />
-                  : <Icon />
-                return (
-                  <Button
-                    key={item.path}
-                    as={RouterLink}
-                    to={item.path}
-                    leftIcon={profileIcon}
-                    variant="ghost"
-                    justifyContent="flex-start"
-                    onClick={onClose}
-                    bg={needsSoftBg ? '#FFFFFF' : '#FFFFFF'}
-                    _hover={{ bg: needsSoftBg ? '#FFFFFF' : 'gray.100' }}
-                  >
-                    {item.label}
-                  </Button>
-                )
-              })}
+              {/* Menu Items */}
+              <Divider my={2} />
+              <VStack spacing={1} align="stretch" px={4}>
+                {mobileNavItems.map((item: any) => {
+                  const Icon = item.icon
+                  const isActive = location.pathname === item.path
+                  const profileIcon = item.isProfile && user?.profile_picture
+                    ? <VerifiedAvatar size="xs" name={user.name || 'User'} src={getImageUrl(user.profile_picture)} isVerified={user?.verification_status === 'verified' || user?.verified || false} />
+                    : <Icon size={20} />
+                  
+                  return (
+                    <Button
+                      key={item.path}
+                      as={RouterLink}
+                      to={item.path}
+                      leftIcon={profileIcon}
+                      variant="ghost"
+                      justifyContent="flex-start"
+                      onClick={onClose}
+                      bg={isActive ? 'brand.50' : 'transparent'}
+                      color={isActive ? 'brand.600' : 'inherit'}
+                      fontWeight={isActive ? '600' : '400'}
+                      _hover={{ bg: 'gray.50' }}
+                      w="full"
+                    >
+                      {item.label}
+                    </Button>
+                  )
+                })}
+              </VStack>
             </VStack>
           </DrawerBody>
 
           {/* Fixed Logout Button at Bottom - only when logged in */}
           {user && (
-            <Box p={4} borderTop="1px" borderColor={borderColor} mt="auto">
+            <Box p={4} borderTop="2px solid" borderColor={borderColor}>
               <Button
                 w="full"
                 colorScheme="red"
@@ -155,6 +214,7 @@ const Sidebar: React.FC = () => {
                   await logout()
                   navigate('/login')
                 }}
+                size="md"
               >
                 Logout
               </Button>
