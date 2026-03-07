@@ -347,7 +347,8 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
 			// Set offered cash if valid
 			if offeredCashNull.Valid {
-				tr.OfferedCash = offeredCashNull.Float64
+				val := offeredCashNull.Float64
+				tr.OfferedCash = &val
 			}
 
 			// Set delivery state fields
