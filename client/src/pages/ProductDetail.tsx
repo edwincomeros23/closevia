@@ -69,7 +69,7 @@ import FloatingTab from '../components/FloatingTab'
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import ImageZoomModal from '../components/ImageZoomModal'
 import axios from 'axios';
-import { CloseIcon } from '@chakra-ui/icons'
+import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -105,10 +105,35 @@ const ProductDetail: React.FC = () => {
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false)
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomImageIndex, setZoomImageIndex] = useState(0)
 
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure()
+
+  const openZoom = (index: number) => {
+    if (product && product.image_urls && index < product.image_urls.length) {
+      setZoomImageIndex(index)
+      setZoomImageUrl(getImageUrl(product.image_urls[index]))
+      setIsZoomOpen(true)
+    }
+  }
+
+  const nextZoomImage = () => {
+    if (product && product.image_urls) {
+      const nextIndex = (zoomImageIndex + 1) % product.image_urls.length
+      setZoomImageIndex(nextIndex)
+      setZoomImageUrl(getImageUrl(product.image_urls[nextIndex]))
+    }
+  }
+
+  const prevZoomImage = () => {
+    if (product && product.image_urls) {
+      const prevIndex = (zoomImageIndex - 1 + product.image_urls.length) % product.image_urls.length
+      setZoomImageIndex(prevIndex)
+      setZoomImageUrl(getImageUrl(product.image_urls[prevIndex]))
+    }
+  }
 
   useEffect(() => {
     if (id) {
@@ -742,8 +767,8 @@ const ProductDetail: React.FC = () => {
     }
   }
 
-  const handleImageZoom = (url: string) => {
-    setZoomImageUrl(url)
+  const handleImageZoom = (index: number) => {
+    setZoomImageIndex(index)
     setIsZoomOpen(true)
   }
 
@@ -863,6 +888,11 @@ const ProductDetail: React.FC = () => {
                           h="full"
                           objectFit="contain"
                           fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                          cursor="zoom-in"
+                          onClick={() => {
+                            const index = product.image_urls.findIndex(url => getImageUrl(url) === (selectedImage || getFirstImage(product.image_urls)))
+                            openZoom(index >= 0 ? index : 0)
+                          }}
                         />
                         <HStack position="absolute" top={2} left={2} spacing={1}>
                           {product.premium && (
@@ -934,6 +964,11 @@ const ProductDetail: React.FC = () => {
                         h="full"
                         objectFit="contain"
                         fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                        cursor="zoom-in"
+                        onClick={() => {
+                          const index = product.image_urls.findIndex(url => getImageUrl(url) === (selectedImage || getFirstImage(product.image_urls)))
+                          openZoom(index >= 0 ? index : 0)
+                        }}
                       />
                       <HStack position="absolute" top={3} left={3} spacing={2}>
                         {product.premium && (
@@ -1690,6 +1725,77 @@ const ProductDetail: React.FC = () => {
           </ModalContent>
         </Modal>
 
+        {/* Image Zoom Modal */}
+        <Modal isOpen={isZoomOpen} onClose={() => setIsZoomOpen(false)} size="full" scrollBehavior="inside">
+          <ModalOverlay bg="blackAlpha.900" />
+          <ModalContent bg="transparent" shadow="none" m={0}>
+            <ModalCloseButton color="white" size="lg" zIndex={2} />
+            <ModalBody display="flex" alignItems="center" justifyContent="center" p={0} position="relative">
+              {product && product.image_urls && product.image_urls.length > 0 && (
+                <>
+                  <Box 
+                    maxW="90vw" 
+                    maxH="90vh" 
+                    display="flex" 
+                    alignItems="center" 
+                    justifyContent="center"
+                    position="relative"
+                  >
+                    <Image
+                      src={getImageUrl(product.image_urls[zoomImageIndex])}
+                      alt={`${product.title} - Zoomed View ${zoomImageIndex + 1}`}
+                      maxW="full"
+                      maxH="90vh"
+                      objectFit="contain"
+                    />
+                    
+                    {product.image_urls.length > 1 && (
+                      <>
+                        <IconButton
+                          aria-label="Previous image"
+                          icon={<ChevronLeftIcon boxSize={8} />}
+                          position="absolute"
+                          left={{ base: "-4", md: "-12" }}
+                          colorScheme="whiteAlpha"
+                          color="white"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            prevZoomImage()
+                          }}
+                          _hover={{ bg: "whiteAlpha.200" }}
+                        />
+                        <IconButton
+                          aria-label="Next image"
+                          icon={<ChevronRightIcon boxSize={8} />}
+                          position="absolute"
+                          right={{ base: "-4", md: "-12" }}
+                          colorScheme="whiteAlpha"
+                          color="white"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            nextZoomImage()
+                          }}
+                          _hover={{ bg: "whiteAlpha.200" }}
+                        />
+                        <Text 
+                          position="absolute" 
+                          bottom="-8" 
+                          color="white" 
+                          fontWeight="bold"
+                        >
+                          {zoomImageIndex + 1} / {product.image_urls.length}
+                        </Text>
+                      </>
+                    )}
+                  </Box>
+                </>
+              )}
+            </ModalBody>
+          </ModalContent>
+        </Modal>
+
         {/* Share Modal */}
         <Modal isOpen={isShareOpen} onClose={onShareClose} size="md">
           <ModalOverlay />
@@ -1938,13 +2044,6 @@ const ProductDetail: React.FC = () => {
       </Modal>
 
       <FloatingTab />
-
-      <ImageZoomModal 
-        isOpen={isZoomOpen} 
-        onClose={() => setIsZoomOpen(false)} 
-        imageUrl={zoomImageUrl} 
-        altText={product?.title} 
-      />
     </Box>
   )
 }
