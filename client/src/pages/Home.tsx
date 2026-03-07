@@ -138,8 +138,8 @@ const Home: React.FC = () => {
     setSelectedCategory('All')
     setSearchTerm('')
     // Fetch the default "All" feed every time the Home page mounts
-    console.log('🔍 Fetching initial products with status: available, limit: 20')
-    searchProducts({ status: 'available', limit: 20, page: 1 })
+    console.log('🔍 Fetching initial products with limit: 20')
+    searchProducts({ limit: 20, page: 1 })
     
     // Set flag so returning users bypass landing page
     localStorage.setItem('has_visited', 'true')
