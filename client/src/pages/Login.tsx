@@ -375,6 +375,10 @@ const Login: React.FC = () => {
                         borderWidth="1px"
                         height={{ base: '48px', md: '44px' }}
                         fontSize={{ base: '15px', md: '16px' }}
+                        sx={{
+                          '&::-ms-reveal, &::-ms-clear': { display: 'none' },
+                          '&::-webkit-credentials-auto-fill-button': { display: 'none' },
+                        }}
                         _focus={{
                           borderColor: '#2D876D',
                           boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',

@@ -99,12 +99,12 @@ const Home: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<SearchFilters>({
     keyword: '',
-    min_price: undefined,
-    max_price: undefined,
     premium: undefined,
-    status: 'available', // default to available so home shows items
+    condition: undefined,
+    verified_seller_only: undefined,
+    has_active_offers: undefined,
+    sort_by: 'most_relevant',
     barter_only: undefined, // Show all by default
-    location: '',
     page: 1,
     limit: 20, // Load more products
   })
@@ -138,8 +138,8 @@ const Home: React.FC = () => {
     setSelectedCategory('All')
     setSearchTerm('')
     // Fetch the default "All" feed every time the Home page mounts
-    console.log('🔍 Fetching initial products with status: available, limit: 20')
-    searchProducts({ status: 'available', limit: 20, page: 1 })
+    console.log('🔍 Fetching initial products with limit: 20')
+    searchProducts({ limit: 20, page: 1 })
     
     // Set flag so returning users bypass landing page
     localStorage.setItem('has_visited', 'true')
@@ -318,20 +318,21 @@ const Home: React.FC = () => {
   }
 
   const handleViewOffers = async (productId: number) => {
+    // Open modal immediately, load data in background
+    setSelectedProductForOffers(productId)
+    setOffersForProduct([])
+    setLoadingOffers(true)
+    setOffersModalOpen(true)
     try {
-      setLoadingOffers(true)
-      setSelectedProductForOffers(productId)
       const response = await api.get(`/api/trades`, {
         params: {
-          direction: 'incoming',
-          status: 'pending',
           limit: 100
         }
       })
-      // Filter for this specific product
-      const filteredOffers = (response.data?.data || []).filter((trade: any) => trade.target_product_id === productId)
+      const filteredOffers = (response.data?.data || []).filter(
+        (trade: any) => trade.target_product_id === productId && trade.status !== 'cancelled'
+      )
       setOffersForProduct(filteredOffers)
-      setOffersModalOpen(true)
     } catch (error) {
       toast({
         title: 'Error',
@@ -350,13 +351,12 @@ const Home: React.FC = () => {
     setSelectedCategory('All')
     setFilters({
       keyword: '',
-      category: '',
-      min_price: undefined,
-      max_price: undefined,
       premium: undefined,
-      status: 'available',
+      condition: undefined,
+      verified_seller_only: undefined,
+      has_active_offers: undefined,
+      sort_by: 'most_relevant',
       barter_only: undefined,
-      location: '',
       page: 1,
       limit: 20,
     })
@@ -380,7 +380,11 @@ const Home: React.FC = () => {
         const statusOrder = { 'accepted': 0, 'active': 1, 'pending': 2, 'declined': 3, 'cancelled': 3 }
         const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4
         const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4
-        return aOrder - bOrder
+        if (aOrder !== bOrder) return aOrder - bOrder
+        // Within same status, rank by total value (cash + item count)
+        const aValue = (a.offered_cash_amount || 0) + (a.items?.length || 0) * 100
+        const bValue = (b.offered_cash_amount || 0) + (b.items?.length || 0) * 100
+        return bValue - aValue
       })
     } else if (offersSortBy === 'newest') {
       ranked.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -599,7 +603,7 @@ const Home: React.FC = () => {
               </Button>
             )}
 
-            <Tooltip label={`View offers (${product.offer_count || 0})`} placement="top">
+            <Tooltip label="View offers" placement="top">
               <IconButton
                 aria-label="View offers"
                 icon={<FaHandshake />}
@@ -809,7 +813,7 @@ const Home: React.FC = () => {
                     <VStack align="stretch" spacing={3}>
                       {/* User Info */}
                       <Box>
-                        <Text fontWeight="semibold" fontSize="sm" color="gray.800">
+                        <Text fontWeight="semibold" fontSize="sm" color="gray.800" textTransform="capitalize">
                           {user.name || 'User'}
                         </Text>
                         <Text fontSize="xs" color="gray.500">
@@ -896,34 +900,37 @@ const Home: React.FC = () => {
             >
               <Grid templateColumns="repeat(auto-fit, minmax(150px, 1fr))" gap={3}>
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Price Range</FormLabel>
-                  <HStack>
-                    <Input
-                      placeholder="Min"
-                      type="number"
-                      value={filters.min_price || ''}
-                      onChange={(e) => handleFilterChange('min_price', e.target.value ? Number(e.target.value) : undefined)}
-                      size="sm"
-                    />
-                    <Text fontSize="sm" color="gray.500">-</Text>
-                    <Input
-                      placeholder="Max"
-                      type="number"
-                      value={filters.max_price || ''}
-                      onChange={(e) => handleFilterChange('max_price', e.target.value ? Number(e.target.value) : undefined)}
-                      size="sm"
-                    />
-                  </HStack>
+                  <FormLabel fontSize="sm" color="gray.600">Sort By</FormLabel>
+                  <Select
+                    aria-label="Sort by"
+                    title="Sort by"
+                    value={filters.sort_by || 'most_relevant'}
+                    onChange={(e) => handleFilterChange('sort_by', e.target.value)}
+                    size="sm"
+                  >
+                    <option value="most_relevant">Most Relevant</option>
+                    <option value="newest">Newest First</option>
+                    <option value="most_offers">Most Offers</option>
+                    <option value="trending">Trending</option>
+                  </Select>
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Location</FormLabel>
-                  <Input
-                    placeholder="Enter location"
-                    value={filters.location || ''}
-                    onChange={(e) => handleFilterChange('location', e.target.value)}
+                  <FormLabel fontSize="sm" color="gray.600">Condition</FormLabel>
+                  <Select
+                    aria-label="Condition"
+                    title="Condition"
+                    value={filters.condition || ''}
+                    onChange={(e) => handleFilterChange('condition', e.target.value || undefined)}
                     size="sm"
-                  />
+                  >
+                    <option value="">All Conditions</option>
+                    <option value="new">New</option>
+                    <option value="like_new">Like New</option>
+                    <option value="good">Good</option>
+                    <option value="fair">Fair</option>
+                    <option value="poor">Poor</option>
+                  </Select>
                 </FormControl>
 
                 <FormControl>
@@ -942,32 +949,31 @@ const Home: React.FC = () => {
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Trade Type</FormLabel>
+                  <FormLabel fontSize="sm" color="gray.600">Bidding & Offers</FormLabel>
                   <Select
-                    aria-label="Trade type"
-                    title="Trade type"
-                    value={filters.barter_only === undefined ? '' : filters.barter_only.toString()}
-                    onChange={(e) => handleFilterChange('barter_only', e.target.value === '' ? undefined : e.target.value === 'true')}
+                    aria-label="Bidding & offers"
+                    title="Bidding & offers"
+                    value={filters.has_active_offers === undefined ? '' : filters.has_active_offers.toString()}
+                    onChange={(e) => handleFilterChange('has_active_offers', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
                   >
-                    <option value="">All options</option>
-                    <option value="true">Barter only</option>
-                    <option value="false">Buy available</option>
+                    <option value="">All items</option>
+                    <option value="true">With active offers</option>
+                    <option value="false">No offers yet</option>
                   </Select>
                 </FormControl>
 
                 <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Status</FormLabel>
+                  <FormLabel fontSize="sm" color="gray.600">Seller</FormLabel>
                   <Select
-                    aria-label="Listing status"
-                    title="Listing status"
-                    value={filters.status || ''}
-                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                    aria-label="Seller verification"
+                    title="Seller verification"
+                    value={filters.verified_seller_only === undefined ? '' : filters.verified_seller_only.toString()}
+                    onChange={(e) => handleFilterChange('verified_seller_only', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
                   >
-                    <option value="available">Available</option>
-                    <option value="sold">Sold</option>
-                    <option value="traded">Traded</option>
+                    <option value="">All sellers</option>
+                    <option value="true">Verified sellers only</option>
                   </Select>
                 </FormControl>
 
@@ -979,7 +985,7 @@ const Home: React.FC = () => {
                     onClick={clearFilters}
                     w="full"
                   >
-                    Clear Filters
+                    Reset Filters
                   </Button>
                 </FormControl>
               </Grid>
@@ -1272,8 +1278,8 @@ const Home: React.FC = () => {
                   No products found
                 </Heading>
                 <Text color="gray.500" fontSize="lg">
-                  {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
-                    ? "Try adjusting your search criteria or clearing filters to see all products."
+                  {filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
+                    ? "Try adjusting your search criteria or resetting filters to see all products."
                     : "No products are currently available. Check back later!"
                   }
                 </Text>
@@ -1283,8 +1289,8 @@ const Home: React.FC = () => {
                 colorScheme="brand"
                 onClick={clearFilters}
               >
-                {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
-                  ? "Clear All Filters"
+                {filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
+                  ? "Reset All Filters"
                   : "Refresh Page"
                 }
               </Button>
@@ -1315,19 +1321,40 @@ const Home: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      {/* Offers Modal - Simplified with Ranking */}
+      {/* Offers Modal - Enhanced with Ranking, Cash & Items */}
       <Modal isOpen={offersModalOpen} onClose={() => setOffersModalOpen(false)} size="2xl">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>
+          <ModalHeader pb={2}>
             <HStack justify="space-between" w="full">
-              <Heading size="md" color="brand.600">
-                Offers ({offersForProduct.length})
-              </Heading>
+              <HStack spacing={3}>
+                <Icon as={FaHandshake} color="brand.500" boxSize={5} />
+                <VStack align="start" spacing={0}>
+                  <Heading size="md" color="brand.600">
+                    Offers ({offersForProduct.length})
+                  </Heading>
+                  {!loadingOffers && offersForProduct.length > 0 && (
+                    <HStack spacing={2} mt={0.5}>
+                      <Badge colorScheme="yellow" fontSize="xs">
+                        {offersForProduct.filter((o: any) => o.status === 'pending').length} Pending
+                      </Badge>
+                      <Badge colorScheme="green" fontSize="xs">
+                        {offersForProduct.filter((o: any) => o.status === 'accepted' || o.status === 'active').length} Accepted
+                      </Badge>
+                      {offersForProduct.filter((o: any) => o.status === 'countered').length > 0 && (
+                        <Badge colorScheme="purple" fontSize="xs">
+                          {offersForProduct.filter((o: any) => o.status === 'countered').length} Countered
+                        </Badge>
+                      )}
+                    </HStack>
+                  )}
+                </VStack>
+              </HStack>
               <IconButton
                 aria-label="Close"
                 icon={<CloseIcon />}
                 variant="ghost"
+                size="sm"
                 onClick={() => setOffersModalOpen(false)}
               />
             </HStack>
@@ -1339,67 +1366,156 @@ const Home: React.FC = () => {
                 <Spinner color="brand.500" />
               </Center>
             ) : getRankedOffers().length === 0 ? (
-              <Box textAlign="center" py={8}>
-                <Text color="gray.600">No offers yet</Text>
-              </Box>
+              <VStack py={8} spacing={4}>
+                <Icon as={FaHandshake} color="gray.300" boxSize={12} />
+                <Text color="gray.500" fontWeight="medium">No offers yet</Text>
+                <Text color="gray.400" fontSize="sm" textAlign="center">
+                  Be the first to make an offer on this product!
+                </Text>
+                {selectedProductForOffers && (
+                  <Button
+                    colorScheme="brand"
+                    size="sm"
+                    onClick={() => {
+                      setOffersModalOpen(false)
+                      handleTradeClick(selectedProductForOffers)
+                    }}
+                  >
+                    Make an Offer
+                  </Button>
+                )}
+              </VStack>
             ) : (
               <VStack spacing={3} align="stretch">
-                {getRankedOffers().map((offer: any, index: number) => (
-                  <Box
-                    key={offer.id}
-                    p={4}
-                    borderWidth="2px"
-                    borderColor={index === 0 ? 'gold' : offer.status === 'accepted' ? 'green.400' : 'gray.200'}
-                    rounded="lg"
-                    bg={index === 0 ? 'yellow.50' : offer.status === 'accepted' ? 'green.50' : 'white'}
-                    position="relative"
-                  >
-                    {/* Rank Badge */}
-                    <Badge
-                      position="absolute"
-                      top={-3}
-                      left={4}
-                      colorScheme={index === 0 ? 'yellow' : index === 1 ? 'gray' : index === 2 ? 'orange' : 'gray'}
-                      fontSize="xs"
-                      px={2}
-                      py={1}
+                {getRankedOffers().map((offer: any, index: number) => {
+                  const cashAmount = offer.offered_cash_amount || 0
+                  const itemCount = offer.items?.length || 0
+
+                  return (
+                    <Box
+                      key={offer.id}
+                      p={4}
+                      borderWidth="2px"
+                      borderColor={index === 0 ? 'gold' : offer.status === 'accepted' ? 'green.400' : 'gray.200'}
+                      rounded="lg"
+                      bg={index === 0 ? 'yellow.50' : offer.status === 'accepted' ? 'green.50' : 'white'}
+                      position="relative"
+                      _hover={{ shadow: 'md', borderColor: index === 0 ? 'gold' : 'brand.300' }}
+                      transition="all 0.2s"
                     >
-                      #{index + 1}
-                    </Badge>
-
-                    <HStack justify="space-between" mb={2} mt={2}>
-                      <HStack>
-                        {index === 0 && (
-                          <Text fontSize="lg">🏆</Text>
-                        )}
-                        <Text fontWeight="bold" fontSize="sm">
-                          {offer.buyer_name || 'Anonymous'}
-                        </Text>
-                      </HStack>
+                      {/* Rank Badge */}
                       <Badge
-                        colorScheme={
-                          offer.status === 'accepted' ? 'green' :
-                            offer.status === 'pending' ? 'yellow' : 'gray'
-                        }
+                        position="absolute"
+                        top={-3}
+                        left={4}
+                        colorScheme={index === 0 ? 'yellow' : index === 1 ? 'gray' : index === 2 ? 'orange' : 'gray'}
                         fontSize="xs"
+                        px={2}
+                        py={1}
                       >
-                        {offer.status.toUpperCase()}
+                        {index === 0 ? '🏆 #1' : `#${index + 1}`}
                       </Badge>
-                    </HStack>
 
-                    <Text fontSize="sm" color="gray.600" mb={2}>
-                      {offer.items?.length || 0} item(s) offered
-                    </Text>
-
-                    <HStack spacing={2} flexWrap="wrap">
-                      {offer.items && offer.items.map((item: any, idx: number) => (
-                        <Badge key={idx} colorScheme="blue" variant="outline" fontSize="xs">
-                          {item.product_title?.substring(0, 15) || `Item ${idx + 1}`}
+                      <HStack justify="space-between" mb={3} mt={2}>
+                        <HStack spacing={2}>
+                          <Avatar size="xs" name={offer.buyer_name || 'A'} />
+                          <Text fontWeight="bold" fontSize="sm">
+                            {offer.buyer_name || 'Anonymous'}
+                          </Text>
+                        </HStack>
+                        <Badge
+                          colorScheme={
+                            offer.status === 'accepted' ? 'green' :
+                              offer.status === 'pending' ? 'yellow' :
+                                offer.status === 'countered' ? 'purple' : 'gray'
+                          }
+                          fontSize="xs"
+                        >
+                          {offer.status.toUpperCase()}
                         </Badge>
-                      ))}
-                    </HStack>
-                  </Box>
-                ))}
+                      </HStack>
+
+                      {/* Offer Details: Cash + Items */}
+                      <VStack align="stretch" spacing={2}>
+                        {/* Cash offered */}
+                        {cashAmount > 0 && (
+                          <HStack bg="green.50" p={2} rounded="md" spacing={2}>
+                            <Text fontSize="lg">💰</Text>
+                            <Text fontSize="sm" fontWeight="bold" color="green.700">
+                              {formatPHP(cashAmount)}
+                            </Text>
+                            <Text fontSize="xs" color="green.600">cash offered</Text>
+                          </HStack>
+                        )}
+
+                        {/* Items offered */}
+                        {itemCount > 0 && (
+                          <Box>
+                            <Text fontSize="xs" color="gray.500" mb={1} fontWeight="medium">
+                              📦 {itemCount} item{itemCount > 1 ? 's' : ''} offered:
+                            </Text>
+                            <HStack spacing={2} flexWrap="wrap">
+                              {offer.items.map((item: any, idx: number) => (
+                                <HStack
+                                  key={idx}
+                                  bg="gray.50"
+                                  p={1.5}
+                                  rounded="md"
+                                  borderWidth="1px"
+                                  borderColor="gray.200"
+                                  spacing={2}
+                                >
+                                  {item.product_image_url && (
+                                    <Image
+                                      src={getImageUrl(item.product_image_url)}
+                                      alt={item.product_title || 'Item'}
+                                      boxSize="32px"
+                                      objectFit="cover"
+                                      rounded="sm"
+                                      fallback={<Box boxSize="32px" bg="gray.200" rounded="sm" />}
+                                    />
+                                  )}
+                                  <Text fontSize="xs" fontWeight="medium" noOfLines={1} maxW="120px">
+                                    {item.product_title || `Item ${idx + 1}`}
+                                  </Text>
+                                </HStack>
+                              ))}
+                            </HStack>
+                          </Box>
+                        )}
+
+                        {/* Summary line */}
+                        {cashAmount === 0 && itemCount === 0 && (
+                          <Text fontSize="xs" color="gray.400" fontStyle="italic">
+                            No details available
+                          </Text>
+                        )}
+                      </VStack>
+
+                      {/* Time ago */}
+                      <Text fontSize="xs" color="gray.400" mt={2}>
+                        {new Date(offer.created_at).toLocaleDateString()}
+                      </Text>
+                    </Box>
+                  )
+                })}
+
+                {/* Make an offer button at bottom */}
+                {selectedProductForOffers && (
+                  <Button
+                    colorScheme="brand"
+                    size="md"
+                    w="full"
+                    mt={2}
+                    leftIcon={<Icon as={FaHandshake} />}
+                    onClick={() => {
+                      setOffersModalOpen(false)
+                      handleTradeClick(selectedProductForOffers)
+                    }}
+                  >
+                    Make an Offer
+                  </Button>
+                )}
               </VStack>
             )}
           </ModalBody>

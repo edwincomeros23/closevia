@@ -450,9 +450,6 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		})
 	}
 
-	// Ensure is_premium column exists (safe migration)
-	h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN NOT NULL DEFAULT FALSE")
-
 	var user models.User
 	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
 	err := h.db.QueryRow(
@@ -467,6 +464,8 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(school_email, '') AS school_email,
 		        school_email_verified_at,
 		        COALESCE(verification_rejection_reason, '') AS verification_rejection_reason,
+		        COALESCE(email_notifications_enabled, TRUE) AS email_notifications_enabled,
+		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        created_at, updated_at
 		 FROM users WHERE id = ?`,
 		userID,
@@ -474,6 +473,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL,
 		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.SchoolEmailVerifiedAt, &user.VerificationRejectionReason,
+		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 
@@ -511,13 +511,15 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	var updateData struct {
-		Name               *string `json:"name"`
-		Email              *string `json:"email"`
-		ProfilePicture     *string `json:"profile_picture"`
-		Bio                *string `json:"bio"`
-		BackgroundImage    *string `json:"background_image"`
-		BackgroundPosition *string `json:"background_position"`
-		LanguagePreference *string `json:"language_preference"`
+		Name                      *string `json:"name"`
+		Email                     *string `json:"email"`
+		ProfilePicture            *string `json:"profile_picture"`
+		Bio                       *string `json:"bio"`
+		BackgroundImage           *string `json:"background_image"`
+		BackgroundPosition        *string `json:"background_position"`
+		LanguagePreference        *string `json:"language_preference"`
+		EmailNotificationsEnabled *bool   `json:"email_notifications_enabled"`
+		PushNotificationsEnabled  *bool   `json:"push_notifications_enabled"`
 	}
 
 	if err := c.BodyParser(&updateData); err != nil {
@@ -567,6 +569,16 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		fmt.Printf("✅ UpdateProfile: Setting language_preference to '%s' for user %d\n", *updateData.LanguagePreference, userID)
 	}
 
+	if updateData.EmailNotificationsEnabled != nil {
+		query += ", email_notifications_enabled = ?"
+		args = append(args, *updateData.EmailNotificationsEnabled)
+	}
+
+	if updateData.PushNotificationsEnabled != nil {
+		query += ", push_notifications_enabled = ?"
+		args = append(args, *updateData.PushNotificationsEnabled)
+	}
+
 	query += " WHERE id = ?"
 	args = append(args, userID)
 
@@ -581,6 +593,8 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS language_preference VARCHAR(10) NULL DEFAULT 'en'")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications_enabled BOOLEAN DEFAULT TRUE")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS push_notifications_enabled BOOLEAN DEFAULT TRUE")
 			// retry update
 			_, err = h.db.Exec(query, args...)
 		}

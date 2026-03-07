@@ -122,6 +122,8 @@ type User struct {
 	SchoolEmailVerifiedAt       *time.Time `json:"school_email_verified_at,omitempty"`
 	SchoolIDImagePath           string     `json:"school_id_image_path,omitempty"`
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
+	EmailNotificationsEnabled   bool       `json:"email_notifications_enabled"`
+	PushNotificationsEnabled    bool       `json:"push_notifications_enabled"`
 }
 
 // UserLogin represents login credentials
@@ -172,6 +174,7 @@ type Product struct {
 	BiddingType          string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
 	WishlistCount        int         `json:"wishlist_count,omitempty"`
 	WantCount            int         `json:"want_count"`
+	OfferCount           int         `json:"offer_count"`
 }
 
 // ProductCreate represents data for creating a product
