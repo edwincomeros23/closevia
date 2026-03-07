@@ -547,7 +547,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 colorScheme="green"
                 size="md"
                 onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed || confirmingPayment}
+                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
                 isLoading={confirmingPayment}
                 loadingText="Confirming..."
                 leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
@@ -1210,8 +1210,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         senderLocation: (trade as any).seller_location || 'Seller location - From product listing',
         receiverLocation: (trade as any).buyer_location || 'Buyer location - From user profile',
         assignedRider: {
-          name: 'Juan Dela Cruz (Mock Rider)',
-          phone: '+63 917 123 4567'
+          name: 'Wynry Perian (Mock Rider)',
+          phone: '09991234567'
         }
       }))
 
@@ -1819,19 +1819,19 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               <CardBody p={4}>
                                 <HStack spacing={3} mb={2}>
                                   <Avatar
-                                    name="Juan Dela Cruz"
+                                    name="Wynry Perian"
                                     size="sm"
                                     bg="orange.500"
                                     color="white"
                                   />
                                   <Box flex={1}>
                                     <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
-                                    <Text fontSize="sm" color="gray.700">Juan Dela Cruz (Mock Rider)</Text>
+                                    <Text fontSize="sm" color="gray.700">Wynry Perian (Mock Rider)</Text>
                                   </Box>
                                 </HStack>
                                 <HStack spacing={2} ml={8} mt={2}>
                                   <Icon as={FiPhone} color="orange.500" boxSize={4} />
-                                  <Text fontSize="sm" color="gray.700">+63 917 123 4567</Text>
+                                  <Text fontSize="sm" color="gray.700">09991234567</Text>
                                 </HStack>
                                 <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
                                   🎭 This is a mock rider for demonstration

@@ -36,18 +36,23 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 
 	// Fetch Trade details and verify participation
 	var trade models.Trade
-	var buyerID, sellerID int
+	var buyerID, sellerID, targetProductID int
 	var status string
 	var offeredCashAmount sql.NullFloat64
+	var deliveryType sql.NullString
 
 	err := h.db.QueryRow(`
-		SELECT id, buyer_id, seller_id, status, offered_cash_amount 
+		SELECT id, buyer_id, seller_id, status, offered_cash_amount, COALESCE(delivery_type, ''), target_product_id 
 		FROM trades 
 		WHERE id = ?`, tradeID).Scan(
-		&trade.ID, &buyerID, &sellerID, &status, &offeredCashAmount,
+		&trade.ID, &buyerID, &sellerID, &status, &offeredCashAmount, &deliveryType, &targetProductID,
 	)
 
+	fmt.Printf("🔍 Payment Debug: TradeID=%s, UserID=%d, BuyerID=%d, SellerID=%d, DeliveryType=%s\n",
+		tradeID, userID, buyerID, sellerID, deliveryType.String)
+
 	if err != nil {
+		fmt.Printf("❌ Payment Error (Fetch): %v\n", err)
 		return c.Status(404).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Trade not found",
@@ -56,6 +61,7 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 
 	// Only Buyer can pay
 	if userID != buyerID {
+		fmt.Printf("🚫 Payment Forbidden: UserID %d is not BuyerID %d\n", userID, buyerID)
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Only the buyer can initiate payment",
@@ -63,23 +69,50 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	}
 
 	// Trade must be active or accepted
-	if status != "accepted" && status != "active" {
+	if status != "accepted" && status != "active" && status != "pending" {
+		fmt.Printf("🚫 Payment Rejected: Trade status is '%s' (expected 'accepted', 'active', or 'pending')\n", status)
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Trade is not in a payable state",
+			Error:   fmt.Sprintf("Trade is not in a payable state (current status: %s)", status),
 		})
 	}
 
 	// Calculate Amount
 	var amount float64 = 0
+
+	// 1. Negotiation cash supplement
 	if offeredCashAmount.Valid {
-		amount = offeredCashAmount.Float64
+		amount += offeredCashAmount.Float64
 	}
 
+	// 2. Product Price (if it's a direct purchase, i.e., 0 items offered by buyer)
+	var itemCount int
+	h.db.QueryRow("SELECT COUNT(*) FROM trade_items WHERE trade_id = ? AND offered_by = 'buyer'", tradeID).Scan(&itemCount)
+	if itemCount == 0 {
+		var productPrice float64
+		h.db.QueryRow("SELECT COALESCE(price, 0) FROM products WHERE id = ?", targetProductID).Scan(&productPrice)
+		amount += productPrice
+		fmt.Printf("🛒 Purchase detected (0 items offered). Added product price: %.2f\n", productPrice)
+	}
+
+	// 3. Delivery Fee
+	deliveryFee := 0.0
+	if deliveryType.Valid {
+		switch deliveryType.String {
+		case "express":
+			deliveryFee = 150.0
+		case "standard":
+			deliveryFee = 50.0
+		}
+	}
+	amount += deliveryFee
+	fmt.Printf("🚚 Delivery fee for '%s': %.2f. Total Amount: %.2f\n", deliveryType.String, deliveryFee, amount)
+
 	if amount <= 0 {
+		fmt.Printf("🚫 Payment Rejected: Calculated amount is %.2f\n", amount)
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
-			Error:   "This trade does not require a cash payment",
+			Error:   fmt.Sprintf("This trade does not require a cash payment (amount: %.2f)", amount),
 		})
 	}
 
@@ -102,9 +135,21 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	description := fmt.Sprintf("Clovia Trade Escrow #%d", trade.ID)
 
 	// Create Xendit Invoice Request
-	successUrl := fmt.Sprintf("%s/trades", c.BaseURL())
-	failureUrl := fmt.Sprintf("%s/trades", c.BaseURL())
 
+	// Determine frontend URL based on environment
+	frontendURL := "http://localhost:5173" // Default for local dev
+	if os.Getenv("APP_ENV") == "production" || os.Getenv("FRONTEND_URL") != "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else {
+			frontendURL = "https://cloviaph.netlify.app"
+		}
+	}
+
+	successUrl := fmt.Sprintf("%s/trades", frontendURL)
+	failureUrl := fmt.Sprintf("%s/trades", frontendURL)
+
+	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
 		ExternalId:  externalID,
 		Amount:      float32(amount),
@@ -116,11 +161,13 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		},
 		SuccessRedirectUrl: &successUrl,
 		FailureRedirectUrl: &failureUrl,
+		Currency:           &currency,
 	})
 
 	// Execute Request
 	resp, _, execErr := req.Execute()
 	if execErr != nil {
+		fmt.Printf("❌ Xendit Execute Error: %v\n", execErr)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to generate payment link: " + execErr.Error(),
