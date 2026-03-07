@@ -104,7 +104,7 @@ const ProductDetail: React.FC = () => {
   const [loadingPendingOffer, setLoadingPendingOffer] = useState(false)
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false)
   const [isZoomOpen, setIsZoomOpen] = useState(false)
-  const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomImageIndex, setZoomImageIndex] = useState(0)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -759,8 +759,8 @@ const ProductDetail: React.FC = () => {
     }
   }
 
-  const handleImageZoom = (url: string) => {
-    setZoomImageUrl(url)
+  const handleImageZoom = (index: number) => {
+    setZoomImageIndex(index)
     setIsZoomOpen(true)
   }
 
@@ -2036,13 +2036,6 @@ const ProductDetail: React.FC = () => {
       </Modal>
 
       <FloatingTab />
-
-      <ImageZoomModal 
-        isOpen={isZoomOpen} 
-        onClose={() => setIsZoomOpen(false)} 
-        imageUrl={zoomImageUrl} 
-        altText={product?.title} 
-      />
     </Box>
   )
 }
