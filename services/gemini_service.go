@@ -28,10 +28,14 @@ type GeminiResponse struct {
 }
 
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
 	if apiKey == "" {
 		return nil, errors.New("GEMINI_API_KEY environment variable not set")
 	}
+
+	// Log masked key info so we can confirm it's loaded at runtime
+	masked := apiKey[:4] + "..." + apiKey[len(apiKey)-4:]
+	log.Printf("Gemini API key loaded: %s (length: %d)", masked, len(apiKey))
 
 	if len(images) < 1 {
 		return nil, errors.New("at least 1 image required")
@@ -165,9 +169,9 @@ Example:
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	// Use gemini-1.5-flash — stable, widely available vision model
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s", apiKey)
-	log.Printf("Making request to Gemini API (gemini-1.5-flash) with %d image part(s)", len(parts)-1)
+	// Use gemini-2.5-flash — stable, widely available vision model
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s", apiKey)
+	log.Printf("Making request to Gemini API (gemini-2.5-flash) with %d image part(s)", len(parts)-1)
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
