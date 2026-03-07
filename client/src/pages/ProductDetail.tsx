@@ -767,8 +767,8 @@ const ProductDetail: React.FC = () => {
     }
   }
 
-  const handleImageZoom = (url: string) => {
-    setZoomImageUrl(url)
+  const handleImageZoom = (index: number) => {
+    setZoomImageIndex(index)
     setIsZoomOpen(true)
   }
 
@@ -2044,13 +2044,6 @@ const ProductDetail: React.FC = () => {
       </Modal>
 
       <FloatingTab />
-
-      <ImageZoomModal 
-        isOpen={isZoomOpen} 
-        onClose={() => setIsZoomOpen(false)} 
-        imageUrl={zoomImageUrl} 
-        altText={product?.title} 
-      />
     </Box>
   )
 }

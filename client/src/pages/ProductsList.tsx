@@ -97,9 +97,7 @@ const ProductsList: React.FC = () => {
           cursor="zoom-in"
           onClick={(e) => {
             e.stopPropagation()
-            setZoomImageUrl(getFirstImage(p.image_urls))
-            setZoomAltText(p.title)
-            setIsZoomOpen(true)
+            handleImageZoom(e, getFirstImage(p.image_urls), p.title)
           }}
         />
         {p.premium && (
