@@ -5,6 +5,7 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
+  ModalFooter,
   ModalCloseButton,
   VStack,
   HStack,
@@ -83,12 +84,12 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
   const fetchCompletionStatus = async () => {
     if (!trade) return
-    
+
     try {
       setLoading(true)
       const response = await api.get(`/api/trades/${trade.id}/completion-status`)
       setStatus(response.data.data)
-      
+
       // Check if current user has already submitted
       if (isUserBuyer && response.data.data.buyer_completed) {
         setHasSubmitted(true)
@@ -99,7 +100,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         setRating(response.data.data.seller_rating || 0)
         setFeedback(response.data.data.seller_feedback || '')
       }
-      
+
       // Check if both completed for celebration
       if (response.data.data.buyer_completed && response.data.data.seller_completed) {
         setShowCelebration(true)
@@ -163,23 +164,33 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         })
       }
     } catch (error: any) {
+      // Upload failed — non-blocking. User can still submit without proof.
+      const isServiceUnavailable = error?.response?.status === 503
       toast({
-        title: 'Upload failed',
-        description: error?.response?.data?.error || 'Failed to upload image',
-        status: 'error',
+        title: isServiceUnavailable ? 'Image upload unavailable' : 'Upload failed',
+        description: isServiceUnavailable
+          ? 'Image upload service is not configured. You can still submit your completion without a proof photo.'
+          : (error?.response?.data?.error || 'Failed to upload image. You can still submit without a proof photo.'),
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
       })
+      // Clear any partial state
+      setTransactionProof(null)
     } finally {
       setUploadingImage(false)
+      // Reset input so same file can be re-selected if needed
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
   const handleConfirmCompletion = async () => {
     if (!trade) return
-    
+
     try {
       setSubmitting(true)
       setShowConfirmationModal(false)
-      
+
       console.log('Submitting trade completion:', {
         tradeId: trade.id,
         rating,
@@ -191,7 +202,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         feedback: feedback.trim(),
         transaction_proof_url: transactionProof
       })
-      
+
       setHasSubmitted(true)
       toast({
         title: 'Trade completion submitted!',
@@ -199,11 +210,11 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         status: 'success',
         duration: 3000
       })
-      
+
       // Refresh status
       await fetchCompletionStatus()
       onCompleted()
-      
+
       // Check if both parties completed after this submission
       const updatedRes = await api.get(`/api/trades/${trade.id}/completion-status`)
       if (updatedRes.data.data.buyer_completed && updatedRes.data.data.seller_completed) {
@@ -272,7 +283,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
           </Box>
         )}
       </Box>
-      
+
       <VStack spacing={1} align="center">
         <Text fontWeight="bold" fontSize="lg">
           {name} {isCurrentUser && '(You)'}
@@ -293,354 +304,357 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
   return (
     <>
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
-      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-      <ModalContent
-        bg="white"
-        borderRadius="xl"
-        boxShadow="xl"
-        mx={4}
-        mt={50}
-        maxW="500px"
-        display="flex"
-        flexDirection="column"
-        justifyContent="center"
-        alignItems="center"
-        minH="auto"
-        maxH="90vh"
-      >
-        
-        <ModalCloseButton color="gray.600" position="absolute" top={4} right={4} />
-        
-        <ModalBody p={6} w="full" display="flex" flexDirection="column" justifyContent="center" alignItems="center" overflowY="auto">
-          {loading ? (
-            <Flex justify="center" align="center" py={8} w="full">
-              <Spinner size="lg" color="brand.500" />
-            </Flex>
-          ) : (
-            <VStack spacing={6} w="full" maxW="500px" justify="center" align="center">
-              {/* Progress Indicator */}
-              <Box w="full">
-                <Text fontSize="sm" color="gray.600" mb={2} textAlign="center">
-                  Completion Progress
-                </Text>
-                <Progress
-                  value={
-                    status?.buyer_completed && status?.seller_completed ? 100 :
-                    (status?.buyer_completed || status?.seller_completed) ? 50 : 0
-                  }
-                  colorScheme="green"
-                  borderRadius="full"
-                  bg="gray.100"
-                />
-              </Box>
+      <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered scrollBehavior="inside">
+        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <ModalContent
+          bg="white"
+          borderRadius="xl"
+          boxShadow="xl"
+          mx={4}
+          maxW="500px"
+          maxH="85vh"
+          display="flex"
+          flexDirection="column"
+        >
+          <ModalHeader fontSize="md" pb={2}>
+            Trade Completion
+          </ModalHeader>
+          <ModalCloseButton color="gray.600" />
 
-              {/* User Profiles */}
-              <HStack spacing={8} w="full" justify="center">
-                {renderUserProfile(
-                  trade.buyer_name || `User #${trade.buyer_id}`,
-                  trade.buyer_id,
-                  !!isUserBuyer,
-                  !!(status?.buyer_completed),
-                  status?.buyer_rating
-                )}
-                
-                <Box>
-                  <Icon
-                    as={FaHandshake}
-                    color={bothCompleted ? 'green.500' : 'gray.400'}
-                    boxSize={8}
+          <ModalBody flex="1" overflowY="auto" px={6} py={2}>
+            {loading ? (
+              <Flex justify="center" align="center" py={8} w="full">
+                <Spinner size="lg" color="brand.500" />
+              </Flex>
+            ) : (
+              <VStack spacing={6} w="full" maxW="500px">
+                {/* Progress Indicator */}
+                <Box w="full">
+                  <Text fontSize="sm" color="gray.600" mb={2} textAlign="center">
+                    Completion Progress
+                  </Text>
+                  <Progress
+                    value={
+                      status?.buyer_completed && status?.seller_completed ? 100 :
+                        (status?.buyer_completed || status?.seller_completed) ? 50 : 0
+                    }
+                    colorScheme="green"
+                    borderRadius="full"
+                    bg="gray.100"
                   />
                 </Box>
-                
-                {renderUserProfile(
-                  trade.seller_name || `User #${trade.seller_id}`,
-                  trade.seller_id,
-                  !!isUserSeller,
-                  !!(status?.seller_completed),
-                  status?.seller_rating
-                )}
-              </HStack>
 
-              <Divider />
+                {/* User Profiles */}
+                <HStack spacing={8} w="full" justify="center">
+                  {renderUserProfile(
+                    trade.buyer_name || `User #${trade.buyer_id}`,
+                    trade.buyer_id,
+                    !!isUserBuyer,
+                    !!(status?.buyer_completed),
+                    status?.buyer_rating
+                  )}
 
-              {/* Completion Form or Status */}
-              {bothCompleted ? (
-                <VStack spacing={4} w="full">
+                  <Box>
+                    <Icon
+                      as={FaHandshake}
+                      color={bothCompleted ? 'green.500' : 'gray.400'}
+                      boxSize={8}
+                    />
+                  </Box>
+
+                  {renderUserProfile(
+                    trade.seller_name || `User #${trade.seller_id}`,
+                    trade.seller_id,
+                    !!isUserSeller,
+                    !!(status?.seller_completed),
+                    status?.seller_rating
+                  )}
+                </HStack>
+
+                <Divider />
+
+                {/* Completion Form or Status */}
+                {bothCompleted ? (
+                  <VStack spacing={4} w="full">
+                    <Box
+                      bg="green.50"
+                      border="1px solid"
+                      borderColor="green.200"
+                      borderRadius="md"
+                      p={4}
+                      w="full"
+                      textAlign="center"
+                      animation={`${fadeInAnimation} 0.3s ease-out`}
+                    >
+                      <Icon as={FaCheck} color="green.500" boxSize={5} mb={2} />
+                      <Text fontWeight="semibold" color="green.700" fontSize="md">
+                        Trade Successfully Completed
+                      </Text>
+                      <Text color="green.600" fontSize="sm" mt={1}>
+                        Both parties have confirmed completion
+                      </Text>
+                    </Box>
+
+                    {/* Show feedback if available */}
+                    {(status?.buyer_feedback || status?.seller_feedback) && (
+                      <VStack spacing={3} w="full">
+                        <Text fontWeight="semibold">Feedback:</Text>
+                        {status?.buyer_feedback && (
+                          <Box bg="gray.50" p={3} borderRadius="md" w="full">
+                            <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                              From {trade.buyer_name || `User #${trade.buyer_id}`}:
+                            </Text>
+                            <Text fontSize="sm" color="gray.600" mt={1}>
+                              "{status.buyer_feedback}"
+                            </Text>
+                          </Box>
+                        )}
+                        {status?.seller_feedback && (
+                          <Box bg="gray.50" p={3} borderRadius="md" w="full">
+                            <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                              From {trade.seller_name || `User #${trade.seller_id}`}:
+                            </Text>
+                            <Text fontSize="sm" color="gray.600" mt={1}>
+                              "{status.seller_feedback}"
+                            </Text>
+                          </Box>
+                        )}
+                      </VStack>
+                    )}
+                  </VStack>
+                ) : hasSubmitted ? (
                   <Box
-                    bg="green.50"
-                    border="1px solid"
-                    borderColor="green.200"
-                    borderRadius="md"
+                    bg="blue.50"
+                    border="2px solid"
+                    borderColor="blue.200"
+                    borderRadius="lg"
                     p={4}
                     w="full"
                     textAlign="center"
-                    animation={`${fadeInAnimation} 0.3s ease-out`}
                   >
-                    <Icon as={FaCheck} color="green.500" boxSize={5} mb={2} />
-                    <Text fontWeight="semibold" color="green.700" fontSize="md">
-                      Trade Successfully Completed
+                    <Spinner size="md" color="blue.500" mb={2} />
+                    <Text fontWeight="bold" color="blue.700">
+                      Waiting for confirmation...
                     </Text>
-                    <Text color="green.600" fontSize="sm" mt={1}>
-                      Both parties have confirmed completion
+                    <Text color="blue.600" fontSize="sm" mt={1}>
+                      You've confirmed the trade. Waiting for the other party to confirm.
                     </Text>
                   </Box>
-                  
-                  {/* Finish Button */}
-                  {showFinishButton && (
-                    <Button
-                      colorScheme="blue"
-                      size="lg"
-                      w="full"
-                      onClick={handleFinishTrade}
-                      leftIcon={<FaCheck />}
-                    >
-                      Finish
-                    </Button>
-                  )}
-                  
-                  {/* Show feedback if available */}
-                  {(status?.buyer_feedback || status?.seller_feedback) && (
-                    <VStack spacing={3} w="full">
-                      <Text fontWeight="semibold">Feedback:</Text>
-                      {status?.buyer_feedback && (
-                        <Box bg="gray.50" p={3} borderRadius="md" w="full">
-                          <Text fontSize="sm" fontWeight="medium" color="gray.700">
-                            From {trade.buyer_name || `User #${trade.buyer_id}`}:
-                          </Text>
-                          <Text fontSize="sm" color="gray.600" mt={1}>
-                            "{status.buyer_feedback}"
-                          </Text>
-                        </Box>
-                      )}
-                      {status?.seller_feedback && (
-                        <Box bg="gray.50" p={3} borderRadius="md" w="full">
-                          <Text fontSize="sm" fontWeight="medium" color="gray.700">
-                            From {trade.seller_name || `User #${trade.seller_id}`}:
-                          </Text>
-                          <Text fontSize="sm" color="gray.600" mt={1}>
-                            "{status.seller_feedback}"
-                          </Text>
-                        </Box>
-                      )}
-                    </VStack>
-                  )}
-                </VStack>
-              ) : hasSubmitted ? (
-                <Box
-                  bg="blue.50"
-                  border="2px solid"
-                  borderColor="blue.200"
-                  borderRadius="lg"
-                  p={4}
-                  w="full"
-                  textAlign="center"
-                >
-                  <Spinner size="md" color="blue.500" mb={2} />
-                  <Text fontWeight="bold" color="blue.700">
-                    Waiting for confirmation...
-                  </Text>
-                  <Text color="blue.600" fontSize="sm" mt={1}>
-                    You've confirmed the trade. Waiting for the other party to confirm.
-                  </Text>
-                </Box>
-              ) : (
-                <VStack spacing={4} w="full">
-                  <Text fontWeight="semibold" textAlign="center">
-                    Please rate your experience and confirm completion
-                  </Text>
-
-                  {/* Upload Transaction Photo */}
-                  <Box w="full">
-                    <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
-                      Upload Proof of Transaction (Optional)
+                ) : (
+                  <VStack spacing={4} w="full">
+                    <Text fontWeight="semibold" textAlign="center">
+                      Please rate your experience and confirm completion
                     </Text>
-                    <Box
-                      p={4}
-                      border="2px dashed"
-                      borderColor={transactionProof ? 'green.300' : 'gray.300'}
-                      borderRadius="lg"
-                      textAlign="center"
-                      bg={transactionProof ? 'green.50' : 'white'}
-                      cursor="pointer"
-                      onClick={() => fileInputRef.current?.click()}
-                      _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
-                      transition="all 0.2s"
-                    >
-                      <VStack spacing={3}>
-                        {transactionProof ? (
-                          <>
-                            <Image
-                              src={transactionProof}
-                              alt="Transaction proof"
-                              maxW="100%"
-                              maxH="200px"
-                              borderRadius="md"
-                              objectFit="contain"
-                            />
-                            <HStack spacing={2}>
-                              <Button
-                                size="sm"
-                                colorScheme="red"
-                                variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setTransactionProof(null)
-                                  if (fileInputRef.current) {
-                                    fileInputRef.current.value = ''
-                                  }
-                                }}
-                              >
-                                Remove
-                              </Button>
+
+                    {/* Upload Transaction Photo */}
+                    <Box w="full">
+                      <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
+                        Upload Proof of Transaction (Optional)
+                      </Text>
+                      <Box
+                        p={4}
+                        border="2px dashed"
+                        borderColor={transactionProof ? 'green.300' : 'gray.300'}
+                        borderRadius="lg"
+                        textAlign="center"
+                        bg={transactionProof ? 'green.50' : 'white'}
+                        cursor="pointer"
+                        onClick={() => fileInputRef.current?.click()}
+                        _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
+                        transition="all 0.2s"
+                      >
+                        <VStack spacing={3}>
+                          {transactionProof ? (
+                            <>
+                              <Image
+                                src={transactionProof}
+                                alt="Transaction proof"
+                                maxW="100%"
+                                maxH="200px"
+                                borderRadius="md"
+                                objectFit="contain"
+                              />
+                              <HStack spacing={2}>
+                                <Button
+                                  size="sm"
+                                  colorScheme="red"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setTransactionProof(null)
+                                    if (fileInputRef.current) {
+                                      fileInputRef.current.value = ''
+                                    }
+                                  }}
+                                >
+                                  Remove
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  colorScheme="brand"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    fileInputRef.current?.click()
+                                  }}
+                                >
+                                  Change
+                                </Button>
+                              </HStack>
+                            </>
+                          ) : (
+                            <>
+                              <Icon as={FaImage} boxSize={8} color="gray.400" />
+                              <VStack spacing={1}>
+                                <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                  Upload Photo of Transaction
+                                </Text>
+                                <Text fontSize="xs" color="gray.500">
+                                  Click to upload (optional — you can skip this)
+                                </Text>
+                              </VStack>
                               <Button
                                 size="sm"
                                 colorScheme="brand"
                                 variant="outline"
+                                isLoading={uploadingImage}
+                                loadingText="Uploading..."
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   fileInputRef.current?.click()
                                 }}
                               >
-                                Change
+                                Choose File
                               </Button>
-                            </HStack>
-                          </>
-                        ) : (
-                          <>
-                            <Icon as={FaImage} boxSize={8} color="gray.400" />
-                            <VStack spacing={1}>
-                              <Text fontSize="sm" fontWeight="medium" color="gray.700">
-                                Upload Photo of Transaction
-                              </Text>
-                              <Text fontSize="xs" color="gray.500">
-                                Click to upload or drag and drop
-                              </Text>
-                            </VStack>
-                            <Button
-                              size="sm"
-                              colorScheme="brand"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                fileInputRef.current?.click()
-                              }}
-                            >
-                              Choose File
-                            </Button>
-                          </>
-                        )}
-                      </VStack>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        style={{ display: 'none' }}
-                        onChange={handleImageUpload}
-                      />
+                            </>
+                          )}
+                        </VStack>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          onChange={handleImageUpload}
+                        />
+                      </Box>
                     </Box>
-                  </Box>
-                  
-                  <VStack spacing={3}>
-                    <Text fontSize="sm" color="gray.600">Rate this trade:</Text>
-                    {renderRatingStars(rating, setRating)}
-                  </VStack>
-                  
-                  <VStack spacing={2} w="full">
-                    <Text fontSize="sm" color="gray.600">
-                      Leave feedback (optional):
-                    </Text>
-                    <Textarea
-                      value={feedback}
-                      onChange={(e) => setFeedback(e.target.value)}
-                      placeholder="Share your experience with this trade..."
-                      resize="none"
-                      rows={3}
-                    />
-                  </VStack>
-                  
-                  <Button
-                    colorScheme="green"
-                    size="lg"
-                    w="full"
-                    onClick={handleSubmitCompletion}
-                    isLoading={submitting}
-                    loadingText="Confirming..."
-                    leftIcon={<FaCheck />}
-                    isDisabled={rating === 0 || !policyAgreed}
-                  >
-                    Confirm Trade Completion
-                  </Button>
-                  
-                  <HStack spacing={3} justify="center" align="start">
-                    <Checkbox 
-                      isChecked={policyAgreed} 
-                      onChange={(e) => setPolicyAgreed(e.target.checked)}
-                      colorScheme="green"
-                      size="sm"
-                    />
-                    <Text fontSize="xs" color="gray.500" textAlign="left" flex={1}>
-                      By confirming, you acknowledge that the trade has been completed successfully
-                    </Text>
-                  </HStack>
-                </VStack>
-              )}
-            </VStack>
-          )}
-        </ModalBody>
-      </ModalContent>
-    </Modal>
 
-    {/* Compact Confirmation Modal */}
-    <Modal isOpen={showConfirmationModal} onClose={() => setShowConfirmationModal(false)} size="sm" isCentered>
-      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-      <ModalContent
-        bg="white"
-        borderRadius="xl"
-        boxShadow="xl"
-        mx={4}
-      >
-        <ModalBody p={6} textAlign="center">
-          <VStack spacing={4}>
-            <Icon as={FaHandshake} color="blue.500" boxSize={8} />
-            <VStack spacing={2}>
-              <Text fontWeight="bold" fontSize="lg" color="gray.800">
-                Confirm Trade Completion
-              </Text>
-              <Text fontSize="sm" color="gray.600" textAlign="center">
-                Are you sure you want to mark this trade as completed? This action cannot be undone.
-              </Text>
-            </VStack>
-            
-            <HStack spacing={3} w="full">
-              <Button
-                variant="outline"
-                size="md"
-                flex={1}
-                onClick={() => setShowConfirmationModal(false)}
-                isDisabled={submitting}
-              >
-                Cancel
-              </Button>
+                    <VStack spacing={3}>
+                      <Text fontSize="sm" color="gray.600">Rate this trade:</Text>
+                      {renderRatingStars(rating, setRating)}
+                    </VStack>
+
+                    <VStack spacing={2} w="full">
+                      <Text fontSize="sm" color="gray.600">
+                        Leave feedback (optional):
+                      </Text>
+                      <Textarea
+                        value={feedback}
+                        onChange={(e) => setFeedback(e.target.value)}
+                        placeholder="Share your experience with this trade..."
+                        resize="none"
+                        rows={3}
+                      />
+                    </VStack>
+                  </VStack>
+                )}
+              </VStack>
+            )}
+          </ModalBody>
+
+          {/* Sticky footer — always visible, contains the main action button */}
+          {!loading && !bothCompleted && !hasSubmitted && (
+            <ModalFooter borderTopWidth="1px" borderColor="gray.100" flexDirection="column" gap={2} pt={3} pb={4}>
+              <HStack spacing={3} justify="center" align="start" w="full">
+                <Checkbox
+                  isChecked={policyAgreed}
+                  onChange={(e) => setPolicyAgreed(e.target.checked)}
+                  colorScheme="green"
+                  size="sm"
+                />
+                <Text fontSize="xs" color="gray.500" textAlign="left" flex={1}>
+                  By confirming, you acknowledge that the trade has been completed successfully
+                </Text>
+              </HStack>
               <Button
                 colorScheme="green"
-                size="md"
-                flex={1}
-                onClick={handleConfirmCompletion}
+                size="lg"
+                w="full"
+                onClick={handleSubmitCompletion}
                 isLoading={submitting}
                 loadingText="Confirming..."
                 leftIcon={<FaCheck />}
+                isDisabled={rating === 0 || !policyAgreed}
               >
-                Confirm
+                Confirm Trade Completion
               </Button>
-            </HStack>
-          </VStack>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+            </ModalFooter>
+          )}
+          {!loading && bothCompleted && showFinishButton && (
+            <ModalFooter borderTopWidth="1px" borderColor="gray.100" pt={3} pb={4}>
+              <Button
+                colorScheme="blue"
+                size="lg"
+                w="full"
+                onClick={handleFinishTrade}
+                leftIcon={<FaCheck />}
+              >
+                Finish
+              </Button>
+            </ModalFooter>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Compact Confirmation Modal */}
+      <Modal isOpen={showConfirmationModal} onClose={() => setShowConfirmationModal(false)} size="sm" isCentered>
+        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <ModalContent
+          bg="white"
+          borderRadius="xl"
+          boxShadow="xl"
+          mx={4}
+        >
+          <ModalBody p={6} textAlign="center">
+            <VStack spacing={4}>
+              <Icon as={FaHandshake} color="blue.500" boxSize={8} />
+              <VStack spacing={2}>
+                <Text fontWeight="bold" fontSize="lg" color="gray.800">
+                  Confirm Trade Completion
+                </Text>
+                <Text fontSize="sm" color="gray.600" textAlign="center">
+                  Are you sure you want to mark this trade as completed? This action cannot be undone.
+                </Text>
+              </VStack>
+
+              <HStack spacing={3} w="full">
+                <Button
+                  variant="outline"
+                  size="md"
+                  flex={1}
+                  onClick={() => setShowConfirmationModal(false)}
+                  isDisabled={submitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  colorScheme="green"
+                  size="md"
+                  flex={1}
+                  onClick={handleConfirmCompletion}
+                  isLoading={submitting}
+                  loadingText="Confirming..."
+                  leftIcon={<FaCheck />}
+                >
+                  Confirm
+                </Button>
+              </HStack>
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </>
   )
-        
 }
 
 export default TradeCompletionModal

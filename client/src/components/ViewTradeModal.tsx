@@ -314,8 +314,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           {bothConfirmed
             ? '✓ Delivery Complete'
             : deliveryState.paymentConfirmed
-            ? 'Payment Confirmed - Awaiting Delivery'
-            : 'Setup in Progress'}
+              ? 'Payment Confirmed - Awaiting Delivery'
+              : 'Setup in Progress'}
         </Text>
       </Box>
 
@@ -454,71 +454,71 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
               <VStack spacing={2} align="stretch">
                 {Object.entries(paymentMethods).map(([method, details]: [string, any]) => {
-                  const isLocked = method === 'gcash' || method === 'maya'
-                  
+                  const isLocked = method === 'maya' // gcsh (Xendit) is now unlocked
+
                   return (
-                  <Card
-                    key={`payment-${method}`}
-                    cursor={isLocked || deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
-                    borderWidth="2px"
-                    borderColor={
-                      deliveryState.paymentMethod === method ? 'green.400' : isLocked ? 'gray.300' : 'gray.200'
-                    }
-                    bg={
-                      deliveryState.paymentMethod === method
-                        ? `${details.color}.50`
-                        : isLocked ? 'gray.100' : 'white'
-                    }
-                    opacity={isLocked ? 0.5 : (deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1)}
-                    onClick={() => {
-                      // Disable locked options
-                      if (isLocked) return
-                      // Disable changing payment method if already confirmed
-                      if (deliveryState.paymentConfirmed) return
-                      
-                      const newMethod = method as DeliveryState['paymentMethod']
-                      setDeliveryState(prev => ({
-                        ...prev,
-                        paymentMethod: newMethod,
-                      }))
-                      saveDeliveryState({ paymentMethod: newMethod })
-                    }}
-                    transition="all 0.2s"
-                    _hover={isLocked || deliveryState.paymentConfirmed ? {} : {
-                      borderColor: `${details.color}.300`,
-                      shadow: 'md',
-                    }}
-                  >
-                    <CardBody>
-                      <HStack spacing={3} justify="space-between">
-                        <HStack spacing={3}>
-                          <Text fontSize="xl">{details.icon}</Text>
-                          <VStack spacing={0} align="start">
-                            <Text fontWeight="medium" fontSize="sm">
-                              {details.label}
-                            </Text>
-                            {isLocked && (
-                              <Text fontSize="xs" color="gray.500" fontWeight="semibold">
-                                🔒 Coming Soon
+                    <Card
+                      key={`payment-${method}`}
+                      cursor={isLocked || deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
+                      borderWidth="2px"
+                      borderColor={
+                        deliveryState.paymentMethod === method ? 'green.400' : isLocked ? 'gray.300' : 'gray.200'
+                      }
+                      bg={
+                        deliveryState.paymentMethod === method
+                          ? `${details.color}.50`
+                          : isLocked ? 'gray.100' : 'white'
+                      }
+                      opacity={isLocked ? 0.5 : (deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1)}
+                      onClick={() => {
+                        // Disable locked options
+                        if (isLocked) return
+                        // Disable changing payment method if already confirmed
+                        if (deliveryState.paymentConfirmed) return
+
+                        const newMethod = method as DeliveryState['paymentMethod']
+                        setDeliveryState(prev => ({
+                          ...prev,
+                          paymentMethod: newMethod,
+                        }))
+                        saveDeliveryState({ paymentMethod: newMethod })
+                      }}
+                      transition="all 0.2s"
+                      _hover={isLocked || deliveryState.paymentConfirmed ? {} : {
+                        borderColor: `${details.color}.300`,
+                        shadow: 'md',
+                      }}
+                    >
+                      <CardBody>
+                        <HStack spacing={3} justify="space-between">
+                          <HStack spacing={3}>
+                            <Text fontSize="xl">{details.icon}</Text>
+                            <VStack spacing={0} align="start">
+                              <Text fontWeight="medium" fontSize="sm">
+                                {details.label}
                               </Text>
-                            )}
-                            {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
-                              <Text fontSize="xs" color="green.600" fontWeight="semibold">
-                                ✓ Secured
-                              </Text>
-                            )}
-                          </VStack>
+                              {isLocked && (
+                                <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+                                  🔒 Coming Soon
+                                </Text>
+                              )}
+                              {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
+                                <Text fontSize="xs" color="green.600" fontWeight="semibold">
+                                  ✓ Secured
+                                </Text>
+                              )}
+                            </VStack>
+                          </HStack>
+                          {deliveryState.paymentMethod === method && (
+                            <Icon
+                              as={FiCheck}
+                              color={`${details.color}.500`}
+                              boxSize={5}
+                            />
+                          )}
                         </HStack>
-                        {deliveryState.paymentMethod === method && (
-                          <Icon 
-                            as={FiCheck} 
-                            color={`${details.color}.500`} 
-                            boxSize={5} 
-                          />
-                        )}
-                      </HStack>
-                    </CardBody>
-                  </Card>
+                      </CardBody>
+                    </Card>
                   )
                 })}
               </VStack>
@@ -553,8 +553,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
                 w="full"
               >
-                {deliveryState.paymentConfirmed 
-                  ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured` 
+                {deliveryState.paymentConfirmed
+                  ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured`
                   : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
               </Button>
             </VStack>
@@ -1116,17 +1116,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   // Save delivery state to backend
   const saveDeliveryState = async (updates: Partial<DeliveryState>) => {
     if (!trade) return
-    
+
     try {
       const payload: any = { action: 'update_delivery_state' }
-      
+
       if (updates.deliveryType) payload.delivery_type = updates.deliveryType
       if (updates.paymentMethod) payload.payment_method = updates.paymentMethod
       if (updates.paymentConfirmed !== undefined) payload.payment_confirmed = updates.paymentConfirmed
       if (updates.buyerConfirmedReceipt !== undefined) payload.buyer_confirmed_receipt = updates.buyerConfirmedReceipt
       if (updates.sellerConfirmedDelivery !== undefined) payload.seller_confirmed_delivery = updates.sellerConfirmedDelivery
       if (updates.deliveryInstructions !== undefined) payload.delivery_instructions = updates.deliveryInstructions
-      
+
       console.log('Sending delivery state payload:', payload, 'to trade:', trade.id)
       const response = await api.put(`/api/trades/${trade.id}`, payload)
       console.log('Delivery state update response:', response)
@@ -1231,7 +1231,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       fetchMessages({ showLoading: true })
       fetchProducts()
       fetchMeetupStatus()
-      
+
       // Poll for new messages every 3 seconds without flashing a loader
       messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
       return () => {
@@ -1254,7 +1254,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const fetchMessages = async (options?: { showLoading?: boolean }) => {
     const showLoading = options?.showLoading
     if (!trade) return
-    
+
     try {
       if (showLoading) setLoadingMessages(true)
       const response = await api.get(`/api/trades/${trade.id}/messages`)
@@ -1271,7 +1271,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const fetchProducts = async () => {
     if (!trade) return
-    
+
     try {
       setLoadingProducts(true)
       const requested = await getProduct(trade.target_product_id)
@@ -1289,15 +1289,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const fetchMeetupStatus = async () => {
     if (!trade) return
-    
+
     try {
       const response = await api.get(`/api/trades/${trade.id}`)
       const tradeData = response.data?.data
-      
+
       // Set confirmation status based on backend data
       setBuyerMeetupConfirmed(!!(tradeData?.buyer_meetup_confirmed || tradeData?.meetup_confirmed_by_buyer))
       setSellerMeetupConfirmed(!!(tradeData?.seller_meetup_confirmed || tradeData?.meetup_confirmed_by_seller))
-      
+
       // Also set selected location if it exists
       if (tradeData?.meetup_location) {
         setSelectedLocation(tradeData.meetup_location)
@@ -1393,7 +1393,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const handleConfirmPayment = async () => {
     try {
       setConfirmingPayment(true)
-      // Save payment confirmation to backend
+
+      // Xendit Online Checkout Pipeline
+      if (deliveryState.paymentMethod === 'gcash') {
+        const xenditResponse = await api.post(`/api/payments/trade/${trade?.id}`)
+        if (xenditResponse.data?.success && xenditResponse.data?.data?.checkout_url) {
+          // Redirect the user securely to Xendit's hosted checkout page
+          window.location.href = xenditResponse.data.data.checkout_url
+          return // Stop execution, let the redirect happen. Webhook will confirm payment async.
+        }
+      }
+
+      // Traditional Manual Payment Confirmation (e.g. COD)
       await api.put(`/api/trades/${trade?.id}`, {
         action: 'update_delivery_state',
         payment_confirmed: true,
@@ -1441,7 +1452,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const confirmationPayload: any = {
         action: 'update_delivery_state',
       }
-      
+
       if (isUserBuyer) {
         confirmationPayload.buyer_confirmed_receipt = true
         setDeliveryState(prev => ({
@@ -1455,7 +1466,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
           sellerConfirmedDelivery: true,
         }))
       }
-      
+
       // Save confirmation to backend
       await api.put(`/api/trades/${trade?.id}`, confirmationPayload)
 
@@ -1523,20 +1534,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   trade.status === 'active'
                     ? 'green'
                     : trade.status === 'completed'
-                    ? 'blue'
-                    : trade.status === 'accepted'
-                    ? 'orange'
-                    : 'yellow'
+                      ? 'blue'
+                      : trade.status === 'accepted'
+                        ? 'orange'
+                        : 'yellow'
                 }
                 variant="subtle"
               >
                 {trade.status === 'active'
                   ? 'In Progress'
                   : trade.status === 'completed'
-                  ? 'Completed'
-                  : trade.status === 'accepted'
-                  ? 'Waiting for Meetup'
-                  : 'Pending'}
+                    ? 'Completed'
+                    : trade.status === 'accepted'
+                      ? 'Waiting for Meetup'
+                      : 'Pending'}
               </Badge>
             </HStack>
           </ModalHeader>
@@ -1562,82 +1573,114 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
               <TabPanels>
                 {/* Overview Tab */}
                 <TabPanel px={0}>
-                <VStack spacing={6} align="stretch">
-                  {/* Trade Option Display - Locked for Ongoing Trades */}
-                  {trade?.trade_option && (
-                    <Card 
-                      variant="outline" 
-                      borderWidth="2px" 
-                      borderColor={trade.trade_option === 'meetup' ? 'blue.400' : 'green.400'}
-                      bg={trade.trade_option === 'meetup' ? 'blue.50' : 'green.50'}
-                    >
-                      <CardBody p={4}>
-                        <HStack spacing={3} align="center" justify="space-between">
-                          <HStack spacing={3} align="center">
-                            <Box
-                              p={2}
-                              borderRadius="full"
-                              bg={trade.trade_option === 'meetup' ? 'blue.500' : 'green.500'}
-                              color="white"
-                            >
-                              <Icon 
-                                as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} 
-                                boxSize={5} 
-                              />
-                            </Box>
-                            <VStack align="start" spacing={1}>
-                              <Text fontWeight="bold" fontSize="md" color={trade.trade_option === 'meetup' ? 'blue.700' : 'green.700'}>
-                                Trade Option: {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                              </Text>
-                              {trade.trade_option === 'meetup' ? (
-                                <Text fontSize="sm" color="gray.600">
-                                  Exchange items at a meetup location
+                  <VStack spacing={6} align="stretch">
+                    {/* Trade Option Display - Locked for Ongoing Trades */}
+                    {trade?.trade_option && (
+                      <Card
+                        variant="outline"
+                        borderWidth="2px"
+                        borderColor={trade.trade_option === 'meetup' ? 'blue.400' : 'green.400'}
+                        bg={trade.trade_option === 'meetup' ? 'blue.50' : 'green.50'}
+                      >
+                        <CardBody p={4}>
+                          <HStack spacing={3} align="center" justify="space-between">
+                            <HStack spacing={3} align="center">
+                              <Box
+                                p={2}
+                                borderRadius="full"
+                                bg={trade.trade_option === 'meetup' ? 'blue.500' : 'green.500'}
+                                color="white"
+                              >
+                                <Icon
+                                  as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck}
+                                  boxSize={5}
+                                />
+                              </Box>
+                              <VStack align="start" spacing={1}>
+                                <Text fontWeight="bold" fontSize="md" color={trade.trade_option === 'meetup' ? 'blue.700' : 'green.700'}>
+                                  Trade Option: {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
                                 </Text>
-                              ) : (
-                                <VStack align="start" spacing={0}>
+                                {trade.trade_option === 'meetup' ? (
                                   <Text fontSize="sm" color="gray.600">
-                                    Items will be delivered to addresses
+                                    Exchange items at a meetup location
                                   </Text>
-                                  {trade.delivery_address && (
-                                    <Text fontSize="xs" color="gray.600" mt={1} fontStyle="italic">
-                                      Address: {trade.delivery_address}
+                                ) : (
+                                  <VStack align="start" spacing={0}>
+                                    <Text fontSize="sm" color="gray.600">
+                                      Items will be delivered to addresses
                                     </Text>
-                                  )}
-                                </VStack>
-                              )}
-                            </VStack>
+                                    {trade.delivery_address && (
+                                      <Text fontSize="xs" color="gray.600" mt={1} fontStyle="italic">
+                                        Address: {trade.delivery_address}
+                                      </Text>
+                                    )}
+                                  </VStack>
+                                )}
+                              </VStack>
+                            </HStack>
+                            <Badge
+                              colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
+                              variant="solid"
+                              fontSize="sm"
+                              px={3}
+                              py={1}
+                            >
+                              {trade.trade_option === 'meetup' ? '📍 Meetup' : '🚚 Delivery'}
+                            </Badge>
                           </HStack>
-                          <Badge 
-                            colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
-                            variant="solid"
-                            fontSize="sm"
-                            px={3}
-                            py={1}
-                          >
-                            {trade.trade_option === 'meetup' ? '📍 Meetup' : '🚚 Delivery'}
-                          </Badge>
-                        </HStack>
-                        {(trade.status === 'accepted' || trade.status === 'active') && (
-                          <Box mt={3} pt={3} borderTopWidth="1px" borderColor="gray.200">
-                            <Text fontSize="xs" color="gray.500" fontStyle="italic">
-                              🔒 Trade option is locked - no further changes allowed
-                            </Text>
-                          </Box>
-                        )}
-                      </CardBody>
-                    </Card>
-                  )}
+                          {(trade.status === 'accepted' || trade.status === 'active') && (
+                            <Box mt={3} pt={3} borderTopWidth="1px" borderColor="gray.200">
+                              <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                                🔒 Trade option is locked - no further changes allowed
+                              </Text>
+                            </Box>
+                          )}
+                        </CardBody>
+                      </Card>
+                    )}
 
-                  {/* Trade Progress Indicator */}
-                  <TradeProgressIndicator trade={trade} />
+                    {/* Trade Progress Indicator */}
+                    <TradeProgressIndicator trade={trade} />
 
-                  <Divider />
+                    <Divider />
 
-                  {/* Products Overview */}
-                  <Box>
-                    <Text fontWeight="semibold" mb={4} fontSize="md">
-                      Trade Items
-                    </Text>
+                    {/* Trade Partner Info */}
+                    <Box
+                      p={4}
+                      bg="gray.50"
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={borderColor}
+                    >
+                      <HStack spacing={4}>
+                        <VerifiedAvatar
+                          name={tradingPartner}
+                          size="md"
+                          bg={isUserBuyer ? 'green.500' : 'blue.500'}
+                          color="white"
+                          isVerified={false}
+                        />
+                        <Box flex={1}>
+                          <Text fontWeight="semibold">{tradingPartner}</Text>
+                          <Text fontSize="sm" color="gray.600">
+                            Trading Partner
+                          </Text>
+                        </Box>
+                        <Text fontSize="xs" color="gray.500">
+                          Accepted {new Date((trade as any).created_at).toLocaleDateString()}
+                        </Text>
+                      </HStack>
+                    </Box>
+
+                    <Divider />
+
+                    {/* Products Overview */}
+                    <Box>
+                      <Text fontWeight="semibold" mb={4} fontSize="md">
+                        Trade Items
+                      </Text>
+                    </Box>
+
                     {loadingProducts ? (
                       <Spinner />
                     ) : (
@@ -1710,518 +1753,489 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Card>
                       </SimpleGrid>
                     )}
-                  </Box>
 
-                  {/* Trade Partner Info */}
-                  <Box
-                    p={4}
-                    bg="gray.50"
-                    borderRadius="md"
-                    borderWidth="1px"
-                    borderColor={borderColor}
-                  >
-                    <HStack spacing={4}>
-                      <VerifiedAvatar
-                        name={tradingPartner}
-                        size="md"
-                        bg={isUserBuyer ? 'green.500' : 'blue.500'}
-                        color="white"
-                        isVerified={false}
-                      />
-                      <Box flex={1}>
-                        <Text fontWeight="semibold">{tradingPartner}</Text>
-                        <Text fontSize="sm" color="gray.600">
-                          Trading Partner
-                        </Text>
-                      </Box>
-                      <Text fontSize="xs" color="gray.500">
-                        Accepted {new Date(trade.created_at).toLocaleDateString()}
-                      </Text>
-                    </HStack>
-                  </Box>
-
-                  {/* Delivery Information - Show for delivery trades after payment confirmed */}
-                  {trade?.trade_option === 'delivery' && deliveryState.paymentConfirmed && (
-                    <>
-                      <Divider />
-                      <Box>
-                        <Text fontWeight="semibold" mb={4} fontSize="md">
-                          Delivery Information
-                        </Text>
-                        <VStack spacing={3} align="stretch">
-                          {/* Sender Address */}
-                          <Card variant="outline" borderColor="blue.300">
-                            <CardBody p={4}>
-                              <HStack spacing={3} mb={2}>
-                                <Icon as={FaMapMarkerAlt} color="blue.500" boxSize={5} />
-                                <Text fontWeight="semibold" fontSize="sm">Sender Location</Text>
-                              </HStack>
-                              <Text fontSize="sm" color="gray.700" ml={8}>
-                                {deliveryState.senderLocation || 'Auto-detecting sender location...'}
-                              </Text>
-                              {isUserSeller && (
-                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
-                                  (Your location - from product listing)
-                                </Text>
-                              )}
-                            </CardBody>
-                          </Card>
-
-                          {/* Receiver Address */}
-                          <Card variant="outline" borderColor="green.300">
-                            <CardBody p={4}>
-                              <HStack spacing={3} mb={2}>
-                                <Icon as={FaMapMarkerAlt} color="green.500" boxSize={5} />
-                                <Text fontWeight="semibold" fontSize="sm">Receiver Location</Text>
-                              </HStack>
-                              <Text fontSize="sm" color="gray.700" ml={8}>
-                                {deliveryState.receiverLocation || 'Auto-detecting receiver location...'}
-                              </Text>
-                              {isUserBuyer && (
-                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
-                                  (Your location - from your profile)
-                                </Text>
-                              )}
-                            </CardBody>
-                          </Card>
-
-                          {/* Delivery Instructions */}
-                          {deliveryState.deliveryInstructions && (
-                            <Card variant="outline" borderColor="purple.300">
+                    {/* Delivery Information - Show for delivery trades after payment confirmed */}
+                    {trade?.trade_option === 'delivery' && deliveryState.paymentConfirmed && (
+                      <>
+                        <Divider />
+                        <Box>
+                          <Text fontWeight="semibold" mb={4} fontSize="md">
+                            Delivery Information
+                          </Text>
+                          <VStack spacing={3} align="stretch">
+                            {/* Sender Address */}
+                            <Card variant="outline" borderColor="blue.300">
                               <CardBody p={4}>
                                 <HStack spacing={3} mb={2}>
-                                  <Icon as={FiMapPin} color="purple.500" boxSize={5} />
-                                  <Text fontWeight="semibold" fontSize="sm">Special Instructions</Text>
+                                  <Icon as={FaMapMarkerAlt} color="blue.500" boxSize={5} />
+                                  <Text fontWeight="semibold" fontSize="sm">Sender Location</Text>
                                 </HStack>
-                                <Text fontSize="sm" color="gray.700" ml={8} fontStyle="italic">
-                                  "{deliveryState.deliveryInstructions}"
+                                <Text fontSize="sm" color="gray.700" ml={8}>
+                                  {deliveryState.senderLocation || 'Auto-detecting sender location...'}
                                 </Text>
+                                {isUserSeller && (
+                                  <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                    (Your location - from product listing)
+                                  </Text>
+                                )}
                               </CardBody>
                             </Card>
-                          )}
 
-                          {/* Assigned Rider */}
-                          <Card variant="outline" borderColor="orange.300" bg="orange.50">
-                            <CardBody p={4}>
-                              <HStack spacing={3} mb={2}>
-                                <VerifiedAvatar
-                                  name="Juan Dela Cruz"
-                                  size="sm"
-                                  bg="orange.500"
-                                  color="white"
-                                  isVerified={false}
-                                />
-                                <Box flex={1}>
-                                  <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
-                                  <Text fontSize="sm" color="gray.700">Juan Dela Cruz (Mock Rider)</Text>
-                                </Box>
-                              </HStack>
-                              <HStack spacing={2} ml={8} mt={2}>
-                                <Icon as={FiPhone} color="orange.500" boxSize={4} />
-                                <Text fontSize="sm" color="gray.700">+63 917 123 4567</Text>
-                              </HStack>
-                              <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
-                                🎭 This is a mock rider for demonstration
-                              </Text>
-                            </CardBody>
-                          </Card>
-                        </VStack>
-                      </Box>
-                    </>
-                  )}
-                </VStack>
-              </TabPanel>
-
-              {/* Chat Tab */}
-              <TabPanel px={0}>
-                <VStack spacing={4} align="stretch" h="500px" display="flex" flexDirection="column">
-                  {/* Messages Area */}
-                  <Box
-                    flex={1}
-                    overflowY="auto"
-                    p={4}
-                    bg="gray.50"
-                    borderRadius="md"
-                    borderWidth="1px"
-                    borderColor={borderColor}
-                  >
-                    {loadingMessages ? (
-                      <Flex justify="center" align="center" h="full">
-                        <Spinner />
-                      </Flex>
-                    ) : messages.length === 0 ? (
-                      <Flex justify="center" align="center" h="full" direction="column">
-                        <Icon as={FaPaperPlane} boxSize={8} color="gray.400" mb={2} />
-                        <Text color="gray.500">No messages yet. Start the conversation!</Text>
-                      </Flex>
-                    ) : (
-                      <VStack spacing={3} align="stretch">
-                        {messages.map((msg) => {
-                          const isOwnMessage = msg.sender_id === user?.id
-                          return (
-                            <HStack
-                              key={`msg-${msg.id}`}
-                              justify={isOwnMessage ? 'flex-end' : 'flex-start'}
-                              align="flex-start"
-                              spacing={2}
-                            >
-                              {!isOwnMessage && (
-                                <VerifiedAvatar
-                                  name={msg.sender_name || 'User'}
-                                  size="sm"
-                                  bg="brand.500"
-                                  color="white"
-                                  isVerified={false}
-                                />
-                              )}
-                              <Box
-                                maxW="70%"
-                                p={3}
-                                borderRadius="lg"
-                                bg={isOwnMessage ? 'brand.500' : 'white'}
-                                color={isOwnMessage ? 'white' : 'gray.800'}
-                                borderWidth={isOwnMessage ? 0 : '1px'}
-                                borderColor={borderColor}
-                              >
-                                <Text fontSize="sm">{msg.content}</Text>
-                                <Text
-                                  fontSize="xs"
-                                  color={isOwnMessage ? 'brand.100' : 'gray.500'}
-                                  mt={1}
-                                >
-                                  {new Date(msg.created_at).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
+                            {/* Receiver Address */}
+                            <Card variant="outline" borderColor="green.300">
+                              <CardBody p={4}>
+                                <HStack spacing={3} mb={2}>
+                                  <Icon as={FaMapMarkerAlt} color="green.500" boxSize={5} />
+                                  <Text fontWeight="semibold" fontSize="sm">Receiver Location</Text>
+                                </HStack>
+                                <Text fontSize="sm" color="gray.700" ml={8}>
+                                  {deliveryState.receiverLocation || 'Auto-detecting receiver location...'}
                                 </Text>
-                              </Box>
-                              {isOwnMessage && (
-                                <Avatar
-                                  name={user?.name || 'You'}
-                                  size="sm"
-                                  bg="brand.500"
-                                  color="white"
-                                />
-                              )}
-                            </HStack>
-                          )
-                        })}
-                        <div ref={messagesEndRef} />
-                      </VStack>
-                    )}
-                  </Box>
+                                {isUserBuyer && (
+                                  <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                    (Your location - from your profile)
+                                  </Text>
+                                )}
+                              </CardBody>
+                            </Card>
 
-                  {/* Message Input */}
-                  <HStack spacing={2}>
-                    <InputGroup>
-                      <Textarea
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="Type your message..."
-                        resize="none"
-                        rows={2}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            sendMessage()
-                          }
-                        }}
-                      />
-                    </InputGroup>
-                    <Button
-                      colorScheme="brand"
-                      onClick={sendMessage}
-                      isLoading={sendingMessage}
-                      leftIcon={<FaPaperPlane />}
-                      isDisabled={!newMessage.trim()}
-                    >
-                      Send
-                    </Button>
-                  </HStack>
-                </VStack>
-              </TabPanel>
-
-              {/* Meetup/Delivery Tab */}
-              <TabPanel px={0}>
-                {trade?.trade_option === 'delivery' ? (
-                  <DeliveryTab
-                    deliveryState={deliveryState}
-                    setDeliveryState={setDeliveryState}
-                    deliveryOptions={deliveryOptions}
-                    paymentMethods={paymentMethods}
-                    requestedProduct={requestedProduct}
-                    trade={trade}
-                    isUserSeller={isUserSeller ?? false}
-                    isUserBuyer={isUserBuyer ?? false}
-                    toggleSection={toggleSection}
-                    handleConfirmPayment={handleConfirmPayment}
-                    handleConfirmDelivery={handleConfirmDelivery}
-                    saveDeliveryState={saveDeliveryState}
-                    setIsReviewModalOpen={setIsReviewModalOpen}
-                    confirmingPayment={confirmingPayment}
-                  />
-                ) : (
-                  <VStack spacing={6} align="stretch">
-                    {/* Status Text - Show only if NOT both confirmed */}
-                    {!(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
-                      <Box
-                        p={3}
-                        bg={useColorModeValue('blue.50', 'blue.900')}
-                        borderLeft="4px"
-                        borderColor="brand.500"
-                        borderRadius="md"
-                      >
-                        <Text fontSize="sm" color={useColorModeValue('blue.700', 'blue.200')} fontWeight="medium">
-                          Current Stage: Waiting for both parties to confirm location
-                        </Text>
-                      </Box>
-                    )}
-
-                    {/* Leave Review Section - Show only if BOTH confirmed */}
-                    {(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
-                      <Box>
-                        <Button
-                          colorScheme="green"
-                          size="lg"
-                          onClick={() => setIsReviewModalOpen(true)}
-                          leftIcon={<FaStar />}
-                          w="full"
-                          transition="all 0.2s"
-                          _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                        >
-                          ✓ Leave Review & Complete Trade
-                        </Button>
-                      </Box>
-                    )}
-
-                    {/* Meetup Location Selection */}
-                    <Box>
-                      <Text fontWeight="semibold" mb={1} fontSize="md">
-                        Suggested Meetup Locations
-                      </Text>
-                      <Text fontSize="sm" color="gray.600" mb={4}>
-                        Select a safe, public location. Both parties must confirm to proceed.
-                      </Text>
-
-                      {/* Locations Grid */}
-                      <VStack spacing={3} align="stretch">
-                        {suggestedLocations.map((location, index) => {
-                          const isSelected = selectedLocation === location.name
-                          const isNearest = index === 0
-                          const textColor = useColorModeValue('gray.800', 'gray.100')
-
-                          return (
-                            <Card
-                              key={`location-${location.name}`}
-                              variant="outline"
-                              cursor="pointer"
-                              borderWidth={isSelected ? '2px' : '1px'}
-                              borderColor={isSelected ? 'brand.500' : isNearest ? 'orange.300' : borderColor}
-                              bg={isSelected ? 'brand.50' : isNearest ? useColorModeValue('orange.50', 'orange.950') : 'white'}
-                              onClick={() => setSelectedLocation(location.name)}
-                              transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                              _hover={{
-                                borderColor: isSelected ? 'brand.600' : 'brand.400',
-                                shadow: 'md',
-                                transform: 'translateY(-2px)',
-                              }}
-                            >
-                              <CardBody>
-                                <HStack spacing={3} justify="space-between">
-                                  {/* Location Icon & Info */}
-                                  <HStack spacing={3} flex={1}>
-                                    <Box
-                                      p={2}
-                                      bg={useColorModeValue('gray.100', 'gray.700')}
-                                      borderRadius="md"
-                                      display="flex"
-                                      alignItems="center"
-                                      justifyContent="center"
-                                      flexShrink={0}
-                                    >
-                                      <Icon
-                                        as={FaMapMarkerAlt}
-                                        color={isSelected ? 'brand.500' : isNearest ? 'orange.500' : 'gray.500'}
-                                        boxSize={5}
-                                      />
-                                    </Box>
-
-                                    <VStack align="start" spacing={1} flex={1}>
-                                      <HStack spacing={2}>
-                                        <Text fontWeight="semibold" fontSize="sm" color={textColor}>
-                                          {location.name}
-                                        </Text>
-                                        {isNearest && (
-                                          <Badge colorScheme="orange" fontSize="2xs" px={1.5} py={0.5}>
-                                            Nearest
-                                          </Badge>
-                                        )}
-                                      </HStack>
-                                      <Text fontSize="xs" color="gray.600">
-                                        {location.address}
-                                      </Text>
-                                      <Badge
-                                        colorScheme={
-                                          location.type === 'cafe'
-                                            ? 'orange'
-                                            : location.type === 'mall'
-                                            ? 'blue'
-                                            : 'green'
-                                        }
-                                        variant="subtle"
-                                        fontSize="2xs"
-                                        px={1.5}
-                                        py={0.5}
-                                        w="fit-content"
-                                      >
-                                        {location.type}
-                                      </Badge>
-                                    </VStack>
+                            {/* Delivery Instructions */}
+                            {deliveryState.deliveryInstructions && (
+                              <Card variant="outline" borderColor="purple.300">
+                                <CardBody p={4}>
+                                  <HStack spacing={3} mb={2}>
+                                    <Icon as={FiMapPin} color="purple.500" boxSize={5} />
+                                    <Text fontWeight="semibold" fontSize="sm">Special Instructions</Text>
                                   </HStack>
+                                  <Text fontSize="sm" color="gray.700" ml={8} fontStyle="italic">
+                                    "{deliveryState.deliveryInstructions}"
+                                  </Text>
+                                </CardBody>
+                              </Card>
+                            )}
 
-                                  {/* Selection Indicator */}
-                                  {isSelected && (
-                                    <Box
-                                      display="flex"
-                                      alignItems="center"
-                                      justifyContent="center"
-                                      flexShrink={0}
-                                      animation="scaleIn 0.3s ease-out"
-                                      sx={{
-                                        '@keyframes scaleIn': {
-                                          from: { transform: 'scale(0.5)', opacity: 0 },
-                                          to: { transform: 'scale(1)', opacity: 1 },
-                                        },
-                                      }}
-                                    >
-                                      <Icon as={FaCheckCircle} color="brand.500" boxSize={6} />
-                                    </Box>
-                                  )}
+                            {/* Assigned Rider */}
+                            <Card variant="outline" borderColor="orange.300" bg="orange.50">
+                              <CardBody p={4}>
+                                <HStack spacing={3} mb={2}>
+                                  <Avatar
+                                    name="Juan Dela Cruz"
+                                    size="sm"
+                                    bg="orange.500"
+                                    color="white"
+                                  />
+                                  <Box flex={1}>
+                                    <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
+                                    <Text fontSize="sm" color="gray.700">Juan Dela Cruz (Mock Rider)</Text>
+                                  </Box>
                                 </HStack>
+                                <HStack spacing={2} ml={8} mt={2}>
+                                  <Icon as={FiPhone} color="orange.500" boxSize={4} />
+                                  <Text fontSize="sm" color="gray.700">+63 917 123 4567</Text>
+                                </HStack>
+                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                  🎭 This is a mock rider for demonstration
+                                </Text>
                               </CardBody>
                             </Card>
-                          )
-                        })}
-                      </VStack>
-                    </Box>
-
-                    <Divider />
-
-                    {/* Confirmation Status */}
-                    <Box>
-                      <Text fontWeight="semibold" mb={4} fontSize="md">
-                        Confirmation Status
-                      </Text>
-                      <HStack spacing={6} justify="center" align="center">
-                        <VStack spacing={2}>
-                          <VerifiedAvatar
-                            name={trade.buyer_name || 'Buyer'}
-                            size="md"
-                            bg="blue.500"
-                            color="white"
-                            isVerified={false}
-                          />
-                          <VStack spacing={1}>
-                            <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
-                              Buyer
-                            </Text>
-                            <Badge
-                              colorScheme={buyerMeetupConfirmed ? 'green' : 'gray'}
-                              variant="subtle"
-                              fontSize="xs"
-                              px={2}
-                              py={1}
-                            >
-                              {buyerMeetupConfirmed ? '✓ Confirmed' : 'Pending'}
-                            </Badge>
                           </VStack>
-                        </VStack>
-
-                        <Box h="12" w="0.5px" bg={borderColor} />
-
-                        <VStack spacing={2}>
-                          <VerifiedAvatar
-                            name={trade.seller_name || 'Seller'}
-                            size="md"
-                            bg="green.500"
-                            color="white"
-                            isVerified={false}
-                          />
-                          <VStack spacing={1}>
-                            <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
-                              Seller
-                            </Text>
-                            <Badge
-                              colorScheme={sellerMeetupConfirmed ? 'green' : 'gray'}
-                              variant="subtle"
-                              fontSize="xs"
-                              px={2}
-                              py={1}
-                            >
-                              {sellerMeetupConfirmed ? '✓ Confirmed' : 'Pending'}
-                            </Badge>
-                          </VStack>
-                        </VStack>
-                      </HStack>
-                    </Box>
-
-                    {/* Confirm Button */}
-                    {selectedLocation && (
-                      <Button
-                        colorScheme="green"
-                        size="lg"
-                        onClick={confirmMeetup}
-                        isLoading={confirmingMeetup}
-                        leftIcon={<FaCheckCircle />}
-                        isDisabled={Boolean(
-                          (isUserBuyer && buyerMeetupConfirmed) ||
-                          (isUserSeller && sellerMeetupConfirmed)
-                        )}
-                        w="full"
-                        transition="all 0.2s"
-                        _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                      >
-                        {isUserBuyer && buyerMeetupConfirmed
-                          ? 'You Confirmed ✓'
-                          : isUserSeller && sellerMeetupConfirmed
-                          ? 'You Confirmed ✓'
-                          : 'Confirm Meetup Location'}
-                      </Button>
+                        </Box>
+                      </>
                     )}
                   </VStack>
-                )}
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+                </TabPanel>
 
-    {/* Review Modal - Appears when both parties confirmed meetup */}
-    <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="2xl" isCentered>
-      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-      <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl">
-        <ModalHeader>
-          <HStack spacing={3}>
-            <Icon as={FaStar} color="yellow.400" />
-            <Text>Trade Review & Completion</Text>
-          </HStack>
-        </ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
-          <ReviewTab
-            trade={trade}
-            isUserBuyer={isUserBuyer ?? false}
-            isUserSeller={isUserSeller ?? false}
-            user={user}
-            onStatusUpdate={() => {
-              onStatusUpdate()
-              setIsReviewModalOpen(false)
-            }}
-          />
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+
+                {/* Chat Tab */}
+                <TabPanel px={0}>
+                  <VStack spacing={4} align="stretch" h="500px" display="flex" flexDirection="column">
+                    {/* Messages Area */}
+                    <Box
+                      flex={1}
+                      overflowY="auto"
+                      p={4}
+                      bg="gray.50"
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={borderColor}
+                    >
+                      {loadingMessages ? (
+                        <Flex justify="center" align="center" h="full">
+                          <Spinner />
+                        </Flex>
+                      ) : messages.length === 0 ? (
+                        <Flex justify="center" align="center" h="full" direction="column">
+                          <Icon as={FaPaperPlane} boxSize={8} color="gray.400" mb={2} />
+                          <Text color="gray.500">No messages yet. Start the conversation!</Text>
+                        </Flex>
+                      ) : (
+                        <VStack spacing={3} align="stretch">
+                          {messages.map((msg) => {
+                            const isOwnMessage = msg.sender_id === user?.id
+                            return (
+                              <HStack
+                                key={`msg-${msg.id}`}
+                                justify={isOwnMessage ? 'flex-end' : 'flex-start'}
+                                align="flex-start"
+                                spacing={2}
+                              >
+                                {!isOwnMessage && (
+                                  <Avatar
+                                    name={msg.sender_name || 'User'}
+                                    size="sm"
+                                    bg="brand.500"
+                                    color="white"
+                                  />
+                                )}
+                                <Box
+                                  maxW="70%"
+                                  p={3}
+                                  borderRadius="lg"
+                                  bg={isOwnMessage ? 'brand.500' : 'white'}
+                                  color={isOwnMessage ? 'white' : 'gray.800'}
+                                  borderWidth={isOwnMessage ? 0 : '1px'}
+                                  borderColor={borderColor}
+                                >
+                                  <Text fontSize="sm">{msg.content}</Text>
+                                  <Text
+                                    fontSize="xs"
+                                    color={isOwnMessage ? 'brand.100' : 'gray.500'}
+                                    mt={1}
+                                  >
+                                    {new Date(msg.created_at).toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </Text>
+                                </Box>
+                                {isOwnMessage && (
+                                  <Avatar
+                                    name={user?.name || 'You'}
+                                    size="sm"
+                                    bg="brand.500"
+                                    color="white"
+                                  />
+                                )}
+                              </HStack>
+                            )
+                          })}
+                          <div ref={messagesEndRef} />
+                        </VStack>
+                      )}
+                    </Box>
+
+                    {/* Message Input */}
+                    <HStack spacing={2}>
+                      <InputGroup>
+                        <Textarea
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          placeholder="Type your message..."
+                          resize="none"
+                          rows={2}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              sendMessage()
+                            }
+                          }}
+                        />
+                      </InputGroup>
+                      <Button
+                        colorScheme="brand"
+                        onClick={sendMessage}
+                        isLoading={sendingMessage}
+                        leftIcon={<FaPaperPlane />}
+                        isDisabled={!newMessage.trim()}
+                      >
+                        Send
+                      </Button>
+                    </HStack>
+                  </VStack>
+                </TabPanel>
+
+                {/* Meetup/Delivery Tab */}
+                <TabPanel px={0}>
+                  {trade?.trade_option === 'delivery' ? (
+                    <DeliveryTab
+                      deliveryState={deliveryState}
+                      setDeliveryState={setDeliveryState}
+                      deliveryOptions={deliveryOptions}
+                      paymentMethods={paymentMethods}
+                      requestedProduct={requestedProduct}
+                      trade={trade}
+                      isUserSeller={isUserSeller ?? false}
+                      isUserBuyer={isUserBuyer ?? false}
+                      toggleSection={toggleSection}
+                      handleConfirmPayment={handleConfirmPayment}
+                      handleConfirmDelivery={handleConfirmDelivery}
+                      saveDeliveryState={saveDeliveryState}
+                      setIsReviewModalOpen={setIsReviewModalOpen}
+                      confirmingPayment={confirmingPayment}
+                    />
+                  ) : (
+                    <VStack spacing={6} align="stretch">
+                      {/* Status Text - Show only if NOT both confirmed */}
+                      {!(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
+                        <Box
+                          p={3}
+                          bg={useColorModeValue('blue.50', 'blue.900')}
+                          borderLeft="4px"
+                          borderColor="brand.500"
+                          borderRadius="md"
+                        >
+                          <Text fontSize="sm" color={useColorModeValue('blue.700', 'blue.200')} fontWeight="medium">
+                            Current Stage: Waiting for both parties to confirm location
+                          </Text>
+                        </Box>
+                      )}
+
+                      {/* Leave Review Section - Show only if BOTH confirmed */}
+                      {(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
+                        <Box>
+                          <Button
+                            colorScheme="green"
+                            size="lg"
+                            onClick={() => setIsReviewModalOpen(true)}
+                            leftIcon={<FaStar />}
+                            w="full"
+                            transition="all 0.2s"
+                            _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                          >
+                            ✓ Leave Review & Complete Trade
+                          </Button>
+                        </Box>
+                      )}
+
+                      {/* Meetup Location Selection */}
+                      <Box>
+                        <Text fontWeight="semibold" mb={1} fontSize="md">
+                          Suggested Meetup Locations
+                        </Text>
+                        <Text fontSize="sm" color="gray.600" mb={4}>
+                          Select a safe, public location. Both parties must confirm to proceed.
+                        </Text>
+
+                        {/* Locations Grid */}
+                        <VStack spacing={3} align="stretch">
+                          {suggestedLocations.map((location, index) => {
+                            const isSelected = selectedLocation === location.name
+                            const isNearest = index === 0
+                            const textColor = useColorModeValue('gray.800', 'gray.100')
+
+                            return (
+                              <Card
+                                key={`location-${location.name}`}
+                                variant="outline"
+                                cursor="pointer"
+                                borderWidth={isSelected ? '2px' : '1px'}
+                                borderColor={isSelected ? 'brand.500' : isNearest ? 'orange.300' : borderColor}
+                                bg={isSelected ? 'brand.50' : isNearest ? useColorModeValue('orange.50', 'orange.950') : 'white'}
+                                onClick={() => setSelectedLocation(location.name)}
+                                transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                                _hover={{
+                                  borderColor: isSelected ? 'brand.600' : 'brand.400',
+                                  shadow: 'md',
+                                  transform: 'translateY(-2px)',
+                                }}
+                              >
+                                <CardBody>
+                                  <HStack spacing={3} justify="space-between">
+                                    {/* Location Icon & Info */}
+                                    <HStack spacing={3} flex={1}>
+                                      <Box
+                                        p={2}
+                                        bg={useColorModeValue('gray.100', 'gray.700')}
+                                        borderRadius="md"
+                                        display="flex"
+                                        alignItems="center"
+                                        justifyContent="center"
+                                        flexShrink={0}
+                                      >
+                                        <Icon
+                                          as={FaMapMarkerAlt}
+                                          color={isSelected ? 'brand.500' : isNearest ? 'orange.500' : 'gray.500'}
+                                          boxSize={5}
+                                        />
+                                      </Box>
+
+                                      <VStack align="start" spacing={1} flex={1}>
+                                        <HStack spacing={2}>
+                                          <Text fontWeight="semibold" fontSize="sm" color={textColor}>
+                                            {location.name}
+                                          </Text>
+                                          {isNearest && (
+                                            <Badge colorScheme="orange" fontSize="2xs" px={1.5} py={0.5}>
+                                              Nearest
+                                            </Badge>
+                                          )}
+                                        </HStack>
+                                        <Text fontSize="xs" color="gray.600">
+                                          {location.address}
+                                        </Text>
+                                        <Badge
+                                          colorScheme={
+                                            location.type === 'cafe'
+                                              ? 'orange'
+                                              : location.type === 'mall'
+                                                ? 'blue'
+                                                : 'green'
+                                          }
+                                          variant="subtle"
+                                          fontSize="2xs"
+                                          px={1.5}
+                                          py={0.5}
+                                          w="fit-content"
+                                        >
+                                          {location.type}
+                                        </Badge>
+                                      </VStack>
+                                    </HStack>
+
+                                    {/* Selection Indicator */}
+                                    {isSelected && (
+                                      <Box
+                                        display="flex"
+                                        alignItems="center"
+                                        justifyContent="center"
+                                        flexShrink={0}
+                                        animation="scaleIn 0.3s ease-out"
+                                        sx={{
+                                          '@keyframes scaleIn': {
+                                            from: { transform: 'scale(0.5)', opacity: 0 },
+                                            to: { transform: 'scale(1)', opacity: 1 },
+                                          },
+                                        }}
+                                      >
+                                        <Icon as={FaCheckCircle} color="brand.500" boxSize={6} />
+                                      </Box>
+                                    )}
+                                  </HStack>
+                                </CardBody>
+                              </Card>
+                            )
+                          })}
+                        </VStack>
+                      </Box>
+
+                      <Divider />
+
+                      {/* Confirmation Status */}
+                      <Box>
+                        <Text fontWeight="semibold" mb={4} fontSize="md">
+                          Confirmation Status
+                        </Text>
+                        <HStack spacing={6} justify="center" align="center">
+                          <VStack spacing={2}>
+                            <Avatar
+                              name={trade.buyer_name || 'Buyer'}
+                              size="md"
+                              bg="blue.500"
+                              color="white"
+                            />
+                            <VStack spacing={1}>
+                              <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
+                                Buyer
+                              </Text>
+                              <Badge
+                                colorScheme={buyerMeetupConfirmed ? 'green' : 'gray'}
+                                variant="subtle"
+                                fontSize="xs"
+                                px={2}
+                                py={1}
+                              >
+                                {buyerMeetupConfirmed ? '✓ Confirmed' : 'Pending'}
+                              </Badge>
+                            </VStack>
+                          </VStack>
+
+                          <Box h="12" w="0.5px" bg={borderColor} />
+
+                          <VStack spacing={2}>
+                            <Avatar
+                              name={trade.seller_name || 'Seller'}
+                              size="md"
+                              bg="green.500"
+                              color="white"
+                            />
+                            <VStack spacing={1}>
+                              <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
+                                Seller
+                              </Text>
+                              <Badge
+                                colorScheme={sellerMeetupConfirmed ? 'green' : 'gray'}
+                                variant="subtle"
+                                fontSize="xs"
+                                px={2}
+                                py={1}
+                              >
+                                {sellerMeetupConfirmed ? '✓ Confirmed' : 'Pending'}
+                              </Badge>
+                            </VStack>
+                          </VStack>
+                        </HStack>
+                      </Box>
+
+                      {/* Confirm Button */}
+                      {
+                        selectedLocation && (
+                          <Button
+                            colorScheme="green"
+                            size="lg"
+                            onClick={confirmMeetup}
+                            isLoading={confirmingMeetup}
+                            leftIcon={<FaCheckCircle />}
+                            isDisabled={Boolean(
+                              (isUserBuyer && buyerMeetupConfirmed) ||
+                              (isUserSeller && sellerMeetupConfirmed)
+                            )}
+                            w="full"
+                            transition="all 0.2s"
+                            _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                          >
+                            {isUserBuyer && buyerMeetupConfirmed
+                              ? 'You Confirmed ✓'
+                              : isUserSeller && sellerMeetupConfirmed
+                                ? 'You Confirmed ✓'
+                                : 'Confirm Meetup Location'}
+                          </Button>
+                        )
+                      }
+                    </VStack >
+                  )}
+                </TabPanel >
+              </TabPanels >
+            </Tabs >
+          </ModalBody >
+        </ModalContent >
+      </Modal >
+
+
+      {/* Review Modal - Appears when both parties confirmed meetup */}
+      < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="2xl" isCentered >
+        <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+        <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl">
+          <ModalHeader>
+            <HStack spacing={3}>
+              <Icon as={FaStar} color="yellow.400" />
+              <Text>Trade Review & Completion</Text>
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <ReviewTab
+              trade={trade}
+              isUserBuyer={isUserBuyer ?? false}
+              isUserSeller={isUserSeller ?? false}
+              user={user}
+              onStatusUpdate={() => {
+                onStatusUpdate()
+                setIsReviewModalOpen(false)
+              }}
+            />
+          </ModalBody>
+        </ModalContent>
+      </Modal >
     </>
   )
 }
