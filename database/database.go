@@ -483,7 +483,7 @@ func CreateTables() error {
 	// Seed Mock Rider: Wynry Perian
 	mockRiderEmail := "wynry@clovia.com"
 	var riderUserID int
-	err := DB.QueryRow("SELECT id FROM users WHERE email = ?", mockRiderEmail).Scan(&riderUserID)
+	err = DB.QueryRow("SELECT id FROM users WHERE email = ?", mockRiderEmail).Scan(&riderUserID)
 	if err == sql.ErrNoRows {
 		res, execErr := DB.Exec("INSERT INTO users (name, email, password_hash, role, verified) VALUES (?, ?, ?, ?, ?)",
 			"Wynry Perian", mockRiderEmail, "mock_password", "rider", true)
