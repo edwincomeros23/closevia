@@ -105,25 +105,33 @@ const ProductDetail: React.FC = () => {
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false)
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomImageIndex, setZoomImageIndex] = useState(0)
 
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure()
 
   const openZoom = (index: number) => {
-    setZoomImageIndex(index)
-    setIsZoomOpen(true)
+    if (product && product.image_urls && index < product.image_urls.length) {
+      setZoomImageIndex(index)
+      setZoomImageUrl(getImageUrl(product.image_urls[index]))
+      setIsZoomOpen(true)
+    }
   }
 
   const nextZoomImage = () => {
     if (product && product.image_urls) {
-      setZoomImageIndex((zoomImageIndex + 1) % product.image_urls.length)
+      const nextIndex = (zoomImageIndex + 1) % product.image_urls.length
+      setZoomImageIndex(nextIndex)
+      setZoomImageUrl(getImageUrl(product.image_urls[nextIndex]))
     }
   }
 
   const prevZoomImage = () => {
     if (product && product.image_urls) {
-      setZoomImageIndex((zoomImageIndex - 1 + product.image_urls.length) % product.image_urls.length)
+      const prevIndex = (zoomImageIndex - 1 + product.image_urls.length) % product.image_urls.length
+      setZoomImageIndex(prevIndex)
+      setZoomImageUrl(getImageUrl(product.image_urls[prevIndex]))
     }
   }
 
