@@ -451,14 +451,17 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	// Fixed: single SELECT and Scan (removed duplicated/invalid lines)
+	var schoolEmailVerifiedAt sql.NullTime
+
 	err := h.db.QueryRow(
-		`SELECT id, name, email, role, verified, org_logo_url,
+		`SELECT id, name, email, role, verified, 
+		        COALESCE(org_logo_url, '') AS org_logo_url,
 		        COALESCE(profile_picture, '') AS profile_picture,
 		        COALESCE(bio, '') AS bio,
 		        COALESCE(background_image, '') AS background_image,
 		        COALESCE(background_position, '') AS background_position,
-		        COALESCE(department, '') AS department, COALESCE(is_premium, FALSE) AS is_premium,
+		        COALESCE(department, '') AS department, 
+		        COALESCE(is_premium, FALSE) AS is_premium,
 		        COALESCE(verification_status, 'not_verified') AS verification_status,
 		        COALESCE(school_name, '') AS school_name,
 		        COALESCE(school_email, '') AS school_email,
@@ -472,12 +475,17 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	).Scan(
 		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL,
 		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.IsPremium,
-		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.SchoolEmailVerifiedAt, &user.VerificationRejectionReason,
+		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 
+	if schoolEmailVerifiedAt.Valid {
+		user.SchoolEmailVerifiedAt = &schoolEmailVerifiedAt.Time
+	}
+
 	if err != nil {
+		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
 		// Return a friendly fallback (200) so frontend does not produce a network 404.
 		// Frontend expects a user-like object; provide minimal public fields.
 		fallback := models.User{
