@@ -194,6 +194,8 @@ func main() {
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
+	campaignHandler := handlers.NewCampaignHandler()
+	paymentHandler := handlers.NewPaymentHandler(database.DB)
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -247,6 +249,8 @@ func main() {
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id/comments", commentHandler.GetComments)
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
+	// Voting endpoint (must be before generic :id route)
+	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
@@ -289,6 +293,11 @@ func main() {
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 
+	// Payment routes
+	payments := api.Group("/payments")
+	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
+	payments.Post("/webhook/xendit", paymentHandler.XenditWebhook) // Public webhook endpoint
+
 	// Notifications routes
 	notifs := api.Group("/notifications")
 	notifs.Get("/", middleware.AuthMiddleware(), notificationHandler.GetNotifications)
@@ -305,6 +314,8 @@ func main() {
 	admin.Get("/stats-by-date", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetStatsByDate)
 	// Admin user management
 	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
+	admin.Put("/users/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.SuspendUser)
+	admin.Put("/users/:id/unsuspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.UnsuspendUser)
 	admin.Delete("/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.DeleteUser)
 	// Admin: school ID verification review
 	admin.Get("/verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListVerifications)
@@ -318,6 +329,11 @@ func main() {
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
 	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)
 	admin.Put("/reports/:id/status", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.UpdateReport)
+	// Admin campaigns management
+	admin.Get("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.GetAdminCampaigns)
+	admin.Post("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.CreateCampaign)
+	admin.Put("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.UpdateCampaign)
+	admin.Delete("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.DeleteCampaign)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -346,6 +362,10 @@ func main() {
 	ai.Get("/profile-analysis", middleware.AuthMiddleware(), aiFeaturesHandler.GetProfileAnalysis)
 	ai.Get("/profile-analysis/all", middleware.AuthMiddleware(), aiFeaturesHandler.AnalyzeAllProfiles)
 	ai.Get("/counterfeit/:id", aiFeaturesHandler.GetCounterfeitReport)
+
+	// Campaigns route (public-facing for fetching active campaigns)
+	campaigns := api.Group("/campaigns")
+	campaigns.Get("/active", middleware.OptionalAuthMiddleware(), campaignHandler.GetActiveCampaigns)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")

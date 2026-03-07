@@ -140,6 +140,9 @@ const Home: React.FC = () => {
     // Fetch the default "All" feed every time the Home page mounts
     console.log('🔍 Fetching initial products with status: available, limit: 20')
     searchProducts({ status: 'available', limit: 20, page: 1 })
+    
+    // Set flag so returning users bypass landing page
+    localStorage.setItem('has_visited', 'true')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -315,20 +318,21 @@ const Home: React.FC = () => {
   }
 
   const handleViewOffers = async (productId: number) => {
+    // Open modal immediately, load data in background
+    setSelectedProductForOffers(productId)
+    setOffersForProduct([])
+    setLoadingOffers(true)
+    setOffersModalOpen(true)
     try {
-      setLoadingOffers(true)
-      setSelectedProductForOffers(productId)
       const response = await api.get(`/api/trades`, {
         params: {
-          direction: 'incoming',
-          status: 'pending',
           limit: 100
         }
       })
-      // Filter for this specific product
-      const filteredOffers = (response.data?.data || []).filter((trade: any) => trade.target_product_id === productId)
+      const filteredOffers = (response.data?.data || []).filter(
+        (trade: any) => trade.target_product_id === productId && trade.status !== 'cancelled'
+      )
       setOffersForProduct(filteredOffers)
-      setOffersModalOpen(true)
     } catch (error) {
       toast({
         title: 'Error',
@@ -376,7 +380,11 @@ const Home: React.FC = () => {
         const statusOrder = { 'accepted': 0, 'active': 1, 'pending': 2, 'declined': 3, 'cancelled': 3 }
         const aOrder = statusOrder[a.status as keyof typeof statusOrder] ?? 4
         const bOrder = statusOrder[b.status as keyof typeof statusOrder] ?? 4
-        return aOrder - bOrder
+        if (aOrder !== bOrder) return aOrder - bOrder
+        // Within same status, rank by total value (cash + item count)
+        const aValue = (a.offered_cash_amount || 0) + (a.items?.length || 0) * 100
+        const bValue = (b.offered_cash_amount || 0) + (b.items?.length || 0) * 100
+        return bValue - aValue
       })
     } else if (offersSortBy === 'newest') {
       ranked.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -541,9 +549,9 @@ const Home: React.FC = () => {
           >
             {product.description
               ? product.description
-                  .split(' ')
-                  .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                  .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+                .split(' ')
+                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
               : 'No description available'}
           </Text>
 
@@ -595,7 +603,7 @@ const Home: React.FC = () => {
               </Button>
             )}
 
-            <Tooltip label={`View offers (${product.offer_count || 0})`} placement="top">
+            <Tooltip label="View offers" placement="top">
               <IconButton
                 aria-label="View offers"
                 icon={<FaHandshake />}
@@ -710,9 +718,10 @@ const Home: React.FC = () => {
           w="full"
           maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
           mx={{ base: 'auto', lg: 0 }}
+          ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap" ml={{ base: 0, md: -14 }}>
+          <HStack w="full" spacing={3} wrap="wrap">
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -986,14 +995,18 @@ const Home: React.FC = () => {
       </Box>
       {/* slider / visual box - fully responsive from mobile to 2xl */}
       <Box
-        maxW={{ base: 'calc(100% - 32px)', sm: 'calc(100% - 24px)', md: '100%', lg: '1050px', xl: '1100px', '2xl': '1466px' }}
+        w="full"
+        maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
         mx={{ base: 'auto', lg: 0 }}
+        ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         mb={8}
-        px={{ base: 2, sm: 3, md: 4, lg: 6 }}
+        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
       >
         <Box
           position="relative"
           overflow="hidden"
+          w="calc(100% - 30px)"
+          mx="15px"
           h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }}
           rounded="lg"
           border="1px"
@@ -1093,6 +1106,7 @@ const Home: React.FC = () => {
           w="full"
           maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
           mx={{ base: 'auto', lg: 0 }}
+          ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         >
           <HStack
             spacing={{ base: 2.5, md: 3 }}
@@ -1193,6 +1207,7 @@ const Home: React.FC = () => {
         sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px' } }}
         maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
         mx={{ base: 'auto', lg: 0 }}
+        ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         w="full"
       >
         {/* Loading State */}
@@ -1235,7 +1250,6 @@ const Home: React.FC = () => {
             px={{ base: 2, md: 4, lg: 0 }}
             pb={{ base: 20, md: 0 }}
             minH={{ base: '1200px', md: '1600px' }}
-            ml={-10}
             sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
           >
             <ProductGridWithAds products={products} user={user} />
@@ -1307,19 +1321,40 @@ const Home: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      {/* Offers Modal - Simplified with Ranking */}
+      {/* Offers Modal - Enhanced with Ranking, Cash & Items */}
       <Modal isOpen={offersModalOpen} onClose={() => setOffersModalOpen(false)} size="2xl">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>
+          <ModalHeader pb={2}>
             <HStack justify="space-between" w="full">
-              <Heading size="md" color="brand.600">
-                Offers ({offersForProduct.length})
-              </Heading>
+              <HStack spacing={3}>
+                <Icon as={FaHandshake} color="brand.500" boxSize={5} />
+                <VStack align="start" spacing={0}>
+                  <Heading size="md" color="brand.600">
+                    Offers ({offersForProduct.length})
+                  </Heading>
+                  {!loadingOffers && offersForProduct.length > 0 && (
+                    <HStack spacing={2} mt={0.5}>
+                      <Badge colorScheme="yellow" fontSize="xs">
+                        {offersForProduct.filter((o: any) => o.status === 'pending').length} Pending
+                      </Badge>
+                      <Badge colorScheme="green" fontSize="xs">
+                        {offersForProduct.filter((o: any) => o.status === 'accepted' || o.status === 'active').length} Accepted
+                      </Badge>
+                      {offersForProduct.filter((o: any) => o.status === 'countered').length > 0 && (
+                        <Badge colorScheme="purple" fontSize="xs">
+                          {offersForProduct.filter((o: any) => o.status === 'countered').length} Countered
+                        </Badge>
+                      )}
+                    </HStack>
+                  )}
+                </VStack>
+              </HStack>
               <IconButton
                 aria-label="Close"
                 icon={<CloseIcon />}
                 variant="ghost"
+                size="sm"
                 onClick={() => setOffersModalOpen(false)}
               />
             </HStack>
@@ -1331,67 +1366,156 @@ const Home: React.FC = () => {
                 <Spinner color="brand.500" />
               </Center>
             ) : getRankedOffers().length === 0 ? (
-              <Box textAlign="center" py={8}>
-                <Text color="gray.600">No offers yet</Text>
-              </Box>
+              <VStack py={8} spacing={4}>
+                <Icon as={FaHandshake} color="gray.300" boxSize={12} />
+                <Text color="gray.500" fontWeight="medium">No offers yet</Text>
+                <Text color="gray.400" fontSize="sm" textAlign="center">
+                  Be the first to make an offer on this product!
+                </Text>
+                {selectedProductForOffers && (
+                  <Button
+                    colorScheme="brand"
+                    size="sm"
+                    onClick={() => {
+                      setOffersModalOpen(false)
+                      handleTradeClick(selectedProductForOffers)
+                    }}
+                  >
+                    Make an Offer
+                  </Button>
+                )}
+              </VStack>
             ) : (
               <VStack spacing={3} align="stretch">
-                {getRankedOffers().map((offer: any, index: number) => (
-                  <Box
-                    key={offer.id}
-                    p={4}
-                    borderWidth="2px"
-                    borderColor={index === 0 ? 'gold' : offer.status === 'accepted' ? 'green.400' : 'gray.200'}
-                    rounded="lg"
-                    bg={index === 0 ? 'yellow.50' : offer.status === 'accepted' ? 'green.50' : 'white'}
-                    position="relative"
-                  >
-                    {/* Rank Badge */}
-                    <Badge
-                      position="absolute"
-                      top={-3}
-                      left={4}
-                      colorScheme={index === 0 ? 'yellow' : index === 1 ? 'gray' : index === 2 ? 'orange' : 'gray'}
-                      fontSize="xs"
-                      px={2}
-                      py={1}
+                {getRankedOffers().map((offer: any, index: number) => {
+                  const cashAmount = offer.offered_cash_amount || 0
+                  const itemCount = offer.items?.length || 0
+
+                  return (
+                    <Box
+                      key={offer.id}
+                      p={4}
+                      borderWidth="2px"
+                      borderColor={index === 0 ? 'gold' : offer.status === 'accepted' ? 'green.400' : 'gray.200'}
+                      rounded="lg"
+                      bg={index === 0 ? 'yellow.50' : offer.status === 'accepted' ? 'green.50' : 'white'}
+                      position="relative"
+                      _hover={{ shadow: 'md', borderColor: index === 0 ? 'gold' : 'brand.300' }}
+                      transition="all 0.2s"
                     >
-                      #{index + 1}
-                    </Badge>
-
-                    <HStack justify="space-between" mb={2} mt={2}>
-                      <HStack>
-                        {index === 0 && (
-                          <Text fontSize="lg">🏆</Text>
-                        )}
-                        <Text fontWeight="bold" fontSize="sm">
-                          {offer.buyer_name || 'Anonymous'}
-                        </Text>
-                      </HStack>
+                      {/* Rank Badge */}
                       <Badge
-                        colorScheme={
-                          offer.status === 'accepted' ? 'green' :
-                            offer.status === 'pending' ? 'yellow' : 'gray'
-                        }
+                        position="absolute"
+                        top={-3}
+                        left={4}
+                        colorScheme={index === 0 ? 'yellow' : index === 1 ? 'gray' : index === 2 ? 'orange' : 'gray'}
                         fontSize="xs"
+                        px={2}
+                        py={1}
                       >
-                        {offer.status.toUpperCase()}
+                        {index === 0 ? '🏆 #1' : `#${index + 1}`}
                       </Badge>
-                    </HStack>
 
-                    <Text fontSize="sm" color="gray.600" mb={2}>
-                      {offer.items?.length || 0} item(s) offered
-                    </Text>
-
-                    <HStack spacing={2} flexWrap="wrap">
-                      {offer.items && offer.items.map((item: any, idx: number) => (
-                        <Badge key={idx} colorScheme="blue" variant="outline" fontSize="xs">
-                          {item.product_title?.substring(0, 15) || `Item ${idx + 1}`}
+                      <HStack justify="space-between" mb={3} mt={2}>
+                        <HStack spacing={2}>
+                          <Avatar size="xs" name={offer.buyer_name || 'A'} />
+                          <Text fontWeight="bold" fontSize="sm">
+                            {offer.buyer_name || 'Anonymous'}
+                          </Text>
+                        </HStack>
+                        <Badge
+                          colorScheme={
+                            offer.status === 'accepted' ? 'green' :
+                              offer.status === 'pending' ? 'yellow' :
+                                offer.status === 'countered' ? 'purple' : 'gray'
+                          }
+                          fontSize="xs"
+                        >
+                          {offer.status.toUpperCase()}
                         </Badge>
-                      ))}
-                    </HStack>
-                  </Box>
-                ))}
+                      </HStack>
+
+                      {/* Offer Details: Cash + Items */}
+                      <VStack align="stretch" spacing={2}>
+                        {/* Cash offered */}
+                        {cashAmount > 0 && (
+                          <HStack bg="green.50" p={2} rounded="md" spacing={2}>
+                            <Text fontSize="lg">💰</Text>
+                            <Text fontSize="sm" fontWeight="bold" color="green.700">
+                              {formatPHP(cashAmount)}
+                            </Text>
+                            <Text fontSize="xs" color="green.600">cash offered</Text>
+                          </HStack>
+                        )}
+
+                        {/* Items offered */}
+                        {itemCount > 0 && (
+                          <Box>
+                            <Text fontSize="xs" color="gray.500" mb={1} fontWeight="medium">
+                              📦 {itemCount} item{itemCount > 1 ? 's' : ''} offered:
+                            </Text>
+                            <HStack spacing={2} flexWrap="wrap">
+                              {offer.items.map((item: any, idx: number) => (
+                                <HStack
+                                  key={idx}
+                                  bg="gray.50"
+                                  p={1.5}
+                                  rounded="md"
+                                  borderWidth="1px"
+                                  borderColor="gray.200"
+                                  spacing={2}
+                                >
+                                  {item.product_image_url && (
+                                    <Image
+                                      src={getImageUrl(item.product_image_url)}
+                                      alt={item.product_title || 'Item'}
+                                      boxSize="32px"
+                                      objectFit="cover"
+                                      rounded="sm"
+                                      fallback={<Box boxSize="32px" bg="gray.200" rounded="sm" />}
+                                    />
+                                  )}
+                                  <Text fontSize="xs" fontWeight="medium" noOfLines={1} maxW="120px">
+                                    {item.product_title || `Item ${idx + 1}`}
+                                  </Text>
+                                </HStack>
+                              ))}
+                            </HStack>
+                          </Box>
+                        )}
+
+                        {/* Summary line */}
+                        {cashAmount === 0 && itemCount === 0 && (
+                          <Text fontSize="xs" color="gray.400" fontStyle="italic">
+                            No details available
+                          </Text>
+                        )}
+                      </VStack>
+
+                      {/* Time ago */}
+                      <Text fontSize="xs" color="gray.400" mt={2}>
+                        {new Date(offer.created_at).toLocaleDateString()}
+                      </Text>
+                    </Box>
+                  )
+                })}
+
+                {/* Make an offer button at bottom */}
+                {selectedProductForOffers && (
+                  <Button
+                    colorScheme="brand"
+                    size="md"
+                    w="full"
+                    mt={2}
+                    leftIcon={<Icon as={FaHandshake} />}
+                    onClick={() => {
+                      setOffersModalOpen(false)
+                      handleTradeClick(selectedProductForOffers)
+                    }}
+                  >
+                    Make an Offer
+                  </Button>
+                )}
               </VStack>
             )}
           </ModalBody>

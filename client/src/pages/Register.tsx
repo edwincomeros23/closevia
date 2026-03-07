@@ -118,13 +118,26 @@ const Register: React.FC = () => {
         if (result.token) {
           localStorage.setItem('clovia_token', result.token)
         }
-        toast({
-          title: 'Welcome!',
-          description: 'Your account has been created.',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
+        // Check if WMSU student – show premium badge toast
+        const isWmsu = email.toLowerCase().endsWith('@wmsu.edu.ph')
+        if (isWmsu) {
+          toast({
+            title: '🎓 Premium Access Granted!',
+            description: 'As a verified WMSU student, you now have free Premium access including Multi-Way Trading Loops!',
+            status: 'success',
+            duration: 6000,
+            isClosable: true,
+            position: 'top',
+          })
+        } else {
+          toast({
+            title: 'Welcome!',
+            description: 'Your account has been created.',
+            status: 'success',
+            duration: 3000,
+            isClosable: true,
+          })
+        }
         navigate('/home')
       }
     } catch (error: any) {

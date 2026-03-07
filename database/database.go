@@ -430,6 +430,23 @@ func CreateTables() error {
 			INDEX idx_reported_user (reported_user_id),
 			INDEX idx_status (status)
 		)`,
+		`CREATE TABLE IF NOT EXISTS campaigns (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			title VARCHAR(255) NOT NULL,
+			description TEXT,
+			image_url VARCHAR(500),
+			button_text VARCHAR(100),
+			button_link VARCHAR(500),
+			start_date TIMESTAMP NULL,
+			end_date TIMESTAMP NULL,
+			target_users VARCHAR(50) DEFAULT 'all',
+			frequency VARCHAR(50) DEFAULT 'once_per_user',
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_campaigns_active (is_active),
+			INDEX idx_campaigns_dates (start_date, end_date)
+		)`,
 	}
 
 	// Execute table creation queries
@@ -444,6 +461,36 @@ func CreateTables() error {
 	ensureUserColumns()
 	ensureProductColumns()
 	ensureTradeColumns()
+
+	// Seed Mock Rider: Wynry Perian
+	mockRiderEmail := "wynry@clovia.com"
+	var riderUserID int
+	err := DB.QueryRow("SELECT id FROM users WHERE email = ?", mockRiderEmail).Scan(&riderUserID)
+	if err == sql.ErrNoRows {
+		res, execErr := DB.Exec("INSERT INTO users (name, email, password_hash, role, verified) VALUES (?, ?, ?, ?, ?)",
+			"Wynry Perian", mockRiderEmail, "mock_password", "rider", true)
+		if execErr == nil {
+			id, _ := res.LastInsertId()
+			riderUserID = int(id)
+			log.Printf("Created mock rider user profile with ID: %d", riderUserID)
+		} else {
+			log.Printf("Failed to create mock rider user: %v", execErr)
+		}
+	}
+
+	if riderUserID > 0 {
+		var riderCount int
+		DB.QueryRow("SELECT COUNT(*) FROM riders WHERE user_id = ?", riderUserID).Scan(&riderCount)
+		if riderCount == 0 {
+			_, err := DB.Exec("INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, rating, is_active, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				riderUserID, "Wynry Perian", "motorcycle", "WMSU-RX7", "09991234567", 5.0, true, 6.9214, 122.0790)
+			if err == nil {
+				log.Println("Seeded mock rider Wynry Perian into the database.")
+			} else {
+				log.Printf("Failed to seed mock rider: %v", err)
+			}
+		}
+	}
 
 	log.Println("Database tables and indexes created successfully")
 	return nil
@@ -477,7 +524,7 @@ func ensureUserColumns() {
 		{"school_email_otp_hash", "VARCHAR(255) NULL"},
 		{"school_email_otp_expires", "TIMESTAMP NULL"},
 		{"school_id_document_type", "VARCHAR(20) NULL"},
-		{"language_preference", "VARCHAR(10) NULL DEFAULT 'en'"},
+		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 	}
 
 	for _, col := range columns {
