@@ -591,6 +591,15 @@ func ensureProductColumns() {
 		{"category", "VARCHAR(255) DEFAULT 'General'"},
 		{"authenticity_verified", "TINYINT(1) DEFAULT 0"},
 		{"video_url", "VARCHAR(500) NULL"},
+		{"wants", "VARCHAR(255) NULL"},
+		{"wanted_categories", "VARCHAR(500) NULL"},
+		{"item_type", "VARCHAR(100) NULL"},
+		{"brand", "VARCHAR(100) NULL"},
+		{"authenticity_risks", "VARCHAR(50) NULL"},
+		{"tags", "JSON NULL"},
+		{"estimated_value_min", "DECIMAL(10,2) NULL"},
+		{"estimated_value_max", "DECIMAL(10,2) NULL"},
+		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {

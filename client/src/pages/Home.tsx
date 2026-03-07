@@ -94,10 +94,6 @@ const Home: React.FC = () => {
   const { isOpen: isLogoutModalOpen, onOpen: onOpenLogoutModal, onClose: onCloseLogoutModal } = useDisclosure()
   const { offerCount } = useRealtime() // added realtime usage
 
-  // Image Zoom State
-  const [zoomedImage, setZoomedImage] = useState<string | null>(null)
-  const { isOpen: isZoomOpen, onOpen: onZoomOpen, onClose: onZoomClose } = useDisclosure()
-
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -445,12 +441,6 @@ const Home: React.FC = () => {
             objectFit="cover"
             loading="lazy"
             fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
-            cursor="zoom-in"
-            onClick={(e) => {
-              e.stopPropagation()
-              setZoomedImage(getFirstImage(product.image_urls))
-              onZoomOpen()
-            }}
           />
 
           {/* Premium / type badge */}
@@ -1527,25 +1517,6 @@ const Home: React.FC = () => {
                   </Button>
                 )}
               </VStack>
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-
-      {/* Image Zoom Modal */}
-      <Modal isOpen={isZoomOpen} onClose={onZoomClose} size="full">
-        <ModalOverlay bg="blackAlpha.900" />
-        <ModalContent bg="transparent" shadow="none" m={0}>
-          <ModalCloseButton color="white" size="lg" zIndex={2} />
-          <ModalBody display="flex" alignItems="center" justifyContent="center" p={0}>
-            {zoomedImage && (
-              <Image
-                src={getImageUrl(zoomedImage)}
-                alt="Zoomed product image"
-                maxW="90vw"
-                maxH="90vh"
-                objectFit="contain"
-              />
             )}
           </ModalBody>
         </ModalContent>
