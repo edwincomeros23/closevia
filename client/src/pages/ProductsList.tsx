@@ -13,9 +13,15 @@ import {
   Image,
   Badge,
   Button,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalCloseButton,
+  ModalBody,
+  useDisclosure,
 } from '@chakra-ui/react'
 import { useProducts } from '../contexts/ProductContext'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import { formatPHP } from '../utils/currency'
 import FloatingTab from '../components/FloatingTab'
@@ -25,6 +31,8 @@ const ProductsList: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const [initialized, setInitialized] = useState(false)
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null)
+  const { isOpen, onOpen, onClose } = useDisclosure()
 
   const sellerId = useMemo(() => {
     const params = new URLSearchParams(location.search)
@@ -71,6 +79,12 @@ const ProductsList: React.FC = () => {
           objectFit="cover"
           loading="lazy"
           fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          cursor="zoom-in"
+          onClick={(e) => {
+            e.stopPropagation()
+            setZoomedImage(getFirstImage(p.image_urls))
+            onOpen()
+          }}
         />
         {p.premium && (
           <Badge position="absolute" top={2} right={2} colorScheme="yellow" variant="solid" borderRadius="full" px={2}>
@@ -160,6 +174,25 @@ const ProductsList: React.FC = () => {
       </Container>
 
       <FloatingTab />
+
+      {/* Image Zoom Modal */}
+      <Modal isOpen={isOpen} onClose={onClose} size="full">
+        <ModalOverlay bg="blackAlpha.900" />
+        <ModalContent bg="transparent" shadow="none" m={0}>
+          <ModalCloseButton color="white" size="lg" zIndex={2} />
+          <ModalBody display="flex" alignItems="center" justifyContent="center" p={0}>
+            {zoomedImage && (
+              <Image
+                src={getImageUrl(zoomedImage)}
+                alt="Zoomed product image"
+                maxW="90vw"
+                maxH="90vh"
+                objectFit="contain"
+              />
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Box>
   )
 }
