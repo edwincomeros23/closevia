@@ -855,15 +855,7 @@ const ProductDetail: React.FC = () => {
                 {product.video_url ? (
                   <>
                     <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={3}>
-                      <Box 
-                        position="relative" 
-                        h={{ base: '200px', md: '280px' }} 
-                        bg="gray.100" 
-                        rounded="md" 
-                        overflow="hidden"
-                        cursor="zoom-in"
-                        onClick={() => handleImageZoom(selectedImage || getFirstImage(product.image_urls))}
-                      >
+                      <Box position="relative" h={{ base: '200px', md: '280px' }} bg="gray.100" rounded="md" overflow="hidden">
                         <Image
                           src={selectedImage || getFirstImage(product.image_urls)}
                           alt={product.title}
@@ -934,15 +926,7 @@ const ProductDetail: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <Box 
-                      position="relative" 
-                      h={{ base: '300px', md: '400px' }} 
-                      bg="gray.100" 
-                      rounded="md" 
-                      overflow="hidden"
-                      cursor="zoom-in"
-                      onClick={() => handleImageZoom(selectedImage || getFirstImage(product.image_urls))}
-                    >
+                    <Box position="relative" h={{ base: '300px', md: '400px' }} bg="gray.100" rounded="md" overflow="hidden">
                       <Image
                         src={selectedImage || getFirstImage(product.image_urls)}
                         alt={product.title}

@@ -501,7 +501,6 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
-		var conditionNull sql.NullString
 		var offerCount int
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
