@@ -501,11 +501,12 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
+		var conditionNull sql.NullString
 		var offerCount int
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
-			&product.Condition, &product.SuggestedValue, &product.Category,
+			&conditionNull, &product.SuggestedValue, &product.Category,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 		if slugNull.Valid {
@@ -514,6 +515,11 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		if err != nil {
 			fmt.Printf("GetProducts row scan error: %v\n", err)
 			continue
+		}
+		if conditionNull.Valid {
+			product.Condition = conditionNull.String
+		} else {
+			product.Condition = ""
 		}
 		if priceNull.Valid {
 			p := priceNull.Float64

@@ -67,6 +67,7 @@ import ProximityBadge from '../components/ProximityBadge'
 import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
 import FloatingTab from '../components/FloatingTab'
 import VerifiedAvatar from '../components/VerifiedAvatar'
+import ImageZoomModal from '../components/ImageZoomModal'
 import axios from 'axios';
 import { CloseIcon } from '@chakra-ui/icons'
 
@@ -102,6 +103,8 @@ const ProductDetail: React.FC = () => {
   const [hasPendingOfferOnProduct, setHasPendingOfferOnProduct] = useState(false)
   const [loadingPendingOffer, setLoadingPendingOffer] = useState(false)
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false)
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [zoomImageUrl, setZoomImageUrl] = useState('')
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -734,10 +737,14 @@ const ProductDetail: React.FC = () => {
         shareUrl = `https://wa.me/?text=${title}%20${url}`
         break
     }
-
     if (shareUrl) {
       window.open(shareUrl, '_blank', 'width=600,height=400')
     }
+  }
+
+  const handleImageZoom = (url: string) => {
+    setZoomImageUrl(url)
+    setIsZoomOpen(true)
   }
 
   const handleViewOffers = async () => {
@@ -848,7 +855,15 @@ const ProductDetail: React.FC = () => {
                 {product.video_url ? (
                   <>
                     <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={3}>
-                      <Box position="relative" h={{ base: '200px', md: '280px' }} bg="gray.100" rounded="md" overflow="hidden">
+                      <Box 
+                        position="relative" 
+                        h={{ base: '200px', md: '280px' }} 
+                        bg="gray.100" 
+                        rounded="md" 
+                        overflow="hidden"
+                        cursor="zoom-in"
+                        onClick={() => handleImageZoom(selectedImage || getFirstImage(product.image_urls))}
+                      >
                         <Image
                           src={selectedImage || getFirstImage(product.image_urls)}
                           alt={product.title}
@@ -919,7 +934,15 @@ const ProductDetail: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <Box position="relative" h={{ base: '300px', md: '400px' }} bg="gray.100" rounded="md" overflow="hidden">
+                    <Box 
+                      position="relative" 
+                      h={{ base: '300px', md: '400px' }} 
+                      bg="gray.100" 
+                      rounded="md" 
+                      overflow="hidden"
+                      cursor="zoom-in"
+                      onClick={() => handleImageZoom(selectedImage || getFirstImage(product.image_urls))}
+                    >
                       <Image
                         src={selectedImage || getFirstImage(product.image_urls)}
                         alt={product.title}
@@ -1931,6 +1954,13 @@ const ProductDetail: React.FC = () => {
       </Modal>
 
       <FloatingTab />
+
+      <ImageZoomModal 
+        isOpen={isZoomOpen} 
+        onClose={() => setIsZoomOpen(false)} 
+        imageUrl={zoomImageUrl} 
+        altText={product?.title} 
+      />
     </Box>
   )
 }

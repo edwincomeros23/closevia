@@ -87,6 +87,7 @@ func main() {
 
 	// Serve static files (uploads directory)
 	app.Static("/uploads", "./uploads")
+	app.Static("/uploads/products", "./uploads/products")
 
 	// Add after middleware setup
 	app.Get("/", func(c *fiber.Ctx) error {

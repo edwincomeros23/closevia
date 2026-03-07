@@ -19,13 +19,16 @@ import { getFirstImage } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import { formatPHP } from '../utils/currency'
 import FloatingTab from '../components/FloatingTab'
+import ImageZoomModal from '../components/ImageZoomModal'
 
 const ProductsList: React.FC = () => {
   const { products, loading, error, searchProducts, clearError } = useProducts()
   const location = useLocation()
   const navigate = useNavigate()
   const [initialized, setInitialized] = useState(false)
-
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomAltText, setZoomAltText] = useState('')
   const sellerId = useMemo(() => {
     const params = new URLSearchParams(location.search)
     const idStr = params.get('seller_id')
@@ -45,6 +48,13 @@ const ProductsList: React.FC = () => {
     // Intentionally depend only on sellerId to avoid re-runs on provider renders
   }, [sellerId])
 
+  const handleImageZoom = (e: React.MouseEvent, url: string, alt: string) => {
+    e.stopPropagation()
+    setZoomImageUrl(url)
+    setZoomAltText(alt)
+    setIsZoomOpen(true)
+  }
+
   const renderCard = (p: any) => (
     <Box
       key={p.id}
@@ -59,7 +69,14 @@ const ProductsList: React.FC = () => {
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(p))}
     >
-      <Box position="relative" w="full" pt="100%" overflow="hidden">
+      <Box 
+        position="relative" 
+        w="full" 
+        pt="100%" 
+        overflow="hidden"
+        cursor="zoom-in"
+        onClick={(e) => handleImageZoom(e, getFirstImage(p.image_urls), p.title)}
+      >
         <Image
           src={getFirstImage(p.image_urls)}
           alt={p.title}
@@ -160,6 +177,13 @@ const ProductsList: React.FC = () => {
       </Container>
 
       <FloatingTab />
+
+      <ImageZoomModal
+        isOpen={isZoomOpen}
+        onClose={() => setIsZoomOpen(false)}
+        imageUrl={zoomImageUrl}
+        altText={zoomAltText}
+      />
     </Box>
   )
 }
