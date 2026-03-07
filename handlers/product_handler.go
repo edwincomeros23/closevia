@@ -497,6 +497,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	for rows.Next() {
 		var product models.Product
 		var slugNull sql.NullString
+		var conditionNull sql.NullString
 		var priceNull sql.NullFloat64
 		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
