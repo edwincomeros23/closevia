@@ -109,6 +109,7 @@ type User struct {
 	Bio                         string     `json:"bio,omitempty"`
 	Badges                      IntArray   `json:"badges,omitempty"`
 	ProfilePicture              string     `json:"profile_picture,omitempty"`
+	LanguagePreference          string     `json:"language_preference,omitempty"`
 	BackgroundImage             string     `json:"background_image,omitempty"`
 	BackgroundPosition          string     `json:"background_position,omitempty"`
 	Latitude                    *float64   `json:"latitude,omitempty"`

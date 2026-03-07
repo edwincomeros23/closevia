@@ -131,6 +131,15 @@ func CloseDatabase() {
 
 // CreateTables creates all necessary tables if they don't exist
 func CreateTables() error {
+	// First, check if language_preference exists in users table, if not add it
+	// This ensures existing databases are upgraded automatically
+	var exists int
+	err := DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing language_preference column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN language_preference VARCHAR(10) NULL DEFAULT 'en'")
+	}
+
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT PRIMARY KEY,
