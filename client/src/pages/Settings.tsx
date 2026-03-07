@@ -217,6 +217,9 @@ const SettingsPage: React.FC = () => {
       // Load language preference from user object
       const userLanguage = (user as any)?.language_preference || 'en'
       setLanguage(userLanguage)
+      // Load notification settings from user object
+      setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
+      setPushNotifications((user as any)?.push_notifications_enabled ?? true)
       if ((user as any)?.profile_picture) {
         console.log('📸 Profile picture loaded - Raw:', (user as any)?.profile_picture, 'Cleaned:', cleanPicture)
       }
@@ -255,8 +258,8 @@ const SettingsPage: React.FC = () => {
       dashboardLayout !== 'default' ||
       fontSize !== initializeFontSize() ||
       highContrast !== false ||
-      emailNotifications !== true ||
-      pushNotifications !== true
+      emailNotifications !== ((user as any)?.email_notifications_enabled ?? true) ||
+      pushNotifications !== ((user as any)?.push_notifications_enabled ?? true)
 
     setHasUnsavedChanges(hasChanges)
   }, [
@@ -529,6 +532,8 @@ const SettingsPage: React.FC = () => {
         email: email,
         profile_picture: profileUrlToSave ?? profileImage,
         language_preference: language,
+        email_notifications_enabled: emailNotifications,
+        push_notifications_enabled: pushNotifications,
       })
 
       if (resp.data && resp.data.success) {
@@ -1347,10 +1352,10 @@ const SettingsPage: React.FC = () => {
                       setEmail(user.email || '')
                       setProfileImage((user as any)?.profile_picture || null)
                       setLanguage((user as any)?.language_preference || 'en')
+                      setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
+                      setPushNotifications((user as any)?.push_notifications_enabled ?? true)
                     }
                     setDarkMode(colorMode === 'dark')
-                    setEmailNotifications(true)
-                    setPushNotifications(true)
                     setHasUnsavedChanges(false)
                     toast({
                       title: 'Changes discarded',

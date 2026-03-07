@@ -25,15 +25,16 @@ import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import { formatPHP } from '../utils/currency'
 import FloatingTab from '../components/FloatingTab'
+import ImageZoomModal from '../components/ImageZoomModal'
 
 const ProductsList: React.FC = () => {
   const { products, loading, error, searchProducts, clearError } = useProducts()
   const location = useLocation()
   const navigate = useNavigate()
   const [initialized, setInitialized] = useState(false)
-  const [zoomedImage, setZoomedImage] = useState<string | null>(null)
-  const { isOpen, onOpen, onClose } = useDisclosure()
-
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomAltText, setZoomAltText] = useState('')
   const sellerId = useMemo(() => {
     const params = new URLSearchParams(location.search)
     const idStr = params.get('seller_id')
@@ -53,6 +54,13 @@ const ProductsList: React.FC = () => {
     // Intentionally depend only on sellerId to avoid re-runs on provider renders
   }, [sellerId])
 
+  const handleImageZoom = (e: React.MouseEvent, url: string, alt: string) => {
+    e.stopPropagation()
+    setZoomImageUrl(url)
+    setZoomAltText(alt)
+    setIsZoomOpen(true)
+  }
+
   const renderCard = (p: any) => (
     <Box
       key={p.id}
@@ -67,7 +75,14 @@ const ProductsList: React.FC = () => {
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(p))}
     >
-      <Box position="relative" w="full" pt="100%" overflow="hidden">
+      <Box 
+        position="relative" 
+        w="full" 
+        pt="100%" 
+        overflow="hidden"
+        cursor="zoom-in"
+        onClick={(e) => handleImageZoom(e, getFirstImage(p.image_urls), p.title)}
+      >
         <Image
           src={getFirstImage(p.image_urls)}
           alt={p.title}
@@ -175,24 +190,12 @@ const ProductsList: React.FC = () => {
 
       <FloatingTab />
 
-      {/* Image Zoom Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="full">
-        <ModalOverlay bg="blackAlpha.900" />
-        <ModalContent bg="transparent" shadow="none" m={0}>
-          <ModalCloseButton color="white" size="lg" zIndex={2} />
-          <ModalBody display="flex" alignItems="center" justifyContent="center" p={0}>
-            {zoomedImage && (
-              <Image
-                src={getImageUrl(zoomedImage)}
-                alt="Zoomed product image"
-                maxW="90vw"
-                maxH="90vh"
-                objectFit="contain"
-              />
-            )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+      <ImageZoomModal
+        isOpen={isZoomOpen}
+        onClose={() => setIsZoomOpen(false)}
+        imageUrl={zoomImageUrl}
+        altText={zoomAltText}
+      />
     </Box>
   )
 }
