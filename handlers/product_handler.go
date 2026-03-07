@@ -108,6 +108,31 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
+	// AI Generated fields
+	itemType := c.FormValue("item_type")
+	brand := c.FormValue("brand")
+	authenticityRisks := c.FormValue("authenticity_risks")
+	tags := c.FormValue("tags") // Assuming this is sent as a JSON array string
+
+	estimatedValueMinStr := c.FormValue("estimated_value_min")
+	var estimatedValueMin *float64
+	if estimatedValueMinStr != "" {
+		if val, err := strconv.ParseFloat(estimatedValueMinStr, 64); err == nil {
+			estimatedValueMin = &val
+		}
+	}
+
+	estimatedValueMaxStr := c.FormValue("estimated_value_max")
+	var estimatedValueMax *float64
+	if estimatedValueMaxStr != "" {
+		if val, err := strconv.ParseFloat(estimatedValueMaxStr, 64); err == nil {
+			estimatedValueMax = &val
+		}
+	}
+
+	wants := c.FormValue("wants")
+	wantedCategories := c.FormValue("wanted_categories")
+
 	// Optional category override from client
 	categoryOverride := c.FormValue("category")
 
@@ -227,9 +252,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Insert new product with slug. Build SQL dynamically so it's tolerant
 	// to missing latitude/longitude columns (some DBs may not have applied migrations).
-	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category"}
-	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
-	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category}
+	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category", "wants", "wanted_categories", "item_type", "brand", "authenticity_risks", "tags", "estimated_value_min", "estimated_value_max"}
+	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
+	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, wants, wantedCategories, itemType, brand, authenticityRisks, tags, estimatedValueMin, estimatedValueMax}
 
 	// Include video_url if a video was uploaded
 	if videoURL != "" {
@@ -1405,18 +1430,31 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 	}
 
 	files := form.File["images"]
-	if len(files) < 3 {
+	if len(files) < 1 {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
-			Error:   "At least 3 images are required for AI analysis",
+			Error:   "At least 1 image is required for AI analysis",
 		})
+	}
+
+	// Validate each image: max 5MB per file
+	const maxImageSize = 5 * 1024 * 1024 // 5MB
+	for _, f := range files {
+		log.Printf("AI upload: file=%s size=%d bytes", f.Filename, f.Size)
+		if f.Size > maxImageSize {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   fmt.Sprintf("Image '%s' exceeds 5MB limit (%d bytes). Please compress or resize it.", f.Filename, f.Size),
+			})
+		}
 	}
 
 	result, err := services.GenerateProductDetails(files)
 	if err != nil {
-		errMsg := fmt.Sprintf("AI generation failed: %v", err)
-		log.Printf("Error in GenerateProductDetailsWithAI: %s", errMsg)
-		return c.Status(500).JSON(models.APIResponse{
+		errMsg := err.Error()
+		log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
+		// Return 422 (Unprocessable Entity) — the server worked fine, the AI couldn't process the input
+		return c.Status(422).JSON(models.APIResponse{
 			Success: false,
 			Error:   errMsg,
 		})

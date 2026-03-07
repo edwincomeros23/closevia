@@ -164,8 +164,16 @@ type Product struct {
 	BarterOnly           bool        `json:"barter_only"`  // Whether it's barter only
 	Location             string      `json:"location,omitempty"`
 	Condition            string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	EstimatedValueMin    *float64    `json:"estimated_value_min,omitempty"`
+	EstimatedValueMax    *float64    `json:"estimated_value_max,omitempty"`
 	SuggestedValue       int         `json:"suggested_value,omitempty"`
 	Category             string      `json:"category,omitempty"`
+	Wants                string      `json:"wants,omitempty"`
+	WantedCategories     StringArray `json:"wanted_categories,omitempty"`
+	ItemType             string      `json:"item_type,omitempty"`
+	Brand                string      `json:"brand,omitempty"`
+	AuthenticityRisks    string      `json:"authenticity_risks,omitempty"`
+	Tags                 StringArray `json:"tags,omitempty"`
 	Latitude             *float64    `json:"latitude,omitempty"`
 	Longitude            *float64    `json:"longitude,omitempty"`
 	VideoURL             string      `json:"video_url,omitempty"`
@@ -189,7 +197,9 @@ type ProductCreate struct {
 	BarterOnly  bool        `json:"barter_only"`
 	Location    string      `json:"location,omitempty"`
 	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category    string      `json:"category,omitempty"`
+	Category         string      `json:"category,omitempty"`
+	Wants            string      `json:"wants,omitempty"`
+	WantedCategories StringArray `json:"wanted_categories,omitempty"`
 }
 
 // ProductUpdate represents data for updating a product
