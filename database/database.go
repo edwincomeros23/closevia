@@ -149,6 +149,8 @@ func CreateTables() error {
 			bio TEXT NULL,
 			badges JSON NULL,
 			language_preference VARCHAR(10) NULL DEFAULT 'en',
+			email_notifications_enabled BOOLEAN DEFAULT TRUE,
+			push_notifications_enabled BOOLEAN DEFAULT TRUE,
 			verified BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
