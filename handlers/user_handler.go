@@ -148,18 +148,19 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		Message: "User registered successfully",
 		Data: fiber.Map{
 			"user": models.User{
-				ID:             int(userID),
-				Name:           user.Name,
-				Email:          user.Email,
-				Verified:       true,
-				IsOrganization: user.IsOrganization,
-				OrgVerified:    false,
-				OrgName:        user.OrgName,
-				OrgLogoURL:     user.OrgLogoURL,
-				Department:     derefString(user.Department),
-				Bio:            user.Bio,
-				ProfilePicture: "",
-				IsPremium:      isWmsuStudent,
+				ID:                 int(userID),
+				Name:               user.Name,
+				Email:              user.Email,
+				Verified:           true,
+				IsOrganization:     user.IsOrganization,
+				OrgVerified:        false,
+				OrgName:            user.OrgName,
+				OrgLogoURL:         user.OrgLogoURL,
+				Department:         derefString(user.Department),
+				Bio:                user.Bio,
+				ProfilePicture:     "",
+				LanguagePreference: "en",
+				IsPremium:          isWmsuStudent,
 			},
 			"requires_verification": false,
 			"token":                 token,
@@ -383,9 +384,9 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	// Check if user exists
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, profile_picture FROM users WHERE email = ?",
+		"SELECT id, name, email, role, verified, profile_picture, language_preference FROM users WHERE email = ?",
 		req.Email,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture)
+	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference)
 
 	if err == sql.ErrNoRows {
 		// Create new user from Google info
@@ -414,6 +415,7 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 		user.Verified = true
 		user.ProfilePicture = req.PhotoURL
 		user.Role = "user"
+		user.LanguagePreference = "en"
 	} else if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
@@ -466,6 +468,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(verification_rejection_reason, '') AS verification_rejection_reason,
 		        COALESCE(email_notifications_enabled, TRUE) AS email_notifications_enabled,
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
+		        COALESCE(language_preference, 'en') AS language_preference,
 		        created_at, updated_at
 		 FROM users WHERE id = ?`,
 		userID,
@@ -474,6 +477,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &user.SchoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
+		&user.LanguagePreference,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 
