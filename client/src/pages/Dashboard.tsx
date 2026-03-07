@@ -64,6 +64,7 @@ import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import OfferDetailsModal from '../components/OfferDetailsModal'
+import ImageZoomModal from '../components/ImageZoomModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
 import ViewTradeModal from '../components/ViewTradeModal'
 import DeliveryRequestModal from '../components/DeliveryRequestModal'
@@ -186,6 +187,10 @@ const Dashboard: React.FC = () => {
   const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
+
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomAltText, setZoomAltText] = useState('')
 
   // View mode states for different tabs
   const defaultOffersViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
@@ -811,6 +816,13 @@ const Dashboard: React.FC = () => {
     return currentTabTrades.slice(start, start + offersPerPage)
   }, [currentTabTrades, offersPage])
 
+  const handleImageZoom = (e: React.MouseEvent, url: string, alt: string) => {
+    e.stopPropagation()
+    setZoomImageUrl(url)
+    setZoomAltText(alt)
+    setIsZoomOpen(true)
+  }
+
   const badgeColor = (status: Trade['status']) => {
     const statusMap: Record<string, { color: string; icon: string }> = {
       'pending': { color: 'yellow', icon: '🕓' },
@@ -1203,16 +1215,18 @@ const Dashboard: React.FC = () => {
           role="article"
           aria-label={`Product: ${product.title}`}
         >
-          <Image
-            src={getFirstImage(product.image_urls)}
-            alt={product.title}
-            w="full"
-            h="120px"
-            borderRadius="lg"
-            objectFit="cover"
-            loading="lazy"
-            fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
-          />
+          <Box cursor="zoom-in" onClick={(e) => handleImageZoom(e, getFirstImage(product.image_urls), product.title)}>
+            <Image
+              src={getFirstImage(product.image_urls)}
+              alt={product.title}
+              w="full"
+              h="120px"
+              borderRadius="lg"
+              objectFit="cover"
+              loading="lazy"
+              fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+            />
+          </Box>
           <CardHeader pb={2}>
             <Flex justify="space-between" align="start">
               <Heading size="sm" noOfLines={2} flex={1} mr={2}>
@@ -3978,6 +3992,13 @@ const Dashboard: React.FC = () => {
       </Container>
 
       <FloatingTab showAddButton={actualUserProducts.length > 0} />
+
+      <ImageZoomModal
+        isOpen={isZoomOpen}
+        onClose={() => setIsZoomOpen(false)}
+        imageUrl={zoomImageUrl}
+        altText={zoomAltText}
+      />
     </Box>
   )
 }
