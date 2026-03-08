@@ -16,13 +16,23 @@ import (
 )
 
 func AnalyzeProductWithGroq(images []*multipart.FileHeader) (*GeminiResponse, error) {
+	// Using Groq API only (primary: llama-4-scout, fallback: llama-4-maverick)
 	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		return nil, errors.New("GROQ_API_KEY environment variable not set")
+		logMsg := "GROQ_API_KEY environment variable not set - required for Groq API"
+		log.Printf("❌ CRITICAL ERROR: %s", logMsg)
+		return nil, errors.New(logMsg)
 	}
 
-	// Sanitize API key (remove whitespace)
+	// Sanitize API key (remove leading/trailing whitespace only)
 	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		logMsg := "GROQ_API_KEY is empty after trimming whitespace"
+		log.Printf("❌ CRITICAL ERROR: %s", logMsg)
+		return nil, errors.New(logMsg)
+	}
+
+	log.Printf("Using Groq API for product analysis (GROQ_API_KEY length: %d)", len(apiKey))
 
 	if len(images) < 1 {
 		return nil, errors.New("at least 1 image required")
@@ -323,11 +333,13 @@ Remember: SAFETY IS THE HIGHEST PRIORITY. Check for prohibited items first. If f
 		}
 	}
 
-	// All retries and models failed - return nil silently
+	// All retries and models failed - return error with details
+	failMsg := fmt.Sprintf("Groq API analysis failed after %d attempts", maxRetries)
 	if lastErr != nil {
-		log.Printf("All Groq API attempts failed after %d retries: %v", maxRetries, lastErr)
+		failMsg = fmt.Sprintf("%s: %v", failMsg, lastErr)
+		log.Printf("❌ %s", failMsg)
 	} else {
-		log.Printf("All Groq API attempts failed after %d retries", maxRetries)
+		log.Printf("❌ %s (no specific error captured)", failMsg)
 	}
-	return nil, nil
+	return nil, errors.New(failMsg)
 }
