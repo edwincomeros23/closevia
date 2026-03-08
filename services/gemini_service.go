@@ -183,9 +183,9 @@ Example:
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	// Use gemini-1.5-flash — stable, reliable vision model with better quota allocation
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s", apiKey)
-	log.Printf("Making request to Gemini API (gemini-1.5-flash) with %d image part(s)", len(parts)-1)
+	// Use gemini-1.5-flash on v1 (stable) — v1beta does not support this model
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=%s", apiKey)
+	log.Printf("Making request to Gemini API (gemini-1.5-flash / v1) with %d image part(s)", len(parts)-1)
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
