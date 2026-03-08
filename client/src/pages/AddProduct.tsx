@@ -440,143 +440,157 @@ const AddProduct: React.FC = () => {
   // ── Step Rendering ────────────────────────────────────────────────────────
 
   const renderStep1 = () => (
-    <VStack spacing={6} align="stretch">
-      <VStack spacing={1} align="start">
-        <Heading size="md">📸 Upload Product Media</Heading>
-        <Text fontSize="sm" color="gray.500">
-          Upload at least 1 photo. AI will automatically analyze your first image.
-        </Text>
-      </VStack>
-
-      {/* AI Status */}
-      <HStack>
+    <VStack spacing={4} align="stretch">
+      {/* Compact Header with AI Status - Single Line */}
+      <HStack justify="space-between" align="center">
+        <VStack spacing={0.5} align="start" flex={1}>
+          <Text fontSize="sm" color="gray.600" fontWeight="semibold">📸 Upload Media</Text>
+          <Text fontSize="xs" color="gray.500">Min 1 photo. AI analyzes automatically.</Text>
+        </VStack>
         {isGenerating && (
-          <Badge colorScheme="purple" px={3} py={1.5} borderRadius="md" display="flex" alignItems="center" gap={2}>
+          <Badge colorScheme="purple" px={3} py={1.5} borderRadius="md" display="flex" alignItems="center" gap={2} whiteSpace="nowrap">
             <Spinner size="xs" />
-            <Text>AI analyzing image...</Text>
+            <Text fontSize="xs">Analyzing...</Text>
           </Badge>
         )}
         {!isGenerating && aiDone && (
-          <Badge colorScheme="green" px={3} py={1.5} borderRadius="md">
-            ✨ AI Analysis Complete — fields auto-filled in Step 2
-          </Badge>
-        )}
-        {!isGenerating && !aiDone && uploadedImages.length === 0 && (
-          <Badge colorScheme="orange" px={3} py={1.5} borderRadius="md">
-            Upload 1+ image to trigger AI analysis
+          <Badge colorScheme="green" px={3} py={1.5} borderRadius="md" fontSize="xs" whiteSpace="nowrap">
+            ✓ Auto-filled
           </Badge>
         )}
       </HStack>
 
-      {/* Drop Zone */}
+      {/* Streamlined Drop Zone - Balanced Height */}
       <Box
         border="2px dashed"
         borderColor={borderColor}
         borderRadius="xl"
-        p={6}
+        p={5}
         textAlign="center"
         cursor="pointer"
         _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
         transition="all 0.2s"
         onClick={() => document.getElementById('img-upload')?.click()}
+        minH="120px"
       >
         <VStack spacing={2}>
-          <AddIcon boxSize={7} color="gray.400" />
-          <Text fontSize="sm" fontWeight="semibold" color="gray.600">Click to upload or drag & drop</Text>
-          <Text fontSize="xs" color="gray.400">JPEG, PNG or WebP • max 5MB each • up to 8 images</Text>
+          <AddIcon boxSize={6} color="gray.400" />
+          <Text fontSize="sm" fontWeight="semibold" color="gray.600">Click or drag photos</Text>
+          <Text fontSize="xs" color="gray.500">JPEG/PNG • max 5MB • up to 8 images</Text>
         </VStack>
       </Box>
       <input id="img-upload" type="file" multiple accept="image/*" style={{ display: 'none' }}
         onChange={e => handleImageUpload(e.target.files)} />
 
-      {/* Image Previews */}
+      {/* Horizontal Thumbnail Row - Nice Size */}
       {uploadedImages.length > 0 && (
-        <>
-          <HStack justify="space-between">
-            <Text fontSize="sm" fontWeight="semibold" color="gray.600">
-              {uploadedImages.length}/8 images uploaded
-            </Text>
-            {uploadedImages.length < 8 && (
-              <Button size="xs" variant="outline" onClick={() => document.getElementById('img-upload')?.click()}>
-                Add More
-              </Button>
-            )}
-          </HStack>
-          <SimpleGrid columns={4} spacing={2}>
+        <VStack spacing={2} align="stretch">
+          <HStack spacing={2} overflowX="auto" pb={1}>
             {uploadedImages.map((_, i) => (
-              <Box key={i} position="relative" aspectRatio={1}>
+              <Box key={i} position="relative" minW="80px" w="80px" h="80px" flexShrink={0}>
                 <Image
                   src={imagePreviewUrls[i]}
                   alt={`Preview ${i + 1}`}
-                  borderRadius="md"
+                  borderRadius="lg"
                   objectFit="cover"
                   w="full"
                   h="full"
-                  border={i === 0 ? '2px solid' : undefined}
-                  borderColor={i === 0 ? 'brand.400' : undefined}
+                  border={i === 0 ? '3px solid' : '1px solid'}
+                  borderColor={i === 0 ? 'brand.400' : 'gray.200'}
+                  shadow={i === 0 ? 'sm' : 'none'}
                 />
                 {i === 0 && (
-                  <Badge position="absolute" bottom={1} left={1} colorScheme="brand" fontSize="9px">
+                  <Badge position="absolute" bottom={1} left={1} colorScheme="brand" fontSize="8px" px={2}>
                     Cover
                   </Badge>
                 )}
                 <IconButton
-                  icon={<CloseIcon />}
+                  icon={<CloseIcon boxSize={3} />}
                   aria-label="Remove"
-                  size="xs"
+                  size="sm"
                   position="absolute"
-                  top={1}
-                  right={1}
+                  top={-3}
+                  right={-3}
                   colorScheme="red"
                   onClick={() => removeImage(i)}
+                  borderRadius="full"
+                  minW="24px"
+                  h="24px"
                 />
               </Box>
             ))}
-          </SimpleGrid>
-        </>
+          </HStack>
+
+          {/* Upload Stats & Add Button - Inline */}
+          <HStack justify="space-between" align="center">
+            <Text fontSize="sm" fontWeight="semibold" color="gray.600">
+              {uploadedImages.length}/8 uploaded
+            </Text>
+            {uploadedImages.length < 8 && (
+              <Button
+                size="xs"
+                variant="ghost"
+                colorScheme="brand"
+                fontSize="sm"
+                h="28px"
+                px={3}
+                onClick={() => document.getElementById('img-upload')?.click()}
+              >
+                + Add More
+              </Button>
+            )}
+          </HStack>
+        </VStack>
       )}
 
-      {/* Video Upload */}
-      <Divider />
-      <Box>
-        <Text fontWeight="semibold" color="gray.700" mb={1} fontSize="sm">
-          Product Video <Badge colorScheme="gray" ml={1}>Optional</Badge>
-        </Text>
-        <Text fontSize="xs" color="gray.400" mb={3}>Short 5–15 second video • MP4/MOV • max 50MB</Text>
-        {!uploadedVideo ? (
-          <Box
-            border="2px dashed"
-            borderColor={borderColor}
-            borderRadius="lg"
-            p={4}
-            textAlign="center"
-            cursor="pointer"
-            _hover={{ borderColor: 'brand.400' }}
-            onClick={() => document.getElementById('vid-upload')?.click()}
-          >
-            <VStack spacing={1}>
-              <Text fontSize="sm" color="gray.500">📹 Upload Video</Text>
-            </VStack>
-          </Box>
-        ) : (
-          <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" maxH="180px">
-            <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: '180px', objectFit: 'contain' }} />
-            <IconButton icon={<CloseIcon />} aria-label="Remove video" size="xs"
-              position="absolute" top={2} right={2} colorScheme="red" onClick={removeVideo} />
-          </Box>
-        )}
+      {/* Compact Video Upload - Same Row Style */}
+      <HStack spacing={3} align="flex-start">
+        <Box flex={1}>
+          <Text fontWeight="semibold" color="gray.700" fontSize="sm" mb={2}>
+            📹 Video <Badge colorScheme="gray" ml={2} fontSize="xs" py={1}>Optional</Badge>
+          </Text>
+          {!uploadedVideo ? (
+            <Box
+              border="2px dashed"
+              borderColor={borderColor}
+              borderRadius="lg"
+              p={3}
+              textAlign="center"
+              cursor="pointer"
+              _hover={{ borderColor: 'brand.400' }}
+              onClick={() => document.getElementById('vid-upload')?.click()}
+              minH="70px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Text fontSize="sm" color="gray.600">Click to add video</Text>
+            </Box>
+          ) : (
+            <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" maxH="100px">
+              <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: '100px', objectFit: 'contain' }} />
+              <IconButton icon={<CloseIcon boxSize={3} />} aria-label="Remove video" size="sm"
+                position="absolute" top={2} right={2} colorScheme="red" onClick={removeVideo} />
+            </Box>
+          )}
+        </Box>
         <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
           onChange={e => handleVideoUpload(e.target.files)} />
-      </Box>
+      </HStack>
+
+      {/* Helper Text */}
+      <Text fontSize="xs" color="gray.500" px={2}>
+        5–15 seconds • MP4/MOV • up to 50MB
+      </Text>
     </VStack>
   )
 
   const renderStep2 = () => (
-    <VStack spacing={6} align="stretch">
+    <VStack spacing={5} align="stretch">
       <VStack spacing={1} align="start">
-        <Heading size="md">✏️ Product Details & Trade Preferences</Heading>
-        <Text fontSize="sm" color="gray.500">
-          {aiDone ? 'AI has auto-filled these fields — review and edit as needed.' : 'Fill in your product details below.'}
+        <Heading size="md" fontSize="lg">✏️ Product Details</Heading>
+        <Text fontSize="sm" color="gray.600">
+          {aiDone ? 'AI auto-filled these — review and edit as needed.' : 'Fill in your product details.'}
         </Text>
       </VStack>
 
@@ -596,67 +610,70 @@ const AddProduct: React.FC = () => {
           loadingText="Analyzing..."
           alignSelf="flex-start"
         >
-          {aiDone ? 'Re-analyze Images' : 'Analyze Images with AI'}
+          {aiDone ? 'Re-analyze' : 'Analyze with AI'}
         </Button>
       )}
 
       {/* ── Product Fields ── */}
       <FormControl isRequired>
-        <HStack justify="space-between" align="center" mb={1}>
-          <FormLabel mb={0}>Product Name</FormLabel>
-          {aiDone && <Badge colorScheme="purple" variant="subtle">✨ AI Filled</Badge>}
+        <HStack justify="space-between" align="center" mb={2}>
+          <FormLabel mb={0} fontSize="sm" fontWeight="semibold">Product Name</FormLabel>
+          {aiDone && <Badge colorScheme="purple" variant="subtle" fontSize="xs">✨ Auto-filled</Badge>}
         </HStack>
         <Input
           placeholder="e.g., Nike Air Force 1"
           value={formData.title}
           onChange={e => handleField('title', e.target.value)}
           maxLength={25}
-          size="lg"
+          size="md"
         />
-        <HStack justify="space-between" mt={1}>
-          <FormHelperText>Max 25 characters</FormHelperText>
-          <Badge colorScheme={titleLength === 0 ? 'gray' : titleLength <= 25 ? 'green' : 'orange'}>
+        <HStack justify="space-between" mt={2}>
+          <FormHelperText fontSize="sm">Max 25 characters</FormHelperText>
+          <Badge colorScheme={titleLength === 0 ? 'gray' : titleLength <= 25 ? 'green' : 'orange'} fontSize="xs">
             {titleLength}/25
           </Badge>
         </HStack>
       </FormControl>
 
       <FormControl isRequired>
-        <HStack justify="space-between" align="center" mb={1}>
-          <FormLabel mb={0}>Description</FormLabel>
-          <Badge colorScheme={descriptionLength < 50 ? 'red' : descriptionLength <= 800 ? 'green' : 'orange'}>
+        <HStack justify="space-between" align="center" mb={2}>
+          <FormLabel mb={0} fontSize="sm" fontWeight="semibold">Description</FormLabel>
+          <Badge colorScheme={descriptionLength < 50 ? 'red' : descriptionLength <= 800 ? 'green' : 'orange'} fontSize="xs">
             {descriptionLength}/800
           </Badge>
         </HStack>
         <Textarea
-          placeholder="Describe your product in detail..."
+          placeholder="Describe your product..."
           value={formData.description}
           onChange={e => handleField('description', e.target.value)}
-          rows={5}
+          rows={4}
+          size="md"
         />
-        <FormHelperText color={descriptionLength < 50 ? 'red.500' : 'gray.500'}>
-          {descriptionLength < 50 ? `Need ${50 - descriptionLength} more characters` : '✓ Good length'}
+        <FormHelperText fontSize="sm" color={descriptionLength < 50 ? 'red.500' : 'gray.600'}>
+          {descriptionLength < 50 ? `${50 - descriptionLength} more chars needed` : '✓ Good'}
         </FormHelperText>
       </FormControl>
 
-      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
         <FormControl isRequired>
-          <FormLabel>Condition</FormLabel>
+          <FormLabel fontSize="sm">Condition</FormLabel>
           <Select
             placeholder="Select condition"
             value={formData.condition}
             onChange={e => handleField('condition', e.target.value)}
+            size="md"
           >
             {CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
         </FormControl>
 
         <FormControl isRequired>
-          <FormLabel>Category</FormLabel>
+          <FormLabel fontSize="sm">Category</FormLabel>
           <Select
             placeholder="Select category"
             value={formData.category}
             onChange={e => handleField('category', e.target.value)}
+            size="md"
           >
             {PRODUCT_CATEGORIES.map(cat => (
               <option key={cat.value} value={cat.value}>{cat.label}</option>
@@ -668,41 +685,41 @@ const AddProduct: React.FC = () => {
       {/* AI Extra Fields */}
       {aiDone && (
         <Box p={4} bg="purple.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="purple.400">
-          <Text fontSize="sm" fontWeight="semibold" color="purple.800" mb={3}>✨ AI Detected Insights</Text>
-          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+          <Text fontSize="sm" fontWeight="semibold" color="purple.800" mb={3}>✨ AI Insights</Text>
+          <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
             <Box>
-              <Text fontSize="xs" color="gray.500">Item Type</Text>
-              <Text fontSize="sm" fontWeight="medium">{formData.item_type || '—'}</Text>
+              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Item Type</Text>
+              <Text fontSize="sm" fontWeight="medium" mt={1}>{formData.item_type || '—'}</Text>
             </Box>
             <Box>
-              <Text fontSize="xs" color="gray.500">Brand</Text>
-              <Text fontSize="sm" fontWeight="medium">{formData.brand || '—'}</Text>
+              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Brand</Text>
+              <Text fontSize="sm" fontWeight="medium" mt={1}>{formData.brand || '—'}</Text>
             </Box>
             <Box>
-              <Text fontSize="xs" color="gray.500">Authenticity Risk</Text>
+              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Risk</Text>
               <Badge colorScheme={
                 formData.authenticity_risks === 'High' ? 'red' :
                 formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
-              }>
+              } fontSize="xs" mt={1}>
                 {formData.authenticity_risks || 'Low'}
               </Badge>
             </Box>
             <Box>
-              <Text fontSize="xs" color="gray.500">Estimated Value (PHP)</Text>
-              <Text fontSize="sm" fontWeight="medium">
+              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Est. Value</Text>
+              <Text fontSize="sm" fontWeight="medium" mt={1}>
                 ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
               </Text>
             </Box>
           </SimpleGrid>
           {formData.tags && (
             <Box mt={3}>
-              <Text fontSize="xs" color="gray.500" mb={1}>Tags</Text>
-              <HStack flexWrap="wrap" spacing={1}>
+              <Text fontSize="xs" color="gray.600" fontWeight="semibold" mb={2}>Tags</Text>
+              <HStack flexWrap="wrap" spacing={2}>
                 {(() => {
                   try { return JSON.parse(formData.tags!) }
                   catch { return [] }
                 })().map((tag: string, i: number) => (
-                  <Badge key={i} colorScheme="purple" variant="subtle">{tag}</Badge>
+                  <Badge key={i} colorScheme="purple" variant="subtle" fontSize="sm">{tag}</Badge>
                 ))}
               </HStack>
             </Box>
@@ -711,66 +728,62 @@ const AddProduct: React.FC = () => {
       )}
 
       {/* ── Location ── */}
-      <Divider />
       <FormControl isRequired>
-        <FormLabel>Location (Auto-detected via GPS)</FormLabel>
+        <FormLabel fontSize="sm" fontWeight="semibold">Location</FormLabel>
         {isGettingLocation ? (
-          <HStack p={3} bg="yellow.50" borderRadius="md">
+          <HStack p={3} bg="yellow.50" borderRadius="md" spacing={3}>
             <Spinner size="sm" color="yellow.600" />
             <Text fontSize="sm" color="yellow.800">Detecting your location...</Text>
           </HStack>
         ) : locationDetected && locationText ? (
           <Box p={3} bg="green.50" borderRadius="md" borderLeft="3px solid" borderLeftColor="green.400">
             <Text fontSize="sm" fontWeight="semibold" color="green.800">✓ Location Detected</Text>
-            <Text fontSize="sm" color="gray.700">{locationText}</Text>
+            <Text fontSize="sm" color="gray.700" mt={1}>{locationText}</Text>
           </Box>
         ) : (
           <Box>
             <Box p={3} bg="red.50" borderRadius="md" borderLeft="3px solid" borderLeftColor="red.400" mb={2}>
-              <Text fontSize="sm" color="red.700">⚠️ Location not detected. Please allow browser location access.</Text>
+              <Text fontSize="sm" color="red.700">⚠️ Allow location access</Text>
             </Box>
             <Button size="sm" onClick={detectLocation} isLoading={isGettingLocation}>
               🔄 Detect Location
             </Button>
           </Box>
         )}
-        <FormHelperText>Auto-detected via GPS to prevent fake locations.</FormHelperText>
+        <FormHelperText fontSize="sm">GPS prevents fake locations</FormHelperText>
       </FormControl>
 
       {/* ── Desired Items ── */}
-      <Divider />
-      <VStack spacing={4} align="stretch">
+      <VStack spacing={3} align="stretch" pt={2}>
         <Box>
-          <Heading size="sm" mb={1}>🔄 What I Want in Exchange</Heading>
-          <Text fontSize="sm" color="gray.500">
-            Specify what you're looking for. This enables multi-way trading loops.
+          <Heading size="sm" fontSize="md" mb={1}>🔄 What I Want</Heading>
+          <Text fontSize="sm" color="gray.600">
+            Specify items you'd trade for (enables multi-way trading).
           </Text>
         </Box>
 
         <FormControl isRequired isInvalid={!!wantsError}>
-          <FormLabel>Desired Items</FormLabel>
+          <FormLabel fontSize="sm">Desired Items</FormLabel>
           <Textarea
-            placeholder="e.g., iPhone 12, Gaming Laptop, DSLR Camera, Collectible Items"
+            placeholder="e.g., iPhone 12, Gaming Laptop, DSLR Camera"
             value={formData.wants}
             onChange={e => {
               handleField('wants', e.target.value)
               setWantsError(validateDesiredItems(e.target.value))
             }}
-            rows={4}
+            rows={3}
+            size="md"
             borderColor={wantsError ? 'red.400' : undefined}
           />
           {wantsError ? (
-            <Text fontSize="sm" color="red.600" mt={1}>{wantsError}</Text>
+            <Text fontSize="sm" color="red.600" mt={2}>{wantsError}</Text>
           ) : (
-            <FormHelperText>List items you'd accept in exchange, separated by commas or new lines.</FormHelperText>
+            <FormHelperText fontSize="sm">Separated by commas or new lines</FormHelperText>
           )}
         </FormControl>
 
         <FormControl>
-          <FormLabel>Desired Categories</FormLabel>
-          <Text fontSize="xs" color="gray.500" mb={2}>
-            Select categories you're open to receiving.
-          </Text>
+          <FormLabel fontSize="sm">Desired Categories</FormLabel>
           <Box display="flex" flexWrap="wrap" gap={2}>
             {PRODUCT_CATEGORIES.map(cat => {
               const selected = wantedCategories.includes(cat.value)
@@ -797,22 +810,16 @@ const AddProduct: React.FC = () => {
               )
             })}
           </Box>
-          {wantedCategories.length > 0 && (
-            <Text fontSize="xs" color="green.600" mt={2}>
-              ✓ {wantedCategories.length} {wantedCategories.length === 1 ? 'category' : 'categories'} selected
-            </Text>
-          )}
         </FormControl>
       </VStack>
 
       {/* ── Barter Option ── */}
-      <Divider />
       <Box p={4} bg="blue.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="blue.400">
         <FormControl>
           <HStack justify="space-between">
             <VStack align="start" spacing={0}>
-              <FormLabel mb={0} fontWeight="semibold">Barter Only</FormLabel>
-              <Text fontSize="sm" color="gray.600">Accept item exchanges only</Text>
+              <FormLabel mb={0} fontWeight="semibold" fontSize="sm">Barter Only</FormLabel>
+              <Text fontSize="xs" color="gray.600">Accept exchanges only</Text>
             </VStack>
             <Switch
               isChecked={formData.barter_only}
@@ -832,10 +839,10 @@ const AddProduct: React.FC = () => {
     })()
 
     return (
-      <VStack spacing={5} align="stretch">
+      <VStack spacing={4} align="stretch">
         <VStack spacing={1} align="start">
-          <Heading size="md">📋 Review & Post</Heading>
-          <Text fontSize="sm" color="gray.500">Review your listing before publishing.</Text>
+          <Heading size="md" fontSize="lg">📋 Review & Publish</Heading>
+          <Text fontSize="sm" color="gray.600">Confirm your listing before publishing.</Text>
         </VStack>
 
         {/* Images */}
@@ -844,16 +851,16 @@ const AddProduct: React.FC = () => {
           <SimpleGrid columns={4} spacing={2}>
             {imagePreviewUrls.slice(0, 4).map((url, i) => (
               <Box key={i} position="relative" aspectRatio={1}>
-                <Image src={url} alt={`Product ${i + 1}`} borderRadius="md" objectFit="cover" w="full" h="full" />
-                {i === 0 && <Badge position="absolute" bottom={1} left={1} colorScheme="brand" fontSize="9px">Cover</Badge>}
+                <Image src={url} alt={`Product ${i + 1}`} borderRadius="lg" objectFit="cover" w="full" h="full" />
+                {i === 0 && <Badge position="absolute" bottom={1} left={1} colorScheme="brand" fontSize="8px" px={2}>Cover</Badge>}
               </Box>
             ))}
           </SimpleGrid>
           {imagePreviewUrls.length > 4 && (
-            <Text fontSize="xs" color="gray.500" mt={1}>+{imagePreviewUrls.length - 4} more image(s)</Text>
+            <Text fontSize="sm" color="gray.600" mt={2}>+{imagePreviewUrls.length - 4} more image(s)</Text>
           )}
           {uploadedVideo && (
-            <Text fontSize="xs" color="gray.500" mt={1}>📹 1 video attached</Text>
+            <Text fontSize="sm" color="gray.600" mt={1}>📹 Video attached</Text>
           )}
         </Box>
 
@@ -869,41 +876,35 @@ const AddProduct: React.FC = () => {
               { label: 'Brand', value: formData.brand || '—' },
             ].map(({ label, value }) => (
               <HStack key={label} justify="space-between">
-                <Text fontSize="sm" color="gray.500">{label}</Text>
+                <Text fontSize="sm" color="gray.600">{label}</Text>
                 <Text fontSize="sm" fontWeight="medium">{value}</Text>
               </HStack>
             ))}
             {formData.estimated_value_min !== undefined && (
               <HStack justify="space-between">
-                <Text fontSize="sm" color="gray.500">Est. Value</Text>
+                <Text fontSize="sm" color="gray.600">Est. Value</Text>
                 <Text fontSize="sm" fontWeight="medium">
                   ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
                 </Text>
               </HStack>
             )}
-            <Box>
-              <Text fontSize="sm" color="gray.500" mb={1}>Description</Text>
-              <Text fontSize="sm" noOfLines={3}>{formData.description}</Text>
-            </Box>
-            {tags.length > 0 && (
-              <Box>
-                <Text fontSize="sm" color="gray.500" mb={1}>Tags</Text>
-                <HStack flexWrap="wrap" spacing={1}>
-                  {tags.map((t, i) => <Badge key={i} colorScheme="purple" variant="subtle">{t}</Badge>)}
-                </HStack>
-              </Box>
-            )}
           </VStack>
+        </Box>
+
+        {/* Description */}
+        <Box p={4} bg="gray.50" borderRadius="lg">
+          <Text fontWeight="semibold" fontSize="sm" color="gray.700" mb={2}>Description</Text>
+          <Text fontSize="sm" noOfLines={3} color="gray.700">{formData.description}</Text>
         </Box>
 
         {/* Authenticity */}
         {formData.authenticity_risks && (
-          <Box p={4} bg={formData.authenticity_risks === 'High' ? 'red.50' : formData.authenticity_risks === 'Medium' ? 'orange.50' : 'green.50'}
+          <Box p={3} bg={formData.authenticity_risks === 'High' ? 'red.50' : formData.authenticity_risks === 'Medium' ? 'orange.50' : 'green.50'}
             borderRadius="lg" borderLeft="4px solid"
             borderLeftColor={formData.authenticity_risks === 'High' ? 'red.400' : formData.authenticity_risks === 'Medium' ? 'orange.400' : 'green.400'}>
-            <HStack>
-              <Text fontSize="sm" fontWeight="semibold">Authenticity Risk:</Text>
-              <Badge colorScheme={formData.authenticity_risks === 'High' ? 'red' : formData.authenticity_risks === 'Medium' ? 'orange' : 'green'}>
+            <HStack spacing={2}>
+              <Text fontSize="sm" fontWeight="semibold">Risk:</Text>
+              <Badge colorScheme={formData.authenticity_risks === 'High' ? 'red' : formData.authenticity_risks === 'Medium' ? 'orange' : 'green'} fontSize="xs">
                 {formData.authenticity_risks}
               </Badge>
             </HStack>
@@ -912,29 +913,29 @@ const AddProduct: React.FC = () => {
 
         {/* Location */}
         <Box p={4} bg="green.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="green.400">
-          <Text fontSize="sm" fontWeight="semibold" color="green.800" mb={1}>📍 Location</Text>
+          <Text fontSize="sm" fontWeight="semibold" color="green.800" mb={2}>📍 Location</Text>
           <Text fontSize="sm" color="gray.700">{formData.location || 'Not detected'}</Text>
         </Box>
 
         {/* Trade Preferences */}
         <Box p={4} bg="blue.50" borderRadius="lg">
-          <Text fontWeight="semibold" fontSize="sm" mb={3} color="gray.700">Trade Preferences</Text>
+          <Text fontWeight="semibold" fontSize="sm" mb={3} color="gray.700">Trading</Text>
           <VStack spacing={2} align="stretch">
             <Box>
-              <Text fontSize="sm" color="gray.500" mb={1}>Desired Items</Text>
-              <Text fontSize="sm">{formData.wants || '—'}</Text>
+              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Wants</Text>
+              <Text fontSize="sm" mt={1}>{formData.wants || '—'}</Text>
             </Box>
             {wantedCategories.length > 0 && (
               <Box>
-                <Text fontSize="sm" color="gray.500" mb={1}>Desired Categories</Text>
+                <Text fontSize="xs" color="gray.600" fontWeight="semibold" mb={1}>Categories</Text>
                 <HStack flexWrap="wrap" spacing={1}>
-                  {wantedCategories.map(c => <Badge key={c} colorScheme="brand">{c}</Badge>)}
+                  {wantedCategories.map(c => <Badge key={c} colorScheme="brand" fontSize="xs">{c}</Badge>)}
                 </HStack>
               </Box>
             )}
             <HStack justify="space-between">
-              <Text fontSize="sm" color="gray.500">Exchange Type</Text>
-              <Badge colorScheme={formData.barter_only ? 'blue' : 'green'}>
+              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Type</Text>
+              <Badge colorScheme={formData.barter_only ? 'blue' : 'green'} fontSize="xs">
                 {formData.barter_only ? 'Barter Only' : 'Barter + Cash'}
               </Badge>
             </HStack>
@@ -944,8 +945,8 @@ const AddProduct: React.FC = () => {
         {/* Ready to post */}
         <Box p={4} bg="brand.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="brand.400" textAlign="center">
           <HStack justify="center" spacing={2}>
-            <CheckIcon color="brand.500" />
-            <Text fontWeight="semibold" color="brand.700">Everything looks good! Ready to post.</Text>
+            <CheckIcon color="brand.500" boxSize={4} />
+            <Text fontWeight="semibold" fontSize="sm" color="brand.700">Everything looks good! Ready to publish.</Text>
           </HStack>
         </Box>
       </VStack>
@@ -961,50 +962,21 @@ const AddProduct: React.FC = () => {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <Box minH="100vh" bg={pageBg} py={8}>
-      <Box p={4} maxW="2xl" mx="auto">
-        <VStack spacing={6} align="stretch">
-          {/* Header */}
-          <Box textAlign="center">
-            <Heading size="xl" color="brand.500" mb={1}>Post a Product</Heading>
-            <Text color="gray.500">Step {currentStep} of {TOTAL_STEPS}: {stepLabels[currentStep - 1].title}</Text>
-          </Box>
-
-          {/* Step Indicators */}
-          <HStack justify="center" spacing={0}>
-            {stepLabels.map((step, idx) => {
-              const done = currentStep > step.number
-              const active = currentStep === step.number
-              return (
-                <React.Fragment key={step.number}>
-                  <VStack spacing={1} minW="70px" align="center">
-                    <Box
-                      w={10} h={10}
-                      borderRadius="full"
-                      bg={done ? 'brand.500' : active ? 'brand.400' : 'gray.200'}
-                      color={done || active ? 'white' : 'gray.500'}
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="center"
-                      fontSize="lg"
-                      fontWeight="bold"
-                      transition="all 0.2s"
-                    >
-                      {done ? <CheckIcon boxSize={4} /> : step.number}
-                    </Box>
-                    <Text fontSize="xs" color={active ? 'brand.600' : 'gray.500'} fontWeight={active ? 'semibold' : 'normal'} textAlign="center">
-                      {step.title}
-                    </Text>
-                  </VStack>
-                  {idx < stepLabels.length - 1 && (
-                    <Box flex={1} h="2px" bg={done ? 'brand.400' : 'gray.200'} mt="-14px" transition="all 0.2s" />
-                  )}
-                </React.Fragment>
-              )
-            })}
+    <Box minH="100vh" bg={pageBg} py={6}>
+      <Box p={6} maxW="3xl" mx="auto">
+        <VStack spacing={5} align="stretch">
+          {/* Compact Header - Single Line with Step Indicator */}
+          <HStack justify="space-between" align="center">
+            <Box>
+              <Heading size="lg" color="brand.500" mb={0.5}>Post a Product</Heading>
+              <Text fontSize="sm" color="gray.600">Step {currentStep}/{TOTAL_STEPS}</Text>
+            </Box>
+            <Badge colorScheme="brand" fontSize="sm" px={3} py={1.5}>
+              {stepLabels[currentStep - 1].icon} {stepLabels[currentStep - 1].title}
+            </Badge>
           </HStack>
 
-          {/* Progress Bar */}
+          {/* Compact Step Progress Bar - No Numbered Circles */}
           <Progress
             value={(currentStep / TOTAL_STEPS) * 100}
             colorScheme="brand"
@@ -1013,19 +985,20 @@ const AddProduct: React.FC = () => {
           />
 
           {/* Step Content */}
-          <Box bg={bgColor} p={{ base: 4, md: 8 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
+          <Box bg={bgColor} p={{ base: 6, md: 8 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
             {currentStep === 1 && renderStep1()}
             {currentStep === 2 && renderStep2()}
             {currentStep === 3 && renderStep3()}
           </Box>
 
           {/* Navigation */}
-          <HStack justify="space-between" pb={{ base: 20, sm: 0 }}>
+          <HStack justify="space-between" pb={{ base: 20, sm: 0 }} pt={2}>
             <Button
               leftIcon={<ArrowBackIcon />}
               onClick={() => setCurrentStep(s => Math.max(1, s - 1))}
               isDisabled={currentStep === 1}
               variant="outline"
+              size="md"
             >
               Back
             </Button>
@@ -1036,7 +1009,7 @@ const AddProduct: React.FC = () => {
                 onClick={() => setCurrentStep(s => s + 1)}
                 isDisabled={!canProceed()}
                 colorScheme="brand"
-                size="lg"
+                size="md"
               >
                 Next
               </Button>
@@ -1046,7 +1019,7 @@ const AddProduct: React.FC = () => {
                 isLoading={isSubmitting}
                 loadingText="Posting..."
                 colorScheme="brand"
-                size="lg"
+                size="md"
                 px={8}
                 leftIcon={<CheckIcon />}
               >
