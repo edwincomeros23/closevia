@@ -108,6 +108,9 @@ const ProductDetail: React.FC = () => {
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
   const [zoomImageIndex, setZoomImageIndex] = useState(0)
+  const [isVoting, setIsVoting] = useState(false)
+  const [isCopying, setIsCopying] = useState(false)
+  const [isWishlisting, setIsWishlisting] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -301,7 +304,8 @@ const ProductDetail: React.FC = () => {
       return;
     }
 
-    if (!product) return;
+    if (!product || isWishlisting) return;
+    setIsWishlisting(true);
 
     try {
       if (isWishlisted) {
@@ -333,6 +337,8 @@ const ProductDetail: React.FC = () => {
         duration: 3000,
         isClosable: true,
       });
+    } finally {
+      setIsWishlisting(false);
     }
   };
 
@@ -663,7 +669,8 @@ const ProductDetail: React.FC = () => {
       navigate('/login')
       return
     }
-    if (!product) return
+    if (!product || isVoting) return
+    setIsVoting(true)
     try {
       const response = await api.post(`/api/products/${product.id}/vote`, { vote: voteType })
       const data = response.data?.data
@@ -689,10 +696,14 @@ const ProductDetail: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
+    } finally {
+      setIsVoting(false)
     }
   }
 
   const copyToClipboard = async () => {
+    if (isCopying) return
+    setIsCopying(true)
     // Use slug-based URL if available, otherwise use current URL
     const url = product?.slug
       ? `${window.location.origin}/products/${product.slug}`
@@ -714,6 +725,8 @@ const ProductDetail: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
+    } finally {
+      setTimeout(() => setIsCopying(false), 2000)
     }
   }
 
