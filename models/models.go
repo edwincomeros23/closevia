@@ -283,7 +283,7 @@ type Trade struct {
 	DeliveryAddress string `json:"delivery_address,omitempty"`
 	// Delivery state fields (for progress tracking and persistence)
 	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
-	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet"`
+	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet upfront"`
 	PaymentConfirmed        bool   `json:"payment_confirmed"`
 	ProofOfDelivery         string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
 	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
@@ -326,6 +326,7 @@ type TradeCreate struct {
 	OfferedCashAmount *float64 `json:"offered_cash_amount,omitempty"`
 	TradeOption       string   `json:"trade_option" validate:"required,oneof=meetup delivery"`
 	DeliveryAddress   string   `json:"delivery_address,omitempty"`
+	PaymentMethod     string   `json:"payment_method,omitempty" validate:"omitempty,oneof=cod upfront"`
 }
 
 // TradeAction represents accept/decline/counter actions

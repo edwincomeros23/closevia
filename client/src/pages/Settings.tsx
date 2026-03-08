@@ -110,64 +110,6 @@ const SettingsPage: React.FC = () => {
     return 'medium'
   }
 
-  // Preferences State
-  const [darkMode, setDarkMode] = useState(colorMode === 'dark')
-  const [language, setLanguage] = useState('en')
-  const [dashboardLayout, setDashboardLayout] = useState('default')
-  const [fontSize, setFontSize] = useState(initializeFontSize)
-  const [highContrast, setHighContrast] = useState(false)
-
-  // Apply font size to document for live preview
-  useEffect(() => {
-    const applyFontSize = (size: string) => {
-      const root = document.documentElement
-      switch (size) {
-        case 'small':
-          root.style.fontSize = '14px'
-          break
-        case 'large':
-          root.style.fontSize = '18px'
-          break
-        case 'extra-large':
-          root.style.fontSize = '20px'
-          break
-        default:
-          root.style.fontSize = '16px' // medium
-      }
-    }
-
-    applyFontSize(fontSize)
-    // Also persist to localStorage whenever font size changes
-    try {
-      const saved = localStorage.getItem('user_settings')
-      const settings = saved ? JSON.parse(saved) : {}
-      settings.fontSize = fontSize
-      localStorage.setItem('user_settings', JSON.stringify(settings))
-    } catch (e) {
-      // ignore
-    }
-  }, [fontSize])
-
-  // Load saved dark mode setting on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('user_settings')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (parsed.darkMode !== undefined) {
-          const isDark = parsed.darkMode
-          setDarkMode(isDark)
-          // Apply to Chakra if not already in that mode
-          if ((colorMode === 'dark') !== isDark) {
-            toggleColorMode()
-          }
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, [colorMode, toggleColorMode])
-
   // Notifications State
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(true)
@@ -196,8 +138,10 @@ const SettingsPage: React.FC = () => {
   // Modals
   const { isOpen: isPasswordModalOpen, onOpen: onPasswordModalOpen, onClose: onPasswordModalClose } = useDisclosure()
   const { isOpen: isLogoutModalOpen, onOpen: onLogoutModalOpen, onClose: onLogoutModalClose } = useDisclosure()
+  const { isOpen: isDeleteAccountOpen, onOpen: onDeleteAccountOpen, onClose: onDeleteAccountClose } = useDisclosure()
   const cancelRef = useRef<HTMLButtonElement>(null)
   const logoutCancelRef = useRef<HTMLButtonElement>(null)
+  const deleteAccountCancelRef = useRef<HTMLButtonElement>(null)
 
   // Helper to strip cache busters from URLs (they should only be added in display, not stored)
   const stripCacheBuster = (url: string | null): string | null => {
@@ -214,9 +158,6 @@ const SettingsPage: React.FC = () => {
       // Strip any cache busters that might have been saved
       const cleanPicture = stripCacheBuster((user as any)?.profile_picture)
       setProfileImage(cleanPicture)
-      // Load language preference from user object
-      const userLanguage = (user as any)?.language_preference || 'en'
-      setLanguage(userLanguage)
       // Load notification settings from user object
       setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
       setPushNotifications((user as any)?.push_notifications_enabled ?? true)
@@ -233,31 +174,12 @@ const SettingsPage: React.FC = () => {
     }
   }, [user])
 
-  // Sync dark mode to Chakra colorMode when user toggles switch
-  useEffect(() => {
-    if (darkMode !== (colorMode === 'dark')) {
-      toggleColorMode()
-    }
-  }, [darkMode, colorMode, toggleColorMode])
-
-  // Ensure high contrast remains disabled (defensive)
-  useEffect(() => {
-    if (highContrast) {
-      setHighContrast(false)
-    }
-  }, []) // run once on mount
-
   // Track changes
   useEffect(() => {
     const hasChanges =
       username !== (user?.name || '') ||
       email !== (user?.email || '') ||
       profileImage !== ((user as any)?.profile_picture || null) ||
-      darkMode !== (colorMode === 'dark') ||
-      language !== ((user as any)?.language_preference || 'en') ||
-      dashboardLayout !== 'default' ||
-      fontSize !== initializeFontSize() ||
-      highContrast !== false ||
       emailNotifications !== ((user as any)?.email_notifications_enabled ?? true) ||
       pushNotifications !== ((user as any)?.push_notifications_enabled ?? true)
 
@@ -266,12 +188,6 @@ const SettingsPage: React.FC = () => {
     username,
     email,
     profileImage,
-    darkMode,
-    colorMode,
-    language,
-    dashboardLayout,
-    fontSize,
-    highContrast,
     emailNotifications,
     pushNotifications,
     user
@@ -510,28 +426,22 @@ const SettingsPage: React.FC = () => {
         }
       }
 
-      // Persist preferences locally (without cache buster)
+      // Persist settings locally
       const settings = {
         username,
         email,
         profileImage: profileUrlToSave ?? profileImage,
-        darkMode,
-        language,
-        dashboardLayout,
-        fontSize,
-        highContrast,
         emailNotifications,
         pushNotifications,
       }
       localStorage.setItem('user_settings', JSON.stringify(settings))
 
-      // Update user profile in backend (without cache buster)
+      // Update user profile in backend
       console.log('📸 Calling PUT /api/users/profile with profile_picture:', profileUrlToSave ?? profileImage)
       const resp = await api.put('/api/users/profile', {
         name: username,
         email: email,
         profile_picture: profileUrlToSave ?? profileImage,
-        language_preference: language,
         email_notifications_enabled: emailNotifications,
         push_notifications_enabled: pushNotifications,
       })
@@ -777,6 +687,53 @@ const SettingsPage: React.FC = () => {
     // Navigate to login page and close any open logout dialog
     navigate('/login')
     try { onLogoutModalClose() } catch {}
+  }
+
+  // Handle account deletion
+  const handleDeleteAccount = async () => {
+    try {
+      await api.delete('/api/users/account')
+      
+      // Clear client-side storage
+      try {
+        const keys = ['token', 'auth_token', 'access_token', 'refresh_token', 'session']
+        keys.forEach((k) => {
+          try { localStorage.removeItem(k) } catch {}
+          try { sessionStorage.removeItem(k) } catch {}
+          try { document.cookie = `${k}=; Max-Age=0; path=/;` } catch {}
+        })
+      } catch (e) {
+        // ignore
+      }
+
+      // Logout locally
+      try {
+        logout && logout()
+      } catch (e) {
+        // ignore
+      }
+
+      toast({
+        title: 'Account deleted',
+        description: 'Your account has been permanently deleted.',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      })
+
+      // Navigate to login/home
+      navigate('/')
+      try { onDeleteAccountClose() } catch {}
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || 'Failed to delete account'
+      toast({
+        title: 'Error',
+        description: message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    }
   }
 
   return (
@@ -1108,147 +1065,6 @@ const SettingsPage: React.FC = () => {
             </CardBody>
           </Card>
 
-          {/* Preferences Section */}
-          <Card
-            bg={cardBg}
-            borderRadius="lg"
-            overflow="hidden"
-            variant="outline"
-            borderColor={borderColor}
-            _hover={{ boxShadow: 'md' }}
-            transition="all 0.2s"
-          >
-            <CardHeader pb={3}>
-              <HStack spacing={3}>
-                <Icon as={FaPalette} color="brand.500" boxSize={5} />
-                <Heading size="md">Preferences</Heading>
-              </HStack>
-            </CardHeader>
-            <CardBody pt={0}>
-              <VStack spacing={6} align="stretch">
-                {/* Dark Mode */}
-                <Flex justify="space-between" align="center">
-                  <Box>
-                    <FormLabel mb={1}>Dark Mode</FormLabel>
-                    <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.400')}>
-                      Switch between light and dark theme
-                    </Text>
-                  </Box>
-                  <Switch
-                    isChecked={darkMode}
-                    onChange={(e) => {
-                      setDarkMode(e.target.checked)
-                      setHasUnsavedChanges(true)
-                    }}
-                    colorScheme="brand"
-                    size="lg"
-                    isDisabled
-                    title="Dark mode is locked"
-                  />
-                </Flex>
-
-                <Divider />
-
-                {/* Language */}
-                <FormControl>
-                  <FormLabel>
-                    <HStack spacing={2}>
-                      <Icon as={FaGlobe} />
-                      <Text>Language</Text>
-                    </HStack>
-                  </FormLabel>
-                  <Select
-                    value={language}
-                    onChange={(e) => {
-                      setLanguage(e.target.value)
-                      setHasUnsavedChanges(true)
-                    }}
-                    maxW="300px"
-                    title="Select language"
-                  >
-                    <option value="en">English</option>
-                    <option value="es">Español</option>
-                    <option value="fr">Français</option>
-                    <option value="de">Deutsch</option>
-                    <option value="it">Italiano</option>
-                    <option value="pt">Português</option>
-                    <option value="zh">中文</option>
-                    <option value="ja">日本語</option>
-                  </Select>
-                </FormControl>
-
-                {/* Dashboard Layout */}
-                <FormControl>
-                  <FormLabel>
-                    <HStack spacing={2}>
-                      <Icon as={FaDesktop} />
-                      <Text>Default Dashboard Layout</Text>
-                    </HStack>
-                  </FormLabel>
-                  <Select
-                    value={dashboardLayout}
-                    onChange={(e) => {
-                      setDashboardLayout(e.target.value)
-                      setHasUnsavedChanges(true)
-                    }}
-                    maxW="300px"
-                    title="Select dashboard layout"
-                  >
-                    <option value="default">Default</option>
-                    <option value="compact">Compact</option>
-                    <option value="spacious">Spacious</option>
-                    <option value="grid">Grid View</option>
-                  </Select>
-                </FormControl>
-
-                <Divider />
-
-                {/* Accessibility */}
-                <Box>
-                  <FormLabel mb={3}>
-                    <HStack spacing={2}>
-                      <Icon as={FaAccessibleIcon} />
-                      <Text>Accessibility</Text>
-                    </HStack>
-                  </FormLabel>
-                  <VStack spacing={4} align="stretch" pl={4}>
-                    <FormControl>
-                      <FormLabel fontSize="sm">Font Size</FormLabel>
-                      <Select
-                        value={fontSize}
-                        onChange={(e) => {
-                          setFontSize(e.target.value)
-                          setHasUnsavedChanges(true)
-                        }}
-                        maxW="200px"
-                        title="Select font size"
-                      >
-                        <option value="small">Small</option>
-                        <option value="medium">Medium</option>
-                        <option value="large">Large</option>
-                        <option value="extra-large">Extra Large</option>
-                      </Select>
-                    </FormControl>
-                    <Flex justify="space-between" align="center">
-                      <Box>
-                        <FormLabel mb={1} fontSize="sm">High Contrast Mode</FormLabel>
-                        <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
-                          Increase contrast for better visibility
-                        </Text>
-                      </Box>
-                      <Switch
-                        isChecked={false}
-                        isDisabled
-                        colorScheme="brand"
-                        title="High contrast mode is disabled"
-                      />
-                    </Flex>
-                  </VStack>
-                </Box>
-              </VStack>
-            </CardBody>
-          </Card>
-
           {/* Notifications Section */}
           <Card
             bg={cardBg}
@@ -1319,6 +1135,42 @@ const SettingsPage: React.FC = () => {
               </VStack>
             </CardBody>
           </Card>
+
+          {/* Delete Account Section - Subtle but Dangerous */}
+          <Card
+            bg={useColorModeValue('red.50', 'rgba(245, 75, 85, 0.1)')}
+            borderRadius="lg"
+            overflow="hidden"
+            variant="outline"
+            borderColor={useColorModeValue('red.200', 'red.700')}
+            _hover={{ boxShadow: 'md', borderColor: useColorModeValue('red.300', 'red.600') }}
+            transition="all 0.2s"
+            mt={8}
+          >
+            <CardHeader pb={3}>
+              <HStack spacing={3}>
+                <Icon as={FaTrash} color="red.500" boxSize={5} />
+                <Heading size="md" color="red.700">Delete Account</Heading>
+              </HStack>
+            </CardHeader>
+            <CardBody pt={0}>
+              <VStack spacing={4} align="stretch">
+                <Text fontSize="sm" color={useColorModeValue('red.700', 'red.200')}>
+                  Permanently delete your account and all associated data. This action cannot be undone.
+                </Text>
+                <Button
+                  colorScheme="red"
+                  variant="outline"
+                  leftIcon={<FaTrash />}
+                  onClick={onDeleteAccountOpen}
+                  w="fit-content"
+                  size="sm"
+                >
+                  Delete Account
+                </Button>
+              </VStack>
+            </CardBody>
+          </Card>
         </VStack>
       </Container>
  
@@ -1351,11 +1203,9 @@ const SettingsPage: React.FC = () => {
                       setUsername(user.name || '')
                       setEmail(user.email || '')
                       setProfileImage((user as any)?.profile_picture || null)
-                      setLanguage((user as any)?.language_preference || 'en')
                       setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
                       setPushNotifications((user as any)?.push_notifications_enabled ?? true)
                     }
-                    setDarkMode(colorMode === 'dark')
                     setHasUnsavedChanges(false)
                     toast({
                       title: 'Changes discarded',
@@ -1503,6 +1353,35 @@ const SettingsPage: React.FC = () => {
               </Button>
               <Button colorScheme="orange" onClick={handleLogout} ml={3}>
                 Logout
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      {/* Delete Account Confirmation Modal */}
+      <AlertDialog
+        isOpen={isDeleteAccountOpen}
+        leastDestructiveRef={deleteAccountCancelRef}
+        onClose={onDeleteAccountClose}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Delete Account
+            </AlertDialogHeader>
+            <AlertDialogBody>
+              This will permanently delete your account and all your data. This action cannot be undone.
+              <br />
+              <br />
+              Are you sure you want to continue?
+            </AlertDialogBody>
+            <AlertDialogFooter>
+              <Button ref={deleteAccountCancelRef} onClick={onDeleteAccountClose}>
+                Cancel
+              </Button>
+              <Button colorScheme="red" onClick={handleDeleteAccount} ml={3}>
+                Delete Account
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

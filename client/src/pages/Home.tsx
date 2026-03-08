@@ -50,7 +50,7 @@ import {
   ArrowRightIcon,
   CloseIcon,
 } from '@chakra-ui/icons'
-import { FaUserCircle, FaHandshake, FaHome } from 'react-icons/fa'
+import { FaUserCircle, FaHandshake, FaHome, FaTag } from 'react-icons/fa'
 import { FiShoppingBag } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
@@ -62,6 +62,7 @@ import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
+import BuyoutModal from '../components/BuyoutModal'
 import { useRealtime } from '../contexts/RealtimeContext' // added import
 import FloatingTab from '../components/FloatingTab'
 import { useStudentAdInjection, StudentAdCard } from '../components/StudentAdInjector'
@@ -226,6 +227,10 @@ const Home: React.FC = () => {
   const [offersForProduct, setOffersForProduct] = useState<any[]>([])
   const [loadingOffers, setLoadingOffers] = useState(false)
 
+  // Buyout modal state
+  const { isOpen: buyoutOpen, onOpen: onBuyoutOpen, onClose: onBuyoutClose } = useDisclosure()
+  const [buyoutTargetProductId, setBuyoutTargetProductId] = useState<number | null>(null)
+
   // Slider state: cycles public/1.jpg, public/2.jpg, public/3.jpg every 3s
   const sliderImages = ['/1.jpg', '/2.jpg', '/3.jpg']
   const [slideIndex, setSlideIndex] = useState(0)
@@ -314,6 +319,15 @@ const Home: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
+    }
+  }
+
+  const handleBuyoutClick = (productId: number) => {
+    if (!user) {
+      onOpen() // Show login modal
+    } else {
+      setBuyoutTargetProductId(productId)
+      onBuyoutOpen()
     }
   }
 
@@ -573,12 +587,13 @@ const Home: React.FC = () => {
           )}
 
           {/* Action buttons */}
-          <HStack spacing={2} mt="auto">
+          <HStack spacing={{ base: 1, md: 2 }} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
             <Button
-              size="sm"
+              size={{ base: 'xs', md: 'sm' }}
               variant="outline"
               colorScheme="brand"
               flex={1}
+              minW={{ base: '60px', md: 'auto' }}
               onClick={(e) => {
                 e.stopPropagation()
                 handleTradeClick(product.id)
@@ -590,9 +605,26 @@ const Home: React.FC = () => {
 
             {product.allow_buying && product.price && !product.barter_only && (
               <Button
-                size="sm"
+                size={{ base: 'xs', md: 'sm' }}
+                colorScheme="orange"
+                flex={1}
+                minW={{ base: '60px', md: 'auto' }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleBuyoutClick(product.id)
+                }}
+                isDisabled={product.status === 'sold'}
+              >
+                {product.status === 'sold' ? 'Sold' : 'Buyout'}
+              </Button>
+            )}
+
+            {product.allow_buying && product.price && !product.barter_only && (
+              <Button
+                size={{ base: 'xs', md: 'sm' }}
                 colorScheme="brand"
                 flex={1}
+                minW={{ base: '50px', md: 'auto' }}
                 onClick={(e) => {
                   e.stopPropagation()
                   handleBuyClick(product.id)
@@ -603,11 +635,28 @@ const Home: React.FC = () => {
               </Button>
             )}
 
+            <Tooltip label="Buyout offer" placement="top">
+              <IconButton
+                aria-label="Buyout offer"
+                icon={<Icon as={FaTag} color="yellow.500" />}
+                size={{ base: 'xs', md: 'sm' }}
+                variant="outline"
+                borderColor="yellow.400"
+                _hover={{ borderColor: 'yellow.500', bg: 'yellow.50' }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleBuyoutClick(product.id)
+                }}
+                isDisabled={product.status === 'sold'}
+                flexShrink={0}
+              />
+            </Tooltip>
+
             <Tooltip label="View offers" placement="top">
               <IconButton
                 aria-label="View offers"
                 icon={<FaHandshake />}
-                size="sm"
+                size={{ base: 'xs', md: 'sm' }}
                 variant="outline"
                 colorScheme="blue"
                 onClick={(e) => {
@@ -615,6 +664,7 @@ const Home: React.FC = () => {
                   handleViewOffers(product.id)
                 }}
                 isDisabled={product.status === 'sold'}
+                flexShrink={0}
               />
             </Tooltip>
           </HStack>
@@ -1300,6 +1350,8 @@ const Home: React.FC = () => {
       </Box>
 
       <TradeModal isOpen={isOpen} onClose={onClose} targetProductId={tradeTargetProductId} />
+
+      <BuyoutModal isOpen={buyoutOpen} onClose={onBuyoutClose} targetProductId={buyoutTargetProductId} />
 
       {/* Logout Confirmation Modal */}
       <Modal isOpen={isLogoutModalOpen} onClose={onCloseLogoutModal} isCentered>

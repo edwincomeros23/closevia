@@ -58,7 +58,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
-import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
+import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave } from 'react-icons/fa'
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
@@ -114,6 +114,15 @@ const Dashboard: React.FC = () => {
     [actualUserProducts]
   )
 
+  // Buyout offers - filter from receivedOffers where items are empty and cash is present
+  const buyoutOffers = useMemo(() => {
+    return (receivedOffersData || []).filter(t => 
+      (!t.items || t.items.length === 0) && 
+      (t.offered_cash_amount && t.offered_cash_amount > 0) &&
+      t.status === 'pending'
+    )
+  }, [receivedOffersData])
+
   // Combined loading states
   const offersLoading = !sentOffersData && !receivedOffersData && !ongoingTradesData
 
@@ -156,7 +165,7 @@ const Dashboard: React.FC = () => {
   const ongoingLoading = false
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
-  const [offersSubTab, setOffersSubTab] = useState(0) // 0: Sent, 1: Received, 2: Ongoing, 3: Completed
+  const [offersSubTab, setOffersSubTab] = useState(0) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing
   const [offersPage, setOffersPage] = useState(1)
   const [offersSearch, setOffersSearch] = useState('')
   const [offersStatusFilter, setOffersStatusFilter] = useState<string>('all')
@@ -676,16 +685,18 @@ const Dashboard: React.FC = () => {
 
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
+    const buyout = (buyoutOffers || []).length
     const sentPending = (outgoing || []).filter(t => t.status === 'pending').length
-    const receivedPending = (incoming || []).filter(t => t.status === 'pending').length
+    const receivedPending = (incoming || []).filter(t => t.status === 'pending' && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
     const ongoing = (ongoingTradesData || []).length
     return {
+      buyout,
       sentPending,
       receivedPending,
       ongoing,
-      totalPending: sentPending + receivedPending
+      totalPending: sentPending + receivedPending + buyout
     }
-  }, [incoming, outgoing, ongoingTradesData])
+  }, [buyoutOffers, incoming, outgoing, ongoingTradesData])
 
   // Completed trades count for Trade History tab
   const completedTradesCount = useMemo(() => {
@@ -714,6 +725,19 @@ const Dashboard: React.FC = () => {
 
   // Get trades for each sub-tab (excluding completed - those go to Trade History)
   // Optimized to only sort when rendering, not during filter
+  const buyoutOffersTab = useMemo(() => {
+    const filtered = filterTrades(buyoutOffers, offersSearch, offersStatusFilter)
+    // Sort inline to avoid extra function call
+    if (filtered.length > 1) {
+      filtered.sort((a, b) => {
+        const at = new Date(a.created_at).getTime()
+        const bt = new Date(b.created_at).getTime()
+        return offersSort === 'newest' ? bt - at : at - bt
+      })
+    }
+    return filtered
+  }, [buyoutOffers, offersSearch, offersStatusFilter, offersSort, filterTrades])
+
   const sentOffers = useMemo(() => {
     const active = (outgoing || []).filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
@@ -803,12 +827,13 @@ const Dashboard: React.FC = () => {
   // Get current tab's trades (memoized to prevent unnecessary recalculations)
   const currentTabTrades = useMemo(() => {
     switch (offersSubTab) {
-      case 0: return sentOffers
-      case 1: return receivedOffers
-      case 2: return ongoingTrades
+      case 0: return buyoutOffersTab
+      case 1: return sentOffers
+      case 2: return receivedOffers
+      case 3: return ongoingTrades
       default: return []
     }
-  }, [offersSubTab, sentOffers, receivedOffers, ongoingTrades])
+  }, [offersSubTab, buyoutOffersTab, sentOffers, receivedOffers, ongoingTrades])
   const offersPerPage = 9
   const totalPages = Math.ceil(currentTabTrades.length / offersPerPage)
   const paginatedTrades = useMemo(() => {
@@ -2806,6 +2831,15 @@ const Dashboard: React.FC = () => {
                           }
                         }}
                       >
+                        <Tab fontSize={{ base: '9px', md: 'sm' }} mr={{ base: 8, md: 0 }}>
+                          <Box display={{ base: 'none', md: 'inline' }}>Buyout Offers</Box>
+                          <Box display={{ base: 'inline', md: 'none' }}>Buyout</Box>
+                          {offersStats.buyout > 0 && (
+                            <Badge ml={2} colorScheme="orange" borderRadius="full" fontSize="xs">
+                              {offersStats.buyout}
+                            </Badge>
+                          )}
+                        </Tab>
                         <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 12, md: 0 }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
@@ -2836,6 +2870,119 @@ const Dashboard: React.FC = () => {
                       </TabList>
 
                       <TabPanels>
+                        {/* Buyout Offers */}
+                        <TabPanel px={0}>
+                          {offersLoading ? (
+                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                              {Array.from({ length: 8 }).map((_, i) => (
+                                <ProductCardSkeleton key={i} />
+                              ))}
+                            </SimpleGrid>
+                          ) : buyoutOffersTab.length === 0 ? (
+                            <Fade in={true}>
+                              <Box
+                                textAlign="center"
+                                py={12}
+                                bg="orange.50"
+                                borderRadius="lg"
+                                border="2px dashed"
+                                borderColor="orange.200"
+                              >
+                                <Icon as={FaMoneyBillWave} boxSize={16} color="orange.300" mb={4} />
+                                <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                                  {(unifiedSearch || offersSearch) || offersStatusFilter !== 'all'
+                                    ? 'No buyout offers match your search/filters.'
+                                    : 'No buyout offers'}
+                                </Text>
+                                <Text color="gray.500" fontSize="sm">
+                                  {(unifiedSearch || offersSearch) || offersStatusFilter !== 'all'
+                                    ? 'Try adjusting your search or filters.'
+                                    : 'Direct buyout offers from other users will appear here!'}
+                                </Text>
+                              </Box>
+                            </Fade>
+                          ) : offersViewMode === 'list' ? (
+                            <>
+                              <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                                {paginatedTrades.map((trade, idx) => (
+                                  <OfferListRow
+                                    key={trade.id}
+                                    trade={trade}
+                                    isIncoming={true}
+                                    onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
+                                    onAccept={() => { setSelectedTrade(trade); setCompletionModalOpen(true) }}
+                                    onDecline={() => handleDeclineTradeClick(trade)}
+                                  />
+                                ))}
+                              </Box>
+                              {totalPages > 1 && (
+                                <HStack justify="center" spacing={2} mt={4}>
+                                  <Button
+                                    size="sm"
+                                    leftIcon={<ChevronLeftIcon />}
+                                    onClick={() => setOffersPage(p => Math.max(1, p - 1))}
+                                    isDisabled={offersPage === 1}
+                                  >
+                                    Previous
+                                  </Button>
+                                  <Text fontSize="sm" color="gray.600">
+                                    Page {offersPage} of {totalPages}
+                                  </Text>
+                                  <Button
+                                    size="sm"
+                                    rightIcon={<ChevronRightIcon />}
+                                    onClick={() => setOffersPage(p => Math.min(totalPages, p + 1))}
+                                    isDisabled={offersPage === totalPages}
+                                  >
+                                    Next
+                                  </Button>
+                                </HStack>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                                {paginatedTrades.map((trade) => {
+                                  const isIncoming = true
+                                  return (
+                                    <OfferCard
+                                      key={trade.id}
+                                      trade={trade}
+                                      isIncoming={isIncoming}
+                                      onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
+                                      onAccept={() => { setSelectedTrade(trade); setCompletionModalOpen(true) }}
+                                      onDecline={() => handleDeclineTradeClick(trade)}
+                                    />
+                                  )
+                                })}
+                              </SimpleGrid>
+                              {totalPages > 1 && (
+                                <HStack justify="center" spacing={2} mt={4}>
+                                  <Button
+                                    size="sm"
+                                    leftIcon={<ChevronLeftIcon />}
+                                    onClick={() => setOffersPage(p => Math.max(1, p - 1))}
+                                    isDisabled={offersPage === 1}
+                                  >
+                                    Previous
+                                  </Button>
+                                  <Text fontSize="sm" color="gray.600">
+                                    Page {offersPage} of {totalPages}
+                                  </Text>
+                                  <Button
+                                    size="sm"
+                                    rightIcon={<ChevronRightIcon />}
+                                    onClick={() => setOffersPage(p => Math.min(totalPages, p + 1))}
+                                    isDisabled={offersPage === totalPages}
+                                  >
+                                    Next
+                                  </Button>
+                                </HStack>
+                              )}
+                            </>
+                          )}
+                        </TabPanel>
+
                         {/* Sent Offers */}
                         <TabPanel px={0}>
                           {offersLoading ? (

@@ -224,6 +224,7 @@ export interface TradeCreate {
     offered_cash_amount?: number
     trade_option: TradeOption // Required: 'meetup' or 'delivery'
     delivery_address?: string // Required if trade_option is 'delivery'
+    payment_method?: 'cod' | 'upfront' // Payment method preference for buyout offers
 }
 
 export interface TradeAction {
