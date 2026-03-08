@@ -19,8 +19,8 @@ import {
   Divider,
   useBreakpointValue,
 } from '@chakra-ui/react'
-import { CloudUploadIcon, CloseIcon, AddIcon, PlayIcon } from '@chakra-ui/icons'
-import { MdVideoCamera, MdImage } from 'react-icons/md'
+import { CloseIcon, AddIcon } from '@chakra-ui/icons'
+import { MdVideocam, MdImage } from 'react-icons/md'
 
 interface UploadedImage {
   id: string
@@ -211,7 +211,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
   return (
     <Box w="full" minH="100vh" bg="gray.50" pb={24}>
       {/* Progress Indicator */}
-      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" sticky top={0} zIndex={10}>
+      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" position="sticky" top={0} zIndex={10}>
         <VStack spacing={0} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }}>
           <HStack w="full" justify="space-between" mb={4}>
             <Text fontSize="sm" fontWeight="600" color="gray.600">
@@ -448,7 +448,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
         {/* Video Upload Section */}
         <VStack spacing={4} align="stretch" bg="blue.50" p={4} rounded="lg" borderWidth="1px" borderColor="blue.100">
           <HStack>
-            <Icon as={MdVideoCamera} w={5} h={5} color="blue.500" />
+            <Icon as={MdVideocam} w={5} h={5} color="blue.500" />
             <VStack spacing={0} align="start" flex={1}>
               <Text fontSize="sm" fontWeight="600" color="gray.900">
                 Product Video (Optional)
@@ -461,7 +461,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
 
           {!video ? (
             <Button
-              leftIcon={<CloudUploadIcon />}
+              leftIcon={<MdImage />}
               colorScheme="blue"
               variant="outline"
               size="sm"
@@ -476,7 +476,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
                 <Box position="relative" bg="gray.900">
                   <video src={video.preview} style={{ width: '100%', height: '100%' }} />
                   <Center position="absolute" inset={0} bg="blackAlpha.400">
-                    <Icon as={PlayIcon} w={6} h={6} color="white" />
+                    {/* Video preview */}
                   </Center>
                 </Box>
               </AspectRatio>

@@ -17,7 +17,6 @@ import {
   AlertIcon,
   Spinner,
   Center,
-  ScrollView,
 } from '@chakra-ui/react'
 import { ArrowBackIcon, CheckCircleIcon } from '@chakra-ui/icons'
 import { MdCheckCircle } from 'react-icons/md'
@@ -75,7 +74,7 @@ const ProductUploadStep3: React.FC<ProductUploadStep3Props> = ({
   return (
     <Box w="full" minH="100vh" bg="gray.50" pb={24}>
       {/* Progress Indicator */}
-      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" sticky top={0} zIndex={10}>
+      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" position="sticky" top={0} zIndex={10}>
         <VStack spacing={0} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }}>
           <HStack w="full" justify="space-between" mb={4}>
             <Text fontSize="sm" fontWeight="600" color="gray.600">

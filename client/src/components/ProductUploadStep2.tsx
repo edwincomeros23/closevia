@@ -113,7 +113,7 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
   return (
     <Box w="full" minH="100vh" bg="gray.50" pb={24}>
       {/* Progress Indicator */}
-      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" sticky top={0} zIndex={10}>
+      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" position="sticky" top={0} zIndex={10}>
         <VStack spacing={0} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }}>
           <HStack w="full" justify="space-between" mb={4}>
             <Text fontSize="sm" fontWeight="600" color="gray.600">
@@ -171,8 +171,8 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
               size="lg"
             >
               {FILTER_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
+                <option key={typeof cat === 'string' ? cat : cat.value} value={typeof cat === 'string' ? cat : cat.value}>
+                  {typeof cat === 'string' ? cat : cat.label}
                 </option>
               ))}
             </Select>
