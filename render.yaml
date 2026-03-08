@@ -6,8 +6,7 @@ services:
     startCommand: ./main
     envVars:
       - key: GEMINI_API_KEY
-        fromDatabase:
-          name: ${GEMINI_API_KEY}
+        sync: false
       - key: DB_HOST
         scope: build
       - key: DB_PORT

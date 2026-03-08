@@ -19,9 +19,16 @@ import (
 )
 
 func main() {
-	// Load environment variables for francistest connection
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using default values")
+	// Load .env file only in local development (Render sets PORT automatically)
+	// This prevents a committed .env from overriding Render dashboard env vars
+	if os.Getenv("PORT") == "" {
+		if err := godotenv.Load(); err != nil {
+			log.Println("No .env file found, using system environment variables")
+		} else {
+			log.Println("Loaded .env file for local development")
+		}
+	} else {
+		log.Println("Running in hosted environment, skipping .env file load")
 	}
 
 	// Initialize database

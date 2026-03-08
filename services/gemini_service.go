@@ -28,15 +28,28 @@ type GeminiResponse struct {
 }
 
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
-	apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
-	// Strip surrounding quotes in case they were accidentally included in Render env var value
-	apiKey = strings.Trim(apiKey, `"'`)
+	rawKey := os.Getenv("GEMINI_API_KEY")
+	// Strip all whitespace, quotes, and non-printable/non-ASCII characters
+	// This handles invisible Unicode chars that cause 400 on hosted environments like Render
+	var sanitized strings.Builder
+	for _, r := range rawKey {
+		if r >= 33 && r <= 126 && r != '"' && r != '\'' {
+			sanitized.WriteRune(r)
+		}
+	}
+	apiKey := sanitized.String()
+
 	if apiKey == "" {
+		log.Printf("[Gemini] GEMINI_API_KEY raw length=%d, sanitized length=0 — key missing or all invalid chars", len(rawKey))
 		return nil, errors.New("GEMINI_API_KEY environment variable not set or empty")
 	}
 
-	// Diagnostic log: length + first char helps detect invisible/junk leading characters
-	log.Printf("[Gemini] Key loaded: length=%d, starts_with=%q", len(apiKey), string(apiKey[0]))
+	// Diagnostic log: show length and first/last few chars (safe partial reveal for debugging)
+	safePreview := apiKey
+	if len(safePreview) > 8 {
+		safePreview = apiKey[:4] + "..." + apiKey[len(apiKey)-4:]
+	}
+	log.Printf("[Gemini] Key loaded: raw_len=%d sanitized_len=%d preview=%s", len(rawKey), len(apiKey), safePreview)
 
 	if len(images) < 1 {
 		return nil, errors.New("at least 1 image required")
