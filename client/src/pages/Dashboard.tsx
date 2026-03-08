@@ -966,6 +966,10 @@ const Dashboard: React.FC = () => {
   }
 
   const handleDeleteProductClick = (product: Product) => {
+    if (product.status === 'locked') {
+      toast({ title: 'Cannot delete', description: 'Locked products cannot be deleted. Please unlock it first.', status: 'warning', duration: 3000, isClosable: true })
+      return
+    }
     setProductToDelete(product)
     showPopup({
       type: 'warning',
@@ -2615,36 +2619,6 @@ const Dashboard: React.FC = () => {
                         )}
                       </HStack>
                     </HStack>
-
-                    {/* Batch Actions Bar - List View only */}
-                    {productViewMode === 'list' && selectedProductIds.size > 0 && (
-                      <Flex
-                        align="center"
-                        justify="space-between"
-                        p={3}
-                        bg="brand.50"
-                        borderRadius="md"
-                        border="1px"
-                        borderColor="brand.200"
-                        flexWrap="wrap"
-                        gap={2}
-                      >
-                        <Text fontSize="sm" fontWeight="medium">
-                          {selectedProductIds.size} selected
-                        </Text>
-                        <HStack spacing={2}>
-                          <Button size="sm" colorScheme="orange" variant="outline" onClick={handleBatchLock} isLoading={deleting}>
-                            Lock/Unlock
-                          </Button>
-                          <Button size="sm" colorScheme="red" variant="outline" onClick={handleBatchDelete} isLoading={deleting}>
-                            Delete
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setSelectedProductIds(new Set())}>
-                            Clear
-                          </Button>
-                        </HStack>
-                      </Flex>
-                    )}
 
                     {/* Products Grid or List - Apply Sort */}
                     {productsLoading && !hasInitiallyLoaded.current ? (

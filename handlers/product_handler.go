@@ -1174,7 +1174,8 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 
 	// Check if user owns the product
 	var sellerID int
-	err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", productID).Scan(&sellerID)
+	var productStatus string
+	err = h.db.QueryRow("SELECT seller_id, status FROM products WHERE id = ?", productID).Scan(&sellerID, &productStatus)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{
@@ -1192,6 +1193,14 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "You can only delete your own products",
+		})
+	}
+
+	// Locked products cannot be deleted
+	if productStatus == "locked" {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Cannot delete a locked product. Please unlock it first.",
 		})
 	}
 
