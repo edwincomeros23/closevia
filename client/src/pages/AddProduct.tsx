@@ -127,7 +127,7 @@ const AddProduct: React.FC = () => {
     authenticity_risks: undefined,
     estimated_value_min: undefined,
     estimated_value_max: undefined,
-    tags: undefined,
+    tags: '[]',
     wanted_categories: [],
   })
 
@@ -426,7 +426,7 @@ const AddProduct: React.FC = () => {
       if (formData.authenticity_risks) fd.append('authenticity_risks', formData.authenticity_risks)
       if (formData.estimated_value_min !== undefined) fd.append('estimated_value_min', String(formData.estimated_value_min))
       if (formData.estimated_value_max !== undefined) fd.append('estimated_value_max', String(formData.estimated_value_max))
-      if (formData.tags) fd.append('tags', formData.tags)
+      fd.append('tags', formData.tags || '[]')
       if (formData.wants?.trim()) fd.append('wants', formData.wants.trim())
       if (wantedCategories.length > 0) fd.append('wanted_categories', JSON.stringify(wantedCategories))
 
@@ -468,18 +468,18 @@ const AddProduct: React.FC = () => {
         )}
       </HStack>
 
-      {/* Streamlined Drop Zone - Balanced Height */}
+      {/* Streamlined Drop Zone - Balanced Height, Mobile Responsive */}
       <Box
         border="2px dashed"
         borderColor={borderColor}
         borderRadius="xl"
-        p={5}
+        p={{ base: 4, sm: 5 }}
         textAlign="center"
         cursor="pointer"
         _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
         transition="all 0.2s"
         onClick={() => document.getElementById('img-upload')?.click()}
-        minH="120px"
+        minH={{ base: '100px', sm: '120px' }}
       >
         <VStack spacing={2}>
           <AddIcon boxSize={6} color="gray.400" />
@@ -490,10 +490,10 @@ const AddProduct: React.FC = () => {
       <input id="img-upload" type="file" multiple accept="image/*" style={{ display: 'none' }}
         onChange={e => handleImageUpload(e.target.files)} />
 
-      {/* Horizontal Thumbnail Row - Nice Size */}
+      {/* Horizontal Thumbnail Row - Nice Size, Scrollable on Mobile */}
       {uploadedImages.length > 0 && (
         <VStack spacing={2} align="stretch">
-          <HStack spacing={2} overflowX="auto" pb={1}>
+          <HStack spacing={{ base: 1.5, sm: 2 }} overflowX="auto" pb={1}>
             {uploadedImages.map((_, i) => (
               <Box key={i} position="relative" minW="80px" w="80px" h="80px" flexShrink={0}>
                 <Image
@@ -609,7 +609,7 @@ const AddProduct: React.FC = () => {
       >
         {/* Collapsed View */}
         {!expandProductDetails ? (
-          <HStack justify="space-between" align="center" spacing={2} onClick={e => e.stopPropagation()}>
+          <HStack justify="space-between" align="center" spacing={2}>
             {/* AI Badges */}
             {aiDone ? (
               <HStack spacing={1} flex={1} minW={0}>
@@ -670,6 +670,7 @@ const AddProduct: React.FC = () => {
                 onFocus={() => setNameFieldFocused(true)}
                 onBlur={() => setNameFieldFocused(false)}
                 maxLength={25}
+                onClick={e => e.stopPropagation()}
                 size="sm"
                 h="32px"
               />
@@ -692,6 +693,7 @@ const AddProduct: React.FC = () => {
                 }}
                 onFocus={() => setDescriptionFieldFocused(true)}
                 onBlur={() => setDescriptionFieldFocused(false)}
+                onClick={e => e.stopPropagation()}
                 rows={2}
                 size="sm"
               />
@@ -707,14 +709,15 @@ const AddProduct: React.FC = () => {
               )}
             </FormControl>
 
-            {/* Condition + Category */}
-            <SimpleGrid columns={2} spacing={2}>
+            {/* Condition + Category - Responsive */}
+            <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={2}>
               <FormControl isRequired>
                 <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Condition</FormLabel>
                 <Select
                   placeholder="Select"
                   value={formData.condition}
                   onChange={e => handleField('condition', e.target.value)}
+                  onClick={e => e.stopPropagation()}
                   size="sm"
                   h="32px"
                 >
@@ -728,6 +731,7 @@ const AddProduct: React.FC = () => {
                   placeholder="Select"
                   value={formData.category}
                   onChange={e => handleField('category', e.target.value)}
+                  onClick={e => e.stopPropagation()}
                   size="sm"
                   h="32px"
                 >
@@ -797,20 +801,23 @@ const AddProduct: React.FC = () => {
           {wantsError && <Text fontSize="xs" color="red.500" mt={1}>{wantsError}</Text>}
         </FormControl>
 
-        {/* Categories - Pill Cloud (2 rows max initially) */}
+        {/* Categories - Horizontally Scrollable on Mobile */}
         <FormControl>
           <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Categories</FormLabel>
           <Box
-            display="grid"
-            gridTemplateColumns="repeat(auto-fill, minmax(90px, 1fr))"
+            display={{ base: "flex", sm: "grid" }}
+            gridTemplateColumns={{ sm: "repeat(auto-fill, minmax(90px, 1fr))" }}
+            flexWrap={{ base: "nowrap", sm: "wrap" }}
+            overflowX={{ base: "auto", sm: "visible" }}
             gap={1}
             p={1.5}
             bg="white"
             borderRadius="md"
             border="1px"
             borderColor="gray.300"
-            maxH={showCategoryMore ? "none" : "80px"}
-            overflow="hidden"
+            maxH={{ base: "none", sm: showCategoryMore ? "none" : "80px" }}
+            overflow={{ base: "auto", sm: "hidden" }}
+            pb={{ base: 1, sm: 0 }}
             transition="max-height 0.3s"
           >
             {PRODUCT_CATEGORIES.map(cat => {
@@ -832,6 +839,8 @@ const AddProduct: React.FC = () => {
                     selected ? prev.filter(c => c !== cat.value) : [...prev, cat.value]
                   )}
                   justifyContent="center"
+                  minW={{ base: "max-content", sm: "auto" }}
+                  whiteSpace={{ base: "nowrap", sm: "normal" }}
                 >
                   {cat.label}
                 </Badge>
@@ -847,6 +856,7 @@ const AddProduct: React.FC = () => {
               onClick={() => setShowCategoryMore(true)}
               colorScheme="gray"
               w="full"
+              display={{ base: "none", sm: "block" }}
             >
               + {PRODUCT_CATEGORIES.length - 12} More Categories
             </Button>
@@ -860,6 +870,7 @@ const AddProduct: React.FC = () => {
               onClick={() => setShowCategoryMore(false)}
               colorScheme="gray"
               w="full"
+              display={{ base: "none", sm: "block" }}
             >
               - Show Less
             </Button>
@@ -879,60 +890,48 @@ const AddProduct: React.FC = () => {
 
     return (
       <VStack spacing={4} align="stretch">
-        {/* ──────── HERO IMAGE ──────── */}
-        <Box position="relative" aspectRatio={1} bg="gray.100" borderRadius="xl" overflow="hidden">
+        {/* ──────── PRODUCT IMAGES GALLERY ──────── */}
+        <Box>
           {imagePreviewUrls.length > 0 ? (
-            <Image
-              src={imagePreviewUrls[0]}
-              alt="Product"
-              w="full"
-              h="full"
-              objectFit="cover"
-            />
+            <SimpleGrid columns={{ base: 5, sm: 6 }} spacing={0.5}>
+              {imagePreviewUrls.map((url, idx) => (
+                <Box
+                  key={idx}
+                  position="relative"
+                  paddingBottom="100%"
+                  bg="gray.100"
+                  borderRadius="xs"
+                  overflow="hidden"
+                >
+                  <Image
+                    src={url}
+                    alt={`Product ${idx + 1}`}
+                    position="absolute"
+                    top={0}
+                    left={0}
+                    w="full"
+                    h="full"
+                    objectFit="cover"
+                  />
+                </Box>
+              ))}
+            </SimpleGrid>
           ) : (
             <Box
               w="full"
-              h="full"
+              h="150px"
               display="flex"
               alignItems="center"
               justifyContent="center"
               bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
               color="white"
+              borderRadius="lg"
             >
               <VStack spacing={2}>
                 <Text fontSize="3xl">📚</Text>
-                <Text fontSize="sm" fontWeight="medium">Product Image</Text>
+                <Text fontSize="sm" fontWeight="medium">Product Images</Text>
               </VStack>
             </Box>
-          )}
-          {/* AVAILABLE Badge */}
-          <Badge
-            position="absolute"
-            top={3}
-            right={3}
-            colorScheme="green"
-            fontSize="xs"
-            fontWeight="bold"
-            px={3}
-            py={1.5}
-          >
-            ✓ AVAILABLE
-          </Badge>
-          {/* More images indicator */}
-          {imagePreviewUrls.length > 1 && (
-            <Badge
-              position="absolute"
-              bottom={3}
-              right={3}
-              colorScheme="gray"
-              bg="white"
-              color="gray.800"
-              fontSize="xs"
-              px={2}
-              py={1}
-            >
-              +{imagePreviewUrls.length - 1}
-            </Badge>
           )}
         </Box>
 
@@ -1009,13 +1008,13 @@ const AddProduct: React.FC = () => {
           </Text>
         </Box>
 
-        {/* ──────── KEY DETAILS GRID ──────── */}
+        {/* ──────── KEY DETAILS GRID - Responsive ──────── */}
         <Box
           p={3}
           bg="gray.50"
           borderRadius="lg"
           display="grid"
-          gridTemplateColumns="repeat(2, 1fr)"
+          gridTemplateColumns={{ base: "1fr", sm: "repeat(2, 1fr)" }}
           gap={3}
         >
           <Box>
@@ -1069,33 +1068,6 @@ const AddProduct: React.FC = () => {
           </Box>
         )}
 
-        {/* ──────── MAIN CTA ──────── */}
-        <Button
-          w="full"
-          size="lg"
-          colorScheme="brand"
-          fontSize="md"
-          fontWeight="bold"
-          h="56px"
-          borderRadius="lg"
-          _hover={{ shadow: "lg" }}
-        >
-          🔄 Send Trade Offer
-        </Button>
-
-        {/* ──────── SECONDARY ACTIONS ──────── */}
-        <HStack spacing={2} w="full">
-          <Button flex={1} variant="outline" size="sm" fontSize="xs">
-            ❤️ Save
-          </Button>
-          <Button flex={1} variant="outline" size="sm" fontSize="xs">
-            🔗 Share
-          </Button>
-          <Button flex={1} variant="outline" size="sm" fontSize="xs">
-            🚩 Report
-          </Button>
-        </HStack>
-
         {/* ──────── READY INDICATOR ──────── */}
         <Box p={3} bg="green.50" borderRadius="lg" textAlign="center" borderLeft="3px solid" borderLeftColor="green.400">
           <HStack justify="center" spacing={2}>
@@ -1147,14 +1119,16 @@ const AddProduct: React.FC = () => {
             {currentStep === 3 && renderStep3()}
           </Box>
 
-          {/* Navigation */}
-          <HStack justify="space-between" pb={{ base: 20, sm: 0 }} pt={2}>
+          {/* Navigation - Mobile Friendly Button Sizing */}
+          <HStack justify="space-between" pb={{ base: 20, sm: 0 }} pt={2} spacing={{ base: 2, sm: 3 }}>
             <Button
               leftIcon={<ArrowBackIcon />}
               onClick={() => setCurrentStep(s => Math.max(1, s - 1))}
               isDisabled={currentStep === 1}
               variant="outline"
-              size="md"
+              size={{ base: "sm", sm: "md" }}
+              fontSize={{ base: "xs", sm: "sm" }}
+              minH={{ base: "36px", sm: "40px" }}
             >
               Back
             </Button>
@@ -1165,7 +1139,9 @@ const AddProduct: React.FC = () => {
                 onClick={() => setCurrentStep(s => s + 1)}
                 isDisabled={!canProceed()}
                 colorScheme="brand"
-                size="md"
+                size={{ base: "sm", sm: "md" }}
+                fontSize={{ base: "xs", sm: "sm" }}
+                minH={{ base: "36px", sm: "40px" }}
               >
                 Next
               </Button>
@@ -1175,8 +1151,10 @@ const AddProduct: React.FC = () => {
                 isLoading={isSubmitting}
                 loadingText="Posting..."
                 colorScheme="brand"
-                size="md"
-                px={8}
+                size={{ base: "sm", sm: "md" }}
+                fontSize={{ base: "xs", sm: "sm" }}
+                minH={{ base: "36px", sm: "40px" }}
+                px={{ base: 4, sm: 8 }}
                 leftIcon={<CheckIcon />}
               >
                 Post Product
