@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useMemo, useCallback } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -23,15 +23,13 @@ import {
   BellIcon,
   SettingsIcon,
   RepeatIcon,
-  StarIcon,
 } from '@chakra-ui/icons'
-import { motion } from 'framer-motion'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
-import { FaHome } from 'react-icons/fa'
-import { FiGrid, FiHeart, FiLogOut, FiUser } from 'react-icons/fi'
+import { FaHome, FaPlus, FaStar } from 'react-icons/fa'
+import { FiGrid, FiHeart, FiLogOut, FiUser, FiBell, FiSettings } from 'react-icons/fi'
 import { getImageUrl } from '../utils/imageUtils'
 import VerifiedAvatar from './VerifiedAvatar'
 
@@ -47,64 +45,73 @@ const Sidebar: React.FC = () => {
   const { isOpen, onOpen, onClose } = useMobileNav()
   const { notificationCount } = useRealtime()
   const { user, logout } = useAuth()
-  const drawerRef = useRef<HTMLDivElement>(null)
   
-  // Desktop: Home always; Dashboard, Add Product, Saved, Notifications only when logged in
-  const desktopNavItems = [
-    { icon: FaHome, label: 'Home', path: '/home' },
-    ...(user
-      ? [
-          { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
-          { icon: AddIcon, label: 'Add Product', path: '/add-product' },
-          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-          { icon: BellIcon, label: 'Notifications', path: '/notifications' },
-          ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
-        ]
-      : []),
-  ]
+  // Memoize callback handlers to prevent unnecessary re-renders
+  const handleLogoClick = useCallback(() => {
+    window.location.href = '/'
+    onClose()
+  }, [onClose])
 
-  // Mobile drawer: Dashboard, Add Product, Saved, Settings only when logged in
-  const mobileNavItems = user
-    ? [
+  const handleCompanyClick = useCallback(() => {
+    navigate('/company')
+    onClose()
+  }, [navigate, onClose])
+
+  const handleProfileClick = useCallback(() => {
+    onClose()
+  }, [onClose])
+
+  const handleLogout = useCallback(async () => {
+    onClose()
+    await logout()
+    navigate('/login')
+  }, [onClose, logout, navigate])
+
+  // Memoize desktop navigation items to prevent recalculation
+  const desktopNavItems = useMemo(() => {
+    const items = [
+      { icon: FaHome, label: 'Home', path: '/home' },
+    ]
+    if (user) {
+      items.push(
+        { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
+        { icon: FaPlus, label: 'Add Product', path: '/add-product' },
         { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-        { icon: BellIcon, label: 'Notifications', path: '/notifications' },
-        ...(user?.role === 'admin' ? [{ icon: StarIcon, label: 'Admin', path: '/admin' }] : []),
-        { icon: SettingsIcon, label: 'Settings', path: '/settings' },
+        { icon: FiBell, label: 'Notifications', path: '/notifications' }
+      )
+      if (user?.role === 'admin') {
+        items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
+      }
+    }
+    return items
+  }, [user])
+
+  // Memoize mobile navigation items to prevent recalculation
+  const mobileNavItems = useMemo(() => {
+    if (user) {
+      const items = [
+        { icon: FiHeart, label: 'Saved', path: '/saved-products' },
+        { icon: FiBell, label: 'Notifications', path: '/notifications' },
+        { icon: FiSettings, label: 'Settings', path: '/settings' },
       ]
-    : [
-        { icon: FaHome, label: 'Home', path: '/home' },
-        { icon: FiUser, label: 'Login', path: '/login' },
-      ]
+      if (user?.role === 'admin') {
+        items.splice(2, 0, { icon: FaStar, label: 'Admin', path: '/admin' })
+      }
+      return items
+    }
+    return [
+      { icon: FaHome, label: 'Home', path: '/home' },
+      { icon: FiUser, label: 'Login', path: '/login' },
+    ]
+  }, [user])
   
   return (
     <>
       {/* Drawer for mobile */}
       <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
         <DrawerOverlay />
-        <motion.div
-          ref={drawerRef}
-          initial={{ x: -300 }}
-          animate={{ x: 0 }}
-          exit={{ x: -300 }}
-          transition={{
-            type: 'spring',
-            stiffness: 400,
-            damping: 40,
-            mass: 1,
-          }}
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.2}
-          onDragEnd={(event, info) => {
-            // Close drawer if swiped left by more than 50px
-            if (info.offset.x < -50) {
-              onClose()
-            }
-          }}
-          style={{ touchAction: 'pan-y' }}
-        >
-          <DrawerContent display="flex" flexDirection="column" h="100%">
-            <DrawerCloseButton position="absolute" right={3} top={3} zIndex={10} />
+        <DrawerContent display="flex" flexDirection="column" h="100%">
+          <DrawerCloseButton position="absolute" right={3} top={3} zIndex={10} />
             
             {/* Clean Header - Just Logo */}
             <DrawerHeader borderBottom="2px solid" borderColor={borderColor} py={4}>
@@ -116,10 +123,8 @@ const Sidebar: React.FC = () => {
                   h="40px"
                   objectFit="contain"
                   cursor="pointer"
-                  onClick={() => {
-                    window.location.href = '/'
-                    onClose()
-                  }}
+                  loading="lazy"
+                  onClick={handleLogoClick}
                   _hover={{ opacity: 0.8 }}
                 />
                 <Box fontWeight="bold" fontSize="lg">Clovia</Box>
@@ -159,7 +164,7 @@ const Sidebar: React.FC = () => {
                       w="full"
                       colorScheme="brand"
                       variant="outline"
-                      onClick={onClose}
+                      onClick={handleProfileClick}
                     >
                       View Profile
                     </Button>
@@ -175,10 +180,7 @@ const Sidebar: React.FC = () => {
                   alignItems="center"
                   gap={2}
                   cursor="pointer"
-                  onClick={() => {
-                    navigate('/company')
-                    onClose()
-                  }}
+                  onClick={handleCompanyClick}
                   _hover={{ opacity: 0.8 }}
                   justifyContent="flex-start"
                 >
@@ -187,6 +189,7 @@ const Sidebar: React.FC = () => {
                     alt="ECODE"
                     h="24px"
                     objectFit="contain"
+                    loading="lazy"
                   />
                   <Box fontSize="xs" color="gray.500">Powered by ECODE</Box>
                 </Box>
@@ -213,9 +216,20 @@ const Sidebar: React.FC = () => {
                         bg={isActive ? 'brand.50' : 'transparent'}
                         color={isActive ? 'brand.600' : 'inherit'}
                         fontWeight={isActive ? '600' : '400'}
-                        _hover={{ bg: 'gray.50' }}
                         minH="48px"
                         w="full"
+                        transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                        _hover={{
+                          bg: 'gray.100',
+                          transform: 'translateX(4px)',
+                        }}
+                        _active={{
+                          transform: 'scale(0.98)',
+                          bg: 'gray.200',
+                        }}
+                        _focus={{
+                          boxShadow: '0 0 0 3px rgba(66, 153, 225, 0.1)',
+                        }}
                       >
                         {item.label}
                       </Button>
@@ -233,20 +247,23 @@ const Sidebar: React.FC = () => {
                   colorScheme="red"
                   variant="solid"
                   leftIcon={<FiLogOut />}
-                  onClick={async () => {
-                    onClose()
-                    await logout()
-                    navigate('/login')
-                  }}
+                  onClick={handleLogout}
                   size="md"
                   minH="48px"
+                  transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+                  _hover={{
+                    transform: 'translateY(-2px)',
+                    boxShadow: 'md',
+                  }}
+                  _active={{
+                    transform: 'scale(0.98)',
+                  }}
                 >
                   Logout
                 </Button>
               </Box>
             )}
           </DrawerContent>
-        </motion.div>
       </Drawer>
 
       {/* Desktop sidebar - hidden on small screens */}

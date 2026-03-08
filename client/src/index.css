@@ -20,6 +20,22 @@ body {
   padding: 0;
   min-height: 100vh;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile scroll polish - smooth momentum scrolling on iOS */
+html, body {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Scroll containers for proper overflow handling */
+[role="main"],
+.scroll-container,
+.drawer-body,
+[class*="Scroll"] {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 #root {

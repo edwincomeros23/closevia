@@ -543,7 +543,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
                 {userInventory.map(p => (
                   <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
-                    <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" />
+                    <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" loading="lazy" />
                     <Box p={1}>
                       <Text fontSize="xs" noOfLines={1}>{p.title}</Text>
                     </Box>

@@ -174,7 +174,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                         )}
                       </HStack>
                       <HStack spacing={3} align="start">
-                        <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="80px" h="80px" objectFit="cover" rounded="md" />
+                        <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="80px" h="80px" objectFit="cover" rounded="md" loading="lazy" />
                         <VStack spacing={2} align="start" flex={1}>
                           <Text fontWeight="semibold" fontSize="sm">{targetProduct.title}</Text>
                           <Text fontSize="xs" color="gray.500" noOfLines={2}>{targetProduct.description}</Text>

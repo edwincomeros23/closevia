@@ -11,7 +11,7 @@ const DEBUG_API = localStorage.getItem('debug_api') === 'true'
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 60000, // Increased from 30s to 60s for slower networks
 })
 
 // Request interceptor to add auth token and log

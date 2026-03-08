@@ -1,0 +1,341 @@
+import React, { useCallback } from 'react'
+import {
+  Box,
+  Heading,
+  Text,
+  Button,
+  Image,
+  Badge,
+  HStack,
+  Flex,
+  Tooltip,
+  Icon,
+} from '@chakra-ui/react'
+import { StarIcon } from '@chakra-ui/icons'
+import { FaTag, FaHandshake } from 'react-icons/fa'
+import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
+import { getProductUrl } from '../utils/productUtils'
+import { IconButton } from '@chakra-ui/react'
+import VerifiedAvatar from './VerifiedAvatar'
+
+interface ProductCardProps {
+  product: any
+  onTradeClick: (productId: number) => void
+  onBuyoutClick: (productId: number) => void
+  onBuyClick: (productId: number) => void
+  onViewOffers: (productId: number) => void
+}
+
+/**
+ * ProductCard - Memoized product card component to prevent unnecessary re-renders
+ * Displays product image, seller info, title, description, wishlist count, and action buttons
+ */
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  onTradeClick,
+  onBuyoutClick,
+  onBuyClick,
+  onViewOffers,
+}) => {
+  const navigate = useNavigate()
+
+  const sellerAvatar = product.seller_profile_picture
+    ? getImageUrl(product.seller_profile_picture)
+    : undefined
+
+  // Memoize click handlers
+  const handleCardClick = useCallback(() => {
+    navigate(getProductUrl(product))
+  }, [product, navigate])
+
+  const handleTradeClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onTradeClick(product.id)
+    },
+    [product.id, onTradeClick]
+  )
+
+  const handleBuyoutClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onBuyoutClick(product.id)
+    },
+    [product.id, onBuyoutClick]
+  )
+
+  const handleBuyClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onBuyClick(product.id)
+    },
+    [product.id, onBuyClick]
+  )
+
+  const handleViewOffers = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      onViewOffers(product.id)
+    },
+    [product.id, onViewOffers]
+  )
+
+  return (
+    <Box
+      key={product.id}
+      bg="white"
+      rounded="lg"
+      shadow="sm"
+      borderWidth="1px"
+      borderColor="gray.100"
+      overflow="hidden"
+      transition="all 0.2s ease"
+      w="full"
+      maxW={{ base: '100%', md: '250px' }}
+      h="full"
+      display="flex"
+      flexDirection="column"
+      mx="auto"
+      _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
+      onClick={handleCardClick}
+      sx={{
+        '@media (max-width: 850px)': {
+          width: '100%',
+          minWidth: 0,
+          maxWidth: '100%',
+        },
+      }}
+    >
+      {/* Image section */}
+      <Box position="relative" w="full" aspectRatio={1} overflow="hidden" bg="gray.100">
+        <Image
+          src={getFirstImage(product.image_urls)}
+          alt={product.title}
+          position="absolute"
+          top={0}
+          left={0}
+          w="100%"
+          h="100%"
+          objectFit="cover"
+          loading="lazy"
+          fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+        />
+
+        {/* Premium / type badge */}
+        {product.premium && (
+          <Badge
+            position="absolute"
+            top={2}
+            right={2}
+            colorScheme="yellow"
+            variant="solid"
+            borderRadius="full"
+            px={2}
+          >
+            <StarIcon mr={0} />
+          </Badge>
+        )}
+
+        {/* Status badge (e.g. sold) */}
+        {product.status === 'sold' && (
+          <Badge
+            position="absolute"
+            bottom={2}
+            right={2}
+            colorScheme="red"
+            variant="solid"
+            borderRadius="full"
+            px={2}
+          >
+            Sold
+          </Badge>
+        )}
+
+        {/* Location badge */}
+        <Badge
+          position="absolute"
+          bottom={2}
+          left={2}
+          colorScheme="gray"
+          variant="solid"
+          borderRadius="full"
+          px={2}
+          bg="blackAlpha.600"
+          color="white"
+          fontSize="xs"
+        >
+          <Text as="span" mr={1}>
+            📍
+          </Text>
+          {product.distance || 'Nearby'}
+        </Badge>
+      </Box>
+
+      {/* Info section */}
+      <Box
+        p={4}
+        display="flex"
+        flexDirection="column"
+        flex={1}
+        overflow="hidden"
+        sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
+      >
+        {/* Seller row (desktop) */}
+        <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
+          <HStack spacing={2}>
+            <RouterLink to={`/users/${product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              <VerifiedAvatar
+                size="sm"
+                src={sellerAvatar}
+                name={product.seller_name || 'U'}
+                bg="brand.500"
+                flexShrink={0}
+                cursor="pointer"
+                _hover={{ opacity: 0.8 }}
+                isVerified={product.seller_verified || false}
+              />
+            </RouterLink>
+            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
+              {product.seller_name || 'Unknown'}
+            </Text>
+          </HStack>
+          <Badge fontSize={{ base: 'xs', md: '2xs' }} colorScheme="blue" flexShrink={0} borderWidth="1px">
+            {product.condition || 'Used'}
+          </Badge>
+        </Flex>
+
+        {/* Title */}
+        <Heading
+          size="sm"
+          noOfLines={2}
+          mb={2}
+          color="gray.800"
+          flexShrink={0}
+          textAlign="left"
+          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
+        >
+          {product.title}
+        </Heading>
+
+        {/* Description */}
+        <Text
+          color="gray.600"
+          noOfLines={{ base: 1, md: 2 }}
+          mb={2}
+          fontSize="sm"
+          flexShrink={0}
+          textAlign="left"
+          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
+        >
+          {product.description
+            ? product.description
+                .split(' ')
+                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+            : 'No description available'}
+        </Text>
+
+        {/* Wishlist badge */}
+        {product.wishlist_count > 0 && (
+          <Flex mb={2} align="center" gap={1}>
+            <Badge
+              colorScheme="pink"
+              variant="subtle"
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="xs"
+            >
+              ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
+            </Badge>
+          </Flex>
+        )}
+
+        {/* Action buttons */}
+        <HStack spacing={{ base: 1, md: 2 }} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+          <Button
+            size={{ base: 'xs', md: 'sm' }}
+            variant="outline"
+            colorScheme="brand"
+            flex={1}
+            minW={{ base: '60px', md: 'auto' }}
+            onClick={handleTradeClick}
+            isDisabled={product.status === 'sold'}
+            transition="all 0.2s"
+            _hover={{ transform: 'translateY(-1px)' }}
+            _active={{ transform: 'scale(0.98)' }}
+          >
+            {product.status === 'sold' ? 'Sold' : 'Trade'}
+          </Button>
+
+          {product.allow_buying && product.price && !product.barter_only && (
+            <Button
+              size={{ base: 'xs', md: 'sm' }}
+              colorScheme="orange"
+              flex={1}
+              minW={{ base: '60px', md: 'auto' }}
+              onClick={handleBuyoutClick}
+              isDisabled={product.status === 'sold'}
+              transition="all 0.2s"
+              _hover={{ transform: 'translateY(-1px)' }}
+              _active={{ transform: 'scale(0.98)' }}
+            >
+              {product.status === 'sold' ? 'Sold' : 'Buyout'}
+            </Button>
+          )}
+
+          {product.allow_buying && product.price && !product.barter_only && (
+            <Button
+              size={{ base: 'xs', md: 'sm' }}
+              colorScheme="brand"
+              flex={1}
+              minW={{ base: '50px', md: 'auto' }}
+              onClick={handleBuyClick}
+              isDisabled={product.status === 'sold'}
+              transition="all 0.2s"
+              _hover={{ transform: 'translateY(-1px)' }}
+              _active={{ transform: 'scale(0.98)' }}
+            >
+              {product.status === 'sold' ? 'Sold' : 'Buy'}
+            </Button>
+          )}
+
+          <Tooltip label="Buyout offer" placement="top">
+            <IconButton
+              aria-label="Buyout offer"
+              icon={<Icon as={FaTag} color="yellow.500" />}
+              size={{ base: 'xs', md: 'sm' }}
+              variant="outline"
+              borderColor="yellow.400"
+              _hover={{ borderColor: 'yellow.500', bg: 'yellow.50', transform: 'translateY(-1px)' }}
+              _active={{ transform: 'scale(0.98)' }}
+              onClick={handleBuyoutClick}
+              isDisabled={product.status === 'sold'}
+              flexShrink={0}
+              transition="all 0.2s"
+            />
+          </Tooltip>
+
+          <Tooltip label="View offers" placement="top">
+            <IconButton
+              aria-label="View offers"
+              icon={<FaHandshake />}
+              size={{ base: 'xs', md: 'sm' }}
+              variant="outline"
+              colorScheme="blue"
+              onClick={handleViewOffers}
+              isDisabled={product.status === 'sold'}
+              flexShrink={0}
+              transition="all 0.2s"
+              _hover={{ transform: 'translateY(-1px)' }}
+              _active={{ transform: 'scale(0.98)' }}
+            />
+          </Tooltip>
+        </HStack>
+      </Box>
+    </Box>
+  )
+}
+
+export default React.memo(ProductCard)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -67,6 +67,8 @@ import { useRealtime } from '../contexts/RealtimeContext' // added import
 import FloatingTab from '../components/FloatingTab'
 import { useStudentAdInjection, StudentAdCard } from '../components/StudentAdInjector'
 import VerifiedAvatar from '../components/VerifiedAvatar'
+import ProductCard from '../components/ProductCard'
+import { ProductGridSkeleton } from '../components/ProductSkeleton'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -207,6 +209,11 @@ const Home: React.FC = () => {
     setHasSearched(true)
   }
 
+  const handleRetrySearch = () => {
+    // Clear error and retry with current filters
+    searchProducts(filters)
+  }
+
   // Trigger search on Enter key
   const handleSearchInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -294,20 +301,20 @@ const Home: React.FC = () => {
     touchStartX.current = null
   }
 
-  const openTradeModal = async (productId: number) => {
+  const openTradeModal = useCallback(async (productId: number) => {
     setTradeTargetProductId(productId)
     onOpen()
-  }
+  }, [onOpen])
 
-  const handleTradeClick = (productId: number) => {
+  const handleTradeClick = useCallback((productId: number) => {
     if (!user) {
       onOpen() // Show login modal
     } else {
       openTradeModal(productId)
     }
-  }
+  }, [user, onOpen, openTradeModal])
 
-  const handleBuyClick = (productId: number) => {
+  const handleBuyClick = useCallback((productId: number) => {
     if (!user) {
       onOpen() // Show login modal
     } else {
@@ -320,18 +327,18 @@ const Home: React.FC = () => {
         isClosable: true,
       })
     }
-  }
+  }, [user, onOpen, toast])
 
-  const handleBuyoutClick = (productId: number) => {
+  const handleBuyoutClick = useCallback((productId: number) => {
     if (!user) {
       onOpen() // Show login modal
     } else {
       setBuyoutTargetProductId(productId)
       onBuyoutOpen()
     }
-  }
+  }, [user, onOpen, onBuyoutOpen])
 
-  const handleViewOffers = async (productId: number) => {
+  const handleViewOffers = useCallback(async (productId: number) => {
     // Open modal immediately, load data in background
     setSelectedProductForOffers(productId)
     setOffersForProduct([])
@@ -358,9 +365,9 @@ const Home: React.FC = () => {
     } finally {
       setLoadingOffers(false)
     }
-  }
+  }, [toast])
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearchTerm('')
     setSelectedCategory('All')
     setFilters({
@@ -375,18 +382,19 @@ const Home: React.FC = () => {
       limit: 20,
     })
     setHasSearched(false)
-  }
+  }, [])
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     logout()
     onCloseLogoutModal()
     navigate('/login')
-  }
+  }, [logout, onCloseLogoutModal, navigate])
 
   // Add state for offer sorting
   const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
 
-  const getRankedOffers = () => {
+  // Memoize ranked offers calculation to prevent unnecessary re-computation
+  const rankedOffers = useMemo(() => {
     const ranked = [...offersForProduct]
 
     if (offersSortBy === 'accepted') {
@@ -407,271 +415,9 @@ const Home: React.FC = () => {
     }
 
     return ranked
-  }
+  }, [offersForProduct, offersSortBy])
 
-  // Product card with square image and fixed info area for uniform height
-  const renderProductCard = (product: any) => {
-    const sellerAvatar = product.seller_profile_picture
-      ? getImageUrl(product.seller_profile_picture)
-      : undefined
-    const sellerAvatarSrc = sellerAvatar
-
-    return (
-      <Box
-        key={product.id}
-        bg="white"
-        rounded="lg"
-        shadow="sm"
-        borderWidth="1px"
-        borderColor="gray.100"
-        overflow="hidden"
-        transition="all 0.2s ease"
-        w="full"
-        maxW={{ base: '100%', md: '250px' }}
-        h="full"
-        display="flex"
-        flexDirection="column"
-        mx="auto"
-        _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
-        onClick={() => navigate(getProductUrl(product))}
-        sx={{
-          '@media (max-width: 850px)': {
-            width: '100%',
-            minWidth: 0,
-            maxWidth: '100%',
-          },
-        }}
-      >
-        {/* Image section */}
-        <Box position="relative" w="full" aspectRatio={1} overflow="hidden">
-          <Image
-            src={getFirstImage(product.image_urls)}
-            alt={product.title}
-            position="absolute"
-            top={0}
-            left={0}
-            w="100%"
-            h="100%"
-            objectFit="cover"
-            loading="lazy"
-            fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
-          />
-
-          {/* Premium / type badge */}
-          {product.premium && (
-            <Badge
-              position="absolute"
-              top={2}
-              right={2}
-              colorScheme="yellow"
-              variant="solid"
-              borderRadius="full"
-              px={2}
-            >
-              <StarIcon mr={0} />
-            </Badge>
-          )}
-
-          {/* Status badge (e.g. sold) */}
-          {product.status === 'sold' && (
-            <Badge
-              position="absolute"
-              bottom={2}
-              right={2}
-              colorScheme="red"
-              variant="solid"
-              borderRadius="full"
-              px={2}
-            >
-              Sold
-            </Badge>
-          )}
-
-          {/* Location badge */}
-          <Badge
-            position="absolute"
-            bottom={2}
-            left={2}
-            colorScheme="gray"
-            variant="solid"
-            borderRadius="full"
-            px={2}
-            bg="blackAlpha.600"
-            color="white"
-            fontSize="xs"
-          >
-            <Text as="span" mr={1}>📍</Text>
-            {product.distance || 'Nearby'}
-          </Badge>
-        </Box>
-
-        {/* Info section */}
-        <Box
-          p={4}
-          display="flex"
-          flexDirection="column"
-          flex={1}
-          overflow="hidden"
-          sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
-        >
-          {/* Seller row (desktop) */}
-          <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-            <HStack spacing={2}>
-              <RouterLink to={`/users/${product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                <VerifiedAvatar
-                  size="sm"
-                  src={sellerAvatarSrc}
-                  name={product.seller_name || 'U'}
-                  bg="brand.500"
-                  flexShrink={0}
-                  cursor="pointer"
-                  _hover={{ opacity: 0.8 }}
-                  isVerified={product.seller_verified || false}
-                />
-              </RouterLink>
-              <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
-                {product.seller_name || 'Unknown'}
-              </Text>
-            </HStack>
-            <Badge fontSize={{ base: 'xs', md: '2xs' }} colorScheme="blue" flexShrink={0} borderWidth="1px">
-              {product.condition || 'Used'}
-            </Badge>
-          </Flex>
-
-          {/* Title */}
-          <Heading
-            size="sm"
-            noOfLines={2}
-            mb={2}
-            color="gray.800"
-            flexShrink={0}
-            textAlign="left"
-            sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
-          >
-            {product.title}
-          </Heading>
-
-          {/* Description */}
-          <Text
-            color="gray.600"
-            noOfLines={{ base: 1, md: 2 }}
-            mb={2}
-            fontSize="sm"
-            flexShrink={0}
-            textAlign="left"
-            sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
-          >
-            {product.description
-              ? product.description
-                .split(' ')
-                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
-              : 'No description available'}
-          </Text>
-
-          {/* Wishlist badge */}
-          {product.wishlist_count > 0 && (
-            <Flex mb={2} align="center" gap={1}>
-              <Badge
-                colorScheme="pink"
-                variant="subtle"
-                borderRadius="full"
-                px={2}
-                py={0.5}
-                fontSize="xs"
-              >
-                ❤️ {product.wishlist_count}{' '}
-                {product.wishlist_count === 1 ? 'person wants' : 'people want'}
-              </Badge>
-            </Flex>
-          )}
-
-          {/* Action buttons */}
-          <HStack spacing={{ base: 1, md: 2 }} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
-            <Button
-              size={{ base: 'xs', md: 'sm' }}
-              variant="outline"
-              colorScheme="brand"
-              flex={1}
-              minW={{ base: '60px', md: 'auto' }}
-              onClick={(e) => {
-                e.stopPropagation()
-                handleTradeClick(product.id)
-              }}
-              isDisabled={product.status === 'sold'}
-            >
-              {product.status === 'sold' ? 'Sold' : 'Trade'}
-            </Button>
-
-            {product.allow_buying && product.price && !product.barter_only && (
-              <Button
-                size={{ base: 'xs', md: 'sm' }}
-                colorScheme="orange"
-                flex={1}
-                minW={{ base: '60px', md: 'auto' }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleBuyoutClick(product.id)
-                }}
-                isDisabled={product.status === 'sold'}
-              >
-                {product.status === 'sold' ? 'Sold' : 'Buyout'}
-              </Button>
-            )}
-
-            {product.allow_buying && product.price && !product.barter_only && (
-              <Button
-                size={{ base: 'xs', md: 'sm' }}
-                colorScheme="brand"
-                flex={1}
-                minW={{ base: '50px', md: 'auto' }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleBuyClick(product.id)
-                }}
-                isDisabled={product.status === 'sold'}
-              >
-                {product.status === 'sold' ? 'Sold' : 'Buy'}
-              </Button>
-            )}
-
-            <Tooltip label="Buyout offer" placement="top">
-              <IconButton
-                aria-label="Buyout offer"
-                icon={<Icon as={FaTag} color="yellow.500" />}
-                size={{ base: 'xs', md: 'sm' }}
-                variant="outline"
-                borderColor="yellow.400"
-                _hover={{ borderColor: 'yellow.500', bg: 'yellow.50' }}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleBuyoutClick(product.id)
-                }}
-                isDisabled={product.status === 'sold'}
-                flexShrink={0}
-              />
-            </Tooltip>
-
-            <Tooltip label="View offers" placement="top">
-              <IconButton
-                aria-label="View offers"
-                icon={<FaHandshake />}
-                size={{ base: 'xs', md: 'sm' }}
-                variant="outline"
-                colorScheme="blue"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleViewOffers(product.id)
-                }}
-                isDisabled={product.status === 'sold'}
-                flexShrink={0}
-              />
-            </Tooltip>
-          </HStack>
-        </Box>
-      </Box>
-    )
-  }
+  // Product card rendering now handled by memoized ProductCard component
 
   // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
@@ -739,7 +485,13 @@ const Home: React.FC = () => {
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
             <Box key={`product-${item.data.id}`} sx={{ '@media (max-width: 850px)': { minWidth: 0, maxWidth: 'none' } }}>
-              {renderProductCard(item.data)}
+              <ProductCard
+                product={item.data}
+                onTradeClick={handleTradeClick}
+                onBuyoutClick={handleBuyoutClick}
+                onBuyClick={handleBuyClick}
+                onViewOffers={handleViewOffers}
+              />
             </Box>
           ) : (
             <Box key={`ad-${item.data.id}`}>
@@ -1260,34 +1012,59 @@ const Home: React.FC = () => {
         ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         w="full"
       >
-        {/* Loading State */}
+        {/* Loading State with Skeleton */}
         {loading && !products.length && (
-          <Center h="50vh">
-            <VStack spacing={4}>
-              <Spinner size="xl" color="brand.500" />
-              <Text color="gray.600">Loading products...</Text>
-            </VStack>
-          </Center>
+          <VStack spacing={6} align="stretch">
+            <Box>
+              <Text color="gray.600" mb={4} fontSize="sm" fontWeight="500">
+                Loading products...
+              </Text>
+              <ProductGridSkeleton count={12} />
+            </Box>
+          </VStack>
         )}
 
-        {/* Error Display */}
-        {error && (
-          <Box bg="red.50" border="1px" borderColor="red.200" rounded="lg" p={6} maxW="4xl" mx="auto">
+        {/* Error Display with Retry */}
+        {error && !loading && (
+          <Box 
+            bg="red.50" 
+            border="1px" 
+            borderColor="red.200" 
+            rounded="lg" 
+            p={6} 
+            maxW="4xl" 
+            mx="auto"
+          >
             <VStack spacing={4} align="stretch">
-              <Text color="red.800" fontWeight="semibold">
-                Error loading products
-              </Text>
-              <Text color="red.700" fontSize="sm">
-                {error}
-              </Text>
-              <Button
-                size="sm"
-                colorScheme="red"
-                variant="outline"
-                onClick={() => searchProducts(filters)}
-              >
-                Retry
-              </Button>
+              <VStack spacing={2} align="stretch">
+                <Text color="red.800" fontWeight="semibold" fontSize="lg">
+                  ⚠️ Error Loading Products
+                </Text>
+                <Text color="red.700" fontSize="sm">
+                  {error.includes('timeout') ? 
+                    'The request took too long. Your connection might be slow. Please try again.' : 
+                    error}
+                </Text>
+              </VStack>
+              <HStack spacing={3} justify="flex-start">
+                <Button
+                  size="sm"
+                  colorScheme="red"
+                  onClick={handleRetrySearch}
+                  isLoading={loading}
+                  loadingText="Retrying..."
+                >
+                  Retry
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  colorScheme="red"
+                  onClick={clearFilters}
+                >
+                  Reset Filters
+                </Button>
+              </HStack>
             </VStack>
           </Box>
         )}
@@ -1417,7 +1194,7 @@ const Home: React.FC = () => {
               <Center py={8}>
                 <Spinner color="brand.500" />
               </Center>
-            ) : getRankedOffers().length === 0 ? (
+            ) : rankedOffers.length === 0 ? (
               <VStack py={8} spacing={4}>
                 <Icon as={FaHandshake} color="gray.300" boxSize={12} />
                 <Text color="gray.500" fontWeight="medium">No offers yet</Text>
@@ -1439,7 +1216,7 @@ const Home: React.FC = () => {
               </VStack>
             ) : (
               <VStack spacing={3} align="stretch">
-                {getRankedOffers().map((offer: any, index: number) => {
+                {rankedOffers.map((offer: any, index: number) => {
                   const cashAmount = offer.offered_cash_amount || 0
                   const itemCount = offer.items?.length || 0
 

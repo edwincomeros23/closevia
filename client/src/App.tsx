@@ -1,8 +1,10 @@
 import React, { Suspense, lazy } from 'react'
 import { ChakraProvider, Box, Spinner, Center, Button, VStack, Text, useColorMode } from '@chakra-ui/react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { AnimatePresence } from 'framer-motion'
 import { theme } from './theme'
 import Sidebar from './components/Sidebar'
+import PageTransition from './components/PageTransition'
 import LandingPage from './pages/Landingpage'
 import Company from './pages/Company'
 import Home from './pages/Home'
@@ -127,53 +129,170 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <Routes>
-      {/* Landing page route - no sidebar or app layout */}
-      <Route path="/" element={localStorage.getItem('has_visited') === 'true' ? <Navigate to="/home" replace /> : <LandingPage />} />
-      <Route path="/company" element={<Company />} />
+    <AnimatePresence mode="wait">
+      <Routes>
+        {/* Landing page route - no sidebar or app layout */}
+        <Route path="/" element={
+          <PageTransition>
+            {localStorage.getItem('has_visited') === 'true' ? <Navigate to="/home" replace /> : <LandingPage />}
+          </PageTransition>
+        } />
+        <Route path="/company" element={
+          <PageTransition>
+            <Company />
+          </PageTransition>
+        } />
 
-      {/* Rider routes - no sidebar */}
-      <Route path="/rider" element={<RiderOption />} />
-      <Route path="/rider-queue" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderQueue /></Suspense>} />
-      <Route path="/batch-preview/:batchId" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><BatchPreview /></Suspense>} />
-      <Route path="/batch-status/:batchId" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><BatchStatus /></Suspense>} />
-      <Route path="/remittance-ledger" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RemittanceLedger /></Suspense>} />
-      <Route path="/task-stepper/:batchId" element={<Suspense fallback={<Center h="100vh"><Spinner /></Center>}><TaskStepper /></Suspense>} />
-      <Route path="/delivery" element={<DeliveryOption />} />
+        {/* Rider routes - no sidebar */}
+        <Route path="/rider" element={
+          <PageTransition>
+            <RiderOption />
+          </PageTransition>
+        } />
+        <Route path="/rider-queue" element={
+          <PageTransition>
+            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderQueue /></Suspense>
+          </PageTransition>
+        } />
+        <Route path="/batch-preview/:batchId" element={
+          <PageTransition>
+            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><BatchPreview /></Suspense>
+          </PageTransition>
+        } />
+        <Route path="/batch-status/:batchId" element={
+          <PageTransition>
+            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><BatchStatus /></Suspense>
+          </PageTransition>
+        } />
+        <Route path="/remittance-ledger" element={
+          <PageTransition>
+            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RemittanceLedger /></Suspense>
+          </PageTransition>
+        } />
+        <Route path="/task-stepper/:batchId" element={
+          <PageTransition>
+            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><TaskStepper /></Suspense>
+          </PageTransition>
+        } />
+        <Route path="/delivery" element={
+          <PageTransition>
+            <DeliveryOption />
+          </PageTransition>
+        } />
 
-      {/* App routes with sidebar and layout */}
-      <Route path="/*" element={
-        <Box minH="100vh" bg="gray.50">
-          <Sidebar />
-          <Box as="main" ml={{ base: 0, lg: '70px' }} w="full">
-            <Routes>
-              <Route path="/home" element={<Home />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/products/:id" element={<ProductDetail />} />
-              <Route path="/products" element={<ProductsList />} />
-              <Route path="/dashboard" element={<Dashboard key="dashboard-route" />} />
-              <Route path="/add-product" element={<ProtectedRoute><AddProduct /></ProtectedRoute>} />
-              <Route path="/edit-product/:id" element={<ProtectedRoute><EditProduct /></ProtectedRoute>} />
-              <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-              <Route path="/UserProfile" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-              <Route path="/users/:id" element={<UserProfile />} />
-              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              <Route path="/trades" element={<ProtectedRoute><Trades /></ProtectedRoute>} />
-              <Route path="/offers" element={<ProtectedRoute><Offers /></ProtectedRoute>} />
-              <Route path="/saved-products" element={<PrivateRoute><SavedProducts /></PrivateRoute>} />
-              <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-              <Route path="/premium" element={<ProtectedRoute><Premium /></ProtectedRoute>} />
+        {/* App routes with sidebar and layout */}
+        <Route path="/*" element={
+          <Box minH="100vh" bg="gray.50">
+            <Sidebar />
+            <Box as="main" ml={{ base: 0, lg: '70px' }} w="full">
+              <Routes>
+                <Route path="/home" element={
+                  <PageTransition>
+                    <Home />
+                  </PageTransition>
+                } />
+                <Route path="/login" element={
+                  <PageTransition>
+                    <Login />
+                  </PageTransition>
+                } />
+                <Route path="/register" element={
+                  <PageTransition>
+                    <Register />
+                  </PageTransition>
+                } />
+                <Route path="/verify-email" element={
+                  <PageTransition>
+                    <VerifyEmail />
+                  </PageTransition>
+                } />
+                <Route path="/products/:id" element={
+                  <PageTransition>
+                    <ProductDetail />
+                  </PageTransition>
+                } />
+                <Route path="/products" element={
+                  <PageTransition>
+                    <ProductsList />
+                  </PageTransition>
+                } />
+                <Route path="/dashboard" element={
+                  <PageTransition>
+                    <Dashboard key="dashboard-route" />
+                  </PageTransition>
+                } />
+                <Route path="/add-product" element={
+                  <PageTransition>
+                    <ProtectedRoute><AddProduct /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/edit-product/:id" element={
+                  <PageTransition>
+                    <ProtectedRoute><EditProduct /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/notifications" element={
+                  <PageTransition>
+                    <ProtectedRoute><Notifications /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/profile" element={
+                  <PageTransition>
+                    <ProtectedRoute><Profile /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/UserProfile" element={
+                  <PageTransition>
+                    <ProtectedRoute><UserProfile /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/users/:id" element={
+                  <PageTransition>
+                    <UserProfile />
+                  </PageTransition>
+                } />
+                <Route path="/settings" element={
+                  <PageTransition>
+                    <ProtectedRoute><Settings /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/trades" element={
+                  <PageTransition>
+                    <ProtectedRoute><Trades /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/offers" element={
+                  <PageTransition>
+                    <ProtectedRoute><Offers /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/saved-products" element={
+                  <PageTransition>
+                    <PrivateRoute><SavedProducts /></PrivateRoute>
+                  </PageTransition>
+                } />
+                <Route path="/admin" element={
+                  <PageTransition>
+                    <AdminRoute><AdminDashboard /></AdminRoute>
+                  </PageTransition>
+                } />
+                <Route path="/premium" element={
+                  <PageTransition>
+                    <ProtectedRoute><Premium /></ProtectedRoute>
+                  </PageTransition>
+                } />
 
-
-              <Route path="*" element={<Home />} />
-            </Routes>
+                <Route path="*" element={
+                  <PageTransition>
+                    <Home />
+                  </PageTransition>
+                } />
+              </Routes>
+            </Box>
           </Box>
-        </Box>
-      } />
-    </Routes>
+        } />
+      </Routes>
+    </AnimatePresence>
   )
 }
 
