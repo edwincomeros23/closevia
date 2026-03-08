@@ -9,8 +9,10 @@ import {
   Text,
   Button,
   Input,
+  InputGroup,
   Textarea,
   Switch,
+  Checkbox,
   FormControl,
   FormLabel,
   FormHelperText,
@@ -26,6 +28,7 @@ import {
   Divider,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
+import { MdEdit } from 'react-icons/md'
 
 export interface ProductFormData {
   title: string
@@ -141,10 +144,15 @@ const AddProduct: React.FC = () => {
   const [descriptionLength, setDescriptionLength] = useState(0)
   const [wantedCategories, setWantedCategories] = useState<string[]>([])
   const [wantsError, setWantsError] = useState<string | null>(null)
+  const [showCategoryMore, setShowCategoryMore] = useState(false)
+  const [expandTradePrefs, setExpandTradePrefs] = useState(false)
 
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [nameFieldFocused, setNameFieldFocused] = useState(false)
+  const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
+  const [expandProductDetails, setExpandProductDetails] = useState(false)
 
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -586,249 +594,278 @@ const AddProduct: React.FC = () => {
   )
 
   const renderStep2 = () => (
-    <VStack spacing={5} align="stretch">
-      <VStack spacing={1} align="start">
-        <Heading size="md" fontSize="lg">✏️ Product Details</Heading>
-        <Text fontSize="sm" color="gray.600">
-          {aiDone ? 'AI auto-filled these — review and edit as needed.' : 'Fill in your product details.'}
-        </Text>
-      </VStack>
-
-      {/* AI Re-trigger */}
-      {uploadedImages.length > 0 && !isGenerating && (
-        <Button
-          size="sm"
-          variant="outline"
-          colorScheme="purple"
-          leftIcon={<Text>✨</Text>}
-          onClick={() => {
-            aiTriggeredRef.current = false
-            setAiDone(false)
-            triggerAI(uploadedImages)
-          }}
-          isLoading={isGenerating}
-          loadingText="Analyzing..."
-          alignSelf="flex-start"
-        >
-          {aiDone ? 'Re-analyze' : 'Analyze with AI'}
-        </Button>
-      )}
-
-      {/* ── Product Fields ── */}
-      <FormControl isRequired>
-        <HStack justify="space-between" align="center" mb={2}>
-          <FormLabel mb={0} fontSize="sm" fontWeight="semibold">Product Name</FormLabel>
-          {aiDone && <Badge colorScheme="purple" variant="subtle" fontSize="xs">✨ Auto-filled</Badge>}
-        </HStack>
-        <Input
-          placeholder="e.g., Nike Air Force 1"
-          value={formData.title}
-          onChange={e => handleField('title', e.target.value)}
-          maxLength={25}
-          size="md"
-        />
-        <HStack justify="space-between" mt={2}>
-          <FormHelperText fontSize="sm">Max 25 characters</FormHelperText>
-          <Badge colorScheme={titleLength === 0 ? 'gray' : titleLength <= 25 ? 'green' : 'orange'} fontSize="xs">
-            {titleLength}/25
-          </Badge>
-        </HStack>
-      </FormControl>
-
-      <FormControl isRequired>
-        <HStack justify="space-between" align="center" mb={2}>
-          <FormLabel mb={0} fontSize="sm" fontWeight="semibold">Description</FormLabel>
-          <Badge colorScheme={descriptionLength < 50 ? 'red' : descriptionLength <= 800 ? 'green' : 'orange'} fontSize="xs">
-            {descriptionLength}/800
-          </Badge>
-        </HStack>
-        <Textarea
-          placeholder="Describe your product..."
-          value={formData.description}
-          onChange={e => handleField('description', e.target.value)}
-          rows={4}
-          size="md"
-        />
-        <FormHelperText fontSize="sm" color={descriptionLength < 50 ? 'red.500' : 'gray.600'}>
-          {descriptionLength < 50 ? `${50 - descriptionLength} more chars needed` : '✓ Good'}
-        </FormHelperText>
-      </FormControl>
-
-      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-        <FormControl isRequired>
-          <FormLabel fontSize="sm">Condition</FormLabel>
-          <Select
-            placeholder="Select condition"
-            value={formData.condition}
-            onChange={e => handleField('condition', e.target.value)}
-            size="md"
-          >
-            {CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-          </Select>
-        </FormControl>
-
-        <FormControl isRequired>
-          <FormLabel fontSize="sm">Category</FormLabel>
-          <Select
-            placeholder="Select category"
-            value={formData.category}
-            onChange={e => handleField('category', e.target.value)}
-            size="md"
-          >
-            {PRODUCT_CATEGORIES.map(cat => (
-              <option key={cat.value} value={cat.value}>{cat.label}</option>
-            ))}
-          </Select>
-        </FormControl>
-      </SimpleGrid>
-
-      {/* AI Extra Fields */}
-      {aiDone && (
-        <Box p={4} bg="purple.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="purple.400">
-          <Text fontSize="sm" fontWeight="semibold" color="purple.800" mb={3}>✨ AI Insights</Text>
-          <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
-            <Box>
-              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Item Type</Text>
-              <Text fontSize="sm" fontWeight="medium" mt={1}>{formData.item_type || '—'}</Text>
-            </Box>
-            <Box>
-              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Brand</Text>
-              <Text fontSize="sm" fontWeight="medium" mt={1}>{formData.brand || '—'}</Text>
-            </Box>
-            <Box>
-              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Risk</Text>
-              <Badge colorScheme={
-                formData.authenticity_risks === 'High' ? 'red' :
-                formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
-              } fontSize="xs" mt={1}>
-                {formData.authenticity_risks || 'Low'}
-              </Badge>
-            </Box>
-            <Box>
-              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Est. Value</Text>
-              <Text fontSize="sm" fontWeight="medium" mt={1}>
-                ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
-              </Text>
-            </Box>
-          </SimpleGrid>
-          {formData.tags && (
-            <Box mt={3}>
-              <Text fontSize="xs" color="gray.600" fontWeight="semibold" mb={2}>Tags</Text>
-              <HStack flexWrap="wrap" spacing={2}>
-                {(() => {
-                  try { return JSON.parse(formData.tags!) }
-                  catch { return [] }
-                })().map((tag: string, i: number) => (
-                  <Badge key={i} colorScheme="purple" variant="subtle" fontSize="sm">{tag}</Badge>
-                ))}
+    <VStack spacing={2} align="stretch">
+      {/* ──────── AI SUMMARY CARD (Collapsed by default) ──────── */}
+      <Box
+        bg="white"
+        borderRadius="lg"
+        borderWidth="1px"
+        borderColor="gray.200"
+        p={2.5}
+        cursor="pointer"
+        onClick={() => setExpandProductDetails(!expandProductDetails)}
+        transition="all 0.2s"
+        _hover={{ borderColor: "brand.300", shadow: "sm" }}
+      >
+        {/* Collapsed View */}
+        {!expandProductDetails ? (
+          <HStack justify="space-between" align="center" spacing={2} onClick={e => e.stopPropagation()}>
+            {/* AI Badges */}
+            {aiDone ? (
+              <HStack spacing={1} flex={1} minW={0}>
+                <Text fontSize="8px" fontWeight="bold" color="purple.600">✨</Text>
+                <Badge fontSize="7px" colorScheme="purple" py={0.5} noOfLines={1}>
+                  {formData.item_type || '—'}
+                </Badge>
+                <Badge fontSize="7px" colorScheme="gray" py={0.5} noOfLines={1}>
+                  {formData.brand || '—'}
+                </Badge>
+                <Badge
+                  fontSize="7px"
+                  colorScheme={
+                    formData.authenticity_risks === 'High' ? 'red' :
+                    formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                  }
+                  py={0.5}
+                  noOfLines={1}
+                >
+                  {formData.authenticity_risks || 'Low'}
+                </Badge>
               </HStack>
-            </Box>
-          )}
-        </Box>
-      )}
+            ) : (
+              <Text fontSize="xs" color="gray.600" flex={1}>
+                {formData.title || 'Enter product details...'}
+              </Text>
+            )}
+            {/* Dropdown Arrow */}
+            <Text
+              fontSize="lg"
+              color="gray.500"
+              transform={expandProductDetails ? "rotate(180deg)" : "rotate(0deg)"}
+              transition="transform 0.2s"
+              flexShrink={0}
+            >
+              ▼
+            </Text>
+          </HStack>
+        ) : (
+          /* Expanded View */
+          <VStack spacing={2} align="stretch" onClick={e => e.stopPropagation()}>
+            {/* Close/Collapse hint */}
+            <HStack justify="space-between" align="center">
+              <Text fontSize="xs" fontWeight="bold" color="gray.700">Edit Details</Text>
+              <Text fontSize="lg" color="gray.500" cursor="pointer">▲</Text>
+            </HStack>
 
-      {/* ── Location ── */}
-      <FormControl isRequired>
-        <FormLabel fontSize="sm" fontWeight="semibold">Location</FormLabel>
+            {/* Product Name */}
+            <FormControl isRequired>
+              <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Product Name</FormLabel>
+              <Input
+                placeholder="e.g., Nike Air Force 1"
+                value={formData.title}
+                onChange={e => {
+                  handleField('title', e.target.value)
+                  setTitleLength(e.target.value.length)
+                }}
+                onFocus={() => setNameFieldFocused(true)}
+                onBlur={() => setNameFieldFocused(false)}
+                maxLength={25}
+                size="sm"
+                h="32px"
+              />
+              {nameFieldFocused && (
+                <Badge colorScheme={titleLength <= 25 ? 'green' : 'orange'} fontSize="9px" mt={1}>
+                  {titleLength}/25
+                </Badge>
+              )}
+            </FormControl>
+
+            {/* Product Description */}
+            <FormControl isRequired>
+              <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Description</FormLabel>
+              <Textarea
+                placeholder="Describe your product..."
+                value={formData.description}
+                onChange={e => {
+                  handleField('description', e.target.value)
+                  setDescriptionLength(e.target.value.length)
+                }}
+                onFocus={() => setDescriptionFieldFocused(true)}
+                onBlur={() => setDescriptionFieldFocused(false)}
+                rows={2}
+                size="sm"
+              />
+              {descriptionFieldFocused && (
+                <HStack justify="space-between" mt={1}>
+                  <Text fontSize="9px" color={descriptionLength < 50 ? 'red.500' : 'gray.500'}>
+                    {descriptionLength < 50 ? `${50 - descriptionLength} more chars` : '✓ Min met'}
+                  </Text>
+                  <Badge colorScheme={descriptionLength < 50 ? 'red' : 'green'} fontSize="9px">
+                    {descriptionLength}/800
+                  </Badge>
+                </HStack>
+              )}
+            </FormControl>
+
+            {/* Condition + Category */}
+            <SimpleGrid columns={2} spacing={2}>
+              <FormControl isRequired>
+                <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Condition</FormLabel>
+                <Select
+                  placeholder="Select"
+                  value={formData.condition}
+                  onChange={e => handleField('condition', e.target.value)}
+                  size="sm"
+                  h="32px"
+                >
+                  {CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </FormControl>
+
+              <FormControl isRequired>
+                <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Category</FormLabel>
+                <Select
+                  placeholder="Select"
+                  value={formData.category}
+                  onChange={e => handleField('category', e.target.value)}
+                  size="sm"
+                  h="32px"
+                >
+                  {PRODUCT_CATEGORIES.map(cat => (
+                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                  ))}
+                </Select>
+              </FormControl>
+            </SimpleGrid>
+          </VStack>
+        )}
+      </Box>
+
+      {/* ──────── LOCATION BAR (Simple, subtle) ──────── */}
+      <Box bg="gray.100" p={2} borderRadius="md">
         {isGettingLocation ? (
-          <HStack p={3} bg="yellow.50" borderRadius="md" spacing={3}>
-            <Spinner size="sm" color="yellow.600" />
-            <Text fontSize="sm" color="yellow.800">Detecting your location...</Text>
+          <HStack spacing={2}>
+            <Spinner size="sm" color="blue.600" />
+            <Text fontSize="xs" color="gray.600">Detecting location...</Text>
           </HStack>
         ) : locationDetected && locationText ? (
-          <Box p={3} bg="green.50" borderRadius="md" borderLeft="3px solid" borderLeftColor="green.400">
-            <Text fontSize="sm" fontWeight="semibold" color="green.800">✓ Location Detected</Text>
-            <Text fontSize="sm" color="gray.700" mt={1}>{locationText}</Text>
-          </Box>
-        ) : (
-          <Box>
-            <Box p={3} bg="red.50" borderRadius="md" borderLeft="3px solid" borderLeftColor="red.400" mb={2}>
-              <Text fontSize="sm" color="red.700">⚠️ Allow location access</Text>
-            </Box>
-            <Button size="sm" onClick={detectLocation} isLoading={isGettingLocation}>
-              🔄 Detect Location
+          <HStack justify="space-between" align="center" spacing={2}>
+            <Text fontSize="xs" color="gray.700">
+              📍 {locationText}
+            </Text>
+            <Button
+              size="xs"
+              variant="ghost"
+              fontSize="9px"
+              h="auto"
+              py={1}
+              onClick={detectLocation}
+              isLoading={isGettingLocation}
+              _hover={{ bg: "gray.200" }}
+            >
+              Wrong Location?
             </Button>
-          </Box>
+          </HStack>
+        ) : (
+          <HStack spacing={2}>
+            <Text fontSize="xs" color="red.600">⚠️ Location access needed</Text>
+            <Button size="xs" onClick={detectLocation} isLoading={isGettingLocation} fontSize="9px">
+              Enable
+            </Button>
+          </HStack>
         )}
-        <FormHelperText fontSize="sm">GPS prevents fake locations</FormHelperText>
-      </FormControl>
+      </Box>
 
-      {/* ── Desired Items ── */}
-      <VStack spacing={3} align="stretch" pt={2}>
-        <Box>
-          <Heading size="sm" fontSize="md" mb={1}>🔄 What I Want</Heading>
-          <Text fontSize="sm" color="gray.600">
-            Specify items you'd trade for (enables multi-way trading).
-          </Text>
-        </Box>
+      {/* ──────── WHAT I WANT (Main Focus) ──────── */}
+      <VStack spacing={1.5} align="stretch">
+        <Heading fontSize="sm" fontWeight="bold" color="gray.800">
+          🔄 What I Want in Exchange
+        </Heading>
 
+        {/* Desired Items */}
         <FormControl isRequired isInvalid={!!wantsError}>
-          <FormLabel fontSize="sm">Desired Items</FormLabel>
           <Textarea
-            placeholder="e.g., iPhone 12, Gaming Laptop, DSLR Camera"
+            placeholder="List specific items you're looking for..."
             value={formData.wants}
             onChange={e => {
               handleField('wants', e.target.value)
               setWantsError(validateDesiredItems(e.target.value))
             }}
             rows={3}
-            size="md"
-            borderColor={wantsError ? 'red.400' : undefined}
+            size="sm"
           />
-          {wantsError ? (
-            <Text fontSize="sm" color="red.600" mt={2}>{wantsError}</Text>
-          ) : (
-            <FormHelperText fontSize="sm">Separated by commas or new lines</FormHelperText>
-          )}
+          {wantsError && <Text fontSize="xs" color="red.500" mt={1}>{wantsError}</Text>}
         </FormControl>
 
+        {/* Categories - Pill Cloud (2 rows max initially) */}
         <FormControl>
-          <FormLabel fontSize="sm">Desired Categories</FormLabel>
-          <Box display="flex" flexWrap="wrap" gap={2}>
+          <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Categories</FormLabel>
+          <Box
+            display="grid"
+            gridTemplateColumns="repeat(auto-fill, minmax(90px, 1fr))"
+            gap={1}
+            p={1.5}
+            bg="white"
+            borderRadius="md"
+            border="1px"
+            borderColor="gray.300"
+            maxH={showCategoryMore ? "none" : "80px"}
+            overflow="hidden"
+            transition="max-height 0.3s"
+          >
             {PRODUCT_CATEGORIES.map(cat => {
               const selected = wantedCategories.includes(cat.value)
               return (
                 <Badge
                   key={cat.value}
-                  px={3} py={1.5}
+                  px={2}
+                  py={1.5}
                   borderRadius="full"
                   cursor="pointer"
                   fontSize="xs"
-                  fontWeight="semibold"
+                  fontWeight="medium"
                   bg={selected ? 'brand.500' : 'gray.100'}
-                  color={selected ? 'white' : 'gray.600'}
-                  borderWidth="1px"
-                  borderColor={selected ? 'brand.600' : 'gray.200'}
+                  color={selected ? 'white' : 'gray.700'}
                   _hover={{ bg: selected ? 'brand.600' : 'gray.200' }}
                   transition="all 0.15s"
                   onClick={() => setWantedCategories(prev =>
                     selected ? prev.filter(c => c !== cat.value) : [...prev, cat.value]
                   )}
+                  justifyContent="center"
                 >
                   {cat.label}
                 </Badge>
               )
             })}
           </Box>
+          {!showCategoryMore && PRODUCT_CATEGORIES.length > 12 && (
+            <Button
+              size="xs"
+              variant="ghost"
+              fontSize="xs"
+              mt={1}
+              onClick={() => setShowCategoryMore(true)}
+              colorScheme="gray"
+              w="full"
+            >
+              + {PRODUCT_CATEGORIES.length - 12} More Categories
+            </Button>
+          )}
+          {showCategoryMore && (
+            <Button
+              size="xs"
+              variant="ghost"
+              fontSize="xs"
+              mt={1}
+              onClick={() => setShowCategoryMore(false)}
+              colorScheme="gray"
+              w="full"
+            >
+              - Show Less
+            </Button>
+          )}
         </FormControl>
       </VStack>
-
-      {/* ── Barter Option ── */}
-      <Box p={4} bg="blue.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="blue.400">
-        <FormControl>
-          <HStack justify="space-between">
-            <VStack align="start" spacing={0}>
-              <FormLabel mb={0} fontWeight="semibold" fontSize="sm">Barter Only</FormLabel>
-              <Text fontSize="xs" color="gray.600">Accept exchanges only</Text>
-            </VStack>
-            <Switch
-              isChecked={formData.barter_only}
-              onChange={e => handleField('barter_only', e.target.checked)}
-              colorScheme="blue"
-            />
-          </HStack>
-        </FormControl>
-      </Box>
     </VStack>
   )
 
@@ -838,115 +875,234 @@ const AddProduct: React.FC = () => {
       catch { return [] }
     })()
 
+    const listingDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
     return (
       <VStack spacing={4} align="stretch">
-        <VStack spacing={1} align="start">
-          <Heading size="md" fontSize="lg">📋 Review & Publish</Heading>
-          <Text fontSize="sm" color="gray.600">Confirm your listing before publishing.</Text>
-        </VStack>
-
-        {/* Images */}
-        <Box p={4} bg="gray.50" borderRadius="lg">
-          <Text fontWeight="semibold" fontSize="sm" mb={3} color="gray.700">Media</Text>
-          <SimpleGrid columns={4} spacing={2}>
-            {imagePreviewUrls.slice(0, 4).map((url, i) => (
-              <Box key={i} position="relative" aspectRatio={1}>
-                <Image src={url} alt={`Product ${i + 1}`} borderRadius="lg" objectFit="cover" w="full" h="full" />
-                {i === 0 && <Badge position="absolute" bottom={1} left={1} colorScheme="brand" fontSize="8px" px={2}>Cover</Badge>}
-              </Box>
-            ))}
-          </SimpleGrid>
-          {imagePreviewUrls.length > 4 && (
-            <Text fontSize="sm" color="gray.600" mt={2}>+{imagePreviewUrls.length - 4} more image(s)</Text>
+        {/* ──────── HERO IMAGE ──────── */}
+        <Box position="relative" aspectRatio={1} bg="gray.100" borderRadius="xl" overflow="hidden">
+          {imagePreviewUrls.length > 0 ? (
+            <Image
+              src={imagePreviewUrls[0]}
+              alt="Product"
+              w="full"
+              h="full"
+              objectFit="cover"
+            />
+          ) : (
+            <Box
+              w="full"
+              h="full"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+              color="white"
+            >
+              <VStack spacing={2}>
+                <Text fontSize="3xl">📚</Text>
+                <Text fontSize="sm" fontWeight="medium">Product Image</Text>
+              </VStack>
+            </Box>
           )}
-          {uploadedVideo && (
-            <Text fontSize="sm" color="gray.600" mt={1}>📹 Video attached</Text>
+          {/* AVAILABLE Badge */}
+          <Badge
+            position="absolute"
+            top={3}
+            right={3}
+            colorScheme="green"
+            fontSize="xs"
+            fontWeight="bold"
+            px={3}
+            py={1.5}
+          >
+            ✓ AVAILABLE
+          </Badge>
+          {/* More images indicator */}
+          {imagePreviewUrls.length > 1 && (
+            <Badge
+              position="absolute"
+              bottom={3}
+              right={3}
+              colorScheme="gray"
+              bg="white"
+              color="gray.800"
+              fontSize="xs"
+              px={2}
+              py={1}
+            >
+              +{imagePreviewUrls.length - 1}
+            </Badge>
           )}
         </Box>
 
-        {/* Product Details */}
-        <Box p={4} bg="gray.50" borderRadius="lg">
-          <Text fontWeight="semibold" fontSize="sm" mb={3} color="gray.700">Product Details</Text>
-          <VStack spacing={2} align="stretch">
-            {[
-              { label: 'Name', value: formData.title },
-              { label: 'Condition', value: formData.condition },
-              { label: 'Category', value: formData.category },
-              { label: 'Item Type', value: formData.item_type || '—' },
-              { label: 'Brand', value: formData.brand || '—' },
-            ].map(({ label, value }) => (
-              <HStack key={label} justify="space-between">
-                <Text fontSize="sm" color="gray.600">{label}</Text>
-                <Text fontSize="sm" fontWeight="medium">{value}</Text>
-              </HStack>
-            ))}
-            {formData.estimated_value_min !== undefined && (
-              <HStack justify="space-between">
-                <Text fontSize="sm" color="gray.600">Est. Value</Text>
-                <Text fontSize="sm" fontWeight="medium">
-                  ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
-                </Text>
-              </HStack>
-            )}
-          </VStack>
+        {/* ──────── TITLE ──────── */}
+        <Box>
+          <Heading fontSize="2xl" fontWeight="bold" color="gray.900" mb={2}>
+            {formData.title}
+          </Heading>
+
+          {/* Metadata Ribbon */}
+          <HStack
+            spacing={1.5}
+            p={2.5}
+            bg="gray.100"
+            borderRadius="lg"
+            flexWrap="wrap"
+            fontSize="xs"
+            color="gray.700"
+            fontWeight="medium"
+          >
+            <Text>✨ {formData.item_type || 'Item'}</Text>
+            <Text>•</Text>
+            <Text>{formData.brand || 'Unknown Brand'}</Text>
+            <Text>•</Text>
+            <Badge
+              colorScheme={
+                formData.authenticity_risks === 'High' ? 'red' :
+                formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+              }
+              fontSize="xs"
+              variant="subtle"
+            >
+              {formData.authenticity_risks || 'Low'} Risk
+            </Badge>
+            <Text>•</Text>
+            <Text>{formData.condition}</Text>
+            <Text>•</Text>
+            <Text color="gray.600" fontSize="xs">Listed {listingDate}</Text>
+          </HStack>
         </Box>
 
-        {/* Description */}
-        <Box p={4} bg="gray.50" borderRadius="lg">
-          <Text fontWeight="semibold" fontSize="sm" color="gray.700" mb={2}>Description</Text>
-          <Text fontSize="sm" noOfLines={3} color="gray.700">{formData.description}</Text>
+        {/* ──────── ESTIMATED VALUE (Prominent) ──────── */}
+        <Box
+          p={4}
+          bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+          borderRadius="xl"
+          textAlign="center"
+          color="white"
+        >
+          <Text fontSize="xs" fontWeight="medium" opacity={0.9} mb={1}>
+            Estimated Value
+          </Text>
+          <Heading fontSize="3xl" fontWeight="bold">
+            ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
+          </Heading>
+          <Text fontSize="xs" opacity={0.85} mt={2}>
+            Based on AI analysis of product condition and market data
+          </Text>
         </Box>
 
-        {/* Authenticity */}
-        {formData.authenticity_risks && (
-          <Box p={3} bg={formData.authenticity_risks === 'High' ? 'red.50' : formData.authenticity_risks === 'Medium' ? 'orange.50' : 'green.50'}
-            borderRadius="lg" borderLeft="4px solid"
-            borderLeftColor={formData.authenticity_risks === 'High' ? 'red.400' : formData.authenticity_risks === 'Medium' ? 'orange.400' : 'green.400'}>
-            <HStack spacing={2}>
-              <Text fontSize="sm" fontWeight="semibold">Risk:</Text>
-              <Badge colorScheme={formData.authenticity_risks === 'High' ? 'red' : formData.authenticity_risks === 'Medium' ? 'orange' : 'green'} fontSize="xs">
+        {/* ──────── DESCRIPTION ──────── */}
+        <Box>
+          <Heading fontSize="sm" fontWeight="bold" color="gray.800" mb={2}>
+            About this item
+          </Heading>
+          <Text
+            fontSize="sm"
+            color="gray.700"
+            lineHeight={1.7}
+            whiteSpace="pre-wrap"
+            fontFamily="system-ui, -apple-system, sans-serif"
+          >
+            {formData.description}
+          </Text>
+        </Box>
+
+        {/* ──────── KEY DETAILS GRID ──────── */}
+        <Box
+          p={3}
+          bg="gray.50"
+          borderRadius="lg"
+          display="grid"
+          gridTemplateColumns="repeat(2, 1fr)"
+          gap={3}
+        >
+          <Box>
+            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Condition</Text>
+            <Text fontSize="sm" fontWeight="medium">{formData.condition}</Text>
+          </Box>
+          <Box>
+            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Category</Text>
+            <Text fontSize="sm" fontWeight="medium">{formData.category}</Text>
+          </Box>
+          {formData.authenticity_risks && (
+            <Box>
+              <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Authenticity Risk</Text>
+              <Badge
+                colorScheme={
+                  formData.authenticity_risks === 'High' ? 'red' :
+                  formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                }
+                fontSize="xs"
+              >
                 {formData.authenticity_risks}
               </Badge>
-            </HStack>
+            </Box>
+          )}
+          <Box>
+            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Location</Text>
+            <Text fontSize="sm" fontWeight="medium">📍 {formData.location || 'Not detected'}</Text>
+          </Box>
+        </Box>
+
+        {/* ──────── TRADING SECTION ──────── */}
+        {(formData.wants || wantedCategories.length > 0) && (
+          <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
+            <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>
+              🔄 Open to Trading For
+            </Text>
+            {formData.wants && (
+              <Text fontSize="sm" color="gray.700" mb={2}>
+                {formData.wants}
+              </Text>
+            )}
+            {wantedCategories.length > 0 && (
+              <HStack flexWrap="wrap" spacing={1}>
+                {wantedCategories.map(cat => (
+                  <Badge key={cat} fontSize="xs" colorScheme="blue" variant="subtle">
+                    {cat}
+                  </Badge>
+                ))}
+              </HStack>
+            )}
           </Box>
         )}
 
-        {/* Location */}
-        <Box p={4} bg="green.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="green.400">
-          <Text fontSize="sm" fontWeight="semibold" color="green.800" mb={2}>📍 Location</Text>
-          <Text fontSize="sm" color="gray.700">{formData.location || 'Not detected'}</Text>
-        </Box>
+        {/* ──────── MAIN CTA ──────── */}
+        <Button
+          w="full"
+          size="lg"
+          colorScheme="brand"
+          fontSize="md"
+          fontWeight="bold"
+          h="56px"
+          borderRadius="lg"
+          _hover={{ shadow: "lg" }}
+        >
+          🔄 Send Trade Offer
+        </Button>
 
-        {/* Trade Preferences */}
-        <Box p={4} bg="blue.50" borderRadius="lg">
-          <Text fontWeight="semibold" fontSize="sm" mb={3} color="gray.700">Trading</Text>
-          <VStack spacing={2} align="stretch">
-            <Box>
-              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Wants</Text>
-              <Text fontSize="sm" mt={1}>{formData.wants || '—'}</Text>
-            </Box>
-            {wantedCategories.length > 0 && (
-              <Box>
-                <Text fontSize="xs" color="gray.600" fontWeight="semibold" mb={1}>Categories</Text>
-                <HStack flexWrap="wrap" spacing={1}>
-                  {wantedCategories.map(c => <Badge key={c} colorScheme="brand" fontSize="xs">{c}</Badge>)}
-                </HStack>
-              </Box>
-            )}
-            <HStack justify="space-between">
-              <Text fontSize="xs" color="gray.600" fontWeight="semibold">Type</Text>
-              <Badge colorScheme={formData.barter_only ? 'blue' : 'green'} fontSize="xs">
-                {formData.barter_only ? 'Barter Only' : 'Barter + Cash'}
-              </Badge>
-            </HStack>
-          </VStack>
-        </Box>
+        {/* ──────── SECONDARY ACTIONS ──────── */}
+        <HStack spacing={2} w="full">
+          <Button flex={1} variant="outline" size="sm" fontSize="xs">
+            ❤️ Save
+          </Button>
+          <Button flex={1} variant="outline" size="sm" fontSize="xs">
+            🔗 Share
+          </Button>
+          <Button flex={1} variant="outline" size="sm" fontSize="xs">
+            🚩 Report
+          </Button>
+        </HStack>
 
-        {/* Ready to post */}
-        <Box p={4} bg="brand.50" borderRadius="lg" borderLeft="4px solid" borderLeftColor="brand.400" textAlign="center">
+        {/* ──────── READY INDICATOR ──────── */}
+        <Box p={3} bg="green.50" borderRadius="lg" textAlign="center" borderLeft="3px solid" borderLeftColor="green.400">
           <HStack justify="center" spacing={2}>
-            <CheckIcon color="brand.500" boxSize={4} />
-            <Text fontWeight="semibold" fontSize="sm" color="brand.700">Everything looks good! Ready to publish.</Text>
+            <CheckIcon color="green.600" boxSize={4} />
+            <Text fontWeight="semibold" fontSize="sm" color="green.800">
+              Everything looks great! Ready to publish.
+            </Text>
           </HStack>
         </Box>
       </VStack>

@@ -170,9 +170,9 @@ Example:
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	// Use gemini-2.5-flash — stable, widely available vision model
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s", apiKey)
-	log.Printf("Making request to Gemini API (gemini-2.5-flash) with %d image part(s)", len(parts)-1)
+	// Use gemini-1.5-flash — stable, reliable vision model with better quota allocation
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s", apiKey)
+	log.Printf("Making request to Gemini API (gemini-1.5-flash) with %d image part(s)", len(parts)-1)
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -194,6 +194,10 @@ Example:
 	log.Printf("Gemini API response status: %d", resp.StatusCode)
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Gemini API error response: %s", string(body))
+		// Special handling for quota exceeded (429)
+		if resp.StatusCode == 429 {
+			return nil, fmt.Errorf("AI service is temporarily rate-limited. Please try again in a few minutes.")
+		}
 		return nil, fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))
 	}
 

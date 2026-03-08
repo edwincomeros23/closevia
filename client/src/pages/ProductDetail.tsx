@@ -1050,7 +1050,11 @@ const ProductDetail: React.FC = () => {
                         color="gray.800"
                         whiteSpace="nowrap"
                       >
-                        ₱{product.price ? product.price.toFixed(2) : '0.00'}
+                        {product.estimated_value_min && product.estimated_value_max
+                          ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
+                          : product.price && product.price > 0
+                          ? `₱${product.price.toFixed(2)}`
+                          : 'Est. Value TBD'}
                       </Text>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
@@ -1311,7 +1315,11 @@ const ProductDetail: React.FC = () => {
                             isLoading={purchasing}
                             loadingText="Processing..."
                           >
-                            Buy Now - ₱{product.price.toFixed(2)}
+                            Buy Now - {product.estimated_value_min && product.estimated_value_max
+                              ? `₱${(product.estimated_value_min).toLocaleString()}`
+                              : product.price && product.price > 0
+                              ? `₱${product.price.toFixed(2)}`
+                              : 'Estimated'}
                           </Button>
                           <Tooltip label={`Offers (${(product as any).offer_count || 0})`}>
                             <IconButton
@@ -1993,7 +2001,11 @@ const ProductDetail: React.FC = () => {
                       {product.title}
                     </Text>
                     <Text fontWeight="800" fontSize="xl" color="gray.800" mt={1}>
-                      ₱{product.price?.toFixed(2) ?? '0.00'}
+                      {product.estimated_value_min && product.estimated_value_max
+                        ? `₱${(product.estimated_value_min).toLocaleString()}–₱${(product.estimated_value_max).toLocaleString()}`
+                        : product.price && product.price > 0
+                        ? `₱${product.price.toFixed(2)}`
+                        : 'TBD'}
                     </Text>
                   </VStack>
                 </HStack>

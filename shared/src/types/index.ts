@@ -49,6 +49,8 @@ export interface Product {
     latitude?: number;
     longitude?: number;
     offer_count?: number;
+    estimated_value_min?: number;
+    estimated_value_max?: number;
 
 }
 
