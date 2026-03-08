@@ -214,10 +214,10 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
       <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" position="sticky" top={0} zIndex={10}>
         <VStack spacing={0} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }}>
           <HStack w="full" justify="space-between" mb={4}>
-            <Text fontSize="sm" fontWeight="600" color="gray.600">
+            <Text fontSize="xs" fontWeight="600" color="gray.500">
               Step 1 of 3
             </Text>
-            <Text fontSize="sm" color="gray.500">
+            <Text fontSize="xs" color="gray.400">
               Upload Media
             </Text>
           </HStack>

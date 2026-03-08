@@ -61,6 +61,14 @@ import {
   Textarea,
   Switch,
   Select,
+  Drawer,
+  DrawerOverlay,
+  DrawerContent,
+  DrawerCloseButton,
+  DrawerBody,
+  Skeleton,
+  SkeletonText,
+  useBreakpointValue,
 } from '@chakra-ui/react';
 import {
   FiUsers,
@@ -78,6 +86,14 @@ import {
   FiChevronRight,
   FiCalendar,
   FiFileText,
+  FiMenu,
+  FiAlertTriangle,
+  FiSettings,
+  FiHome,
+  FiGrid,
+  FiMoreVertical,
+  FiBarChart2,
+  FiAlertCircle,
 } from 'react-icons/fi';
 import { FiTrash2, FiEye, FiCheck, FiX, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import {
@@ -99,13 +115,13 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import VerifiedAvatar from '../components/VerifiedAvatar';
 import { User, Product, PaginatedResponse, APIResponse } from '../types';
 
-// ─── PDF / DOCX imports ───────────────────────────────────────────────────────
+// â”€â”€â”€ PDF / DOCX imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TableLayoutType, TextRun, HeadingLevel, AlignmentType, WidthType, ShadingType } from 'docx';
 import { saveAs } from 'file-saver';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AdminStats {
   total_users: number;
   premium_users: number;
@@ -158,7 +174,7 @@ export interface Campaign {
   created_at: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 
@@ -167,7 +183,7 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-// ─── Export helpers ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Export helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function buildReportRows(stats: AdminStats) {
   return [
     ['Total Users', stats.total_users?.toLocaleString() ?? '0'],
@@ -190,21 +206,21 @@ function exportToPDF(stats: AdminStats) {
   const now = new Date();
   const pageW = doc.internal.pageSize.getWidth();
 
-  // ── Header band ──
+  // â”€â”€ Header band â”€â”€
   doc.setFillColor(49, 130, 206); // blue.500
   doc.rect(0, 0, pageW, 32, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text('Clovia Admin — Site Usage Report', pageW / 2, 14, { align: 'center' });
+  doc.text('Clovia Admin â€” Site Usage Report', pageW / 2, 14, { align: 'center' });
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text(`Generated: ${now.toLocaleString('en-PH')}`, pageW / 2, 22, { align: 'center' });
   doc.text(`Data as of: ${stats.last_updated ?? now.toLocaleString('en-PH')}`, pageW / 2, 28, { align: 'center' });
 
-  // ── Section: Core Metrics ──
+  // â”€â”€ Section: Core Metrics â”€â”€
   doc.setTextColor(30, 30, 30);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
@@ -231,7 +247,7 @@ function exportToPDF(stats: AdminStats) {
     margin: { left: 14, right: 14 },
   });
 
-  // ── Section: Revenue Breakdown ──
+  // â”€â”€ Section: Revenue Breakdown â”€â”€
   const afterTable = (doc as any).lastAutoTable.finalY + 10;
   if (stats.revenue_breakdown && stats.revenue_breakdown.length > 0) {
     doc.setFontSize(13);
@@ -256,13 +272,13 @@ function exportToPDF(stats: AdminStats) {
     });
   }
 
-  // ── Footer ──
+  // â”€â”€ Footer â”€â”€
   const pageCount = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(150);
-    doc.text(`Page ${i} of ${pageCount}  •  Clovia Admin Report`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+    doc.text(`Page ${i} of ${pageCount}  â€¢  Clovia Admin Report`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
   }
 
   doc.save(`clovia-report-${now.toISOString().slice(0, 10)}.pdf`);
@@ -328,7 +344,7 @@ async function exportToDOCX(stats: AdminStats) {
         properties: {},
         children: [
           new Paragraph({
-            text: 'Clovia Admin — Site Usage Report',
+            text: 'Clovia Admin â€” Site Usage Report',
             heading: HeadingLevel.HEADING_1,
             alignment: AlignmentType.CENTER,
           }),
@@ -364,7 +380,7 @@ async function exportToDOCX(stats: AdminStats) {
           new Paragraph({ text: '' }),
           new Paragraph({
             children: [
-              new TextRun({ text: 'Clovia Admin Report  •  Confidential', size: 16, color: '999999', italics: true }),
+              new TextRun({ text: 'Clovia Admin Report  â€¢  Confidential', size: 16, color: '999999', italics: true }),
             ],
             alignment: AlignmentType.CENTER,
           }),
@@ -377,7 +393,7 @@ async function exportToDOCX(stats: AdminStats) {
   saveAs(blob, `clovia-report-${now.toISOString().slice(0, 10)}.docx`);
 }
 
-// ─── Calendar Component ───────────────────────────────────────────────────────
+// â”€â”€â”€ Calendar Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface CalendarProps {
   year: number;
   month: number; // 1-based
@@ -512,8 +528,8 @@ const UsageCalendar: React.FC<CalendarProps> = ({
       <HStack spacing={4} mt={3} justify="center" flexWrap="wrap">
         {[
           { color: 'green.400', label: 'High activity (>10)' },
-          { color: 'blue.400', label: 'Medium (4–10)' },
-          { color: 'orange.400', label: 'Low (1–3)' },
+          { color: 'blue.400', label: 'Medium (4â€“10)' },
+          { color: 'orange.400', label: 'Low (1â€“3)' },
         ].map(l => (
           <HStack key={l.label} spacing={1}>
             <Box w="8px" h="8px" borderRadius="full" bg={l.color} />
@@ -525,7 +541,7 @@ const UsageCalendar: React.FC<CalendarProps> = ({
   );
 };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -611,8 +627,15 @@ const AdminDashboard: React.FC = () => {
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const cardBg = useColorModeValue('white', 'gray.700');
+  const textColor = useColorModeValue('gray.800', 'gray.100');
+  const mutedTextColor = useColorModeValue('#64748b', 'gray.400');
+  const hoverBg = useColorModeValue('gray.50', 'gray.700');
+  const tableBg = useColorModeValue('gray.50', 'gray.700');
+  const headerBg = useColorModeValue('brand.50', 'brand.900');
+  const sidebarBg = useColorModeValue('white', 'gray.800');
+  const topBarBg = useColorModeValue('white', 'gray.800');
 
-  // ── Connection check ──
+  // â”€â”€ Connection check â”€â”€
   const checkConnection = useCallback(async () => {
     try {
       const status = await checkConnectionStatus();
@@ -621,7 +644,7 @@ const AdminDashboard: React.FC = () => {
     } catch { }
   }, []);
 
-  // ── Fetch main stats ──
+  // â”€â”€ Fetch main stats â”€â”€
   const fetchAdminStats = useCallback(async (useMockDataFallback = false) => {
     try {
       setLoading(true);
@@ -666,7 +689,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // ── Fetch calendar daily stats ──
+  // â”€â”€ Fetch calendar daily stats â”€â”€
   const fetchDailyStats = useCallback(async (year: number, month: number) => {
     setCalendarLoading(true);
     try {
@@ -677,13 +700,13 @@ const AdminDashboard: React.FC = () => {
         setActivityMap(map);
       }
     } catch {
-      // silently fail — calendar is supplementary
+      // silently fail â€” calendar is supplementary
     } finally {
       setCalendarLoading(false);
     }
   }, []);
 
-  // ── Fetch stats for a specific day ──
+  // â”€â”€ Fetch stats for a specific day â”€â”€
   const fetchDayDetail = useCallback(async (date: string) => {
     setDayDetailLoading(true);
     setSelectedDayDetail(null);
@@ -726,7 +749,7 @@ const AdminDashboard: React.FC = () => {
     await fetchAdminStats();
   }, [fetchAdminStats]);
 
-  // ── Export handlers ──
+  // â”€â”€ Export handlers â”€â”€
   const handleExportPDF = useCallback(async () => {
     if (!stats) return;
     setExportLoading(true);
@@ -753,7 +776,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [stats, toast]);
 
-  // ── Fetch reports for admin ──
+  // â”€â”€ Fetch reports for admin â”€â”€
   const fetchAdminReports = useCallback(
     async (page = 1, status = '') => {
       try {
@@ -785,7 +808,7 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
-  // ── Update report status ──
+  // â”€â”€ Update report status â”€â”€
   const handleUpdateReportStatus = useCallback(async (reportId: number, newStatus: string) => {
     try {
       await api.put(`/api/admin/reports/${reportId}/status`, { status: newStatus });
@@ -802,7 +825,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [reportsPage, reportsStatusFilter, fetchAdminReports, toast]);
 
-  // ── Fetch users for admin list ──
+  // â”€â”€ Fetch users for admin list â”€â”€
   const fetchAdminUsers = useCallback(
     async (page = 1) => {
       try {
@@ -832,7 +855,7 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
-  // ── Fetch products for admin list ──
+  // â”€â”€ Fetch products for admin list â”€â”€
   const fetchAdminProducts = useCallback(
     async (page = 1) => {
       try {
@@ -862,7 +885,7 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
-  // ── Suspend handler ──
+  // â”€â”€ Suspend handler â”€â”€
   const handleToggleSuspend = useCallback(async (user: User) => {
     try {
       const isSuspended = user.role === 'suspended';
@@ -893,7 +916,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // ── Fetch campaigns for admin list ──
+  // â”€â”€ Fetch campaigns for admin list â”€â”€
   const fetchAdminCampaigns = useCallback(async () => {
     try {
       setCampaignsLoading(true);
@@ -914,7 +937,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // ── Save campaign (Create/Update) ──
+  // â”€â”€ Save campaign (Create/Update) â”€â”€
   const handleSaveCampaign = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCampaign?.title) {
@@ -971,7 +994,7 @@ const AdminDashboard: React.FC = () => {
     openDeleteDialog();
   }, [openDeleteDialog]);
 
-  // ── Toggle campaign active status ──
+  // â”€â”€ Toggle campaign active status â”€â”€
   const handleToggleCampaignStatus = useCallback(async (camp: Campaign) => {
     try {
       await api.put(`/api/admin/campaigns/${camp.id}`, { is_active: !camp.is_active });
@@ -982,7 +1005,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast, fetchAdminCampaigns]);
 
-  // ── Fetch ID/COR verifications (pending & rejected) ──
+  // â”€â”€ Fetch ID/COR verifications (pending & rejected) â”€â”€
   const fetchAdminVerifications = useCallback(async () => {
     try {
       setVerificationsLoading(true);
@@ -1006,7 +1029,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // ── View ID image (fetch as blob and show in modal) ──
+  // â”€â”€ View ID image (fetch as blob and show in modal) â”€â”€
   const handleViewIdImage = useCallback(async (userId: number, name: string) => {
     setIdImageModal({ userId, name });
     setIdImageUrl(null);
@@ -1032,7 +1055,7 @@ const AdminDashboard: React.FC = () => {
     setIdImageModal(null);
   }, [idImageUrl]);
 
-  // ── Approve verification ──
+  // â”€â”€ Approve verification â”€â”€
   const handleApproveVerification = useCallback(async (userId: number) => {
     try {
       await api.post(`/api/admin/verifications/${userId}/approve`);
@@ -1049,7 +1072,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast, fetchAdminVerifications]);
 
-  // ── Reject verification (open modal to enter reason) ──
+  // â”€â”€ Reject verification (open modal to enter reason) â”€â”€
   const openRejectModal = useCallback((item: VerificationItem) => {
     setRejectTarget(item);
     setRejectReason('');
@@ -1077,7 +1100,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [rejectTarget, rejectReason, toast, fetchAdminVerifications]);
 
-  // ── Delete handlers ──
+  // â”€â”€ Delete handlers â”€â”€
   const askDeleteUser = useCallback((user: User) => {
     setDeleteTarget({ type: 'user', id: user.id, name: user.name || user.email });
     openDeleteDialog();
@@ -1156,7 +1179,59 @@ const AdminDashboard: React.FC = () => {
     fetchDailyStats(calYear, calMonth);
   }, [calYear, calMonth, fetchDailyStats]);
 
-  // ── Loading / Error / No-data states ──
+  // â”€â”€ Loading / Error / No-data states â”€â”€
+
+
+  // â”€â”€ Sidebar / SPA state â”€â”€
+  type SectionId = 'overview' | 'moderation' | 'management' | 'system';
+  const [activeSection, setActiveSection] = useState<SectionId>('overview');
+  const { isOpen: isSidebarOpen, onOpen: openSidebar, onClose: closeSidebar } = useDisclosure();
+
+  // â”€â”€ Report action moderation state â”€â”€
+  const [moderationTarget, setModerationTarget] = useState<{ report: any; action: string } | null>(null);
+  const [moderationLoading, setModerationLoading] = useState(false);
+  const cancelModerationRef = useRef<HTMLButtonElement | null>(null);
+
+  const handleModerationAction = useCallback(async () => {
+    if (!moderationTarget) return;
+    const { report, action } = moderationTarget;
+    const statusMap: Record<string, string> = {
+      'Warn User': 'reviewed',
+      'Delete Listing': 'resolved',
+      'Suspend Account': 'resolved',
+      'Mark Resolved': 'resolved',
+      'Dismiss': 'dismissed',
+    };
+    const newStatus = statusMap[action] || 'reviewed';
+    try {
+      setModerationLoading(true);
+      await api.put(`/api/admin/reports/${report.id}/status`, { status: newStatus });
+      toast({
+        title: `Action applied: ${action}`,
+        description: `Report #${report.id} has been updated.`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+      fetchAdminReports(reportsPage, reportsStatusFilter);
+    } catch (err: any) {
+      toast({ title: 'Action failed', description: err?.response?.data?.error || 'Could not apply action', status: 'error', duration: 3000, isClosable: true });
+    } finally {
+      setModerationLoading(false);
+      setModerationTarget(null);
+    }
+  }, [moderationTarget, fetchAdminReports, reportsPage, reportsStatusFilter, toast]);
+
+  // â”€â”€ Sidebar nav config â”€â”€
+  const sidebarNav = [
+    { id: 'overview' as SectionId, label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
+    { id: 'moderation' as SectionId, label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & verifications', badge: (reports.filter((r: any) => r.status === 'pending').length + verifications.filter(v => v.verification_status === 'pending').length) || undefined },
+    { id: 'management' as SectionId, label: 'Management', icon: FiGrid, description: 'Users, items & campaigns' },
+    { id: 'system' as SectionId, label: 'System', icon: FiSettings, description: 'Metrics & calendar' },
+  ];
+
+  const isMobile = useBreakpointValue({ base: true, lg: false });
+
   if (loading) {
     return (
       <Container maxW="container.xl" py={8}>
@@ -1207,1172 +1282,798 @@ const AdminDashboard: React.FC = () => {
       </Container>
     );
   }
+  // â”€â”€ Main render â”€â”€
 
-  // ── Main render ──
-  return (
-    <ErrorBoundary>
-      <Container maxW="container.xl" py={8}>
-        {/* Connection Status */}
-        <ConnectionStatus showDetails={false} />
 
-        {/* Connection Alert */}
-        <Collapse in={showConnectionAlert}>
-          <Alert status="warning" mb={6} borderRadius="lg">
-            <AlertIcon />
-            <Box>
-              <AlertTitle>Connection Issues</AlertTitle>
-              <AlertDescription>
-                {!connectionStatus.online
-                  ? 'You are currently offline. Some features may be limited.'
-                  : 'API server is unreachable. Using demo data.'}
-              </AlertDescription>
-            </Box>
-          </Alert>
-        </Collapse>
-
-        {/* ── Header ── */}
-        <Flex justify="space-between" align="center" mb={8} flexWrap="wrap" gap={3}>
-          <VStack align="start" spacing={1}>
-            <Heading color="blue.600">Admin Dashboard</Heading>
-            {isUsingMockData && (
-              <Badge colorScheme="orange" variant="subtle">Demo Mode — Using Mock Data</Badge>
-            )}
-            {stats?.last_updated && (
-              <Text fontSize="sm" color="gray.500">
-                Last updated: {new Date(stats.last_updated).toLocaleString()}
-              </Text>
-            )}
-          </VStack>
-
-          <HStack spacing={3} flexWrap="wrap">
-            <Button
-              leftIcon={<FiRefreshCw />}
-              onClick={handleRefresh}
-              colorScheme="blue"
-              variant="outline"
-              isLoading={loading}
-            >
-              Refresh
-            </Button>
-
-            {/* ── Export Report Menu ── */}
-            <Menu>
-              <MenuButton
-                as={Button}
-                leftIcon={<FiPrinter />}
-                rightIcon={<FiChevronDown />}
-                colorScheme="teal"
-                isLoading={exportLoading}
-                loadingText="Exporting…"
-              >
-                Export Report
-              </MenuButton>
-              <MenuList shadow="lg" borderRadius="lg" overflow="hidden" minW="200px">
-                <Box px={3} py={2} bg="teal.50">
-                  <Text fontSize="xs" fontWeight="bold" color="teal.700" textTransform="uppercase" letterSpacing="wide">
-                    Choose Format
-                  </Text>
-                </Box>
-                <Divider />
-                <MenuItem
-                  icon={<FiFileText />}
-                  onClick={handleExportPDF}
-                  _hover={{ bg: 'red.50' }}
-                  py={3}
-                >
-                  <VStack align="start" spacing={0}>
-                    <Text fontWeight="semibold" fontSize="sm">Export as PDF</Text>
-                    <Text fontSize="xs" color="gray.500">Formatted report, ready to print or share</Text>
-                  </VStack>
-                </MenuItem>
-                <MenuItem
-                  icon={<FiFileText />}
-                  onClick={handleExportDOCX}
-                  _hover={{ bg: 'blue.50' }}
-                  py={3}
-                >
-                  <VStack align="start" spacing={0}>
-                    <Text fontWeight="semibold" fontSize="sm">Export as DOCX</Text>
-                    <Text fontSize="xs" color="gray.500">Editable Word document</Text>
-                  </VStack>
-                </MenuItem>
-              </MenuList>
-            </Menu>
-
-            {!connectionStatus.apiReachable && (
-              <Button leftIcon={<FiServer />} onClick={() => fetchAdminStats(true)} variant="ghost" colorScheme="orange">
-                Use Demo Data
-              </Button>
-            )}
-          </HStack>
-        </Flex>
-
-        {/* ── Core Metrics Grid ── */}
-        <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6} mb={8}>
-          {[
-            { icon: FiUsers, color: 'blue', label: 'Total Users', value: stats.total_users },
-            { icon: FiStar, color: 'yellow', label: 'Premium Users', value: stats.premium_users },
-            { icon: FiDollarSign, color: 'green', label: 'Total Income', value: formatCurrency(stats.total_income || 0), raw: true },
-            { icon: FiShoppingBag, color: 'purple', label: 'Active Listings', value: stats.active_listings },
-            { icon: FiShoppingCart, color: 'teal', label: 'Total Trades', value: stats.total_trades },
-            { icon: FiUsers, color: 'orange', label: 'New Users Today', value: stats.new_users_today },
-            { icon: FiPackage, color: 'pink', label: 'New Listings Today', value: stats.new_listings_today },
-            { icon: FiShield, color: 'cyan', label: 'Verified Users', value: stats.verified_users },
-          ].map(({ icon, color, label, value, raw }) => (
-            <Card key={label} bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardBody>
-                <Stat>
-                  <Flex align="center" mb={2}>
-                    <Icon as={icon} color={`${color}.500`} mr={2} />
-                    <StatLabel color="gray.600">{label}</StatLabel>
-                  </Flex>
-                  <StatNumber color={`${color}.600`} fontSize="2xl">
-                    {raw ? value : (value as number)?.toLocaleString() ?? 0}
-                  </StatNumber>
-                </Stat>
-              </CardBody>
-            </Card>
-          ))}
-        </SimpleGrid>
-
-        {/* ── Charts ── */}
-        <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={8} mb={8}>
-          {/* Revenue Trends */}
-          <GridItem colSpan={{ base: 1, lg: 2 }}>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader>
-                <Heading size="md" color="blue.600">Revenue Trends (Last 4 Weeks)</Heading>
-              </CardHeader>
-              <CardBody>
-                {stats.revenue_breakdown && stats.revenue_breakdown.length > 0 ? (
-                  <Box h="300px">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={[...stats.revenue_breakdown].reverse()} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3182CE" stopOpacity={0.8} />
-                            <stop offset="95%" stopColor="#3182CE" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                        <XAxis dataKey="period" stroke="#718096" style={{ fontSize: '12px' }} />
-                        <YAxis stroke="#718096" style={{ fontSize: '12px' }} tickFormatter={v => `₱${(v / 1000).toFixed(0)}k`} />
-                        <RechartsTooltip
-                          contentStyle={{ backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px' }}
-                          formatter={(value: number) => [formatCurrency(value), 'Revenue']}
-                        />
-                        <Area type="monotone" dataKey="amount" stroke="#3182CE" strokeWidth={2} fillOpacity={1} fill="url(#colorRevenue)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </Box>
-                ) : (
-                  <Flex h="300px" align="center" justify="center">
-                    <Text color="gray.500">No revenue data available</Text>
-                  </Flex>
-                )}
-              </CardBody>
-            </Card>
-          </GridItem>
-
-          {/* User Metrics */}
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader><Heading size="md" color="blue.600">User Metrics Overview</Heading></CardHeader>
-              <CardBody>
-                <Box h="300px">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={[
-                        { name: 'Total Users', value: stats.total_users || 0 },
-                        { name: 'Premium', value: stats.premium_users || 0 },
-                        { name: 'Verified', value: stats.verified_users || 0 },
-                      ]}
-                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis dataKey="name" stroke="#718096" style={{ fontSize: '12px' }} />
-                      <YAxis stroke="#718096" style={{ fontSize: '12px' }} />
-                      <RechartsTooltip
-                        contentStyle={{ backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px' }}
-                        formatter={(value: number) => [value.toLocaleString(), 'Count']}
-                      />
-                      <Bar dataKey="value" fill="#3182CE" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Box>
-              </CardBody>
-            </Card>
-          </GridItem>
-
-          {/* Daily Activity */}
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader><Heading size="md" color="blue.600">Daily Activity Metrics</Heading></CardHeader>
-              <CardBody>
-                <Box h="300px">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={[
-                        { name: 'New Users', value: stats.new_users_today || 0 },
-                        { name: 'New Listings', value: stats.new_listings_today || 0 },
-                        { name: 'Trades', value: stats.total_trades || 0 },
-                      ]}
-                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis dataKey="name" stroke="#718096" style={{ fontSize: '12px' }} />
-                      <YAxis stroke="#718096" style={{ fontSize: '12px' }} />
-                      <RechartsTooltip
-                        contentStyle={{ backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '12px' }}
-                        formatter={(value: number) => [value.toLocaleString(), 'Count']}
-                      />
-                      <Bar dataKey="value" fill="#ED8936" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Box>
-              </CardBody>
-            </Card>
-          </GridItem>
-        </Grid>
-
-        {/* ── User Management & System Metrics ── */}
-        <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={8} mb={8}>
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader>
-                <Heading size="md" color="blue.600">User Management</Heading>
-                <Text fontSize="sm" color="gray.500" mt={1}>
-                  Review users and remove abusive or inactive accounts.
-                </Text>
-              </CardHeader>
-              <CardBody>
-                <VStack spacing={4} align="stretch">
-                  <HStack justify="space-between">
-                    <Text fontWeight="medium">Pending ID/COR Verifications</Text>
-                    <Badge colorScheme="teal" fontSize="md" px={3} py={1}>
-                      {stats.pending_verifications?.toLocaleString() ?? 0}
-                    </Badge>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text fontWeight="medium">Pending Approvals (listings)</Text>
-                    <Badge colorScheme="yellow" fontSize="md" px={3} py={1}>
-                      {stats.pending_approvals?.toLocaleString() ?? 0}
-                    </Badge>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text fontWeight="medium">Reports Filed</Text>
-                    <Badge colorScheme="red" fontSize="md" px={3} py={1}>
-                      {stats.reports_filed?.toLocaleString() ?? 0}
-                    </Badge>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text fontWeight="medium">Suspended/Banned Users</Text>
-                    <Badge colorScheme="gray" fontSize="md" px={3} py={1}>
-                      {stats.suspended_users?.toLocaleString() ?? 0}
-                    </Badge>
-                  </HStack>
-                </VStack>
-              </CardBody>
-            </Card>
-          </GridItem>
-
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader>
-                <Heading size="md" color="blue.600">System Metrics</Heading>
-              </CardHeader>
-              <CardBody>
-                <HStack justify="space-between">
-                  <Text fontWeight="medium">Storage Usage</Text>
-                  <Text fontSize="lg" fontWeight="bold" color="purple.500">
-                    {(stats.storage_usage_mb || 0).toFixed(1)} MB
-                  </Text>
-                </HStack>
-              </CardBody>
-            </Card>
-          </GridItem>
-        </Grid>
-
-        {/* ── Admin: Users & Items ── */}
-        <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={8} mb={8}>
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader>
-                <Heading size="md" color="blue.600">Users</Heading>
-                <Text fontSize="sm" color="gray.500" mt={1}>
-                  View all registered users and delete accounts if necessary.
-                </Text>
-              </CardHeader>
-              <CardBody>
-                {usersLoading ? (
-                  <Center py={6}>
-                    <VStack spacing={3}>
-                      <Spinner color="blue.500" />
-                      <Text fontSize="sm" color="gray.500">Loading users…</Text>
-                    </VStack>
-                  </Center>
-                ) : users.length === 0 ? (
-                  <Text fontSize="sm" color="gray.500">No users found.</Text>
-                ) : (
-                  <>
-                    <ChakraTable size="sm" variant="simple">
-                      <Thead>
-                        <Tr>
-                          <Th>User</Th>
-                          <Th>Email</Th>
-                          <Th>Role</Th>
-                          <Th>Verified</Th>
-                          <Th textAlign="right">Actions</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
-                        {users.map(user => (
-                          <Tr key={user.id}>
-                            <Td>
-                              <HStack spacing={3}>
-                                <VerifiedAvatar
-                                  size="sm"
-                                  name={user.name}
-                                  src={user.profile_picture || undefined}
-                                  isVerified={user.verified || user.verification_status === 'verified' || false}
-                                />
-                                <VStack spacing={0} align="start">
-                                  <Text fontWeight="medium" fontSize="sm">
-                                    {user.name || 'Unnamed User'}
-                                  </Text>
-                                  <Text fontSize="xs" color="gray.500">
-                                    ID #{user.id}
-                                  </Text>
-                                </VStack>
-                              </HStack>
-                            </Td>
-                            <Td>
-                              <Text fontSize="sm">{user.email}</Text>
-                            </Td>
-                            <Td>
-                              <Tag size="sm" colorScheme={
-                                user.role === 'admin' ? 'purple' :
-                                  user.role === 'suspended' ? 'red' : 'blue'
-                              }>
-                                {user.role}
-                              </Tag>
-                            </Td>
-                            <Td>
-                              <Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'}>
-                                {user.verified ? 'Verified' : 'Unverified'}
-                              </Tag>
-                            </Td>
-                            <Td textAlign="right">
-                              <HStack spacing={2} justify="flex-end">
-                                {user.role !== 'admin' && (
-                                  <Tooltip label={user.role === 'suspended' ? "Unsuspend user" : "Suspend user"} hasArrow>
-                                    <IconButton
-                                      aria-label="Toggle user suspension"
-                                      size="sm"
-                                      colorScheme={user.role === 'suspended' ? 'green' : 'orange'}
-                                      variant="ghost"
-                                      icon={user.role === 'suspended' ? <FiCheckCircle /> : <FiXCircle />}
-                                      onClick={() => handleToggleSuspend(user)}
-                                    />
-                                  </Tooltip>
-                                )}
-                                <Tooltip label="Delete user" hasArrow>
-                                  <IconButton
-                                    aria-label="Delete user"
-                                    size="sm"
-                                    colorScheme="red"
-                                    variant="ghost"
-                                    icon={<FiTrash2 />}
-                                    onClick={() => askDeleteUser(user)}
-                                  />
-                                </Tooltip>
-                              </HStack>
-                            </Td>
-                          </Tr>
-                        ))}
-                      </Tbody>
-                    </ChakraTable>
-                    <HStack justify="space-between" mt={4}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => fetchAdminUsers(usersPage - 1)}
-                        isDisabled={usersPage <= 1 || usersLoading}
-                      >
-                        Previous
-                      </Button>
-                      <Text fontSize="xs" color="gray.600">
-                        Page {usersPage} of {usersTotalPages}
-                      </Text>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => fetchAdminUsers(usersPage + 1)}
-                        isDisabled={usersPage >= usersTotalPages || usersLoading}
-                      >
-                        Next
-                      </Button>
-                    </HStack>
-                  </>
-                )}
-              </CardBody>
-            </Card>
-          </GridItem>
-
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader>
-                <Heading size="md" color="blue.600">Items</Heading>
-                <Text fontSize="sm" color="gray.500" mt={1}>
-                  Inspect marketplace listings and delete problematic items.
-                </Text>
-              </CardHeader>
-              <CardBody>
-                {productsLoading ? (
-                  <Center py={6}>
-                    <VStack spacing={3}>
-                      <Spinner color="blue.500" />
-                      <Text fontSize="sm" color="gray.500">Loading items…</Text>
-                    </VStack>
-                  </Center>
-                ) : products.length === 0 ? (
-                  <Text fontSize="sm" color="gray.500">No items found.</Text>
-                ) : (
-                  <>
-                    <ChakraTable size="sm" variant="simple">
-                      <Thead>
-                        <Tr>
-                          <Th>Item</Th>
-                          <Th>Seller</Th>
-                          <Th>Status</Th>
-                          <Th isNumeric>Price</Th>
-                          <Th textAlign="right">Actions</Th>
-                        </Tr>
-                      </Thead>
-                      <Tbody>
-                        {products.map(product => (
-                          <Tr key={product.id}>
-                            <Td>
-                              <HStack spacing={3}>
-                                <Avatar
-                                  size="sm"
-                                  variant="rounded"
-                                  name={product.title}
-                                  src={product.image_urls?.[0] || undefined}
-                                />
-                                <VStack spacing={0} align="start">
-                                  <Text fontWeight="medium" fontSize="sm" noOfLines={1} maxW="150px">
-                                    {product.title}
-                                  </Text>
-                                  <Text fontSize="xs" color="gray.500">
-                                    ID #{product.id}
-                                  </Text>
-                                </VStack>
-                              </HStack>
-                            </Td>
-                            <Td>
-                              <Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text>
-                            </Td>
-                            <Td>
-                              <Tag size="sm" colorScheme={product.status === 'available' ? 'green' : 'gray'}>
-                                {product.status}
-                              </Tag>
-                            </Td>
-                            <Td isNumeric>
-                              <Text fontSize="sm">
-                                {product.price != null ? formatCurrency(product.price) : '—'}
-                              </Text>
-                            </Td>
-                            <Td textAlign="right">
-                              <Tooltip label="Delete item" hasArrow>
-                                <IconButton
-                                  aria-label="Delete item"
-                                  size="sm"
-                                  colorScheme="red"
-                                  variant="ghost"
-                                  icon={<FiTrash2 />}
-                                  onClick={() => askDeleteProduct(product)}
-                                />
-                              </Tooltip>
-                            </Td>
-                          </Tr>
-                        ))}
-                      </Tbody>
-                    </ChakraTable>
-                    <HStack justify="space-between" mt={4}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => fetchAdminProducts(productsPage - 1)}
-                        isDisabled={productsPage <= 1 || productsLoading}
-                      >
-                        Previous
-                      </Button>
-                      <Text fontSize="xs" color="gray.600">
-                        Page {productsPage} of {productsTotalPages}
-                      </Text>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => fetchAdminProducts(productsPage + 1)}
-                        isDisabled={productsPage >= productsTotalPages || productsLoading}
-                      >
-                        Next
-                      </Button>
-                    </HStack>
-                  </>
-                )}
-              </CardBody>
-            </Card>
-          </GridItem>
-        </Grid>
-
-        {/* ── Revenue Breakdown & Recent Activity ── */}
-        <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={8} mb={10}>
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader><Heading size="md" color="blue.600">Revenue Breakdown (Last 4 Weeks)</Heading></CardHeader>
-              <CardBody>
-                <VStack spacing={3} align="stretch">
-                  {stats.revenue_breakdown && stats.revenue_breakdown.length > 0 ? (
-                    stats.revenue_breakdown.map((period, i) => (
-                      <HStack key={i} justify="space-between" p={3} bg="gray.50" borderRadius="md">
-                        <Text fontWeight="medium">{period.period}</Text>
-                        <Text fontSize="lg" fontWeight="bold" color="green.500">{formatCurrency(period.amount)}</Text>
-                      </HStack>
-                    ))
-                  ) : (
-                    <Text color="gray.500" textAlign="center">No revenue data available</Text>
-                  )}
-                </VStack>
-              </CardBody>
-            </Card>
-          </GridItem>
-
-          <GridItem>
-            <Card bg={cardBg} border="1px" borderColor={borderColor}>
-              <CardHeader><Heading size="md" color="blue.600">Recent Activity (Last 24h)</Heading></CardHeader>
-              <CardBody>
-                <VStack spacing={3} align="stretch">
-                  {stats.recent_activity && stats.recent_activity.length > 0 ? (
-                    stats.recent_activity.map((activity, i) => (
-                      <HStack key={i} justify="space-between" p={3} bg="gray.50" borderRadius="md">
-                        <VStack align="start" spacing={1}>
-                          <Text fontWeight="medium">{activity.action}</Text>
-                          <Text fontSize="sm" color="gray.600">{new Date(activity.latest).toLocaleString()}</Text>
-                        </VStack>
-                        <Badge colorScheme="blue" fontSize="md" px={3} py={1}>{activity.count}</Badge>
-                      </HStack>
-                    ))
-                  ) : (
-                    <Text color="gray.500" textAlign="center">No recent activity</Text>
-                  )}
-                </VStack>
-              </CardBody>
-            </Card>
-          </GridItem>
-        </Grid>
-
-        {/* ── Usage History Calendar ── */}
-        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
-          <CardHeader>
-            <HStack spacing={3}>
-              <Icon as={FiCalendar} color="blue.500" boxSize={5} />
-              <Heading size="md" color="blue.600">Usage History</Heading>
+  // â”€â”€ Sidebar nav item component â”€â”€
+  const SidebarNavItem = ({ item }: { item: typeof sidebarNav[0] }) => {
+    const isActive = activeSection === item.id;
+    return (
+      <Box
+        as="button"
+        w="full"
+        textAlign="left"
+        px={4}
+        py={3}
+        borderRadius="lg"
+        bg={isActive ? 'brand.50' : 'transparent'}
+        borderLeft="4px solid"
+        borderColor={isActive ? 'brand.500' : 'transparent'}
+        color={isActive ? 'brand.700' : mutedTextColor}
+        _hover={{ bg: isActive ? 'brand.50' : hoverBg, color: isActive ? 'brand.700' : textColor }}
+        transition="all 0.2s"
+        onClick={() => { setActiveSection(item.id); closeSidebar(); }}
+      >
+        <HStack spacing={3}>
+          <Icon as={item.icon} boxSize={5} />
+          <VStack spacing={0} align="start" flex={1}>
+            <HStack spacing={2}>
+              <Text fontWeight={isActive ? '700' : '500'} fontSize="sm">{item.label}</Text>
+              {item.badge ? (
+                <Badge colorScheme="red" borderRadius="full" px={2} fontSize="xs">{item.badge}</Badge>
+              ) : null}
             </HStack>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Click any day to view that day's detailed stats. Colored dots indicate activity level.
-            </Text>
+            <Text fontSize="xs" color={isActive ? 'brand.500' : 'gray.400'}>{item.description}</Text>
+          </VStack>
+        </HStack>
+      </Box>
+    );
+  };
+
+  // â”€â”€ Sidebar content â”€â”€
+  const SidebarContent = () => (
+    <VStack spacing={1} align="stretch" p={4} ml={20} h="full">
+      <Box px={4} pb={4} borderBottom="1px solid" borderColor={borderColor} mb={2}>
+        <HStack spacing={2}>
+          <Box w={8} h={8} bg="brand.500" borderRadius="lg" display="flex" alignItems="center" justifyContent="center">
+            <Icon as={FiShield} color="white" boxSize={4} />
+          </Box>
+          <VStack spacing={0} align="start">
+            <Text fontWeight="800" fontSize="sm" color={textColor}>Clovia Admin</Text>
+            <Text fontSize="xs" color={mutedTextColor}>Control Panel</Text>
+          </VStack>
+        </HStack>
+      </Box>
+      {sidebarNav.map(item => <SidebarNavItem key={item.id} item={item} />)}
+    </VStack>
+  );
+
+  // â”€â”€ Metric card with hover lift â”€â”€
+  const MetricCard = ({ icon, color, label, value, raw }: { icon: any; color: string; label: string; value: any; raw?: boolean }) => (
+    <Card
+      bg={cardBg}
+      border="1px solid"
+      borderColor={borderColor}
+      borderRadius="xl"
+      transition="all 0.2s ease"
+      _hover={{ transform: 'translateY(-3px)', boxShadow: 'lg', borderColor: `${color}.200` }}
+      cursor="default"
+    >
+      <CardBody>
+        <Flex align="center" mb={3}>
+          <Box w={9} h={9} bg={`${color}.50`} borderRadius="lg" display="flex" alignItems="center" justifyContent="center" mr={3}>
+            <Icon as={icon} color={`${color}.500`} boxSize={5} />
+          </Box>
+          <Text fontSize="sm" color={mutedTextColor} fontWeight="500">{label}</Text>
+        </Flex>
+        <Text fontWeight="800" fontSize="2xl" color={textColor}>{raw ? value : (value as number)?.toLocaleString() ?? 0}</Text>
+      </CardBody>
+    </Card>
+  );
+
+  // â”€â”€ Chart Skeleton â”€â”€
+  const ChartSkeleton = () => (
+    <Box h="300px" p={4}>
+      <Skeleton height="20px" width="200px" mb={6} />
+      <VStack spacing={3} align="stretch">
+        {[80, 55, 70, 45, 90, 60].map((w, i) => (
+          <HStack key={i} spacing={3} align="center">
+            <Skeleton height="28px" width={`${w}%`} borderRadius="md" />
+          </HStack>
+        ))}
+      </VStack>
+    </Box>
+  );
+
+  // â”€â”€ SECTION: Overview â”€â”€
+  const OverviewSection = () => (
+    <VStack spacing={8} pr={20} align="stretch">
+      {/* User metrics group */}
+      <Box>
+        <HStack mb={4} spacing={2}>
+          <Icon as={FiUsers} color="brand.500" />
+          <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Users</Text>
+        </HStack>
+        <SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} spacing={4}>
+          <MetricCard icon={FiUsers} color="indigo" label="Total Users" value={stats!.total_users} />
+          <MetricCard icon={FiStar} color="violet" label="Premium Users" value={stats!.premium_users} />
+          <MetricCard icon={FiShield} color="brand" label="Verified Users" value={stats!.verified_users} />
+          <MetricCard icon={FiUsers} color="orange" label="New Today" value={stats!.new_users_today} />
+        </SimpleGrid>
+      </Box>
+
+      {/* Marketplace metrics group */}
+      <Box>
+        <HStack mb={4} spacing={2}>
+          <Icon as={FiShoppingBag} color="brand.500" />
+          <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Marketplace</Text>
+        </HStack>
+        <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+          <MetricCard icon={FiShoppingBag} color="emerald" label="Active Listings" value={stats!.active_listings} />
+          <MetricCard icon={FiShoppingCart} color="cyan" label="Total Trades" value={stats!.total_trades} />
+          <MetricCard icon={FiPackage} color="pink" label="New Listings Today" value={stats!.new_listings_today} />
+        </SimpleGrid>
+      </Box>
+
+      {/* Financials group */}
+      <Box>
+        <HStack mb={4} spacing={2}>
+          <Icon as={FiDollarSign} color="brand.500" />
+          <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Financials</Text>
+        </HStack>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <MetricCard icon={FiDollarSign} color="green" label="Total Income" value={formatCurrency(stats!.total_income || 0)} raw />
+          <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-3px)', boxShadow: 'lg' }} transition="all 0.2s ease">
+            <CardBody>
+              <HStack mb={3}>
+                <Box w={9} h={9} bg="purple.50" borderRadius="lg" display="flex" alignItems="center" justifyContent="center" mr={1}>
+                  <Icon as={FiBarChart2} color="purple.500" boxSize={5} />
+                </Box>
+                <Text fontSize="sm" color={mutedTextColor} fontWeight="500">Revenue (Last 4 Weeks)</Text>
+              </HStack>
+              <VStack spacing={2} align="stretch">
+                {stats!.revenue_breakdown?.slice(0, 3).map((r, i) => (
+                  <HStack key={i} justify="space-between">
+                    <Text fontSize="xs" color="#64748b">{r.period}</Text>
+                    <Text fontSize="xs" fontWeight="700" color="green.600">{formatCurrency(r.amount)}</Text>
+                  </HStack>
+                ))}
+              </VStack>
+            </CardBody>
+          </Card>
+        </SimpleGrid>
+      </Box>
+
+      {/* Charts */}
+      <Grid templateColumns={{ base: '1fr', lg: '2fr 1fr' }} gap={6}>
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
+          <CardHeader pb={2}>
+            <HStack>
+              <Icon as={FiBarChart2} color="brand.500" />
+              <Heading size="sm" color={textColor}>Revenue Trends (Last 4 Weeks)</Heading>
+            </HStack>
           </CardHeader>
           <CardBody>
-            <UsageCalendar
-              year={calYear}
-              month={calMonth}
-              activityMap={activityMap}
-              onDayClick={handleDayClick}
-              onPrevMonth={handlePrevMonth}
-              onNextMonth={handleNextMonth}
-              calendarLoading={calendarLoading}
-              selectedDate={selectedDate}
-            />
+            {loading ? <ChartSkeleton /> : stats!.revenue_breakdown && stats!.revenue_breakdown.length > 0 ? (
+              <Box h="300px">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={[...stats!.revenue_breakdown].reverse()} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="period" stroke="#94a3b8" style={{ fontSize: '11px' }} />
+                    <YAxis stroke="#94a3b8" style={{ fontSize: '11px' }} tickFormatter={v => `â‚±${(v / 1000).toFixed(0)}k`} />
+                    <RechartsTooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }} formatter={(value: number) => [formatCurrency(value), 'Revenue']} />
+                    <Area type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Box>
+            ) : <ChartSkeleton />}
           </CardBody>
         </Card>
 
-        {/* ── Day Detail Modal ── */}
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
+          <CardHeader pb={2}>
+            <HStack>
+              <Icon as={FiUsers} color="indigo.500" />
+              <Heading size="sm" color={textColor}>User Metrics</Heading>
+            </HStack>
+          </CardHeader>
+          <CardBody>
+            {loading ? <ChartSkeleton /> : (
+              <Box h="300px">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { name: 'Total', value: stats!.total_users || 0 },
+                    { name: 'Premium', value: stats!.premium_users || 0 },
+                    { name: 'Verified', value: stats!.verified_users || 0 },
+                  ]} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: '11px' }} />
+                    <YAxis stroke="#94a3b8" style={{ fontSize: '11px' }} />
+                    <RechartsTooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }} />
+                    <Bar dataKey="value" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Box>
+            )}
+          </CardBody>
+        </Card>
+      </Grid>
+
+      {/* Recent Activity */}
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
+        <CardHeader pb={2}>
+          <HStack>
+            <Icon as={FiAlertCircle} color="orange.500" />
+            <Heading size="sm" color={textColor}>Recent Activity (Last 24h)</Heading>
+          </HStack>
+        </CardHeader>
+        <CardBody>
+          {stats!.recent_activity && stats!.recent_activity.length > 0 ? (
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={3}>
+              {stats!.recent_activity.map((a, i) => (
+                <HStack key={i} p={3} bg={hoverBg} borderRadius="lg" justify="space-between">
+                  <VStack align="start" spacing={0}>
+                    <Text fontWeight="600" fontSize="sm">{a.action}</Text>
+                    <Text fontSize="xs" color={mutedTextColor}>{new Date(a.latest).toLocaleTimeString()}</Text>
+                  </VStack>
+                  <Badge colorScheme="indigo" borderRadius="full" px={3}>{a.count}</Badge>
+                </HStack>
+              ))}
+            </SimpleGrid>
+          ) : (
+            <Text color="gray.400" fontSize="sm">No recent activity</Text>
+          )}
+        </CardBody>
+      </Card>
+    </VStack>
+  );
+
+  // â”€â”€ SECTION: Moderation Queue â”€â”€
+  const ModerationSection = () => (
+    <VStack spacing={8} align="stretch">
+      {/* User Reports */}
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader>
+          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+            <HStack>
+              <Icon as={FiAlertTriangle} color="#f43f5e" boxSize={5} />
+              <Heading size="sm" color={textColor}>User Reports</Heading>
+              {reports.filter((r: any) => r.status === 'pending').length > 0 && (
+                <Badge colorScheme="red" borderRadius="full" px={2}>{reports.filter((r: any) => r.status === 'pending').length} pending</Badge>
+              )}
+            </HStack>
+            <HStack>
+              <select
+                value={reportsStatusFilter}
+                onChange={(e) => { setReportsStatusFilter(e.target.value); fetchAdminReports(1, e.target.value); }}
+                style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', cursor: 'pointer' }}
+              >
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="resolved">Resolved</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchAdminReports(reportsPage, reportsStatusFilter)} isLoading={reportsLoading}>Refresh</Button>
+            </HStack>
+          </Flex>
+        </CardHeader>
+        <CardBody px={0} pb={2}>
+          {reportsLoading ? (
+            <Center py={8}><Spinner color="#f43f5e" /></Center>
+          ) : reports.length === 0 ? (
+            <Center py={8}><VStack spacing={2}><Icon as={FiShield} boxSize={10} color="gray.300" /><Text color="#64748b">No reports found</Text></VStack></Center>
+          ) : (
+            <>
+              <Box overflowX="auto" w="full">
+                <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '560px' }}>
+                  <Thead bg={headerBg}>
+                    <Tr>
+                      <Th color={mutedTextColor} w="48px" px={2}>#</Th>
+                      <Th color={mutedTextColor} w="88px" px={2}>Reporter</Th>
+                      <Th color={mutedTextColor} w="88px" px={2}>Reported</Th>
+                      <Th color={mutedTextColor} w="96px" px={2}>Reason</Th>
+                      <Th color={mutedTextColor} w="88px" px={2}>Status</Th>
+                      <Th color={mutedTextColor} w="76px" px={2} display={{ base: 'none', md: 'table-cell' }}>Date</Th>
+                      <Th color={mutedTextColor} w="44px" px={1} textAlign="center">Act</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {reports.map((report: any) => (
+                      <Tr key={report.id} _hover={{ bg: hoverBg }}>
+                        <Td px={2} fontWeight="bold" color="gray.500" fontSize="xs">#{report.id}</Td>
+                        <Td px={2}><Text fontSize="xs" isTruncated>{report.reporter_id}</Text></Td>
+                        <Td px={2}><Text fontSize="xs" isTruncated>{report.reported_user_id}</Text></Td>
+                        <Td px={2}><Badge colorScheme={report.reason === 'scam' ? 'red' : report.reason === 'counterfeit' ? 'orange' : 'gray'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{report.reason || 'Other'}</Badge></Td>
+                        <Td px={2}><Badge colorScheme={report.status === 'pending' ? 'orange' : report.status === 'resolved' ? 'green' : report.status === 'reviewed' ? 'blue' : 'gray'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{report.status}</Badge></Td>
+                        <Td px={2} fontSize="xs" color={mutedTextColor} display={{ base: 'none', md: 'table-cell' }}>{report.created_at ? new Date(report.created_at).toLocaleDateString() : '-'}</Td>
+                        <Td px={1} textAlign="center">
+                          <Menu>
+                            <MenuButton as={IconButton} icon={<FiMoreVertical />} size="xs" variant="ghost" aria-label="Actions" />
+                            <MenuList shadow="lg" borderRadius="lg" minW="180px">
+                              {['Warn User', 'Delete Listing', 'Suspend Account', 'Mark Resolved', 'Dismiss'].map(action => (
+                                <MenuItem
+                                  key={action}
+                                  fontSize="sm"
+                                  color={action === 'Suspend Account' || action === 'Delete Listing' ? '#f43f5e' : 'gray.700'}
+                                  onClick={() => setModerationTarget({ report, action })}
+                                >
+                                  {action}
+                                </MenuItem>
+                              ))}
+                            </MenuList>
+                          </Menu>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </ChakraTable>
+              </Box>
+              {reportsTotalPages > 1 && (
+                <HStack spacing={2} justify="center" mt={3} pb={3}>
+                  <Button size="xs" variant="outline" isDisabled={reportsPage <= 1} onClick={() => { setReportsPage(p => p - 1); fetchAdminReports(reportsPage - 1, reportsStatusFilter); }}>Prev</Button>
+                  <Text fontSize="xs" color={mutedTextColor}>{reportsPage} / {reportsTotalPages}</Text>
+                  <Button size="xs" variant="outline" isDisabled={reportsPage >= reportsTotalPages} onClick={() => { setReportsPage(p => p + 1); fetchAdminReports(reportsPage + 1, reportsStatusFilter); }}>Next</Button>
+                </HStack>
+              )}
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* ID Verifications */}
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader>
+          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+            <HStack>
+              <Icon as={FiShield} color="brand.500" boxSize={5} />
+              <Heading size="sm" color={textColor}>ID / COR Verifications</Heading>
+              {verifications.filter(v => v.verification_status === 'pending').length > 0 && (
+                <Badge colorScheme="orange" borderRadius="full" px={2}>{verifications.filter(v => v.verification_status === 'pending').length} pending</Badge>
+              )}
+            </HStack>
+            <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminVerifications} isLoading={verificationsLoading}>Refresh</Button>
+          </Flex>
+        </CardHeader>
+        <CardBody overflowX="auto" px={0}>
+          {verificationsLoading ? (
+            <Center py={8}><Spinner color="teal.500" /></Center>
+          ) : verifications.length === 0 ? (
+            <Center py={8}><VStack spacing={2}><Icon as={FiShield} boxSize={10} color="gray.300" /><Text color="#64748b">No pending verifications</Text></VStack></Center>
+          ) : (
+            <ChakraTable variant="simple" size="sm">
+              <Thead bg={headerBg}>
+                <Tr>
+                  <Th color={mutedTextColor}>User</Th><Th color={mutedTextColor}>School</Th><Th color={mutedTextColor}>School Email</Th>
+                  <Th color={mutedTextColor}>Doc</Th><Th color={mutedTextColor}>Status</Th><Th color={mutedTextColor}>Actions</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {verifications.map(item => (
+                  <Tr key={item.id} _hover={{ bg: hoverBg }}>
+                    <Td><VStack align="start" spacing={0}><Text fontWeight="600" fontSize="sm">{item.name || `User #${item.id}`}</Text><Text fontSize="xs" color={mutedTextColor}>{item.email}</Text></VStack></Td>
+                    <Td fontSize="sm">{item.school_name || '-'}</Td>
+                    <Td fontSize="sm">{item.school_email || '-'}</Td>
+                    <Td><Tag size="sm" colorScheme="blue" textTransform="uppercase">{item.document_type || 'id'}</Tag></Td>
+                    <Td><Badge colorScheme={item.verification_status === 'pending' ? 'orange' : 'red'} borderRadius="full" px={2}>{item.verification_status === 'pending' ? 'Pending' : 'Rejected'}</Badge></Td>
+                    <Td>
+                      <HStack spacing={2}>
+                        {item.has_id_image && <Tooltip label="View ID/COR" hasArrow><IconButton aria-label="View ID" size="sm" variant="outline" icon={<FiEye />} onClick={() => handleViewIdImage(item.id, item.name)} /></Tooltip>}
+                        {item.verification_status === 'pending' && (
+                          <>
+                            <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveVerification(item.id)}>Verify</Button>
+                            <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => openRejectModal(item)}>Decline</Button>
+                          </>
+                        )}
+                      </HStack>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </ChakraTable>
+          )}
+        </CardBody>
+      </Card>
+    </VStack>
+  );
+
+  // â”€â”€ SECTION: Management â”€â”€
+  const ManagementSection = () => (
+    <VStack spacing={8} align="stretch">
+      {/* Users */}
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader>
+          <Heading size="sm" color={textColor}>Users</Heading>
+          <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
+        </CardHeader>
+        <CardBody px={0} pb={2}>
+          {usersLoading ? <Center py={6}><Spinner color="brand.500" /></Center> : users.length === 0 ? <Text fontSize="sm" color={mutedTextColor} px={4}>No users found.</Text> : (
+            <>
+              <Box overflowX="auto" w="full">
+                <ChakraTable size="sm" variant="simple" style={{ tableLayout: 'fixed', width: '100%', minWidth: '500px' }}>
+                  <Thead><Tr>
+                    <Th color={mutedTextColor} px={2}>User</Th>
+                    <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Email</Th>
+                    <Th color={mutedTextColor} w="80px" px={2}>Role</Th>
+                    <Th color={mutedTextColor} w="72px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Status</Th>
+                    <Th textAlign="right" color={mutedTextColor} w="76px" px={1}>Act</Th>
+                  </Tr></Thead>
+                  <Tbody>
+                    {users.map(user => (
+                      <Tr key={user.id} _hover={{ bg: hoverBg }}>
+                        <Td px={2}><HStack spacing={2}><VerifiedAvatar size="xs" name={user.name} src={user.profile_picture || undefined} isVerified={user.verified || user.verification_status === 'verified' || false} /><VStack spacing={0} align="start" minW={0}><Text fontWeight="600" fontSize="xs" isTruncated maxW="120px">{user.name || 'Unnamed'}</Text><Text fontSize="xs" color={mutedTextColor}>#{user.id}</Text></VStack></HStack></Td>
+                        <Td px={2} display={{ base: 'none', md: 'table-cell' }}><Text fontSize="xs" isTruncated maxW="160px">{user.email}</Text></Td>
+                        <Td px={2}><Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : user.role === 'suspended' ? 'red' : 'blue'} fontSize="xs">{user.role}</Tag></Td>
+                        <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : '—'}</Tag></Td>
+                        <Td textAlign="right" px={1}>
+                          <HStack spacing={1} justify="flex-end">
+                            {user.role !== 'admin' && <Tooltip label={user.role === 'suspended' ? 'Unsuspend' : 'Suspend'} hasArrow><IconButton aria-label="Toggle suspend" size="xs" colorScheme={user.role === 'suspended' ? 'green' : 'orange'} variant="ghost" icon={user.role === 'suspended' ? <FiCheckCircle /> : <FiXCircle />} onClick={() => handleToggleSuspend(user)} /></Tooltip>}
+                            <Tooltip label="Delete user" hasArrow><IconButton aria-label="Delete user" size="xs" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteUser(user)} /></Tooltip>
+                          </HStack>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </ChakraTable>
+              </Box>
+              <HStack justify="space-between" mt={3} px={4} pb={3}>
+                <Button size="xs" variant="outline" onClick={() => fetchAdminUsers(usersPage - 1)} isDisabled={usersPage <= 1 || usersLoading}>Prev</Button>
+                <Text fontSize="xs" color={mutedTextColor}>{usersPage} / {usersTotalPages}</Text>
+                <Button size="xs" variant="outline" onClick={() => fetchAdminUsers(usersPage + 1)} isDisabled={usersPage >= usersTotalPages || usersLoading}>Next</Button>
+              </HStack>
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Items */}
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader>
+          <Heading size="sm" color={textColor}>Items</Heading>
+          <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
+        </CardHeader>
+        <CardBody px={0} pb={2}>
+          {productsLoading ? <Center py={6}><Spinner color="brand.500" /></Center> : products.length === 0 ? <Text fontSize="sm" color={mutedTextColor} px={4}>No items found.</Text> : (
+            <>
+              <Box overflowX="auto" w="full">
+                <ChakraTable size="sm" variant="simple" style={{ tableLayout: 'fixed', width: '100%', minWidth: '480px' }}>
+                  <Thead><Tr>
+                    <Th color={mutedTextColor} px={2}>Item</Th>
+                    <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Seller</Th>
+                    <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
+                    <Th isNumeric color={mutedTextColor} w="88px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
+                    <Th textAlign="right" color={mutedTextColor} w="44px" px={1}></Th>
+                  </Tr></Thead>
+                  <Tbody>
+                    {products.map(product => (
+                      <Tr key={product.id} _hover={{ bg: hoverBg }}>
+                        <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
+                        <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
+                        <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : 'gray'}>{product.status}</Tag></Td>
+                        <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : 'â€”'}</Text></Td>
+                        <Td textAlign="right"><Tooltip label="Delete item" hasArrow><IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} /></Tooltip></Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </ChakraTable>
+              </Box>
+              <HStack justify="space-between" mt={3} px={4} pb={3}>
+                <Button size="xs" variant="outline" onClick={() => fetchAdminProducts(productsPage - 1)} isDisabled={productsPage <= 1 || productsLoading}>Prev</Button>
+                <Text fontSize="xs" color={mutedTextColor}>{productsPage} / {productsTotalPages}</Text>
+                <Button size="xs" variant="outline" onClick={() => fetchAdminProducts(productsPage + 1)} isDisabled={productsPage >= productsTotalPages || productsLoading}>Next</Button>
+              </HStack>
+            </>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Campaigns */}
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader>
+          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+            <HStack><Icon as={FiStar} color="orange.500" boxSize={5} /><Heading size="sm" color={textColor}>Popup Campaigns</Heading></HStack>
+            <HStack>
+              <Button size="sm" colorScheme="brand" onClick={() => { setEditingCampaign({}); openCampaignModal(); }}>Create Campaign</Button>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminCampaigns} isLoading={campaignsLoading}>Refresh</Button>
+            </HStack>
+          </Flex>
+        </CardHeader>
+        <CardBody px={0} pb={2}>
+          {campaignsLoading ? <Center py={8}><Spinner color="orange.500" /></Center> : campaigns.length === 0 ? (
+            <Center py={8}><VStack spacing={2}><Icon as={FiStar} boxSize={10} color="gray.300" /><Text color={mutedTextColor}>No campaigns found</Text></VStack></Center>
+          ) : (
+            <Box overflowX="auto" w="full">
+              <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '540px' }}>
+                <Thead bg={headerBg}><Tr>
+                  <Th color={mutedTextColor} px={2}>Title</Th>
+                  <Th color={mutedTextColor} w="80px" px={2}>Targets</Th>
+                  <Th color={mutedTextColor} w="100px" px={2} display={{ base: 'none', md: 'table-cell' }}>Frequency</Th>
+                  <Th color={mutedTextColor} px={2} display={{ base: 'none', lg: 'table-cell' }}>Dates</Th>
+                  <Th color={mutedTextColor} w="56px" px={2}>Active</Th>
+                  <Th color={mutedTextColor} w="84px" px={1}>Actions</Th>
+                </Tr></Thead>
+                <Tbody>
+                  {campaigns.map(camp => (
+                    <Tr key={camp.id} _hover={{ bg: hoverBg }}>
+                      <Td px={2}><Text fontWeight="600" fontSize="xs" isTruncated maxW="140px">{camp.title}</Text></Td>
+                      <Td px={2}><Tag size="sm" colorScheme="blue" textTransform="capitalize" fontSize="xs">{camp.target_users}</Tag></Td>
+                      <Td px={2} display={{ base: 'none', md: 'table-cell' }}><Text fontSize="xs">{camp.frequency.replace(/_/g, ' ')}</Text></Td>
+                      <Td px={2} fontSize="xs" color={mutedTextColor} display={{ base: 'none', lg: 'table-cell' }}>{camp.start_date ? new Date(camp.start_date).toLocaleDateString() : 'Always'} - {camp.end_date ? new Date(camp.end_date).toLocaleDateString() : '∞'}</Td>
+                      <Td px={2}><Switch colorScheme="green" size="sm" isChecked={camp.is_active} onChange={() => handleToggleCampaignStatus(camp)} /></Td>
+                      <Td px={1}>
+                        <HStack spacing={1}>
+                          <Button size="xs" onClick={() => { setEditingCampaign({ ...camp, start_date: camp.start_date ? new Date(camp.start_date).toISOString().slice(0, 16) : '', end_date: camp.end_date ? new Date(camp.end_date).toISOString().slice(0, 16) : '' }); openCampaignModal(); }}>Edit</Button>
+                          <IconButton aria-label="Delete campaign" size="xs" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteCampaign(camp)} />
+                        </HStack>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </ChakraTable>
+            </Box>
+          )}
+        </CardBody>
+      </Card>
+    </VStack>
+  );
+
+  // â”€â”€ SECTION: System â”€â”€
+  const SystemSection = () => (
+    <VStack spacing={8} pr={20} align="stretch">
+      <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
+        <MetricCard icon={FiAlertTriangle} color="rose" label="Reports Filed" value={stats!.reports_filed} />
+        <MetricCard icon={FiXCircle} color="red" label="Suspended Users" value={stats!.suspended_users} />
+        <MetricCard icon={FiServer} color="purple" label="Storage Used" value={`${(stats!.storage_usage_mb || 0).toFixed(1)} MB`} raw />
+        <MetricCard icon={FiShield} color="brand" label="Pending Verifications" value={stats!.pending_verifications ?? 0} />
+      </SimpleGrid>
+
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
+        <CardHeader>
+          <HStack><Icon as={FiCalendar} color="brand.500" boxSize={5} /><Heading size="sm" color={textColor}>Usage History</Heading></HStack>
+          <Text fontSize="xs" color={mutedTextColor} mt={1}>Click any day to view that day's detailed stats.</Text>
+        </CardHeader>
+        <CardBody>
+          <UsageCalendar year={calYear} month={calMonth} activityMap={activityMap} onDayClick={handleDayClick} onPrevMonth={handlePrevMonth} onNextMonth={handleNextMonth} calendarLoading={calendarLoading} selectedDate={selectedDate} />
+        </CardBody>
+      </Card>
+
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
+      </Card>
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader><Heading size="sm" color={textColor}>Revenue Breakdown (Last 4 Weeks)</Heading></CardHeader>
+        <CardBody>
+          <VStack spacing={3} align="stretch">
+            {stats!.revenue_breakdown && stats!.revenue_breakdown.length > 0 ? stats!.revenue_breakdown.map((period, i) => (
+              <HStack key={i} justify="space-between" p={3} bg={hoverBg} borderRadius="lg">
+                <Text fontWeight="600" fontSize="sm" color={mutedTextColor}>{period.period}</Text>
+                <Text fontSize="md" fontWeight="800" color="#10b981">{formatCurrency(period.amount)}</Text>
+              </HStack>
+            )) : <Text color={mutedTextColor} textAlign="center" fontSize="sm">No revenue data</Text>}
+          </VStack>
+        </CardBody>
+      </Card>
+    </VStack>
+  );
+
+  const sectionTitles: Record<SectionId, string> = {
+    overview: 'Overview',
+    moderation: 'Moderation Queue',
+    management: 'Management',
+    system: 'System',
+  };
+
+  return (
+    <ErrorBoundary>
+      <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')} display="flex">
+
+        {/* â”€â”€ Desktop Sidebar â”€â”€ */}
+        {!isMobile && (
+          <Box
+            w="260px"
+            minH="100vh"
+            bg={sidebarBg}
+            borderRight="1px solid"
+            borderColor={borderColor}
+            position="fixed"
+            top={0}
+            left={0}
+            overflowY="auto"
+            zIndex={20}
+            boxShadow="sm"
+          >
+            <SidebarContent />
+          </Box>
+        )}
+
+        {/* â”€â”€ Mobile Sidebar Drawer â”€â”€ */}
+        <Drawer isOpen={isSidebarOpen} placement="left" onClose={closeSidebar}>
+          <DrawerOverlay />
+          <DrawerContent maxW="260px">
+            <DrawerCloseButton />
+            <DrawerBody p={0} pt={8}>
+              <SidebarContent />
+            </DrawerBody>
+          </DrawerContent>
+        </Drawer>
+
+        {/* â”€â”€ Main Content â”€â”€ */}
+        <Box flex={1} ml={isMobile ? 0 : '210px'} display="flex" flexDirection="column">
+
+          {/* Top Bar */}
+          <Box
+            bg={topBarBg}
+            borderBottom="1px solid"
+            borderColor={borderColor}
+            px={{ base: 4, md: 6 }}
+            py={4}
+            position="sticky"
+            top={0}
+            zIndex={10}
+            boxShadow="sm"
+          >
+            <Flex justify="space-between" align="center">
+              <HStack spacing={3}>
+                {isMobile && (
+                  <IconButton aria-label="Open menu" icon={<FiMenu />} variant="ghost" size="sm" onClick={openSidebar} />
+                )}
+                <VStack align="start" spacing={0}>
+                  <Heading size="md" color={textColor}>{sectionTitles[activeSection]}</Heading>
+                  {isUsingMockData && <Badge colorScheme="orange" variant="subtle" fontSize="xs">Demo Mode</Badge>}
+                </VStack>
+              </HStack>
+              <HStack spacing={2} mr={20}>
+                <Button leftIcon={<FiRefreshCw />} onClick={handleRefresh} size="sm" colorScheme="brand" variant="outline" isLoading={loading}>Refresh</Button>
+                <Menu>
+                  <MenuButton as={Button} leftIcon={<FiPrinter />} rightIcon={<FiChevronDown />} size="sm" colorScheme="brand" isLoading={exportLoading} loadingText="Exporting…">Export</MenuButton>
+                  <MenuList shadow="lg" borderRadius="lg">
+                    <MenuItem icon={<FiFileText />} onClick={handleExportPDF}>Export as PDF</MenuItem>
+                    <MenuItem icon={<FiFileText />} onClick={handleExportDOCX}>Export as DOCX</MenuItem>
+                  </MenuList>
+                </Menu>
+              </HStack>
+            </Flex>
+            <Collapse in={showConnectionAlert}>
+              <Alert status="warning" mt={3} borderRadius="lg">
+                <AlertIcon />
+                <AlertDescription>{!connectionStatus.online ? 'You are offline. Some features may be limited.' : 'API unreachable. Using demo data.'}</AlertDescription>
+              </Alert>
+            </Collapse>
+          </Box>
+
+          {/* Content Area */}
+          <Box flex={1} p={{ base: 3, md: 5 }} maxW="1400px" w="full" mx="auto" overflow="hidden">
+            {activeSection === 'overview' && <OverviewSection />}
+            {activeSection === 'moderation' && <ModerationSection />}
+            {activeSection === 'management' && <ManagementSection />}
+            {activeSection === 'system' && <SystemSection />}
+          </Box>
+        </Box>
+
+        {/* â”€â”€ Day Detail Modal â”€â”€ */}
         <Modal isOpen={isDayModalOpen} onClose={closeDayModal} isCentered size="md">
           <ModalOverlay backdropFilter="blur(4px)" />
           <ModalContent borderRadius="xl" overflow="hidden">
-            <Box bg="blue.600" px={6} py={4}>
+            <Box bg="brand.500" px={6} py={4}>
               <ModalHeader color="white" p={0} fontSize="lg">
-                {selectedDate
-                  ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-PH', {
-                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-                  })
-                  : 'Day Details'}
+                {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Day Details'}
               </ModalHeader>
               <ModalCloseButton color="white" top={4} right={4} />
             </Box>
             <ModalBody py={6}>
               {dayDetailLoading ? (
-                <VStack spacing={4} py={6}>
-                  <Spinner size="lg" color="blue.500" />
-                  <Text color="gray.500">Loading day stats…</Text>
-                </VStack>
+                <VStack spacing={4} py={6}><Spinner size="lg" color="brand.500" /><Text color={mutedTextColor}>Loading day stats…</Text></VStack>
               ) : selectedDayDetail ? (
                 <VStack spacing={3} align="stretch">
                   {[
                     { label: 'New Users', value: selectedDayDetail.new_users, color: 'blue', icon: FiUsers },
                     { label: 'New Listings', value: selectedDayDetail.new_listings, color: 'purple', icon: FiPackage },
-                    { label: 'Completed Trades', value: selectedDayDetail.completed_trades, color: 'teal', icon: FiShoppingCart },
+                    { label: 'Completed Trades', value: selectedDayDetail.completed_trades, color: 'brand', icon: FiShoppingCart },
                     { label: 'Reports Filed', value: selectedDayDetail.reports_filed, color: 'red', icon: FiShield },
-                    { label: 'Active Listings', value: selectedDayDetail.active_listings, color: 'orange', icon: FiShoppingBag },
                   ].map(({ label, value, color, icon }) => (
                     <HStack key={label} justify="space-between" p={3} bg={`${color}.50`} borderRadius="lg" border="1px" borderColor={`${color}.100`}>
-                      <HStack spacing={2}>
-                        <Icon as={icon} color={`${color}.500`} />
-                        <Text fontWeight="medium" color="gray.700">{label}</Text>
-                      </HStack>
-                      <Badge colorScheme={color} fontSize="md" px={3} py={1} borderRadius="full">
-                        {value?.toLocaleString() ?? 0}
-                      </Badge>
+                      <HStack spacing={2}><Icon as={icon} color={`${color}.500`} /><Text fontWeight="600" color={textColor} fontSize="sm">{label}</Text></HStack>
+                      <Badge colorScheme={color} fontSize="md" px={3} py={1} borderRadius="full">{value?.toLocaleString() ?? 0}</Badge>
                     </HStack>
                   ))}
                   <HStack justify="space-between" p={3} bg="green.50" borderRadius="lg" border="1px" borderColor="green.100">
-                    <HStack spacing={2}>
-                      <Icon as={FiDollarSign} color="green.500" />
-                      <Text fontWeight="medium" color="gray.700">Revenue</Text>
-                    </HStack>
-                    <Text fontSize="md" fontWeight="bold" color="green.600">
-                      {formatCurrency(selectedDayDetail.revenue ?? 0)}
-                    </Text>
+                    <HStack spacing={2}><Icon as={FiDollarSign} color="green.500" /><Text fontWeight="600" color={textColor} fontSize="sm">Revenue</Text></HStack>
+                    <Text fontSize="md" fontWeight="800" color="green.600">{formatCurrency(selectedDayDetail.revenue ?? 0)}</Text>
                   </HStack>
                 </VStack>
               ) : (
-                <VStack spacing={3} py={6}>
-                  <Text color="gray.500" textAlign="center">No data available for this day.</Text>
-                </VStack>
+                <VStack spacing={3} py={6}><Text color={mutedTextColor} textAlign="center">No data available for this day.</Text></VStack>
               )}
             </ModalBody>
           </ModalContent>
         </Modal>
 
-        {/* ── Campaigns Management ── */}
-        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
-          <CardHeader>
-            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-              <HStack spacing={2}>
-                <Icon as={FiStar} color="orange.500" boxSize={5} />
-                <Heading size="md" color="orange.600">Popup Campaigns</Heading>
-              </HStack>
-              <HStack spacing={3}>
-                <Button size="sm" colorScheme="blue" onClick={() => { setEditingCampaign({}); openCampaignModal(); }}>
-                  Create Campaign
-                </Button>
-                <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminCampaigns} isLoading={campaignsLoading}>
-                  Refresh
-                </Button>
-              </HStack>
-            </Flex>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Manage popup ad campaigns displayed to users across the platform.
-            </Text>
-          </CardHeader>
-          <CardBody overflowX="auto" px={0}>
-            {campaignsLoading ? (
-              <Center py={8}><Spinner color="orange.500" /></Center>
-            ) : campaigns.length === 0 ? (
-              <Center py={8}>
-                <VStack spacing={2}>
-                  <Icon as={FiStar} boxSize={10} color="gray.300" />
-                  <Text color="gray.500">No campaigns found</Text>
-                </VStack>
-              </Center>
-            ) : (
-              <ChakraTable variant="simple" size="sm">
-                <Thead bg="orange.50">
-                  <Tr>
-                    <Th>Title</Th>
-                    <Th>Targets</Th>
-                    <Th>Frequency</Th>
-                    <Th>Dates</Th>
-                    <Th>Status</Th>
-                    <Th>Actions</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {campaigns.map((camp) => (
-                    <Tr key={camp.id} _hover={{ bg: 'gray.50' }}>
-                      <Td>
-                        <Text fontWeight="medium" fontSize="sm">{camp.title}</Text>
-                      </Td>
-                      <Td>
-                        <Tag size="sm" colorScheme="blue" textTransform="capitalize">
-                          {camp.target_users}
-                        </Tag>
-                      </Td>
-                      <Td>
-                        <Text fontSize="xs">{camp.frequency.replace(/_/g, ' ')}</Text>
-                      </Td>
-                      <Td fontSize="xs" color="gray.600">
-                        {camp.start_date ? new Date(camp.start_date).toLocaleDateString() : 'Always'} - {camp.end_date ? new Date(camp.end_date).toLocaleDateString() : 'Forever'}
-                      </Td>
-                      <Td>
-                        <Switch
-                          colorScheme="green"
-                          isChecked={camp.is_active}
-                          onChange={() => handleToggleCampaignStatus(camp)}
-                        />
-                      </Td>
-                      <Td>
-                        <HStack spacing={2}>
-                          <Button size="xs" onClick={() => {
-                            setEditingCampaign({
-                              ...camp,
-                              start_date: camp.start_date ? new Date(camp.start_date).toISOString().slice(0, 16) : '',
-                              end_date: camp.end_date ? new Date(camp.end_date).toISOString().slice(0, 16) : '',
-                            });
-                            openCampaignModal();
-                          }}>
-                            Edit
-                          </Button>
-                          <IconButton
-                            aria-label="Delete campaign"
-                            size="xs"
-                            colorScheme="red"
-                            variant="ghost"
-                            icon={<FiTrash2 />}
-                            onClick={() => askDeleteCampaign(camp)}
-                          />
-                        </HStack>
-                      </Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </ChakraTable>
-            )}
-          </CardBody>
-        </Card>
+        {/* â”€â”€ Moderation Action Confirm Dialog â”€â”€ */}
+        <AlertDialog isOpen={!!moderationTarget} leastDestructiveRef={cancelModerationRef} onClose={() => setModerationTarget(null)}>
+          <AlertDialogOverlay>
+            <AlertDialogContent borderRadius="xl">
+              <AlertDialogHeader fontSize="lg" fontWeight="800">Confirm: {moderationTarget?.action}</AlertDialogHeader>
+              <AlertDialogBody>
+                Are you sure you want to <b>{moderationTarget?.action}</b> for report <b>#{moderationTarget?.report?.id}</b>? This will update the report status immediately.
+              </AlertDialogBody>
+              <AlertDialogFooter>
+                <Button ref={cancelModerationRef} onClick={() => setModerationTarget(null)} variant="ghost">Cancel</Button>
+                <Button colorScheme="red" onClick={handleModerationAction} ml={3} isLoading={moderationLoading}>Confirm</Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialogOverlay>
+        </AlertDialog>
 
-        {/* ── ID/COR Verifications (Admin review: approve or decline) ── */}
-        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
-          <CardHeader>
-            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-              <HStack spacing={2}>
-                <Icon as={FiShield} color="teal.500" boxSize={5} />
-                <Heading size="md" color="teal.600">ID / COR Verifications</Heading>
-                {verifications.filter(v => v.verification_status === 'pending').length > 0 && (
-                  <Badge colorScheme="orange" borderRadius="full" px={2}>
-                    {verifications.filter(v => v.verification_status === 'pending').length} pending
-                  </Badge>
-                )}
-              </HStack>
-              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminVerifications} isLoading={verificationsLoading}>
-                Refresh
-              </Button>
-            </Flex>
-            <Text fontSize="sm" color="gray.500" mt={1}>
-              Review submitted school ID or COR. Verify if legitimate or decline with a reason (e.g. fake or invalid document).
-            </Text>
-          </CardHeader>
-          <CardBody overflowX="auto" px={0}>
-            {verificationsLoading ? (
-              <Center py={8}><Spinner color="teal.500" /></Center>
-            ) : verifications.length === 0 ? (
-              <Center py={8}>
-                <VStack spacing={2}>
-                  <Icon as={FiShield} boxSize={10} color="gray.300" />
-                  <Text color="gray.500">No pending or rejected verifications</Text>
-                </VStack>
-              </Center>
-            ) : (
-              <ChakraTable variant="simple" size="sm">
-                <Thead bg="teal.50">
-                  <Tr>
-                    <Th>User</Th>
-                    <Th>School</Th>
-                    <Th>School Email</Th>
-                    <Th>Doc</Th>
-                    <Th>Status</Th>
-                    <Th>Actions</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {verifications.map((item) => (
-                    <Tr key={item.id} _hover={{ bg: 'gray.50' }}>
-                      <Td>
-                        <VStack align="start" spacing={0}>
-                          <Text fontWeight="medium" fontSize="sm">{item.name || `User #${item.id}`}</Text>
-                          <Text fontSize="xs" color="gray.500">{item.email}</Text>
-                        </VStack>
-                      </Td>
-                      <Td fontSize="sm">{item.school_name || '-'}</Td>
-                      <Td fontSize="sm">{item.school_email || '-'}</Td>
-                      <Td>
-                        <Tag size="sm" colorScheme="blue" textTransform="uppercase">{item.document_type || 'id'}</Tag>
-                      </Td>
-                      <Td>
-                        <Badge colorScheme={item.verification_status === 'pending' ? 'orange' : 'red'} borderRadius="full" px={2}>
-                          {item.verification_status === 'pending' ? 'Pending' : 'Rejected'}
-                        </Badge>
-                      </Td>
-                      <Td>
-                        <HStack spacing={2}>
-                          {item.has_id_image && (
-                            <Tooltip label="View ID/COR image" hasArrow>
-                              <IconButton
-                                aria-label="View ID"
-                                size="sm"
-                                variant="outline"
-                                icon={<FiEye />}
-                                onClick={() => handleViewIdImage(item.id, item.name)}
-                              />
-                            </Tooltip>
-                          )}
-                          {item.verification_status === 'pending' && (
-                            <>
-                              <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveVerification(item.id)}>
-                                Verify
-                              </Button>
-                              <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => openRejectModal(item)}>
-                                Decline
-                              </Button>
-                            </>
-                          )}
-                        </HStack>
-                      </Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </ChakraTable>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* ── Reports Table Section ── */}
-        <Card bg={cardBg} border="1px" borderColor={borderColor} mb={8}>
-          <CardHeader>
-            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-              <HStack spacing={2}>
-                <Icon as={FiFileText} color="red.500" boxSize={5} />
-                <Heading size="md" color="red.600">User Reports</Heading>
-                {reports.length > 0 && (
-                  <Badge colorScheme="red" borderRadius="full" px={2}>{reports.length}</Badge>
-                )}
-              </HStack>
-              <HStack spacing={3}>
-                <select
-                  value={reportsStatusFilter}
-                  onChange={(e) => {
-                    setReportsStatusFilter(e.target.value);
-                    fetchAdminReports(1, e.target.value);
-                  }}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    fontSize: '14px',
-                    background: 'white',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <option value="">All Statuses</option>
-                  <option value="pending">Pending</option>
-                  <option value="reviewed">Reviewed</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="dismissed">Dismissed</option>
-                </select>
-                <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchAdminReports(reportsPage, reportsStatusFilter)} isLoading={reportsLoading}>
-                  Refresh
-                </Button>
-              </HStack>
-            </Flex>
-          </CardHeader>
-          <CardBody overflowX="auto" px={0}>
-            {reportsLoading ? (
-              <Center py={8}><Spinner color="red.500" /></Center>
-            ) : reports.length === 0 ? (
-              <Center py={8}>
-                <VStack spacing={2}>
-                  <Icon as={FiShield} boxSize={10} color="gray.300" />
-                  <Text color="gray.500">No reports found</Text>
-                </VStack>
-              </Center>
-            ) : (
-              <ChakraTable variant="simple" size="sm">
-                <Thead bg="red.50">
-                  <Tr>
-                    <Th>#</Th>
-                    <Th>Reporter ID</Th>
-                    <Th>Reported User ID</Th>
-                    <Th>Reason</Th>
-                    <Th>Status</Th>
-                    <Th>Date</Th>
-                    <Th>Action</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {reports.map((report: any) => (
-                    <Tr key={report.id} _hover={{ bg: 'gray.50' }}>
-                      <Td fontWeight="bold">#{report.id}</Td>
-                      <Td>{report.reporter_id}</Td>
-                      <Td>{report.reported_user_id}</Td>
-                      <Td>
-                        <Badge colorScheme={
-                          report.reason === 'scam' ? 'red' :
-                            report.reason === 'counterfeit' ? 'orange' :
-                              report.reason === 'spam' ? 'yellow' : 'gray'
-                        } borderRadius="full" px={2} textTransform="capitalize">
-                          {report.reason || 'Other'}
-                        </Badge>
-                      </Td>
-                      <Td>
-                        <Badge colorScheme={
-                          report.status === 'pending' ? 'orange' :
-                            report.status === 'reviewed' ? 'blue' :
-                              report.status === 'resolved' ? 'green' : 'gray'
-                        } borderRadius="full" px={2} textTransform="capitalize">
-                          {report.status}
-                        </Badge>
-                      </Td>
-                      <Td fontSize="xs" color="gray.500">
-                        {report.created_at ? new Date(report.created_at).toLocaleDateString() : '-'}
-                      </Td>
-                      <Td>
-                        {report.status === 'pending' && (
-                          <HStack spacing={1}>
-                            <Button size="xs" colorScheme="blue" onClick={() => handleUpdateReportStatus(report.id, 'reviewed')}>
-                              Review
-                            </Button>
-                            <Button size="xs" colorScheme="green" onClick={() => handleUpdateReportStatus(report.id, 'resolved')}>
-                              Resolve
-                            </Button>
-                            <Button size="xs" colorScheme="gray" onClick={() => handleUpdateReportStatus(report.id, 'dismissed')}>
-                              Dismiss
-                            </Button>
-                          </HStack>
-                        )}
-                        {report.status !== 'pending' && (
-                          <Text fontSize="xs" color="gray.400">No action needed</Text>
-                        )}
-                      </Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </ChakraTable>
-            )}
-            {reportsTotalPages > 1 && (
-              <HStack spacing={3} justify="center" mt={4} pb={4}>
-                <Button size="sm" isDisabled={reportsPage <= 1} onClick={() => { setReportsPage(p => p - 1); fetchAdminReports(reportsPage - 1, reportsStatusFilter); }}>Prev</Button>
-                <Text fontSize="sm">Page {reportsPage} of {reportsTotalPages}</Text>
-                <Button size="sm" isDisabled={reportsPage >= reportsTotalPages} onClick={() => { setReportsPage(p => p + 1); fetchAdminReports(reportsPage + 1, reportsStatusFilter); }}>Next</Button>
-              </HStack>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* ── ID Image modal ── */}
+        {/* â”€â”€ ID Image Modal â”€â”€ */}
         <Modal isOpen={!!idImageModal} onClose={closeIdImageModal} size="xl">
           <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>ID / COR — {idImageModal?.name}</ModalHeader>
+          <ModalContent borderRadius="xl">
+            <ModalHeader>ID / COR â€” {idImageModal?.name}</ModalHeader>
             <ModalCloseButton />
             <ModalBody pb={4}>
-              {idImageUrl ? (
-                <Box as="img" src={idImageUrl} alt="Submitted ID" maxH="70vh" mx="auto" borderRadius="md" />
-              ) : (
-                <Center py={8}><Spinner size="lg" color="teal.500" /></Center>
-              )}
+              {idImageUrl ? <Box as="img" src={idImageUrl} alt="Submitted ID" maxH="70vh" mx="auto" borderRadius="md" /> : <Center py={8}><Spinner size="lg" color="brand.500" /></Center>}
             </ModalBody>
           </ModalContent>
         </Modal>
 
-        {/* ── Reject verification modal ── */}
+        {/* â”€â”€ Reject Verification Modal â”€â”€ */}
         <Modal isOpen={!!rejectTarget} onClose={() => { setRejectTarget(null); setRejectReason(''); }}>
           <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>Decline verification</ModalHeader>
+          <ModalContent borderRadius="xl">
+            <ModalHeader>Decline Verification</ModalHeader>
             <ModalCloseButton />
             <ModalBody>
-              <Text fontSize="sm" color="gray.600" mb={3}>
-                User: <strong>{rejectTarget?.name}</strong> ({rejectTarget?.email}). Provide a reason (e.g. fake/invalid COR or ID).
-              </Text>
-              <Textarea
-                placeholder="e.g. Document does not appear to be a valid school ID or COR"
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                rows={3}
-              />
+              <Text fontSize="sm" color="#64748b" mb={3}>User: <strong>{rejectTarget?.name}</strong> ({rejectTarget?.email})</Text>
+              <Textarea placeholder="e.g. Document does not appear to be a valid school ID or COR" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} />
             </ModalBody>
-            <Box px={6} pb={4} pt={0}>
-              <HStack justify="flex-end" spacing={3}>
-                <Button variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(''); }}>Cancel</Button>
-                <Button colorScheme="red" onClick={handleConfirmReject} isLoading={rejectLoading}>
-                  Decline verification
-                </Button>
-              </HStack>
-            </Box>
+            <Box px={6} pb={4} pt={2}><HStack justify="flex-end" spacing={3}><Button variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(''); }}>Cancel</Button><Button colorScheme="red" onClick={handleConfirmReject} isLoading={rejectLoading}>Decline</Button></HStack></Box>
           </ModalContent>
         </Modal>
 
-        {/* ── Campaign Create/Edit Modal ── */}
+        {/* â”€â”€ Campaign Create/Edit Modal â”€â”€ */}
         <Modal isOpen={isCampaignModalOpen} onClose={() => { closeCampaignModal(); setEditingCampaign(null); }} size="lg">
           <ModalOverlay />
-          <ModalContent>
+          <ModalContent borderRadius="xl">
             <form onSubmit={handleSaveCampaign}>
               <ModalHeader>{editingCampaign?.id ? 'Edit Campaign' : 'Create Campaign'}</ModalHeader>
               <ModalCloseButton />
               <ModalBody>
                 <VStack spacing={4} align="stretch">
-                  <Box>
-                    <Text fontSize="sm" fontWeight="medium" mb={1}>Title *</Text>
-                    <Input
-                      placeholder="e.g. Free Premium Promotion"
-                      value={editingCampaign?.title || ''}
-                      onChange={(e) => setEditingCampaign({ ...editingCampaign, title: e.target.value })}
-                      required
-                    />
-                  </Box>
-                  <Box>
-                    <Text fontSize="sm" fontWeight="medium" mb={1}>Description</Text>
-                    <Textarea
-                      placeholder="Enter the main content of the popup"
-                      value={editingCampaign?.description || ''}
-                      onChange={(e) => setEditingCampaign({ ...editingCampaign, description: e.target.value })}
-                      rows={3}
-                    />
-                  </Box>
-                  <Box>
-                    <Text fontSize="sm" fontWeight="medium" mb={1}>Image URL (Optional)</Text>
-                    <Input
-                      placeholder="https://example.com/image.jpg"
-                      value={editingCampaign?.image_url || ''}
-                      onChange={(e) => setEditingCampaign({ ...editingCampaign, image_url: e.target.value })}
-                    />
-                  </Box>
+                  <Box><Text fontSize="sm" fontWeight="600" mb={1}>Title *</Text><Input placeholder="e.g. Free Premium Promotion" value={editingCampaign?.title || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, title: e.target.value })} required /></Box>
+                  <Box><Text fontSize="sm" fontWeight="600" mb={1}>Description</Text><Textarea placeholder="Enter the main content of the popup" value={editingCampaign?.description || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, description: e.target.value })} rows={3} /></Box>
+                  <Box><Text fontSize="sm" fontWeight="600" mb={1}>Image URL (Optional)</Text><Input placeholder="https://example.com/image.jpg" value={editingCampaign?.image_url || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, image_url: e.target.value })} /></Box>
                   <SimpleGrid columns={2} spacing={4}>
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" mb={1}>Button Text</Text>
-                      <Input
-                        placeholder="Click Here"
-                        value={editingCampaign?.button_text || ''}
-                        onChange={(e) => setEditingCampaign({ ...editingCampaign, button_text: e.target.value })}
-                      />
-                    </Box>
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" mb={1}>Button Link</Text>
-                      <Input
-                        placeholder="/premium"
-                        value={editingCampaign?.button_link || ''}
-                        onChange={(e) => setEditingCampaign({ ...editingCampaign, button_link: e.target.value })}
-                      />
-                    </Box>
+                    <Box><Text fontSize="sm" fontWeight="600" mb={1}>Button Text</Text><Input placeholder="Click Here" value={editingCampaign?.button_text || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, button_text: e.target.value })} /></Box>
+                    <Box><Text fontSize="sm" fontWeight="600" mb={1}>Button Link</Text><Input placeholder="/premium" value={editingCampaign?.button_link || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, button_link: e.target.value })} /></Box>
                   </SimpleGrid>
                   <SimpleGrid columns={2} spacing={4}>
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" mb={1}>Start Date</Text>
-                      <Input
-                        type="datetime-local"
-                        value={editingCampaign?.start_date || ''}
-                        onChange={(e) => setEditingCampaign({ ...editingCampaign, start_date: e.target.value })}
-                      />
-                    </Box>
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" mb={1}>End Date</Text>
-                      <Input
-                        type="datetime-local"
-                        value={editingCampaign?.end_date || ''}
-                        onChange={(e) => setEditingCampaign({ ...editingCampaign, end_date: e.target.value })}
-                      />
-                    </Box>
+                    <Box><Text fontSize="sm" fontWeight="600" mb={1}>Start Date</Text><Input type="datetime-local" value={editingCampaign?.start_date || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, start_date: e.target.value })} /></Box>
+                    <Box><Text fontSize="sm" fontWeight="600" mb={1}>End Date</Text><Input type="datetime-local" value={editingCampaign?.end_date || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, end_date: e.target.value })} /></Box>
                   </SimpleGrid>
                   <SimpleGrid columns={2} spacing={4}>
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" mb={1}>Target Users</Text>
-                      <Select
-                        value={editingCampaign?.target_users || 'all'}
-                        onChange={(e) => setEditingCampaign({ ...editingCampaign, target_users: e.target.value as any })}
-                      >
-                        <option value="all">All Users</option>
-                        <option value="new">New / Unregistered</option>
-                        <option value="verified">Verified Students</option>
-                        <option value="unverified">Unverified Users</option>
-                      </Select>
-                    </Box>
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" mb={1}>Frequency</Text>
-                      <Select
-                        value={editingCampaign?.frequency || 'once_per_user'}
-                        onChange={(e) => setEditingCampaign({ ...editingCampaign, frequency: e.target.value as any })}
-                      >
-                        <option value="once_per_user">Once per user</option>
-                        <option value="once_per_day">Once per day</option>
-                        <option value="every_login">Every time</option>
-                      </Select>
-                    </Box>
+                    <Box><Text fontSize="sm" fontWeight="600" mb={1}>Target Users</Text><Select value={editingCampaign?.target_users || 'all'} onChange={(e) => setEditingCampaign({ ...editingCampaign, target_users: e.target.value as any })}><option value="all">All Users</option><option value="new">New</option><option value="verified">Verified Students</option><option value="unverified">Unverified</option></Select></Box>
+                    <Box><Text fontSize="sm" fontWeight="600" mb={1}>Frequency</Text><Select value={editingCampaign?.frequency || 'once_per_user'} onChange={(e) => setEditingCampaign({ ...editingCampaign, frequency: e.target.value as any })}><option value="once_per_user">Once per user</option><option value="once_per_day">Once per day</option><option value="every_login">Every time</option></Select></Box>
                   </SimpleGrid>
-                  <HStack justify="space-between" pt={2}>
-                    <Text fontSize="sm" fontWeight="medium">Active Status</Text>
-                    <Switch
-                      colorScheme="green"
-                      isChecked={editingCampaign?.is_active ?? true}
-                      onChange={(e) => setEditingCampaign({ ...editingCampaign, is_active: e.target.checked })}
-                    />
-                  </HStack>
+                  <HStack justify="space-between" pt={1}><Text fontSize="sm" fontWeight="600">Active Status</Text><Switch colorScheme="green" isChecked={editingCampaign?.is_active ?? true} onChange={(e) => setEditingCampaign({ ...editingCampaign, is_active: e.target.checked })} /></HStack>
                 </VStack>
               </ModalBody>
-              <Box px={6} pb={4} pt={4}>
-                <HStack justify="flex-end" spacing={3}>
-                  <Button variant="ghost" onClick={() => { closeCampaignModal(); setEditingCampaign(null); }}>Cancel</Button>
-                  <Button type="submit" colorScheme="blue" isLoading={campaignFormLoading}>
-                    Save Campaign
-                  </Button>
-                </HStack>
-              </Box>
+              <Box px={6} pb={4} pt={2}><HStack justify="flex-end" spacing={3}><Button variant="ghost" onClick={() => { closeCampaignModal(); setEditingCampaign(null); }}>Cancel</Button><Button type="submit" colorScheme="brand" isLoading={campaignFormLoading}>Save Campaign</Button></HStack></Box>
             </form>
           </ModalContent>
         </Modal>
 
-        {/* ── Delete Confirmation Dialog ── */}
-        <AlertDialog
-          isOpen={isDeleteDialogOpen}
-          leastDestructiveRef={cancelDeleteRef}
-          onClose={closeDeleteDialog}
-        >
+        {/* â”€â”€ Delete Confirmation Dialog â”€â”€ */}
+        <AlertDialog isOpen={isDeleteDialogOpen} leastDestructiveRef={cancelDeleteRef} onClose={closeDeleteDialog}>
           <AlertDialogOverlay>
-            <AlertDialogContent>
-              <AlertDialogHeader fontSize="lg" fontWeight="bold">
-                Confirm Deletion
-              </AlertDialogHeader>
-
+            <AlertDialogContent borderRadius="xl">
+              <AlertDialogHeader fontSize="lg" fontWeight="800">Confirm Deletion</AlertDialogHeader>
               <AlertDialogBody>
-                {deleteTarget ? (
-                  <>
-                    Are you sure you want to delete this{' '}
-                    <b>{deleteTarget.type === 'user' ? 'user' : 'item'}</b>{' '}
-                    (<b>{deleteTarget.name}</b>)? This action is permanent and cannot be undone.
-                  </>
-                ) : (
-                  'Are you sure you want to delete this record? This action is permanent.'
-                )}
+                {deleteTarget ? <>Are you sure you want to delete <b>{deleteTarget.name}</b>? This action is permanent.</> : 'Are you sure? This action is permanent.'}
               </AlertDialogBody>
-
               <AlertDialogFooter>
-                <Button ref={cancelDeleteRef} onClick={closeDeleteDialog} disabled={deleteLoading}>
-                  Cancel
-                </Button>
-                <Button
-                  colorScheme="red"
-                  onClick={handleConfirmDelete}
-                  ml={3}
-                  isLoading={deleteLoading}
-                >
-                  Delete
-                </Button>
+                <Button ref={cancelDeleteRef} onClick={closeDeleteDialog} disabled={deleteLoading}>Cancel</Button>
+                <Button colorScheme="red" onClick={handleConfirmDelete} ml={3} isLoading={deleteLoading}>Delete</Button>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialogOverlay>
         </AlertDialog>
-      </Container>
+
+      </Box>
     </ErrorBoundary>
   );
 };
