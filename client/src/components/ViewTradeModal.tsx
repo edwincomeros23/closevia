@@ -957,12 +957,12 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
                 <FormLabel fontSize="sm" fontWeight="semibold">Proof Image (Optional)</FormLabel>
                 {proofImage ? (
                   <VStack spacing={3} align="stretch">
-                    <Box position="relative" w="full" maxW="250px">
+                    <Box position="relative" w="full" maxW="200px">
                       <Image
                         src={proofImage}
                         alt="Proof"
                         w="full"
-                        maxH="200px"
+                        maxH="150px"
                         objectFit="cover"
                         borderRadius="md"
                         borderWidth="2px"
@@ -2212,9 +2212,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
       {/* Review Modal - Appears when both parties confirmed meetup */}
-      < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="2xl" isCentered >
+      < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="md" isCentered scrollBehavior="inside" >
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl">
+        <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl" maxW="500px" mx={4}>
           <ModalHeader>
             <HStack spacing={3}>
               <Icon as={FaStar} color="yellow.400" />
