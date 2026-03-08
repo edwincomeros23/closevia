@@ -15,6 +15,11 @@ import (
 )
 
 type GeminiResponse struct {
+	// SAFETY CHECK: This takes absolute priority
+	Prohibited bool   `json:"prohibited,omitempty"` // True if image fails safety check - no further analysis done
+	Reason     string `json:"reason,omitempty"`     // Friendly user-facing message for rejection
+
+	// Product analysis fields (only populated if not prohibited)
 	Title             string   `json:"title"`
 	Description       string   `json:"description"`
 	Condition         string   `json:"condition"`
@@ -25,6 +30,16 @@ type GeminiResponse struct {
 	EstimatedValueMin *float64 `json:"estimated_value_min"`
 	EstimatedValueMax *float64 `json:"estimated_value_max"`
 	Tags              []string `json:"tags"`
+
+	// Image quality & content detection fields
+	IsProhibited      bool   `json:"is_prohibited,omitempty"`       // True if contains guns, drugs, alcohol, counterfeit
+	ProhibitedReason  string `json:"prohibited_reason,omitempty"`   // Friendly message if prohibited
+	ContainsPerson    bool   `json:"contains_person,omitempty"`     // True if person/face detected
+	PersonWarning     string `json:"person_warning,omitempty"`      // Friendly message if person detected
+	IsSuspiciousImage bool   `json:"is_suspicious_image,omitempty"` // True if screenshot/watermark/stock photo detected
+	SuspiciousReason  string `json:"suspicious_reason,omitempty"`   // Why it looks suspicious (screenshot, watermark, stock photo)
+	IsBlurryOrDark    bool   `json:"is_blurry_or_dark,omitempty"`   // True if image quality is poor
+	QualityWarning    string `json:"quality_warning,omitempty"`     // Friendly message about image quality
 }
 
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
@@ -65,9 +80,9 @@ func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, er
 			log.Printf("Error opening image %d: %v", i, err)
 			continue
 		}
-		defer file.Close()
 
 		data, err := io.ReadAll(file)
+		file.Close() // Close immediately after reading
 		if err != nil {
 			log.Printf("Error reading image %d: %v", i, err)
 			continue
@@ -122,11 +137,39 @@ func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, er
 		return nil, errors.New("no valid images found")
 	}
 
-	prompt := `Analyze the uploaded product image and return ONLY valid JSON with no markdown formatting.
+	prompt := `SAFETY CHECK - DO THIS FIRST, BEFORE ANYTHING ELSE:
 
-Detect the following information about the product:
+Before analyzing the product, you MUST check if the image contains ANY prohibited items.
 
+PROHIBITED ITEMS - BLOCK IMMEDIATELY:
+- Firearms: handguns, pistols, revolvers, rifles, shotguns, guns, ammunition, explosives, bombs, grenades
+- Weapons: knives, blades, swords, tasers, brass knuckles, clubs, batons, any sharp/dangerous object
+- Drugs: pills, syringes, needles, cannabis, cocaine, powder substances, any drug paraphernalia
+- Alcohol: beer, wine, liquor, spirits, alcohol bottles
+- Counterfeit goods: fake branded items, pirated media, knockoffs, replicas
+- Adult content: sexual or explicit content
+- People/Faces: ANY visible human face, person, or body
+
+IF THE IMAGE CONTAINS ANY PROHIBITED ITEM:
+Stop immediately and respond ONLY with this JSON (no other fields):
 {
+  "prohibited": true,
+  "reason": "<friendly plain English reason>"
+}
+
+Examples of rejection reasons:
+- "This item can't be listed. Firearms and weapons are not allowed on this platform."
+- "This item can't be listed. Drugs and alcohol are not allowed on this platform."
+- "Please upload a photo of the item only. Photos containing people are not allowed for privacy reasons."
+- "This item can't be listed on our platform. It violates our community guidelines."
+
+Do not analyze further. Do not return title, description, value, or condition. Return ONLY the rejected response.
+
+---
+
+IF THE IMAGE IS SAFE, proceed with normal analysis. Return ONLY this exact structure:
+{
+  "prohibited": false,
   "title": "max 25 characters",
   "description": "clear, natural product description for a marketplace listing",
   "condition": "one of: New, Like New, Good, Used, For Parts",
@@ -136,29 +179,34 @@ Detect the following information about the product:
   "authenticity_risks": "one of: Low, Medium, High",
   "estimated_value_min": 0,
   "estimated_value_max": 0,
-  "tags": ["tag1", "tag2", "tag3"]
+  "tags": ["tag1", "tag2", "tag3"],
+  "is_prohibited": false,
+  "prohibited_reason": "",
+  "contains_person": false,
+  "person_warning": "",
+  "is_suspicious_image": false,
+  "suspicious_reason": "",
+  "is_blurry_or_dark": false,
+  "quality_warning": ""
 }
 
-Rules:
-- title must NOT exceed 25 characters
-- description must be natural and helpful for a marketplace listing
-- estimated_value_min and estimated_value_max must be numbers in PHP (Philippine Peso)
-- tags must be relevant searchable keywords
-- Return ONLY the JSON object, no markdown, no explanation
+FURTHER ANALYSIS (only if image is safe):
 
-Example:
-{
-  "title": "Nike Air Force 1",
-  "description": "White Nike Air Force 1 sneakers in good used condition with minor wear. Still clean and suitable for everyday casual use.",
-  "condition": "Used",
-  "category": "Fashion",
-  "item_type": "Shoes",
-  "brand": "Nike",
-  "authenticity_risks": "Low",
-  "estimated_value_min": 3000,
-  "estimated_value_max": 3800,
-  "tags": ["nike", "sneakers", "shoes", "fashion"]
-}`
+1. Quality checks:
+   - Check for blurry/dark images: set is_blurry_or_dark=true if poor quality
+   - Check for screenshots, watermarks, or stock photos: set is_suspicious_image=true
+
+2. Person/Face check (double-check):
+   - If any person visible (though already checked above), set contains_person=true
+   - person_warning: "This photo contains a person. Please retake without people in frame for a cleaner listing"
+
+3. Product analysis:
+   - Estimate value in Philippine Pesos (PHP)
+   - If cannot estimate (abstract), set both to 0
+   - Be conservative if uncertain
+   - Provide clear, natural description
+
+Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohibited": true, "reason": "..."}. Only proceed with full analysis if the image is completely safe. Return valid JSON only, no markdown.`
 
 	parts = append(parts, map[string]interface{}{
 		"text": prompt,
@@ -286,6 +334,16 @@ Example:
 		_ = os.WriteFile("gemini_error.log", []byte(fmt.Sprintf("JSON parse error: %v\nJSON: %s", err, jsonText)), 0644)
 		log.Printf("[ERROR] JSON parse failed: %v | text: %s", err, jsonText)
 		return nil, fmt.Errorf("failed to parse AI response: %v", err)
+	}
+
+	// CRITICAL: Validate response for safety violations
+	// If the AI returned product details for a prohibited item, override and reject it
+	if violatesProhibition(&result) {
+		log.Printf("⚠️ SAFETY VIOLATION: AI returned product analysis for prohibited item! Forcing rejection.")
+		return &GeminiResponse{
+			Prohibited: true,
+			Reason:     "This item can't be listed. Weapons and firearms are not allowed on this platform.",
+		}, nil
 	}
 
 	// Apply defaults and sanity-checks

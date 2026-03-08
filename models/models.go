@@ -188,15 +188,15 @@ type Product struct {
 
 // ProductCreate represents data for creating a product
 type ProductCreate struct {
-	Title       string      `json:"title" validate:"required,min=2,max=255"`
-	Description string      `json:"description"`
-	Price       *float64    `json:"price,omitempty"` // Optional for barter-only items
-	ImageURLs   StringArray `json:"image_urls,omitempty"`
-	Premium     bool        `json:"premium"`
-	AllowBuying bool        `json:"allow_buying"`
-	BarterOnly  bool        `json:"barter_only"`
-	Location    string      `json:"location,omitempty"`
-	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Title            string      `json:"title" validate:"required,min=2,max=255"`
+	Description      string      `json:"description"`
+	Price            *float64    `json:"price,omitempty"` // Optional for barter-only items
+	ImageURLs        StringArray `json:"image_urls,omitempty"`
+	Premium          bool        `json:"premium"`
+	AllowBuying      bool        `json:"allow_buying"`
+	BarterOnly       bool        `json:"barter_only"`
+	Location         string      `json:"location,omitempty"`
+	Condition        string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	Category         string      `json:"category,omitempty"`
 	Wants            string      `json:"wants,omitempty"`
 	WantedCategories StringArray `json:"wanted_categories,omitempty"`
@@ -546,6 +546,29 @@ type JWTClaims struct {
 	UserID int    `json:"user_id"`
 	Email  string `json:"email"`
 	Exp    int64  `json:"exp"`
+}
+
+// ListingReport represents a report against a product listing for moderation
+type ListingReport struct {
+	ID         int       `json:"id"`
+	ProductID  int       `json:"product_id"`
+	ReporterID int       `json:"reporter_id"`
+	Reason     string    `json:"reason" validate:"required,oneof=wrong_category prohibited_item fake_or_scam inappropriate_photo other"`
+	Details    string    `json:"details,omitempty"` // Optional detailed explanation
+	Status     string    `json:"status" validate:"oneof=pending reviewed"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	// Denormalized fields for display
+	ProductTitle   string `json:"product_title,omitempty"`
+	ReporterName   string `json:"reporter_name,omitempty"`
+	ReporterAvatar string `json:"reporter_avatar,omitempty"`
+}
+
+// ListingReportCreate represents payload to create a listing report
+type ListingReportCreate struct {
+	ProductID int    `json:"product_id" validate:"required"`
+	Reason    string `json:"reason" validate:"required,oneof=wrong_category prohibited_item fake_or_scam inappropriate_photo other"`
+	Details   string `json:"details,omitempty"`
 }
 
 // MarshalJSON ensures image_url is populated for compatibility with frontends expecting a single image.

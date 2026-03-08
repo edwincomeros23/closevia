@@ -254,6 +254,7 @@ func main() {
 	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
 	// Specific routes must come before generic :id route
 	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
+	products.Post("/report", middleware.AuthMiddleware(), productHandler.ReportListing) // Report a listing
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id/comments", commentHandler.GetComments)
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)

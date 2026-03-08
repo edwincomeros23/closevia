@@ -36,6 +36,8 @@ import {
   Grid,
   Avatar,
   ButtonGroup,
+  Select,
+  Textarea,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -481,24 +483,12 @@ const ProductDetail: React.FC = () => {
       return
     }
 
-    if (reportDescription.trim().length < 10) {
-      toast({
-        title: 'Description too short',
-        description: 'Please provide at least 10 characters of description',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-
     try {
       setIsSubmittingReport(true)
-      await api.post('/api/reports', {
-        reported_user_id: product.seller_id,
+      await api.post('/api/products/report', {
         product_id: product.id,
         reason: reportReason,
-        description: reportDescription,
+        details: reportDescription,
       })
 
       toast({
@@ -1054,7 +1044,7 @@ const ProductDetail: React.FC = () => {
                           ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
                           : product.price && product.price > 0
                           ? `₱${product.price.toFixed(2)}`
-                          : 'Est. Value TBD'}
+                          : 'Est. Value Unavailable'}
                       </Text>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
@@ -1892,54 +1882,39 @@ const ProductDetail: React.FC = () => {
           </ModalContent>
         </Modal>
 
-        {/* Report Modal for submitting trader reports */}
+        {/* Report Listing Modal */}
         <Modal isOpen={isReportOpen} onClose={() => setIsReportOpen(false)} size="md">
           <ModalOverlay />
           <ModalContent>
-            <ModalHeader>Report Trader for Policy Violation</ModalHeader>
+            <ModalHeader>Report This Listing</ModalHeader>
             <ModalCloseButton />
             <ModalBody>
               <VStack spacing={4}>
                 <Box w="full">
-                  <Text fontWeight="medium" mb={2}>Reason for Report</Text>
-                  <select
+                  <Text fontWeight="medium" mb={2}>Why are you reporting this listing?</Text>
+                  <Select
                     value={reportReason}
                     onChange={(e) => setReportReason(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      border: '1px solid #cbd5e0',
-                      fontFamily: 'inherit',
-                    }}
+                    placeholder="Select a reason..."
+                    size="md"
                   >
-                    <option value="">Select a reason...</option>
-                    <option value="inappropriate">Inappropriate Behavior</option>
-                    <option value="counterfeit">Counterfeit Items</option>
-                    <option value="spam">Spam</option>
-                    <option value="scam">Scam/Fraud</option>
-                  </select>
+                    <option value="wrong_category">Wrong Category</option>
+                    <option value="prohibited_item">Prohibited Item</option>
+                    <option value="fake_or_scam">Fake or Scam</option>
+                    <option value="inappropriate_photo">Inappropriate Photo</option>
+                    <option value="other">Other</option>
+                  </Select>
                 </Box>
 
                 <Box w="full">
-                  <Text fontWeight="medium" mb={2}>Description</Text>
-                  <textarea
+                  <Text fontWeight="medium" mb={2}>Additional Details (Optional)</Text>
+                  <Textarea
                     value={reportDescription}
                     onChange={(e) => setReportDescription(e.target.value)}
-                    placeholder="Please provide details about your report (minimum 10 characters)"
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      border: '1px solid #cbd5e0',
-                      fontFamily: 'inherit',
-                      minHeight: '100px',
-                      resize: 'vertical',
-                    }}
+                    placeholder="Tell us more about your concern..."
+                    size="md"
+                    minH="100px"
                   />
-                  <Text fontSize="xs" color="gray.500" mt={1}>
-                    {reportDescription.length} characters
-                  </Text>
                 </Box>
               </VStack>
             </ModalBody>
@@ -1959,7 +1934,7 @@ const ProductDetail: React.FC = () => {
                   isLoading={isSubmittingReport}
                   loadingText="Submitting..."
                 >
-                  Submit Report
+                  Report Listing
                 </Button>
               </HStack>
             </Box>
@@ -2005,7 +1980,7 @@ const ProductDetail: React.FC = () => {
                         ? `₱${(product.estimated_value_min).toLocaleString()}–₱${(product.estimated_value_max).toLocaleString()}`
                         : product.price && product.price > 0
                         ? `₱${product.price.toFixed(2)}`
-                        : 'TBD'}
+                        : 'Est. Value Unavailable'}
                     </Text>
                   </VStack>
                 </HStack>

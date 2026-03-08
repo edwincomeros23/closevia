@@ -26,6 +26,12 @@ import {
   Select,
   Spinner,
   Divider,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  Skeleton,
+  SkeletonText,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
 import { MdEdit } from 'react-icons/md'
@@ -69,6 +75,30 @@ import { PRODUCT_CATEGORIES } from '../utils/categories'
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const CONDITION_OPTIONS = ['New', 'Like New', 'Good', 'Used', 'For Parts']
+const MAX_DAILY_AI_REQUESTS = 100
+
+// ── Daily Budget Helpers ──────────────────────────────────────────────────
+
+const getDailyRequestKey = (): string => {
+  const today = new Date().toISOString().split('T')[0]
+  return `ai_requests_${today}`
+}
+
+const getCurrentDailyCount = (): number => {
+  const key = getDailyRequestKey()
+  const stored = localStorage.getItem(key)
+  return stored ? parseInt(stored, 10) : 0
+}
+
+const incrementDailyCount = (): void => {
+  const key = getDailyRequestKey()
+  const current = getCurrentDailyCount()
+  localStorage.setItem(key, String(current + 1))
+}
+
+const canMakeAIRequest = (): boolean => {
+  return getCurrentDailyCount() < MAX_DAILY_AI_REQUESTS
+}
 
 const PROHIBITED_PATTERNS = [
   /\b(gun|rifle|pistol|shotgun|firearm|ammunition|ammo|bomb|explosive|grenade|rocket|missile|landmine)\b/gi,
@@ -139,6 +169,10 @@ const AddProduct: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [aiDone, setAiDone] = useState(false)
+  
+  // AI Analysis blocking/warning state
+  const [aiBlockingError, setAiBlockingError] = useState<string | null>(null) // Blocks form submission
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]) // Just warnings
 
   const [titleLength, setTitleLength] = useState(0)
   const [descriptionLength, setDescriptionLength] = useState(0)
@@ -204,13 +238,26 @@ const AddProduct: React.FC = () => {
   // ── AI Generation ─────────────────────────────────────────────────────────
 
   const triggerAI = useCallback(async (images: File[]) => {
+    // Check daily request limit
+    if (!canMakeAIRequest()) {
+      toast({
+        title: '⏱️ Daily limit reached',
+        description: 'AI analysis limit reached for today. Try again tomorrow.',
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+        position: 'top-right',
+      })
+      return
+    }
+
     if (aiTriggeredRef.current || isGenerating) return
     aiTriggeredRef.current = true
     setIsGenerating(true)
 
     toast({
-      title: '🔍 Analyzing image...',
-      description: 'AI is detecting product details automatically.',
+      title: '🔍 Analyzing images...',
+      description: 'AI is scanning all photos for product details and checking image quality.',
       status: 'info',
       duration: 3000,
       isClosable: true,
@@ -218,12 +265,83 @@ const AddProduct: React.FC = () => {
     })
 
     try {
+      // Send all images in a batch (single API request)
       const fd = new FormData()
-      images.slice(0, 3).forEach(f => fd.append('images', f))
+      images.forEach(f => fd.append('images', f))
+      
       const response = await api.post('/api/products/generate-details', fd)
       const data = response.data
       if (data.success && data.data) {
         const d = data.data
+        
+        // SAFETY CHECK: Handle top-level prohibition first (most critical)
+        if (d.prohibited) {
+          // Increment daily counter ONLY for safety check rejections (still count as a request)
+          incrementDailyCount()
+          
+          setIsGenerating(false)
+          aiTriggeredRef.current = false
+          
+          // Clear the uploaded images since they contain prohibited content
+          setUploadedImages([])
+          setImagePreviewUrls([])
+          
+          // Show prominent error message
+          toast({
+            title: '❌ Cannot list this item',
+            description: d.reason || 'This item cannot be listed for trading.',
+            status: 'error',
+            duration: 8000,
+            isClosable: true,
+            position: 'top-right',
+          })
+          
+          // Set blocking error to show it on Step 1
+          setAiBlockingError(d.reason || 'This item cannot be listed for trading.')
+          
+          // Stay on Step 1 - do NOT navigate to Step 2
+          return
+        }
+        
+        // Increment daily counter for successful analysis
+        incrementDailyCount()
+        
+        const warnings: string[] = []
+        
+        // Check for secondary blocking issues (older field structure)
+        if (d.is_prohibited) {
+          setAiBlockingError(d.prohibited_reason || 'This item cannot be listed for trading.')
+          setIsGenerating(false)
+          toast({
+            title: '❌ Item cannot be listed',
+            description: d.prohibited_reason || 'This item cannot be listed for trading.',
+            status: 'error',
+            duration: 5000,
+            isClosable: true,
+            position: 'top-right',
+          })
+          return
+        }
+        
+        // Check for person warning
+        if (d.contains_person) {
+          warnings.push(d.person_warning || 'This photo contains a person. Please retake without people in frame.')
+        }
+        
+        // Check for suspicious image warning
+        if (d.is_suspicious_image) {
+          const reason = d.suspicious_reason || 'This looks like a screenshot or stock photo'
+          warnings.push(`⚠️ ${reason}: Original product photos work better and get better engagement!`)
+        }
+        
+        // Check for quality warning
+        if (d.is_blurry_or_dark) {
+          warnings.push(d.quality_warning || 'This photo is too dark or blurry. Better lighting and focus will help buyers see your item clearly.')
+        }
+        
+        setAiWarnings(warnings)
+        
+        // Fill form with AI data
         setFormData(prev => ({
           ...prev,
           title: d.title || prev.title,
@@ -240,19 +358,35 @@ const AddProduct: React.FC = () => {
         if (d.title) setTitleLength(d.title.length)
         if (d.description) setDescriptionLength(d.description.length)
         setAiDone(true)
-        toast({
-          title: '✨ AI analysis complete!',
-          description: 'Product fields have been auto-filled. Review and edit as needed.',
-          status: 'success',
-          duration: 4000,
-          isClosable: true,
-          position: 'top-right',
-        })
+        
+        if (warnings.length > 0) {
+          toast({
+            title: '⚠️ AI completed with notes',
+            description: warnings[0],
+            status: 'warning',
+            duration: 5000,
+            isClosable: true,
+            position: 'top-right',
+          })
+        } else {
+          toast({
+            title: '✨ AI analysis complete!',
+            description: 'Product fields have been auto-filled. Review and edit as needed.',
+            status: 'success',
+            duration: 4000,
+            isClosable: true,
+            position: 'top-right',
+          })
+        }
       } else {
         throw new Error(data.error || 'AI generation failed')
       }
     } catch (err: any) {
       aiTriggeredRef.current = false // allow retry
+      // Only increment daily counter on failures if we haven't already
+      // (safety rejections already increment above)
+      incrementDailyCount()
+      
       toast({
         title: 'AI analysis failed',
         description: err?.response?.data?.error || err.message || 'Could not analyze image. You can fill in details manually.',
@@ -266,12 +400,7 @@ const AddProduct: React.FC = () => {
     }
   }, [isGenerating, toast])
 
-  // Auto-trigger AI when first image is uploaded (once per upload session)
-  useEffect(() => {
-    if (uploadedImages.length >= 1 && !aiTriggeredRef.current) {
-      triggerAI(uploadedImages)
-    }
-  }, [uploadedImages]) // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Effects ───────────────────────────────────────────────────────────────
 
   // Scroll to top on step change
   useEffect(() => {
@@ -312,6 +441,12 @@ const AddProduct: React.FC = () => {
         return combined.slice(0, 8)
       })
       setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
+      
+      // Clear AI errors when new images are uploaded
+      setAiBlockingError(null)
+      setAiWarnings([])
+      aiTriggeredRef.current = false
+      setAiDone(false)
     }
     processFiles()
   }, [uploadedImages.length, toast])
@@ -319,11 +454,11 @@ const AddProduct: React.FC = () => {
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
     setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
-    // Allow re-triggering AI if all images removed
-    if (uploadedImages.length <= 1) {
-      aiTriggeredRef.current = false
-      setAiDone(false)
-    }
+    // Clear AI errors and allow re-triggering when images are removed
+    setAiBlockingError(null)
+    setAiWarnings([])
+    aiTriggeredRef.current = false
+    setAiDone(false)
   }
 
   const handleVideoUpload = useCallback((files: FileList | null) => {
@@ -366,8 +501,19 @@ const AddProduct: React.FC = () => {
   // ── Validation ────────────────────────────────────────────────────────────
 
   const canProceed = (): boolean => {
+    // If there's a blocking AI error, cannot proceed
+    if (aiBlockingError) {
+      return false
+    }
+    
+    // Cannot proceed if daily AI request limit reached on step 1
+    if (currentStep === 1 && uploadedImages.length >= 1 && !canMakeAIRequest()) {
+      return false
+    }
+    
     switch (currentStep) {
       case 1:
+        // Just need at least 1 image - always enabled for navigation
         return uploadedImages.length >= 1
       case 2:
         return (
@@ -468,6 +614,32 @@ const AddProduct: React.FC = () => {
         )}
       </HStack>
 
+      {/* Safety Rejection Alert - Prominent */}
+      {aiBlockingError && (
+        <Alert
+          status="error"
+          variant="solid"
+          flexDirection="column"
+          alignItems="flex-start"
+          justifyContent="flex-start"
+          textAlign="left"
+          borderRadius="lg"
+          py={4}
+          px={4}
+          bg="red.600"
+          color="white"
+        >
+          <HStack align="flex-start" w="full" mb={2}>
+            <AlertIcon boxSize={6} mt={0} />
+            <Text fontSize="sm" fontWeight="bold">Item Cannot Be Listed</Text>
+          </HStack>
+          <Text fontSize="sm" ml={8}>{aiBlockingError}</Text>
+          <Text fontSize="xs" ml={8} mt={2} opacity={0.9}>
+            Please upload a different photo and try again.
+          </Text>
+        </Alert>
+      )}
+
       {/* Streamlined Drop Zone - Balanced Height, Mobile Responsive */}
       <Box
         border="2px dashed"
@@ -530,7 +702,7 @@ const AddProduct: React.FC = () => {
           </HStack>
 
           {/* Upload Stats & Add Button - Inline */}
-          <HStack justify="space-between" align="center">
+          <HStack justify="space-between" align="center" w="full">
             <Text fontSize="sm" fontWeight="semibold" color="gray.600">
               {uploadedImages.length}/8 uploaded
             </Text>
@@ -548,6 +720,48 @@ const AddProduct: React.FC = () => {
               </Button>
             )}
           </HStack>
+        </VStack>
+      )}
+      
+      {/* AI Analysis Status - Loading, Errors, & Warnings */}
+      {isGenerating && (
+        <VStack spacing={2} align="stretch" w="full" bg="blue.50" p={4} borderRadius="lg" border="1px solid" borderColor="blue.200">
+          <HStack spacing={2}>
+            <Spinner size="sm" color="blue.500" />
+            <Text fontSize="sm" fontWeight="semibold" color="blue.700">
+              🔍 Analyzing images...
+            </Text>
+          </HStack>
+          <Text fontSize="xs" color="blue.600">
+            AI is checking image quality, detecting prohibited items, and extracting product details...
+          </Text>
+        </VStack>
+      )}
+      
+      {aiBlockingError && (
+        <Alert status="error" borderRadius="lg" variant="left-accent">
+          <AlertIcon />
+          <Box flex="1">
+            <AlertTitle fontSize="sm" fontWeight="semibold">Cannot list this item</AlertTitle>
+            <AlertDescription fontSize="sm" mt={1}>
+              {aiBlockingError}
+            </AlertDescription>
+          </Box>
+        </Alert>
+      )}
+      
+      {aiWarnings.length > 0 && (
+        <VStack spacing={2} align="stretch" w="full">
+          {aiWarnings.map((warning, idx) => (
+            <Alert key={idx} status="warning" borderRadius="lg" variant="left-accent">
+              <AlertIcon />
+              <Box flex="1">
+                <AlertDescription fontSize="sm">
+                  {warning}
+                </AlertDescription>
+              </Box>
+            </Alert>
+          ))}
         </VStack>
       )}
 
@@ -610,8 +824,14 @@ const AddProduct: React.FC = () => {
         {/* Collapsed View */}
         {!expandProductDetails ? (
           <HStack justify="space-between" align="center" spacing={2}>
-            {/* AI Badges */}
-            {aiDone ? (
+            {/* AI Badges or Loading Skeleton */}
+            {isGenerating && !aiDone ? (
+              <HStack spacing={2} flex={1} minW={0}>
+                <Skeleton height="20px" width="60px" borderRadius="md" />
+                <Skeleton height="20px" width="80px" borderRadius="md" />
+                <Skeleton height="20px" width="70px" borderRadius="md" />
+              </HStack>
+            ) : aiDone ? (
               <HStack spacing={1} flex={1} minW={0}>
                 <Text fontSize="8px" fontWeight="bold" color="purple.600">✨</Text>
                 <Badge fontSize="7px" colorScheme="purple" py={0.5} noOfLines={1}>
@@ -650,12 +870,27 @@ const AddProduct: React.FC = () => {
           </HStack>
         ) : (
           /* Expanded View */
-          <VStack spacing={2} align="stretch" onClick={e => e.stopPropagation()}>
-            {/* Close/Collapse hint */}
-            <HStack justify="space-between" align="center">
+          <VStack spacing={2} align="stretch">
+            {/* Close/Collapse hint - clicking these closes the dropdown */}
+            <HStack justify="space-between" align="center" onClick={() => setExpandProductDetails(false)}>
               <Text fontSize="xs" fontWeight="bold" color="gray.700">Edit Details</Text>
               <Text fontSize="lg" color="gray.500" cursor="pointer">▲</Text>
             </HStack>
+
+            {/* AI Analyzing Indicator */}
+            {isGenerating && !aiDone && (
+              <Alert
+                status="info"
+                fontSize="xs"
+                borderRadius="md"
+                bg="blue.50"
+                borderColor="blue.200"
+                borderWidth="1px"
+              >
+                <Spinner size="xs" mr={2} color="blue.500" />
+                <Text color="blue.700">AI is analyzing your photos...</Text>
+              </Alert>
+            )}
 
             {/* Product Name */}
             <FormControl isRequired>
@@ -984,11 +1219,15 @@ const AddProduct: React.FC = () => {
           <Text fontSize="xs" fontWeight="medium" opacity={0.9} mb={1}>
             Estimated Value
           </Text>
-          <Heading fontSize="3xl" fontWeight="bold">
-            ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
-          </Heading>
+          {isGenerating && !aiDone ? (
+            <Skeleton height="40px" borderRadius="md" />
+          ) : (
+            <Heading fontSize="3xl" fontWeight="bold">
+              ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
+            </Heading>
+          )}
           <Text fontSize="xs" opacity={0.85} mt={2}>
-            Based on AI analysis of product condition and market data
+            {isGenerating && !aiDone ? 'Analyzing your product...' : 'Based on AI analysis of product condition and market data'}
           </Text>
         </Box>
 
@@ -1081,6 +1320,23 @@ const AddProduct: React.FC = () => {
     )
   }
 
+  // ── Navigation ──────────────────────────────────────────────────────────
+
+  const handleNextClick = useCallback(() => {
+    // If on step 1 with images, navigate to step 2 first
+    if (currentStep === 1 && uploadedImages.length > 0) {
+      // Move to step 2 immediately (instant, snappy navigation)
+      setCurrentStep(2)
+      // Then trigger AI analysis in the background
+      setTimeout(() => {
+        triggerAI(uploadedImages)
+      }, 0)
+      return
+    }
+    // Otherwise, proceed to next step
+    setCurrentStep(s => s + 1)
+  }, [currentStep, uploadedImages, triggerAI])
+
   const stepLabels = [
     { number: 1, title: 'Upload Media', icon: '📸' },
     { number: 2, title: 'Details & Preferences', icon: '✏️' },
@@ -1135,15 +1391,17 @@ const AddProduct: React.FC = () => {
 
             {currentStep < TOTAL_STEPS ? (
               <Button
-                rightIcon={<ArrowForwardIcon />}
-                onClick={() => setCurrentStep(s => s + 1)}
+                rightIcon={isGenerating ? <Spinner size="sm" /> : <ArrowForwardIcon />}
+                onClick={handleNextClick}
                 isDisabled={!canProceed()}
+                isLoading={isGenerating && currentStep === 1}
+                loadingText={isGenerating ? 'Analyzing...' : 'Next'}
                 colorScheme="brand"
                 size={{ base: "sm", sm: "md" }}
                 fontSize={{ base: "xs", sm: "sm" }}
                 minH={{ base: "36px", sm: "40px" }}
               >
-                Next
+                {!isGenerating && !canMakeAIRequest() && currentStep === 1 ? 'Limit Reached' : 'Next'}
               </Button>
             ) : (
               <Button

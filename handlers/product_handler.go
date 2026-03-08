@@ -1419,7 +1419,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	})
 }
 
-// GenerateProductDetailsWithAI analyzes product images using Gemini AI and returns structured product details
+// GenerateProductDetailsWithAI analyzes product images using Groq AI and returns structured product details
 func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -1449,7 +1449,7 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 		}
 	}
 
-	result, err := services.GenerateProductDetails(files)
+	result, err := services.AnalyzeProductWithGroq(files)
 	if err != nil {
 		errMsg := err.Error()
 		log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
@@ -1463,5 +1463,75 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    result,
+	})
+}
+
+// ReportListing handles reporting a product listing for moderation
+func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	// Parse request body
+	var req models.ListingReportCreate
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid request body",
+		})
+	}
+
+	// Validate reason
+	validReasons := map[string]bool{
+		"wrong_category":      true,
+		"prohibited_item":     true,
+		"fake_or_scam":        true,
+		"inappropriate_photo": true,
+		"other":               true,
+	}
+	if !validReasons[req.Reason] {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid report reason",
+		})
+	}
+
+	// Verify product exists
+	var productID int
+	err := h.db.QueryRow(`SELECT id FROM products WHERE id = $1`, req.ProductID).Scan(&productID)
+	if err == sql.ErrNoRows {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
+		})
+	} else if err != nil {
+		log.Printf("Error checking product: %v", err)
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Database error",
+		})
+	}
+
+	// Insert report into database
+	_, err = h.db.Exec(`
+		INSERT INTO listing_reports (product_id, reporter_id, reason, details, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+	`, req.ProductID, userID, req.Reason, req.Details, "pending")
+
+	if err != nil {
+		log.Printf("Error creating listing report: %v", err)
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to submit report",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Report submitted successfully",
 	})
 }
