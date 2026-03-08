@@ -29,13 +29,14 @@ type GeminiResponse struct {
 
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
 	apiKey := strings.TrimSpace(os.Getenv("GEMINI_API_KEY"))
+	// Strip surrounding quotes in case they were accidentally included in Render env var value
+	apiKey = strings.Trim(apiKey, `"'`)
 	if apiKey == "" {
-		return nil, errors.New("GEMINI_API_KEY environment variable not set")
+		return nil, errors.New("GEMINI_API_KEY environment variable not set or empty")
 	}
 
-	// Log masked key info so we can confirm it's loaded at runtime
-	masked := apiKey[:4] + "..." + apiKey[len(apiKey)-4:]
-	log.Printf("Gemini API key loaded: %s (length: %d)", masked, len(apiKey))
+	// Diagnostic log: length + first char helps detect invisible/junk leading characters
+	log.Printf("[Gemini] Key loaded: length=%d, starts_with=%q", len(apiKey), string(apiKey[0]))
 
 	if len(images) < 1 {
 		return nil, errors.New("at least 1 image required")
