@@ -49,7 +49,7 @@ import {
   Input,
   useToast,
 } from '@chakra-ui/react'
-import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend } from 'react-icons/fi'
+import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera } from 'react-icons/fi'
 import { FaHeart } from 'react-icons/fa'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -128,6 +128,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const [reviewRating, setReviewRating] = useState(0)
   const [reviewComment, setReviewComment] = useState('')
   const [isSubmittingReview, setIsSubmittingReview] = useState(false)
+  
+  // Trade-specific review state
+  const [tradeIdForReview, setTradeIdForReview] = useState<number | null>(null)
+  const [reviewPhotoFile, setReviewPhotoFile] = useState<File | null>(null)
+  const [reviewPhotoPreview, setReviewPhotoPreview] = useState<string | null>(null)
+  const [completedTradesNeedingReview, setCompletedTradesNeedingReview] = useState<Set<number>>(new Set())
+  const reviewPhotoInputRef = useRef<HTMLInputElement | null>(null)
   
   // Saved/wishlist state for product cards
   const [savedProductIds, setSavedProductIds] = useState<Set<number>>(new Set())
@@ -490,9 +497,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     fetchTradeHistory()
   }, [id])
 
+  // Filter products to only show available items in the Products tab
+  const availableProducts = useMemo(() => {
+    return products.filter(p => p.status === 'available')
+  }, [products])
+
   // Sort products based on selected option
   const sortedProducts = useMemo(() => {
-    const sorted = [...products]
+    const sorted = [...availableProducts]
     switch(sortBy) {
       case 'price_asc':
         return sorted.sort((a, b) => (a.price || 0) - (b.price || 0))
@@ -502,7 +514,95 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       default:
         return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     }
-  }, [products, sortBy])
+  }, [availableProducts, sortBy])
+
+  // Merge trade history with reviews for unified "Trade Activity" feed
+  const mergedTradeActivity = useMemo(() => {
+    const completedTrades = userTrades.filter(t => t.status === 'completed' || t.completed_at)
+    
+    // Map reviews to their corresponding trades if possible
+    const trades = completedTrades.map(trade => ({
+      ...trade,
+      type: 'trade',
+      review: reviews.find(r => r.trade_id === trade.id || r.transaction_id === trade.id) || null
+    }))
+    
+    // Sort by most recent first
+    return trades.sort((a, b) => {
+      const dateA = new Date(a.completed_at || a.created_at).getTime()
+      const dateB = new Date(b.completed_at || b.created_at).getTime()
+      return dateB - dateA
+    })
+  }, [userTrades, reviews])
+
+  // Handle canceling a trade and reverting item to Available status
+  const handleCancelTrade = async (tradeId: number) => {
+    try {
+      await api.post(`/api/trades/${tradeId}/cancel`)
+      
+      // Revert associated products back to 'available' status
+      setProducts(prev => 
+        prev.map(p => {
+          // Find if this product was part of the canceled trade
+          // This assumes trade.items contains product info
+          return p.status === 'locked' ? { ...p, status: 'available' } : p
+        })
+      )
+      
+      // Remove trade from userTrades
+      setUserTrades(prev => prev.filter(t => t.id !== tradeId))
+      
+      toast({
+        title: 'Trade canceled',
+        description: 'Item status has been reverted to Available',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    } catch (err) {
+      toast({
+        title: 'Failed to cancel trade',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    }
+  }
+
+  // Handle photo upload for trade reviews
+  const handleReviewPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setReviewPhotoFile(f)
+    const url = URL.createObjectURL(f)
+    setReviewPhotoPreview(url)
+  }
+
+  const clearReviewPhoto = () => {
+    setReviewPhotoFile(null)
+    if (reviewPhotoPreview) URL.revokeObjectURL(reviewPhotoPreview)
+    setReviewPhotoPreview(null)
+    if (reviewPhotoInputRef.current) reviewPhotoInputRef.current.value = ''
+  }
+
+  // Detect completed trades that need reviews from current user
+  useEffect(() => {
+    if (!currentUser) return
+    
+    const tradesNeedingReview = new Set<number>()
+    mergedTradeActivity.forEach(trade => {
+      // Check if trade is completed and current user hasn't reviewed it yet
+      if (trade.status === 'completed' && !trade.review) {
+        // Only flag if current user is the one who should review
+        // (typically the receiver of the item)
+        const isReceiver = currentUser.id === trade.buyer_id || currentUser.id === trade.receiver_id
+        if (isReceiver) {
+          tradesNeedingReview.add(trade.id)
+        }
+      }
+    })
+    setCompletedTradesNeedingReview(tradesNeedingReview)
+  }, [mergedTradeActivity, currentUser])
 
   const handleSendMessage = () => {
     // In a real app, this would open a chat with the user
@@ -553,38 +653,44 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
     setIsSubmittingReview(true)
     try {
-      const payload = {
-        user_id: Number(id),
+      const payload: any = {
         rating: reviewRating,
-        comment: reviewComment.trim(),
+        comment: reviewComment.trim() || 'No comment provided',
+        trade_id: tradeIdForReview,
       }
-
-      await api.post(`/api/users/${id}/reviews`, payload)
-
-      // Refresh reviews list; if it fails, fall back to optimistic append to avoid duplicates
-      try {
-        const response = await api.get(`/api/users/${id}/reviews`)
-        setReviews(response.data?.data || response.data || [])
-      } catch (fetchErr) {
-        const newReview = {
-          id: Date.now(),
-          reviewer: currentUser?.name || 'Anonymous',
-          avatar: currentUser?.profile_picture || '',
-          rating: reviewRating,
-          comment: reviewComment.trim(),
-          date: new Date().toISOString().split('T')[0],
-        }
-        setReviews(prev => [newReview, ...prev])
+      
+      // Upload photo if one was selected
+      if (reviewPhotoFile) {
+        const fd = new FormData()
+        fd.append('image', reviewPhotoFile)
+        const uploadRes = await api.post('/api/users/review-photo', fd)
+        const photoUrl = uploadRes.data?.data?.url || uploadRes.data?.data?.path || uploadRes.data?.url
+        if (photoUrl) payload.photo_url = photoUrl
       }
-
-      // Reset form
-      setReviewRating(0)
-      setReviewComment('')
-      onClose()
-
+      
+      // Submit review
+      const endpoint = tradeIdForReview 
+        ? `/api/trades/${tradeIdForReview}/review`
+        : `/api/users/${id}/reviews`
+      
+      const reviewRes = await api.post(endpoint, payload)
+      
+      // Add review to local state
+      const newReview = reviewRes.data?.data || reviewRes.data
+      setReviews(prev => [newReview, ...prev])
+      
+      // Remove from trades needing review
+      if (tradeIdForReview) {
+        setCompletedTradesNeedingReview(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(tradeIdForReview)
+          return newSet
+        })
+      }
+      
       toast({
-        title: 'Review submitted',
-        description: 'Thank you for your feedback!',
+        title: 'Review submitted!',
+        description: 'Your review has been posted and is now visible on their profile.',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -611,11 +717,16 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         })
       }
     } finally {
+      setReviewRating(0)
+      setReviewComment('')
+      clearReviewPhoto()
+      setTradeIdForReview(null)
       setIsSubmittingReview(false)
+      onClose()
     }
   }
 
-  const handleOpenReviewModal = () => {
+  const handleOpenReviewModal = (tradeId?: number) => {
     const token = localStorage.getItem('clovia_token')
     if (!currentUser || !token) {
       toast({
@@ -630,6 +741,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     }
     setReviewRating(0)
     setReviewComment('')
+    clearReviewPhoto()
+    setTradeIdForReview(tradeId || null)
     onOpen()
   }
 
@@ -842,26 +955,24 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   )}
                 </Box>
                 
-                <Box bg="gray.50" p={4} borderRadius="md" minW="250px">
-                  <VStack spacing={3} align="stretch">
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Member Since</Text>
-                      <Text fontWeight="medium">{new Date(user.created_at).toLocaleDateString()}</Text>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Department</Text>
-                      <Text fontWeight="medium">{user.department || 'Unknown'}</Text>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Items for Sale</Text>
-                      <Text fontWeight="medium">{stats.active}</Text>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Total Listings</Text>
-                      <Text fontWeight="medium">{stats.total}</Text>
-                    </HStack>
-                  </VStack>
-                </Box>
+                <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }} minW={{ base: '100%', md: '280px' }}>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Member Since</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Items for Sale</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Department</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Total Listings</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
+                  </Box>
+                </SimpleGrid>
               </Flex>
             </CardBody>
           </Card>
@@ -870,13 +981,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           <Tabs variant="enclosed" isLazy>
             <TabList borderBottom="1px" borderColor="gray.200" bg="white" px={4}>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Products ({stats.active})
+                Available Items ({sortedProducts.length})
               </Tab>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Trade History ({userTrades.length})
-              </Tab>
-              <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Reviews ({reviews.length})
+                Trade Activity ({mergedTradeActivity.length})
               </Tab>
             </TabList>
 
@@ -990,13 +1098,37 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 )}
               </TabPanel>
 
-              {/* Trade History Tab */}
+              {/* Trade Activity Tab - Combined Trade History & Reviews */}
               <TabPanel p={0}>
                 <Box p={4} borderBottom="1px" borderColor="gray.100">
-                  <Heading size="md" mb={2}>Trade History</Heading>
-                  <Text color="gray.500" fontSize="sm">
-                    {userTrades.length} completed trades
-                  </Text>
+                  <HStack justify="space-between" align="flex-start" flexWrap="wrap">
+                    <Box>
+                      <Heading size="md" mb={1}>Trade Activity</Heading>
+                      <HStack spacing={1} mb={2}>
+                        <Icon as={FiStar} color="yellow.400" boxSize={5} />
+                        <Text fontSize="xl" fontWeight="bold">
+                          {displayRating.toFixed(1)}
+                          <Text as="span" fontSize="md" fontWeight="normal" color="gray.600" ml={1}>
+                            ({displayTotalReviews} reviews)
+                          </Text>
+                        </Text>
+                      </HStack>
+                      <Text color="green.600" fontSize="sm">
+                        {Math.round(displayPositivePercent)}% positive feedback
+                      </Text>
+                    </Box>
+                    
+                    {!(currentUser && Number(id) === currentUser.id) && (
+                      <Button 
+                        colorScheme="brand" 
+                        size="sm" 
+                        onClick={() => handleOpenReviewModal()}
+                        leftIcon={<Icon as={FiStar} />}
+                      >
+                        Leave a Review
+                      </Button>
+                    )}
+                  </HStack>
                 </Box>
                 
                 {tradesLoading ? (
@@ -1005,20 +1137,35 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   </Center>
                 ) : tradesError ? (
                   <Center p={10}>
-                    <Text color="red.500">Failed to load trade history</Text>
+                    <Text color="red.500">Failed to load trade activity</Text>
                   </Center>
-                ) : userTrades.length === 0 ? (
+                ) : mergedTradeActivity.length === 0 ? (
                   <Center p={10}>
-                    <Text color="gray.500">No trade history yet.</Text>
+                    <VStack>
+                      <Text color="gray.500">No completed trades yet.</Text>
+                      {!(currentUser && Number(id) === currentUser.id) && (
+                        <Button 
+                          colorScheme="brand" 
+                          variant="outline" 
+                          size="sm" 
+                          mt={2}
+                          onClick={() => handleOpenReviewModal()}
+                        >
+                          Be the first to trade
+                        </Button>
+                      )}
+                    </VStack>
                   </Center>
                 ) : (
                   <Box>
-                    {userTrades.map((trade, index) => {
+                    {mergedTradeActivity.map((activity, index) => {
+                      const trade = activity
+                      const review = activity.review
                       const isBuyer = currentUser && trade.buyer_id === currentUser.id
                       const counterpartName = isBuyer ? trade.seller_name : trade.buyer_name
                       const completedDate = trade.completed_at 
-                        ? new Date(trade.completed_at).toLocaleDateString()
-                        : new Date(trade.created_at).toLocaleDateString()
+                        ? new Date(trade.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : new Date(trade.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                       
                       // Get first product image from trade items
                       const firstItem = trade.items && trade.items.length > 0 ? trade.items[0] : null
@@ -1029,11 +1176,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         <Box 
                           key={trade.id} 
                           p={4} 
-                          borderBottom={index < userTrades.length - 1 ? '1px' : 'none'} 
-                          borderColor="gray.100"
+                          borderBottom={index < mergedTradeActivity.length - 1 ? '1px' : 'none'} 
+                          borderColor="gray.200"
+                          borderLeftWidth="4px"
+                          borderLeftColor={review ? 'yellow.300' : 'gray.300'}
                           _hover={{ bg: 'gray.50' }}
+                          bg="white"
                         >
-                          <HStack spacing={4} align="start">
+                          {/* Trade Card Header */}
+                          <HStack spacing={4} align="start" mb={review ? 4 : 0}>
                             <Box 
                               w="60px" 
                               h="60px" 
@@ -1053,8 +1204,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                             </Box>
                             
                             <Box flex="1">
-                              <HStack justify="space-between" mb={1}>
-                                <Text fontWeight="medium">{productTitle}</Text>
+                              <HStack justify="space-between" mb={1} flexWrap="wrap">
+                                <Text fontWeight="semibold" fontSize="md">{productTitle}</Text>
                                 <Text fontSize="sm" color="gray.500">{completedDate}</Text>
                               </HStack>
                               
@@ -1065,191 +1216,192 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                 }
                               </Text>
                               
-                              <HStack spacing={2}>
-                                <Badge colorScheme="green" variant="subtle" fontSize="xs">
-                                  Completed
+                              <HStack spacing={2} align="center">
+                                <Badge colorScheme="green" variant="solid" fontSize="xs">
+                                  ✓ Completed
                                 </Badge>
-                                <Text fontSize="xs" color="gray.500">
-                                  with {counterpartName || 'User'}
+                                <Text fontSize="xs" color="gray.600">
+                                  with <Text as="span" fontWeight="medium">{counterpartName || 'User'}</Text>
                                 </Text>
                               </HStack>
                             </Box>
                           </HStack>
+
+                          {/* Review/Rating Section if exists */}
+                          {review && (
+                            <Box 
+                              pl={20}
+                              pt={3}
+                              borderTopWidth="1px"
+                              borderTopColor="gray.200"
+                              mt={3}
+                            >
+                              <HStack spacing={3} mb={2} align="start">
+                                <Box>
+                                  <HStack spacing={1} mb={1}>
+                                    {[...Array(5)].map((_, i) => (
+                                      <Icon 
+                                        key={i} 
+                                        as={FiStar} 
+                                        color={i < review.rating ? 'yellow.400' : 'gray.300'} 
+                                        boxSize={4}
+                                      />
+                                    ))}
+                                    <Text fontSize="sm" fontWeight="bold" color="gray.800" ml={2}>
+                                      {review.rating}/5 Rating
+                                    </Text>
+                                  </HStack>
+                                  <Text fontSize="xs" color="gray.500" mb={2}>
+                                    {review.reviewer || 'You'} - {review.date}
+                                  </Text>
+                                  {review.comment && (
+                                    <Text fontSize="sm" color="gray.700" mb={3}>
+                                      {review.comment}
+                                    </Text>
+                                  )}
+                                  {!review.comment && (
+                                    <Text fontSize="sm" color="gray.500" mb={3} fontStyle="italic">
+                                      No comment provided
+                                    </Text>
+                                  )}
+                                  
+                                  {/* Photo Display */}
+                                  {review.photo_url ? (
+                                    <Box mb={3} borderRadius="md" overflow="hidden">
+                                      <Image
+                                        src={review.photo_url}
+                                        alt="Review photo"
+                                        maxH="200px"
+                                        w="100%"
+                                        objectFit="cover"
+                                        fallbackSrc="/placeholder-item.jpg"
+                                      />
+                                    </Box>
+                                  ) : (
+                                    <Box 
+                                      mb={3}
+                                      p={3}
+                                      textAlign="center"
+                                      bg="gray.100"
+                                      borderRadius="md"
+                                      border="1px dashed"
+                                      borderColor="gray.300"
+                                    >
+                                      <Icon as={FiCamera} boxSize={5} color="gray.400" mb={1} />
+                                      <Text fontSize="xs" color="gray.500">
+                                        No photo attached
+                                      </Text>
+                                    </Box>
+                                  )}
+                                  
+                                  {/* Show existing reply if any */}
+                                  {review.reply && (
+                                    <Box 
+                                      mt={2} 
+                                      pl={3} 
+                                      borderLeft="2px" 
+                                      borderColor="brand.300" 
+                                      bg="brand.50" 
+                                      p={2} 
+                                      borderRadius="md"
+                                    >
+                                      <HStack spacing={1} mb={1}>
+                                        <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
+                                        <Text fontSize="xs" fontWeight="semibold" color="brand.700">
+                                          {review.reply_author || user?.name || 'Seller'} replied
+                                        </Text>
+                                      </HStack>
+                                      <Text fontSize="xs" color="gray.700">
+                                        {review.reply}
+                                      </Text>
+                                    </Box>
+                                  )}
+
+                                  {/* Reply button - only show if it's your profile and there's no reply yet */}
+                                  {currentUser && !review.reply && (
+                                    <Box mt={2}>
+                                      {replyingTo === review.id ? (
+                                        <VStack align="stretch" spacing={2}>
+                                          <Textarea
+                                            placeholder="Write your reply..."
+                                            value={replyText}
+                                            onChange={(e) => setReplyText(e.target.value)}
+                                            size="sm"
+                                            rows={2}
+                                          />
+                                          <HStack>
+                                            <Button
+                                              size="xs"
+                                              colorScheme="brand"
+                                              onClick={() => handleReplyToReview(review.id)}
+                                              isLoading={isSubmittingReply}
+                                              leftIcon={<Icon as={FiMessageSquare} />}
+                                            >
+                                              Post Reply
+                                            </Button>
+                                            <Button
+                                              size="xs"
+                                              variant="ghost"
+                                              onClick={() => {
+                                                setReplyingTo(null)
+                                                setReplyText('')
+                                              }}
+                                            >
+                                              Cancel
+                                            </Button>
+                                          </HStack>
+                                        </VStack>
+                                      ) : (
+                                        <Button
+                                          size="xs"
+                                          variant="ghost"
+                                          leftIcon={<Icon as={FiMessageSquare} />}
+                                          onClick={() => setReplyingTo(review.id)}
+                                          colorScheme="brand"
+                                        >
+                                          Reply
+                                        </Button>
+                                      )}
+                                    </Box>
+                                  )}
+                                </Box>
+                              </HStack>
+                            </Box>
+                          )}
+
+                          {/* Cancel Trade Button (only for locked trades) */}
+                          {trade.status === 'locked' && currentUser && (Number(id) === currentUser.id) && (
+                            <HStack justify="flex-end" mt={3} pt={2} borderTop="1px" borderColor="gray.200">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                colorScheme="red"
+                                onClick={() => handleCancelTrade(trade.id)}
+                              >
+                                Cancel Trade
+                              </Button>
+                            </HStack>
+                          )}
+                          
+                          {/* Leave a Review Button (for completed trades needing reviews) */}
+                          {trade.status === 'completed' && !review && currentUser && completedTradesNeedingReview.has(trade.id) && (
+                            <HStack justify="flex-end" mt={3} pt={2} borderTop="1px" borderColor="gray.200">
+                              <Text fontSize="sm" color="amber.600">
+                                ⭐ Please share your feedback
+                              </Text>
+                              <Button
+                                size="sm"
+                                colorScheme="brand"
+                                leftIcon={<Icon as={FiStar} />}
+                                onClick={() => handleOpenReviewModal(trade.id)}
+                              >
+                                Leave Review
+                              </Button>
+                            </HStack>
+                          )}
                         </Box>
                       )
                     })}
-                  </Box>
-                )}
-              </TabPanel>
-
-              {/* Reviews Tab */}
-              <TabPanel p={0}>
-                <Box p={4} borderBottom="1px" borderColor="gray.100">
-                  <HStack justify="space-between" align="flex-start">
-                    <Box>
-                      <Heading size="md" mb={1}>Reviews</Heading>
-                      <HStack spacing={1} mb={2}>
-                        <Icon as={FiStar} color="yellow.400" boxSize={5} />
-                        <Text fontSize="xl" fontWeight="bold">
-                          {displayRating.toFixed(1)}
-                          <Text as="span" fontSize="md" fontWeight="normal" color="gray.600" ml={1}>
-                            ({displayTotalReviews} reviews)
-                          </Text>
-                        </Text>
-                      </HStack>
-                      <Text color="green.600" fontSize="sm">
-                        {Math.round(displayPositivePercent)}% positive feedback
-                      </Text>
-                    </Box>
-                    
-                    {!(currentUser && Number(id) === currentUser.id) && (
-                      <Button 
-                        colorScheme="brand" 
-                        size="sm" 
-                        onClick={handleOpenReviewModal}
-                        leftIcon={<Icon as={FiStar} />}
-                      >
-                        Leave a Review
-                      </Button>
-                    )}
-                  </HStack>
-                </Box>
-                
-                {reviews.length === 0 ? (
-                  <Center p={10}>
-                    <VStack>
-                      <Text color="gray.500">No reviews yet.</Text>
-                      {!(currentUser && Number(id) === currentUser.id) && (
-                        <Button 
-                          colorScheme="brand" 
-                          variant="outline" 
-                          size="sm" 
-                          mt={2}
-                          onClick={handleOpenReviewModal}
-                        >
-                          Be the first to review
-                        </Button>
-                      )}
-                    </VStack>
-                  </Center>
-                ) : (
-                  <Box>
-                    {reviews.map((review, index) => (
-                      <Box 
-                        key={review.id} 
-                        p={4} 
-                        borderBottom={index < reviews.length - 1 ? '1px' : 'none'} 
-                        borderColor="gray.100"
-                      >
-                        <HStack spacing={3} mb={2} align="start">
-                          <VerifiedAvatar 
-                            size="sm" 
-                            name={review.reviewer} 
-                            src={review.avatar}
-                            isVerified={false}
-                          />
-                          <Box flex="1">
-                            <HStack justify="space-between" mb={1}>
-                              <Box>
-                                <Text fontWeight="medium">{review.reviewer}</Text>
-                                <HStack spacing={1}>
-                                  {[...Array(5)].map((_, i) => (
-                                    <Icon 
-                                      key={i} 
-                                      as={FiStar} 
-                                      color={i < review.rating ? 'yellow.400' : 'gray.300'} 
-                                      boxSize={4}
-                                    />
-                                  ))}
-                                  <Text fontSize="sm" color="gray.500" ml={1}>
-                                    {review.date}
-                                  </Text>
-                                </HStack>
-                              </Box>
-                            </HStack>
-                            <Text color="gray.700" mb={2}>
-                              {review.comment}
-                            </Text>
-
-                            {/* Show existing reply if any */}
-                            {review.reply && (
-                              <Box 
-                                mt={3} 
-                                pl={4} 
-                                borderLeft="2px" 
-                                borderColor="brand.200" 
-                                bg="gray.50" 
-                                p={3} 
-                                borderRadius="md"
-                              >
-                                <HStack spacing={2} mb={1}>
-                                  <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
-                                  <Text fontSize="sm" fontWeight="semibold" color="brand.600">
-                                    <Box as="span" textTransform="capitalize">{review.reply_author || user?.name || 'Seller'}</Box> replied:
-                                  </Text>
-                                  {review.reply_date && (
-                                    <Text fontSize="xs" color="gray.500">
-                                      {review.reply_date}
-                                    </Text>
-                                  )}
-                                </HStack>
-                                <Text fontSize="sm" color="gray.700">
-                                  {review.reply}
-                                </Text>
-                              </Box>
-                            )}
-
-                            {/* Reply button and form - only show if it's your profile or you're logged in */}
-                            {currentUser && !review.reply && (
-                              <Box mt={2}>
-                                {replyingTo === review.id ? (
-                                  <VStack align="stretch" spacing={2}>
-                                    <Textarea
-                                      placeholder="Write your reply..."
-                                      value={replyText}
-                                      onChange={(e) => setReplyText(e.target.value)}
-                                      size="sm"
-                                      rows={3}
-                                    />
-                                    <HStack>
-                                      <Button
-                                        size="sm"
-                                        colorScheme="brand"
-                                        onClick={() => handleReplyToReview(review.id)}
-                                        isLoading={isSubmittingReply}
-                                        leftIcon={<Icon as={FiMessageSquare} />}
-                                      >
-                                        Post Reply
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => {
-                                          setReplyingTo(null)
-                                          setReplyText('')
-                                        }}
-                                      >
-                                        Cancel
-                                      </Button>
-                                    </HStack>
-                                  </VStack>
-                                ) : (
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    leftIcon={<Icon as={FiMessageSquare} />}
-                                    onClick={() => setReplyingTo(review.id)}
-                                    colorScheme="brand"
-                                  >
-                                    Reply
-                                  </Button>
-                                )}
-                              </Box>
-                            )}
-                          </Box>
-                        </HStack>
-                      </Box>
-                    ))}
                   </Box>
                 )}
               </TabPanel>
@@ -1399,6 +1551,67 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         {reviewRating === 4 && 'Very Good'}
                         {reviewRating === 5 && 'Excellent'}
                       </Text>
+                    )}
+                  </FormControl>
+                  
+                  <FormControl>
+                    <FormLabel>Upload Photo of Item (Optional)</FormLabel>
+                    {reviewPhotoPreview ? (
+                      <Box>
+                        <Box
+                          position="relative"
+                          w="100%"
+                          maxH="200px"
+                          borderRadius="md"
+                          overflow="hidden"
+                          bg="gray.100"
+                          mb={2}
+                        >
+                          <Image
+                            src={reviewPhotoPreview}
+                            alt="Review photo preview"
+                            w="100%"
+                            h="100%"
+                            objectFit="cover"
+                          />
+                          <Button
+                            position="absolute"
+                            top={2}
+                            right={2}
+                            size="sm"
+                            colorScheme="red"
+                            onClick={clearReviewPhoto}
+                          >
+                            Remove
+                          </Button>
+                        </Box>
+                        <Text fontSize="sm" color="green.600">
+                          ✓ Photo selected
+                        </Text>
+                      </Box>
+                    ) : (
+                      <Box>
+                        <Input
+                          ref={reviewPhotoInputRef}
+                          type="file"
+                          accept="image/*"
+                          display="none"
+                          onChange={handleReviewPhotoSelect}
+                          aria-label="Choose review photo"
+                          title="Choose review photo"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="brand"
+                          onClick={() => reviewPhotoInputRef.current?.click()}
+                        >
+                          Choose Photo
+                        </Button>
+                        <Text fontSize="xs" color="gray.500" mt={2}>
+                          Upload a photo of the received item to verify the trade. (Optional)
+                        </Text>
+                      </Box>
                     )}
                   </FormControl>
                   

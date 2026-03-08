@@ -382,394 +382,247 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const disableAccept = (offeredItemIds.length === 0) && (!effectiveTrade?.offered_cash_amount || effectiveTrade.offered_cash_amount === 0)
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="full" isCentered>
-      <ModalOverlay />
-      <ModalContent maxW="95%" h="auto" maxH="95vh" overflowY="auto">
-        <ModalHeader fontSize="lg" fontWeight="bold">Offer Details</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody pb={6}>
-          <VStack align="stretch" spacing={4}>
-            <HStack align="flex-start" spacing={6} wrap="wrap">
-              <Box flex={1} minW="300px">
-                <Text fontWeight="bold" mb={3} fontSize="md">Your Requested Item</Text>
-                {loading ? (
-                  <Box borderWidth="1px" borderColor="gray.200" rounded="md" p={4}>
-                    <Text color="gray.600" textAlign="center">Loading...</Text>
-                  </Box>
-                ) : (
-                  renderProductCard(requested)
-                )}
-              </Box>
-              <Box flex={1} minW="300px">
-                <Text fontWeight="bold" mb={3} fontSize="md">Their Offered Item(s)</Text>
-                <Box>
-                  <HStack align="start" spacing={3} flexWrap="wrap">
-                    {buyerItems.length > 0 ? (
-                      buyerItems.map((item: any, idx: number) => {
-                          // Find the product details for this item
-                          const product = offered.find(p => p.id === (item.product_id ?? item.productId));
-                          
-                          // If product not found in context, render from trade item directly
-                          if (!product) {
-                            const itemImg = item.product_image_url || item.productImageUrl || item.image || ''
-                            const itemTitle = item.product_title || item.productTitle || 'Unknown Item'
-                            const itemStatus = item.product_status || item.productStatus || 'unknown'
-                            return (
-                              <Box key={item.id || idx} minW="120px" maxW="140px" flex="1 1 180px">
-                                <Box borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
-                                  <Image 
-                                    src={itemImg} 
-                                    alt={itemTitle} 
-                                    w="full" 
-                                    h="80px" 
-                                    objectFit="cover" 
-                                    fallbackSrc="https://via.placeholder.com/400x300?text=No+Image" 
-                                  />
-                                  <Box p={2}>
-                                    <Text fontWeight="semibold" fontSize="sm" noOfLines={2}>{itemTitle}</Text>
-                                    <Badge colorScheme={itemStatus === 'available' ? 'green' : 'orange'} fontSize="xs" mt={1}>
-                                      {itemStatus}
-                                    </Badge>
-                                  </Box>
-                                </Box>
-                              </Box>
-                            )
-                          }
-                          
-                          return (
-                            <Box key={item.id || idx} minW="120px" maxW="140px" flex="1 1 180px">
-                              {renderProductCard(product, { compact: true })}
-                            </Box>
-                          );
-                        })
-                    ) : (
-                      <Text color="gray.500" fontSize="sm">No offered items found.</Text>
-                    )}
-                  </HStack>
-                </Box>
-              </Box>
-            </HStack>
-
-
-            <Divider />
-
-
-            {/* Trade Option Display - Prominent */}
-            {effectiveTrade?.trade_option && (
-              <Card 
-                variant="outline" 
-                borderWidth="2px" 
-                borderColor={effectiveTrade.trade_option === 'meetup' ? 'blue.400' : 'green.400'}
-                bg={effectiveTrade.trade_option === 'meetup' ? 'blue.50' : 'green.50'}
-                mb={4}
+    <Modal isOpen={isOpen} onClose={onClose} size={{ base: 'full', md: 'lg' }} isCentered>
+      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
+      <ModalContent maxH="90vh" display="flex" flexDirection="column" bg="white" borderRadius="lg" boxShadow="lg">
+        {/* Compact Header */}
+        <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" p={4}>
+          <HStack justify="space-between" align="center">
+            <VStack align="start" spacing={0}>
+              <Text fontSize="lg" fontWeight="bold" color="gray.900">Offer Details</Text>
+              <Badge 
+                colorScheme={
+                  effectiveTrade?.status === 'pending' ? 'yellow' : 
+                  effectiveTrade?.status === 'accepted' ? 'green' : 
+                  effectiveTrade?.status === 'declined' ? 'red' : 'gray'
+                } 
+                fontSize="xs"
               >
-                <CardBody p={4}>
-                  <VStack spacing={3} align="stretch">
-                    <HStack spacing={3} align="center">
-                      <Box
-                        p={2}
-                        borderRadius="full"
-                        bg={effectiveTrade.trade_option === 'meetup' ? 'blue.500' : 'green.500'}
-                        color="white"
-                      >
-                        <Icon 
-                          as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} 
-                          boxSize={5} 
-                        />
-                      </Box>
-                      <VStack align="start" spacing={1} flex={1}>
-                        <Text fontWeight="bold" fontSize="md" color={effectiveTrade.trade_option === 'meetup' ? 'blue.700' : 'green.700'}>
-                          Trade Option: {effectiveTrade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                        </Text>
-                        {effectiveTrade.trade_option === 'meetup' ? (
-                          <Text fontSize="sm" color="gray.600">
-                            Items will be exchanged at a meetup location
-                          </Text>
-                        ) : (
-                          <VStack align="start" spacing={0}>
-                            <Text fontSize="sm" color="gray.600">
-                              Items will be delivered to addresses
-                            </Text>
-                            {effectiveTrade.delivery_address && (
-                              <Text fontSize="xs" color="gray.600" mt={1} fontStyle="italic">
-                                Delivery address: {effectiveTrade.delivery_address}
-                              </Text>
-                            )}
-                          </VStack>
-                        )}
-                      </VStack>
-                      <Badge 
-                        colorScheme={effectiveTrade.trade_option === 'meetup' ? 'blue' : 'green'}
-                        variant="solid"
-                        fontSize="sm"
-                        px={3}
-                        py={1}
-                      >
-                        {effectiveTrade.trade_option === 'meetup' ? '📍 Meetup' : '🚚 Delivery'}
-                      </Badge>
-                    </HStack>
+                {effectiveTrade?.status ? effectiveTrade.status.toUpperCase() : 'UNKNOWN'}
+              </Badge>
+            </VStack>
+            <ModalCloseButton position="static" />
+          </HStack>
+        </Box>
 
-                    {/* Pending Option Change Request */}
-                    {hasPendingOptionChange && effectiveTrade.option_change_requested && (
-                      <Box 
-                        p={3} 
-                        bg="yellow.50" 
-                        borderWidth="1px" 
-                        borderColor="yellow.300" 
-                        borderRadius="md"
-                        mt={2}
-                      >
-                        <VStack spacing={2} align="start">
-                          <HStack spacing={2}>
-                            <Badge colorScheme="yellow">Option Change Pending</Badge>
-                            <Text fontSize="xs" color="gray.600">
-                              Requested by: {effectiveTrade.option_change_requested_by === effectiveTrade.buyer_id ? 'Buyer' : 'Seller'}
-                            </Text>
-                          </HStack>
-                          <Text fontSize="sm" color="gray.700">
-                            Requested change to: <strong>{effectiveTrade.option_change_requested === 'meetup' ? 'Meetup' : 'Delivery'}</strong>
-                          </Text>
-                          {isUserSeller && (
-                            <HStack spacing={2} mt={2}>
-                              <Button 
-                                size="sm" 
-                                colorScheme="green" 
-                                onClick={approveOptionChange}
-                              >
-                                Approve
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                colorScheme="red" 
-                                variant="outline"
-                                onClick={rejectOptionChange}
-                              >
-                                Reject
-                              </Button>
-                            </HStack>
-                          )}
-                          {!isUserSeller && (
-                            <Text fontSize="xs" color="gray.500" fontStyle="italic">
-                              Waiting for seller approval...
-                            </Text>
-                          )}
-                        </VStack>
-                      </Box>
-                    )}
+        {/* Scrollable Content */}
+        <ModalBody p={4} overflowY="auto" flex={1}>
+          <VStack align="stretch" spacing={4}>
+            {/* Items Comparison - Compact */}
+            <Box>
+              <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>Items</Text>
+              <Grid templateColumns={{ base: '1fr', md: '0.8fr 1fr' }} gap={3}>
+                {/* Your Requested Item */}
+                <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="gray.50">
+                  {loading ? (
+                    <Box p={3} textAlign="center">
+                      <Text fontSize="xs" color="gray.500">Loading...</Text>
+                    </Box>
+                  ) : (
+                    renderProductCard(requested, { compact: true })
+                  )}
+                </Box>
 
-                    {/* Request Option Change Button (only for buyer, before ongoing) */}
-                    {canRequestOptionChange() && !hasPendingOptionChange && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        colorScheme="blue"
-                        onClick={() => setShowOptionChangeModal(true)}
-                        mt={2}
-                      >
-                        Request Option Change
-                      </Button>
-                    )}
-                  </VStack>
-                </CardBody>
-              </Card>
+                {/* Their Offered Items */}
+                <Box>
+                  {buyerItems.length > 0 ? (
+                    <VStack spacing={2} align="stretch">
+                      {buyerItems.map((item: any, idx: number) => {
+                        const product = offered.find(p => p.id === (item.product_id ?? item.productId));
+                        
+                        if (!product) {
+                          const itemImg = item.product_image_url || item.productImageUrl || item.image || ''
+                          const itemTitle = item.product_title || item.productTitle || 'Unknown Item'
+                          return (
+                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" h="80px">
+                              <Image 
+                                src={itemImg} 
+                                alt={itemTitle} 
+                                w="80px" 
+                                h="80px" 
+                                objectFit="cover" 
+                                fallbackSrc="https://via.placeholder.com/80x80?text=No+Image" 
+                              />
+                              <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
+                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
+                              </Box>
+                            </Box>
+                          )
+                        }
+                        
+                        return (
+                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" h="80px">
+                            <Image 
+                              src={resolveImage(product)} 
+                              alt={product.title} 
+                              w="80px" 
+                              h="80px" 
+                              objectFit="cover" 
+                              fallbackSrc="https://via.placeholder.com/80x80?text=No+Image"
+                            />
+                            <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
+                              <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </VStack>
+                  ) : (
+                    <Box p={3} bg="gray.50" borderRadius="md" textAlign="center">
+                      <Text fontSize="xs" color="gray.500">No items offered</Text>
+                    </Box>
+                  )}
+                </Box>
+              </Grid>
+            </Box>
+            {trade?.message && (
+              <Box p={3} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                <Text fontSize="xs" fontWeight="bold" color="gray.700" mb={1}>Message</Text>
+                <Text fontSize="xs" color="gray.700" lineHeight="1.5" noOfLines={2}>
+                  {trade.message}
+                </Text>
+              </Box>
             )}
 
-            <HStack spacing={3} mt={2} align="center" wrap="wrap">
-              {effectiveTrade?.offered_cash_amount ? (
-                <Box borderWidth="1px" borderColor="green.200" bg="green.50" rounded="md" p={2} fontSize="sm" color="green.800" minW="120px">
-                  <Text fontWeight="semibold" noOfLines={1}>Cash included</Text>
-                  <Text noOfLines={1} color="green.700">{formatPHP(Number(effectiveTrade.offered_cash_amount))}</Text>
-                </Box>
-              ) : null}
-
-              {showDebug && (
-                <Box borderWidth="1px" borderColor="purple.200" bg="purple.50" rounded="md" p={2} fontSize="xs" color="purple.800" minW="140px">
-                  <Text fontWeight="semibold" mb={1}>Debug</Text>
-                  <Text noOfLines={1}>Items: {trade?.items?.length || 0} • Buyer: {buyerItems.length}</Text>
-                </Box>
-              )}
-
-              {trade?.message && (
-                <Box borderWidth="1px" borderColor="gray.200" bg="gray.50" rounded="md" p={3} fontSize="sm" color="gray.800" flex="1 1 60%" minW="260px">
-                  <Text fontWeight="semibold" noOfLines={1}>Message</Text>
-                  <Text noOfLines={3} color="gray.700">{trade.message}</Text>
-                </Box>
-              )}
-            </HStack>
-
-            <Divider />
-
-            <HStack justify="space-between" align="center">
-              <Box>
-                <Text fontWeight="semibold">Trade Summary</Text>
-                <Text fontSize="sm" color="gray.600">Your Item(s): 1 • Their Item(s): {offeredItemIds.length}</Text>
-                <Text fontSize="sm" color="gray.600">Status: {effectiveTrade?.status}</Text>
-                <Text fontSize="sm" color="gray.600">Offered on: {effectiveTrade ? new Date(effectiveTrade.created_at).toLocaleString() : ''}</Text>
-              </Box>
-              <HStack spacing={3}>
-                <Button variant="outline" colorScheme="red" onClick={decline}>Decline</Button>
-                <Button colorScheme="green" onClick={accept} isDisabled={disableAccept}>Accept</Button>
-                {user && (
-                  <Button variant="ghost" onClick={openCounter}>Counter Offer</Button>
-                )}
-              </HStack>
-            </HStack>
-
-
-            <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size="xl">
-              <ModalOverlay />
-              <ModalContent maxW="900px">
-                <ModalHeader>Request changes to sender's package</ModalHeader>
-                <ModalCloseButton onClick={() => setCounterOpen(false)} />
-                <ModalBody>
-                  <Grid templateColumns="repeat(auto-fit, minmax(180px, 1fr))" gap={3}>
-                    {userInventory.map(p => (
-                      <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
-                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" />
-                        <Box p={2}>
-                          <Text fontSize="sm" noOfLines={2}>{p.title}</Text>
-                        </Box>
-                      </Box>
-                    ))}
-                  </Grid>
-                  <HStack mt={4} spacing={3} align="center">
-                    <Box flex={1}>
-                      <Text fontSize="sm" color="gray.600" mb={1}>Additional cash requested (PHP)</Text>
-                      <input type="number" value={cashDelta} onChange={e => setCashDelta(e.target.value)} min={0} step={0.01 as any} style={{ width: '100%', padding: '8px', border: '1px solid #E2E8F0', borderRadius: 6 }} />
-                    </Box>
-                    <Box flex={2}>
-                      <Text fontSize="sm" color="gray.600" mb={1}>Message (optional)</Text>
-                      <input value={counterMsg} onChange={e => setCounterMsg(e.target.value)} placeholder="Please add X..." style={{ width: '100%', padding: '8px', border: '1px solid #E2E8F0', borderRadius: 6 }} />
-                    </Box>
-                  </HStack>
-                </ModalBody>
-                <ModalFooter>
-                  <Button variant="ghost" mr={3} onClick={() => setCounterOpen(false)}>Cancel</Button>
-                  <Button colorScheme="brand" onClick={submitCounter}>Send Counter</Button>
-                </ModalFooter>
-              </ModalContent>
-            </Modal>
-
-            {/* Decline Confirmation Dialog */}
-            <AlertDialog
-              isOpen={isDeclineOpen}
-              leastDestructiveRef={cancelRef}
-              onClose={onDeclineClose}
-              isCentered
-            >
-              <AlertDialogOverlay>
-                <AlertDialogContent>
-                  <AlertDialogHeader fontSize="lg" fontWeight="bold">
-                    Decline Trade Offer
-                  </AlertDialogHeader>
-                  <AlertDialogBody>
-                    Are you sure you want to decline this trade offer? This action cannot be undone.
-                    <br /><br />
-                    Consider sending a counter offer instead if you'd like to negotiate different terms.
-                  </AlertDialogBody>
-                  <AlertDialogFooter>
-                    <Button ref={cancelRef} onClick={onDeclineClose}>
-                      Cancel
-                    </Button>
-                    <Button colorScheme="red" onClick={confirmDecline} ml={3}>
-                      Decline Offer
-                    </Button>
-                    <Button colorScheme="blue" onClick={openCounter} ml={3}>
-                      Counter Instead
-                    </Button>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialogOverlay>
-            </AlertDialog>
-
-            {/* Option Change Request Modal */}
-            <Modal isOpen={showOptionChangeModal} onClose={() => setShowOptionChangeModal(false)} size="md" isCentered>
-              <ModalOverlay />
-              <ModalContent>
-                <ModalHeader>Request Option Change</ModalHeader>
-                <ModalCloseButton />
-                <ModalBody pb={6}>
-                  <VStack spacing={4} align="stretch">
-                    <Text fontSize="sm" color="gray.600">
-                      Select an alternative trade option. The seller will need to approve this change.
+            {/* Trade Method */}
+            {effectiveTrade?.trade_option && (
+              <Box borderRadius="md" bg="brand.50" p={3} borderWidth="1px" borderColor="brand.200">
+                <HStack spacing={2}>
+                  <Icon as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={4} color="brand.600" flexShrink={0} />
+                  <VStack align="start" spacing={0} flex={1}>
+                    <Text fontWeight="semibold" fontSize="sm" color="brand.900">
+                      {effectiveTrade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
                     </Text>
-                    
-                    <FormControl isRequired>
-                      <FormLabel fontSize="sm" fontWeight="semibold">
-                        New Trade Option
-                      </FormLabel>
-                      <Grid templateColumns="repeat(2, 1fr)" gap={3}>
-                        <Card
-                          variant="outline"
-                          cursor="pointer"
-                          borderWidth={requestedOption === 'meetup' ? '2px' : '1px'}
-                          borderColor={requestedOption === 'meetup' ? 'blue.500' : 'gray.200'}
-                          bg={requestedOption === 'meetup' ? 'blue.50' : 'white'}
-                          onClick={() => setRequestedOption('meetup')}
-                          _hover={{ borderColor: 'blue.300', shadow: 'md' }}
-                        >
-                          <CardBody p={3}>
-                            <VStack spacing={2} align="center">
-                              <Icon as={FaMapMarkerAlt} boxSize={5} color={requestedOption === 'meetup' ? 'blue.500' : 'gray.400'} />
-                              <Text fontSize="sm" fontWeight="semibold">Meetup</Text>
-                            </VStack>
-                          </CardBody>
-                        </Card>
-
-                        <Card
-                          variant="outline"
-                          cursor="pointer"
-                          borderWidth={requestedOption === 'delivery' ? '2px' : '1px'}
-                          borderColor={requestedOption === 'delivery' ? 'green.500' : 'gray.200'}
-                          bg={requestedOption === 'delivery' ? 'green.50' : 'white'}
-                          onClick={() => setRequestedOption('delivery')}
-                          _hover={{ borderColor: 'green.300', shadow: 'md' }}
-                        >
-                          <CardBody p={3}>
-                            <VStack spacing={2} align="center">
-                              <Icon as={FaTruck} boxSize={5} color={requestedOption === 'delivery' ? 'green.500' : 'gray.400'} />
-                              <Text fontSize="sm" fontWeight="semibold">Delivery</Text>
-                            </VStack>
-                          </CardBody>
-                        </Card>
-                      </Grid>
-                    </FormControl>
-
-                    {requestedOption === 'delivery' && (
-                      <FormControl isRequired>
-                        <FormLabel fontSize="sm">Delivery Address</FormLabel>
-                        <Textarea
-                          placeholder="Enter your complete delivery address..."
-                          value={requestedDeliveryAddress}
-                          onChange={(e) => setRequestedDeliveryAddress(e.target.value)}
-                          rows={3}
-                          resize="vertical"
-                        />
-                        <Text fontSize="xs" color="gray.500" mt={1}>
-                          This address will be shared with the seller
-                        </Text>
-                      </FormControl>
+                    {effectiveTrade.trade_option === 'delivery' && effectiveTrade.delivery_address && (
+                      <Text fontSize="xs" color="gray.700">{effectiveTrade.delivery_address}</Text>
                     )}
-
-                    <HStack spacing={3} justify="flex-end" mt={4}>
-                      <Button variant="ghost" onClick={() => setShowOptionChangeModal(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        colorScheme="blue"
-                        onClick={requestOptionChange}
-                        isLoading={requestingOptionChange}
-                        isDisabled={!requestedOption || (requestedOption === 'delivery' && !requestedDeliveryAddress.trim())}
-                      >
-                        Request Change
-                      </Button>
-                    </HStack>
                   </VStack>
-                </ModalBody>
-              </ModalContent>
-            </Modal>
+                </HStack>
+
+                {/* Pending Change */}
+                {hasPendingOptionChange && effectiveTrade.option_change_requested && (
+                  <Box mt={2} pt={2} borderTopWidth="1px" borderColor="brand.200">
+                    <Text fontSize="xs" fontWeight="bold" color="brand.700" mb={1}>
+                      ⏳ Pending: {effectiveTrade.option_change_requested === 'meetup' ? 'Meetup' : 'Delivery'}
+                    </Text>
+                    {isUserSeller ? (
+                      <HStack spacing={2} mt={2}>
+                        <Button size="xs" colorScheme="green" onClick={approveOptionChange}>Approve</Button>
+                        <Button size="xs" colorScheme="red" variant="outline" onClick={rejectOptionChange}>Reject</Button>
+                      </HStack>
+                    ) : (
+                      <Text fontSize="xs" color="gray.600" fontStyle="italic">Waiting for seller...</Text>
+                    )}
+                  </Box>
+                )}
+
+                {canRequestOptionChange() && !hasPendingOptionChange && (
+                  <Button size="xs" variant="outline" colorScheme="brand" onClick={() => setShowOptionChangeModal(true)} w="full" mt={2}>
+                    Request Change
+                  </Button>
+                )}
+              </Box>
+            )}
           </VStack>
         </ModalBody>
+
+        {/* Footer */}
+        <Box borderTopWidth="1px" borderColor="gray.200" p={3} bg="white">
+          <HStack spacing={2} justify="flex-end">
+            {/* Action buttons can go here if needed */}
+          </HStack>
+        </Box>
+
+        {/* Counter Modal */}
+        <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size="md">
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader fontSize="sm">Counter Offer</ModalHeader>
+            <ModalCloseButton size="sm" />
+            <ModalBody fontSize="sm">
+              <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
+                {userInventory.map(p => (
+                  <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
+                    <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" />
+                    <Box p={1}>
+                      <Text fontSize="xs" noOfLines={1}>{p.title}</Text>
+                    </Box>
+                  </Box>
+                ))}
+              </Grid>
+              <VStack spacing={2} mt={4}>
+                <FormControl size="sm">
+                  <FormLabel fontSize="xs">Add Cash</FormLabel>
+                  <input type="number" value={cashDelta} onChange={e => setCashDelta(e.target.value)} min={0} step="100" style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
+                </FormControl>
+                <FormControl size="sm">
+                  <FormLabel fontSize="xs">Message</FormLabel>
+                  <input value={counterMsg} onChange={e => setCounterMsg(e.target.value)} placeholder="Optional..." style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
+                </FormControl>
+              </VStack>
+            </ModalBody>
+            <ModalFooter>
+              <Button size="sm" variant="ghost" mr={2} onClick={() => setCounterOpen(false)}>Cancel</Button>
+              <Button size="sm" colorScheme="brand" onClick={submitCounter}>Send</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+        {/* Decline Dialog */}
+        <AlertDialog isOpen={isDeclineOpen} leastDestructiveRef={cancelRef} onClose={onDeclineClose} isCentered>
+          <AlertDialogOverlay>
+            <AlertDialogContent>
+              <AlertDialogHeader fontSize="sm">Decline Offer?</AlertDialogHeader>
+              <AlertDialogBody fontSize="xs">
+                You can send a counter offer instead to negotiate.
+              </AlertDialogBody>
+              <AlertDialogFooter>
+                <Button ref={cancelRef} size="sm" onClick={onDeclineClose}>Cancel</Button>
+                <Button size="sm" colorScheme="red" onClick={confirmDecline} ml={2}>Decline</Button>
+                <Button size="sm" colorScheme="brand" variant="outline" onClick={openCounter} ml={2}>Counter</Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialogOverlay>
+        </AlertDialog>
+
+        {/* Option Change Modal */}
+        <Modal isOpen={showOptionChangeModal} onClose={() => setShowOptionChangeModal(false)} size="sm" isCentered>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader fontSize="sm">Trade Method</ModalHeader>
+            <ModalCloseButton size="sm" />
+            <ModalBody fontSize="sm">
+              <Grid templateColumns="repeat(2, 1fr)" gap={2} mb={4}>
+                <Card variant="outline" cursor="pointer" borderWidth={requestedOption === 'meetup' ? '2px' : '1px'} borderColor={requestedOption === 'meetup' ? 'brand.500' : 'gray.200'} bg={requestedOption === 'meetup' ? 'brand.50' : 'white'} onClick={() => setRequestedOption('meetup')}>
+                  <CardBody p={2}>
+                    <VStack spacing={1} align="center">
+                      <Icon as={FaMapMarkerAlt} boxSize={4} color={requestedOption === 'meetup' ? 'brand.600' : 'gray.400'} />
+                      <Text fontSize="xs" fontWeight="semibold">Meetup</Text>
+                    </VStack>
+                  </CardBody>
+                </Card>
+                <Card variant="outline" cursor="pointer" borderWidth={requestedOption === 'delivery' ? '2px' : '1px'} borderColor={requestedOption === 'delivery' ? 'brand.500' : 'gray.200'} bg={requestedOption === 'delivery' ? 'brand.50' : 'white'} onClick={() => setRequestedOption('delivery')}>
+                  <CardBody p={2}>
+                    <VStack spacing={1} align="center">
+                      <Icon as={FaTruck} boxSize={4} color={requestedOption === 'delivery' ? 'brand.600' : 'gray.400'} />
+                      <Text fontSize="xs" fontWeight="semibold">Delivery</Text>
+                    </VStack>
+                  </CardBody>
+                </Card>
+              </Grid>
+              {requestedOption === 'delivery' && (
+                <FormControl isRequired mb={3}>
+                  <FormLabel fontSize="xs">Address</FormLabel>
+                  <Textarea placeholder="Your address..." value={requestedDeliveryAddress} onChange={(e) => setRequestedDeliveryAddress(e.target.value)} rows={2} size="sm" />
+                </FormControl>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button size="sm" variant="ghost" mr={2} onClick={() => setShowOptionChangeModal(false)}>Cancel</Button>
+              <Button size="sm" colorScheme="brand" onClick={requestOptionChange} isLoading={requestingOptionChange} isDisabled={!requestedOption || (requestedOption === 'delivery' && !requestedDeliveryAddress.trim())}>Request</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
       </ModalContent>
     </Modal>
   )
