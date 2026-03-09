@@ -8,8 +8,11 @@ import {
   CircularProgress,
   CircularProgressLabel,
   Tooltip,
+  Badge,
+  Progress,
+  Divider,
 } from '@chakra-ui/react'
-import { FiCheckCircle, FiAlertTriangle, FiXCircle } from 'react-icons/fi'
+import { FiCheckCircle, FiAlertTriangle, FiXCircle, FiAward } from 'react-icons/fi'
 
 interface TrustFactor {
   label: string
@@ -18,10 +21,26 @@ interface TrustFactor {
   max: number
 }
 
+interface ConductGrade {
+  category: string
+  avg: number
+  count: number
+}
+
+interface ConductSummary {
+  letter_grade: string
+  overall_avg: number
+  total_grades: number
+  categories: ConductGrade[]
+  cancellation_rate: number
+  dispute_rate: number
+}
+
 interface TrustScoreCardProps {
   score: number
   trustLevel?: 'trusted' | 'new' | 'risky'
   factors?: TrustFactor[]
+  conductSummary?: ConductSummary
   compact?: boolean
 }
 
@@ -43,15 +62,38 @@ const levelTrackColor = (level?: string) => {
   return 'red.100'
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, compact }) => {
+const gradeColor = (grade: string) => {
+  if (grade === 'A+' || grade === 'A') return 'green.500'
+  if (grade === 'B+' || grade === 'B') return 'blue.500'
+  if (grade === 'C') return 'orange.500'
+  return 'red.500'
+}
+
+const gradeBg = (grade: string) => {
+  if (grade === 'A+' || grade === 'A') return 'green.50'
+  if (grade === 'B+' || grade === 'B') return 'blue.50'
+  if (grade === 'C') return 'orange.50'
+  return 'red.50'
+}
+
+const categoryBarColor = (avg: number) => {
+  if (avg >= 4.0) return 'green'
+  if (avg >= 3.0) return 'yellow'
+  if (avg >= 2.0) return 'orange'
+  return 'red'
+}
+
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact }) => {
   if (compact) {
+    const tooltipLines = factors && factors.length > 0
+      ? factors.map(f => `${f.status === 'pass' ? '✔' : f.status === 'warn' ? '⚠' : '✘'} ${f.label} (${f.points}/${f.max})`).join('\n')
+      : `Trust Score: ${score}/100`
+    const conductLine = conductSummary && conductSummary.total_grades > 0
+      ? `\nConduct: ${conductSummary.letter_grade} (${conductSummary.overall_avg.toFixed(1)}/5)`
+      : ''
     return (
       <Tooltip
-        label={
-          factors && factors.length > 0
-            ? factors.map(f => `${f.status === 'pass' ? '✔' : f.status === 'warn' ? '⚠' : '✘'} ${f.label} (${f.points}/${f.max})`).join('\n')
-            : `Trust Score: ${score}/100`
-        }
+        label={tooltipLines + conductLine}
         whiteSpace="pre-line"
         placement="top"
         hasArrow
@@ -68,6 +110,11 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
               {score}
             </CircularProgressLabel>
           </CircularProgress>
+          {conductSummary && conductSummary.total_grades > 0 && (
+            <Badge colorScheme={conductSummary.letter_grade.startsWith('A') ? 'green' : conductSummary.letter_grade.startsWith('B') ? 'blue' : conductSummary.letter_grade === 'C' ? 'orange' : 'red'} fontSize="xs">
+              {conductSummary.letter_grade}
+            </Badge>
+          )}
           <Text fontSize="xs" color="gray.600" fontWeight="medium">
             Trust
           </Text>
@@ -132,6 +179,68 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
           )}
         </VStack>
       </HStack>
+
+      {/* Conduct Grade Section */}
+      {conductSummary && conductSummary.total_grades > 0 && (
+        <>
+          <Divider my={4} />
+          <VStack align="stretch" spacing={3}>
+            <HStack justify="space-between">
+              <HStack spacing={2}>
+                <Icon as={FiAward} color={gradeColor(conductSummary.letter_grade)} boxSize={5} />
+                <Text fontSize="sm" fontWeight="bold" color="gray.700">
+                  Conduct Grade
+                </Text>
+              </HStack>
+              <Badge
+                px={3}
+                py={1}
+                borderRadius="md"
+                fontSize="md"
+                fontWeight="bold"
+                color={gradeColor(conductSummary.letter_grade)}
+                bg={gradeBg(conductSummary.letter_grade)}
+              >
+                {conductSummary.letter_grade}
+              </Badge>
+            </HStack>
+
+            {conductSummary.categories.map((cat, i) => (
+              <Box key={i}>
+                <HStack justify="space-between" mb={1}>
+                  <Text fontSize="xs" color="gray.600">{cat.category}</Text>
+                  <Text fontSize="xs" color="gray.500" fontWeight="medium">
+                    {cat.avg.toFixed(1)}/5
+                  </Text>
+                </HStack>
+                <Progress
+                  value={(cat.avg / 5) * 100}
+                  size="sm"
+                  borderRadius="full"
+                  colorScheme={categoryBarColor(cat.avg)}
+                />
+              </Box>
+            ))}
+
+            <HStack justify="space-between" pt={1}>
+              <Tooltip label="Percentage of trades cancelled" hasArrow>
+                <Text fontSize="xs" color="gray.500">
+                  Cancellation: {(conductSummary.cancellation_rate * 100).toFixed(0)}%
+                </Text>
+              </Tooltip>
+              <Tooltip label="Percentage of trades with disputes" hasArrow>
+                <Text fontSize="xs" color="gray.500">
+                  Disputes: {(conductSummary.dispute_rate * 100).toFixed(0)}%
+                </Text>
+              </Tooltip>
+            </HStack>
+
+            <Text fontSize="xs" color="gray.400" textAlign="center">
+              Based on {conductSummary.total_grades} trade {conductSummary.total_grades === 1 ? 'grade' : 'grades'}
+            </Text>
+          </VStack>
+        </>
+      )}
     </Box>
   )
 }

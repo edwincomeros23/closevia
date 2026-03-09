@@ -1567,6 +1567,7 @@ const ProductDetail: React.FC = () => {
                     score={sellerStats?.trust_score ?? 0}
                     trustLevel={sellerStats?.trust_level}
                     factors={sellerStats?.trust_factors}
+                    conductSummary={sellerStats?.conduct_summary}
                     compact
                   />
                 </VStack>
@@ -1580,6 +1581,7 @@ const ProductDetail: React.FC = () => {
                   score={sellerStats.trust_score ?? 0}
                   trustLevel={sellerStats.trust_level}
                   factors={sellerStats.trust_factors}
+                  conductSummary={sellerStats.conduct_summary}
                 />
               </Box>
             )}

@@ -1377,10 +1377,11 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified') FROM users WHERE id = ?", userID).Scan(&verificationStatus)
 	verifiedPoints := 0
 	verifiedStatus := "fail"
-	if verificationStatus == "verified" {
+	switch verificationStatus {
+	case "verified":
 		verifiedPoints = 15
 		verifiedStatus = "pass"
-	} else if verificationStatus == "pending" {
+	case "pending":
 		verifiedPoints = 5
 		verifiedStatus = "warn"
 	}
@@ -1476,6 +1477,12 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	stats.ReportCount = reportCount
 	stats.HasReports = reportCount > 0
 
+	// --- Conduct Summary from trade grades ---
+	conductSummary := h.computeConductSummary(userID)
+	if conductSummary != nil {
+		stats.ConductSummary = conductSummary
+	}
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    stats,
@@ -1539,5 +1546,222 @@ func (h *UserHandler) UnsuspendUser(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "User has been unsuspended successfully",
+	})
+}
+
+// computeConductSummary builds a UserConductSummary for a given user from trade_grades
+func (h *UserHandler) computeConductSummary(userID int) *models.UserConductSummary {
+	rows, err := h.db.Query(`
+		SELECT communication, item_accuracy, punctuality, overall
+		FROM trade_grades WHERE graded_user_id = ?
+	`, userID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var commSum, accSum, punctSum, overallSum float64
+	var count int
+	for rows.Next() {
+		var comm, acc, punct, ov int
+		if err := rows.Scan(&comm, &acc, &punct, &ov); err != nil {
+			continue
+		}
+		commSum += float64(comm)
+		accSum += float64(acc)
+		punctSum += float64(punct)
+		overallSum += float64(ov)
+		count++
+	}
+	if count == 0 {
+		return nil
+	}
+
+	commAvg := commSum / float64(count)
+	accAvg := accSum / float64(count)
+	punctAvg := punctSum / float64(count)
+	overallAvg := overallSum / float64(count)
+
+	// Cancellation rate: cancelled trades / total trades
+	var totalTrades, cancelledTrades int
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM trades WHERE buyer_id = ? OR seller_id = ?`, userID, userID).Scan(&totalTrades)
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM trades WHERE (buyer_id = ? OR seller_id = ?) AND status = 'cancelled'`, userID, userID).Scan(&cancelledTrades)
+	cancellationRate := 0.0
+	if totalTrades > 0 {
+		cancellationRate = float64(cancelledTrades) / float64(totalTrades)
+	}
+
+	// Dispute rate: reports filed against user / total trades
+	var disputeCount int
+	_ = h.db.QueryRow(`SELECT COUNT(*) FROM reports WHERE reported_user_id = ?`, userID).Scan(&disputeCount)
+	disputeRate := 0.0
+	if totalTrades > 0 {
+		disputeRate = float64(disputeCount) / float64(totalTrades)
+	}
+
+	letterGrade := computeLetterGrade(overallAvg, cancellationRate, disputeRate)
+
+	return &models.UserConductSummary{
+		UserID:      userID,
+		LetterGrade: letterGrade,
+		OverallAvg:  overallAvg,
+		TotalGrades: count,
+		Categories: []models.ConductGrade{
+			{Category: "Communication", Avg: commAvg, Count: count},
+			{Category: "Item Accuracy", Avg: accAvg, Count: count},
+			{Category: "Punctuality", Avg: punctAvg, Count: count},
+			{Category: "Overall", Avg: overallAvg, Count: count},
+		},
+		CancellationRate: cancellationRate,
+		DisputeRate:      disputeRate,
+	}
+}
+
+// computeLetterGrade derives a letter grade from the overall average and behaviour rates
+func computeLetterGrade(overallAvg, cancellationRate, disputeRate float64) string {
+	// Penalty: lower effective score for high cancellation/dispute
+	effective := overallAvg - (cancellationRate * 1.0) - (disputeRate * 1.5)
+	if effective < 0 {
+		effective = 0
+	}
+	switch {
+	case effective >= 4.8:
+		return "A+"
+	case effective >= 4.5:
+		return "A"
+	case effective >= 4.0:
+		return "B+"
+	case effective >= 3.5:
+		return "B"
+	case effective >= 2.5:
+		return "C"
+	case effective >= 1.5:
+		return "D"
+	default:
+		return "F"
+	}
+}
+
+// SubmitTradeGrade allows a trade participant to grade their counterpart
+func (h *UserHandler) SubmitTradeGrade(c *fiber.Ctx) error {
+	graderID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	tradeID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid trade ID",
+		})
+	}
+
+	// Verify trade exists and is completed
+	var buyerID, sellerID int
+	var status string
+	err = h.db.QueryRow("SELECT buyer_id, seller_id, status FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &status)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Trade not found",
+		})
+	}
+	if status != "completed" && status != "auto_completed" {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Can only grade completed trades",
+		})
+	}
+
+	// Determine who is being graded
+	var gradedUserID int
+	switch graderID {
+	case buyerID:
+		gradedUserID = sellerID
+	case sellerID:
+		gradedUserID = buyerID
+	default:
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "You are not a participant in this trade",
+		})
+	}
+
+	// Parse body
+	var req models.TradeGradeCreate
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid request body",
+		})
+	}
+
+	// Validate ranges
+	for _, v := range []int{req.Communication, req.ItemAccuracy, req.Punctuality, req.Overall} {
+		if v < 1 || v > 5 {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "All grade categories must be between 1 and 5",
+			})
+		}
+	}
+
+	// Check for duplicate grade
+	var existing int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM trade_grades WHERE trade_id = ? AND grader_id = ?", tradeID, graderID).Scan(&existing)
+	if err == nil && existing > 0 {
+		return c.Status(409).JSON(models.APIResponse{
+			Success: false,
+			Error:   "You have already graded this trade",
+		})
+	}
+
+	_, err = h.db.Exec(`
+		INSERT INTO trade_grades (trade_id, grader_id, graded_user_id, communication, item_accuracy, punctuality, overall, comment)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, tradeID, graderID, gradedUserID, req.Communication, req.ItemAccuracy, req.Punctuality, req.Overall, req.Comment)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to save trade grade",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Trade grade submitted successfully",
+	})
+}
+
+// GetUserConduct returns the aggregated conduct summary for a user
+func (h *UserHandler) GetUserConduct(c *fiber.Ctx) error {
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid user ID",
+		})
+	}
+
+	summary := h.computeConductSummary(userID)
+	if summary == nil {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: models.UserConductSummary{
+				UserID:      userID,
+				LetterGrade: "N/A",
+				TotalGrades: 0,
+				Categories:  []models.ConductGrade{},
+			},
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data:    summary,
 	})
 }

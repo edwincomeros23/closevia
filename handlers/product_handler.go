@@ -1657,6 +1657,12 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 		})
 	}
 
+	// Convert AIAnalysisResult to GeminiResponse for backward compatibility
+	result := aiResult.Data
+	if result == nil {
+		result = &services.GeminiResponse{}
+	}
+
 	// Run server-side image quality analysis and merge into result
 	qualityResults, qErr := services.AnalyzeMultipleImageQuality(files)
 	if qErr != nil {
@@ -1673,10 +1679,6 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 		if len(qualityResults) > 0 {
 			result.ImageQualityScore = qualityResults[0].OverallScore
 		}
-	// Convert AIAnalysisResult to GeminiResponse for backward compatibility
-	result := aiResult.Data
-	if result == nil {
-		result = &services.GeminiResponse{}
 	}
 
 	return c.JSON(models.APIResponse{
