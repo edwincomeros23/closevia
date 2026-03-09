@@ -521,6 +521,7 @@ const Home: React.FC = () => {
           maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
           mx={{ base: 'auto', lg: 0 }}
           ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
+          position="relative"
         >
           {/* Main Search Bar */}
           <HStack w="full" spacing={3} wrap="wrap">
@@ -690,18 +691,18 @@ const Home: React.FC = () => {
               top="100%"
               left={0}
               right={0}
-              w="full"
               bg="white"
               p={4}
               rounded="lg"
-              shadow="md"
+              shadow="lg"
               zIndex={50}
-              maxW={{ base: "100%", md: "6xl" }}
-              mx={0}
-              transform="none"
             >
-              <Grid templateColumns="repeat(auto-fit, minmax(150px, 1fr))" gap={3}>
-                <FormControl>
+              <Flex
+                gap={3}
+                align="flex-end"
+                direction={{ base: 'column', md: 'row' }}
+              >
+                <FormControl flex={1} minW={0}>
                   <FormLabel fontSize="sm" color="gray.600">Sort By</FormLabel>
                   <Select
                     aria-label="Sort by"
@@ -717,7 +718,7 @@ const Home: React.FC = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl>
+                <FormControl flex={1} minW={0}>
                   <FormLabel fontSize="sm" color="gray.600">Condition</FormLabel>
                   <Select
                     aria-label="Condition"
@@ -735,7 +736,7 @@ const Home: React.FC = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl>
+                <FormControl flex={1} minW={0}>
                   <FormLabel fontSize="sm" color="gray.600">Listing Type</FormLabel>
                   <Select
                     aria-label="Listing type"
@@ -750,7 +751,7 @@ const Home: React.FC = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl>
+                <FormControl flex={1} minW={0}>
                   <FormLabel fontSize="sm" color="gray.600">Bidding & Offers</FormLabel>
                   <Select
                     aria-label="Bidding & offers"
@@ -765,7 +766,7 @@ const Home: React.FC = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl>
+                <FormControl flex={1} minW={0}>
                   <FormLabel fontSize="sm" color="gray.600">Seller</FormLabel>
                   <Select
                     aria-label="Seller verification"
@@ -779,18 +780,17 @@ const Home: React.FC = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">&nbsp;</FormLabel>
+                <Box flex="none" alignSelf={{ base: 'stretch', md: 'flex-end' }} ml={{ base: 0, md: 'auto' }}>
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="outline"
                     onClick={clearFilters}
-                    w="full"
+                    w={{ base: 'full', md: 'auto' }}
                   >
                     Reset Filters
                   </Button>
-                </FormControl>
-              </Grid>
+                </Box>
+              </Flex>
             </Box>
           )}
         </VStack>
