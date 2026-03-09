@@ -32,6 +32,7 @@ import {
   AlertDescription,
   Skeleton,
   SkeletonText,
+  Tooltip,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
 import { MdEdit } from 'react-icons/md'
@@ -533,6 +534,39 @@ const AddProduct: React.FC = () => {
     }
   }
 
+  // Get reason why Next button is disabled
+  const getDisabledReason = (): string => {
+    // AI Blocking Error
+    if (aiBlockingError) {
+      return aiBlockingError
+    }
+
+    // Daily limit reached on step 1
+    if (currentStep === 1 && uploadedImages.length >= 1 && !canMakeAIRequest()) {
+      return `Daily AI analysis limit reached (${getCurrentDailyCount()}/${MAX_DAILY_AI_REQUESTS})`
+    }
+
+    switch (currentStep) {
+      case 1:
+        return `Upload at least 1 image to proceed`
+      case 2:
+        const issues = []
+        if (!formData.title.trim()) issues.push('Add a title')
+        if (formData.title.trim().length > 25) issues.push('Title must be ≤25 characters')
+        if (formData.description.trim().length < 50) issues.push('Description must be ≥50 characters')
+        if (!formData.condition) issues.push('Select a condition')
+        if (!formData.category) issues.push('Select a category')
+        if (!formData.location?.trim()) issues.push('Add a location')
+        if (!formData.wants?.trim()) issues.push('Describe what you want in return')
+        if (wantsError) issues.push(wantsError)
+        return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
+      case 3:
+        return 'Ready to post'
+      default:
+        return 'Fill in required information'
+    }
+  }
+
   // ── Submit ────────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
@@ -614,32 +648,6 @@ const AddProduct: React.FC = () => {
         )}
       </HStack>
 
-      {/* Safety Rejection Alert - Prominent */}
-      {aiBlockingError && (
-        <Alert
-          status="error"
-          variant="solid"
-          flexDirection="column"
-          alignItems="flex-start"
-          justifyContent="flex-start"
-          textAlign="left"
-          borderRadius="lg"
-          py={4}
-          px={4}
-          bg="red.600"
-          color="white"
-        >
-          <HStack align="flex-start" w="full" mb={2}>
-            <AlertIcon boxSize={6} mt={0} />
-            <Text fontSize="sm" fontWeight="bold">Item Cannot Be Listed</Text>
-          </HStack>
-          <Text fontSize="sm" ml={8}>{aiBlockingError}</Text>
-          <Text fontSize="xs" ml={8} mt={2} opacity={0.9}>
-            Please upload a different photo and try again.
-          </Text>
-        </Alert>
-      )}
-
       {/* Streamlined Drop Zone - Balanced Height, Mobile Responsive */}
       <Box
         border="2px dashed"
@@ -647,27 +655,119 @@ const AddProduct: React.FC = () => {
         borderRadius="xl"
         p={{ base: 4, sm: 5 }}
         textAlign="center"
-        cursor="pointer"
+        cursor="auto"
         _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
         transition="all 0.2s"
-        onClick={() => document.getElementById('img-upload')?.click()}
-        minH={{ base: '100px', sm: '120px' }}
+        minH={{ base: '120px', sm: '140px' }}
       >
-        <VStack spacing={2}>
+        <VStack spacing={4}>
           <AddIcon boxSize={6} color="gray.400" />
-          <Text fontSize="sm" fontWeight="semibold" color="gray.600">Click or drag photos</Text>
-          <Text fontSize="xs" color="gray.500">JPEG/PNG • max 5MB • up to 8 images</Text>
+          
+          {/* Two Button Options - Side by Side */}
+          <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
+            <Button
+              leftIcon={<span>📁</span>}
+              colorScheme="brand"
+              variant="outline"
+              size="sm"
+              onClick={() => document.getElementById('img-upload')?.click()}
+              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+            >
+              Upload from Gallery
+            </Button>
+            <Button
+              leftIcon={<span>📷</span>}
+              colorScheme="brand"
+              variant="outline"
+              size="sm"
+              onClick={() => document.getElementById('img-camera')?.click()}
+              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+            >
+              Take Photo
+            </Button>
+          </HStack>
+
+          <Text fontSize="xs" color="gray.500" mt={2}>
+            JPEG/PNG • max 5MB • up to 8 images
+          </Text>
         </VStack>
       </Box>
+      
+      {/* Gallery Upload Input */}
       <input id="img-upload" type="file" multiple accept="image/*" style={{ display: 'none' }}
         onChange={e => handleImageUpload(e.target.files)} />
+      
+      {/* Camera Capture Input - Mobile friendly */}
+      <input id="img-camera" type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+        onChange={e => handleImageUpload(e.target.files)} />
 
-      {/* Horizontal Thumbnail Row - Nice Size, Scrollable on Mobile */}
+      {/* Image Preview Grid */}
       {uploadedImages.length > 0 && (
-        <VStack spacing={2} align="stretch">
-          <HStack spacing={{ base: 1.5, sm: 2 }} overflowX="auto" pb={1}>
+        <VStack spacing={3} align="stretch" bg="gray.50" p={4} borderRadius="lg" border="1px solid" borderColor="gray.200">
+          {/* Preview Header */}
+          <HStack justify="space-between" align="center">
+            <VStack spacing={0.5} align="start">
+              <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+                📷 Your Photos ({uploadedImages.length}/8)
+              </Text>
+              <Text fontSize="xs" color="gray.500">
+                {uploadedImages.length === 1 ? 'First image will be your cover photo' : 'First image is your cover photo • Tap × to remove'}
+              </Text>
+            </VStack>
+            {uploadedImages.length < 8 && (
+              <Button
+                size="xs"
+                variant="solid"
+                colorScheme="brand"
+                fontSize="xs"
+                h="28px"
+                px={2}
+                onClick={() => document.getElementById('img-upload')?.click()}
+                whiteSpace="nowrap"
+              >
+                + Add
+              </Button>
+            )}
+          </HStack>
+
+          {/* Horizontal Thumbnail Grid */}
+          <Box 
+            display="flex" 
+            gap={{ base: 1.5, sm: 2 }} 
+            overflowX="auto" 
+            pb={2}
+            css={{
+              '&::-webkit-scrollbar': {
+                height: '4px',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: 'transparent',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: '#cbd5e0',
+                borderRadius: '4px',
+                '&:hover': {
+                  background: '#a0aec0',
+                },
+              },
+            }}
+          >
             {uploadedImages.map((_, i) => (
-              <Box key={i} position="relative" minW="80px" w="80px" h="80px" flexShrink={0}>
+              <Box 
+                key={i} 
+                position="relative" 
+                minW="90px" 
+                w="90px" 
+                h="90px" 
+                flexShrink={0}
+                borderRadius="lg"
+                overflow="hidden"
+                transition="all 0.2s"
+                _hover={{
+                  transform: 'scale(1.05)',
+                  shadow: 'md',
+                }}
+              >
                 <Image
                   src={imagePreviewUrls[i]}
                   alt={`Preview ${i + 1}`}
@@ -676,50 +776,68 @@ const AddProduct: React.FC = () => {
                   w="full"
                   h="full"
                   border={i === 0 ? '3px solid' : '1px solid'}
-                  borderColor={i === 0 ? 'brand.400' : 'gray.200'}
-                  shadow={i === 0 ? 'sm' : 'none'}
+                  borderColor={i === 0 ? 'brand.400' : 'gray.300'}
+                  shadow={i === 0 ? 'md' : 'sm'}
                 />
+                
+                {/* Cover Badge */}
                 {i === 0 && (
-                  <Badge position="absolute" bottom={1} left={1} colorScheme="brand" fontSize="8px" px={2}>
-                    Cover
+                  <Badge 
+                    position="absolute" 
+                    bottom={2} 
+                    left={2} 
+                    colorScheme="brand" 
+                    fontSize="9px" 
+                    px={2}
+                    py={1}
+                    borderRadius="md"
+                  >
+                    ★ Cover
                   </Badge>
                 )}
-                <IconButton
-                  icon={<CloseIcon boxSize={3} />}
-                  aria-label="Remove"
-                  size="sm"
-                  position="absolute"
-                  top={-3}
-                  right={-3}
-                  colorScheme="red"
-                  onClick={() => removeImage(i)}
-                  borderRadius="full"
-                  minW="24px"
-                  h="24px"
-                />
+                
+                {/* Position Counter */}
+                <Badge 
+                  position="absolute" 
+                  top={1} 
+                  left={1} 
+                  bg="rgba(0,0,0,0.6)" 
+                  color="white" 
+                  fontSize="10px" 
+                  px={1.5}
+                  borderRadius="md"
+                >
+                  #{i + 1}
+                </Badge>
+                
+                {/* Remove Button */}
+                <Tooltip label="Delete this photo" size="sm">
+                  <IconButton
+                    icon={<CloseIcon boxSize={3} />}
+                    aria-label="Remove photo"
+                    size="md"
+                    position="absolute"
+                    top={1}
+                    right={1}
+                    colorScheme="red"
+                    variant="solid"
+                    bg="red.500"
+                    _hover={{ bg: 'red.600' }}
+                    onClick={() => removeImage(i)}
+                    borderRadius="full"
+                    minW="28px"
+                    h="28px"
+                    boxShadow="md"
+                  />
+                </Tooltip>
               </Box>
             ))}
-          </HStack>
+          </Box>
 
-          {/* Upload Stats & Add Button - Inline */}
-          <HStack justify="space-between" align="center" w="full">
-            <Text fontSize="sm" fontWeight="semibold" color="gray.600">
-              {uploadedImages.length}/8 uploaded
-            </Text>
-            {uploadedImages.length < 8 && (
-              <Button
-                size="xs"
-                variant="ghost"
-                colorScheme="brand"
-                fontSize="sm"
-                h="28px"
-                px={3}
-                onClick={() => document.getElementById('img-upload')?.click()}
-              >
-                + Add More
-              </Button>
-            )}
-          </HStack>
+          {/* Info Text */}
+          <Text fontSize="xs" color="gray.500" mt={1}>
+            💡 Tip: Clear, well-lit photos get analyzed faster and attract more interest
+          </Text>
         </VStack>
       )}
 
@@ -1349,18 +1467,49 @@ const AddProduct: React.FC = () => {
     <Box minH="100vh" bg={pageBg} py={6}>
       <Box p={6} maxW="3xl" mx="auto">
         <VStack spacing={5} align="stretch">
-          {/* Compact Header - Single Line with Step Indicator */}
-          <HStack justify="space-between" align="center">
-            <Box>
-              <Heading size="lg" color="brand.500" mb={0.5}>Post a Product</Heading>
-              <Text fontSize="sm" color="gray.600">Step {currentStep}/{TOTAL_STEPS}</Text>
-            </Box>
-            <Badge colorScheme="brand" fontSize="sm" px={3} py={1.5}>
-              {stepLabels[currentStep - 1].icon} {stepLabels[currentStep - 1].title}
-            </Badge>
-          </HStack>
+          {/* Enhanced Header with Step Breadcrumb */}
+          <VStack align="start" spacing={3}>
+            <Heading size="lg" color="brand.500">Post a Product</Heading>
+            
+            {/* Step Breadcrumb */}
+            <HStack spacing={2} fontSize="sm">
+              {stepLabels.map((step, idx) => (
+                <React.Fragment key={step.number}>
+                  <HStack 
+                    spacing={1.5}
+                    px={3}
+                    py={1.5}
+                    borderRadius="md"
+                    bg={currentStep === step.number ? 'brand.50' : 'transparent'}
+                    border={currentStep === step.number ? '1px solid' : 'none'}
+                    borderColor={currentStep === step.number ? 'brand.300' : 'transparent'}
+                    transition="all 0.2s"
+                    cursor={currentStep !== step.number ? 'pointer' : 'default'}
+                    _hover={currentStep !== step.number ? { bg: 'gray.50' } : {}}
+                    onClick={() => currentStep > step.number && setCurrentStep(step.number)}
+                  >
+                    <Text
+                      fontSize="sm"
+                      fontWeight={currentStep === step.number ? 'bold' : 'medium'}
+                      color={currentStep === step.number ? 'brand.600' : 'gray.600'}
+                    >
+                      {step.icon} {step.title}
+                    </Text>
+                    {currentStep === step.number && (
+                      <Badge colorScheme="brand" fontSize="10px">
+                        {Math.round((step.number / TOTAL_STEPS) * 100)}%
+                      </Badge>
+                    )}
+                  </HStack>
+                  {idx < stepLabels.length - 1 && (
+                    <Text color="gray.400" fontWeight="bold">→</Text>
+                  )}
+                </React.Fragment>
+              ))}
+            </HStack>
+          </VStack>
 
-          {/* Compact Step Progress Bar - No Numbered Circles */}
+          {/* Compact Step Progress Bar */}
           <Progress
             value={(currentStep / TOTAL_STEPS) * 100}
             colorScheme="brand"
@@ -1390,19 +1539,26 @@ const AddProduct: React.FC = () => {
             </Button>
 
             {currentStep < TOTAL_STEPS ? (
-              <Button
-                rightIcon={isGenerating ? <Spinner size="sm" /> : <ArrowForwardIcon />}
-                onClick={handleNextClick}
-                isDisabled={!canProceed()}
-                isLoading={isGenerating && currentStep === 1}
-                loadingText={isGenerating ? 'Analyzing...' : 'Next'}
-                colorScheme="brand"
-                size={{ base: "sm", sm: "md" }}
-                fontSize={{ base: "xs", sm: "sm" }}
-                minH={{ base: "36px", sm: "40px" }}
+              <Tooltip 
+                label={!canProceed() ? getDisabledReason() : 'Proceed to next step'}
+                isDisabled={canProceed()}
+                placement="top"
+                hasArrow
               >
-                {!isGenerating && !canMakeAIRequest() && currentStep === 1 ? 'Limit Reached' : 'Next'}
-              </Button>
+                <Button
+                  rightIcon={isGenerating ? <Spinner size="sm" /> : <ArrowForwardIcon />}
+                  onClick={handleNextClick}
+                  isDisabled={!canProceed()}
+                  isLoading={isGenerating && currentStep === 1}
+                  loadingText={isGenerating ? 'Analyzing...' : 'Next'}
+                  colorScheme="brand"
+                  size={{ base: "sm", sm: "md" }}
+                  fontSize={{ base: "xs", sm: "sm" }}
+                  minH={{ base: "36px", sm: "40px" }}
+                >
+                  {!isGenerating && !canMakeAIRequest() && currentStep === 1 ? 'Limit Reached' : 'Next'}
+                </Button>
+              </Tooltip>
             ) : (
               <Button
                 onClick={handleSubmit}

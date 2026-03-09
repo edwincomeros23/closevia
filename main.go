@@ -378,6 +378,9 @@ func main() {
 	ai.Get("/profile-analysis/all", middleware.AuthMiddleware(), aiFeaturesHandler.AnalyzeAllProfiles)
 	ai.Get("/counterfeit/:id", aiFeaturesHandler.GetCounterfeitReport)
 
+	// Product analysis route (uses Gemini + Groq fallback)
+	ai.Post("/analyze-product", middleware.AuthMiddleware(), uploadHandler.AnalyzeProductImages)
+
 	// Campaigns route (public-facing for fetching active campaigns)
 	campaigns := api.Group("/campaigns")
 	campaigns.Get("/active", middleware.OptionalAuthMiddleware(), campaignHandler.GetActiveCampaigns)

@@ -19,6 +19,22 @@ interface ProductData {
   location: string
   allowBuying: boolean
   barterOnly: boolean
+  aiAnalysis?: {
+    success: boolean
+    provider: string
+    retried: boolean
+    time_ms: number
+    data?: {
+      title?: string
+      description?: string
+      condition?: string
+      category?: string
+      tags?: string[]
+      estimated_value_min?: number
+      estimated_value_max?: number
+      authenticity_risks?: string[]
+    }
+  }
 }
 
 interface ProductUploadFlowProps {
@@ -43,13 +59,62 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
   const navigate = useNavigate()
   const toast = useToast()
 
+  // Analyze product images with AI
+  const analyzeProductImages = async (images: File[]) => {
+    if (images.length === 0) return
+
+    try {
+      const formData = new FormData()
+      images.slice(0, 3).forEach((image) => {
+        formData.append('images', image)
+      })
+
+      const response = await api.post('/api/ai/analyze-product', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+
+      if (response.data.success) {
+        console.log(`🤖 AI Analysis: ${response.data.provider} (${response.data.time_ms}ms)`)
+        return response.data
+      }
+    } catch (error) {
+      console.error('AI analysis failed:', error)
+    }
+    return null
+  }
+
   // Step 1: Handle image/video upload
-  const handleStep1Next = (images: File[], video?: File) => {
+  const handleStep1Next = async (images: File[], video?: File) => {
     setProductData((prev) => ({
       ...prev,
       images,
       video,
     }))
+
+    // Analyze images with AI in background
+    const aiAnalysis = await analyzeProductImages(images)
+    if (aiAnalysis?.success && aiAnalysis.data) {
+      setProductData((prev) => ({
+        ...prev,
+        aiAnalysis,
+        // Pre-fill with AI suggestions
+        title: aiAnalysis.data.title || prev.title,
+        description: aiAnalysis.data.description || prev.description,
+        category: aiAnalysis.data.category || prev.category,
+        condition: aiAnalysis.data.condition || prev.condition,
+      }))
+
+      toast({
+        title: '✨ AI Analysis Complete',
+        description: `Results from ${aiAnalysis.provider} (${aiAnalysis.time_ms}ms)${aiAnalysis.retried ? ' - Used backup AI' : ''}`,
+        status: 'success',
+        duration: 3,
+        isClosable: true,
+      })
+    }
+
     setCurrentStep(2)
   }
 
@@ -164,6 +229,7 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
             allowBuying: productData.allowBuying,
             barterOnly: productData.barterOnly,
           }}
+          aiAnalysis={productData.aiAnalysis}
           isLoading={isLoading}
         />
       )}

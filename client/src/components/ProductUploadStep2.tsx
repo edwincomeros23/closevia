@@ -40,6 +40,22 @@ interface ProductUploadStep2Props {
   onNext: (details: ProductDetails) => void
   onBack: () => void
   initialData?: ProductDetails
+  aiAnalysis?: {
+    success: boolean
+    provider: string
+    retried: boolean
+    time_ms: number
+    data?: {
+      title?: string
+      description?: string
+      condition?: string
+      category?: string
+      tags?: string[]
+      estimated_value_min?: number
+      estimated_value_max?: number
+      authenticity_risks?: string[]
+    }
+  }
   isLoading?: boolean
 }
 
@@ -47,6 +63,7 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
   onNext,
   onBack,
   initialData,
+  aiAnalysis,
   isLoading = false,
 }) => {
   const [details, setDetails] = useState<ProductDetails>(
@@ -130,6 +147,32 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
 
       {/* Main Content */}
       <VStack spacing={6} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }} align="stretch">
+        {/* AI Analysis Info */}
+        {aiAnalysis?.success && (
+          <Box bg="blue.50" border="1px" borderColor="blue.200" rounded="lg" p={3}>
+            <HStack spacing={2} justify="space-between" wrap="wrap">
+              <HStack spacing={2}>
+                <Text fontSize="sm" fontWeight="600" color="blue.700">
+                  ✨ {aiAnalysis.provider.charAt(0).toUpperCase() + aiAnalysis.provider.slice(1)} Analysis
+                </Text>
+                {aiAnalysis.retried && (
+                  <Badge colorScheme="orange" fontSize="xs">
+                    Backup AI
+                  </Badge>
+                )}
+              </HStack>
+              <Text fontSize="xs" color="blue.600">
+                {aiAnalysis.time_ms}ms
+              </Text>
+            </HStack>
+            {aiAnalysis.data?.authenticity_risks && aiAnalysis.data.authenticity_risks.length > 0 && (
+              <Text fontSize="xs" color="orange.700" mt={2}>
+                ⚠️ Note: {aiAnalysis.data.authenticity_risks.join(', ')}
+              </Text>
+            )}
+          </Box>
+        )}
+
         {/* Title */}
         <FormControl isRequired>
           <FormLabel fontWeight="600">Product Title</FormLabel>

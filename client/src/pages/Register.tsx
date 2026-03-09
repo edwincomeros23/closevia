@@ -20,6 +20,7 @@ import {
   useToast,
   SimpleGrid,
   FormErrorMessage,
+  FormHelperText,
   Flex,
 } from '@chakra-ui/react'
 import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
@@ -50,20 +51,30 @@ const Register: React.FC = () => {
 
   const validateFields = () => {
     const errors: Record<string, string> = {}
+    const isWmsuEmail = email && email.toLowerCase().endsWith('@wmsu.edu.ph')
 
     if (!isOrganization) {
       if (!firstName) errors.firstName = 'First name is required'
       if (!lastName) errors.lastName = 'Last name is required'
       if (!email) errors.email = 'Email is required'
-      if (email && !email.toLowerCase().endsWith('@wmsu.edu.ph')) {
-        errors.email = 'WMSU students must use @wmsu.edu.ph email'
-      }
-      if (email.toLowerCase().endsWith('@wmsu.edu.ph') && !department) {
+      else if (!email.includes('@')) errors.email = 'Please enter a valid email address'
+      
+      // Department required ONLY for WMSU emails
+      if (isWmsuEmail && !department) {
         errors.department = 'Department/College is required for WMSU students'
+      }
+      
+      // Phone number validation: max 11 digits, numeric only
+      if (phoneNumber && !/^\d+$/.test(phoneNumber)) {
+        errors.phone = 'Phone number must contain only digits'
+      }
+      if (phoneNumber && phoneNumber.length > 11) {
+        errors.phone = 'Phone number must be 11 digits or less'
       }
     } else {
       if (!orgName) errors.orgName = 'Organization name is required'
       if (!email) errors.email = 'Email is required'
+      else if (!email.includes('@')) errors.email = 'Please enter a valid email address'
     }
 
     if (!password) errors.password = 'Password is required'
@@ -400,23 +411,34 @@ const Register: React.FC = () => {
                         </FormControl>
                       </SimpleGrid>
 
-                      {/* Phone Number */}
-                      <FormControl>
-                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">Phone Number</FormLabel>
+                      {/* Phone Number - Max 11 digits */}
+                      <FormControl isInvalid={!!fieldErrors.phone}>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">
+                          Phone Number
+                          <Text as="span" fontSize="11px" color="gray.500" ml={2} fontWeight="400">
+                            ({phoneNumber.length}/11 digits)
+                          </Text>
+                        </FormLabel>
                         <Input
                           type="tel"
+                          inputMode="numeric"
                           value={phoneNumber}
-                          onChange={(e) => setPhoneNumber(e.target.value)}
-                          placeholder="+63 xxx xxx xxxx"
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 11)
+                            setPhoneNumber(value)
+                            if (fieldErrors.phone) setFieldErrors({ ...fieldErrors, phone: '' })
+                          }}
+                          placeholder="09XX-XXX-XXXX (11 digits)"
+                          maxLength={11}
                           size="lg"
-                          bg="#F5F5F5"
-                          borderColor="#E0E0E0"
+                          bg={fieldErrors.phone ? '#FFF5F5' : '#F5F5F5'}
+                          borderColor={fieldErrors.phone ? '#ef5350' : '#E0E0E0'}
                           borderWidth="1px"
                           height="44px"
                           fontSize="14px"
                           _focus={{
-                            borderColor: '#2D876D',
-                            boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
+                            borderColor: fieldErrors.phone ? '#ef5350' : '#2D876D',
+                            boxShadow: fieldErrors.phone ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
                             bg: 'white',
                           }}
                           _hover={{
@@ -424,6 +446,7 @@ const Register: React.FC = () => {
                           }}
                           transition="all 0.2s"
                         />
+                        {fieldErrors.phone && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.phone}</FormErrorMessage>}
                       </FormControl>
 
                       {/* Email for Individual */}
@@ -436,7 +459,7 @@ const Register: React.FC = () => {
                             setEmail(e.target.value)
                             if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' })
                           }}
-                          placeholder="name@wmsu.edu.ph"
+                          placeholder="your.email@example.com"
                           size="lg"
                           bg="#F5F5F5"
                           borderColor={fieldErrors.email ? '#ef5350' : '#E0E0E0'}
@@ -454,6 +477,16 @@ const Register: React.FC = () => {
                           transition="all 0.2s"
                         />
                         {fieldErrors.email && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.email}</FormErrorMessage>}
+                        {!fieldErrors.email && email.toLowerCase().endsWith('@wmsu.edu.ph') && (
+                          <FormHelperText fontSize="xs" color="green.600" mt={1}>
+                            ✓ WMSU student detected - you'll get free Premium access!
+                          </FormHelperText>
+                        )}
+                        {!fieldErrors.email && !email.toLowerCase().endsWith('@wmsu.edu.ph') && email && (
+                          <FormHelperText fontSize="xs" color="gray.500" mt={1}>
+                            💡 Tip: WMSU students (@wmsu.edu.ph) get free Premium access
+                          </FormHelperText>
+                        )}
                       </FormControl>
 
                       {/* WMSU Department for students */}

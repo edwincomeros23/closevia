@@ -1635,15 +1635,32 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 		}
 	}
 
-	result, err := services.AnalyzeProductWithGroq(files)
-	if err != nil {
-		errMsg := err.Error()
+	// Use fallback service: Gemini (primary) → Groq (backup)
+	aiResult, err := services.AnalyzeProductWithFallback(files)
+	if aiResult != nil && (aiResult.Provider == "gemini" || aiResult.Provider == "groq") {
+		log.Printf("✅ [AI] Analysis complete: Provider=%s, Retried=%v, TimeMs=%d", aiResult.Provider, aiResult.Retried, aiResult.TimeMs)
+	}
+
+	// Check if analysis failed
+	if err != nil || aiResult == nil || !aiResult.Success {
+		errMsg := "AI analysis failed"
+		if aiResult != nil && aiResult.Error != "" {
+			errMsg = aiResult.Error
+		} else if err != nil {
+			errMsg = err.Error()
+		}
 		log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
 		// Return 422 (Unprocessable Entity) — the server worked fine, the AI couldn't process the input
 		return c.Status(422).JSON(models.APIResponse{
 			Success: false,
 			Error:   errMsg,
 		})
+	}
+
+	// Convert AIAnalysisResult to GeminiResponse for backward compatibility
+	result := aiResult.Data
+	if result == nil {
+		result = &services.GeminiResponse{}
 	}
 
 	return c.JSON(models.APIResponse{
