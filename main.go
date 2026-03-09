@@ -204,6 +204,10 @@ func main() {
 	uploadHandler := handlers.NewUploadHandler()
 	campaignHandler := handlers.NewCampaignHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
+	activityHandler := handlers.NewActivityHandler()
+
+	// Public Activity route
+	api.Get("/activities", activityHandler.GetRecentActivity)
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -260,6 +264,8 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
+	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct) // Boost a listing
+	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)

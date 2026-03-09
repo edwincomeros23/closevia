@@ -169,7 +169,7 @@ const AddProduct: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [aiDone, setAiDone] = useState(false)
-  
+
   // AI Analysis blocking/warning state
   const [aiBlockingError, setAiBlockingError] = useState<string | null>(null) // Blocks form submission
   const [aiWarnings, setAiWarnings] = useState<string[]>([]) // Just warnings
@@ -268,24 +268,24 @@ const AddProduct: React.FC = () => {
       // Send all images in a batch (single API request)
       const fd = new FormData()
       images.forEach(f => fd.append('images', f))
-      
+
       const response = await api.post('/api/products/generate-details', fd)
       const data = response.data
       if (data.success && data.data) {
         const d = data.data
-        
+
         // SAFETY CHECK: Handle top-level prohibition first (most critical)
         if (d.prohibited) {
           // Increment daily counter ONLY for safety check rejections (still count as a request)
           incrementDailyCount()
-          
+
           setIsGenerating(false)
           aiTriggeredRef.current = false
-          
+
           // Clear the uploaded images since they contain prohibited content
           setUploadedImages([])
           setImagePreviewUrls([])
-          
+
           // Show prominent error message
           toast({
             title: '❌ Cannot list this item',
@@ -295,19 +295,19 @@ const AddProduct: React.FC = () => {
             isClosable: true,
             position: 'top-right',
           })
-          
+
           // Set blocking error to show it on Step 1
           setAiBlockingError(d.reason || 'This item cannot be listed for trading.')
-          
+
           // Stay on Step 1 - do NOT navigate to Step 2
           return
         }
-        
+
         // Increment daily counter for successful analysis
         incrementDailyCount()
-        
+
         const warnings: string[] = []
-        
+
         // Check for secondary blocking issues (older field structure)
         if (d.is_prohibited) {
           setAiBlockingError(d.prohibited_reason || 'This item cannot be listed for trading.')
@@ -322,25 +322,25 @@ const AddProduct: React.FC = () => {
           })
           return
         }
-        
+
         // Check for person warning
         if (d.contains_person) {
           warnings.push(d.person_warning || 'This photo contains a person. Please retake without people in frame.')
         }
-        
+
         // Check for suspicious image warning
         if (d.is_suspicious_image) {
           const reason = d.suspicious_reason || 'This looks like a screenshot or stock photo'
           warnings.push(`⚠️ ${reason}: Original product photos work better and get better engagement!`)
         }
-        
+
         // Check for quality warning
         if (d.is_blurry_or_dark) {
           warnings.push(d.quality_warning || 'This photo is too dark or blurry. Better lighting and focus will help buyers see your item clearly.')
         }
-        
+
         setAiWarnings(warnings)
-        
+
         // Fill form with AI data
         setFormData(prev => ({
           ...prev,
@@ -348,7 +348,7 @@ const AddProduct: React.FC = () => {
           description: d.description || prev.description,
           condition: d.condition || prev.condition || 'Used',
           category: d.category || prev.category || 'General',
-          item_type: d.item_type || prev.item_type,
+          item_type: d.subcategory || d.item_type || prev.item_type,
           brand: d.brand || prev.brand,
           authenticity_risks: d.authenticity_risks || prev.authenticity_risks,
           estimated_value_min: d.estimated_value_min ?? prev.estimated_value_min,
@@ -358,7 +358,7 @@ const AddProduct: React.FC = () => {
         if (d.title) setTitleLength(d.title.length)
         if (d.description) setDescriptionLength(d.description.length)
         setAiDone(true)
-        
+
         if (warnings.length > 0) {
           toast({
             title: '⚠️ AI completed with notes',
@@ -386,7 +386,7 @@ const AddProduct: React.FC = () => {
       // Only increment daily counter on failures if we haven't already
       // (safety rejections already increment above)
       incrementDailyCount()
-      
+
       toast({
         title: 'AI analysis failed',
         description: err?.response?.data?.error || err.message || 'Could not analyze image. You can fill in details manually.',
@@ -441,7 +441,7 @@ const AddProduct: React.FC = () => {
         return combined.slice(0, 8)
       })
       setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
-      
+
       // Clear AI errors when new images are uploaded
       setAiBlockingError(null)
       setAiWarnings([])
@@ -505,12 +505,12 @@ const AddProduct: React.FC = () => {
     if (aiBlockingError) {
       return false
     }
-    
+
     // Cannot proceed if daily AI request limit reached on step 1
     if (currentStep === 1 && uploadedImages.length >= 1 && !canMakeAIRequest()) {
       return false
     }
-    
+
     switch (currentStep) {
       case 1:
         // Just need at least 1 image - always enabled for navigation
@@ -722,7 +722,7 @@ const AddProduct: React.FC = () => {
           </HStack>
         </VStack>
       )}
-      
+
       {/* AI Analysis Status - Loading, Errors, & Warnings */}
       {isGenerating && (
         <VStack spacing={2} align="stretch" w="full" bg="blue.50" p={4} borderRadius="lg" border="1px solid" borderColor="blue.200">
@@ -737,7 +737,7 @@ const AddProduct: React.FC = () => {
           </Text>
         </VStack>
       )}
-      
+
       {aiBlockingError && (
         <Alert status="error" borderRadius="lg" variant="left-accent">
           <AlertIcon />
@@ -749,7 +749,7 @@ const AddProduct: React.FC = () => {
           </Box>
         </Alert>
       )}
-      
+
       {aiWarnings.length > 0 && (
         <VStack spacing={2} align="stretch" w="full">
           {aiWarnings.map((warning, idx) => (
@@ -844,7 +844,7 @@ const AddProduct: React.FC = () => {
                   fontSize="7px"
                   colorScheme={
                     formData.authenticity_risks === 'High' ? 'red' :
-                    formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                      formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
                   }
                   py={0.5}
                   noOfLines={1}
@@ -1194,7 +1194,7 @@ const AddProduct: React.FC = () => {
             <Badge
               colorScheme={
                 formData.authenticity_risks === 'High' ? 'red' :
-                formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                  formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
               }
               fontSize="xs"
               variant="subtle"
@@ -1270,7 +1270,7 @@ const AddProduct: React.FC = () => {
               <Badge
                 colorScheme={
                   formData.authenticity_risks === 'High' ? 'red' :
-                  formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                    formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
                 }
                 fontSize="xs"
               >

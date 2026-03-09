@@ -69,6 +69,7 @@ import { useStudentAdInjection, StudentAdCard } from '../components/StudentAdInj
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import ProductCard from '../components/ProductCard'
 import { ProductGridSkeleton } from '../components/ProductSkeleton'
+import ActivityFeed from '../components/ActivityFeed'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -143,7 +144,7 @@ const Home: React.FC = () => {
     // Fetch the default "All" feed every time the Home page mounts
     console.log('🔍 Fetching initial products with limit: 20')
     searchProducts({ limit: 20, page: 1 })
-    
+
     // Set flag so returning users bypass landing page
     localStorage.setItem('has_visited', 'true')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1002,6 +1003,10 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
+
+      {/* Real-time Activity Feed Marquee */}
+      <ActivityFeed />
+
       {/* Main Content - desktop: centered max-width */}
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
@@ -1026,13 +1031,13 @@ const Home: React.FC = () => {
 
         {/* Error Display with Retry */}
         {error && !loading && (
-          <Box 
-            bg="red.50" 
-            border="1px" 
-            borderColor="red.200" 
-            rounded="lg" 
-            p={6} 
-            maxW="4xl" 
+          <Box
+            bg="red.50"
+            border="1px"
+            borderColor="red.200"
+            rounded="lg"
+            p={6}
+            maxW="4xl"
             mx="auto"
           >
             <VStack spacing={4} align="stretch">
@@ -1041,8 +1046,8 @@ const Home: React.FC = () => {
                   ⚠️ Error Loading Products
                 </Text>
                 <Text color="red.700" fontSize="sm">
-                  {error.includes('timeout') ? 
-                    'The request took too long. Your connection might be slow. Please try again.' : 
+                  {error.includes('timeout') ?
+                    'The request took too long. Your connection might be slow. Please try again.' :
                     error}
                 </Text>
               </VStack>
