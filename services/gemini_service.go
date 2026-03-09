@@ -15,31 +15,27 @@ import (
 )
 
 type GeminiResponse struct {
-	// SAFETY CHECK: This takes absolute priority
-	Prohibited bool   `json:"prohibited,omitempty"` // True if image fails safety check - no further analysis done
-	Reason     string `json:"reason,omitempty"`     // Friendly user-facing message for rejection
-
-	// Product analysis fields (only populated if not prohibited)
+	Prohibited        bool     `json:"prohibited"`
+	Reason            string   `json:"reason,omitempty"`
 	Title             string   `json:"title"`
 	Description       string   `json:"description"`
 	Condition         string   `json:"condition"`
 	Category          string   `json:"category"`
-	ItemType          string   `json:"item_type"`
-	Brand             string   `json:"brand"`
-	AuthenticityRisks string   `json:"authenticity_risks"`
-	EstimatedValueMin *float64 `json:"estimated_value_min"`
-	EstimatedValueMax *float64 `json:"estimated_value_max"`
-	Tags              []string `json:"tags"`
-
-	// Image quality & content detection fields
-	IsProhibited      bool   `json:"is_prohibited,omitempty"`       // True if contains guns, drugs, alcohol, counterfeit
-	ProhibitedReason  string `json:"prohibited_reason,omitempty"`   // Friendly message if prohibited
-	ContainsPerson    bool   `json:"contains_person,omitempty"`     // True if person/face detected
-	PersonWarning     string `json:"person_warning,omitempty"`      // Friendly message if person detected
-	IsSuspiciousImage bool   `json:"is_suspicious_image,omitempty"` // True if screenshot/watermark/stock photo detected
-	SuspiciousReason  string `json:"suspicious_reason,omitempty"`   // Why it looks suspicious (screenshot, watermark, stock photo)
-	IsBlurryOrDark    bool   `json:"is_blurry_or_dark,omitempty"`   // True if image quality is poor
-	QualityWarning    string `json:"quality_warning,omitempty"`     // Friendly message about image quality
+	Subcategory       string   `json:"subcategory,omitempty"`
+	ItemType          string   `json:"item_type,omitempty"`
+	Brand             string   `json:"brand,omitempty"`
+	AuthenticityRisks string   `json:"authenticity_risks,omitempty"`
+	EstimatedValueMin float64  `json:"estimated_value_min,omitempty"`
+	EstimatedValueMax float64  `json:"estimated_value_max,omitempty"`
+	Tags              []string `json:"tags,omitempty"`
+	IsProhibited      bool     `json:"is_prohibited,omitempty"`
+	ProhibitedReason  string   `json:"prohibited_reason,omitempty"`
+	ContainsPerson    bool     `json:"contains_person,omitempty"`
+	PersonWarning     string   `json:"person_warning,omitempty"`
+	IsSuspiciousImage bool     `json:"is_suspicious_image,omitempty"`
+	SuspiciousReason  string   `json:"suspicious_reason,omitempty"`
+	IsBlurryOrDark    bool     `json:"is_blurry_or_dark,omitempty"`
+	QualityWarning    string   `json:"quality_warning,omitempty"`
 }
 
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
@@ -174,6 +170,7 @@ IF THE IMAGE IS SAFE, proceed with normal analysis. Return ONLY this exact struc
   "description": "clear, natural product description for a marketplace listing",
   "condition": "one of: New, Like New, Good, Used, For Parts",
   "category": "one of: General, Electronics, Phones, Computers, Appliances, Fashion, Collectibles, Sports, Toys, Books, Automotive, Other",
+  "subcategory": "specific subcategory like Smartphone, Sneakers, etc.",
   "item_type": "general type of item (e.g., Sneakers, Laptop, Camera)",
   "brand": "detected brand or Unknown",
   "authenticity_risks": "one of: Low, Medium, High",

@@ -600,6 +600,7 @@ func ensureProductColumns() {
 		{"estimated_value_min", "DECIMAL(10,2) NULL"},
 		{"estimated_value_max", "DECIMAL(10,2) NULL"},
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
+		{"boosted_at", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {

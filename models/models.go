@@ -184,6 +184,7 @@ type Product struct {
 	WishlistCount        int         `json:"wishlist_count,omitempty"`
 	WantCount            int         `json:"want_count"`
 	OfferCount           int         `json:"offer_count"`
+	BoostedAt            *time.Time  `json:"boosted_at,omitempty"`
 }
 
 // ProductCreate represents data for creating a product

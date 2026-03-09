@@ -47,6 +47,7 @@ export interface Product {
   distanceKm?: number // Numeric distance in km for sorting
   created_at: string
   updated_at: string
+  boosted_at?: string
   wishlist_count?: number;
   bidding_type?: 'none' | 'blind' | 'open'
   counterfeit_confidence?: number;

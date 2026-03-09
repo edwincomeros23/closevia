@@ -125,6 +125,7 @@ Proceed with product analysis. Return this JSON structure:
   "description": "detailed description",
   "condition": "New/Like-New/Good/Used/For Parts",
   "category": "product category",
+  "subcategory": "specific subcategory like Smartphone, Sneakers, etc.",
   "item_type": "type of item",
   "brand": "brand name if visible",
   "authenticity_risks": "Low/Medium/High",
