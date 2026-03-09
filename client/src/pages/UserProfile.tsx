@@ -108,6 +108,14 @@ type SellerStats = {
   report_count?: number
   has_reports?: boolean
   trust_factors?: TrustFactor[]
+  conduct_summary?: {
+    letter_grade: string
+    overall_avg: number
+    total_grades: number
+    categories: { category: string; avg: number; count: number }[]
+    cancellation_rate: number
+    dispute_rate: number
+  }
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
