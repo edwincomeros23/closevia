@@ -1375,30 +1375,100 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		stats.AvgResponseTime = "N/A"
 	}
 
-	// Calculate trust score (0-100) from rating, positive feedback, and completed trades
-	// Rating component: up to 40 points (rating/5 * 40)
-	ratingScore := 0.0
-	if stats.AvgRating > 0 {
-		ratingScore = (stats.AvgRating / 5.0) * 40.0
+	// --- Trust Score Computation (0-100) with detailed breakdown ---
+	var trustFactors []models.TrustFactor
+
+	// 1. Verified account: 15 points
+	var verificationStatus string
+	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified') FROM users WHERE id = ?", userID).Scan(&verificationStatus)
+	verifiedPoints := 0
+	verifiedStatus := "fail"
+	if verificationStatus == "verified" {
+		verifiedPoints = 15
+		verifiedStatus = "pass"
+	} else if verificationStatus == "pending" {
+		verifiedPoints = 5
+		verifiedStatus = "warn"
 	}
-	// Positive feedback component: up to 30 points (percent/100 * 30)
-	feedbackScore := 0.0
-	if stats.PositivePercent > 0 {
-		feedbackScore = (stats.PositivePercent / 100.0) * 30.0
-	}
-	// Completed trades component: up to 30 points (capped at 20 trades)
-	tradeScore := 0.0
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Verified account", Status: verifiedStatus, Points: verifiedPoints, Max: 15})
+
+	// 2. Completed trades: 25 points (capped at 20 trades)
+	tradePoints := 0
+	tradeStatus := "warn"
 	if stats.CompletedTrades > 0 {
 		capped := stats.CompletedTrades
 		if capped > 20 {
 			capped = 20
 		}
-		tradeScore = (float64(capped) / 20.0) * 30.0
+		tradePoints = int((float64(capped) / 20.0) * 25.0)
+		if stats.CompletedTrades >= 5 {
+			tradeStatus = "pass"
+		}
 	}
-	stats.TrustScore = int(ratingScore + feedbackScore + tradeScore)
-	if stats.TrustScore > 100 {
-		stats.TrustScore = 100
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Completed trades", Status: tradeStatus, Points: tradePoints, Max: 25})
+
+	// 3. Positive ratings: 25 points (avg_rating / 5 * 25)
+	ratingPoints := 0
+	ratingStatus := "warn"
+	if stats.AvgRating > 0 {
+		ratingPoints = int((stats.AvgRating / 5.0) * 25.0)
+		if stats.AvgRating >= 4.0 {
+			ratingStatus = "pass"
+		} else if stats.AvgRating < 2.5 {
+			ratingStatus = "fail"
+		}
 	}
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Positive ratings", Status: ratingStatus, Points: ratingPoints, Max: 25})
+
+	// 4. No reports: 20 points (lose points per report)
+	var reportCount int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM reports WHERE reported_user_id = ? AND status IN ('reviewed', 'resolved')", userID).Scan(&reportCount)
+	if err != nil {
+		reportCount = 0
+	}
+	reportPoints := 20
+	reportStatus := "pass"
+	if reportCount > 0 {
+		reportPoints = 20 - (reportCount * 5)
+		if reportPoints < 0 {
+			reportPoints = 0
+		}
+		if reportCount >= 3 {
+			reportStatus = "fail"
+		} else {
+			reportStatus = "warn"
+		}
+	}
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "No reports", Status: reportStatus, Points: reportPoints, Max: 20})
+
+	// 5. Response time: 15 points
+	responsePoints := 0
+	responseStatus := "warn"
+	if avgResponseTimeMinutes.Valid {
+		minutes := int(avgResponseTimeMinutes.Float64)
+		if minutes <= 60 {
+			responsePoints = 15
+			responseStatus = "pass"
+		} else if minutes <= 360 {
+			responsePoints = 10
+			responseStatus = "pass"
+		} else if minutes <= 1440 {
+			responsePoints = 5
+			responseStatus = "warn"
+		} else {
+			responsePoints = 0
+			responseStatus = "warn"
+		}
+	}
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Fast responses", Status: responseStatus, Points: responsePoints, Max: 15})
+
+	// Sum all factors
+	totalScore := verifiedPoints + tradePoints + ratingPoints + reportPoints + responsePoints
+	if totalScore > 100 {
+		totalScore = 100
+	}
+	stats.TrustScore = totalScore
+	stats.TrustFactors = trustFactors
 
 	// Determine trust level
 	if stats.TrustScore >= 80 {
@@ -1409,12 +1479,6 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		stats.TrustLevel = "risky"
 	}
 
-	// Count reports against this user (only reviewed/resolved ones)
-	var reportCount int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM reports WHERE reported_user_id = ? AND status IN ('reviewed', 'resolved')", userID).Scan(&reportCount)
-	if err != nil {
-		reportCount = 0
-	}
 	stats.ReportCount = reportCount
 	stats.HasReports = reportCount > 0
 

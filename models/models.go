@@ -587,21 +587,30 @@ func (p Product) MarshalJSON() ([]byte, error) {
 	return json.Marshal(a)
 }
 
+// TrustFactor represents a single factor in the trust score breakdown
+type TrustFactor struct {
+	Label  string `json:"label"`
+	Status string `json:"status"` // "pass", "warn", "fail"
+	Points int    `json:"points"` // Points earned for this factor
+	Max    int    `json:"max"`    // Maximum possible points
+}
+
 // SellerStats represents seller statistics for display on product pages
 type SellerStats struct {
-	UserID          int     `json:"user_id"`
-	AvgRating       float64 `json:"avg_rating"`
-	PositivePercent float64 `json:"positive_percent"`
-	TotalTrades     int     `json:"total_trades"`
-	AvgResponseTime string  `json:"avg_response_time"`
-	TotalFeedback   int     `json:"total_feedback"`
-	ResponseMetric  string  `json:"response_metric,omitempty"`   // "excellent", "good", etc.
-	MemberSinceYear int     `json:"member_since_year,omitempty"` // Year user joined
-	CompletedTrades int     `json:"completed_trades,omitempty"`
-	TrustScore      int     `json:"trust_score"`  // 0-100 calculated trust score
-	TrustLevel      string  `json:"trust_level"`  // "trusted", "new", "risky"
-	ReportCount     int     `json:"report_count"` // Number of reviewed/resolved reports
-	HasReports      bool    `json:"has_reports"`  // Whether user has been reported
+	UserID          int           `json:"user_id"`
+	AvgRating       float64       `json:"avg_rating"`
+	PositivePercent float64       `json:"positive_percent"`
+	TotalTrades     int           `json:"total_trades"`
+	AvgResponseTime string        `json:"avg_response_time"`
+	TotalFeedback   int           `json:"total_feedback"`
+	ResponseMetric  string        `json:"response_metric,omitempty"`   // "excellent", "good", etc.
+	MemberSinceYear int           `json:"member_since_year,omitempty"` // Year user joined
+	CompletedTrades int           `json:"completed_trades,omitempty"`
+	TrustScore      int           `json:"trust_score"`             // 0-100 calculated trust score
+	TrustLevel      string        `json:"trust_level"`             // "trusted", "new", "risky"
+	ReportCount     int           `json:"report_count"`            // Number of reviewed/resolved reports
+	HasReports      bool          `json:"has_reports"`             // Whether user has been reported
+	TrustFactors    []TrustFactor `json:"trust_factors,omitempty"` // Detailed breakdown of trust score
 }
 
 // Report represents a trader report for policy violations
