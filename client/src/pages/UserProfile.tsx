@@ -48,6 +48,8 @@ import {
   Select,
   Input,
   useToast,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
 import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera } from 'react-icons/fi'
 import { FaHeart } from 'react-icons/fa'
@@ -94,6 +96,8 @@ type SellerStats = {
   avg_response_time?: string
   trust_score?: number
   trust_level?: 'trusted' | 'new' | 'risky'
+  report_count?: number
+  has_reports?: boolean
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
@@ -953,6 +957,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   </HStack>
                   
                   {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
+
+                  {/* Report Warning Banner */}
+                  {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
+                    <Alert status="warning" borderRadius="md" mb={4}>
+                      <AlertIcon />
+                      <Box>
+                        <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
+                        <Text fontSize="xs" color="gray.600">Trade with caution</Text>
+                      </Box>
+                    </Alert>
+                  )}
                   
                   {/* Show action buttons only when viewing someone else's profile */}
                   {!(currentUser && Number(id) === currentUser.id) && (

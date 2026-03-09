@@ -1372,6 +1372,15 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		stats.TrustLevel = "risky"
 	}
 
+	// Count reports against this user (only reviewed/resolved ones)
+	var reportCount int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM reports WHERE reported_user_id = ? AND status IN ('reviewed', 'resolved')", userID).Scan(&reportCount)
+	if err != nil {
+		reportCount = 0
+	}
+	stats.ReportCount = reportCount
+	stats.HasReports = reportCount > 0
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    stats,

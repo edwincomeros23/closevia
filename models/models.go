@@ -596,8 +596,10 @@ type SellerStats struct {
 	ResponseMetric  string  `json:"response_metric,omitempty"`   // "excellent", "good", etc.
 	MemberSinceYear int     `json:"member_since_year,omitempty"` // Year user joined
 	CompletedTrades int     `json:"completed_trades,omitempty"`
-	TrustScore      int     `json:"trust_score"`                 // 0-100 calculated trust score
-	TrustLevel      string  `json:"trust_level"`                 // "trusted", "new", "risky"
+	TrustScore      int     `json:"trust_score"`  // 0-100 calculated trust score
+	TrustLevel      string  `json:"trust_level"`  // "trusted", "new", "risky"
+	ReportCount     int     `json:"report_count"` // Number of reviewed/resolved reports
+	HasReports      bool    `json:"has_reports"`  // Whether user has been reported
 }
 
 // Report represents a trader report for policy violations

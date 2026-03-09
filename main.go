@@ -370,6 +370,7 @@ func main() {
 
 	// Reports route (user-facing: submit a report)
 	api.Post("/reports", middleware.AuthMiddleware(), reportHandler.CreateReport)
+	api.Get("/users/:id/reports", reportHandler.GetUserReports)
 
 	// AI Features routes
 	ai := api.Group("/ai")

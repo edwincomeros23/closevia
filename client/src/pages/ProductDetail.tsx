@@ -1571,6 +1571,17 @@ const ProductDetail: React.FC = () => {
                 </VStack>
               </SimpleGrid>
             </Flex>
+
+            {/* Report Warning Banner */}
+            {sellerStats?.has_reports && sellerStats.report_count > 0 && (
+              <Alert status="warning" borderRadius="md" mt={4}>
+                <AlertIcon />
+                <Box>
+                  <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
+                  <Text fontSize="xs" color="gray.600">Trade with caution</Text>
+                </Box>
+              </Alert>
+            )}
           </Box>
 
           {/* Seller Products Section */}
