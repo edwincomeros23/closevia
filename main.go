@@ -258,6 +258,7 @@ func main() {
 	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
 	// Specific routes must come before generic :id route
 	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
+	products.Post("/check-image-quality", productHandler.CheckImageQuality)             // Fast image quality check
 	products.Post("/report", middleware.AuthMiddleware(), productHandler.ReportListing) // Report a listing
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id/comments", commentHandler.GetComments)
@@ -369,6 +370,7 @@ func main() {
 
 	// Reports route (user-facing: submit a report)
 	api.Post("/reports", middleware.AuthMiddleware(), reportHandler.CreateReport)
+	api.Get("/users/:id/reports", reportHandler.GetUserReports)
 
 	// AI Features routes
 	ai := api.Group("/ai")

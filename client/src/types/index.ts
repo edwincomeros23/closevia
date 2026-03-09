@@ -22,6 +22,8 @@ export interface User {
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
   school_name?: string
   school_email?: string
+  last_login?: string
+  activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
 
 export interface Product {

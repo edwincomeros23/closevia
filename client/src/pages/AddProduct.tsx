@@ -72,6 +72,7 @@ import { api } from '../services/api'
 import FloatingTab from '../components/FloatingTab'
 import { prepareImageForUpload } from '../utils/imageConverter'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
+import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type ImageQualityResult as ClientQualityResult } from '../utils/imageQualityChecker'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,10 @@ const AddProduct: React.FC = () => {
   // AI Analysis blocking/warning state
   const [aiBlockingError, setAiBlockingError] = useState<string | null>(null) // Blocks form submission
   const [aiWarnings, setAiWarnings] = useState<string[]>([]) // Just warnings
+
+  // Client-side image quality state
+  const [clientQualityResults, setClientQualityResults] = useState<ClientQualityResult[]>([])
+  const [qualityChecking, setQualityChecking] = useState(false)
 
   const [titleLength, setTitleLength] = useState(0)
   const [descriptionLength, setDescriptionLength] = useState(0)
@@ -335,9 +340,19 @@ const AddProduct: React.FC = () => {
           warnings.push(`⚠️ ${reason}: Original product photos work better and get better engagement!`)
         }
 
-        // Check for quality warning
+        // Check for quality warning (blurry/dark)
         if (d.is_blurry_or_dark) {
-          warnings.push(d.quality_warning || 'This photo is too dark or blurry. Better lighting and focus will help buyers see your item clearly.')
+          warnings.push(d.quality_warning || '⚠ Image quality is low. Please retake the photo for better trade chances.')
+        }
+
+        // Check for non-product image
+        if (d.is_non_product_image) {
+          warnings.push(`⚠️ ${d.non_product_reason || 'This does not appear to be a product photo.'} Please upload a clear photo of the actual item.`)
+        }
+
+        // Check if image appears to be from an online source
+        if (d.appears_online) {
+          warnings.push(`⚠️ ${d.online_image_reason || 'This image appears to be from an online source.'} Original photos get better engagement and build trust with traders.`)
         }
 
         setAiWarnings(warnings)
@@ -443,6 +458,38 @@ const AddProduct: React.FC = () => {
       })
       setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
 
+      // Run client-side image quality checks (instant, no network)
+      setQualityChecking(true)
+      try {
+        const qualityResults = await checkMultipleImageQuality(processed)
+        setClientQualityResults(prev => [...prev, ...qualityResults])
+
+        // Show instant quality warnings
+        const qualityWarnings: string[] = []
+        qualityResults.forEach((qr, idx) => {
+          qr.issues.forEach(issue => {
+            const prefix = processed.length > 1 ? `Photo ${idx + 1}: ` : ''
+            qualityWarnings.push(`${prefix}${issue.message} ${issue.suggestion}`)
+          })
+        })
+
+        if (qualityWarnings.length > 0) {
+          // Show the first quality warning as a toast
+          toast({
+            title: '📸 Image Quality Check',
+            description: qualityWarnings[0],
+            status: 'warning',
+            duration: 6000,
+            isClosable: true,
+            position: 'top-right',
+          })
+        }
+      } catch (err) {
+        console.warn('Client-side quality check failed (non-blocking):', err)
+      } finally {
+        setQualityChecking(false)
+      }
+
       // Clear AI errors when new images are uploaded
       setAiBlockingError(null)
       setAiWarnings([])
@@ -455,6 +502,7 @@ const AddProduct: React.FC = () => {
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
     setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
+    setClientQualityResults(prev => prev.filter((_, i) => i !== index))
     // Clear AI errors and allow re-triggering when images are removed
     setAiBlockingError(null)
     setAiWarnings([])
@@ -795,6 +843,34 @@ const AddProduct: React.FC = () => {
                     ★ Cover
                   </Badge>
                 )}
+                {/* Quality indicator badge on thumbnail */}
+                {clientQualityResults[i] && clientQualityResults[i].issues.length > 0 && (
+                  <Badge
+                    position="absolute"
+                    top={1}
+                    left={1}
+                    colorScheme={getQualityColorScheme(clientQualityResults[i].overallScore)}
+                    fontSize="7px"
+                    px={1.5}
+                    py={0.5}
+                    borderRadius="sm"
+                  >
+                    {clientQualityResults[i].issues.some(iss => iss.severity === 'error') ? '⚠' : '!'} {clientQualityResults[i].overallScore}
+                  </Badge>
+                )}
+                <IconButton
+                  icon={<CloseIcon boxSize={3} />}
+                  aria-label="Remove"
+                  size="sm"
+                  position="absolute"
+                  top={-3}
+                  right={-3}
+                  colorScheme="red"
+                  onClick={() => removeImage(i)}
+                  borderRadius="full"
+                  minW="24px"
+                  h="24px"
+                />
                 
                 {/* Position Counter */}
                 <Badge 
@@ -856,6 +932,44 @@ const AddProduct: React.FC = () => {
         </VStack>
       )}
 
+      {/* Client-side Image Quality Results (instant feedback) */}
+      {clientQualityResults.length > 0 && clientQualityResults.some(qr => qr.issues.length > 0) && !isGenerating && (
+        <Box bg="orange.50" p={4} borderRadius="lg" border="1px solid" borderColor="orange.200">
+          <HStack spacing={2} mb={2}>
+            <Text fontSize="sm" fontWeight="semibold" color="orange.700">
+              📸 Image Quality Check
+            </Text>
+            {(() => {
+              const avgScore = clientQualityResults.length > 0
+                ? Math.round(clientQualityResults.reduce((a, r) => a + r.overallScore, 0) / clientQualityResults.length)
+                : 100
+              return (
+                <Badge colorScheme={getQualityColorScheme(avgScore)} fontSize="xs" px={2} py={0.5} borderRadius="md">
+                  {getQualityLabel(avgScore)} ({avgScore}/100)
+                </Badge>
+              )
+            })()}
+          </HStack>
+          <VStack spacing={1.5} align="stretch">
+            {clientQualityResults.flatMap((qr, imgIdx) =>
+              qr.issues.map((issue, issIdx) => (
+                <HStack key={`${imgIdx}-${issIdx}`} spacing={2} align="flex-start">
+                  <Text fontSize="xs" color={issue.severity === 'error' ? 'red.600' : 'orange.600'} flexShrink={0}>
+                    {issue.severity === 'error' ? '❌' : '⚠️'}
+                  </Text>
+                  <Box>
+                    <Text fontSize="xs" color="gray.700" fontWeight="medium">
+                      {clientQualityResults.length > 1 ? `Photo ${imgIdx + 1}: ` : ''}{issue.message}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">{issue.suggestion}</Text>
+                  </Box>
+                </HStack>
+              ))
+            )}
+          </VStack>
+        </Box>
+      )}
+
       {aiBlockingError && (
         <Alert status="error" borderRadius="lg" variant="left-accent">
           <AlertIcon />
@@ -870,6 +984,9 @@ const AddProduct: React.FC = () => {
 
       {aiWarnings.length > 0 && (
         <VStack spacing={2} align="stretch" w="full">
+          <Text fontSize="xs" fontWeight="semibold" color="orange.600" px={1}>
+            🤖 AI detected {aiWarnings.length} issue{aiWarnings.length > 1 ? 's' : ''} — these are suggestions, you can still post
+          </Text>
           {aiWarnings.map((warning, idx) => (
             <Alert key={idx} status="warning" borderRadius="lg" variant="left-accent">
               <AlertIcon />

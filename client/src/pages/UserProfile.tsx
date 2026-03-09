@@ -48,6 +48,8 @@ import {
   Select,
   Input,
   useToast,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
 import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera } from 'react-icons/fi'
 import { FaHeart } from 'react-icons/fa'
@@ -74,6 +76,7 @@ type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verifi
   response_time_minutes?: number
   positive_feedback?: number
   total_reviews?: number
+  activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
 
 interface UserProfileProps {
@@ -92,6 +95,10 @@ type SellerStats = {
   total_trades?: number
   completed_trades?: number
   avg_response_time?: string
+  trust_score?: number
+  trust_level?: 'trusted' | 'new' | 'risky'
+  report_count?: number
+  has_reports?: boolean
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
@@ -255,6 +262,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           org_name: (apiUser as any).org_name,
           org_logo_url: (apiUser as any).org_logo_url,
           department: (apiUser as any).department || 'Unknown',
+          activity_status: (apiUser as any).activity_status || 'inactive',
         })
 
         // Fetch user's products to infer stats and successful trades
@@ -918,6 +926,26 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         </HStack>
                       </Badge>
                     )}
+                    {sellerStats?.trust_level && (
+                      <Badge
+                        colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
+                        borderRadius="full"
+                        px={3}
+                        py={1}
+                        fontSize="sm"
+                      >
+                        {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                      </Badge>
+                    )}
+                    <Badge
+                      colorScheme={user.activity_status === 'active_today' ? 'green' : user.activity_status === 'active_this_week' ? 'yellow' : 'red'}
+                      borderRadius="full"
+                      px={3}
+                      py={1}
+                      fontSize="sm"
+                    >
+                      {user.activity_status === 'active_today' ? '🟢 Active today' : user.activity_status === 'active_this_week' ? '🟡 Active this week' : '🔴 Inactive'}
+                    </Badge>
                   </HStack>
                   
                   <HStack spacing={6} mb={4} flexWrap="wrap">
@@ -940,6 +968,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   </HStack>
                   
                   {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
+
+                  {/* Report Warning Banner */}
+                  {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
+                    <Alert status="warning" borderRadius="md" mb={4}>
+                      <AlertIcon />
+                      <Box>
+                        <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
+                        <Text fontSize="xs" color="gray.600">Trade with caution</Text>
+                      </Box>
+                    </Alert>
+                  )}
                   
                   {/* Show action buttons only when viewing someone else's profile */}
                   {!(currentUser && Number(id) === currentUser.id) && (
