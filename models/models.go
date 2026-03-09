@@ -125,6 +125,8 @@ type User struct {
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
 	EmailNotificationsEnabled   bool       `json:"email_notifications_enabled"`
 	PushNotificationsEnabled    bool       `json:"push_notifications_enabled"`
+	LastLogin                   *time.Time `json:"last_login,omitempty"`
+	ActivityStatus              string     `json:"activity_status,omitempty"`
 }
 
 // UserLogin represents login credentials

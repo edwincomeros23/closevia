@@ -76,6 +76,7 @@ type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verifi
   response_time_minutes?: number
   positive_feedback?: number
   total_reviews?: number
+  activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
 
 interface UserProfileProps {
@@ -261,6 +262,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           org_name: (apiUser as any).org_name,
           org_logo_url: (apiUser as any).org_logo_url,
           department: (apiUser as any).department || 'Unknown',
+          activity_status: (apiUser as any).activity_status || 'inactive',
         })
 
         // Fetch user's products to infer stats and successful trades
@@ -935,6 +937,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
                       </Badge>
                     )}
+                    <Badge
+                      colorScheme={user.activity_status === 'active_today' ? 'green' : user.activity_status === 'active_this_week' ? 'yellow' : 'red'}
+                      borderRadius="full"
+                      px={3}
+                      py={1}
+                      fontSize="sm"
+                    >
+                      {user.activity_status === 'active_today' ? '🟢 Active today' : user.activity_status === 'active_this_week' ? '🟡 Active this week' : '🔴 Inactive'}
+                    </Badge>
                   </HStack>
                   
                   <HStack spacing={6} mb={4} flexWrap="wrap">

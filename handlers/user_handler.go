@@ -42,6 +42,21 @@ func nullableString(p *string) interface{} {
 	return *p
 }
 
+// computeActivityStatus returns activity status based on last_login time
+func computeActivityStatus(lastLogin *time.Time) string {
+	if lastLogin == nil {
+		return "inactive"
+	}
+	since := time.Since(*lastLogin)
+	if since < 24*time.Hour {
+		return "active_today"
+	}
+	if since < 7*24*time.Hour {
+		return "active_this_week"
+	}
+	return "inactive"
+}
+
 func derefString(p *string) string {
 	if p == nil {
 		return ""
@@ -338,6 +353,12 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
+	// Update last_login timestamp
+	h.db.Exec("UPDATE users SET last_login = NOW() WHERE id = ?", user.ID)
+	now := time.Now()
+	user.LastLogin = &now
+	user.ActivityStatus = "active_today"
+
 	// Generate JWT token
 	token, err := utils.GenerateJWT(user.ID, user.Email)
 	if err != nil {
@@ -423,6 +444,12 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 		})
 	}
 
+	// Update last_login timestamp
+	h.db.Exec("UPDATE users SET last_login = NOW() WHERE id = ?", user.ID)
+	now := time.Now()
+	user.LastLogin = &now
+	user.ActivityStatus = "active_today"
+
 	// Generate JWT token
 	token, err := utils.GenerateJWT(user.ID, user.Email)
 	if err != nil {
@@ -454,6 +481,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	var user models.User
 	var schoolEmailVerifiedAt sql.NullTime
+	var lastLogin sql.NullTime
 
 	err := h.db.QueryRow(
 		`SELECT id, name, email, role, verified, 
@@ -472,7 +500,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(email_notifications_enabled, TRUE) AS email_notifications_enabled,
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
-		        created_at, updated_at
+		        created_at, updated_at, last_login
 		 FROM users WHERE id = ?`,
 		userID,
 	).Scan(
@@ -481,12 +509,16 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.LanguagePreference,
-		&user.CreatedAt, &user.UpdatedAt,
+		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
 
 	if schoolEmailVerifiedAt.Valid {
 		user.SchoolEmailVerifiedAt = &schoolEmailVerifiedAt.Time
 	}
+	if lastLogin.Valid {
+		user.LastLogin = &lastLogin.Time
+	}
+	user.ActivityStatus = computeActivityStatus(user.LastLogin)
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
@@ -789,11 +821,12 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	var profilePicture, backgroundImage, backgroundPosition, department, bio sql.NullString
 	var verificationStatus, schoolName, schoolEmail, rejectionReason sql.NullString
 	var emailVerifiedAt sql.NullTime
+	var lastLogin sql.NullTime
 	err = h.db.QueryRow(
 		`SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url,
 		        profile_picture, background_image, background_position, department, bio, badges,
 		        verification_status, school_name, school_email, school_email_verified_at, verification_rejection_reason,
-		        created_at, updated_at
+		        created_at, updated_at, last_login
 		   FROM users WHERE id = ?`,
 		userID,
 	).Scan(
@@ -801,7 +834,7 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		&user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL,
 		&profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges,
 		&verificationStatus, &schoolName, &schoolEmail, &emailVerifiedAt, &rejectionReason,
-		&user.CreatedAt, &user.UpdatedAt,
+		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
 
 	fmt.Printf("🔍 GetUserByID(%d) query result - error: %v\n", userID, err)
@@ -857,6 +890,10 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	if rejectionReason.Valid {
 		user.VerificationRejectionReason = rejectionReason.String
 	}
+	if lastLogin.Valid {
+		user.LastLogin = &lastLogin.Time
+	}
+	user.ActivityStatus = computeActivityStatus(user.LastLogin)
 
 	// SECURITY: Strip sensitive fields from public profile payload
 	user.Email = ""
