@@ -122,9 +122,23 @@ const Home: React.FC = () => {
   // Category pills - shared config
   const categories = FILTER_CATEGORIES
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
+  
+  // Track the category being transitioned to for instant visual feedback
+  const [transitingCategory, setTransitingCategory] = useState<string | null>(null)
+  
+  // Track if we're actively loading a category change
+  const [isLoadingCategoryChange, setIsLoadingCategoryChange] = useState(false)
 
   const handleCategorySelect = (categoryValue: string) => {
+    // Instant visual feedback on click
+    setTransitingCategory(categoryValue)
+    
+    // Mark that we're loading a category change
+    setIsLoadingCategoryChange(true)
+    
+    // Update the selected category
     setSelectedCategory(categoryValue)
+    
     if (categoryValue === 'All') {
       setSearchTerm('')
       setFilters(prev => ({ ...prev, keyword: '', category: '', page: 1 }))
@@ -149,6 +163,17 @@ const Home: React.FC = () => {
     localStorage.setItem('has_visited', 'true')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Clear the transiting state and loading flag after products have loaded
+  useEffect(() => {
+    if (transitingCategory && selectedCategory === transitingCategory && !loading) {
+      // Clear transiting state once products are loaded
+      setTransitingCategory(null)
+    }
+    if (isLoadingCategoryChange && !loading) {
+      setIsLoadingCategoryChange(false)
+    }
+  }, [selectedCategory, transitingCategory, loading, isLoadingCategoryChange])
 
   // Infinite scroll: IntersectionObserver for sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -930,7 +955,8 @@ const Home: React.FC = () => {
             }}
           >
             {categories.map((category) => {
-              const isSelected = selectedCategory === category.value
+              // Show selected state for either the current selection or the one being transitioned to
+              const isSelected = selectedCategory === category.value || transitingCategory === category.value
               const IconComponent = category.icon
 
               return (
@@ -940,9 +966,12 @@ const Home: React.FC = () => {
                   as="button"
                   onClick={() => handleCategorySelect(category.value)}
                   cursor="pointer"
-                  transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                  transition="transform 0.15s ease-out"
                   _active={{
-                    transform: 'scale(0.95)',
+                    transform: 'scale(0.92)',
+                  }}
+                  _focusVisible={{
+                    outline: 'none'
                   }}
                 >
                   <Box
@@ -958,8 +987,8 @@ const Home: React.FC = () => {
                     fontSize={{ base: 'xs', md: 'sm' }}
                     border="2px solid"
                     borderColor={isSelected ? category.accentColor : 'gray.200'}
-                    boxShadow="0 2px 4px rgba(0, 0, 0, 0.05)"
-                    transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                    boxShadow={isSelected ? '0 4px 8px rgba(0, 0, 0, 0.12)' : '0 2px 4px rgba(0, 0, 0, 0.05)'}
+                    transition="all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
                     position="relative"
                     overflow="hidden"
                     _before={{
@@ -967,10 +996,10 @@ const Home: React.FC = () => {
                       position: 'absolute',
                       inset: 0,
                       bg: isSelected ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                      transition: 'background 0.3s ease',
+                      transition: 'background 0.2s ease',
                     }}
                     _hover={{
-                      transform: 'translateY(-0.5px)',
+                      transform: isSelected ? 'translateY(-1px)' : 'translateY(-2px)',
                       boxShadow: '0 6px 12px rgba(0, 0, 0, 0.1)',
                       borderColor: category.accentColor,
                       bg: isSelected ? (category.value === 'All' ? 'brand.600' : category.color) : category.lightColor,
@@ -985,13 +1014,13 @@ const Home: React.FC = () => {
                       as={IconComponent}
                       w={{ base: 3.5, md: 4 }}
                       h={{ base: 3.5, md: 4 }}
-                      transition="all 0.3s ease"
+                      transition="all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
                       transform={isSelected ? 'scale(1.1)' : 'scale(1)'}
                       opacity={isSelected ? 1 : 0.7}
                     />
                     <Text
                       as="span"
-                      transition="all 0.3s ease"
+                      transition="all 0.2s ease"
                       display={{ base: category.value === 'All' ? 'inline' : 'none', md: 'inline' }}
                     >
                       {category.label}
@@ -1018,15 +1047,10 @@ const Home: React.FC = () => {
         w="full"
       >
         {/* Loading State with Skeleton */}
-        {loading && !products.length && (
-          <VStack spacing={6} align="stretch">
-            <Box>
-              <Text color="gray.600" mb={4} fontSize="sm" fontWeight="500">
-                Loading products...
-              </Text>
-              <ProductGridSkeleton count={12} />
-            </Box>
-          </VStack>
+        {(loading || isLoadingCategoryChange) && (
+          <Box>
+            <ProductGridSkeleton count={12} />
+          </Box>
         )}
 
         {/* Error Display with Retry */}
@@ -1075,11 +1099,11 @@ const Home: React.FC = () => {
         )}
 
         {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
-        {!loading && products.length > 0 && (
+        {!loading && !isLoadingCategoryChange && products.length > 0 && (
           <Box
             w="full"
             mx="auto"
-            px={{ base: 2, md: 4, lg: 0 }}
+            px={{ base: 3.5, md: 4, lg: 0 }}
             pb={{ base: 20, md: 0 }}
             minH={{ base: '1200px', md: '1600px' }}
             sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
@@ -1099,7 +1123,7 @@ const Home: React.FC = () => {
         )}
 
         {/* Empty State (single, correct location) */}
-        {!loading && products.length === 0 && (
+        {!loading && !isLoadingCategoryChange && products.length === 0 && (
           <Box textAlign="center" py={16} maxW="2xl" mx="auto">
             <VStack spacing={6}>
               <Box fontSize="6xl" color="gray.300">

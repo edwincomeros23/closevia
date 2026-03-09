@@ -53,12 +53,12 @@ export const ProductGridSkeleton: React.FC<ProductGridSkeletonProps> = ({ count 
   return (
     <Grid
       templateColumns={{
-        base: 'repeat(auto-fill, minmax(200px, 1fr))',
-        sm: 'repeat(auto-fill, minmax(220px, 1fr))',
+        base: 'repeat(2, 1fr)',
+        sm: 'repeat(2, 1fr)',
         md: 'repeat(auto-fill, minmax(240px, 1fr))',
         lg: 'repeat(3, 1fr)',
         xl: 'repeat(4, 1fr)',
-        '2xl': 'repeat(6, 1fr)',
+        '2xl': 'repeat(5, 1fr)',
       }}
       gap={{ base: 2, md: 4 }}
       w="full"
