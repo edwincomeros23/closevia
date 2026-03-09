@@ -587,21 +587,31 @@ func (p Product) MarshalJSON() ([]byte, error) {
 	return json.Marshal(a)
 }
 
+// TrustFactor represents a single factor in the trust score breakdown
+type TrustFactor struct {
+	Label  string `json:"label"`
+	Status string `json:"status"` // "pass", "warn", "fail"
+	Points int    `json:"points"` // Points earned for this factor
+	Max    int    `json:"max"`    // Maximum possible points
+}
+
 // SellerStats represents seller statistics for display on product pages
 type SellerStats struct {
-	UserID          int     `json:"user_id"`
-	AvgRating       float64 `json:"avg_rating"`
-	PositivePercent float64 `json:"positive_percent"`
-	TotalTrades     int     `json:"total_trades"`
-	AvgResponseTime string  `json:"avg_response_time"`
-	TotalFeedback   int     `json:"total_feedback"`
-	ResponseMetric  string  `json:"response_metric,omitempty"`   // "excellent", "good", etc.
-	MemberSinceYear int     `json:"member_since_year,omitempty"` // Year user joined
-	CompletedTrades int     `json:"completed_trades,omitempty"`
-	TrustScore      int     `json:"trust_score"`  // 0-100 calculated trust score
-	TrustLevel      string  `json:"trust_level"`  // "trusted", "new", "risky"
-	ReportCount     int     `json:"report_count"` // Number of reviewed/resolved reports
-	HasReports      bool    `json:"has_reports"`  // Whether user has been reported
+	UserID          int                 `json:"user_id"`
+	AvgRating       float64             `json:"avg_rating"`
+	PositivePercent float64             `json:"positive_percent"`
+	TotalTrades     int                 `json:"total_trades"`
+	AvgResponseTime string              `json:"avg_response_time"`
+	TotalFeedback   int                 `json:"total_feedback"`
+	ResponseMetric  string              `json:"response_metric,omitempty"`   // "excellent", "good", etc.
+	MemberSinceYear int                 `json:"member_since_year,omitempty"` // Year user joined
+	CompletedTrades int                 `json:"completed_trades,omitempty"`
+	TrustScore      int                 `json:"trust_score"`               // 0-100 calculated trust score
+	TrustLevel      string              `json:"trust_level"`               // "trusted", "new", "risky"
+	ReportCount     int                 `json:"report_count"`              // Number of reviewed/resolved reports
+	HasReports      bool                `json:"has_reports"`               // Whether user has been reported
+	TrustFactors    []TrustFactor       `json:"trust_factors,omitempty"`   // Detailed breakdown of trust score
+	ConductSummary  *UserConductSummary `json:"conduct_summary,omitempty"` // Trade quality & conduct grades
 }
 
 // Report represents a trader report for policy violations
@@ -681,4 +691,45 @@ type CampaignUpdate struct {
 	TargetUsers *string    `json:"target_users,omitempty" validate:"omitempty,oneof=all new verified unverified"`
 	Frequency   *string    `json:"frequency,omitempty" validate:"omitempty,oneof=once_per_user once_per_day every_login"`
 	IsActive    *bool      `json:"is_active,omitempty"`
+}
+
+// TradeGrade represents a per-trade quality and conduct grade given by one party to the other
+type TradeGrade struct {
+	ID            int       `json:"id"`
+	TradeID       int       `json:"trade_id"`
+	GraderID      int       `json:"grader_id"`
+	GradedUserID  int       `json:"graded_user_id"`
+	Communication int       `json:"communication"` // 1-5
+	ItemAccuracy  int       `json:"item_accuracy"` // 1-5
+	Punctuality   int       `json:"punctuality"`   // 1-5
+	Overall       int       `json:"overall"`       // 1-5
+	Comment       string    `json:"comment,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// TradeGradeCreate represents the payload for submitting a trade grade
+type TradeGradeCreate struct {
+	Communication int    `json:"communication" validate:"required,min=1,max=5"`
+	ItemAccuracy  int    `json:"item_accuracy" validate:"required,min=1,max=5"`
+	Punctuality   int    `json:"punctuality" validate:"required,min=1,max=5"`
+	Overall       int    `json:"overall" validate:"required,min=1,max=5"`
+	Comment       string `json:"comment,omitempty" validate:"max=500"`
+}
+
+// ConductGrade holds the averaged grade for a single category
+type ConductGrade struct {
+	Category string  `json:"category"`
+	Avg      float64 `json:"avg"`
+	Count    int     `json:"count"`
+}
+
+// UserConductSummary represents the aggregated conduct profile for a user
+type UserConductSummary struct {
+	UserID           int            `json:"user_id"`
+	LetterGrade      string         `json:"letter_grade"` // A+, A, B+, B, C, D, F
+	OverallAvg       float64        `json:"overall_avg"`  // 0.0-5.0
+	TotalGrades      int            `json:"total_grades"`
+	Categories       []ConductGrade `json:"categories"`
+	CancellationRate float64        `json:"cancellation_rate"` // 0.0-1.0
+	DisputeRate      float64        `json:"dispute_rate"`      // 0.0-1.0
 }

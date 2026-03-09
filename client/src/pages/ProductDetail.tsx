@@ -70,6 +70,7 @@ import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
 import FloatingTab from '../components/FloatingTab'
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import ImageZoomModal from '../components/ImageZoomModal'
+import TrustScoreCard from '../components/TrustScoreCard'
 import axios from 'axios';
 import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
 
@@ -1562,15 +1563,28 @@ const ProductDetail: React.FC = () => {
                   </Text>
                 </VStack>
                 <VStack spacing={1} align="center">
-                  <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color={sellerStats?.trust_level === 'trusted' ? 'green.500' : sellerStats?.trust_level === 'new' ? 'yellow.500' : 'red.500'}>
-                    {sellerStats?.trust_score ?? 0}
-                  </Text>
-                  <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
-                    Trust Score
-                  </Text>
+                  <TrustScoreCard
+                    score={sellerStats?.trust_score ?? 0}
+                    trustLevel={sellerStats?.trust_level}
+                    factors={sellerStats?.trust_factors}
+                    conductSummary={sellerStats?.conduct_summary}
+                    compact
+                  />
                 </VStack>
               </SimpleGrid>
             </Flex>
+
+            {/* Trust Score Breakdown */}
+            {sellerStats?.trust_factors && sellerStats.trust_factors.length > 0 && (
+              <Box mt={4}>
+                <TrustScoreCard
+                  score={sellerStats.trust_score ?? 0}
+                  trustLevel={sellerStats.trust_level}
+                  factors={sellerStats.trust_factors}
+                  conductSummary={sellerStats.conduct_summary}
+                />
+              </Box>
+            )}
 
             {/* Report Warning Banner */}
             {sellerStats?.has_reports && sellerStats.report_count > 0 && (

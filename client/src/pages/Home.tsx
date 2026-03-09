@@ -640,42 +640,44 @@ const Home: React.FC = () => {
                 <PopoverContent w="72" shadow="lg">
                   <PopoverBody p={4}>
                     <VStack align="stretch" spacing={3}>
-                      {/* User Info */}
-                      <Box>
-                        <Text fontWeight="semibold" fontSize="sm" color="gray.800" textTransform="capitalize">
-                          {user.name || 'User'}
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          {user.email}
-                        </Text>
-                        {user && (user as any).is_premium && (
-                          <Badge colorScheme="yellow" fontSize="xs" mt={2}>
-                            ⭐ Premium Member
-                          </Badge>
-                        )}
+                      {/* User Profile Card */}
+                      <Box
+                        bg="brand.50"
+                        p={4}
+                        borderRadius="lg"
+                      >
+                        <Box display="flex" alignItems="center" gap={3} mb={3}>
+                          <VerifiedAvatar
+                            size="lg"
+                            name={user.name || 'User'}
+                            src={user.profile_picture ? getImageUrl(user.profile_picture) : undefined}
+                            isVerified={user.verified || (user as any).verification_status === 'verified'}
+                          />
+                          <Box flex={1}>
+                            <Text fontWeight="bold" fontSize="md" noOfLines={1} textTransform="capitalize">
+                              {user.name || 'User'}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                              {user.email}
+                            </Text>
+                            {user && (user as any).is_premium && (
+                              <Badge colorScheme="yellow" fontSize="xs" mt={1}>
+                                ⭐ Premium Member
+                              </Badge>
+                            )}
+                          </Box>
+                        </Box>
+                        <Button
+                          as={RouterLink}
+                          to={`/users/${user.id}`}
+                          size="sm"
+                          w="full"
+                          colorScheme="brand"
+                          variant="outline"
+                        >
+                          View Profile
+                        </Button>
                       </Box>
-                      <Divider />
-                      {/* Action Buttons */}
-                      <Button
-                        as={RouterLink}
-                        to="/settings"
-                        size="sm"
-                        variant="outline"
-                        w="full"
-                        fontSize="sm"
-                      >
-                        Settings
-                      </Button>
-                      <Button
-                        as={RouterLink}
-                        to="/dashboard"
-                        size="sm"
-                        variant="outline"
-                        w="full"
-                        fontSize="sm"
-                      >
-                        Dashboard
-                      </Button>
                       <Divider />
                       <Button
                         size="sm"

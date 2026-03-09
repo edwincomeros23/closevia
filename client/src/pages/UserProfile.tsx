@@ -60,6 +60,7 @@ import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
+import TrustScoreCard from '../components/TrustScoreCard'
 
 type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verification_status'> & {
   avatar_url?: string
@@ -88,6 +89,13 @@ interface UserProfileProps {
   userId?: number
 }
 
+type TrustFactor = {
+  label: string
+  status: 'pass' | 'warn' | 'fail'
+  points: number
+  max: number
+}
+
 type SellerStats = {
   avg_rating?: number
   positive_percent?: number
@@ -99,6 +107,15 @@ type SellerStats = {
   trust_level?: 'trusted' | 'new' | 'risky'
   report_count?: number
   has_reports?: boolean
+  trust_factors?: TrustFactor[]
+  conduct_summary?: {
+    letter_grade: string
+    overall_avg: number
+    total_grades: number
+    categories: { category: string; avg: number; count: number }[]
+    cancellation_rate: number
+    dispute_rate: number
+  }
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
@@ -968,6 +985,18 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   </HStack>
                   
                   {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
+
+                  {/* Trust Score Card */}
+                  {sellerStats && (
+                    <Box mb={4}>
+                      <TrustScoreCard
+                        score={sellerStats.trust_score ?? 0}
+                        trustLevel={sellerStats.trust_level}
+                        factors={sellerStats.trust_factors}
+                        conductSummary={sellerStats.conduct_summary}
+                      />
+                    </Box>
+                  )}
 
                   {/* Report Warning Banner */}
                   {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (

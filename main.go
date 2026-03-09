@@ -245,6 +245,10 @@ func main() {
 	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
 	users.Get("/:id/stats", userHandler.GetSellerStats)           // Full seller stats endpoint
 	users.Get("/:id/trades", tradeHandler.GetUserTradeHistory)    // Public - get completed trades for a user
+	users.Get("/:id/conduct", userHandler.GetUserConduct)         // Public - get conduct grades for a user
+
+	// Trade grading routes
+	api.Post("/trades/:id/grade", middleware.AuthMiddleware(), userHandler.SubmitTradeGrade)
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route

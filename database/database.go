@@ -449,6 +449,24 @@ func CreateTables() error {
 			INDEX idx_reported_user (reported_user_id),
 			INDEX idx_status (status)
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_grades (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			grader_id INT NOT NULL,
+			graded_user_id INT NOT NULL,
+			communication INT NOT NULL CHECK (communication >= 1 AND communication <= 5),
+			item_accuracy INT NOT NULL CHECK (item_accuracy >= 1 AND item_accuracy <= 5),
+			punctuality INT NOT NULL CHECK (punctuality >= 1 AND punctuality <= 5),
+			overall INT NOT NULL CHECK (overall >= 1 AND overall <= 5),
+			comment TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (grader_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (graded_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			UNIQUE KEY uk_trade_grader (trade_id, grader_id),
+			INDEX idx_graded_user (graded_user_id),
+			INDEX idx_trade_id (trade_id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS campaigns (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			title VARCHAR(255) NOT NULL,
