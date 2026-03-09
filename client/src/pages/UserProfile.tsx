@@ -92,6 +92,8 @@ type SellerStats = {
   total_trades?: number
   completed_trades?: number
   avg_response_time?: string
+  trust_score?: number
+  trust_level?: 'trusted' | 'new' | 'risky'
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
@@ -916,6 +918,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                           <Icon as={FiCheckCircle} boxSize={4} />
                           <Text as="span">Verified</Text>
                         </HStack>
+                      </Badge>
+                    )}
+                    {sellerStats?.trust_level && (
+                      <Badge
+                        colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
+                        borderRadius="full"
+                        px={3}
+                        py={1}
+                        fontSize="sm"
+                      >
+                        {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
                       </Badge>
                     )}
                   </HStack>

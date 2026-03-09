@@ -1493,6 +1493,17 @@ const ProductDetail: React.FC = () => {
                         </HStack>
                       </Badge>
                     )}
+                    {sellerStats?.trust_level && (
+                      <Badge
+                        colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
+                        borderRadius="full"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                      >
+                        {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                      </Badge>
+                    )}
                   </HStack>
                   <Text color="gray.600" fontSize="sm">
                     Member since {sellerStats?.member_since_year ?? new Date().getFullYear()}
@@ -1505,7 +1516,7 @@ const ProductDetail: React.FC = () => {
               </HStack>
 
               {/* Seller Stats */}
-              <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
+              <SimpleGrid columns={{ base: 2, md: 5 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
                 <VStack spacing={1} align="center">
                   {sellerStats?.avg_rating ? (
                     <HStack spacing={1}>
@@ -1548,6 +1559,14 @@ const ProductDetail: React.FC = () => {
                   </Text>
                   <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
                     Avg Response
+                  </Text>
+                </VStack>
+                <VStack spacing={1} align="center">
+                  <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" color={sellerStats?.trust_level === 'trusted' ? 'green.500' : sellerStats?.trust_level === 'new' ? 'yellow.500' : 'red.500'}>
+                    {sellerStats?.trust_score ?? 0}
+                  </Text>
+                  <Text fontSize={{ base: '2xs', md: 'xs', lg: 'sm' }} color="gray.600" textAlign="center">
+                    Trust Score
                   </Text>
                 </VStack>
               </SimpleGrid>

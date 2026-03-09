@@ -1338,6 +1338,40 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		stats.AvgResponseTime = "N/A"
 	}
 
+	// Calculate trust score (0-100) from rating, positive feedback, and completed trades
+	// Rating component: up to 40 points (rating/5 * 40)
+	ratingScore := 0.0
+	if stats.AvgRating > 0 {
+		ratingScore = (stats.AvgRating / 5.0) * 40.0
+	}
+	// Positive feedback component: up to 30 points (percent/100 * 30)
+	feedbackScore := 0.0
+	if stats.PositivePercent > 0 {
+		feedbackScore = (stats.PositivePercent / 100.0) * 30.0
+	}
+	// Completed trades component: up to 30 points (capped at 20 trades)
+	tradeScore := 0.0
+	if stats.CompletedTrades > 0 {
+		capped := stats.CompletedTrades
+		if capped > 20 {
+			capped = 20
+		}
+		tradeScore = (float64(capped) / 20.0) * 30.0
+	}
+	stats.TrustScore = int(ratingScore + feedbackScore + tradeScore)
+	if stats.TrustScore > 100 {
+		stats.TrustScore = 100
+	}
+
+	// Determine trust level
+	if stats.TrustScore >= 80 {
+		stats.TrustLevel = "trusted"
+	} else if stats.TrustScore >= 50 {
+		stats.TrustLevel = "new"
+	} else {
+		stats.TrustLevel = "risky"
+	}
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    stats,
