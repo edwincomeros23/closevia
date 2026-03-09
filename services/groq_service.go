@@ -139,8 +139,32 @@ Proceed with product analysis. Return this JSON structure:
   "is_suspicious_image": false,
   "suspicious_reason": "",
   "is_blurry_or_dark": false,
-  "quality_warning": ""
+  "quality_warning": "",
+  "is_non_product_image": false,
+  "non_product_reason": "",
+  "appears_online": false,
+  "online_image_reason": ""
 }
+
+IMPORTANT - IMAGE QUALITY DETECTION (check carefully):
+1. BLURRY/DARK: Set is_blurry_or_dark=true if the photo is noticeably blurry, out of focus, too dark (underexposed), or too bright (overexposed). Provide quality_warning with a specific reason.
+2. SUSPICIOUS IMAGE: Set is_suspicious_image=true if the image looks like:
+   - A screenshot from a website, app, or social media
+   - A stock photo, marketing image, or catalog photo (perfect studio lighting, white background, multiple angles composited)
+   - An image with visible watermarks, logos from other platforms, or text overlays
+   - A photo taken of a screen/monitor showing another image
+   Give the reason in suspicious_reason.
+3. NON-PRODUCT IMAGE: Set is_non_product_image=true if the image is NOT a photo of a physical product, e.g.:
+   - Memes, jokes, text-only images, collages
+   - Screenshots of apps, games, or conversations
+   - Random scenery, selfies, or unrelated content
+   Give the reason in non_product_reason.
+4. APPEARS ONLINE: Set appears_online=true if the image appears to be taken from an online source rather than an original photo. Indicators include:
+   - Visible watermarks (Shutterstock, Getty, AliExpress, Amazon, etc.)
+   - Perfect product placement typical of e-commerce listings
+   - Marketing text or price tags from other platforms visible in the image
+   - Compression artifacts typical of images downloaded and re-uploaded multiple times
+   Give the reason in online_image_reason.
 
 Remember: SAFETY IS THE HIGHEST PRIORITY. Check for prohibited items first. If found, return ONLY the rejection JSON.`
 

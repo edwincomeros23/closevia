@@ -1646,9 +1646,82 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 		})
 	}
 
+	// Run server-side image quality analysis and merge into result
+	qualityResults, qErr := services.AnalyzeMultipleImageQuality(files)
+	if qErr != nil {
+		log.Printf("Image quality analysis failed (non-blocking): %v", qErr)
+	} else {
+		isBlurryOrDark, qualityWarning, qualityIssues := services.FormatQualityWarnings(qualityResults)
+		// Merge: only override if AI didn't already flag quality issues
+		if !result.IsBlurryOrDark && isBlurryOrDark {
+			result.IsBlurryOrDark = true
+			result.QualityWarning = qualityWarning
+		}
+		// Attach detailed quality data
+		result.ImageQualityIssues = qualityIssues
+		if len(qualityResults) > 0 {
+			result.ImageQualityScore = qualityResults[0].OverallScore
+		}
+	}
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    result,
+	})
+}
+
+// CheckImageQuality performs a fast server-side image quality check without AI analysis.
+// This is useful for giving instant feedback before the full AI analysis runs.
+func (h *ProductHandler) CheckImageQuality(c *fiber.Ctx) error {
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to parse uploaded files",
+		})
+	}
+
+	files := form.File["images"]
+	if len(files) < 1 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "At least 1 image is required",
+		})
+	}
+
+	results, err := services.AnalyzeMultipleImageQuality(files)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to analyze image quality",
+		})
+	}
+
+	// Compute aggregate result
+	totalScore := 0
+	allPass := true
+	var allIssues []services.ImageQualityIssue
+	for _, r := range results {
+		totalScore += r.OverallScore
+		if !r.PassesCheck {
+			allPass = false
+		}
+		allIssues = append(allIssues, r.Issues...)
+	}
+	avgScore := 0
+	if len(results) > 0 {
+		avgScore = totalScore / len(results)
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"overall_score": avgScore,
+			"quality_label": services.GetQualityLabel(avgScore),
+			"passes_check":  allPass,
+			"issues":        allIssues,
+			"per_image":     results,
+		},
 	})
 }
 

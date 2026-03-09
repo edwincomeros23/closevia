@@ -36,6 +36,14 @@ type GeminiResponse struct {
 	SuspiciousReason  string   `json:"suspicious_reason,omitempty"`
 	IsBlurryOrDark    bool     `json:"is_blurry_or_dark,omitempty"`
 	QualityWarning    string   `json:"quality_warning,omitempty"`
+
+	// Enhanced image quality fields
+	ImageQualityScore  int                 `json:"image_quality_score,omitempty"`
+	ImageQualityIssues []ImageQualityIssue `json:"image_quality_issues,omitempty"`
+	IsNonProductImage  bool                `json:"is_non_product_image,omitempty"`
+	NonProductReason   string              `json:"non_product_reason,omitempty"`
+	AppearsOnline      bool                `json:"appears_online,omitempty"`
+	OnlineImageReason  string              `json:"online_image_reason,omitempty"`
 }
 
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
@@ -184,14 +192,30 @@ IF THE IMAGE IS SAFE, proceed with normal analysis. Return ONLY this exact struc
   "is_suspicious_image": false,
   "suspicious_reason": "",
   "is_blurry_or_dark": false,
-  "quality_warning": ""
+  "quality_warning": "",
+  "is_non_product_image": false,
+  "non_product_reason": "",
+  "appears_online": false,
+  "online_image_reason": ""
 }
 
 FURTHER ANALYSIS (only if image is safe):
 
-1. Quality checks:
-   - Check for blurry/dark images: set is_blurry_or_dark=true if poor quality
-   - Check for screenshots, watermarks, or stock photos: set is_suspicious_image=true
+1. IMAGE QUALITY DETECTION (check carefully):
+   a. BLURRY/DARK: Set is_blurry_or_dark=true if the photo is noticeably blurry, out of focus, too dark (underexposed), or too bright (overexposed/washed out). Provide quality_warning with specific reason.
+   b. SUSPICIOUS IMAGE: Set is_suspicious_image=true if the image looks like:
+      - A screenshot from a website, app, or social media
+      - A stock photo, marketing image, or catalog photo (perfect studio lighting, white background, multiple angles composited)
+      - An image with visible watermarks, logos from other platforms, or text overlays
+      - A photo taken of a screen/monitor showing another image
+      Give the reason in suspicious_reason.
+   c. NON-PRODUCT IMAGE: Set is_non_product_image=true if the image is NOT a photo of a physical product (memes, text-only images, screenshots of apps/games, random scenery, collages). Give the reason in non_product_reason.
+   d. APPEARS ONLINE: Set appears_online=true if the image appears to be downloaded from an online source rather than an original photo. Indicators:
+      - Visible watermarks (Shutterstock, Getty, AliExpress, Amazon, etc.)
+      - Perfect product placement typical of e-commerce listings
+      - Marketing text or price tags from other platforms visible in the image
+      - Heavy compression artifacts typical of re-uploaded images
+      Give the reason in online_image_reason.
 
 2. Person/Face check (double-check):
    - If any person visible (though already checked above), set contains_person=true
