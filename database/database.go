@@ -143,6 +143,7 @@ func CreateTables() error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT PRIMARY KEY,
+			slug VARCHAR(255) NULL UNIQUE,
 			name VARCHAR(255) NOT NULL,
 			email VARCHAR(255) UNIQUE NOT NULL,
 			password_hash VARCHAR(255) NOT NULL,
@@ -539,6 +540,7 @@ func ensureUserColumns() {
 		name       string
 		definition string
 	}{
+		{"slug", "VARCHAR(255) NULL UNIQUE"},
 		{"is_organization", "TINYINT(1) NOT NULL DEFAULT 0"},
 		{"org_verified", "TINYINT(1) NOT NULL DEFAULT 0"},
 		{"org_name", "VARCHAR(255) NULL"},

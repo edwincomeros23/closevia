@@ -1961,7 +1961,7 @@ const Dashboard: React.FC = () => {
           <Box
             position="relative"
             w="full"
-            h="180px"
+            h="120px"
             overflow="hidden"
             borderTopRadius="md"
             bg="gray.100"
@@ -1978,21 +1978,6 @@ const Dashboard: React.FC = () => {
             />
           </Box>
           <CardHeader pb={2}>
-            <Flex justify="space-between" align="start" mb={2}>
-              <HStack spacing={1} flexWrap="wrap">
-                <Badge
-                  colorScheme={isIncoming ? 'blue' : 'green'}
-                  variant="subtle"
-                  fontSize="2xs"
-                  px={1.5}
-                  py={0.5}
-                  borderRadius="sm"
-                >
-                  {isIncoming ? 'Received' : 'Sent'}
-                </Badge>
-                {getStatusBadge(trade.status)}
-              </HStack>
-            </Flex>
             <HStack spacing={2} align="center" flexWrap="wrap">
               <Heading size="sm" noOfLines={2}>
                 {getProductTitle(trade.target_product_id, trade.product_title)}
