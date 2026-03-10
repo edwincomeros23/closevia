@@ -134,6 +134,15 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	wants := c.FormValue("wants")
 	wantedCategories := c.FormValue("wanted_categories")
 
+	desiredPriceStr := c.FormValue("desired_price")
+	var desiredPrice *float64
+	if desiredPriceStr != "" {
+		if val, err := strconv.ParseFloat(desiredPriceStr, 64); err == nil {
+			desiredPrice = &val
+		}
+	}
+	desiredProduct := c.FormValue("desired_product")
+
 	// Optional category override from client
 	categoryOverride := c.FormValue("category")
 
@@ -278,9 +287,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Insert new product with slug. Build SQL dynamically so it's tolerant
 	// to missing latitude/longitude columns (some DBs may not have applied migrations).
-	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category", "wants", "wanted_categories", "item_type", "brand", "authenticity_risks", "tags", "estimated_value_min", "estimated_value_max"}
-	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
-	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, wants, wantedCategories, itemType, brand, authenticityRisks, tags, estimatedValueMin, estimatedValueMax}
+	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category", "wants", "wanted_categories", "item_type", "brand", "authenticity_risks", "tags", "estimated_value_min", "estimated_value_max", "desired_price", "desired_product"}
+	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
+	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, wants, wantedCategories, itemType, brand, authenticityRisks, tags, estimatedValueMin, estimatedValueMax, desiredPrice, desiredProduct}
 
 	// Include video_url if a video was uploaded
 	if videoURL != "" {
@@ -1249,6 +1258,20 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	if category != "" {
 		updateFields = append(updateFields, "category = ?")
 		args = append(args, category)
+	}
+
+	desiredPriceStr := c.FormValue("desired_price")
+	if desiredPriceStr != "" {
+		if val, err := strconv.ParseFloat(desiredPriceStr, 64); err == nil {
+			updateFields = append(updateFields, "desired_price = ?")
+			args = append(args, val)
+		}
+	}
+
+	desiredProductVal := c.FormValue("desired_product")
+	if desiredProductVal != "" {
+		updateFields = append(updateFields, "desired_product = ?")
+		args = append(args, desiredProductVal)
 	}
 
 	// Handle image updates

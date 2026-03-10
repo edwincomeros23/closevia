@@ -148,8 +148,8 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// Now update with the additional fields
 	log.Printf("Updating trade with additional fields")
-	updateQuery := `UPDATE trades SET trade_option = ?, delivery_address = ?, message = ?, offered_cash_amount = ? WHERE id = ?`
-	_, err = tx.Exec(updateQuery, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, tradeID)
+	updateQuery := `UPDATE trades SET trade_option = ?, delivery_address = ?, message = ?, offered_cash_amount = ?, payment_method = ? WHERE id = ?`
+	_, err = tx.Exec(updateQuery, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod, tradeID)
 
 	if err != nil {
 		log.Printf("Trade update failed: %v", err)

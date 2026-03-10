@@ -64,6 +64,8 @@ export interface ProductFormData {
   // Trading preferences
   wants?: string
   wanted_categories?: string[]
+  desired_price?: number
+  desired_product?: string
 }
 
 import { useAuth } from '../contexts/AuthContext'
@@ -161,6 +163,8 @@ const AddProduct: React.FC = () => {
     estimated_value_max: undefined,
     tags: '[]',
     wanted_categories: [],
+    desired_price: undefined,
+    desired_product: '',
   })
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -657,6 +661,8 @@ const AddProduct: React.FC = () => {
       fd.append('tags', formData.tags || '[]')
       if (formData.wants?.trim()) fd.append('wants', formData.wants.trim())
       if (wantedCategories.length > 0) fd.append('wanted_categories', JSON.stringify(wantedCategories))
+      if (formData.desired_price !== undefined) fd.append('desired_price', String(formData.desired_price))
+      if (formData.desired_product?.trim()) fd.append('desired_product', formData.desired_product.trim())
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
@@ -1271,6 +1277,36 @@ const AddProduct: React.FC = () => {
           {wantsError && <Text fontSize="xs" color="red.500" mt={1}>{wantsError}</Text>}
         </FormControl>
 
+        {/* Desired Price & Product */}
+        <HStack spacing={2} align="start">
+          <FormControl flex="1">
+            <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Desired Price</FormLabel>
+            <InputGroup size="sm">
+              <Input
+                type="number"
+                placeholder="0.00"
+                value={formData.desired_price ?? ''}
+                onChange={e => {
+                  const val = e.target.value
+                  handleField('desired_price', val ? parseFloat(val) : undefined)
+                }}
+              />
+            </InputGroup>
+          </FormControl>
+          <FormControl flex="2">
+            <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Desired Product</FormLabel>
+            <Input
+              size="sm"
+              placeholder="e.g. iPhone, Laptop, Books..."
+              value={formData.desired_product ?? ''}
+              onChange={e => handleField('desired_product', e.target.value)}
+            />
+          </FormControl>
+        </HStack>
+        <Text fontSize="xs" color="gray.500" mt={-1}>
+          These are just preferences — traders can still offer other items or amounts.
+        </Text>
+
         {/* Categories - Horizontally Scrollable on Mobile */}
         <FormControl>
           <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Categories</FormLabel>
@@ -1520,7 +1556,7 @@ const AddProduct: React.FC = () => {
         </Box>
 
         {/* ──────── TRADING SECTION ──────── */}
-        {(formData.wants || wantedCategories.length > 0) && (
+        {(formData.wants || wantedCategories.length > 0 || formData.desired_price || formData.desired_product) && (
           <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
             <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>
               🔄 Open to Trading For
@@ -1529,6 +1565,20 @@ const AddProduct: React.FC = () => {
               <Text fontSize="sm" color="gray.700" mb={2}>
                 {formData.wants}
               </Text>
+            )}
+            {(formData.desired_price || formData.desired_product) && (
+              <HStack spacing={3} mb={2} flexWrap="wrap">
+                {formData.desired_price != null && formData.desired_price > 0 && (
+                  <Badge fontSize="xs" colorScheme="green" variant="subtle">
+                    Desired Price: ₱{formData.desired_price.toLocaleString()}
+                  </Badge>
+                )}
+                {formData.desired_product && (
+                  <Badge fontSize="xs" colorScheme="purple" variant="subtle">
+                    Looking for: {formData.desired_product}
+                  </Badge>
+                )}
+              </HStack>
             )}
             {wantedCategories.length > 0 && (
               <HStack flexWrap="wrap" spacing={1}>

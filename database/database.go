@@ -613,6 +613,8 @@ func ensureProductColumns() {
 		{"video_url", "VARCHAR(500) NULL"},
 		{"wants", "VARCHAR(255) NULL"},
 		{"wanted_categories", "VARCHAR(500) NULL"},
+		{"desired_price", "DECIMAL(10,2) NULL"},
+		{"desired_product", "VARCHAR(500) NULL"},
 		{"item_type", "VARCHAR(100) NULL"},
 		{"brand", "VARCHAR(100) NULL"},
 		{"authenticity_risks", "VARCHAR(50) NULL"},

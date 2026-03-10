@@ -129,13 +129,7 @@ const ProductsList: React.FC = () => {
           </HStack>
         )}
         <HStack justify="space-between" align="center" mt="auto">
-          {p.allow_buying && p.price && !p.barter_only ? (
-            <Text fontSize="lg" fontWeight="bold" color="brand.500">
-              {formatPHP(p.price)}
-            </Text>
-          ) : (
-            <Text fontSize="sm" color="green.600" fontWeight="medium">Barter Only</Text>
-          )}
+          <Text fontSize="sm" color="green.600" fontWeight="medium">Open for Offers</Text>
           <Badge colorScheme={p.status === 'available' ? 'green' : p.status === 'traded' ? 'blue' : 'red'}>
             {p.status}
           </Badge>

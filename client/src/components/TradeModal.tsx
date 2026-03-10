@@ -129,7 +129,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       (position) => {
         setDetectedCoords({ lat: position.coords.latitude, lng: position.coords.longitude })
         setDetectingLocation(false)
-        toast({ title: '📍 Location detected!', status: 'success', duration: 2000 })
+        toast({ title: 'Location detected!', status: 'success', duration: 2000 })
       },
       (error) => {
         setDetectingLocation(false)
@@ -225,12 +225,12 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                             <HStack spacing={2}>
                               {targetProduct.bidding_type === 'blind' && (
                                 <Badge colorScheme="orange" fontSize="xs">
-                                  🤐 Blind Bidding
+                                  Blind Bidding
                                 </Badge>
                               )}
                               {targetProduct.bidding_type === 'open' && (
                                 <Badge colorScheme="green" fontSize="xs">
-                                  🏆 Open Bidding
+                                  Open Bidding
                                 </Badge>
                               )}
                             </HStack>
@@ -392,7 +392,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                               borderLeftColor="yellow.500"
                             >
                               <Text fontSize="sm" color="yellow.900" fontWeight="medium">
-                                ⚠️ Location not set
+                                Location not set
                               </Text>
                               <Text fontSize="xs" color="yellow.700" mt={1}>
                                 Detect your location or enter an address below
@@ -560,5 +560,3 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 }
 
 export default TradeModal
-
-
