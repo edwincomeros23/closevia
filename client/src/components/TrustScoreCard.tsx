@@ -53,6 +53,7 @@ interface TrustScoreCardProps {
   tradeCount?: number
   positivePercent?: number
   tradeStats?: TradeStats
+  responseTime?: string
 }
 
 const statusConfig = {
@@ -94,7 +95,20 @@ const categoryBarColor = (avg: number) => {
   return 'red'
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats }) => {
+const formatResponseTime = (raw?: string): { label: string; colorScheme: string } | null => {
+  if (!raw || raw === 'N/A') return null
+  const match = raw.match(/^(\d+)(m|h|d)$/)
+  if (!match) return null
+  const value = parseInt(match[1], 10)
+  const unit = match[2]
+  const totalMinutes = unit === 'm' ? value : unit === 'h' ? value * 60 : value * 1440
+  if (totalMinutes < 1440) return { label: '⚡ Responds within hours', colorScheme: 'green' }
+  if (totalMinutes < 4320) return { label: '⚡ Responds within a day', colorScheme: 'blue' }
+  return { label: '🐢 Responds in a few days', colorScheme: 'orange' }
+}
+
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime }) => {
+  const responseInfo = formatResponseTime(responseTime)
   if (compact) {
     const tooltipLines = factors && factors.length > 0
       ? factors.map(f => `${f.status === 'pass' ? '✔' : f.status === 'warn' ? '⚠' : '✘'} ${f.label} (${f.points}/${f.max})`).join('\n')
@@ -107,6 +121,7 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
       typeof listingCount === 'number' ? `📦 ${listingCount} listing${listingCount !== 1 ? 's' : ''}` : '',
       typeof tradeCount === 'number' ? `🔁 ${tradeCount} trade${tradeCount !== 1 ? 's' : ''}` : '',
       typeof positivePercent === 'number' && positivePercent > 0 ? `⭐ ${Math.round(positivePercent)}% positive` : '',
+      responseInfo ? responseInfo.label : '',
     ].filter(Boolean).join('\n')
     const badgeSection = badgeLines ? `\n${badgeLines}` : ''
     return (
@@ -171,6 +186,11 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
         {typeof positivePercent === 'number' && positivePercent > 0 && (
           <Badge px={2} py={1} borderRadius="full" colorScheme="yellow" fontSize="xs" fontWeight="medium">
             ⭐ {Math.round(positivePercent)}% positive
+          </Badge>
+        )}
+        {responseInfo && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme={responseInfo.colorScheme} fontSize="xs" fontWeight="medium">
+            {responseInfo.label}
           </Badge>
         )}
       </HStack>

@@ -1584,6 +1584,7 @@ const ProductDetail: React.FC = () => {
                     cancelled: sellerStats.cancelled_trades ?? 0,
                     pending: sellerStats.pending_trades ?? 0,
                   }}
+                  responseTime={sellerStats?.avg_response_time}
                 />
               </Box>
             )}
