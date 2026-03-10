@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -108,6 +109,31 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
+	// AI Generated fields
+	itemType := c.FormValue("item_type")
+	brand := c.FormValue("brand")
+	authenticityRisks := c.FormValue("authenticity_risks")
+	tags := c.FormValue("tags") // Assuming this is sent as a JSON array string
+
+	estimatedValueMinStr := c.FormValue("estimated_value_min")
+	var estimatedValueMin *float64
+	if estimatedValueMinStr != "" {
+		if val, err := strconv.ParseFloat(estimatedValueMinStr, 64); err == nil {
+			estimatedValueMin = &val
+		}
+	}
+
+	estimatedValueMaxStr := c.FormValue("estimated_value_max")
+	var estimatedValueMax *float64
+	if estimatedValueMaxStr != "" {
+		if val, err := strconv.ParseFloat(estimatedValueMaxStr, 64); err == nil {
+			estimatedValueMax = &val
+		}
+	}
+
+	wants := c.FormValue("wants")
+	wantedCategories := c.FormValue("wanted_categories")
+
 	// Optional category override from client
 	categoryOverride := c.FormValue("category")
 
@@ -175,6 +201,18 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		insertPrice = *price
 	}
 
+	// Check for duplicate listings (same title, description, price, user, within 24h)
+	var duplicateCount int
+	duplicateCheckQuery := `SELECT COUNT(*) FROM products 
+							WHERE seller_id = ? AND title = ? AND description = ? AND price = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)`
+	err = h.db.QueryRow(duplicateCheckQuery, userID, title, description, insertPrice).Scan(&duplicateCount)
+	if err == nil && duplicateCount > 0 {
+		return c.Status(409).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Duplicate listing detected. You have recently posted this exact item.",
+		})
+	}
+
 	// Appraise product based on title and description
 	appraisal := services.AppraiseProduct(title, description)
 	category := appraisal.Category
@@ -227,9 +265,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Insert new product with slug. Build SQL dynamically so it's tolerant
 	// to missing latitude/longitude columns (some DBs may not have applied migrations).
-	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category"}
-	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
-	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category}
+	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category", "wants", "wanted_categories", "item_type", "brand", "authenticity_risks", "tags", "estimated_value_min", "estimated_value_max"}
+	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
+	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, wants, wantedCategories, itemType, brand, authenticityRisks, tags, estimatedValueMin, estimatedValueMax}
 
 	// Include video_url if a video was uploaded
 	if videoURL != "" {
@@ -315,14 +353,14 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	// Parse query parameters
 	keyword := c.Query("keyword", "")
-	minPriceStr := c.Query("min_price", "")
-	maxPriceStr := c.Query("max_price", "")
+	condition := c.Query("condition", "")
+	verifiedSellerOnlyStr := c.Query("verified_seller_only", "")
+	hasActiveOffersStr := c.Query("has_active_offers", "")
+	sortBy := c.Query("sort_by", "most_relevant")
 	premiumStr := c.Query("premium", "")
-	status := c.Query("status", "")
 	sellerIDStr := c.Query("seller_id", "")
 	barterOnlyStr := c.Query("barter_only", "")
 	allowBuyingStr := c.Query("allow_buying", "")
-	location := c.Query("location", "")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
 	// Support optional offset-based pagination (limit & offset)
@@ -352,30 +390,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	if keyword != "" {
 		// Broaden keyword search across product attributes and seller/org details
-		whereClause += " AND ("
-		whereClause += "p.title LIKE ? OR p.description LIKE ?"
-		whereClause += " OR p.location LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ?"
-		whereClause += " OR u.name LIKE ? OR u.org_name LIKE ? OR u.department LIKE ?"
-		whereClause += ")"
-		like := "%" + keyword + "%"
-		args = append(args, like, like, like, like, like, like, like, like)
+		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ? OR u.name LIKE ?)"
 		searchPattern := "%" + keyword + "%"
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.condition LIKE ? OR u.name LIKE ?)"
 		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
 	}
 
-	if minPriceStr != "" {
-		if minPrice, err := strconv.ParseFloat(minPriceStr, 64); err == nil {
-			whereClause += " AND p.price >= ?"
-			args = append(args, minPrice)
-		}
-	}
-
-	if maxPriceStr != "" {
-		if maxPrice, err := strconv.ParseFloat(maxPriceStr, 64); err == nil {
-			whereClause += " AND p.price <= ?"
-			args = append(args, maxPrice)
-		}
+	if condition != "" {
+		whereClause += " AND p.`condition` = ?"
+		args = append(args, condition)
 	}
 
 	if premiumStr != "" {
@@ -385,21 +407,16 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 	}
 
-	// Only apply the default 'available' status filter if no specific seller is requested.
-	// This allows a user to see all of their own products (sold, traded, etc.).
+	// For the general public feed, default to 'available' status
 	if sellerIDStr != "" {
+		// If filtering by seller, show all their products
 		if sellerID, err := strconv.Atoi(sellerIDStr); err == nil {
 			whereClause += " AND p.seller_id = ?"
 			args = append(args, sellerID)
 		}
 	} else {
-		// For the general public feed, default to 'available' if no status is specified.
-		if status != "" {
-			whereClause += " AND p.status = ?"
-			args = append(args, status)
-		} else {
-			whereClause += " AND p.status = 'available'"
-		}
+		// For the general public feed, default to 'available' status
+		whereClause += " AND p.status = 'available'"
 	}
 
 	if barterOnlyStr != "" {
@@ -416,9 +433,23 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 	}
 
-	if location != "" {
-		whereClause += " AND p.location LIKE ?"
-		args = append(args, "%"+location+"%")
+	if verifiedSellerOnlyStr != "" {
+		if verifiedOnly, err := strconv.ParseBool(verifiedSellerOnlyStr); err == nil && verifiedOnly {
+			// Filter for only verified sellers - assuming verified field exists in users table
+			whereClause += " AND u.verified = true"
+		}
+	}
+
+	if hasActiveOffersStr != "" {
+		if hasOffers, err := strconv.ParseBool(hasActiveOffersStr); err == nil {
+			if hasOffers {
+				// Products with active offers/trades
+				whereClause += " AND (SELECT COUNT(*) FROM trades WHERE target_product_id = p.id AND status NOT IN ('declined', 'cancelled', 'completed')) > 0"
+			} else {
+				// Products without active offers
+				whereClause += " AND (SELECT COUNT(*) FROM trades WHERE target_product_id = p.id AND status NOT IN ('declined', 'cancelled', 'completed')) = 0"
+			}
+		}
 	}
 
 	// Dedicated category filter: exact match on category OR keyword match in title/description
@@ -450,17 +481,28 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
-		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at,
+		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
 			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
 			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
 		FROM products p
 		LEFT JOIN users u ON p.seller_id = u.id
-		` + whereClause + `
-		ORDER BY p.premium DESC, p.created_at DESC
-		LIMIT ? OFFSET ?
-	`
+		` + whereClause
+
+	// Apply sorting based on sort_by parameter
+	switch sortBy {
+	case "newest":
+		query += ` ORDER BY COALESCE(p.boosted_at, p.created_at) DESC`
+	case "most_offers":
+		query += ` ORDER BY (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined', 'cancelled', 'completed')) DESC, COALESCE(p.boosted_at, p.created_at) DESC`
+	case "trending":
+		query += ` ORDER BY (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) DESC, COALESCE(p.boosted_at, p.created_at) DESC`
+	default: // most_relevant
+		query += ` ORDER BY p.premium DESC, COALESCE(p.boosted_at, p.created_at) DESC`
+	}
+
+	query += ` LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
 	rows, err := h.db.Query(query, args...)
@@ -493,15 +535,18 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	for rows.Next() {
 		var product models.Product
 		var slugNull sql.NullString
+		var conditionNull sql.NullString
 		var priceNull sql.NullFloat64
 		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
+		var boostedAtNull sql.NullTime
+		var offerCount int
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
-			&product.Condition, &product.SuggestedValue, &product.Category,
-			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt,
+			&conditionNull, &product.SuggestedValue, &product.Category,
+			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
@@ -509,6 +554,14 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		if err != nil {
 			fmt.Printf("GetProducts row scan error: %v\n", err)
 			continue
+		}
+		if boostedAtNull.Valid {
+			product.BoostedAt = &boostedAtNull.Time
+		}
+		if conditionNull.Valid {
+			product.Condition = conditionNull.String
+		} else {
+			product.Condition = ""
 		}
 		if priceNull.Valid {
 			p := priceNull.Float64
@@ -561,6 +614,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 				product.Distance = fmt.Sprintf("%d KM", int(result.DistanceKm))
 			}
 		}
+
+		// Set the offer count from the query result
+		product.OfferCount = offerCount
 
 		products = append(products, product)
 	}
@@ -701,6 +757,162 @@ func (h *ProductHandler) GetUserWishlistStatus(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"in_wishlist": exists > 0}})
+}
+
+// BoostProduct updates the boosted_at timestamp of a product
+func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
+	}
+
+	// Verify ownership and check last boost time
+	var sellerID int
+	var boostedAt sql.NullTime
+	err = h.db.QueryRow("SELECT seller_id, boosted_at FROM products WHERE id = ?", productID).Scan(&sellerID, &boostedAt)
+	if err == sql.ErrNoRows {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+	} else if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database error checking product"})
+	}
+
+	if sellerID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You can only boost your own products"})
+	}
+
+	// Prevent spamming boosts (max once per 24 hours)
+	if boostedAt.Valid && time.Since(boostedAt.Time).Hours() < 24 {
+		return c.Status(429).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product was already boosted recently. Please wait 24 hours between boosts.",
+		})
+	}
+
+	_, err = h.db.Exec("UPDATE products SET boosted_at = NOW() WHERE id = ?", productID)
+	if err != nil {
+		log.Printf("Error boosting product %d: %v", productID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to boost product"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Product boosted successfully! It will now appear higher in the feed.",
+	})
+}
+
+// GetSuggestedTrades finds potential trades for a given product
+func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
+	}
+
+	// 1. Get the target product details
+	var pCategory, pWants string
+	var pPrice float64
+	var pSellerID int
+
+	err = h.db.QueryRow("SELECT category, IFNULL(wants, ''), IFNULL(price, 0), seller_id FROM products WHERE id = ?", productID).Scan(&pCategory, &pWants, &pPrice, &pSellerID)
+	if err == sql.ErrNoRows {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+	} else if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database error"})
+	}
+
+	query := `
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
+		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
+		       u.name as seller_name, u.profile_picture as seller_profile_picture,
+		       u.latitude as seller_latitude, u.longitude as seller_longitude,
+			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
+			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
+		FROM products p
+		JOIN users u ON p.seller_id = u.id
+		WHERE p.status = 'available' AND p.seller_id != ?
+		ORDER BY (
+			(CASE WHEN p.category = ? THEN 10 ELSE 0 END) +
+			(CASE WHEN p.price BETWEEN ? AND ? THEN 10 ELSE 0 END)
+		) DESC, p.created_at DESC
+		LIMIT 10
+	`
+
+	priceMin := pPrice * 0.8
+	priceMax := pPrice * 1.2
+
+	rows, err := h.db.Query(query, pSellerID, pCategory, priceMin, priceMax)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Error fetching suggestions"})
+	}
+	defer rows.Close()
+
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		var slugNull sql.NullString
+		var conditionNull sql.NullString
+		var priceNull sql.NullFloat64
+		var sellerProfile sql.NullString
+		var imageURLsJSONStr string
+		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
+		var boostedAtNull sql.NullTime
+		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&conditionNull, &product.SuggestedValue, &product.Category,
+			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
+
+		if err != nil {
+			fmt.Printf("GetSuggestedTrades scan error: %v\n", err)
+			continue
+		}
+
+		if slugNull.Valid {
+			product.Slug = slugNull.String
+		}
+		if boostedAtNull.Valid {
+			product.BoostedAt = &boostedAtNull.Time
+		}
+		if conditionNull.Valid {
+			product.Condition = conditionNull.String
+		}
+		if priceNull.Valid {
+			p := priceNull.Float64
+			product.Price = &p
+		}
+		if sellerProfile.Valid {
+			product.SellerProfilePicture = sellerProfile.String
+		}
+		if latNull.Valid {
+			product.Latitude = &latNull.Float64
+		}
+		if lonNull.Valid {
+			product.Longitude = &lonNull.Float64
+		}
+
+		if imageURLsJSONStr != "" {
+			var imageURLs []string
+			if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
+				product.ImageURLs = models.StringArray(imageURLs)
+			}
+		}
+		products = append(products, product)
+	}
+
+	if products == nil {
+		products = []models.Product{}
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data:    products,
+	})
 }
 
 // GetProduct gets a single product by ID or slug
@@ -1135,7 +1347,8 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 
 	// Check if user owns the product
 	var sellerID int
-	err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", productID).Scan(&sellerID)
+	var productStatus string
+	err = h.db.QueryRow("SELECT seller_id, status FROM products WHERE id = ?", productID).Scan(&sellerID, &productStatus)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{
@@ -1153,6 +1366,14 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "You can only delete your own products",
+		})
+	}
+
+	// Locked products cannot be deleted
+	if productStatus == "locked" {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Cannot delete a locked product. Please unlock it first.",
 		})
 	}
 
@@ -1313,11 +1534,11 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	queryArgs := append(args, limit, offset)
 	rows, err := h.db.Query(`
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.category, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.category, p.created_at, p.updated_at, p.boosted_at, u.name as seller_name, u.profile_picture as seller_profile_picture
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
 		`+where+`
-		ORDER BY p.created_at DESC
+		ORDER BY COALESCE(p.boosted_at, p.created_at) DESC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
 
@@ -1336,14 +1557,18 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		var priceNull sql.NullFloat64
 		var sellerProfile sql.NullString
 		var imageURLsJSONStr string
+		var boostedAtNull sql.NullTime
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
-			&product.AllowBuying, &product.BarterOnly, &product.Category, &product.CreatedAt, &product.UpdatedAt, &product.SellerName, &sellerProfile)
+			&product.AllowBuying, &product.BarterOnly, &product.Category, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull, &product.SellerName, &sellerProfile)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
 		if err != nil {
 			continue
+		}
+		if boostedAtNull.Valid {
+			product.BoostedAt = &boostedAtNull.Time
 		}
 		if priceNull.Valid {
 			p := priceNull.Float64
@@ -1380,7 +1605,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	})
 }
 
-// GenerateProductDetailsWithAI analyzes product images using Gemini AI and returns structured product details
+// GenerateProductDetailsWithAI analyzes product images using Groq AI and returns structured product details
 func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -1391,25 +1616,198 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 	}
 
 	files := form.File["images"]
-	if len(files) < 3 {
+	if len(files) < 1 {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
-			Error:   "At least 3 images are required for AI analysis",
+			Error:   "At least 1 image is required for AI analysis",
 		})
 	}
 
-	result, err := services.GenerateProductDetails(files)
-	if err != nil {
-		errMsg := fmt.Sprintf("AI generation failed: %v", err)
-		log.Printf("Error in GenerateProductDetailsWithAI: %s", errMsg)
-		return c.Status(500).JSON(models.APIResponse{
+	// Validate each image: max 5MB per file
+	const maxImageSize = 5 * 1024 * 1024 // 5MB
+	for _, f := range files {
+		log.Printf("AI upload: file=%s size=%d bytes", f.Filename, f.Size)
+		if f.Size > maxImageSize {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   fmt.Sprintf("Image '%s' exceeds 5MB limit (%d bytes). Please compress or resize it.", f.Filename, f.Size),
+			})
+		}
+	}
+
+	// Use fallback service: Gemini (primary) → Groq (backup)
+	aiResult, err := services.AnalyzeProductWithFallback(files)
+	if aiResult != nil && (aiResult.Provider == "gemini" || aiResult.Provider == "groq") {
+		log.Printf("✅ [AI] Analysis complete: Provider=%s, Retried=%v, TimeMs=%d", aiResult.Provider, aiResult.Retried, aiResult.TimeMs)
+	}
+
+	// Check if analysis failed
+	if err != nil || aiResult == nil || !aiResult.Success {
+		errMsg := "AI analysis failed"
+		if aiResult != nil && aiResult.Error != "" {
+			errMsg = aiResult.Error
+		} else if err != nil {
+			errMsg = err.Error()
+		}
+		log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
+		// Return 422 (Unprocessable Entity) — the server worked fine, the AI couldn't process the input
+		return c.Status(422).JSON(models.APIResponse{
 			Success: false,
 			Error:   errMsg,
 		})
 	}
 
+	// Convert AIAnalysisResult to GeminiResponse for backward compatibility
+	result := aiResult.Data
+	if result == nil {
+		result = &services.GeminiResponse{}
+	}
+
+	// Run server-side image quality analysis and merge into result
+	qualityResults, qErr := services.AnalyzeMultipleImageQuality(files)
+	if qErr != nil {
+		log.Printf("Image quality analysis failed (non-blocking): %v", qErr)
+	} else {
+		isBlurryOrDark, qualityWarning, qualityIssues := services.FormatQualityWarnings(qualityResults)
+		// Merge: only override if AI didn't already flag quality issues
+		if !result.IsBlurryOrDark && isBlurryOrDark {
+			result.IsBlurryOrDark = true
+			result.QualityWarning = qualityWarning
+		}
+		// Attach detailed quality data
+		result.ImageQualityIssues = qualityIssues
+		if len(qualityResults) > 0 {
+			result.ImageQualityScore = qualityResults[0].OverallScore
+		}
+	}
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data:    result,
+	})
+}
+
+// CheckImageQuality performs a fast server-side image quality check without AI analysis.
+// This is useful for giving instant feedback before the full AI analysis runs.
+func (h *ProductHandler) CheckImageQuality(c *fiber.Ctx) error {
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to parse uploaded files",
+		})
+	}
+
+	files := form.File["images"]
+	if len(files) < 1 {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "At least 1 image is required",
+		})
+	}
+
+	results, err := services.AnalyzeMultipleImageQuality(files)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to analyze image quality",
+		})
+	}
+
+	// Compute aggregate result
+	totalScore := 0
+	allPass := true
+	var allIssues []services.ImageQualityIssue
+	for _, r := range results {
+		totalScore += r.OverallScore
+		if !r.PassesCheck {
+			allPass = false
+		}
+		allIssues = append(allIssues, r.Issues...)
+	}
+	avgScore := 0
+	if len(results) > 0 {
+		avgScore = totalScore / len(results)
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"overall_score": avgScore,
+			"quality_label": services.GetQualityLabel(avgScore),
+			"passes_check":  allPass,
+			"issues":        allIssues,
+			"per_image":     results,
+		},
+	})
+}
+
+// ReportListing handles reporting a product listing for moderation
+func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	// Parse request body
+	var req models.ListingReportCreate
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid request body",
+		})
+	}
+
+	// Validate reason
+	validReasons := map[string]bool{
+		"wrong_category":      true,
+		"prohibited_item":     true,
+		"fake_or_scam":        true,
+		"inappropriate_photo": true,
+		"other":               true,
+	}
+	if !validReasons[req.Reason] {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid report reason",
+		})
+	}
+
+	// Verify product exists
+	var productID int
+	err := h.db.QueryRow(`SELECT id FROM products WHERE id = $1`, req.ProductID).Scan(&productID)
+	if err == sql.ErrNoRows {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Product not found",
+		})
+	} else if err != nil {
+		log.Printf("Error checking product: %v", err)
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Database error",
+		})
+	}
+
+	// Insert report into database
+	_, err = h.db.Exec(`
+		INSERT INTO listing_reports (product_id, reporter_id, reason, details, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+	`, req.ProductID, userID, req.Reason, req.Details, "pending")
+
+	if err != nil {
+		log.Printf("Error creating listing report: %v", err)
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to submit report",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Report submitted successfully",
 	})
 }

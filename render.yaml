@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: closevia-backend
+    runtime: go
+    buildCommand: go build -o main .
+    startCommand: ./main
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DB_HOST
+        scope: build
+      - key: DB_PORT
+        scope: build
+      - key: DB_USER
+        scope: build
+      - key: DB_PASSWORD
+        scope: build
+      - key: DB_NAME
+        scope: build
+      - key: PORT
+        value: 4000
+      - key: CORS_ORIGINS
+        value: https://cloviaph.netlify.app,https://cloviaph.site,https://closevia.onrender.com

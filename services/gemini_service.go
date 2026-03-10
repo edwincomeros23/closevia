@@ -15,20 +15,63 @@ import (
 )
 
 type GeminiResponse struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Condition   string `json:"condition"`
-	Category    string `json:"category"`
+	Prohibited        bool     `json:"prohibited"`
+	Reason            string   `json:"reason,omitempty"`
+	Title             string   `json:"title"`
+	Description       string   `json:"description"`
+	Condition         string   `json:"condition"`
+	Category          string   `json:"category"`
+	Subcategory       string   `json:"subcategory,omitempty"`
+	ItemType          string   `json:"item_type,omitempty"`
+	Brand             string   `json:"brand,omitempty"`
+	AuthenticityRisks string   `json:"authenticity_risks,omitempty"`
+	EstimatedValueMin float64  `json:"estimated_value_min,omitempty"`
+	EstimatedValueMax float64  `json:"estimated_value_max,omitempty"`
+	Tags              []string `json:"tags,omitempty"`
+	IsProhibited      bool     `json:"is_prohibited,omitempty"`
+	ProhibitedReason  string   `json:"prohibited_reason,omitempty"`
+	ContainsPerson    bool     `json:"contains_person,omitempty"`
+	PersonWarning     string   `json:"person_warning,omitempty"`
+	IsSuspiciousImage bool     `json:"is_suspicious_image,omitempty"`
+	SuspiciousReason  string   `json:"suspicious_reason,omitempty"`
+	IsBlurryOrDark    bool     `json:"is_blurry_or_dark,omitempty"`
+	QualityWarning    string   `json:"quality_warning,omitempty"`
+
+	// Enhanced image quality fields
+	ImageQualityScore  int                 `json:"image_quality_score,omitempty"`
+	ImageQualityIssues []ImageQualityIssue `json:"image_quality_issues,omitempty"`
+	IsNonProductImage  bool                `json:"is_non_product_image,omitempty"`
+	NonProductReason   string              `json:"non_product_reason,omitempty"`
+	AppearsOnline      bool                `json:"appears_online,omitempty"`
+	OnlineImageReason  string              `json:"online_image_reason,omitempty"`
 }
 
 func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	rawKey := os.Getenv("GEMINI_API_KEY")
+	// Strip all whitespace, quotes, and non-printable/non-ASCII characters
+	// This handles invisible Unicode chars that cause 400 on hosted environments like Render
+	var sanitized strings.Builder
+	for _, r := range rawKey {
+		if r >= 33 && r <= 126 && r != '"' && r != '\'' {
+			sanitized.WriteRune(r)
+		}
+	}
+	apiKey := sanitized.String()
+
 	if apiKey == "" {
-		return nil, errors.New("GEMINI_API_KEY environment variable not set")
+		log.Printf("[Gemini] GEMINI_API_KEY raw length=%d, sanitized length=0 — key missing or all invalid chars", len(rawKey))
+		return nil, errors.New("GEMINI_API_KEY environment variable not set or empty")
 	}
 
-	if len(images) < 3 {
-		return nil, errors.New("at least 3 images required")
+	// Diagnostic log: show length and first/last few chars (safe partial reveal for debugging)
+	safePreview := apiKey
+	if len(safePreview) > 8 {
+		safePreview = apiKey[:4] + "..." + apiKey[len(apiKey)-4:]
+	}
+	log.Printf("[Gemini] Key loaded: raw_len=%d sanitized_len=%d preview=%s", len(rawKey), len(apiKey), safePreview)
+
+	if len(images) < 1 {
+		return nil, errors.New("at least 1 image required")
 	}
 
 	var parts []map[string]interface{}
@@ -41,42 +84,40 @@ func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, er
 			log.Printf("Error opening image %d: %v", i, err)
 			continue
 		}
-		defer file.Close()
 
 		data, err := io.ReadAll(file)
+		file.Close() // Close immediately after reading
 		if err != nil {
 			log.Printf("Error reading image %d: %v", i, err)
 			continue
 		}
 
+		// Log image info for debugging
+		log.Printf("Image %d: filename=%s, size=%d bytes", i, img.Filename, len(data))
+
 		// Detect MIME type from content
 		mimeType := http.DetectContentType(data)
 
 		// Handle special cases where http.DetectContentType might be incorrect
-		// Check file name as fallback
 		if !strings.HasPrefix(mimeType, "image/") {
 			fileName := strings.ToLower(img.Filename)
-			if strings.Contains(fileName, ".jpg") || strings.Contains(fileName, ".jpeg") {
+			switch {
+			case strings.Contains(fileName, ".jpg") || strings.Contains(fileName, ".jpeg"):
 				mimeType = "image/jpeg"
-			} else if strings.Contains(fileName, ".png") {
+			case strings.Contains(fileName, ".png"):
 				mimeType = "image/png"
-			} else if strings.Contains(fileName, ".gif") {
+			case strings.Contains(fileName, ".gif"):
 				mimeType = "image/gif"
-			} else if strings.Contains(fileName, ".webp") {
+			case strings.Contains(fileName, ".webp"):
 				mimeType = "image/webp"
-			} else if strings.Contains(fileName, ".heic") {
-				mimeType = "image/heic"
-			} else if strings.Contains(fileName, ".heif") {
-				mimeType = "image/heif"
+			case strings.Contains(fileName, ".heic") || strings.Contains(fileName, ".heif"):
+				mimeType = "image/jpeg" // treat as JPEG fallback
 			}
 		}
 
 		// Validate it's an image format
 		if !strings.HasPrefix(mimeType, "image/") {
-			log.Printf("Image %d (%s) has invalid mime type detected: %s, attempting workaround", i, img.Filename, mimeType)
-			// Try to use it anyway with a fallback type
 			if len(data) > 0 {
-				// If we have data but can't detect type, assume JPEG as most phones use it
 				mimeType = "image/jpeg"
 				log.Printf("Image %d: Using fallback mime type: %s", i, mimeType)
 			} else {
@@ -85,8 +126,7 @@ func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, er
 			}
 		}
 
-		// Log image info for debugging
-		log.Printf("Image %d: filename=%s, mime_type=%s, size=%d bytes", i, img.Filename, mimeType, len(data))
+		log.Printf("Image %d: mime_type=%s", i, mimeType)
 
 		base64Data := base64.StdEncoding.EncodeToString(data)
 		parts = append(parts, map[string]interface{}{
@@ -101,15 +141,93 @@ func GenerateProductDetails(images []*multipart.FileHeader) (*GeminiResponse, er
 		return nil, errors.New("no valid images found")
 	}
 
-	prompt := `Analyze these product images and return a JSON object with exactly these fields:
+	prompt := `SAFETY CHECK - DO THIS FIRST, BEFORE ANYTHING ELSE:
+
+Before analyzing the product, you MUST check if the image contains ANY prohibited items.
+
+PROHIBITED ITEMS - BLOCK IMMEDIATELY:
+- Firearms: handguns, pistols, revolvers, rifles, shotguns, guns, ammunition, explosives, bombs, grenades
+- Weapons: knives, blades, swords, tasers, brass knuckles, clubs, batons, any sharp/dangerous object
+- Drugs: pills, syringes, needles, cannabis, cocaine, powder substances, any drug paraphernalia
+- Alcohol: beer, wine, liquor, spirits, alcohol bottles
+- Counterfeit goods: fake branded items, pirated media, knockoffs, replicas
+- Adult content: sexual or explicit content
+- People/Faces: ANY visible human face, person, or body
+
+IF THE IMAGE CONTAINS ANY PROHIBITED ITEM:
+Stop immediately and respond ONLY with this JSON (no other fields):
 {
-  "title": "A concise product title (max 15 characters)",
-  "description": "A detailed product description (50-500 characters)",
-  "condition": "One of: New, Like-New, Used, Fair",
-  "category": "One of: General, Electronics, Mobile Phones, Computers, Home Appliances, Fashion, Collectibles, Sports, Toys, Books, Automotive, Other"
+  "prohibited": true,
+  "reason": "<friendly plain English reason>"
 }
 
-Be specific and accurate based on what you see in the images.`
+Examples of rejection reasons:
+- "This item can't be listed. Firearms and weapons are not allowed on this platform."
+- "This item can't be listed. Drugs and alcohol are not allowed on this platform."
+- "Please upload a photo of the item only. Photos containing people are not allowed for privacy reasons."
+- "This item can't be listed on our platform. It violates our community guidelines."
+
+Do not analyze further. Do not return title, description, value, or condition. Return ONLY the rejected response.
+
+---
+
+IF THE IMAGE IS SAFE, proceed with normal analysis. Return ONLY this exact structure:
+{
+  "prohibited": false,
+  "title": "max 25 characters",
+  "description": "clear, natural product description for a marketplace listing",
+  "condition": "one of: New, Like New, Good, Used, For Parts",
+  "category": "one of: General, Electronics, Phones, Computers, Appliances, Fashion, Collectibles, Sports, Toys, Books, Automotive, Other",
+  "subcategory": "specific subcategory like Smartphone, Sneakers, etc.",
+  "item_type": "general type of item (e.g., Sneakers, Laptop, Camera)",
+  "brand": "detected brand or Unknown",
+  "authenticity_risks": "one of: Low, Medium, High",
+  "estimated_value_min": 0,
+  "estimated_value_max": 0,
+  "tags": ["tag1", "tag2", "tag3"],
+  "is_prohibited": false,
+  "prohibited_reason": "",
+  "contains_person": false,
+  "person_warning": "",
+  "is_suspicious_image": false,
+  "suspicious_reason": "",
+  "is_blurry_or_dark": false,
+  "quality_warning": "",
+  "is_non_product_image": false,
+  "non_product_reason": "",
+  "appears_online": false,
+  "online_image_reason": ""
+}
+
+FURTHER ANALYSIS (only if image is safe):
+
+1. IMAGE QUALITY DETECTION (check carefully):
+   a. BLURRY/DARK: Set is_blurry_or_dark=true if the photo is noticeably blurry, out of focus, too dark (underexposed), or too bright (overexposed/washed out). Provide quality_warning with specific reason.
+   b. SUSPICIOUS IMAGE: Set is_suspicious_image=true if the image looks like:
+      - A screenshot from a website, app, or social media
+      - A stock photo, marketing image, or catalog photo (perfect studio lighting, white background, multiple angles composited)
+      - An image with visible watermarks, logos from other platforms, or text overlays
+      - A photo taken of a screen/monitor showing another image
+      Give the reason in suspicious_reason.
+   c. NON-PRODUCT IMAGE: Set is_non_product_image=true if the image is NOT a photo of a physical product (memes, text-only images, screenshots of apps/games, random scenery, collages). Give the reason in non_product_reason.
+   d. APPEARS ONLINE: Set appears_online=true if the image appears to be downloaded from an online source rather than an original photo. Indicators:
+      - Visible watermarks (Shutterstock, Getty, AliExpress, Amazon, etc.)
+      - Perfect product placement typical of e-commerce listings
+      - Marketing text or price tags from other platforms visible in the image
+      - Heavy compression artifacts typical of re-uploaded images
+      Give the reason in online_image_reason.
+
+2. Person/Face check (double-check):
+   - If any person visible (though already checked above), set contains_person=true
+   - person_warning: "This photo contains a person. Please retake without people in frame for a cleaner listing"
+
+3. Product analysis:
+   - Estimate value in Philippine Pesos (PHP)
+   - If cannot estimate (abstract), set both to 0
+   - Be conservative if uncertain
+   - Provide clear, natural description
+
+Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohibited": true, "reason": "..."}. Only proceed with full analysis if the image is completely safe. Return valid JSON only, no markdown.`
 
 	parts = append(parts, map[string]interface{}{
 		"text": prompt,
@@ -121,6 +239,11 @@ Be specific and accurate based on what you see in the images.`
 				"parts": parts,
 			},
 		},
+		"generationConfig": map[string]interface{}{
+			"temperature":     0.2,
+			"topP":            0.8,
+			"maxOutputTokens": 1024,
+		},
 	}
 
 	jsonData, err := json.Marshal(payload)
@@ -129,8 +252,9 @@ Be specific and accurate based on what you see in the images.`
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s", apiKey)
-	log.Printf("Making request to Gemini API with %d image parts", len(parts)-1)
+	// Use gemini-1.5-flash on v1 (stable) — v1beta does not support this model
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=%s", apiKey)
+	log.Printf("Making request to Gemini API (gemini-1.5-flash / v1) with %d image part(s)", len(parts)-1)
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -152,6 +276,10 @@ Be specific and accurate based on what you see in the images.`
 	log.Printf("Gemini API response status: %d", resp.StatusCode)
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Gemini API error response: %s", string(body))
+		// Special handling for quota exceeded (429)
+		if resp.StatusCode == 429 {
+			return nil, fmt.Errorf("AI service is temporarily rate-limited. Please try again in a few minutes.")
+		}
 		return nil, fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -179,69 +307,116 @@ Be specific and accurate based on what you see in the images.`
 		return nil, fmt.Errorf("failed to parse Gemini response: %v", err)
 	}
 
-	// Check for API errors in response
+	// Check for API errors in response body
 	if geminiResp.Error.Message != "" {
 		log.Printf("Gemini API returned error: %s", geminiResp.Error.Message)
-		// Provide better error messages for common issues
-		errorMsg := strings.ToLower(geminiResp.Error.Message)
-
-		if strings.Contains(errorMsg, "unable to process input image") {
-			return nil, fmt.Errorf("Gemini cannot process uploaded images. Ensure images are:\n• At least 100x100 pixels\n• Clear photos of actual products\n• Not blurry, too small, or corrupted\n• In JPEG, PNG, or WebP format (HEIC should be converted to JPEG)")
+		errMsg := strings.ToLower(geminiResp.Error.Message)
+		if strings.Contains(errMsg, "model") && strings.Contains(errMsg, "not found") {
+			return nil, fmt.Errorf("AI model not available. Please contact support.")
 		}
-
-		if strings.Contains(errorMsg, "invalid_argument") || strings.Contains(errorMsg, "not supported") {
-			return nil, fmt.Errorf("Image format not supported. Please ensure:\n• Images are in JPEG, PNG, or WebP format\n• Mobile camera HEIC/HEIF photos are converted to JPEG\n• File size is less than 5MB")
+		if strings.Contains(errMsg, "unable to process input image") {
+			return nil, fmt.Errorf("Gemini cannot process uploaded images. Please use clear JPEG/PNG photos.")
 		}
-
-		return nil, fmt.Errorf("gemini API error: %s", geminiResp.Error.Message)
+		if strings.Contains(errMsg, "invalid_argument") || strings.Contains(errMsg, "not supported") {
+			return nil, fmt.Errorf("Image format not supported. Please use JPEG, PNG, or WebP.")
+		}
+		return nil, fmt.Errorf("AI error: %s", geminiResp.Error.Message)
 	}
 
 	// Check for blocked content
 	if geminiResp.PromptFeedback.BlockReason != "" {
 		log.Printf("Gemini blocked request: %s", geminiResp.PromptFeedback.BlockReason)
-		return nil, fmt.Errorf("gemini blocked request: %s", geminiResp.PromptFeedback.BlockReason)
+		return nil, fmt.Errorf("AI request blocked: %s", geminiResp.PromptFeedback.BlockReason)
 	}
 
 	if len(geminiResp.Candidates) == 0 {
-		log.Printf("No candidates in Gemini response")
-		return nil, errors.New("no response from Gemini")
+		log.Printf("No candidates in Gemini response. Raw: %s", string(body))
+		return nil, errors.New("no response from AI — please try again")
 	}
 
 	if len(geminiResp.Candidates[0].Content.Parts) == 0 {
 		log.Printf("No parts in Gemini response, finish reason: %s", geminiResp.Candidates[0].FinishReason)
-		return nil, errors.New("no content in Gemini response")
+		return nil, errors.New("empty AI response — please try again")
 	}
 
-	text := geminiResp.Candidates[0].Content.Parts[0].Text
-	text = strings.TrimSpace(text)
-	text = strings.TrimPrefix(text, "```json")
-	text = strings.TrimPrefix(text, "```")
-	text = strings.TrimSuffix(text, "```")
-	text = strings.TrimSpace(text)
+	rawText := geminiResp.Candidates[0].Content.Parts[0].Text
+	log.Printf("Raw Gemini text: %s", rawText)
+
+	// Robustly extract JSON from the response (handles markdown fences and extra text)
+	jsonText := extractJSON(rawText)
+	if jsonText == "" {
+		log.Printf("[ERROR] Could not extract JSON from Gemini response: %s", rawText)
+		_ = os.WriteFile("gemini_error.log", []byte(fmt.Sprintf("Could not extract JSON:\n%s", rawText)), 0644)
+		return nil, fmt.Errorf("AI returned unexpected format — please try again")
+	}
 
 	var result GeminiResponse
-	if err := json.Unmarshal([]byte(text), &result); err != nil {
-		log.Printf("Error unmarshaling product details JSON: %v", err)
-		log.Printf("Text was: %s", text)
-		return nil, fmt.Errorf("failed to parse Gemini response: %v", err)
+	if err := json.Unmarshal([]byte(jsonText), &result); err != nil {
+		_ = os.WriteFile("gemini_error.log", []byte(fmt.Sprintf("JSON parse error: %v\nJSON: %s", err, jsonText)), 0644)
+		log.Printf("[ERROR] JSON parse failed: %v | text: %s", err, jsonText)
+		return nil, fmt.Errorf("failed to parse AI response: %v", err)
 	}
 
+	// CRITICAL: Validate response for safety violations
+	// If the AI returned product details for a prohibited item, override and reject it
+	if violatesProhibition(&result) {
+		log.Printf("⚠️ SAFETY VIOLATION: AI returned product analysis for prohibited item! Forcing rejection.")
+		return &GeminiResponse{
+			Prohibited: true,
+			Reason:     "This item can't be listed. Weapons and firearms are not allowed on this platform.",
+		}, nil
+	}
+
+	// Apply defaults and sanity-checks
 	if result.Condition == "" {
 		result.Condition = "Used"
 	}
 	if result.Category == "" {
 		result.Category = "General"
 	}
-	if len(result.Title) > 15 {
-		result.Title = result.Title[:15]
+	if result.AuthenticityRisks == "" {
+		result.AuthenticityRisks = "Low"
 	}
-	if len(result.Description) < 50 {
+	if len(result.Title) > 25 {
+		result.Title = result.Title[:25]
+	}
+	if result.Description == "" {
+		result.Description = "Product in good condition and ready for trade."
+	} else if len(result.Description) < 50 {
 		result.Description = result.Description + " This product is in good condition and ready for trade or purchase."
 	}
-	if len(result.Description) > 500 {
-		result.Description = result.Description[:500]
+	if len(result.Description) > 800 {
+		result.Description = result.Description[:800]
 	}
 
-	log.Printf("Successfully generated product details: title=%s, condition=%s, category=%s", result.Title, result.Condition, result.Category)
+	log.Printf("✅ Gemini success: title=%q condition=%s category=%s auth_risks=%s", result.Title, result.Condition, result.Category, result.AuthenticityRisks)
 	return &result, nil
+}
+
+// extractJSON finds and returns the first valid JSON object from a string.
+// Handles markdown code fences (```json ... ```) and raw JSON.
+func extractJSON(s string) string {
+	s = strings.TrimSpace(s)
+
+	// Try to strip markdown fences first
+	if idx := strings.Index(s, "```"); idx != -1 {
+		// find opening fence end
+		start := strings.Index(s[idx:], "\n")
+		if start != -1 {
+			start += idx + 1
+			// find closing fence
+			end := strings.LastIndex(s, "```")
+			if end > start {
+				s = strings.TrimSpace(s[start:end])
+			}
+		}
+	}
+
+	// Find the JSON object boundaries
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+	if start == -1 || end == -1 || end < start {
+		return ""
+	}
+	return s[start : end+1]
 }

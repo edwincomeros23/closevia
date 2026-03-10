@@ -19,9 +19,16 @@ import (
 )
 
 func main() {
-	// Load environment variables for francistest connection
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using default values")
+	// Load .env file only in local development (Render sets PORT automatically)
+	// This prevents a committed .env from overriding Render dashboard env vars
+	if os.Getenv("PORT") == "" {
+		if err := godotenv.Load(); err != nil {
+			log.Println("No .env file found, using system environment variables")
+		} else {
+			log.Println("Loaded .env file for local development")
+		}
+	} else {
+		log.Println("Running in hosted environment, skipping .env file load")
 	}
 
 	// Initialize database
@@ -87,6 +94,7 @@ func main() {
 
 	// Serve static files (uploads directory)
 	app.Static("/uploads", "./uploads")
+	app.Static("/uploads/products", "./uploads/products")
 
 	// Add after middleware setup
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -191,11 +199,16 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
+	deliveryHandler.BackfillMissingDeliveries() // Create delivery records for existing active delivery trades
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
 	campaignHandler := handlers.NewCampaignHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
+	activityHandler := handlers.NewActivityHandler()
+
+	// Public Activity route
+	api.Get("/activities", activityHandler.GetRecentActivity)
 
 	// Auth routes (no authentication required)
 	auth := api.Group("/auth")
@@ -233,6 +246,10 @@ func main() {
 	users.Get("/:id/reviews/rating", reviewHandler.GetUserRating) // Public - get rating stats for a user
 	users.Get("/:id/stats", userHandler.GetSellerStats)           // Full seller stats endpoint
 	users.Get("/:id/trades", tradeHandler.GetUserTradeHistory)    // Public - get completed trades for a user
+	users.Get("/:id/conduct", userHandler.GetUserConduct)         // Public - get conduct grades for a user
+
+	// Trade grading routes
+	api.Post("/trades/:id/grade", middleware.AuthMiddleware(), userHandler.SubmitTradeGrade)
 
 	// Dynamic and list routes placed after static subpaths
 	users.Get("/:id", userHandler.GetUserByID) // Public route
@@ -245,12 +262,16 @@ func main() {
 	products.Get("/user/:id", productHandler.GetUserProducts)          // Public route
 	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
 	// Specific routes must come before generic :id route
-	products.Post("/generate-details", middleware.AuthMiddleware(), productHandler.GenerateProductDetailsWithAI)
+	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
+	products.Post("/check-image-quality", productHandler.CheckImageQuality)             // Fast image quality check
+	products.Post("/report", middleware.AuthMiddleware(), productHandler.ReportListing) // Report a listing
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id/comments", commentHandler.GetComments)
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
+	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct) // Boost a listing
+	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
@@ -292,6 +313,7 @@ func main() {
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
+	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
 
 	// Payment routes
 	payments := api.Group("/payments")
@@ -341,19 +363,26 @@ func main() {
 	wishlist.Post("/", middleware.AuthMiddleware(), wishlistHandler.AddToWishlist)
 	wishlist.Delete("/:productId", middleware.AuthMiddleware(), wishlistHandler.RemoveFromWishlist)
 
-	// Delivery routes
+	// Delivery routes (order matters: specific paths before :id)
 	deliveries := api.Group("/deliveries")
 	deliveries.Post("/", middleware.AuthMiddleware(), deliveryHandler.CreateDelivery)
 	deliveries.Get("/", middleware.AuthMiddleware(), deliveryHandler.GetDeliveries)
+	// Rider-specific routes must come before /:id to avoid shadowing
+	deliveries.Get("/available", middleware.AuthMiddleware(), deliveryHandler.GetAvailableDeliveries)
+	deliveries.Get("/my-jobs", middleware.AuthMiddleware(), deliveryHandler.GetRiderDeliveries)
+	deliveries.Post("/register-rider", middleware.AuthMiddleware(), deliveryHandler.RegisterAsRider)
+	deliveries.Get("/rider-status", middleware.AuthMiddleware(), deliveryHandler.CheckRiderStatus)
 	deliveries.Get("/:id", middleware.AuthMiddleware(), deliveryHandler.GetDelivery)
 	deliveries.Put("/:id/status", middleware.AuthMiddleware(), deliveryHandler.UpdateDeliveryStatus)
 	deliveries.Post("/:id/assign", middleware.AuthMiddleware(), deliveryHandler.AssignRider)
+	deliveries.Post("/:id/claim", middleware.AuthMiddleware(), deliveryHandler.ClaimDelivery)
 
 	// Generic image upload route (used by TradeCompletionModal, etc.)
 	api.Post("/upload", middleware.AuthMiddleware(), uploadHandler.UploadImage)
 
 	// Reports route (user-facing: submit a report)
 	api.Post("/reports", middleware.AuthMiddleware(), reportHandler.CreateReport)
+	api.Get("/users/:id/reports", reportHandler.GetUserReports)
 
 	// AI Features routes
 	ai := api.Group("/ai")
@@ -362,6 +391,9 @@ func main() {
 	ai.Get("/profile-analysis", middleware.AuthMiddleware(), aiFeaturesHandler.GetProfileAnalysis)
 	ai.Get("/profile-analysis/all", middleware.AuthMiddleware(), aiFeaturesHandler.AnalyzeAllProfiles)
 	ai.Get("/counterfeit/:id", aiFeaturesHandler.GetCounterfeitReport)
+
+	// Product analysis route (uses Gemini + Groq fallback)
+	ai.Post("/analyze-product", middleware.AuthMiddleware(), uploadHandler.AnalyzeProductImages)
 
 	// Campaigns route (public-facing for fetching active campaigns)
 	campaigns := api.Group("/campaigns")

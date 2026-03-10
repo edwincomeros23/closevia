@@ -16,109 +16,75 @@ import {
   Center,
   useToast,
   Tooltip,
-  Flex,
   Progress,
   Tag,
   TagLabel,
 } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaClock, FaBox, FaMoneyBillWave, FaStar, FaWifi } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaClock, FaBox, FaWifi } from 'react-icons/fa'
 import { InfoIcon, WarningIcon } from '@chakra-ui/icons'
-
-interface BatchCluster {
-  id: string
-  taskCount: number
-  sizePoints: number
-  maxCapacity: number
-  estimatedEarnings: number
-  requiredPass: string
-  passValidity: string
-  distance: string
-  estimatedTime: string
-  zone: string
-  isHighDemand: boolean
-  pickupCount: number
-  deliveryCount: number
-  systemFee: number
-}
+import { api } from '../services/api'
+import { Delivery } from '../types'
 
 const RiderQueue: React.FC = () => {
   const navigate = useNavigate()
   const toast = useToast()
   const [isOnline, setIsOnline] = useState(true)
-  const [selectedBatch, setSelectedBatch] = useState<string | null>(null)
-  const [batches, setBatches] = useState<BatchCluster[]>([
-    {
-      id: 'batch-001',
-      taskCount: 4,
-      sizePoints: 7,
-      maxCapacity: 12,
-      estimatedEarnings: 450,
-      requiredPass: 'Standard',
-      passValidity: '25 days left',
-      distance: '2.3 km',
-      estimatedTime: '28 min',
-      zone: 'BGC',
-      isHighDemand: true,
-      pickupCount: 2,
-      deliveryCount: 2,
-      systemFee: 45,
-    },
-    {
-      id: 'batch-002',
-      taskCount: 3,
-      sizePoints: 5,
-      maxCapacity: 12,
-      estimatedEarnings: 320,
-      requiredPass: 'Standard',
-      passValidity: '15 days left',
-      distance: '1.8 km',
-      estimatedTime: '22 min',
-      zone: 'Makati',
-      isHighDemand: false,
-      pickupCount: 1,
-      deliveryCount: 2,
-      systemFee: 32,
-    },
-    {
-      id: 'batch-003',
-      taskCount: 5,
-      sizePoints: 9,
-      maxCapacity: 12,
-      estimatedEarnings: 600,
-      requiredPass: 'Premium',
-      passValidity: '40 days left',
-      distance: '3.1 km',
-      estimatedTime: '35 min',
-      zone: 'Ortigas',
-      isHighDemand: true,
-      pickupCount: 2,
-      deliveryCount: 3,
-      systemFee: 60,
-    },
-  ])
+  const [loading, setLoading] = useState(true)
+  const [deliveries, setDeliveries] = useState<Delivery[]>([])
+  const [claiming, setClaiming] = useState<number | null>(null)
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
-    
+
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
-    
+
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
   }, [])
 
-  const handleClaimBatch = (batchId: string) => {
-    const batch = batches.find(b => b.id === batchId)
-    if (batch) {
-      navigate(`/rider/batch-preview/${batchId}`, { state: { batch } })
+  const fetchAvailableDeliveries = async () => {
+    try {
+      const response = await api.get('/api/deliveries/available')
+      setDeliveries(response.data?.data || [])
+    } catch (error) {
+      console.error('Failed to load deliveries:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const capacityPercentage = (sizePoints: number, maxCapacity: number) => {
-    return Math.round((sizePoints / maxCapacity) * 100)
+  useEffect(() => {
+    fetchAvailableDeliveries()
+    const interval = setInterval(fetchAvailableDeliveries, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleClaimDelivery = async (deliveryId: number) => {
+    setClaiming(deliveryId)
+    try {
+      await api.post(`/api/deliveries/${deliveryId}/claim`)
+      toast({
+        title: 'Delivery Claimed!',
+        description: 'Navigate to the task stepper to start.',
+        status: 'success',
+        duration: 3000,
+      })
+      navigate(`/task-stepper/${deliveryId}`)
+    } catch (error: any) {
+      const errMsg = error?.response?.data?.error || 'Failed to claim delivery'
+      toast({
+        title: 'Error',
+        description: errMsg,
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setClaiming(null)
+    }
   }
 
   return (
@@ -128,10 +94,10 @@ const RiderQueue: React.FC = () => {
         <HStack justify="space-between" align="center">
           <VStack align="start" spacing={0}>
             <Heading size="lg" color="brand.500">
-              Available Batches
+              Available Deliveries
             </Heading>
             <Text fontSize="sm" color="gray.600">
-              Near you, ready to claim
+              {deliveries.length} deliveries available
             </Text>
           </VStack>
           <HStack spacing={1} px={3} py={2} bg={isOnline ? 'green.50' : 'red.50'} borderRadius="lg">
@@ -142,134 +108,111 @@ const RiderQueue: React.FC = () => {
           </HStack>
         </HStack>
 
-        {/* Filter/Sort Bar */}
-        <HStack spacing={2} justify="space-between">
-          <Badge colorScheme="purple" px={3} py={1.5}>
-            📍 BGC • 2.3 km away
-          </Badge>
-          <Button size="sm" variant="outline" colorScheme="brand">
-            Filter
-          </Button>
-        </HStack>
-
-        {/* Batches List */}
-        <VStack spacing={4} align="stretch">
-          {batches.map((batch) => (
-            <Card
-              key={batch.id}
-              bg="white"
-              border="1px"
-              borderColor="gray.200"
-              cursor="pointer"
-              transition="all 0.2s"
-              _hover={{ shadow: 'md', borderColor: 'brand.400' }}
-              onClick={() => setSelectedBatch(batch.id)}
-            >
-              <CardBody>
-                <VStack spacing={4} align="stretch">
-                  {/* Top Row: Zone + High Demand Badge */}
-                  <HStack justify="space-between" align="start">
-                    <VStack align="start" spacing={1}>
-                      <HStack spacing={2}>
-                        <Text fontWeight="bold" fontSize="md" color="gray.800">
-                          {batch.taskCount} tasks
-                        </Text>
-                        {batch.isHighDemand && (
-                          <Badge colorScheme="orange" fontSize="xs">
-                            🔥 High Demand
-                          </Badge>
-                        )}
-                      </HStack>
-                      <Text fontSize="sm" color="gray.600">
-                        {batch.zone} zone
-                      </Text>
-                    </VStack>
-                    <VStack align="end" spacing={0}>
-                      <Text fontWeight="bold" fontSize="lg" color="brand.600">
-                        ₱{batch.estimatedEarnings}
-                      </Text>
-                      <Text fontSize="xs" color="gray.500">
-                        your earn
-                      </Text>
-                    </VStack>
-                  </HStack>
-
-                  {/* Capacity Progress */}
-                  <VStack spacing={1} align="stretch">
-                    <HStack justify="space-between" fontSize="xs">
-                      <HStack spacing={1}>
-                        <Icon as={FaBox} boxSize={3} color="gray.600" />
-                        <Text color="gray.600">
-                          Capacity: {batch.sizePoints}/{batch.maxCapacity} points
-                        </Text>
-                        <Tooltip label="Small item=1pt, Medium=2pts, Large=3pts. Your van holds 12pts max." placement="top">
-                          <InfoIcon boxSize={3} color="blue.500" cursor="help" />
-                        </Tooltip>
-                      </HStack>
-                    </HStack>
-                    <Progress
-                      value={capacityPercentage(batch.sizePoints, batch.maxCapacity)}
-                      colorScheme="brand"
-                      borderRadius="full"
-                      h="6px"
-                    />
-                  </VStack>
-
-                  {/* Distance + Time */}
-                  <HStack spacing={4} fontSize="sm">
-                    <HStack spacing={1}>
-                      <Icon as={FaMapMarkerAlt} color="red.500" boxSize={4} />
-                      <Text color="gray.700">{batch.distance}</Text>
-                    </HStack>
-                    <HStack spacing={1}>
-                      <Icon as={FaClock} color="blue.500" boxSize={4} />
-                      <Text color="gray.700">~{batch.estimatedTime}</Text>
-                    </HStack>
-                  </HStack>
-
-                  {/* Pickups + Deliveries */}
-                  <HStack spacing={3} fontSize="xs" color="gray.600">
-                    <Tag size="sm" colorScheme="blue" variant="subtle">
-                      <TagLabel>📍 {batch.pickupCount} pickup(s)</TagLabel>
-                    </Tag>
-                    <Tag size="sm" colorScheme="green" variant="subtle">
-                      <TagLabel>✓ {batch.deliveryCount} delivery(s)</TagLabel>
-                    </Tag>
-                  </HStack>
-
-                  {/* Required Pass */}
-                  <HStack spacing={2} bg="yellow.50" p={2} borderRadius="md">
-                    <Icon as={WarningIcon} boxSize={4} color="yellow.600" />
-                    <VStack align="start" spacing={0} fontSize="xs">
-                      <Text fontWeight="bold" color="yellow.900">
-                        {batch.requiredPass} Pass needed
-                      </Text>
-                      <Text color="yellow.800">{batch.passValidity}</Text>
-                    </VStack>
-                  </HStack>
-
-                  {/* Claim Button */}
-                  <Button
-                    w="full"
-                    colorScheme="brand"
-                    size="md"
-                    onClick={() => handleClaimBatch(batch.id)}
-                    isDisabled={!isOnline}
-                  >
-                    {isOnline ? 'Claim batch (15m lock)' : 'Offline - Reconnect to claim'}
-                  </Button>
-                </VStack>
-              </CardBody>
-            </Card>
-          ))}
-        </VStack>
-
-        {/* Empty State */}
-        {batches.length === 0 && (
+        {/* Loading State */}
+        {loading && (
           <Center py={12}>
             <VStack spacing={3} textAlign="center">
               <Spinner size="lg" color="brand.500" />
-              <Text color="gray.600">Looking for batches near you...</Text>
+              <Text color="gray.600">Loading available deliveries...</Text>
+            </VStack>
+          </Center>
+        )}
+
+        {/* Deliveries List */}
+        {!loading && (
+          <VStack spacing={4} align="stretch">
+            {deliveries.map((d) => (
+              <Card
+                key={d.id}
+                bg="white"
+                border="1px"
+                borderColor="gray.200"
+                transition="all 0.2s"
+                _hover={{ shadow: 'md', borderColor: 'brand.400' }}
+              >
+                <CardBody>
+                  <VStack spacing={4} align="stretch">
+                    {/* Top Row */}
+                    <HStack justify="space-between" align="start">
+                      <VStack align="start" spacing={1}>
+                        <HStack spacing={2}>
+                          <Badge colorScheme={d.delivery_type === 'express' ? 'purple' : 'blue'} fontSize="xs">
+                            {d.delivery_type === 'express' ? 'Express' : 'Standard'}
+                          </Badge>
+                          {d.is_fragile && (
+                            <Badge colorScheme="red" fontSize="xs">Fragile</Badge>
+                          )}
+                          {d.trade_id && (
+                            <Badge colorScheme="green" fontSize="xs">Trade #{d.trade_id}</Badge>
+                          )}
+                        </HStack>
+                        <Text fontWeight="bold" fontSize="sm" color="gray.800">
+                          {d.item_count} item(s) - {d.items?.[0]?.product_name || 'Delivery'}
+                        </Text>
+                      </VStack>
+                      <VStack align="end" spacing={0}>
+                        <Text fontWeight="bold" fontSize="lg" color="brand.600">
+                          P{d.total_cost}
+                        </Text>
+                        <Text fontSize="xs" color="gray.500">
+                          earnings
+                        </Text>
+                      </VStack>
+                    </HStack>
+
+                    {/* Pickup & Delivery Addresses */}
+                    <VStack spacing={2} align="stretch" fontSize="sm">
+                      <HStack spacing={2}>
+                        <Badge colorScheme="blue" fontSize="2xs">FROM</Badge>
+                        <Text color="gray.700" noOfLines={1}>{d.pickup_address}</Text>
+                      </HStack>
+                      <HStack spacing={2}>
+                        <Badge colorScheme="green" fontSize="2xs">TO</Badge>
+                        <Text color="gray.700" noOfLines={1}>{d.delivery_address}</Text>
+                      </HStack>
+                    </VStack>
+
+                    {/* Stats */}
+                    <HStack spacing={4} fontSize="sm">
+                      <HStack spacing={1}>
+                        <Icon as={FaBox} color="gray.600" boxSize={4} />
+                        <Text color="gray.700">{d.item_count} items</Text>
+                      </HStack>
+                      {d.user_name && (
+                        <HStack spacing={1}>
+                          <Text fontSize="xs" color="gray.500">Sender: {d.user_name}</Text>
+                        </HStack>
+                      )}
+                    </HStack>
+
+                    {/* Claim Button */}
+                    <Button
+                      w="full"
+                      colorScheme="brand"
+                      size="md"
+                      onClick={() => handleClaimDelivery(d.id)}
+                      isDisabled={!isOnline || claiming !== null}
+                      isLoading={claiming === d.id}
+                      loadingText="Claiming..."
+                    >
+                      {isOnline ? 'Claim Delivery' : 'Offline - Reconnect to claim'}
+                    </Button>
+                  </VStack>
+                </CardBody>
+              </Card>
+            ))}
+          </VStack>
+        )}
+
+        {/* Empty State */}
+        {!loading && deliveries.length === 0 && (
+          <Center py={12}>
+            <VStack spacing={3} textAlign="center">
+              <Text color="gray.600">No available deliveries right now.</Text>
+              <Text fontSize="sm" color="gray.400">Check back soon or refresh.</Text>
+              <Button size="sm" colorScheme="brand" variant="outline" onClick={fetchAvailableDeliveries}>
+                Refresh
+              </Button>
             </VStack>
           </Center>
         )}
@@ -283,7 +226,7 @@ const RiderQueue: React.FC = () => {
             colorScheme="brand"
             onClick={() => navigate('/rider')}
           >
-            📋 My Jobs
+            My Jobs
           </Button>
           <Button
             flex={1}
@@ -292,7 +235,7 @@ const RiderQueue: React.FC = () => {
             colorScheme="brand"
             onClick={() => navigate('/remittance-ledger')}
           >
-            💰 Remittance
+            Remittance
           </Button>
         </HStack>
       </VStack>

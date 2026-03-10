@@ -109,6 +109,7 @@ type User struct {
 	Bio                         string     `json:"bio,omitempty"`
 	Badges                      IntArray   `json:"badges,omitempty"`
 	ProfilePicture              string     `json:"profile_picture,omitempty"`
+	LanguagePreference          string     `json:"language_preference,omitempty"`
 	BackgroundImage             string     `json:"background_image,omitempty"`
 	BackgroundPosition          string     `json:"background_position,omitempty"`
 	Latitude                    *float64   `json:"latitude,omitempty"`
@@ -122,6 +123,10 @@ type User struct {
 	SchoolEmailVerifiedAt       *time.Time `json:"school_email_verified_at,omitempty"`
 	SchoolIDImagePath           string     `json:"school_id_image_path,omitempty"`
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
+	EmailNotificationsEnabled   bool       `json:"email_notifications_enabled"`
+	PushNotificationsEnabled    bool       `json:"push_notifications_enabled"`
+	LastLogin                   *time.Time `json:"last_login,omitempty"`
+	ActivityStatus              string     `json:"activity_status,omitempty"`
 }
 
 // UserLogin represents login credentials
@@ -161,8 +166,16 @@ type Product struct {
 	BarterOnly           bool        `json:"barter_only"`  // Whether it's barter only
 	Location             string      `json:"location,omitempty"`
 	Condition            string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	EstimatedValueMin    *float64    `json:"estimated_value_min,omitempty"`
+	EstimatedValueMax    *float64    `json:"estimated_value_max,omitempty"`
 	SuggestedValue       int         `json:"suggested_value,omitempty"`
 	Category             string      `json:"category,omitempty"`
+	Wants                string      `json:"wants,omitempty"`
+	WantedCategories     StringArray `json:"wanted_categories,omitempty"`
+	ItemType             string      `json:"item_type,omitempty"`
+	Brand                string      `json:"brand,omitempty"`
+	AuthenticityRisks    string      `json:"authenticity_risks,omitempty"`
+	Tags                 StringArray `json:"tags,omitempty"`
 	Latitude             *float64    `json:"latitude,omitempty"`
 	Longitude            *float64    `json:"longitude,omitempty"`
 	VideoURL             string      `json:"video_url,omitempty"`
@@ -173,20 +186,23 @@ type Product struct {
 	WishlistCount        int         `json:"wishlist_count,omitempty"`
 	WantCount            int         `json:"want_count"`
 	OfferCount           int         `json:"offer_count"`
+	BoostedAt            *time.Time  `json:"boosted_at,omitempty"`
 }
 
 // ProductCreate represents data for creating a product
 type ProductCreate struct {
-	Title       string      `json:"title" validate:"required,min=2,max=255"`
-	Description string      `json:"description"`
-	Price       *float64    `json:"price,omitempty"` // Optional for barter-only items
-	ImageURLs   StringArray `json:"image_urls,omitempty"`
-	Premium     bool        `json:"premium"`
-	AllowBuying bool        `json:"allow_buying"`
-	BarterOnly  bool        `json:"barter_only"`
-	Location    string      `json:"location,omitempty"`
-	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category    string      `json:"category,omitempty"`
+	Title            string      `json:"title" validate:"required,min=2,max=255"`
+	Description      string      `json:"description"`
+	Price            *float64    `json:"price,omitempty"` // Optional for barter-only items
+	ImageURLs        StringArray `json:"image_urls,omitempty"`
+	Premium          bool        `json:"premium"`
+	AllowBuying      bool        `json:"allow_buying"`
+	BarterOnly       bool        `json:"barter_only"`
+	Location         string      `json:"location,omitempty"`
+	Condition        string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category         string      `json:"category,omitempty"`
+	Wants            string      `json:"wants,omitempty"`
+	WantedCategories StringArray `json:"wanted_categories,omitempty"`
 }
 
 // ProductUpdate represents data for updating a product
@@ -270,7 +286,7 @@ type Trade struct {
 	DeliveryAddress string `json:"delivery_address,omitempty"`
 	// Delivery state fields (for progress tracking and persistence)
 	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
-	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet"`
+	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet upfront"`
 	PaymentConfirmed        bool   `json:"payment_confirmed"`
 	ProofOfDelivery         string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
 	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
@@ -313,6 +329,7 @@ type TradeCreate struct {
 	OfferedCashAmount *float64 `json:"offered_cash_amount,omitempty"`
 	TradeOption       string   `json:"trade_option" validate:"required,oneof=meetup delivery"`
 	DeliveryAddress   string   `json:"delivery_address,omitempty"`
+	PaymentMethod     string   `json:"payment_method,omitempty" validate:"omitempty,oneof=cod upfront"`
 }
 
 // TradeAction represents accept/decline/counter actions
@@ -535,6 +552,29 @@ type JWTClaims struct {
 	Exp    int64  `json:"exp"`
 }
 
+// ListingReport represents a report against a product listing for moderation
+type ListingReport struct {
+	ID         int       `json:"id"`
+	ProductID  int       `json:"product_id"`
+	ReporterID int       `json:"reporter_id"`
+	Reason     string    `json:"reason" validate:"required,oneof=wrong_category prohibited_item fake_or_scam inappropriate_photo other"`
+	Details    string    `json:"details,omitempty"` // Optional detailed explanation
+	Status     string    `json:"status" validate:"oneof=pending reviewed"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	// Denormalized fields for display
+	ProductTitle   string `json:"product_title,omitempty"`
+	ReporterName   string `json:"reporter_name,omitempty"`
+	ReporterAvatar string `json:"reporter_avatar,omitempty"`
+}
+
+// ListingReportCreate represents payload to create a listing report
+type ListingReportCreate struct {
+	ProductID int    `json:"product_id" validate:"required"`
+	Reason    string `json:"reason" validate:"required,oneof=wrong_category prohibited_item fake_or_scam inappropriate_photo other"`
+	Details   string `json:"details,omitempty"`
+}
+
 // MarshalJSON ensures image_url is populated for compatibility with frontends expecting a single image.
 func (p Product) MarshalJSON() ([]byte, error) {
 	type alias Product
@@ -547,17 +587,31 @@ func (p Product) MarshalJSON() ([]byte, error) {
 	return json.Marshal(a)
 }
 
+// TrustFactor represents a single factor in the trust score breakdown
+type TrustFactor struct {
+	Label  string `json:"label"`
+	Status string `json:"status"` // "pass", "warn", "fail"
+	Points int    `json:"points"` // Points earned for this factor
+	Max    int    `json:"max"`    // Maximum possible points
+}
+
 // SellerStats represents seller statistics for display on product pages
 type SellerStats struct {
-	UserID          int     `json:"user_id"`
-	AvgRating       float64 `json:"avg_rating"`
-	PositivePercent float64 `json:"positive_percent"`
-	TotalTrades     int     `json:"total_trades"`
-	AvgResponseTime string  `json:"avg_response_time"`
-	TotalFeedback   int     `json:"total_feedback"`
-	ResponseMetric  string  `json:"response_metric,omitempty"`   // "excellent", "good", etc.
-	MemberSinceYear int     `json:"member_since_year,omitempty"` // Year user joined
-	CompletedTrades int     `json:"completed_trades,omitempty"`
+	UserID          int                 `json:"user_id"`
+	AvgRating       float64             `json:"avg_rating"`
+	PositivePercent float64             `json:"positive_percent"`
+	TotalTrades     int                 `json:"total_trades"`
+	AvgResponseTime string              `json:"avg_response_time"`
+	TotalFeedback   int                 `json:"total_feedback"`
+	ResponseMetric  string              `json:"response_metric,omitempty"`   // "excellent", "good", etc.
+	MemberSinceYear int                 `json:"member_since_year,omitempty"` // Year user joined
+	CompletedTrades int                 `json:"completed_trades,omitempty"`
+	TrustScore      int                 `json:"trust_score"`               // 0-100 calculated trust score
+	TrustLevel      string              `json:"trust_level"`               // "trusted", "new", "risky"
+	ReportCount     int                 `json:"report_count"`              // Number of reviewed/resolved reports
+	HasReports      bool                `json:"has_reports"`               // Whether user has been reported
+	TrustFactors    []TrustFactor       `json:"trust_factors,omitempty"`   // Detailed breakdown of trust score
+	ConductSummary  *UserConductSummary `json:"conduct_summary,omitempty"` // Trade quality & conduct grades
 }
 
 // Report represents a trader report for policy violations
@@ -637,4 +691,45 @@ type CampaignUpdate struct {
 	TargetUsers *string    `json:"target_users,omitempty" validate:"omitempty,oneof=all new verified unverified"`
 	Frequency   *string    `json:"frequency,omitempty" validate:"omitempty,oneof=once_per_user once_per_day every_login"`
 	IsActive    *bool      `json:"is_active,omitempty"`
+}
+
+// TradeGrade represents a per-trade quality and conduct grade given by one party to the other
+type TradeGrade struct {
+	ID            int       `json:"id"`
+	TradeID       int       `json:"trade_id"`
+	GraderID      int       `json:"grader_id"`
+	GradedUserID  int       `json:"graded_user_id"`
+	Communication int       `json:"communication"` // 1-5
+	ItemAccuracy  int       `json:"item_accuracy"` // 1-5
+	Punctuality   int       `json:"punctuality"`   // 1-5
+	Overall       int       `json:"overall"`       // 1-5
+	Comment       string    `json:"comment,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// TradeGradeCreate represents the payload for submitting a trade grade
+type TradeGradeCreate struct {
+	Communication int    `json:"communication" validate:"required,min=1,max=5"`
+	ItemAccuracy  int    `json:"item_accuracy" validate:"required,min=1,max=5"`
+	Punctuality   int    `json:"punctuality" validate:"required,min=1,max=5"`
+	Overall       int    `json:"overall" validate:"required,min=1,max=5"`
+	Comment       string `json:"comment,omitempty" validate:"max=500"`
+}
+
+// ConductGrade holds the averaged grade for a single category
+type ConductGrade struct {
+	Category string  `json:"category"`
+	Avg      float64 `json:"avg"`
+	Count    int     `json:"count"`
+}
+
+// UserConductSummary represents the aggregated conduct profile for a user
+type UserConductSummary struct {
+	UserID           int            `json:"user_id"`
+	LetterGrade      string         `json:"letter_grade"` // A+, A, B+, B, C, D, F
+	OverallAvg       float64        `json:"overall_avg"`  // 0.0-5.0
+	TotalGrades      int            `json:"total_grades"`
+	Categories       []ConductGrade `json:"categories"`
+	CancellationRate float64        `json:"cancellation_rate"` // 0.0-1.0
+	DisputeRate      float64        `json:"dispute_rate"`      // 0.0-1.0
 }

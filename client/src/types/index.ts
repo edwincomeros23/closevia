@@ -22,6 +22,8 @@ export interface User {
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
   school_name?: string
   school_email?: string
+  last_login?: string
+  activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
 
 export interface Product {
@@ -47,6 +49,7 @@ export interface Product {
   distanceKm?: number // Numeric distance in km for sorting
   created_at: string
   updated_at: string
+  boosted_at?: string
   wishlist_count?: number;
   bidding_type?: 'none' | 'blind' | 'open'
   counterfeit_confidence?: number;
@@ -56,6 +59,8 @@ export interface Product {
   longitude?: number;
   offer_count?: number;
   want_count?: number;
+  estimated_value_min?: number;
+  estimated_value_max?: number;
 }
 
 export interface Order {
@@ -109,14 +114,14 @@ export interface OrderUpdate {
 export interface SearchFilters {
   keyword?: string
   category?: string
-  min_price?: number
-  max_price?: number
   premium?: boolean
-  status?: string
+  condition?: string // 'new' | 'like_new' | 'good' | 'fair' | 'poor'
+  verified_seller_only?: boolean
+  has_active_offers?: boolean // Filter for items with active bidding/offers
+  sort_by?: string // 'most_relevant' | 'newest' | 'most_offers' | 'trending'
   seller_id?: number
   barter_only?: boolean
   allow_buying?: boolean
-  location?: string
   page?: number
   limit?: number
 }
@@ -230,6 +235,7 @@ export interface TradeCreate {
   offered_cash_amount?: number
   trade_option: TradeOption // Required: 'meetup' or 'delivery'
   delivery_address?: string // Required if trade_option is 'delivery'
+  payment_method?: 'cod' | 'upfront' // Payment method preference for buyout offers
 }
 
 export interface TradeAction {

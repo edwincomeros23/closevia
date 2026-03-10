@@ -48,8 +48,10 @@ import {
   Select,
   Input,
   useToast,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
-import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend } from 'react-icons/fi'
+import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera } from 'react-icons/fi'
 import { FaHeart } from 'react-icons/fa'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -58,12 +60,13 @@ import { Product, User } from '../types'
 import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
+import TrustScoreCard from '../components/TrustScoreCard'
 
 type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verification_status'> & {
   avatar_url?: string
   bio?: string
-    background_url?: string
-    background_position?: string
+  background_url?: string
+  background_position?: string
   rating?: number
   rank?: string
   is_organization?: boolean
@@ -74,6 +77,7 @@ type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verifi
   response_time_minutes?: number
   positive_feedback?: number
   total_reviews?: number
+  activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
 
 interface UserProfileProps {
@@ -85,6 +89,13 @@ interface UserProfileProps {
   userId?: number
 }
 
+type TrustFactor = {
+  label: string
+  status: 'pass' | 'warn' | 'fail'
+  points: number
+  max: number
+}
+
 type SellerStats = {
   avg_rating?: number
   positive_percent?: number
@@ -92,6 +103,19 @@ type SellerStats = {
   total_trades?: number
   completed_trades?: number
   avg_response_time?: string
+  trust_score?: number
+  trust_level?: 'trusted' | 'new' | 'risky'
+  report_count?: number
+  has_reports?: boolean
+  trust_factors?: TrustFactor[]
+  conduct_summary?: {
+    letter_grade: string
+    overall_avg: number
+    total_grades: number
+    categories: { category: string; avg: number; count: number }[]
+    cancellation_rate: number
+    dispute_rate: number
+  }
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
@@ -123,20 +147,28 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const { getUserProducts } = useProducts()
   const { isOpen, onOpen, onClose } = useDisclosure()
   const toast = useToast()
-  
+
   // Review form state
   const [reviewRating, setReviewRating] = useState(0)
   const [reviewComment, setReviewComment] = useState('')
   const [isSubmittingReview, setIsSubmittingReview] = useState(false)
-  
+
+  // Trade-specific review state
+  const [tradeIdForReview, setTradeIdForReview] = useState<number | null>(null)
+  const [reviewPhotoFile, setReviewPhotoFile] = useState<File | null>(null)
+  const [reviewPhotoPreview, setReviewPhotoPreview] = useState<string | null>(null)
+  const [completedTradesNeedingReview, setCompletedTradesNeedingReview] = useState<Set<number>>(new Set())
+  const reviewPhotoInputRef = useRef<HTMLInputElement | null>(null)
+
+
   // Saved/wishlist state for product cards
   const [savedProductIds, setSavedProductIds] = useState<Set<number>>(new Set())
-  
+
   // Reply state
   const [replyingTo, setReplyingTo] = useState<number | null>(null)
   const [replyText, setReplyText] = useState('')
   const [isSubmittingReply, setIsSubmittingReply] = useState(false)
-  
+
   // Fetch reviews from API
   useEffect(() => {
     const fetchReviews = async () => {
@@ -220,7 +252,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         }
 
         const apiUser = (res.data?.data || res.data) as Partial<PublicUser>
-        
+
         // Log the API response to debug profile picture and name
         console.log('🔍 API User Response:', {
           name: apiUser.name,
@@ -229,7 +261,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           bio: (apiUser as any).bio,
           verified: apiUser.verified,
         })
-        
+
         setUser({
           id: Number(id),
           name: apiUser.name || 'User',
@@ -237,8 +269,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           created_at: (apiUser as any).created_at || new Date().toISOString(),
           // Prefer profile_picture if provided, fall back to org logo
           avatar_url: getImageUrl((apiUser as any).profile_picture || (apiUser as any).org_logo_url || null),
-            background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || null),
-            background_position: (apiUser as any).background_position || (apiUser as any).background_position || '50% 50%',
+          background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || null),
+          background_position: (apiUser as any).background_position || (apiUser as any).background_position || '50% 50%',
           // If the current user and API returned an email/name, prefer those
           bio: (apiUser as any).bio || 'No bio provided yet.',
           rating: apiUser.rating ?? 4.6,
@@ -248,6 +280,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           org_name: (apiUser as any).org_name,
           org_logo_url: (apiUser as any).org_logo_url,
           department: (apiUser as any).department || 'Unknown',
+          activity_status: (apiUser as any).activity_status || 'inactive',
         })
 
         // Fetch user's products to infer stats and successful trades
@@ -305,7 +338,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const handleShareProduct = (product: Product) => {
     const url = `${window.location.origin}${getProductUrl(product)}`
     if (navigator.share) {
-      navigator.share({ title: product.title, url }).catch(() => {})
+      navigator.share({ title: product.title, url }).catch(() => { })
     } else {
       navigator.clipboard.writeText(url)
       toast({ title: 'Link copied!', status: 'success', duration: 1500 })
@@ -426,7 +459,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       // Update local user state optimistically
       setUser(prev => prev ? { ...prev, bio: draftBio, background_url: payload.background_image || prev.background_url, background_position: payload.background_position || prev.background_position, avatar_url: payload.profile_picture || prev.avatar_url } : prev)
       setIsEditOpen(false)
-     
+
       // revoke temporary preview object URL if any
       if (backgroundPreview && backgroundFile) URL.revokeObjectURL(backgroundPreview)
       if (avatarPreview && avatarFile) URL.revokeObjectURL(avatarPreview)
@@ -490,9 +523,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     fetchTradeHistory()
   }, [id])
 
+  // Filter products to only show available items in the Products tab
+  const availableProducts = useMemo(() => {
+    return products.filter(p => p.status === 'available')
+  }, [products])
+
   // Sort products based on selected option
   const sortedProducts = useMemo(() => {
-    const sorted = [...products]
+    const sorted = [...availableProducts]
     switch(sortBy) {
       case 'price_asc':
         return sorted.sort((a, b) => (a.price || 0) - (b.price || 0))
@@ -502,7 +540,95 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       default:
         return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     }
-  }, [products, sortBy])
+  }, [availableProducts, sortBy])
+
+  // Merge trade history with reviews for unified "Trade Activity" feed
+  const mergedTradeActivity = useMemo(() => {
+    const completedTrades = userTrades.filter(t => t.status === 'completed' || t.completed_at)
+    
+    // Map reviews to their corresponding trades if possible
+    const trades = completedTrades.map(trade => ({
+      ...trade,
+      type: 'trade',
+      review: reviews.find(r => r.trade_id === trade.id || r.transaction_id === trade.id) || null
+    }))
+    
+    // Sort by most recent first
+    return trades.sort((a, b) => {
+      const dateA = new Date(a.completed_at || a.created_at).getTime()
+      const dateB = new Date(b.completed_at || b.created_at).getTime()
+      return dateB - dateA
+    })
+  }, [userTrades, reviews])
+
+  // Handle canceling a trade and reverting item to Available status
+  const handleCancelTrade = async (tradeId: number) => {
+    try {
+      await api.post(`/api/trades/${tradeId}/cancel`)
+      
+      // Revert associated products back to 'available' status
+      setProducts(prev => 
+        prev.map(p => {
+          // Find if this product was part of the canceled trade
+          // This assumes trade.items contains product info
+          return p.status === 'locked' ? { ...p, status: 'available' } : p
+        })
+      )
+      
+      // Remove trade from userTrades
+      setUserTrades(prev => prev.filter(t => t.id !== tradeId))
+      
+      toast({
+        title: 'Trade canceled',
+        description: 'Item status has been reverted to Available',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+    } catch (err) {
+      toast({
+        title: 'Failed to cancel trade',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+    }
+  }
+
+  // Handle photo upload for trade reviews
+  const handleReviewPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setReviewPhotoFile(f)
+    const url = URL.createObjectURL(f)
+    setReviewPhotoPreview(url)
+  }
+
+  const clearReviewPhoto = () => {
+    setReviewPhotoFile(null)
+    if (reviewPhotoPreview) URL.revokeObjectURL(reviewPhotoPreview)
+    setReviewPhotoPreview(null)
+    if (reviewPhotoInputRef.current) reviewPhotoInputRef.current.value = ''
+  }
+
+  // Detect completed trades that need reviews from current user
+  useEffect(() => {
+    if (!currentUser) return
+    
+    const tradesNeedingReview = new Set<number>()
+    mergedTradeActivity.forEach(trade => {
+      // Check if trade is completed and current user hasn't reviewed it yet
+      if (trade.status === 'completed' && !trade.review) {
+        // Only flag if current user is the one who should review
+        // (typically the receiver of the item)
+        const isReceiver = currentUser.id === trade.buyer_id || currentUser.id === trade.receiver_id
+        if (isReceiver) {
+          tradesNeedingReview.add(trade.id)
+        }
+      }
+    })
+    setCompletedTradesNeedingReview(tradesNeedingReview)
+  }, [mergedTradeActivity, currentUser])
 
   const handleSendMessage = () => {
     // In a real app, this would open a chat with the user
@@ -553,38 +679,44 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
     setIsSubmittingReview(true)
     try {
-      const payload = {
-        user_id: Number(id),
+      const payload: any = {
         rating: reviewRating,
-        comment: reviewComment.trim(),
+        comment: reviewComment.trim() || 'No comment provided',
+        trade_id: tradeIdForReview,
       }
-
-      await api.post(`/api/users/${id}/reviews`, payload)
-
-      // Refresh reviews list; if it fails, fall back to optimistic append to avoid duplicates
-      try {
-        const response = await api.get(`/api/users/${id}/reviews`)
-        setReviews(response.data?.data || response.data || [])
-      } catch (fetchErr) {
-        const newReview = {
-          id: Date.now(),
-          reviewer: currentUser?.name || 'Anonymous',
-          avatar: currentUser?.profile_picture || '',
-          rating: reviewRating,
-          comment: reviewComment.trim(),
-          date: new Date().toISOString().split('T')[0],
-        }
-        setReviews(prev => [newReview, ...prev])
+      
+      // Upload photo if one was selected
+      if (reviewPhotoFile) {
+        const fd = new FormData()
+        fd.append('image', reviewPhotoFile)
+        const uploadRes = await api.post('/api/users/review-photo', fd)
+        const photoUrl = uploadRes.data?.data?.url || uploadRes.data?.data?.path || uploadRes.data?.url
+        if (photoUrl) payload.photo_url = photoUrl
       }
-
-      // Reset form
-      setReviewRating(0)
-      setReviewComment('')
-      onClose()
-
+      
+      // Submit review
+      const endpoint = tradeIdForReview 
+        ? `/api/trades/${tradeIdForReview}/review`
+        : `/api/users/${id}/reviews`
+      
+      const reviewRes = await api.post(endpoint, payload)
+      
+      // Add review to local state
+      const newReview = reviewRes.data?.data || reviewRes.data
+      setReviews(prev => [newReview, ...prev])
+      
+      // Remove from trades needing review
+      if (tradeIdForReview) {
+        setCompletedTradesNeedingReview(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(tradeIdForReview)
+          return newSet
+        })
+      }
+      
       toast({
-        title: 'Review submitted',
-        description: 'Thank you for your feedback!',
+        title: 'Review submitted!',
+        description: 'Your review has been posted and is now visible on their profile.',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -611,11 +743,16 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         })
       }
     } finally {
+      setReviewRating(0)
+      setReviewComment('')
+      clearReviewPhoto()
+      setTradeIdForReview(null)
       setIsSubmittingReview(false)
+      onClose()
     }
   }
 
-  const handleOpenReviewModal = () => {
+  const handleOpenReviewModal = (tradeId?: number) => {
     const token = localStorage.getItem('clovia_token')
     if (!currentUser || !token) {
       toast({
@@ -630,6 +767,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     }
     setReviewRating(0)
     setReviewComment('')
+    clearReviewPhoto()
+    setTradeIdForReview(tradeId || null)
     onOpen()
   }
 
@@ -672,14 +811,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         setReviews(response.data?.data || response.data || [])
       } catch (fetchErr) {
         // Optimistically update
-        setReviews(prev => prev.map(review => 
-          review.id === reviewId 
-            ? { 
-                ...review, 
-                reply: replyText.trim(),
-                reply_author: currentUser?.name || 'You',
-                reply_date: new Date().toISOString().split('T')[0]
-              } 
+        setReviews(prev => prev.map(review =>
+          review.id === reviewId
+            ? {
+              ...review,
+              reply: replyText.trim(),
+              reply_author: currentUser?.name || 'You',
+              reply_date: new Date().toISOString().split('T')[0]
+            }
             : review
         ))
       }
@@ -739,9 +878,9 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           <Text color="gray.600" mb={6}>
             The user profile you're looking for doesn't exist or may have been removed.
           </Text>
-          <Button 
-            as={RouterLink} 
-            to="/" 
+          <Button
+            as={RouterLink}
+            to="/"
             colorScheme="brand"
           >
             Back to Home
@@ -779,24 +918,24 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               )}
 
               <Box position="absolute" bottom="-50px" left="6">
-                <VerifiedAvatar 
-                  size="xl" 
-                  name={user.name} 
-                  src={user.avatar_url} 
-                  bg="brand.500" 
-                  color="white" 
+                <VerifiedAvatar
+                  size="xl"
+                  name={user.name}
+                  src={user.avatar_url}
+                  bg="brand.500"
+                  color="white"
                   border="4px solid white"
                   boxShadow="md"
                   isVerified={user.verification_status === 'verified' || user.verified}
                 />
               </Box>
             </Box>
-            
+
             <CardBody pt="60px">
               <Flex justify="space-between" wrap="wrap">
                 <Box flex="1" minW="200px" mr={4}>
                   <HStack spacing={3} align="center" mb={2} flexWrap="wrap">
-                    <Heading size="lg" color="gray.800">{user.name}</Heading>
+                    <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
                     {(user.verification_status === 'verified' || user.verified) && (
                       <Badge colorScheme="teal" borderRadius="full" px={3} py={1} fontSize="sm">
                         <HStack spacing={1.5}>
@@ -805,8 +944,28 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         </HStack>
                       </Badge>
                     )}
+                    {sellerStats?.trust_level && (
+                      <Badge
+                        colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
+                        borderRadius="full"
+                        px={3}
+                        py={1}
+                        fontSize="sm"
+                      >
+                        {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                      </Badge>
+                    )}
+                    <Badge
+                      colorScheme={user.activity_status === 'active_today' ? 'green' : user.activity_status === 'active_this_week' ? 'yellow' : 'red'}
+                      borderRadius="full"
+                      px={3}
+                      py={1}
+                      fontSize="sm"
+                    >
+                      {user.activity_status === 'active_today' ? '🟢 Active today' : user.activity_status === 'active_this_week' ? '🟡 Active this week' : '🔴 Inactive'}
+                    </Badge>
                   </HStack>
-                  
+
                   <HStack spacing={6} mb={4} flexWrap="wrap">
                     <HStack>
                       <Icon as={FiStar} color="yellow.400" />
@@ -825,14 +984,39 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       <Text color="gray.500">Avg. Response: {stats.avgResponse}</Text>
                     </HStack>
                   </HStack>
-                  
+
                   {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
-                  
+
+
+                  {/* Trust Score Card */}
+                  {sellerStats && (
+                    <Box mb={4}>
+                      <TrustScoreCard
+                        score={sellerStats.trust_score ?? 0}
+                        trustLevel={sellerStats.trust_level}
+                        factors={sellerStats.trust_factors}
+                        conductSummary={sellerStats.conduct_summary}
+                      />
+                    </Box>
+                  )}
+
+                  {/* Report Warning Banner */}
+                  {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
+                    <Alert status="warning" borderRadius="md" mb={4}>
+                      <AlertIcon />
+                      <Box>
+                        <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
+                        <Text fontSize="xs" color="gray.600">Trade with caution</Text>
+                      </Box>
+                    </Alert>
+                  )}
+
+
                   {/* Show action buttons only when viewing someone else's profile */}
                   {!(currentUser && Number(id) === currentUser.id) && (
                     <HStack spacing={3}>
-                      <Button 
-                        leftIcon={<Icon as={FiMessageSquare} />} 
+                      <Button
+                        leftIcon={<Icon as={FiMessageSquare} />}
                         colorScheme="brand"
                         onClick={handleSendMessage}
                       >
@@ -841,27 +1025,26 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     </HStack>
                   )}
                 </Box>
-                
-                <Box bg="gray.50" p={4} borderRadius="md" minW="250px">
-                  <VStack spacing={3} align="stretch">
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Member Since</Text>
-                      <Text fontWeight="medium">{new Date(user.created_at).toLocaleDateString()}</Text>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Department</Text>
-                      <Text fontWeight="medium">{user.department || 'Unknown'}</Text>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Items for Sale</Text>
-                      <Text fontWeight="medium">{stats.active}</Text>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Total Listings</Text>
-                      <Text fontWeight="medium">{stats.total}</Text>
-                    </HStack>
-                  </VStack>
-                </Box>
+
+                <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }} minW={{ base: '100%', md: '280px' }}>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Member Since</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Items for Sale</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Department</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Total Listings</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
+                  </Box>
+                </SimpleGrid>
+
               </Flex>
             </CardBody>
           </Card>
@@ -870,13 +1053,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           <Tabs variant="enclosed" isLazy>
             <TabList borderBottom="1px" borderColor="gray.200" bg="white" px={4}>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Products ({stats.active})
+                Available Items ({sortedProducts.length})
               </Tab>
               <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Trade History ({userTrades.length})
-              </Tab>
-              <Tab _selected={{ color: 'brand.500', borderBottom: '2px solid', borderColor: 'brand.500' }}>
-                Reviews ({reviews.length})
+                Trade Activity ({mergedTradeActivity.length})
               </Tab>
             </TabList>
 
@@ -888,9 +1068,9 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     <Text fontWeight="medium">{sortedProducts.length} items</Text>
                     <HStack>
                       <Text fontSize="sm" color="gray.500">Sort by:</Text>
-                      <Select 
-                        size="sm" 
-                        w="180px" 
+                      <Select
+                        size="sm"
+                        w="180px"
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
                         aria-label="Sort products"
@@ -903,7 +1083,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     </HStack>
                   </HStack>
                 </Box>
-                
+
                 {sortedProducts.length === 0 ? (
                   <Center p={10}>
                     <VStack>
@@ -914,17 +1094,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     </VStack>
                   </Center>
                 ) : (
-                  <SimpleGrid 
-                    columns={{ base: 2, sm: 2, md: 3, lg: 4 }} 
-                    spacing={{ base: 2, md: 4 }} 
+                  <SimpleGrid
+                    columns={{ base: 2, sm: 2, md: 3, lg: 4 }}
+                    spacing={{ base: 2, md: 4 }}
                     p={4}
                   >
                     {sortedProducts.map((product) => (
-                      <Box 
-                        key={product.id} 
-                        border="1px" 
-                        borderColor="gray.200" 
-                        rounded="md" 
+                      <Box
+                        key={product.id}
+                        border="1px"
+                        borderColor="gray.200"
+                        rounded="md"
                         overflow="hidden"
                         bg="white"
                         _hover={{ transform: 'translateY(-4px)', shadow: 'md' }}
@@ -932,8 +1112,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         position="relative"
                       >
                         <Box position="relative">
-                          <Image 
-                            src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'} 
+                          <Image
+                            src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
                             alt={product.title}
                             h="180px"
                             w="100%"
@@ -957,19 +1137,20 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                             </Badge>
                           </Box>
                         </Box>
-                        
+
                         <Box p={3}>
-                          <Text 
-                            as={RouterLink} 
+                          <Text
+                            as={RouterLink}
                             to={getProductUrl(product)}
-                            fontWeight="medium" 
-                            noOfLines={2} 
+                            fontWeight="medium"
+                            noOfLines={2}
                             mb={1}
+                            wordBreak="break-word"
                             _hover={{ color: 'brand.500' }}
                           >
                             {product.title}
                           </Text>
-                          
+
                           <HStack justify="space-between" align="center" mt={2}>
                             <Text fontWeight="bold" color="gray.800">
                               {product.price ? `$${product.price.toFixed(2)}` : 'Free'}
@@ -990,97 +1171,199 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 )}
               </TabPanel>
 
-              {/* Trade History Tab */}
+              {/* Trade Activity Tab - Combined Trade History & Reviews */}
               <TabPanel p={0}>
                 <Box p={4} borderBottom="1px" borderColor="gray.100">
-                  <Heading size="md" mb={2}>Trade History</Heading>
-                  <Text color="gray.500" fontSize="sm">
-                    {userTrades.length} completed trades
-                  </Text>
+                  <HStack justify="space-between" align="flex-start" flexWrap="wrap">
+                    <Box>
+                      <Heading size="md" mb={1}>Trade Activity</Heading>
+                      <HStack spacing={1} mb={2}>
+                        <Icon as={FiStar} color="yellow.400" boxSize={5} />
+                        <Text fontSize="xl" fontWeight="bold">
+                          {displayRating.toFixed(1)}
+                          <Text as="span" fontSize="md" fontWeight="normal" color="gray.600" ml={1}>
+                            ({displayTotalReviews} reviews)
+                          </Text>
+                        </Text>
+                      </HStack>
+                      <Text color="green.600" fontSize="sm">
+                        {Math.round(displayPositivePercent)}% positive feedback
+                      </Text>
+                    </Box>
+                    
+                    {!(currentUser && Number(id) === currentUser.id) && (
+                      <Button 
+                        colorScheme="brand" 
+                        size="sm" 
+                        onClick={() => handleOpenReviewModal()}
+                        leftIcon={<Icon as={FiStar} />}
+                      >
+                        Leave a Review
+                      </Button>
+                    )}
+                  </HStack>
                 </Box>
-                
+
                 {tradesLoading ? (
                   <Center p={10}>
                     <Spinner size="lg" color="brand.500" />
                   </Center>
                 ) : tradesError ? (
                   <Center p={10}>
-                    <Text color="red.500">Failed to load trade history</Text>
+                    <Text color="red.500">Failed to load trade activity</Text>
                   </Center>
-                ) : userTrades.length === 0 ? (
+                ) : mergedTradeActivity.length === 0 ? (
                   <Center p={10}>
-                    <Text color="gray.500">No trade history yet.</Text>
+                    <VStack>
+                      <Text color="gray.500">No completed trades yet.</Text>
+                      {!(currentUser && Number(id) === currentUser.id) && (
+                        <Button 
+                          colorScheme="brand" 
+                          variant="outline" 
+                          size="sm" 
+                          mt={2}
+                          onClick={() => handleOpenReviewModal()}
+                        >
+                          Be the first to trade
+                        </Button>
+                      )}
+                    </VStack>
                   </Center>
                 ) : (
                   <Box>
                     {userTrades.map((trade, index) => {
-                      const isBuyer = currentUser && trade.buyer_id === currentUser.id
-                      const counterpartName = isBuyer ? trade.seller_name : trade.buyer_name
-                      const completedDate = trade.completed_at 
+                      // The profile being viewed is user `id`
+                      const profileUserID = Number(id)
+                      const isProfileBuyer = trade.buyer_id === profileUserID
+                      const counterpartName = isProfileBuyer ? trade.seller_name : trade.buyer_name
+                      const completedDate = trade.completed_at
                         ? new Date(trade.completed_at).toLocaleDateString()
                         : new Date(trade.created_at).toLocaleDateString()
-                      
-                      // Get first product image from trade items
-                      const firstItem = trade.items && trade.items.length > 0 ? trade.items[0] : null
-                      const productImage = firstItem?.product_image_url || '/placeholder-item.jpg'
-                      const productTitle = firstItem?.product_title || trade.product_title || 'Trade'
-                      
+
+                      // Target product (what the seller listed)
+                      const targetImage = trade.product_image_url || '/placeholder-item.jpg'
+                      const targetTitle = trade.product_title || 'Product'
+
+                      // Offered items (what the buyer offered)
+                      const offeredItems = trade.items || []
+                      const firstOffered = offeredItems.length > 0 ? offeredItems[0] : null
+                      const offeredImage = firstOffered?.product_image_url || '/placeholder-item.jpg'
+                      const offeredTitle = firstOffered?.product_title || 'Offered item'
+
+                      // Show the review FROM the trading partner (about the profile owner)
+                      const reviewRating = isProfileBuyer ? trade.seller_rating : trade.buyer_rating
+                      const reviewFeedback = isProfileBuyer ? trade.seller_feedback : trade.buyer_feedback
+                      const reviewerName = isProfileBuyer ? trade.seller_name : trade.buyer_name
+
                       return (
-                        <Box 
-                          key={trade.id} 
-                          p={4} 
-                          borderBottom={index < userTrades.length - 1 ? '1px' : 'none'} 
+                        <Box
+                          key={trade.id}
+                          p={4}
+                          borderBottom={index < userTrades.length - 1 ? '1px' : 'none'}
                           borderColor="gray.100"
                           _hover={{ bg: 'gray.50' }}
+                          bg="white"
                         >
-                          <HStack spacing={4} align="start">
-                            <Box 
-                              w="60px" 
-                              h="60px" 
-                              bg="gray.100" 
-                              borderRadius="md" 
-                              overflow="hidden"
-                              flexShrink={0}
-                            >
-                              <Image 
-                                src={productImage} 
-                                alt={productTitle}
-                                w="100%"
-                                h="100%"
-                                objectFit="cover"
-                                fallbackSrc="/placeholder-item.jpg"
-                              />
-                            </Box>
-                            
-                            <Box flex="1">
-                              <HStack justify="space-between" mb={1}>
-                                <Text fontWeight="medium">{productTitle}</Text>
-                                <Text fontSize="sm" color="gray.500">{completedDate}</Text>
-                              </HStack>
-                              
-                              <Text fontSize="sm" color="gray.600" mb={2}>
-                                {trade.items && trade.items.length > 1 
-                                  ? `Multi-way trade with ${trade.items.length} items`
-                                  : isBuyer ? 'Received item' : 'Sent item'
-                                }
+                          <VStack spacing={3} align="stretch">
+                            {/* Product images on top */}
+                            <HStack spacing={2} align="center">
+                              <Box
+                                w="55px"
+                                h="55px"
+                                bg="gray.100"
+                                borderRadius="md"
+                                overflow="hidden"
+                                border="2px"
+                                borderColor="blue.200"
+                                flexShrink={0}
+                              >
+                                <Image
+                                  src={offeredImage}
+                                  alt={offeredTitle}
+                                  w="100%" h="100%"
+                                  objectFit="cover"
+                                  fallbackSrc="/placeholder-item.jpg"
+                                />
+                              </Box>
+                              <Text fontSize="xs" color="gray.400">⇄</Text>
+                              <Box
+                                w="55px"
+                                h="55px"
+                                bg="gray.100"
+                                borderRadius="md"
+                                overflow="hidden"
+                                border="2px"
+                                borderColor="green.200"
+                                flexShrink={0}
+                              >
+                                <Image
+                                  src={targetImage}
+                                  alt={targetTitle}
+                                  w="100%" h="100%"
+                                  objectFit="cover"
+                                  fallbackSrc="/placeholder-item.jpg"
+                                />
+                              </Box>
+                              <Text fontSize="xs" color="gray.500" ml="auto" flexShrink={0}>{completedDate}</Text>
+                            </HStack>
+
+                            {/* Trade details below */}
+                            <Box>
+                              <Text fontWeight="medium" fontSize="sm" noOfLines={1} mb={1}>
+                                {offeredTitle} ⇄ {targetTitle}
                               </Text>
-                              
-                              <HStack spacing={2}>
+
+                              <Text fontSize="sm" color="gray.600" mb={2}>
+                                {isProfileBuyer ? 'Received item' : 'Sent item'}
+                                {offeredItems.length > 1 ? ` (${offeredItems.length} items offered)` : ''}
+                              </Text>
+
+                              <HStack spacing={2} mb={2}>
                                 <Badge colorScheme="green" variant="subtle" fontSize="xs">
                                   Completed
                                 </Badge>
-                                <Text fontSize="xs" color="gray.500">
-                                  with {counterpartName || 'User'}
+                                <Text fontSize="xs" color="gray.600">
+                                  with <Text as="span" fontWeight="medium">{counterpartName || 'User'}</Text>
                                 </Text>
                               </HStack>
+
+                              {/* Review from trading partner */}
+                              {reviewRating && (
+                                <Box bg="gray.50" p={2} borderRadius="md">
+                                  <HStack spacing={2} mb={1}>
+                                    <Text fontSize="xs" fontWeight="bold" color="gray.700">
+                                      {reviewerName}
+                                    </Text>
+                                    <HStack spacing={0.5}>
+                                      {[1, 2, 3, 4, 5].map((star: number) => (
+                                        <Icon
+                                          key={`r-${star}`}
+                                          as={FiStar}
+                                          boxSize={3}
+                                          color={star <= reviewRating ? 'yellow.400' : 'gray.300'}
+                                          fill={star <= reviewRating ? 'currentColor' : 'none'}
+                                        />
+                                      ))}
+                                      <Text fontSize="xs" color="gray.500" ml={1}>{reviewRating}/5</Text>
+                                    </HStack>
+                                  </HStack>
+                                  {reviewFeedback && (
+                                    <Text fontSize="xs" color="gray.600" fontStyle="italic">
+                                      "{reviewFeedback}"
+                                    </Text>
+                                  )}
+                                </Box>
+                              )}
                             </Box>
-                          </HStack>
+                          </VStack>
+
                         </Box>
                       )
                     })}
                   </Box>
                 )}
               </TabPanel>
+
 
               {/* Reviews Tab */}
               <TabPanel p={0}>
@@ -1101,12 +1384,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         {Math.round(displayPositivePercent)}% positive feedback
                       </Text>
                     </Box>
-                    
+
                     {!(currentUser && Number(id) === currentUser.id) && (
-                      <Button 
-                        colorScheme="brand" 
-                        size="sm" 
-                        onClick={handleOpenReviewModal}
+                      <Button
+                        colorScheme="brand"
+                        size="sm"
+                        onClick={() => handleOpenReviewModal()}
                         leftIcon={<Icon as={FiStar} />}
                       >
                         Leave a Review
@@ -1114,18 +1397,18 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     )}
                   </HStack>
                 </Box>
-                
+
                 {reviews.length === 0 ? (
                   <Center p={10}>
                     <VStack>
                       <Text color="gray.500">No reviews yet.</Text>
                       {!(currentUser && Number(id) === currentUser.id) && (
-                        <Button 
-                          colorScheme="brand" 
-                          variant="outline" 
-                          size="sm" 
+                        <Button
+                          colorScheme="brand"
+                          variant="outline"
+                          size="sm"
                           mt={2}
-                          onClick={handleOpenReviewModal}
+                          onClick={() => handleOpenReviewModal()}
                         >
                           Be the first to review
                         </Button>
@@ -1135,16 +1418,16 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 ) : (
                   <Box>
                     {reviews.map((review, index) => (
-                      <Box 
-                        key={review.id} 
-                        p={4} 
-                        borderBottom={index < reviews.length - 1 ? '1px' : 'none'} 
+                      <Box
+                        key={review.id}
+                        p={4}
+                        borderBottom={index < reviews.length - 1 ? '1px' : 'none'}
                         borderColor="gray.100"
                       >
                         <HStack spacing={3} mb={2} align="start">
-                          <VerifiedAvatar 
-                            size="sm" 
-                            name={review.reviewer} 
+                          <VerifiedAvatar
+                            size="sm"
+                            name={review.reviewer}
                             src={review.avatar}
                             isVerified={false}
                           />
@@ -1154,10 +1437,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                 <Text fontWeight="medium">{review.reviewer}</Text>
                                 <HStack spacing={1}>
                                   {[...Array(5)].map((_, i) => (
-                                    <Icon 
-                                      key={i} 
-                                      as={FiStar} 
-                                      color={i < review.rating ? 'yellow.400' : 'gray.300'} 
+                                    <Icon
+                                      key={i}
+                                      as={FiStar}
+                                      color={i < review.rating ? 'yellow.400' : 'gray.300'}
                                       boxSize={4}
                                     />
                                   ))}
@@ -1173,19 +1456,19 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
                             {/* Show existing reply if any */}
                             {review.reply && (
-                              <Box 
-                                mt={3} 
-                                pl={4} 
-                                borderLeft="2px" 
-                                borderColor="brand.200" 
-                                bg="gray.50" 
-                                p={3} 
+                              <Box
+                                mt={3}
+                                pl={4}
+                                borderLeft="2px"
+                                borderColor="brand.200"
+                                bg="gray.50"
+                                p={3}
                                 borderRadius="md"
                               >
                                 <HStack spacing={2} mb={1}>
                                   <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
                                   <Text fontSize="sm" fontWeight="semibold" color="brand.600">
-                                    {review.reply_author || user?.name || 'Seller'} replied:
+                                    <Box as="span" textTransform="capitalize">{review.reply_author || user?.name || 'Seller'}</Box> replied:
                                   </Text>
                                   {review.reply_date && (
                                     <Text fontSize="xs" color="gray.500">
@@ -1336,13 +1619,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         {draftBio.length}/50 {draftBio.length >= 30 ? '✓' : '(min 30)'}
                       </Text>
                     </HStack>
-                    <Textarea 
-                      value={draftBio} 
+                    <Textarea
+                      value={draftBio}
                       onChange={(e) => {
                         if (e.target.value.length <= 50) {
                           setDraftBio(e.target.value)
                         }
-                      }} 
+                      }}
                       rows={4}
                       placeholder="Tell buyers about yourself (30-50 characters required)"
                       maxLength={50}
@@ -1352,8 +1635,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
                   <HStack justify="flex-end">
                     <Button onClick={closeEdit} variant="ghost">Cancel</Button>
-                    <Button 
-                      colorScheme="brand" 
+                    <Button
+                      colorScheme="brand"
                       onClick={handleSaveProfile}
                       isDisabled={draftBio.length < 30}
                       title={draftBio.length < 30 ? `Bio must be at least 30 characters (${30 - draftBio.length} more needed)` : ''}
@@ -1370,7 +1653,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           <Modal isOpen={isOpen} onClose={onClose} size="lg">
             <ModalOverlay />
             <ModalContent>
-              <ModalHeader>Leave a Review for {user.name}</ModalHeader>
+              <ModalHeader>Leave a Review for <Box as="span" textTransform="capitalize">{user.name}</Box></ModalHeader>
               <ModalCloseButton />
               <ModalBody pb={6}>
                 <VStack spacing={4} align="stretch">
@@ -1401,13 +1684,75 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       </Text>
                     )}
                   </FormControl>
-                  
+
+                  <FormControl>
+                    <FormLabel>Upload Photo of Item (Optional)</FormLabel>
+                    {reviewPhotoPreview ? (
+                      <Box>
+                        <Box
+                          position="relative"
+                          w="100%"
+                          maxH="200px"
+                          borderRadius="md"
+                          overflow="hidden"
+                          bg="gray.100"
+                          mb={2}
+                        >
+                          <Image
+                            src={reviewPhotoPreview}
+                            alt="Review photo preview"
+                            w="100%"
+                            h="100%"
+                            objectFit="cover"
+                          />
+                          <Button
+                            position="absolute"
+                            top={2}
+                            right={2}
+                            size="sm"
+                            colorScheme="red"
+                            onClick={clearReviewPhoto}
+                          >
+                            Remove
+                          </Button>
+                        </Box>
+                        <Text fontSize="sm" color="green.600">
+                          ✓ Photo selected
+                        </Text>
+                      </Box>
+                    ) : (
+                      <Box>
+                        <Input
+                          ref={reviewPhotoInputRef}
+                          type="file"
+                          accept="image/*"
+                          display="none"
+                          onChange={handleReviewPhotoSelect}
+                          aria-label="Choose review photo"
+                          title="Choose review photo"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="brand"
+                          onClick={() => reviewPhotoInputRef.current?.click()}
+                        >
+                          Choose Photo
+                        </Button>
+                        <Text fontSize="xs" color="gray.500" mt={2}>
+                          Upload a photo of the received item to verify the trade. (Optional)
+                        </Text>
+                      </Box>
+                    )}
+                  </FormControl>
+
+
                   <FormControl isRequired>
                     <FormLabel>Your Review</FormLabel>
-                    <Textarea 
+                    <Textarea
                       value={reviewComment}
                       onChange={(e) => setReviewComment(e.target.value)}
-                      placeholder="Share details about your experience with this seller..." 
+                      placeholder="Share details about your experience with this seller..."
                       rows={5}
                       maxLength={500}
                     />
@@ -1415,17 +1760,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       {reviewComment.length}/500 characters
                     </Text>
                   </FormControl>
-                  
+
                   <HStack justify="flex-end" spacing={3}>
-                    <Button 
+                    <Button
                       variant="ghost"
                       onClick={onClose}
                       isDisabled={isSubmittingReview}
                     >
                       Cancel
                     </Button>
-                    <Button 
-                      colorScheme="brand" 
+                    <Button
+                      colorScheme="brand"
                       leftIcon={<Icon as={FiSend} />}
                       onClick={handleSubmitReview}
                       isLoading={isSubmittingReview}

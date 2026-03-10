@@ -24,9 +24,9 @@ import {
   CardHeader,
   Divider,
 } from '@chakra-ui/react'
-import { 
-  FiHeart, 
-  FiEye, 
+import {
+  FiHeart,
+  FiEye,
   FiShoppingCart,
   FiRefreshCw,
   FiArrowLeft,
@@ -52,7 +52,7 @@ interface SavedProductsResponse {
 const SavedProducts: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
-  
+
   // Force redirect if not authenticated
   useEffect(() => {
     if (!user) {
@@ -64,7 +64,7 @@ const SavedProducts: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [removing, setRemoving] = useState<number | null>(null)
-  
+
   const toast = useToast()
 
   const fetchSavedProducts = async (retryCount = 0): Promise<void> => {
@@ -148,15 +148,15 @@ const SavedProducts: React.FC = () => {
   const handleRemoveFromSaved = async (productId: number) => {
     try {
       setRemoving(productId)
-      
+
       if (user) {
         // Use API for logged-in users
         await api.delete(`/api/users/saved-products/${productId}`)
-      } 
-      
+      }
+
       // Update local state
       setSavedProducts(prev => prev.filter(p => p.id !== productId))
-      
+
       toast({
         title: 'Removed from saved',
         description: 'Product removed from your saved items',
@@ -183,9 +183,9 @@ const SavedProducts: React.FC = () => {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', { 
-      style: 'currency', 
-      currency: 'PHP' 
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP'
     }).format(amount)
   }
 
@@ -229,8 +229,8 @@ const SavedProducts: React.FC = () => {
               <Text>{error}</Text>
             </Box>
           </Alert>
-          <Button 
-            leftIcon={<FiRefreshCw />} 
+          <Button
+            leftIcon={<FiRefreshCw />}
             onClick={() => fetchSavedProducts()}
             mt={4}
             colorScheme="blue"
@@ -258,11 +258,11 @@ const SavedProducts: React.FC = () => {
                 </Text>
               </VStack>
             </HStack>
-            
-            <Button 
-              leftIcon={<FiRefreshCw />} 
+
+            <Button
+              leftIcon={<FiRefreshCw />}
               onClick={() => fetchSavedProducts()}
-              colorScheme="blue" 
+              colorScheme="blue"
               variant="outline"
               size="sm"
             >
@@ -282,8 +282,8 @@ const SavedProducts: React.FC = () => {
                   <Text color="gray.600">
                     Start exploring products and save the ones you like!
                   </Text>
-                  <Button 
-                    colorScheme="brand" 
+                  <Button
+                    colorScheme="brand"
                     onClick={() => navigate('/home')}
                     leftIcon={<FiEye />}
                   >
@@ -318,14 +318,14 @@ const SavedProducts: React.FC = () => {
                       onClick={() => handleRemoveFromSaved(product.id)}
                     />
                   </Box>
-                  
+
                   <CardBody py={2} px={2}>
                     <VStack spacing={1.5} align="stretch">
                       <Box>
-                        <Heading size="xs" color="brand.500" noOfLines={1}>
+                        <Heading size="xs" color="brand.500" noOfLines={1} wordBreak="break-word">
                           {product.title}
                         </Heading>
-                        <Text color="gray.600" fontSize="xs" noOfLines={1} mt={0.5}>
+                        <Text color="gray.600" fontSize="xs" noOfLines={1} mt={0.5} wordBreak="break-word">
                           {product.description}
                         </Text>
                       </Box>
@@ -334,10 +334,10 @@ const SavedProducts: React.FC = () => {
                         {product.premium && (
                           <Badge colorScheme="yellow" size="xs">Premium</Badge>
                         )}
-                        <Badge 
+                        <Badge
                           colorScheme={
-                            product.status === 'available' ? 'green' : 
-                            product.status === 'locked' ? 'orange' : 'red'
+                            product.status === 'available' ? 'green' :
+                              product.status === 'locked' ? 'orange' : 'red'
                           }
                           size="xs"
                         >
@@ -386,7 +386,7 @@ const SavedProducts: React.FC = () => {
         </VStack>
       </Container>
 
-    <FloatingTab />
+      <FloatingTab />
     </Box>
   )
 }

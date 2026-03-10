@@ -93,3 +93,83 @@ func (h *UploadHandler) UploadImage(c *fiber.Ctx) error {
 		},
 	})
 }
+
+// AnalyzeProductImages handles POST /api/analyze-product
+// Accepts multipart/form-data with field "images" (multiple files allowed)
+// Returns AI-generated product details with Gemini as primary and Groq as fallback
+func (h *UploadHandler) AnalyzeProductImages(c *fiber.Ctx) error {
+	// Get all uploaded images
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"error":   "Failed to parse uploaded files",
+		})
+	}
+
+	images := form.File["images"]
+	if len(images) == 0 {
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"error":   "No images provided. Use field name 'images'",
+		})
+	}
+
+	// Limit to 3 images for faster processing
+	if len(images) > 3 {
+		images = images[:3]
+	}
+
+	fmt.Printf("📸 [AI Analysis] Analyzing %d product image(s)...\n", len(images))
+
+	// Analyze with fallback
+	result, err := services.AnalyzeProductWithFallback(images)
+	if err != nil || result == nil {
+		errMsg := "AI analysis failed"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		fmt.Printf("❌ [AI Analysis] Failed: %s\n", errMsg)
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"error":   errMsg,
+		})
+	}
+
+	// If analysis returns prohibited status
+	if result.Data != nil && result.Data.Prohibited {
+		return c.Status(400).JSON(fiber.Map{
+			"success":    false,
+			"error":      "This item cannot be listed",
+			"reason":     result.Data.Reason,
+			"provider":   result.Provider,
+			"time_ms":    result.TimeMs,
+			"prohibited": true,
+		})
+	}
+
+	fmt.Printf("✅ [AI Analysis] Complete (%s in %dms)\n", result.Provider, result.TimeMs)
+
+	return c.Status(200).JSON(fiber.Map{
+		"success":  true,
+		"message":  "Product analysis completed successfully",
+		"provider": result.Provider,
+		"retried":  result.Retried,
+		"time_ms":  result.TimeMs,
+		"data": fiber.Map{
+			"title":               result.Data.Title,
+			"description":         result.Data.Description,
+			"condition":           result.Data.Condition,
+			"category":            result.Data.Category,
+			"subcategory":         result.Data.Subcategory,
+			"item_type":           result.Data.ItemType,
+			"brand":               result.Data.Brand,
+			"authenticity_risks":  result.Data.AuthenticityRisks,
+			"estimated_value_min": result.Data.EstimatedValueMin,
+			"estimated_value_max": result.Data.EstimatedValueMax,
+			"tags":                result.Data.Tags,
+			"quality_warning":     result.Data.QualityWarning,
+			"person_warning":      result.Data.PersonWarning,
+		},
+	})
+}

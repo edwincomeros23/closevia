@@ -13,19 +13,28 @@ import {
   Image,
   Badge,
   Button,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalCloseButton,
+  ModalBody,
+  useDisclosure,
 } from '@chakra-ui/react'
 import { useProducts } from '../contexts/ProductContext'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import { formatPHP } from '../utils/currency'
 import FloatingTab from '../components/FloatingTab'
+import ImageZoomModal from '../components/ImageZoomModal'
 
 const ProductsList: React.FC = () => {
   const { products, loading, error, searchProducts, clearError } = useProducts()
   const location = useLocation()
   const navigate = useNavigate()
   const [initialized, setInitialized] = useState(false)
-
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomAltText, setZoomAltText] = useState('')
   const sellerId = useMemo(() => {
     const params = new URLSearchParams(location.search)
     const idStr = params.get('seller_id')
@@ -45,6 +54,13 @@ const ProductsList: React.FC = () => {
     // Intentionally depend only on sellerId to avoid re-runs on provider renders
   }, [sellerId])
 
+  const handleImageZoom = (e: React.MouseEvent, url: string, alt: string) => {
+    e.stopPropagation()
+    setZoomImageUrl(url)
+    setZoomAltText(alt)
+    setIsZoomOpen(true)
+  }
+
   const renderCard = (p: any) => (
     <Box
       key={p.id}
@@ -59,7 +75,14 @@ const ProductsList: React.FC = () => {
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(p))}
     >
-      <Box position="relative" w="full" pt="100%" overflow="hidden">
+      <Box
+        position="relative"
+        w="full"
+        pt="100%"
+        overflow="hidden"
+        cursor="zoom-in"
+        onClick={(e) => handleImageZoom(e, getFirstImage(p.image_urls), p.title)}
+      >
         <Image
           src={getFirstImage(p.image_urls)}
           alt={p.title}
@@ -71,6 +94,11 @@ const ProductsList: React.FC = () => {
           objectFit="cover"
           loading="lazy"
           fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          cursor="zoom-in"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleImageZoom(e, getFirstImage(p.image_urls), p.title)
+          }}
         />
         {p.premium && (
           <Badge position="absolute" top={2} right={2} colorScheme="yellow" variant="solid" borderRadius="full" px={2}>
@@ -79,18 +107,18 @@ const ProductsList: React.FC = () => {
         )}
       </Box>
       <Box p={4} display="flex" flexDirection="column" h={{ base: 180, md: 192 }} overflow="hidden">
-        <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
+        <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0} wordBreak="break-word">
           {p.title}
         </Heading>
-        <Text color="gray.600" noOfLines={2} mb={2} fontSize="sm" flexShrink={0}>
+        <Text color="gray.600" noOfLines={2} mb={2} fontSize="sm" flexShrink={0} wordBreak="break-word">
           {p.description || 'No description available'}
         </Text>
         {/* Wishlist Count Badge */}
         {p.wishlist_count > 0 && (
           <HStack mb={2} spacing={1}>
-            <Badge 
-              colorScheme="pink" 
-              variant="subtle" 
+            <Badge
+              colorScheme="pink"
+              variant="subtle"
               borderRadius="full"
               px={2}
               py={0.5}
@@ -160,6 +188,13 @@ const ProductsList: React.FC = () => {
       </Container>
 
       <FloatingTab />
+
+      <ImageZoomModal
+        isOpen={isZoomOpen}
+        onClose={() => setIsZoomOpen(false)}
+        imageUrl={zoomImageUrl}
+        altText={zoomAltText}
+      />
     </Box>
   )
 }

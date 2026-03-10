@@ -36,6 +36,8 @@ import {
   Grid,
   Avatar,
   ButtonGroup,
+  Select,
+  Textarea,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -67,8 +69,10 @@ import ProximityBadge from '../components/ProximityBadge'
 import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
 import FloatingTab from '../components/FloatingTab'
 import VerifiedAvatar from '../components/VerifiedAvatar'
+import ImageZoomModal from '../components/ImageZoomModal'
+import TrustScoreCard from '../components/TrustScoreCard'
 import axios from 'axios';
-import { CloseIcon } from '@chakra-ui/icons'
+import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -102,10 +106,40 @@ const ProductDetail: React.FC = () => {
   const [hasPendingOfferOnProduct, setHasPendingOfferOnProduct] = useState(false)
   const [loadingPendingOffer, setLoadingPendingOffer] = useState(false)
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false)
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [zoomImageUrl, setZoomImageUrl] = useState('')
+  const [zoomImageIndex, setZoomImageIndex] = useState(0)
+  const [isVoting, setIsVoting] = useState(false)
+  const [isCopying, setIsCopying] = useState(false)
+  const [isWishlisting, setIsWishlisting] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure()
+
+  const openZoom = (index: number) => {
+    if (product && product.image_urls && index < product.image_urls.length) {
+      setZoomImageIndex(index)
+      setZoomImageUrl(getImageUrl(product.image_urls[index]))
+      setIsZoomOpen(true)
+    }
+  }
+
+  const nextZoomImage = () => {
+    if (product && product.image_urls) {
+      const nextIndex = (zoomImageIndex + 1) % product.image_urls.length
+      setZoomImageIndex(nextIndex)
+      setZoomImageUrl(getImageUrl(product.image_urls[nextIndex]))
+    }
+  }
+
+  const prevZoomImage = () => {
+    if (product && product.image_urls) {
+      const prevIndex = (zoomImageIndex - 1 + product.image_urls.length) % product.image_urls.length
+      setZoomImageIndex(prevIndex)
+      setZoomImageUrl(getImageUrl(product.image_urls[prevIndex]))
+    }
+  }
 
   useEffect(() => {
     if (id) {
@@ -271,7 +305,8 @@ const ProductDetail: React.FC = () => {
       return;
     }
 
-    if (!product) return;
+    if (!product || isWishlisting) return;
+    setIsWishlisting(true);
 
     try {
       if (isWishlisted) {
@@ -303,6 +338,8 @@ const ProductDetail: React.FC = () => {
         duration: 3000,
         isClosable: true,
       });
+    } finally {
+      setIsWishlisting(false);
     }
   };
 
@@ -453,24 +490,12 @@ const ProductDetail: React.FC = () => {
       return
     }
 
-    if (reportDescription.trim().length < 10) {
-      toast({
-        title: 'Description too short',
-        description: 'Please provide at least 10 characters of description',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-
     try {
       setIsSubmittingReport(true)
-      await api.post('/api/reports', {
-        reported_user_id: product.seller_id,
+      await api.post('/api/products/report', {
         product_id: product.id,
         reason: reportReason,
-        description: reportDescription,
+        details: reportDescription,
       })
 
       toast({
@@ -645,7 +670,8 @@ const ProductDetail: React.FC = () => {
       navigate('/login')
       return
     }
-    if (!product) return
+    if (!product || isVoting) return
+    setIsVoting(true)
     try {
       const response = await api.post(`/api/products/${product.id}/vote`, { vote: voteType })
       const data = response.data?.data
@@ -671,10 +697,14 @@ const ProductDetail: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
+    } finally {
+      setIsVoting(false)
     }
   }
 
   const copyToClipboard = async () => {
+    if (isCopying) return
+    setIsCopying(true)
     // Use slug-based URL if available, otherwise use current URL
     const url = product?.slug
       ? `${window.location.origin}/products/${product.slug}`
@@ -696,6 +726,8 @@ const ProductDetail: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
+    } finally {
+      setTimeout(() => setIsCopying(false), 2000)
     }
   }
 
@@ -734,10 +766,14 @@ const ProductDetail: React.FC = () => {
         shareUrl = `https://wa.me/?text=${title}%20${url}`
         break
     }
-
     if (shareUrl) {
       window.open(shareUrl, '_blank', 'width=600,height=400')
     }
+  }
+
+  const handleImageZoom = (index: number) => {
+    setZoomImageIndex(index)
+    setIsZoomOpen(true)
   }
 
   const handleViewOffers = async () => {
@@ -847,8 +883,8 @@ const ProductDetail: React.FC = () => {
                 {/* When video exists: image and video side by side */}
                 {product.video_url ? (
                   <>
-                    <SimpleGrid columns={2} spacing={3}>
-                      <Box position="relative" h="280px" bg="gray.100" rounded="md" overflow="hidden">
+                    <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={3}>
+                      <Box position="relative" h={{ base: '200px', md: '280px' }} bg="gray.100" rounded="md" overflow="hidden">
                         <Image
                           src={selectedImage || getFirstImage(product.image_urls)}
                           alt={product.title}
@@ -856,6 +892,11 @@ const ProductDetail: React.FC = () => {
                           h="full"
                           objectFit="contain"
                           fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                          cursor="zoom-in"
+                          onClick={() => {
+                            const index = product.image_urls.findIndex(url => getImageUrl(url) === (selectedImage || getFirstImage(product.image_urls)))
+                            openZoom(index >= 0 ? index : 0)
+                          }}
                         />
                         <HStack position="absolute" top={2} left={2} spacing={1}>
                           {product.premium && (
@@ -879,7 +920,7 @@ const ProductDetail: React.FC = () => {
                           </Badge>
                         </HStack>
                       </Box>
-                      <Box borderRadius="md" overflow="hidden" bg="black" h="280px">
+                      <Box borderRadius="md" overflow="hidden" bg="black" h={{ base: '200px', md: '280px' }}>
                         <video
                           src={product.video_url}
                           controls
@@ -919,7 +960,7 @@ const ProductDetail: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <Box position="relative" h="400px" bg="gray.100" rounded="md" overflow="hidden">
+                    <Box position="relative" h={{ base: '300px', md: '400px' }} bg="gray.100" rounded="md" overflow="hidden">
                       <Image
                         src={selectedImage || getFirstImage(product.image_urls)}
                         alt={product.title}
@@ -927,6 +968,11 @@ const ProductDetail: React.FC = () => {
                         h="full"
                         objectFit="contain"
                         fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
+                        cursor="zoom-in"
+                        onClick={() => {
+                          const index = product.image_urls.findIndex(url => getImageUrl(url) === (selectedImage || getFirstImage(product.image_urls)))
+                          openZoom(index >= 0 ? index : 0)
+                        }}
                       />
                       <HStack position="absolute" top={3} left={3} spacing={2}>
                         {product.premium && (
@@ -984,7 +1030,7 @@ const ProductDetail: React.FC = () => {
 
               {/* Product Details */}
               <Box
-                p={{ base: 4, md: 6, lg: 8 }}
+                p={{ base: 3, md: 4, lg: 6 }}
                 display="flex"
                 flexDirection="column"
                 bg="white"
@@ -999,7 +1045,7 @@ const ProductDetail: React.FC = () => {
                   <Box>
                     {/* Title and price on same horizontal axis */}
                     <Flex justify="space-between" align="center" gap={3} flexWrap="wrap">
-                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0}>
+                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0} wordBreak="break-word">
                         {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
                       </Heading>
                       <Text
@@ -1008,7 +1054,11 @@ const ProductDetail: React.FC = () => {
                         color="gray.800"
                         whiteSpace="nowrap"
                       >
-                        ₱{product.price ? product.price.toFixed(2) : '0.00'}
+                        {product.estimated_value_min && product.estimated_value_max
+                          ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
+                          : product.price && product.price > 0
+                          ? `₱${product.price.toFixed(2)}`
+                          : 'Est. Value Unavailable'}
                       </Text>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
@@ -1213,6 +1263,7 @@ const ProductDetail: React.FC = () => {
                       lineHeight="tall"
                       fontSize="sm"
                       whiteSpace="pre-line"
+                      wordBreak="break-word"
                       noOfLines={isDescriptionExpanded ? undefined : 6}
                     >
                       {product.description}
@@ -1251,9 +1302,9 @@ const ProductDetail: React.FC = () => {
                 </VStack>
 
                 {/* Action Buttons: full-width primary + compact Offers icon square */}
-                <VStack spacing={4} mt={8} pt={6}>
+                <VStack spacing={{ base: 3, md: 4 }} mt={{ base: 6, md: 8 }} pt={{ base: 4, md: 6 }}>
                   {!isOwner && product.status === 'available' && (
-                    <VStack spacing={3} w="full">
+                    <VStack spacing={{ base: 2, md: 3 }} w="full">
                       {product.allow_buying && product.price && !product.barter_only ? (
                         <HStack w="full" spacing={2} align="stretch">
                           <Button
@@ -1269,15 +1320,19 @@ const ProductDetail: React.FC = () => {
                             isLoading={purchasing}
                             loadingText="Processing..."
                           >
-                            Buy Now - ₱{product.price.toFixed(2)}
+                            Buy Now - {product.estimated_value_min && product.estimated_value_max
+                              ? `₱${(product.estimated_value_min).toLocaleString()}`
+                              : product.price && product.price > 0
+                              ? `₱${product.price.toFixed(2)}`
+                              : 'Estimated'}
                           </Button>
                           <Tooltip label={`Offers (${(product as any).offer_count || 0})`}>
                             <IconButton
                               aria-label="View offers"
                               icon={<FaHandshake />}
-                              w="48px"
-                              h="48px"
-                              minW="48px"
+                              w={{ base: "40px", md: "48px" }}
+                              h={{ base: "40px", md: "48px" }}
+                              minW={{ base: "40px", md: "48px" }}
                               borderRadius="8px"
                               variant="outline"
                               borderColor="gray.200"
@@ -1311,9 +1366,9 @@ const ProductDetail: React.FC = () => {
                             <IconButton
                               aria-label="View offers"
                               icon={<FaHandshake />}
-                              w="48px"
-                              h="48px"
-                              minW="48px"
+                              w={{ base: "40px", md: "48px" }}
+                              h={{ base: "40px", md: "48px" }}
+                              minW={{ base: "40px", md: "48px" }}
                               borderRadius="8px"
                               variant="outline"
                               borderColor="gray.200"
@@ -1331,7 +1386,7 @@ const ProductDetail: React.FC = () => {
                   )}
 
                   {isOwner && (
-                    <HStack spacing={4} w="full">
+                    <HStack spacing={{ base: 2, md: 4 }} w="full">
                       <Button
                         variant="outline"
                         colorScheme="gray"
@@ -1440,6 +1495,17 @@ const ProductDetail: React.FC = () => {
                         </HStack>
                       </Badge>
                     )}
+                    {sellerStats?.trust_level && (
+                      <Badge
+                        colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
+                        borderRadius="full"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                      >
+                        {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                      </Badge>
+                    )}
                   </HStack>
                   <Text color="gray.600" fontSize="sm">
                     Member since {sellerStats?.member_since_year ?? new Date().getFullYear()}
@@ -1452,7 +1518,7 @@ const ProductDetail: React.FC = () => {
               </HStack>
 
               {/* Seller Stats */}
-              <SimpleGrid columns={{ base: 2, md: 4 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
+              <SimpleGrid columns={{ base: 2, md: 5 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
                 <VStack spacing={1} align="center">
                   {sellerStats?.avg_rating ? (
                     <HStack spacing={1}>
@@ -1497,8 +1563,40 @@ const ProductDetail: React.FC = () => {
                     Avg Response
                   </Text>
                 </VStack>
+                <VStack spacing={1} align="center">
+                  <TrustScoreCard
+                    score={sellerStats?.trust_score ?? 0}
+                    trustLevel={sellerStats?.trust_level}
+                    factors={sellerStats?.trust_factors}
+                    conductSummary={sellerStats?.conduct_summary}
+                    compact
+                  />
+                </VStack>
               </SimpleGrid>
             </Flex>
+
+            {/* Trust Score Breakdown */}
+            {sellerStats?.trust_factors && sellerStats.trust_factors.length > 0 && (
+              <Box mt={4}>
+                <TrustScoreCard
+                  score={sellerStats.trust_score ?? 0}
+                  trustLevel={sellerStats.trust_level}
+                  factors={sellerStats.trust_factors}
+                  conductSummary={sellerStats.conduct_summary}
+                />
+              </Box>
+            )}
+
+            {/* Report Warning Banner */}
+            {sellerStats?.has_reports && sellerStats.report_count > 0 && (
+              <Alert status="warning" borderRadius="md" mt={4}>
+                <AlertIcon />
+                <Box>
+                  <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
+                  <Text fontSize="xs" color="gray.600">Trade with caution</Text>
+                </Box>
+              </Alert>
+            )}
           </Box>
 
           {/* Seller Products Section */}
@@ -1534,12 +1632,12 @@ const ProductDetail: React.FC = () => {
                     </Box>
                     <Box p={3}>
                       <HStack justify="space-between" mb={2}>
-                        <Heading size="sm" noOfLines={1}>{p.title}</Heading>
+                        <Heading size="sm" noOfLines={1} wordBreak="break-word">{p.title}</Heading>
                         {p.premium && (
                           <Badge colorScheme="orange" fontSize="xs">Premium</Badge>
                         )}
                       </HStack>
-                      <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
+                      <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2} wordBreak="break-word">
                         {p.description}
                       </Text>
                       <Text fontSize="sm" fontWeight="bold" color="brand.500">
@@ -1683,6 +1781,77 @@ const ProductDetail: React.FC = () => {
           </ModalContent>
         </Modal>
 
+        {/* Image Zoom Modal */}
+        <Modal isOpen={isZoomOpen} onClose={() => setIsZoomOpen(false)} size="full" scrollBehavior="inside">
+          <ModalOverlay bg="blackAlpha.900" />
+          <ModalContent bg="transparent" shadow="none" m={0}>
+            <ModalCloseButton color="white" size="lg" zIndex={2} />
+            <ModalBody display="flex" alignItems="center" justifyContent="center" p={0} position="relative">
+              {product && product.image_urls && product.image_urls.length > 0 && (
+                <>
+                  <Box
+                    maxW="90vw"
+                    maxH="90vh"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    position="relative"
+                  >
+                    <Image
+                      src={getImageUrl(product.image_urls[zoomImageIndex])}
+                      alt={`${product.title} - Zoomed View ${zoomImageIndex + 1}`}
+                      maxW="full"
+                      maxH="90vh"
+                      objectFit="contain"
+                    />
+
+                    {product.image_urls.length > 1 && (
+                      <>
+                        <IconButton
+                          aria-label="Previous image"
+                          icon={<ChevronLeftIcon boxSize={8} />}
+                          position="absolute"
+                          left={{ base: "-4", md: "-12" }}
+                          colorScheme="whiteAlpha"
+                          color="white"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            prevZoomImage()
+                          }}
+                          _hover={{ bg: "whiteAlpha.200" }}
+                        />
+                        <IconButton
+                          aria-label="Next image"
+                          icon={<ChevronRightIcon boxSize={8} />}
+                          position="absolute"
+                          right={{ base: "-4", md: "-12" }}
+                          colorScheme="whiteAlpha"
+                          color="white"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            nextZoomImage()
+                          }}
+                          _hover={{ bg: "whiteAlpha.200" }}
+                        />
+                        <Text
+                          position="absolute"
+                          bottom="-8"
+                          color="white"
+                          fontWeight="bold"
+                        >
+                          {zoomImageIndex + 1} / {product.image_urls.length}
+                        </Text>
+                      </>
+                    )}
+                  </Box>
+                </>
+              )}
+            </ModalBody>
+          </ModalContent>
+        </Modal>
+
         {/* Share Modal */}
         <Modal isOpen={isShareOpen} onClose={onShareClose} size="md">
           <ModalOverlay />
@@ -1771,54 +1940,39 @@ const ProductDetail: React.FC = () => {
           </ModalContent>
         </Modal>
 
-        {/* Report Modal for submitting trader reports */}
+        {/* Report Listing Modal */}
         <Modal isOpen={isReportOpen} onClose={() => setIsReportOpen(false)} size="md">
           <ModalOverlay />
           <ModalContent>
-            <ModalHeader>Report Trader for Policy Violation</ModalHeader>
+            <ModalHeader>Report This Listing</ModalHeader>
             <ModalCloseButton />
             <ModalBody>
               <VStack spacing={4}>
                 <Box w="full">
-                  <Text fontWeight="medium" mb={2}>Reason for Report</Text>
-                  <select
+                  <Text fontWeight="medium" mb={2}>Why are you reporting this listing?</Text>
+                  <Select
                     value={reportReason}
                     onChange={(e) => setReportReason(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      border: '1px solid #cbd5e0',
-                      fontFamily: 'inherit',
-                    }}
+                    placeholder="Select a reason..."
+                    size="md"
                   >
-                    <option value="">Select a reason...</option>
-                    <option value="inappropriate">Inappropriate Behavior</option>
-                    <option value="counterfeit">Counterfeit Items</option>
-                    <option value="spam">Spam</option>
-                    <option value="scam">Scam/Fraud</option>
-                  </select>
+                    <option value="wrong_category">Wrong Category</option>
+                    <option value="prohibited_item">Prohibited Item</option>
+                    <option value="fake_or_scam">Fake or Scam</option>
+                    <option value="inappropriate_photo">Inappropriate Photo</option>
+                    <option value="other">Other</option>
+                  </Select>
                 </Box>
 
                 <Box w="full">
-                  <Text fontWeight="medium" mb={2}>Description</Text>
-                  <textarea
+                  <Text fontWeight="medium" mb={2}>Additional Details (Optional)</Text>
+                  <Textarea
                     value={reportDescription}
                     onChange={(e) => setReportDescription(e.target.value)}
-                    placeholder="Please provide details about your report (minimum 10 characters)"
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      borderRadius: '4px',
-                      border: '1px solid #cbd5e0',
-                      fontFamily: 'inherit',
-                      minHeight: '100px',
-                      resize: 'vertical',
-                    }}
+                    placeholder="Tell us more about your concern..."
+                    size="md"
+                    minH="100px"
                   />
-                  <Text fontSize="xs" color="gray.500" mt={1}>
-                    {reportDescription.length} characters
-                  </Text>
                 </Box>
               </VStack>
             </ModalBody>
@@ -1838,7 +1992,7 @@ const ProductDetail: React.FC = () => {
                   isLoading={isSubmittingReport}
                   loadingText="Submitting..."
                 >
-                  Submit Report
+                  Report Listing
                 </Button>
               </HStack>
             </Box>
@@ -1880,7 +2034,11 @@ const ProductDetail: React.FC = () => {
                       {product.title}
                     </Text>
                     <Text fontWeight="800" fontSize="xl" color="gray.800" mt={1}>
-                      ₱{product.price?.toFixed(2) ?? '0.00'}
+                      {product.estimated_value_min && product.estimated_value_max
+                        ? `₱${(product.estimated_value_min).toLocaleString()}–₱${(product.estimated_value_max).toLocaleString()}`
+                        : product.price && product.price > 0
+                        ? `₱${product.price.toFixed(2)}`
+                        : 'Est. Value Unavailable'}
                     </Text>
                   </VStack>
                 </HStack>

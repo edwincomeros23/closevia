@@ -131,6 +131,15 @@ func CloseDatabase() {
 
 // CreateTables creates all necessary tables if they don't exist
 func CreateTables() error {
+	// First, check if language_preference exists in users table, if not add it
+	// This ensures existing databases are upgraded automatically
+	var exists int
+	err := DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing language_preference column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN language_preference VARCHAR(10) NULL DEFAULT 'en'")
+	}
+
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -149,7 +158,17 @@ func CreateTables() error {
 			bio TEXT NULL,
 			badges JSON NULL,
 			language_preference VARCHAR(10) NULL DEFAULT 'en',
+			email_notifications_enabled BOOLEAN DEFAULT TRUE,
+			push_notifications_enabled BOOLEAN DEFAULT TRUE,
+			verification_status VARCHAR(50) DEFAULT 'not_verified',
+			school_name VARCHAR(255) NULL,
+			school_email VARCHAR(255) NULL,
+			school_email_verified_at TIMESTAMP NULL,
+			school_id_image_path VARCHAR(512) NULL,
+			verification_rejection_reason TEXT NULL,
+			is_premium BOOLEAN DEFAULT FALSE,
 			verified BOOLEAN DEFAULT FALSE,
+			last_login TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			INDEX idx_users_is_org (is_organization),
@@ -430,6 +449,24 @@ func CreateTables() error {
 			INDEX idx_reported_user (reported_user_id),
 			INDEX idx_status (status)
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_grades (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			grader_id INT NOT NULL,
+			graded_user_id INT NOT NULL,
+			communication INT NOT NULL CHECK (communication >= 1 AND communication <= 5),
+			item_accuracy INT NOT NULL CHECK (item_accuracy >= 1 AND item_accuracy <= 5),
+			punctuality INT NOT NULL CHECK (punctuality >= 1 AND punctuality <= 5),
+			overall INT NOT NULL CHECK (overall >= 1 AND overall <= 5),
+			comment TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (grader_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (graded_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			UNIQUE KEY uk_trade_grader (trade_id, grader_id),
+			INDEX idx_graded_user (graded_user_id),
+			INDEX idx_trade_id (trade_id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS campaigns (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			title VARCHAR(255) NOT NULL,
@@ -465,7 +502,7 @@ func CreateTables() error {
 	// Seed Mock Rider: Wynry Perian
 	mockRiderEmail := "wynry@clovia.com"
 	var riderUserID int
-	err := DB.QueryRow("SELECT id FROM users WHERE email = ?", mockRiderEmail).Scan(&riderUserID)
+	err = DB.QueryRow("SELECT id FROM users WHERE email = ?", mockRiderEmail).Scan(&riderUserID)
 	if err == sql.ErrNoRows {
 		res, execErr := DB.Exec("INSERT INTO users (name, email, password_hash, role, verified) VALUES (?, ?, ?, ?, ?)",
 			"Wynry Perian", mockRiderEmail, "mock_password", "rider", true)
@@ -525,6 +562,7 @@ func ensureUserColumns() {
 		{"school_email_otp_expires", "TIMESTAMP NULL"},
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
+		{"last_login", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {
@@ -573,6 +611,16 @@ func ensureProductColumns() {
 		{"category", "VARCHAR(255) DEFAULT 'General'"},
 		{"authenticity_verified", "TINYINT(1) DEFAULT 0"},
 		{"video_url", "VARCHAR(500) NULL"},
+		{"wants", "VARCHAR(255) NULL"},
+		{"wanted_categories", "VARCHAR(500) NULL"},
+		{"item_type", "VARCHAR(100) NULL"},
+		{"brand", "VARCHAR(100) NULL"},
+		{"authenticity_risks", "VARCHAR(50) NULL"},
+		{"tags", "JSON NULL"},
+		{"estimated_value_min", "DECIMAL(10,2) NULL"},
+		{"estimated_value_max", "DECIMAL(10,2) NULL"},
+		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
+		{"boosted_at", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {

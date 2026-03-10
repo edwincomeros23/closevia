@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -50,7 +50,7 @@ import {
   ArrowRightIcon,
   CloseIcon,
 } from '@chakra-ui/icons'
-import { FaUserCircle, FaHandshake, FaHome } from 'react-icons/fa'
+import { FaUserCircle, FaHandshake, FaHome, FaTag } from 'react-icons/fa'
 import { FiShoppingBag } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
@@ -62,10 +62,14 @@ import { getProductUrl } from '../utils/productUtils'
 import { useMobileNav } from '../contexts/MobileNavContext'
 import { api } from '../services/api'
 import TradeModal from '../components/TradeModal'
+import BuyoutModal from '../components/BuyoutModal'
 import { useRealtime } from '../contexts/RealtimeContext' // added import
 import FloatingTab from '../components/FloatingTab'
 import { useStudentAdInjection, StudentAdCard } from '../components/StudentAdInjector'
 import VerifiedAvatar from '../components/VerifiedAvatar'
+import ProductCard from '../components/ProductCard'
+import { ProductGridSkeleton } from '../components/ProductSkeleton'
+import ActivityFeed from '../components/ActivityFeed'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -99,12 +103,12 @@ const Home: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false)
   const [filters, setFilters] = useState<SearchFilters>({
     keyword: '',
-    min_price: undefined,
-    max_price: undefined,
     premium: undefined,
-    status: 'available', // default to available so home shows items
+    condition: undefined,
+    verified_seller_only: undefined,
+    has_active_offers: undefined,
+    sort_by: 'most_relevant',
     barter_only: undefined, // Show all by default
-    location: '',
     page: 1,
     limit: 20, // Load more products
   })
@@ -118,9 +122,23 @@ const Home: React.FC = () => {
   // Category pills - shared config
   const categories = FILTER_CATEGORIES
   const [selectedCategory, setSelectedCategory] = useState<string>('All')
+  
+  // Track the category being transitioned to for instant visual feedback
+  const [transitingCategory, setTransitingCategory] = useState<string | null>(null)
+  
+  // Track if we're actively loading a category change
+  const [isLoadingCategoryChange, setIsLoadingCategoryChange] = useState(false)
 
   const handleCategorySelect = (categoryValue: string) => {
+    // Instant visual feedback on click
+    setTransitingCategory(categoryValue)
+    
+    // Mark that we're loading a category change
+    setIsLoadingCategoryChange(true)
+    
+    // Update the selected category
     setSelectedCategory(categoryValue)
+    
     if (categoryValue === 'All') {
       setSearchTerm('')
       setFilters(prev => ({ ...prev, keyword: '', category: '', page: 1 }))
@@ -138,13 +156,24 @@ const Home: React.FC = () => {
     setSelectedCategory('All')
     setSearchTerm('')
     // Fetch the default "All" feed every time the Home page mounts
-    console.log('🔍 Fetching initial products with status: available, limit: 20')
-    searchProducts({ status: 'available', limit: 20, page: 1 })
-    
+    console.log('🔍 Fetching initial products with limit: 20')
+    searchProducts({ limit: 20, page: 1 })
+
     // Set flag so returning users bypass landing page
     localStorage.setItem('has_visited', 'true')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Clear the transiting state and loading flag after products have loaded
+  useEffect(() => {
+    if (transitingCategory && selectedCategory === transitingCategory && !loading) {
+      // Clear transiting state once products are loaded
+      setTransitingCategory(null)
+    }
+    if (isLoadingCategoryChange && !loading) {
+      setIsLoadingCategoryChange(false)
+    }
+  }, [selectedCategory, transitingCategory, loading, isLoadingCategoryChange])
 
   // Infinite scroll: IntersectionObserver for sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null)
@@ -206,6 +235,11 @@ const Home: React.FC = () => {
     setHasSearched(true)
   }
 
+  const handleRetrySearch = () => {
+    // Clear error and retry with current filters
+    searchProducts(filters)
+  }
+
   // Trigger search on Enter key
   const handleSearchInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -225,6 +259,10 @@ const Home: React.FC = () => {
   const [offersModalOpen, setOffersModalOpen] = useState(false)
   const [offersForProduct, setOffersForProduct] = useState<any[]>([])
   const [loadingOffers, setLoadingOffers] = useState(false)
+
+  // Buyout modal state
+  const { isOpen: buyoutOpen, onOpen: onBuyoutOpen, onClose: onBuyoutClose } = useDisclosure()
+  const [buyoutTargetProductId, setBuyoutTargetProductId] = useState<number | null>(null)
 
   // Slider state: cycles public/1.jpg, public/2.jpg, public/3.jpg every 3s
   const sliderImages = ['/1.jpg', '/2.jpg', '/3.jpg']
@@ -289,20 +327,20 @@ const Home: React.FC = () => {
     touchStartX.current = null
   }
 
-  const openTradeModal = async (productId: number) => {
+  const openTradeModal = useCallback(async (productId: number) => {
     setTradeTargetProductId(productId)
     onOpen()
-  }
+  }, [onOpen])
 
-  const handleTradeClick = (productId: number) => {
+  const handleTradeClick = useCallback((productId: number) => {
     if (!user) {
       onOpen() // Show login modal
     } else {
       openTradeModal(productId)
     }
-  }
+  }, [user, onOpen, openTradeModal])
 
-  const handleBuyClick = (productId: number) => {
+  const handleBuyClick = useCallback((productId: number) => {
     if (!user) {
       onOpen() // Show login modal
     } else {
@@ -315,9 +353,18 @@ const Home: React.FC = () => {
         isClosable: true,
       })
     }
-  }
+  }, [user, onOpen, toast])
 
-  const handleViewOffers = async (productId: number) => {
+  const handleBuyoutClick = useCallback((productId: number) => {
+    if (!user) {
+      onOpen() // Show login modal
+    } else {
+      setBuyoutTargetProductId(productId)
+      onBuyoutOpen()
+    }
+  }, [user, onOpen, onBuyoutOpen])
+
+  const handleViewOffers = useCallback(async (productId: number) => {
     // Open modal immediately, load data in background
     setSelectedProductForOffers(productId)
     setOffersForProduct([])
@@ -344,36 +391,36 @@ const Home: React.FC = () => {
     } finally {
       setLoadingOffers(false)
     }
-  }
+  }, [toast])
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setSearchTerm('')
     setSelectedCategory('All')
     setFilters({
       keyword: '',
-      category: '',
-      min_price: undefined,
-      max_price: undefined,
       premium: undefined,
-      status: 'available',
+      condition: undefined,
+      verified_seller_only: undefined,
+      has_active_offers: undefined,
+      sort_by: 'most_relevant',
       barter_only: undefined,
-      location: '',
       page: 1,
       limit: 20,
     })
     setHasSearched(false)
-  }
+  }, [])
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     logout()
     onCloseLogoutModal()
     navigate('/login')
-  }
+  }, [logout, onCloseLogoutModal, navigate])
 
   // Add state for offer sorting
   const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
 
-  const getRankedOffers = () => {
+  // Memoize ranked offers calculation to prevent unnecessary re-computation
+  const rankedOffers = useMemo(() => {
     const ranked = [...offersForProduct]
 
     if (offersSortBy === 'accepted') {
@@ -394,235 +441,9 @@ const Home: React.FC = () => {
     }
 
     return ranked
-  }
+  }, [offersForProduct, offersSortBy])
 
-  // Product card with square image and fixed info area for uniform height
-  const renderProductCard = (product: any) => {
-    const sellerAvatar = product.seller_profile_picture
-      ? getImageUrl(product.seller_profile_picture)
-      : undefined
-    const sellerAvatarSrc = sellerAvatar
-
-    return (
-      <Box
-        key={product.id}
-        bg="white"
-        rounded="lg"
-        shadow="sm"
-        borderWidth="1px"
-        borderColor="gray.100"
-        overflow="hidden"
-        transition="all 0.2s ease"
-        w="full"
-        maxW={{ base: '100%', md: '250px' }}
-        h="full"
-        display="flex"
-        flexDirection="column"
-        mx="auto"
-        _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
-        onClick={() => navigate(getProductUrl(product))}
-        sx={{
-          '@media (max-width: 850px)': {
-            width: '100%',
-            minWidth: 0,
-            maxWidth: '100%',
-          },
-        }}
-      >
-        {/* Image section */}
-        <Box position="relative" w="full" aspectRatio={1} overflow="hidden">
-          <Image
-            src={getFirstImage(product.image_urls)}
-            alt={product.title}
-            position="absolute"
-            top={0}
-            left={0}
-            w="100%"
-            h="100%"
-            objectFit="cover"
-            loading="lazy"
-            fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
-          />
-
-          {/* Premium / type badge */}
-          {product.premium && (
-            <Badge
-              position="absolute"
-              top={2}
-              right={2}
-              colorScheme="yellow"
-              variant="solid"
-              borderRadius="full"
-              px={2}
-            >
-              <StarIcon mr={0} />
-            </Badge>
-          )}
-
-          {/* Status badge (e.g. sold) */}
-          {product.status === 'sold' && (
-            <Badge
-              position="absolute"
-              bottom={2}
-              right={2}
-              colorScheme="red"
-              variant="solid"
-              borderRadius="full"
-              px={2}
-            >
-              Sold
-            </Badge>
-          )}
-
-          {/* Location badge */}
-          <Badge
-            position="absolute"
-            bottom={2}
-            left={2}
-            colorScheme="gray"
-            variant="solid"
-            borderRadius="full"
-            px={2}
-            bg="blackAlpha.600"
-            color="white"
-            fontSize="xs"
-          >
-            <Text as="span" mr={1}>📍</Text>
-            {product.distance || 'Nearby'}
-          </Badge>
-        </Box>
-
-        {/* Info section */}
-        <Box
-          p={4}
-          display="flex"
-          flexDirection="column"
-          flex={1}
-          overflow="hidden"
-          sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
-        >
-          {/* Seller row (desktop) */}
-          <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-            <HStack spacing={2}>
-              <RouterLink to={`/users/${product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                <VerifiedAvatar
-                  size="sm"
-                  src={sellerAvatarSrc}
-                  name={product.seller_name || 'U'}
-                  bg="brand.500"
-                  flexShrink={0}
-                  cursor="pointer"
-                  _hover={{ opacity: 0.8 }}
-                  isVerified={product.seller_verified || false}
-                />
-              </RouterLink>
-              <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
-                {product.seller_name || 'Unknown'}
-              </Text>
-            </HStack>
-            <Badge fontSize={{ base: 'xs', md: '2xs' }} colorScheme="blue" flexShrink={0} borderWidth="1px">
-              {product.condition || 'Used'}
-            </Badge>
-          </Flex>
-
-          {/* Title */}
-          <Heading
-            size="sm"
-            noOfLines={2}
-            mb={2}
-            color="gray.800"
-            flexShrink={0}
-            textAlign="left"
-            sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
-          >
-            {product.title}
-          </Heading>
-
-          {/* Description */}
-          <Text
-            color="gray.600"
-            noOfLines={{ base: 1, md: 2 }}
-            mb={2}
-            fontSize="sm"
-            flexShrink={0}
-            textAlign="left"
-            sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
-          >
-            {product.description
-              ? product.description
-                .split(' ')
-                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
-              : 'No description available'}
-          </Text>
-
-          {/* Wishlist badge */}
-          {product.wishlist_count > 0 && (
-            <Flex mb={2} align="center" gap={1}>
-              <Badge
-                colorScheme="pink"
-                variant="subtle"
-                borderRadius="full"
-                px={2}
-                py={0.5}
-                fontSize="xs"
-              >
-                ❤️ {product.wishlist_count}{' '}
-                {product.wishlist_count === 1 ? 'person wants' : 'people want'}
-              </Badge>
-            </Flex>
-          )}
-
-          {/* Action buttons */}
-          <HStack spacing={2} mt="auto">
-            <Button
-              size="sm"
-              variant="outline"
-              colorScheme="brand"
-              flex={1}
-              onClick={(e) => {
-                e.stopPropagation()
-                handleTradeClick(product.id)
-              }}
-              isDisabled={product.status === 'sold'}
-            >
-              {product.status === 'sold' ? 'Sold' : 'Trade'}
-            </Button>
-
-            {product.allow_buying && product.price && !product.barter_only && (
-              <Button
-                size="sm"
-                colorScheme="brand"
-                flex={1}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleBuyClick(product.id)
-                }}
-                isDisabled={product.status === 'sold'}
-              >
-                {product.status === 'sold' ? 'Sold' : 'Buy'}
-              </Button>
-            )}
-
-            <Tooltip label="View offers" placement="top">
-              <IconButton
-                aria-label="View offers"
-                icon={<FaHandshake />}
-                size="sm"
-                variant="outline"
-                colorScheme="blue"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleViewOffers(product.id)
-                }}
-                isDisabled={product.status === 'sold'}
-              />
-            </Tooltip>
-          </HStack>
-        </Box>
-      </Box>
-    )
-  }
+  // Product card rendering now handled by memoized ProductCard component
 
   // Component to render product grid with git pull --no-edit injections
   const ProductGridWithAds: React.FC<{ products: any[]; user: any }> = ({ products, user }) => {
@@ -690,7 +511,13 @@ const Home: React.FC = () => {
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
             <Box key={`product-${item.data.id}`} sx={{ '@media (max-width: 850px)': { minWidth: 0, maxWidth: 'none' } }}>
-              {renderProductCard(item.data)}
+              <ProductCard
+                product={item.data}
+                onTradeClick={handleTradeClick}
+                onBuyoutClick={handleBuyoutClick}
+                onBuyClick={handleBuyClick}
+                onViewOffers={handleViewOffers}
+              />
             </Box>
           ) : (
             <Box key={`ad-${item.data.id}`}>
@@ -720,6 +547,7 @@ const Home: React.FC = () => {
           maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
           mx={{ base: 'auto', lg: 0 }}
           ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
+          position="relative"
         >
           {/* Main Search Bar */}
           <HStack w="full" spacing={3} wrap="wrap">
@@ -812,42 +640,44 @@ const Home: React.FC = () => {
                 <PopoverContent w="72" shadow="lg">
                   <PopoverBody p={4}>
                     <VStack align="stretch" spacing={3}>
-                      {/* User Info */}
-                      <Box>
-                        <Text fontWeight="semibold" fontSize="sm" color="gray.800">
-                          {user.name || 'User'}
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          {user.email}
-                        </Text>
-                        {user && (user as any).is_premium && (
-                          <Badge colorScheme="yellow" fontSize="xs" mt={2}>
-                            ⭐ Premium Member
-                          </Badge>
-                        )}
+                      {/* User Profile Card */}
+                      <Box
+                        bg="brand.50"
+                        p={4}
+                        borderRadius="lg"
+                      >
+                        <Box display="flex" alignItems="center" gap={3} mb={3}>
+                          <VerifiedAvatar
+                            size="lg"
+                            name={user.name || 'User'}
+                            src={user.profile_picture ? getImageUrl(user.profile_picture) : undefined}
+                            isVerified={user.verified || (user as any).verification_status === 'verified'}
+                          />
+                          <Box flex={1}>
+                            <Text fontWeight="bold" fontSize="md" noOfLines={1} textTransform="capitalize">
+                              {user.name || 'User'}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                              {user.email}
+                            </Text>
+                            {user && (user as any).is_premium && (
+                              <Badge colorScheme="yellow" fontSize="xs" mt={1}>
+                                ⭐ Premium Member
+                              </Badge>
+                            )}
+                          </Box>
+                        </Box>
+                        <Button
+                          as={RouterLink}
+                          to={`/users/${user.id}`}
+                          size="sm"
+                          w="full"
+                          colorScheme="brand"
+                          variant="outline"
+                        >
+                          View Profile
+                        </Button>
                       </Box>
-                      <Divider />
-                      {/* Action Buttons */}
-                      <Button
-                        as={RouterLink}
-                        to="/settings"
-                        size="sm"
-                        variant="outline"
-                        w="full"
-                        fontSize="sm"
-                      >
-                        Settings
-                      </Button>
-                      <Button
-                        as={RouterLink}
-                        to="/dashboard"
-                        size="sm"
-                        variant="outline"
-                        w="full"
-                        fontSize="sm"
-                      >
-                        Dashboard
-                      </Button>
                       <Divider />
                       <Button
                         size="sm"
@@ -889,49 +719,52 @@ const Home: React.FC = () => {
               top="100%"
               left={0}
               right={0}
-              w="full"
               bg="white"
               p={4}
               rounded="lg"
-              shadow="md"
+              shadow="lg"
               zIndex={50}
-              maxW={{ base: "100%", md: "6xl" }}
-              mx={0}
-              transform="none"
             >
-              <Grid templateColumns="repeat(auto-fit, minmax(150px, 1fr))" gap={3}>
-                <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Price Range</FormLabel>
-                  <HStack>
-                    <Input
-                      placeholder="Min"
-                      type="number"
-                      value={filters.min_price || ''}
-                      onChange={(e) => handleFilterChange('min_price', e.target.value ? Number(e.target.value) : undefined)}
-                      size="sm"
-                    />
-                    <Text fontSize="sm" color="gray.500">-</Text>
-                    <Input
-                      placeholder="Max"
-                      type="number"
-                      value={filters.max_price || ''}
-                      onChange={(e) => handleFilterChange('max_price', e.target.value ? Number(e.target.value) : undefined)}
-                      size="sm"
-                    />
-                  </HStack>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Location</FormLabel>
-                  <Input
-                    placeholder="Enter location"
-                    value={filters.location || ''}
-                    onChange={(e) => handleFilterChange('location', e.target.value)}
+              <Flex
+                gap={3}
+                align="flex-end"
+                direction={{ base: 'column', md: 'row' }}
+              >
+                <FormControl flex={1} minW={0}>
+                  <FormLabel fontSize="sm" color="gray.600">Sort By</FormLabel>
+                  <Select
+                    aria-label="Sort by"
+                    title="Sort by"
+                    value={filters.sort_by || 'most_relevant'}
+                    onChange={(e) => handleFilterChange('sort_by', e.target.value)}
                     size="sm"
-                  />
+                  >
+                    <option value="most_relevant">Most Relevant</option>
+                    <option value="newest">Newest First</option>
+                    <option value="most_offers">Most Offers</option>
+                    <option value="trending">Trending</option>
+                  </Select>
                 </FormControl>
 
-                <FormControl>
+                <FormControl flex={1} minW={0}>
+                  <FormLabel fontSize="sm" color="gray.600">Condition</FormLabel>
+                  <Select
+                    aria-label="Condition"
+                    title="Condition"
+                    value={filters.condition || ''}
+                    onChange={(e) => handleFilterChange('condition', e.target.value || undefined)}
+                    size="sm"
+                  >
+                    <option value="">All Conditions</option>
+                    <option value="new">New</option>
+                    <option value="like_new">Like New</option>
+                    <option value="good">Good</option>
+                    <option value="fair">Fair</option>
+                    <option value="poor">Poor</option>
+                  </Select>
+                </FormControl>
+
+                <FormControl flex={1} minW={0}>
                   <FormLabel fontSize="sm" color="gray.600">Listing Type</FormLabel>
                   <Select
                     aria-label="Listing type"
@@ -946,48 +779,46 @@ const Home: React.FC = () => {
                   </Select>
                 </FormControl>
 
-                <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Trade Type</FormLabel>
+                <FormControl flex={1} minW={0}>
+                  <FormLabel fontSize="sm" color="gray.600">Bidding & Offers</FormLabel>
                   <Select
-                    aria-label="Trade type"
-                    title="Trade type"
-                    value={filters.barter_only === undefined ? '' : filters.barter_only.toString()}
-                    onChange={(e) => handleFilterChange('barter_only', e.target.value === '' ? undefined : e.target.value === 'true')}
+                    aria-label="Bidding & offers"
+                    title="Bidding & offers"
+                    value={filters.has_active_offers === undefined ? '' : filters.has_active_offers.toString()}
+                    onChange={(e) => handleFilterChange('has_active_offers', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
                   >
-                    <option value="">All options</option>
-                    <option value="true">Barter only</option>
-                    <option value="false">Buy available</option>
+                    <option value="">All items</option>
+                    <option value="true">With active offers</option>
+                    <option value="false">No offers yet</option>
                   </Select>
                 </FormControl>
 
-                <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">Status</FormLabel>
+                <FormControl flex={1} minW={0}>
+                  <FormLabel fontSize="sm" color="gray.600">Seller</FormLabel>
                   <Select
-                    aria-label="Listing status"
-                    title="Listing status"
-                    value={filters.status || ''}
-                    onChange={(e) => handleFilterChange('status', e.target.value)}
+                    aria-label="Seller verification"
+                    title="Seller verification"
+                    value={filters.verified_seller_only === undefined ? '' : filters.verified_seller_only.toString()}
+                    onChange={(e) => handleFilterChange('verified_seller_only', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
                   >
-                    <option value="available">Available</option>
-                    <option value="sold">Sold</option>
-                    <option value="traded">Traded</option>
+                    <option value="">All sellers</option>
+                    <option value="true">Verified sellers only</option>
                   </Select>
                 </FormControl>
 
-                <FormControl>
-                  <FormLabel fontSize="sm" color="gray.600">&nbsp;</FormLabel>
+                <Box flex="none" alignSelf={{ base: 'stretch', md: 'flex-end' }} ml={{ base: 0, md: 'auto' }}>
                   <Button
-                    size="xs"
+                    size="sm"
                     variant="outline"
                     onClick={clearFilters}
-                    w="full"
+                    w={{ base: 'full', md: 'auto' }}
                   >
-                    Clear Filters
+                    Reset Filters
                   </Button>
-                </FormControl>
-              </Grid>
+                </Box>
+              </Flex>
             </Box>
           )}
         </VStack>
@@ -1126,7 +957,8 @@ const Home: React.FC = () => {
             }}
           >
             {categories.map((category) => {
-              const isSelected = selectedCategory === category.value
+              // Show selected state for either the current selection or the one being transitioned to
+              const isSelected = selectedCategory === category.value || transitingCategory === category.value
               const IconComponent = category.icon
 
               return (
@@ -1136,9 +968,12 @@ const Home: React.FC = () => {
                   as="button"
                   onClick={() => handleCategorySelect(category.value)}
                   cursor="pointer"
-                  transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                  transition="transform 0.15s ease-out"
                   _active={{
-                    transform: 'scale(0.95)',
+                    transform: 'scale(0.92)',
+                  }}
+                  _focusVisible={{
+                    outline: 'none'
                   }}
                 >
                   <Box
@@ -1154,8 +989,8 @@ const Home: React.FC = () => {
                     fontSize={{ base: 'xs', md: 'sm' }}
                     border="2px solid"
                     borderColor={isSelected ? category.accentColor : 'gray.200'}
-                    boxShadow="0 2px 4px rgba(0, 0, 0, 0.05)"
-                    transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                    boxShadow={isSelected ? '0 4px 8px rgba(0, 0, 0, 0.12)' : '0 2px 4px rgba(0, 0, 0, 0.05)'}
+                    transition="all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
                     position="relative"
                     overflow="hidden"
                     _before={{
@@ -1163,10 +998,10 @@ const Home: React.FC = () => {
                       position: 'absolute',
                       inset: 0,
                       bg: isSelected ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                      transition: 'background 0.3s ease',
+                      transition: 'background 0.2s ease',
                     }}
                     _hover={{
-                      transform: 'translateY(-0.5px)',
+                      transform: isSelected ? 'translateY(-1px)' : 'translateY(-2px)',
                       boxShadow: '0 6px 12px rgba(0, 0, 0, 0.1)',
                       borderColor: category.accentColor,
                       bg: isSelected ? (category.value === 'All' ? 'brand.600' : category.color) : category.lightColor,
@@ -1181,13 +1016,13 @@ const Home: React.FC = () => {
                       as={IconComponent}
                       w={{ base: 3.5, md: 4 }}
                       h={{ base: 3.5, md: 4 }}
-                      transition="all 0.3s ease"
+                      transition="all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
                       transform={isSelected ? 'scale(1.1)' : 'scale(1)'}
                       opacity={isSelected ? 1 : 0.7}
                     />
                     <Text
                       as="span"
-                      transition="all 0.3s ease"
+                      transition="all 0.2s ease"
                       display={{ base: category.value === 'All' ? 'inline' : 'none', md: 'inline' }}
                     >
                       {category.label}
@@ -1199,6 +1034,10 @@ const Home: React.FC = () => {
           </HStack>
         </Box>
       </Box>
+
+      {/* Real-time Activity Feed Marquee */}
+      <ActivityFeed />
+
       {/* Main Content - desktop: centered max-width */}
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
@@ -1209,44 +1048,64 @@ const Home: React.FC = () => {
         ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
         w="full"
       >
-        {/* Loading State */}
-        {loading && !products.length && (
-          <Center h="50vh">
-            <VStack spacing={4}>
-              <Spinner size="xl" color="brand.500" />
-              <Text color="gray.600">Loading products...</Text>
-            </VStack>
-          </Center>
+        {/* Loading State with Skeleton */}
+        {(loading || isLoadingCategoryChange) && (
+          <Box>
+            <ProductGridSkeleton count={12} />
+          </Box>
         )}
 
-        {/* Error Display */}
-        {error && (
-          <Box bg="red.50" border="1px" borderColor="red.200" rounded="lg" p={6} maxW="4xl" mx="auto">
+        {/* Error Display with Retry */}
+        {error && !loading && (
+          <Box
+            bg="red.50"
+            border="1px"
+            borderColor="red.200"
+            rounded="lg"
+            p={6}
+            maxW="4xl"
+            mx="auto"
+          >
             <VStack spacing={4} align="stretch">
-              <Text color="red.800" fontWeight="semibold">
-                Error loading products
-              </Text>
-              <Text color="red.700" fontSize="sm">
-                {error}
-              </Text>
-              <Button
-                size="sm"
-                colorScheme="red"
-                variant="outline"
-                onClick={() => searchProducts(filters)}
-              >
-                Retry
-              </Button>
+              <VStack spacing={2} align="stretch">
+                <Text color="red.800" fontWeight="semibold" fontSize="lg">
+                  ⚠️ Error Loading Products
+                </Text>
+                <Text color="red.700" fontSize="sm">
+                  {error.includes('timeout') ?
+                    'The request took too long. Your connection might be slow. Please try again.' :
+                    error}
+                </Text>
+              </VStack>
+              <HStack spacing={3} justify="flex-start">
+                <Button
+                  size="sm"
+                  colorScheme="red"
+                  onClick={handleRetrySearch}
+                  isLoading={loading}
+                  loadingText="Retrying..."
+                >
+                  Retry
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  colorScheme="red"
+                  onClick={clearFilters}
+                >
+                  Reset Filters
+                </Button>
+              </HStack>
             </VStack>
           </Box>
         )}
 
         {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
-        {!loading && products.length > 0 && (
+        {!loading && !isLoadingCategoryChange && products.length > 0 && (
           <Box
             w="full"
             mx="auto"
-            px={{ base: 2, md: 4, lg: 0 }}
+            px={{ base: 3.5, md: 4, lg: 0 }}
             pb={{ base: 20, md: 0 }}
             minH={{ base: '1200px', md: '1600px' }}
             sx={{ '@media (max-width: 850px)': { paddingLeft: '12px', paddingRight: '12px', marginLeft: 0 } }}
@@ -1266,7 +1125,7 @@ const Home: React.FC = () => {
         )}
 
         {/* Empty State (single, correct location) */}
-        {!loading && products.length === 0 && (
+        {!loading && !isLoadingCategoryChange && products.length === 0 && (
           <Box textAlign="center" py={16} maxW="2xl" mx="auto">
             <VStack spacing={6}>
               <Box fontSize="6xl" color="gray.300">
@@ -1277,8 +1136,8 @@ const Home: React.FC = () => {
                   No products found
                 </Heading>
                 <Text color="gray.500" fontSize="lg">
-                  {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
-                    ? "Try adjusting your search criteria or clearing filters to see all products."
+                  {filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
+                    ? "Try adjusting your search criteria or resetting filters to see all products."
                     : "No products are currently available. Check back later!"
                   }
                 </Text>
@@ -1288,8 +1147,8 @@ const Home: React.FC = () => {
                 colorScheme="brand"
                 onClick={clearFilters}
               >
-                {filters.keyword || filters.min_price || filters.max_price || filters.premium !== undefined || filters.status !== 'available'
-                  ? "Clear All Filters"
+                {filters.keyword || filters.condition || filters.verified_seller_only || filters.sort_by !== 'most_relevant'
+                  ? "Reset All Filters"
                   : "Refresh Page"
                 }
               </Button>
@@ -1299,6 +1158,8 @@ const Home: React.FC = () => {
       </Box>
 
       <TradeModal isOpen={isOpen} onClose={onClose} targetProductId={tradeTargetProductId} />
+
+      <BuyoutModal isOpen={buyoutOpen} onClose={onBuyoutClose} targetProductId={buyoutTargetProductId} />
 
       {/* Logout Confirmation Modal */}
       <Modal isOpen={isLogoutModalOpen} onClose={onCloseLogoutModal} isCentered>
@@ -1364,7 +1225,7 @@ const Home: React.FC = () => {
               <Center py={8}>
                 <Spinner color="brand.500" />
               </Center>
-            ) : getRankedOffers().length === 0 ? (
+            ) : rankedOffers.length === 0 ? (
               <VStack py={8} spacing={4}>
                 <Icon as={FaHandshake} color="gray.300" boxSize={12} />
                 <Text color="gray.500" fontWeight="medium">No offers yet</Text>
@@ -1386,7 +1247,7 @@ const Home: React.FC = () => {
               </VStack>
             ) : (
               <VStack spacing={3} align="stretch">
-                {getRankedOffers().map((offer: any, index: number) => {
+                {rankedOffers.map((offer: any, index: number) => {
                   const cashAmount = offer.offered_cash_amount || 0
                   const itemCount = offer.items?.length || 0
 

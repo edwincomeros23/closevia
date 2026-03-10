@@ -61,7 +61,7 @@ const BatchPreview: React.FC = () => {
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
-  
+
   const batch: BatchCluster = location.state?.batch
   const [expandedAddresses, setExpandedAddresses] = useState<Set<string>>(new Set())
   const [isClaimingBatch, setIsClaimingBatch] = useState(false)
@@ -98,11 +98,11 @@ const BatchPreview: React.FC = () => {
 
   const handleClaimBatch = async () => {
     setIsClaimingBatch(true)
-    
+
     // Simulate claim API call
     try {
       await new Promise(resolve => setTimeout(resolve, 1500))
-      
+
       // Start countdown
       const interval = setInterval(() => {
         setClaimCountdown(prev => {

@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
 // Use environment variable for API URL, default to localhost for development
 export const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  import.meta.env.PROD 
+  import.meta.env.PROD
     ? 'https://clovia-backend.onrender.com'  // Update with your actual Render backend URL
     : 'http://localhost:4000'                        // Development localhost
 )
@@ -11,7 +11,7 @@ const DEBUG_API = localStorage.getItem('debug_api') === 'true'
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 60000, // Increased from 30s to 60s for slower networks
 })
 
 // Request interceptor to add auth token and log

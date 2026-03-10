@@ -55,7 +55,7 @@ import {
   FiClock,
   FiPackage,
 } from 'react-icons/fi'
-import { Trade, Product, TradeOption } from '../types'
+import { Trade, Product, TradeOption, Delivery } from '../types'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
@@ -265,6 +265,7 @@ interface DeliveryTabProps {
   handleConfirmDelivery: () => Promise<void>
   saveDeliveryState: (updates: Partial<DeliveryState>) => Promise<void>
   confirmingPayment: boolean
+  linkedDelivery: Delivery | null
 }
 
 const DeliveryTab: React.FC<DeliveryTabProps> = ({
@@ -282,8 +283,10 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   saveDeliveryState,
   setIsReviewModalOpen,
   confirmingPayment,
+  linkedDelivery,
 }) => {
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
+  const deliveryCompleted = linkedDelivery?.status === 'delivered'
   const totalCost = (requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee
 
   return (
@@ -304,18 +307,24 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
         </HStack>
         <Progress
           value={
-            bothConfirmed ? 100 : deliveryState.paymentConfirmed ? 50 : deliveryState.deliveryType ? 25 : 0
+            deliveryCompleted ? 100 : deliveryState.paymentConfirmed ? 50 : deliveryState.deliveryType ? 25 : 0
           }
           size="sm"
           colorScheme="blue"
           borderRadius="full"
         />
         <Text fontSize="xs" color={useColorModeValue('blue.600', 'blue.300')} mt={2}>
-          {bothConfirmed
-            ? '✓ Delivery Complete'
-            : deliveryState.paymentConfirmed
-              ? 'Payment Confirmed - Awaiting Delivery'
-              : 'Setup in Progress'}
+          {deliveryCompleted
+            ? '✓ Delivery Complete - Ready for Review'
+            : linkedDelivery && linkedDelivery.status === 'in_transit'
+              ? '🚚 Rider is on the way'
+              : linkedDelivery && linkedDelivery.status === 'picked_up'
+                ? '📦 Items picked up by rider'
+                : linkedDelivery && linkedDelivery.status === 'claimed'
+                  ? '🏍 Rider assigned - Awaiting pickup'
+                  : deliveryState.paymentConfirmed
+                    ? 'Payment Confirmed - Awaiting Rider'
+                    : 'Setup in Progress'}
         </Text>
       </Box>
 
@@ -547,7 +556,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 colorScheme="green"
                 size="md"
                 onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed || confirmingPayment}
+                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
                 isLoading={confirmingPayment}
                 loadingText="Confirming..."
                 leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
@@ -620,7 +629,92 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           </AccordionPanel>
         </AccordionItem>
 
-        {/* 4. TRADE COMPLETION */}
+        {/* 4. DELIVERY TRACKING STATUS */}
+        {linkedDelivery && (
+          <Card border="2px" borderColor={deliveryCompleted ? 'green.400' : 'blue.400'} borderRadius="lg" mt={3}>
+            <CardBody>
+              <VStack spacing={3} align="stretch">
+                <HStack spacing={3}>
+                  <Icon as={FiTruck} boxSize={5} color={deliveryCompleted ? 'green.500' : 'blue.500'} />
+                  <Text fontWeight="semibold">Delivery Tracking</Text>
+                  <Badge
+                    colorScheme={
+                      deliveryCompleted ? 'green'
+                      : linkedDelivery.status === 'in_transit' ? 'orange'
+                      : linkedDelivery.status === 'picked_up' ? 'purple'
+                      : linkedDelivery.status === 'claimed' ? 'blue'
+                      : 'gray'
+                    }
+                    fontSize="xs"
+                    ml="auto"
+                  >
+                    {(linkedDelivery.status || 'pending').replace(/_/g, ' ').toUpperCase()}
+                  </Badge>
+                </HStack>
+
+                {/* Status Steps */}
+                <HStack spacing={1} justify="space-between">
+                  {['pending', 'claimed', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
+                    const steps = ['pending', 'claimed', 'picked_up', 'in_transit', 'delivered']
+                    const currentIdx = steps.indexOf(linkedDelivery.status || 'pending')
+                    const isComplete = i <= currentIdx
+                    const isCurrent = i === currentIdx
+                    return (
+                      <Box key={step} flex={1}>
+                        <Box
+                          h="4px"
+                          bg={isComplete ? 'blue.500' : 'gray.200'}
+                          borderRadius="full"
+                          transition="all 0.3s"
+                        />
+                        <Text
+                          fontSize="2xs"
+                          color={isCurrent ? 'blue.600' : isComplete ? 'green.600' : 'gray.400'}
+                          fontWeight={isCurrent ? 'bold' : 'normal'}
+                          textAlign="center"
+                          mt={1}
+                        >
+                          {step.replace(/_/g, ' ')}
+                        </Text>
+                      </Box>
+                    )
+                  })}
+                </HStack>
+
+                {/* Rider Info */}
+                {linkedDelivery.rider_name && (
+                  <HStack p={2} bg="blue.50" borderRadius="md" spacing={3}>
+                    <Icon as={FiPackage} color="blue.500" />
+                    <VStack align="start" spacing={0}>
+                      <Text fontSize="sm" fontWeight="medium">Rider: {linkedDelivery.rider_name}</Text>
+                      {linkedDelivery.rider_vehicle && (
+                        <Text fontSize="xs" color="gray.500">{linkedDelivery.rider_vehicle}</Text>
+                      )}
+                    </VStack>
+                  </HStack>
+                )}
+
+                {!linkedDelivery.rider_name && (linkedDelivery.status || 'pending') === 'pending' && (
+                  <Box p={2} bg="yellow.50" borderRadius="md">
+                    <Text fontSize="sm" color="yellow.700">
+                      Waiting for a rider to claim this delivery...
+                    </Text>
+                  </Box>
+                )}
+
+                {deliveryCompleted && (
+                  <Box p={2} bg="green.50" borderRadius="md">
+                    <Text fontSize="sm" color="green.700" fontWeight="medium">
+                      Delivery completed! You can now review and complete the trade.
+                    </Text>
+                  </Box>
+                )}
+              </VStack>
+            </CardBody>
+          </Card>
+        )}
+
+        {/* 5. TRADE COMPLETION */}
         <AccordionItem
           border="2px"
           borderColor={deliveryState.expandedSections.completion ? 'green.400' : 'gray.200'}
@@ -628,20 +722,23 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           bg={bothConfirmed ? 'green.50' : deliveryState.expandedSections.completion ? 'green.50' : 'white'}
           overflow="hidden"
           mt={3}
-          isDisabled={!deliveryState.paymentConfirmed}
+          isDisabled={!deliveryState.paymentConfirmed && !deliveryCompleted}
         >
           <AccordionButton
             onClick={() => toggleSection('completion')}
             _hover={{ bg: deliveryState.expandedSections.completion ? 'green.100' : 'gray.50' }}
             py={4}
-            opacity={deliveryState.paymentConfirmed ? 1 : 0.5}
+            opacity={(deliveryState.paymentConfirmed || deliveryCompleted) ? 1 : 0.5}
           >
             <HStack spacing={3} flex={1}>
               <Icon as={FiCheck} boxSize={5} color={bothConfirmed ? 'green.500' : 'green.400'} />
               <VStack align="start" spacing={0}>
                 <Text fontWeight="semibold">Trade Completion</Text>
                 <Text fontSize="xs" color="gray.500">
-                  {bothConfirmed ? '✓ Both parties confirmed' : 'Awaiting confirmation'}
+                  {bothConfirmed ? '✓ Both parties confirmed'
+                    : deliveryCompleted ? '✓ Delivery complete - Review now!'
+                    : linkedDelivery ? 'Waiting for delivery to complete'
+                    : 'Awaiting confirmation'}
                 </Text>
               </VStack>
             </HStack>
@@ -689,7 +786,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
               {/* Confirm Button - Hidden, goes directly to review */}
 
-              {(deliveryState.paymentConfirmed && deliveryState.deliveryInstructions) || bothConfirmed ? (
+              {deliveryCompleted || (!linkedDelivery && ((deliveryState.paymentConfirmed && deliveryState.deliveryInstructions) || bothConfirmed)) ? (
                 <VStack spacing={4}>
 
                   <Button
@@ -957,12 +1054,12 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
                 <FormLabel fontSize="sm" fontWeight="semibold">Proof Image (Optional)</FormLabel>
                 {proofImage ? (
                   <VStack spacing={3} align="stretch">
-                    <Box position="relative" w="full" maxW="250px">
+                    <Box position="relative" w="full" maxW="200px">
                       <Image
                         src={proofImage}
                         alt="Proof"
                         w="full"
-                        maxH="200px"
+                        maxH="150px"
                         objectFit="cover"
                         borderRadius="md"
                         borderWidth="2px"
@@ -1093,6 +1190,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       completion: false,
     },
   })
+  const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -1210,8 +1308,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         senderLocation: (trade as any).seller_location || 'Seller location - From product listing',
         receiverLocation: (trade as any).buyer_location || 'Buyer location - From user profile',
         assignedRider: {
-          name: 'Juan Dela Cruz (Mock Rider)',
-          phone: '+63 917 123 4567'
+          name: 'Wynry Perian (Mock Rider)',
+          phone: '09991234567'
         }
       }))
 
@@ -1250,6 +1348,33 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Fetch linked delivery for delivery trades and poll for updates
+  useEffect(() => {
+    if (!trade || trade.trade_option !== 'delivery' || !isOpen) {
+      setLinkedDelivery(null)
+      return
+    }
+    // Only fetch when trade is active or later
+    if (!['active', 'accepted', 'awaiting_confirmation', 'completed', 'auto_completed'].includes(trade.status)) {
+      return
+    }
+
+    const fetchLinkedDelivery = async () => {
+      try {
+        const response = await api.get(`/api/trades/${trade.id}/delivery`)
+        const data = response.data?.data || null
+        setLinkedDelivery(data && data.id ? data : null)
+      } catch (e) {
+        console.log('No linked delivery found for trade', trade.id)
+      }
+    }
+
+    fetchLinkedDelivery()
+    // Poll every 10 seconds while delivery is in progress
+    const interval = setInterval(fetchLinkedDelivery, 10000)
+    return () => clearInterval(interval)
+  }, [trade?.id, trade?.status, trade?.trade_option, isOpen])
 
   const fetchMessages = async (options?: { showLoading?: boolean }) => {
     const showLoading = options?.showLoading
@@ -1819,19 +1944,19 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               <CardBody p={4}>
                                 <HStack spacing={3} mb={2}>
                                   <Avatar
-                                    name="Juan Dela Cruz"
+                                    name="Wynry Perian"
                                     size="sm"
                                     bg="orange.500"
                                     color="white"
                                   />
                                   <Box flex={1}>
                                     <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
-                                    <Text fontSize="sm" color="gray.700">Juan Dela Cruz (Mock Rider)</Text>
+                                    <Text fontSize="sm" color="gray.700">Wynry Perian (Mock Rider)</Text>
                                   </Box>
                                 </HStack>
                                 <HStack spacing={2} ml={8} mt={2}>
                                   <Icon as={FiPhone} color="orange.500" boxSize={4} />
-                                  <Text fontSize="sm" color="gray.700">+63 917 123 4567</Text>
+                                  <Text fontSize="sm" color="gray.700">09991234567</Text>
                                 </HStack>
                                 <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
                                   🎭 This is a mock rider for demonstration
@@ -1972,6 +2097,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       saveDeliveryState={saveDeliveryState}
                       setIsReviewModalOpen={setIsReviewModalOpen}
                       confirmingPayment={confirmingPayment}
+                      linkedDelivery={linkedDelivery}
                     />
                   ) : (
                     <VStack spacing={6} align="stretch">
@@ -2212,9 +2338,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
       {/* Review Modal - Appears when both parties confirmed meetup */}
-      < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="2xl" isCentered >
+      < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="md" isCentered scrollBehavior="inside" >
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl">
+        <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl" maxW="500px" mx={4}>
           <ModalHeader>
             <HStack spacing={3}>
               <Icon as={FaStar} color="yellow.400" />

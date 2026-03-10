@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -9,8 +9,10 @@ import {
   Text,
   Button,
   Input,
+  InputGroup,
   Textarea,
   Switch,
+  Checkbox,
   FormControl,
   FormLabel,
   FormHelperText,
@@ -19,30 +21,112 @@ import {
   IconButton,
   Image,
   SimpleGrid,
-  Center,
   useColorModeValue,
   Badge,
   Select,
-  useDisclosure,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
   Spinner,
+  Divider,
   Alert,
   AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  Skeleton,
+  SkeletonText,
+  Tooltip,
 } from '@chakra-ui/react'
-import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, WarningIcon } from '@chakra-ui/icons'
+import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
+import { MdEdit } from 'react-icons/md'
+
+export interface ProductFormData {
+  title: string
+  description: string
+  price?: number
+  condition: string
+  category: string
+  images: File[]
+  video?: File
+  premium: boolean
+  allow_buying: boolean
+  barter_only: boolean
+  bidding_type: string
+  location: string
+  latitude?: number
+  longitude?: number
+
+  // AI Generated fields
+  item_type?: string
+  brand?: string
+  authenticity_risks?: string
+  estimated_value_min?: number
+  estimated_value_max?: number
+  tags?: string
+
+  // Trading preferences
+  wants?: string
+  wanted_categories?: string[]
+}
+
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { api } from '../services/api'
-import { ProductCreate } from '../types'
 import FloatingTab from '../components/FloatingTab'
-import { prepareImageForUpload, isUnsupportedFormat, getFileTypeDescription } from '../utils/imageConverter'
+import { prepareImageForUpload } from '../utils/imageConverter'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
+import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type ImageQualityResult as ClientQualityResult } from '../utils/imageQualityChecker'
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const CONDITION_OPTIONS = ['New', 'Like New', 'Good', 'Used', 'For Parts']
+const MAX_DAILY_AI_REQUESTS = 100
+
+// ── Daily Budget Helpers ──────────────────────────────────────────────────
+
+const getDailyRequestKey = (): string => {
+  const today = new Date().toISOString().split('T')[0]
+  return `ai_requests_${today}`
+}
+
+const getCurrentDailyCount = (): number => {
+  const key = getDailyRequestKey()
+  const stored = localStorage.getItem(key)
+  return stored ? parseInt(stored, 10) : 0
+}
+
+const incrementDailyCount = (): void => {
+  const key = getDailyRequestKey()
+  const current = getCurrentDailyCount()
+  localStorage.setItem(key, String(current + 1))
+}
+
+const canMakeAIRequest = (): boolean => {
+  return getCurrentDailyCount() < MAX_DAILY_AI_REQUESTS
+}
+
+const PROHIBITED_PATTERNS = [
+  /\b(gun|rifle|pistol|shotgun|firearm|ammunition|ammo|bomb|explosive|grenade|rocket|missile|landmine)\b/gi,
+  /\b(cocaine|heroin|meth|methamphetamine|fentanyl|lsd|ecstasy|mdma|cannabis|marijuana|weed|drug)\b/gi,
+  /\b(machete|sword|blade|knife|sharp weapon)\b/gi,
+  /\b(porn|pornography|adult content|sex content|nude|nudes|sex toy)\b/gi,
+  /\b(dog|cat|puppy|kitten|animal|pet|livestock|bird|horse|reptile|endangered animal)\b/gi,
+  /\b(kidney|liver|organ|heart|lung|body part)\b/gi,
+  /\b(counterfeit|fake|stolen|stole|replica)\b/gi,
+  /\b(explosives|hazardous|toxic|poison|radioactive|chemical weapon)\b/gi,
+  /\b(person|human|slave|slavery|human trafficking)\b/gi,
+]
+
+const validateDesiredItems = (text: string): string | null => {
+  const t = text.trim().toLowerCase()
+  if (!t) return null
+  for (const pattern of PROHIBITED_PATTERNS) {
+    if (pattern.test(t)) {
+      const match = t.match(pattern)
+      return `❌ Prohibited item: "${match?.[0]?.toUpperCase()}". Only list legitimate items.`
+    }
+  }
+  return null
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 const AddProduct: React.FC = () => {
   const navigate = useNavigate()
@@ -50,13 +134,15 @@ const AddProduct: React.FC = () => {
   const { user } = useAuth()
   const { createProduct } = useProducts()
   const toast = useToast()
+  const aiTriggeredRef = useRef(false)
 
   const [currentStep, setCurrentStep] = useState(1)
-  const [formData, setFormData] = useState<ProductCreate & { bidding_type?: string }>({
+  const TOTAL_STEPS = 3
+
+  const [formData, setFormData] = useState<ProductFormData>({
     title: '',
     description: '',
-    price: 0,
-    image_urls: [],
+    price: undefined,
     premium: false,
     allow_buying: false,
     barter_only: true,
@@ -65,228 +151,378 @@ const AddProduct: React.FC = () => {
     category: '',
     wants: '',
     bidding_type: 'none',
-
+    images: [],
+    latitude: undefined,
+    longitude: undefined,
+    item_type: undefined,
+    brand: undefined,
+    authenticity_risks: undefined,
+    estimated_value_min: undefined,
+    estimated_value_max: undefined,
+    tags: '[]',
+    wanted_categories: [],
   })
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
   const [uploadedVideo, setUploadedVideo] = useState<File | null>(null)
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>('')
+
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [descriptionLength, setDescriptionLength] = useState(0)
-  const [titleLength, setTitleLength] = useState(0)
-  const [locationCoordinates, setLocationCoordinates] = useState<{ lat: number; lng: number } | null>(null)
-  const [isGettingLocation, setIsGettingLocation] = useState(true)
-  const [locationError, setLocationError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
-  const [imageConversionMessages, setImageConversionMessages] = useState<Array<{ file: string; message: string; type: 'info' | 'warning' | 'error' }>>([])
-  const [wantsValidationError, setWantsValidationError] = useState<string | null>(null)
+  const [aiDone, setAiDone] = useState(false)
+
+  // AI Analysis blocking/warning state
+  const [aiBlockingError, setAiBlockingError] = useState<string | null>(null) // Blocks form submission
+  const [aiWarnings, setAiWarnings] = useState<string[]>([]) // Just warnings
+
+  // Client-side image quality state
+  const [clientQualityResults, setClientQualityResults] = useState<ClientQualityResult[]>([])
+  const [qualityChecking, setQualityChecking] = useState(false)
+
+  const [titleLength, setTitleLength] = useState(0)
+  const [descriptionLength, setDescriptionLength] = useState(0)
   const [wantedCategories, setWantedCategories] = useState<string[]>([])
-  const { isOpen: isPremiumModalOpen, onOpen: onOpenPremiumModal, onClose: onClosePremiumModal } = useDisclosure()
-  const { isOpen: isLocationModalOpen, onOpen: onOpenLocationModal, onClose: onCloseLocationModal } = useDisclosure()
+  const [wantsError, setWantsError] = useState<string | null>(null)
+  const [showCategoryMore, setShowCategoryMore] = useState(false)
+  const [expandTradePrefs, setExpandTradePrefs] = useState(false)
+
+  const [locationText, setLocationText] = useState<string>('')
+  const [locationDetected, setLocationDetected] = useState(false)
+  const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [nameFieldFocused, setNameFieldFocused] = useState(false)
+  const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
+  const [expandProductDetails, setExpandProductDetails] = useState(false)
 
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
-  // page background color (applies to entire viewport)
   const pageBg = '#FFFDF1'
 
-  // Validation function for inappropriate/illegal item names
-  const validateDesiredItems = (text: string): string | null => {
-    const trimmedText = text.trim().toLowerCase()
-    if (!trimmedText) return null
+  // ── Location ──────────────────────────────────────────────────────────────
 
-    // List of prohibited keywords and patterns
-    const prohibitedPatterns = [
-      // Weapons and explosives
-      /\b(gun|rifle|pistol|shotgun|firearm|ammunition|ammo|bomb|explosive|explosive device|grenade|rocket|missile|landmine)\b/gi,
-      // Drugs and controlled substances
-      /\b(cocaine|heroin|meth|methamphetamine|fentanyl|lsd|ecstasy|mdma|cannabis|marijuana|weed|drug)\b/gi,
-      // Weapons (blades)
-      /\b(machete|sword|blade|knife|sharp weapon)\b/gi,
-      // Sexual content
-      /\b(porn|pornography|adult content|sex content|nude|nudes|sex toy)\b/gi,
-      // Animals (living creatures for inappropriate trading)
-      /\b(dog|cat|puppy|kitten|animal|pet|livestock|bird|horse|reptile|endangered animal)\b/gi,
-      // Body parts/organs (trafficking)
-      /\b(kidney|liver|organ|heart|lung|body part)\b/gi,
-      // Counterfeit/stolen goods
-      /\b(counterfeit|fake|stolen|stole|replica)\b/gi,
-      // Explosives and hazardous materials
-      /\b(explosives|hazardous|toxic|poison|radioactive|chemical weapon)\b/gi,
-      // Human trafficking
-      /\b(person|human|slave|slavery|human trafficking)\b/gi,
-    ]
-
-    // Check against each prohibited pattern
-    for (const pattern of prohibitedPatterns) {
-      if (pattern.test(trimmedText)) {
-        const match = trimmedText.match(pattern)
-        return `❌ Prohibited item detected: "${match?.[0]?.toUpperCase()}". Please use appropriate item names only.`
+  const detectLocation = useCallback(() => {
+    if (!navigator.geolocation) return
+    setIsGettingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords
+        setFormData(prev => ({ ...prev, latitude, longitude }))
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          )
+          const data = await res.json()
+          const addr = data.address || {}
+          const parts = [
+            addr.hamlet || addr.village || '',
+            addr.suburb || addr.neighborhood || '',
+            addr.city || addr.town || '',
+            addr.county || '',
+          ].filter(Boolean)
+          const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+          setLocationText(address)
+          setFormData(prev => ({ ...prev, location: address }))
+          setLocationDetected(true)
+        } catch {
+          const fallback = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+          setLocationText(fallback)
+          setFormData(prev => ({ ...prev, location: fallback }))
+          setLocationDetected(true)
+        }
+        setIsGettingLocation(false)
+      },
+      () => {
+        setIsGettingLocation(false)
       }
-    }
+    )
+  }, [])
 
-    return null
-  }
+  useEffect(() => {
+    detectLocation()
+  }, [detectLocation])
 
-  const steps = [
-    { number: 1, title: 'Upload Photos', description: 'Add product images' },
-    { number: 2, title: 'Basic Info', description: 'Title and description' },
-    { number: 3, title: 'What I Want', description: 'Specify items you want in exchange' },
-    { number: 4, title: 'Barter Options', description: 'Set exchange preferences' },
-    { number: 5, title: 'Price (Optional)', description: 'If buying is allowed' },
-    { number: 6, title: 'Review & Post', description: 'Confirm and publish' },
-  ]
+  // ── AI Generation ─────────────────────────────────────────────────────────
 
-  const handleImageUpload = useCallback((files: FileList | null) => {
-    if (!files) return
-
-    let newFiles = Array.from(files)
-    const validFiles = newFiles.filter(file => file.type.startsWith('image/'))
-
-    if (validFiles.length === 0) {
+  const triggerAI = useCallback(async (images: File[]) => {
+    // Check daily request limit
+    if (!canMakeAIRequest()) {
       toast({
-        title: 'Invalid file type',
-        description: 'Please select only image files',
-        status: 'error',
-        duration: 3000,
+        title: '⏱️ Daily limit reached',
+        description: 'AI analysis limit reached for today. Try again tomorrow.',
+        status: 'warning',
+        duration: 5000,
         isClosable: true,
+        position: 'top-right',
       })
       return
     }
 
-    // Process each file for format compatibility
+    if (aiTriggeredRef.current || isGenerating) return
+    aiTriggeredRef.current = true
+    setIsGenerating(true)
+
+    toast({
+      title: '🔍 Analyzing images...',
+      description: 'AI is scanning all photos for product details and checking image quality.',
+      status: 'info',
+      duration: 3000,
+      isClosable: true,
+      position: 'top-right',
+    })
+
+    try {
+      // Send all images in a batch (single API request)
+      const fd = new FormData()
+      images.forEach(f => fd.append('images', f))
+
+      const response = await api.post('/api/products/generate-details', fd)
+      const data = response.data
+      if (data.success && data.data) {
+        const d = data.data
+
+        // SAFETY CHECK: Handle top-level prohibition first (most critical)
+        if (d.prohibited) {
+          // Increment daily counter ONLY for safety check rejections (still count as a request)
+          incrementDailyCount()
+
+          setIsGenerating(false)
+          aiTriggeredRef.current = false
+
+          // Clear the uploaded images since they contain prohibited content
+          setUploadedImages([])
+          setImagePreviewUrls([])
+
+          // Show prominent error message
+          toast({
+            title: '❌ Cannot list this item',
+            description: d.reason || 'This item cannot be listed for trading.',
+            status: 'error',
+            duration: 8000,
+            isClosable: true,
+            position: 'top-right',
+          })
+
+          // Set blocking error to show it on Step 1
+          setAiBlockingError(d.reason || 'This item cannot be listed for trading.')
+
+          // Stay on Step 1 - do NOT navigate to Step 2
+          return
+        }
+
+        // Increment daily counter for successful analysis
+        incrementDailyCount()
+
+        const warnings: string[] = []
+
+        // Check for secondary blocking issues (older field structure)
+        if (d.is_prohibited) {
+          setAiBlockingError(d.prohibited_reason || 'This item cannot be listed for trading.')
+          setIsGenerating(false)
+          toast({
+            title: '❌ Item cannot be listed',
+            description: d.prohibited_reason || 'This item cannot be listed for trading.',
+            status: 'error',
+            duration: 5000,
+            isClosable: true,
+            position: 'top-right',
+          })
+          return
+        }
+
+        // Check for person warning
+        if (d.contains_person) {
+          warnings.push(d.person_warning || 'This photo contains a person. Please retake without people in frame.')
+        }
+
+        // Check for suspicious image warning
+        if (d.is_suspicious_image) {
+          const reason = d.suspicious_reason || 'This looks like a screenshot or stock photo'
+          warnings.push(`⚠️ ${reason}: Original product photos work better and get better engagement!`)
+        }
+
+        // Check for quality warning (blurry/dark)
+        if (d.is_blurry_or_dark) {
+          warnings.push(d.quality_warning || '⚠ Image quality is low. Please retake the photo for better trade chances.')
+        }
+
+        // Check for non-product image
+        if (d.is_non_product_image) {
+          warnings.push(`⚠️ ${d.non_product_reason || 'This does not appear to be a product photo.'} Please upload a clear photo of the actual item.`)
+        }
+
+        // Check if image appears to be from an online source
+        if (d.appears_online) {
+          warnings.push(`⚠️ ${d.online_image_reason || 'This image appears to be from an online source.'} Original photos get better engagement and build trust with traders.`)
+        }
+
+        setAiWarnings(warnings)
+
+        // Fill form with AI data
+        setFormData(prev => ({
+          ...prev,
+          title: d.title || prev.title,
+          description: d.description || prev.description,
+          condition: d.condition || prev.condition || 'Used',
+          category: d.category || prev.category || 'General',
+          item_type: d.subcategory || d.item_type || prev.item_type,
+          brand: d.brand || prev.brand,
+          authenticity_risks: d.authenticity_risks || prev.authenticity_risks,
+          estimated_value_min: d.estimated_value_min ?? prev.estimated_value_min,
+          estimated_value_max: d.estimated_value_max ?? prev.estimated_value_max,
+          tags: d.tags ? JSON.stringify(d.tags) : prev.tags,
+        }))
+        if (d.title) setTitleLength(d.title.length)
+        if (d.description) setDescriptionLength(d.description.length)
+        setAiDone(true)
+
+        if (warnings.length > 0) {
+          toast({
+            title: '⚠️ AI completed with notes',
+            description: warnings[0],
+            status: 'warning',
+            duration: 5000,
+            isClosable: true,
+            position: 'top-right',
+          })
+        } else {
+          toast({
+            title: '✨ AI analysis complete!',
+            description: 'Product fields have been auto-filled. Review and edit as needed.',
+            status: 'success',
+            duration: 4000,
+            isClosable: true,
+            position: 'top-right',
+          })
+        }
+      } else {
+        throw new Error(data.error || 'AI generation failed')
+      }
+    } catch (err: any) {
+      aiTriggeredRef.current = false // allow retry
+      // Only increment daily counter on failures if we haven't already
+      // (safety rejections already increment above)
+      incrementDailyCount()
+
+      toast({
+        title: 'AI analysis failed',
+        description: err?.response?.data?.error || err.message || 'Could not analyze image. You can fill in details manually.',
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+        position: 'top-right',
+      })
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [isGenerating, toast])
+
+  // ── Effects ───────────────────────────────────────────────────────────────
+
+  // Scroll to top on step change
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [currentStep])
+
+  // ── Image Handling ────────────────────────────────────────────────────────
+
+  const handleImageUpload = useCallback((files: FileList | null) => {
+    if (!files) return
+    const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+    if (!validFiles.length) {
+      toast({ title: 'Invalid file type', description: 'Please select image files only.', status: 'error', duration: 3000 })
+      return
+    }
+
     const processFiles = async () => {
-      const messages: Array<{ file: string; message: string; type: 'info' | 'warning' | 'error' }> = []
-      const processedFiles: File[] = []
-      const previewUrls: string[] = []
+      const processed: File[] = []
+      const previews: string[] = []
 
       for (const file of validFiles.slice(0, 8 - uploadedImages.length)) {
         try {
-          const { file: processedFile, isConverted, warning } = await prepareImageForUpload(file, 5)
-
-          if (isConverted) {
-            messages.push({
-              file: file.name,
-              message: `✓ Converted ${getFileTypeDescription(file)} to JPEG for compatibility`,
-              type: 'info',
-            })
-          }
-
-          if (warning) {
-            messages.push({
-              file: file.name,
-              message: warning,
-              type: 'warning',
-            })
-          }
-
-          // Create preview URL
-          const reader = new FileReader()
-          reader.onload = (e) => {
-            previewUrls.push(e.target?.result as string)
-            if (previewUrls.length === processedFiles.length) {
-              // All files processed
-              setImagePreviewUrls(prev => [...prev, ...previewUrls])
-            }
-          }
-          reader.readAsDataURL(processedFile)
-
-          processedFiles.push(processedFile)
-        } catch (error: any) {
-          messages.push({
-            file: file.name,
-            message: `✗ Error: ${error.message}`,
-            type: 'error',
+          const { file: pf } = await prepareImageForUpload(file, 5)
+          processed.push(pf)
+          const url = await new Promise<string>(resolve => {
+            const reader = new FileReader()
+            reader.onload = e => resolve(e.target?.result as string)
+            reader.readAsDataURL(pf)
           })
+          previews.push(url)
+        } catch (e: any) {
+          toast({ title: `Error processing ${file.name}`, description: e.message, status: 'error', duration: 3000 })
         }
       }
 
-      // Update state
       setUploadedImages(prev => {
-        const newLength = prev.length + processedFiles.length
-        if (newLength > 8) {
-          toast({
-            title: 'Image limit reached',
-            description: `You can upload up to 8 images per product. Uploaded ${newLength} images.`,
-            status: 'warning',
-            duration: 3000,
-            isClosable: true,
-          })
-          return [...prev, ...processedFiles.slice(0, 8 - prev.length)]
-        }
-        return [...prev, ...processedFiles]
+        const combined = [...prev, ...processed]
+        return combined.slice(0, 8)
       })
+      setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
 
-      // Show messages
-      if (messages.length > 0) {
-        setImageConversionMessages(messages)
+      // Run client-side image quality checks (instant, no network)
+      setQualityChecking(true)
+      try {
+        const qualityResults = await checkMultipleImageQuality(processed)
+        setClientQualityResults(prev => [...prev, ...qualityResults])
 
-        // Auto-dismiss after 5 seconds if all successful
-        const hasErrors = messages.some(m => m.type === 'error')
-        if (!hasErrors) {
-          setTimeout(() => setImageConversionMessages([]), 5000)
+        // Show instant quality warnings
+        const qualityWarnings: string[] = []
+        qualityResults.forEach((qr, idx) => {
+          qr.issues.forEach(issue => {
+            const prefix = processed.length > 1 ? `Photo ${idx + 1}: ` : ''
+            qualityWarnings.push(`${prefix}${issue.message} ${issue.suggestion}`)
+          })
+        })
+
+        if (qualityWarnings.length > 0) {
+          // Show the first quality warning as a toast
+          toast({
+            title: '📸 Image Quality Check',
+            description: qualityWarnings[0],
+            status: 'warning',
+            duration: 6000,
+            isClosable: true,
+            position: 'top-right',
+          })
         }
+      } catch (err) {
+        console.warn('Client-side quality check failed (non-blocking):', err)
+      } finally {
+        setQualityChecking(false)
       }
-    }
 
+      // Clear AI errors when new images are uploaded
+      setAiBlockingError(null)
+      setAiWarnings([])
+      aiTriggeredRef.current = false
+      setAiDone(false)
+    }
     processFiles()
   }, [uploadedImages.length, toast])
 
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
     setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
+    setClientQualityResults(prev => prev.filter((_, i) => i !== index))
+    // Clear AI errors and allow re-triggering when images are removed
+    setAiBlockingError(null)
+    setAiWarnings([])
+    aiTriggeredRef.current = false
+    setAiDone(false)
   }
 
   const handleVideoUpload = useCallback((files: FileList | null) => {
-    if (!files || files.length === 0) return
+    if (!files || !files[0]) return
     const file = files[0]
-
     if (!file.type.startsWith('video/')) {
-      toast({
-        title: 'Invalid file type',
-        description: 'Please select a video file (MP4, MOV, etc.)',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
+      toast({ title: 'Invalid file type', status: 'error', duration: 3000 })
       return
     }
-
-    // 50MB limit
     if (file.size > 50 * 1024 * 1024) {
-      toast({
-        title: 'Video too large',
-        description: 'Video must be under 50MB',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
+      toast({ title: 'Video too large', description: 'Max 50MB', status: 'error', duration: 3000 })
       return
     }
-
-    // Validate duration (5-15 seconds)
-    const video = document.createElement('video')
-    video.preload = 'metadata'
-    video.onloadedmetadata = () => {
-      URL.revokeObjectURL(video.src)
-      if (video.duration < 3 || video.duration > 20) {
-        toast({
-          title: 'Invalid video length',
-          description: 'Video should be between 5-15 seconds long',
-          status: 'warning',
-          duration: 3000,
-          isClosable: true,
-        })
-      }
-      setUploadedVideo(file)
-      setVideoPreviewUrl(URL.createObjectURL(file))
-    }
-    video.onerror = () => {
-      URL.revokeObjectURL(video.src)
-      setUploadedVideo(file)
-      setVideoPreviewUrl(URL.createObjectURL(file))
-    }
-    video.src = URL.createObjectURL(file)
+    setUploadedVideo(file)
+    setVideoPreviewUrl(URL.createObjectURL(file))
   }, [toast])
 
   const removeVideo = () => {
@@ -295,1277 +531,1162 @@ const AddProduct: React.FC = () => {
     setVideoPreviewUrl('')
   }
 
-  const handleInputChange = (field: keyof ProductCreate, value: any) => {
+  // ── Field Handlers ────────────────────────────────────────────────────────
+
+  const handleField = (field: keyof ProductFormData, value: any) => {
     if (field === 'title') {
-      const length = value?.length || 0
-      if (length > 25) {
-        toast({
-          title: 'Name too long',
-          description: `Maximum 25 characters allowed (currently ${length})`,
-          status: 'warning',
-          duration: 2000,
-          isClosable: true,
-        })
-        return
-      }
-      setTitleLength(length)
+      const len = value?.length || 0
+      if (len > 25) return
+      setTitleLength(len)
     }
     if (field === 'description') {
-      const length = value?.length || 0
-      if (length > 800) {
-        toast({
-          title: 'Description too long',
-          description: `Maximum 800 characters allowed (currently ${length})`,
-          status: 'warning',
-          duration: 2000,
-          isClosable: true,
-        })
-        return
-      }
-      setDescriptionLength(length)
+      const len = value?.length || 0
+      if (len > 800) return
+      setDescriptionLength(len)
     }
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  const handleGetCurrentLocation = useCallback(() => {
-    setIsGettingLocation(true)
-    setLocationError(null)
+  // ── Validation ────────────────────────────────────────────────────────────
 
-    if (!navigator.geolocation) {
-      setLocationError('Geolocation is not supported by your browser')
-      setIsGettingLocation(false)
-      return
+  const canProceed = (): boolean => {
+    // If there's a blocking AI error, cannot proceed
+    if (aiBlockingError) {
+      return false
     }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords
-        setLocationCoordinates({ lat: latitude, lng: longitude })
+    // Cannot proceed if daily AI request limit reached on step 1
+    if (currentStep === 1 && uploadedImages.length >= 1 && !canMakeAIRequest()) {
+      return false
+    }
 
-        // Reverse geocode to get full address
-        try {
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-          )
-          const data = await response.json()
-          const address = data.address || {}
-
-          // Build full address: purok, barangay, city, municipality
-          const purok = address.hamlet || address.village || ''
-          const barangay = address.suburb || address.neighborhood || ''
-          const city = address.city || address.town || ''
-          const municipality = address.county || ''
-
-          const addressParts = [purok, barangay, city, municipality].filter(Boolean)
-          const fullAddress = addressParts.join(', ') || `Location ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-
-          handleInputChange('location', fullAddress)
-        } catch (error) {
-          handleInputChange('location', `Location ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
-        }
-
-        setIsGettingLocation(false)
-      },
-      (error) => {
-        let errorMessage = 'Unable to retrieve your location'
-        if (error.code === error.PERMISSION_DENIED) {
-          errorMessage = 'Location permission denied. Please enable it in your browser settings.'
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          errorMessage = 'Location information is unavailable.'
-        } else if (error.code === error.TIMEOUT) {
-          errorMessage = 'The request to get user location timed out.'
-        }
-        setLocationError(errorMessage)
-        setIsGettingLocation(false)
-      }
-    )
-  }, [])
-
-  // Auto-load location on component mount
-  useEffect(() => {
-    handleGetCurrentLocation()
-  }, [handleGetCurrentLocation])
-
-  const nextStep = () => {
-    if (currentStep < steps.length) {
-      setCurrentStep(currentStep + 1)
+    switch (currentStep) {
+      case 1:
+        // Just need at least 1 image - always enabled for navigation
+        return uploadedImages.length >= 1
+      case 2:
+        return (
+          formData.title.trim().length > 0 &&
+          formData.title.trim().length <= 25 &&
+          formData.description.trim().length >= 50 &&
+          !!formData.condition &&
+          !!formData.category &&
+          !!formData.location?.trim() &&
+          !!(formData.wants?.trim()) &&
+          !wantsError
+        )
+      case 3:
+        return true
+      default:
+        return false
     }
   }
 
-  const prevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
+  // Get reason why Next button is disabled
+  const getDisabledReason = (): string => {
+    // AI Blocking Error
+    if (aiBlockingError) {
+      return aiBlockingError
+    }
+
+    // Daily limit reached on step 1
+    if (currentStep === 1 && uploadedImages.length >= 1 && !canMakeAIRequest()) {
+      return `Daily AI analysis limit reached (${getCurrentDailyCount()}/${MAX_DAILY_AI_REQUESTS})`
+    }
+
+    switch (currentStep) {
+      case 1:
+        return `Upload at least 1 image to proceed`
+      case 2:
+        const issues = []
+        if (!formData.title.trim()) issues.push('Add a title')
+        if (formData.title.trim().length > 25) issues.push('Title must be ≤25 characters')
+        if (formData.description.trim().length < 50) issues.push('Description must be ≥50 characters')
+        if (!formData.condition) issues.push('Select a condition')
+        if (!formData.category) issues.push('Select a category')
+        if (!formData.location?.trim()) issues.push('Add a location')
+        if (!formData.wants?.trim()) issues.push('Describe what you want in return')
+        if (wantsError) issues.push(wantsError)
+        return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
+      case 3:
+        return 'Ready to post'
+      default:
+        return 'Fill in required information'
     }
   }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
-    // Validation before submission
     if (!formData.title.trim()) {
-      toast({
-        title: 'Missing name',
-        description: 'Please enter a product name',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
+      toast({ title: 'Missing name', status: 'warning', duration: 3000 })
       return
     }
-
-    if (!formData.description.trim()) {
-      toast({
-        title: 'Missing description',
-        description: 'Please enter a product description',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-
     if (formData.description.trim().length < 50) {
-      toast({
-        title: 'Description too short',
-        description: 'Please enter at least 50 characters in the description',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
+      toast({ title: 'Description too short', description: 'Minimum 50 characters', status: 'warning', duration: 3000 })
       return
     }
-
     if (uploadedImages.length === 0) {
-      toast({
-        title: 'No images',
-        description: 'Please upload at least one product image',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
+      toast({ title: 'No images', description: 'Please upload at least one photo', status: 'warning', duration: 3000 })
       return
-    }
-
-    if (formData.allow_buying && (!formData.price || formData.price <= 0)) {
-      toast({
-        title: 'Invalid price',
-        description: 'Please enter a valid price if buying is allowed',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-
-    // Validate desired items (wants field)
-    const wantsError = validateDesiredItems(formData.wants || '')
-    if (wantsError) {
-      toast({
-        title: 'Invalid desired items',
-        description: wantsError,
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      })
-      setCurrentStep(3)
-      return
-    }
-
-    // Validate file sizes (5MB per image)
-    const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
-    for (const file of uploadedImages) {
-      if (file.size > MAX_FILE_SIZE) {
-        toast({
-          title: 'File too large',
-          description: `${file.name} exceeds 5MB limit`,
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        })
-        return
-      }
     }
 
     setIsSubmitting(true)
-
     try {
-      const formDataToSend = new FormData()
+      const fd = new FormData()
+      fd.append('title', formData.title.trim())
+      fd.append('description', formData.description.trim())
+      fd.append('price', formData.price?.toString() || '0')
+      fd.append('premium', formData.premium ? '1' : '0')
+      fd.append('allow_buying', formData.allow_buying ? '1' : '0')
+      fd.append('barter_only', formData.barter_only ? '1' : '0')
+      fd.append('bidding_type', formData.bidding_type || 'none')
+      fd.append('location', formData.location?.trim() || '')
+      fd.append('condition', formData.condition || 'Used')
+      fd.append('category', formData.category || 'General')
 
-      // Append fields in exact order backend expects
-      formDataToSend.append('title', formData.title.trim())
-      formDataToSend.append('description', formData.description.trim())
-      formDataToSend.append('price', String(formData.price || 0))
-      formDataToSend.append('premium', formData.premium ? '1' : '0')
-      formDataToSend.append('allow_buying', formData.allow_buying ? '1' : '0')
-      formDataToSend.append('barter_only', formData.barter_only ? '1' : '0')
-      formDataToSend.append('bidding_type', formData.bidding_type || 'none')
-      formDataToSend.append('location', formData.location?.trim() || '')
-      formDataToSend.append('condition', formData.condition || 'Used')
-      formDataToSend.append('category', formData.category || 'General')
-      if (formData.wants?.trim()) {
-        formDataToSend.append('wants', formData.wants.trim())
+      if (formData.latitude !== undefined && formData.longitude !== undefined) {
+        fd.append('latitude', formData.latitude.toString())
+        fd.append('longitude', formData.longitude.toString())
       }
-      if (wantedCategories.length > 0) {
-        formDataToSend.append('wanted_categories', JSON.stringify(wantedCategories))
-      }
+      if (formData.item_type) fd.append('item_type', formData.item_type)
+      if (formData.brand) fd.append('brand', formData.brand)
+      if (formData.authenticity_risks) fd.append('authenticity_risks', formData.authenticity_risks)
+      if (formData.estimated_value_min !== undefined) fd.append('estimated_value_min', String(formData.estimated_value_min))
+      if (formData.estimated_value_max !== undefined) fd.append('estimated_value_max', String(formData.estimated_value_max))
+      fd.append('tags', formData.tags || '[]')
+      if (formData.wants?.trim()) fd.append('wants', formData.wants.trim())
+      if (wantedCategories.length > 0) fd.append('wanted_categories', JSON.stringify(wantedCategories))
 
-      // Append each image file
-      uploadedImages.forEach((file) => {
-        formDataToSend.append('images', file)
-      })
+      uploadedImages.forEach(f => fd.append('images', f))
+      if (uploadedVideo) fd.append('video', uploadedVideo)
 
-      // Append video if uploaded
-      if (uploadedVideo) {
-        formDataToSend.append('video', uploadedVideo)
-      }
-
-      // Log what we're sending
-      console.log('=== FORM DATA CONTENTS ===')
-      for (let [key, value] of formDataToSend.entries()) {
-        if (value instanceof File) {
-          console.log(`${key}: File - ${value.name} (${value.size} bytes, ${value.type})`)
-        } else {
-          console.log(`${key}: ${value}`)
-        }
-      }
-      console.log('========================')
-
-      const response = await createProduct(formDataToSend)
-      console.log('Product created successfully:', response)
-
-      toast({
-        title: 'Product created!',
-        description: 'Your product has been successfully posted',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
-
-      // Invalidate dashboard products cache so the new product appears immediately
+      await createProduct(fd)
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
+      toast({ title: 'Product posted! 🎉', status: 'success', duration: 3000 })
       navigate('/dashboard')
-    } catch (error: any) {
-      console.error('=== PRODUCT CREATION ERROR ===')
-      console.error('HTTP Status:', error.response?.status)
-      console.error('Backend Response:', error.response?.data)
-      console.error('Backend Message:', error.response?.data?.error || error.response?.data?.message)
-      console.error('Request URL:', error.config?.url)
-      console.error('Request Headers:', error.config?.headers)
-      console.error('Full Error:', error.message)
-      console.error('=============================')
-
-      const errorMessage =
-        error.response?.data?.details ||
-        error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        'Failed to create product. Please check the browser console for details.'
-
-      toast({
-        title: 'Error creating product',
-        description: errorMessage,
-        status: 'error',
-        duration: 6000,
-        isClosable: true,
-      })
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'Failed to create product'
+      toast({ title: 'Error creating product', description: msg, status: 'error', duration: 6000 })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const canProceed = () => {
-    switch (currentStep) {
-      case 1: return uploadedImages.length >= 3
-      case 2: return formData.title.trim() && formData.description.trim() && titleLength > 0 && titleLength <= 25 && descriptionLength >= 50 && descriptionLength <= 500 && !!formData.condition && !!formData.category && !!formData.location?.trim()
-      case 3: return (formData.wants?.trim() || false) && !wantsValidationError // What I Want is required and must be valid
-      case 4: return true // Barter options are always valid
-      case 5: return !formData.allow_buying || (formData.allow_buying && formData.price && formData.price > 0)
-      case 6: return true
-      default: return false
-    }
-  }
+  // ── Step Rendering ────────────────────────────────────────────────────────
 
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 1:
-        return (
-          <VStack spacing={6} align="stretch">
-            <Text fontSize="lg" color="gray.600" display={{ base: 'none', md: 'block' }}>
-              Upload at least 3 photos of your product. First image will be the cover.
+  const renderStep1 = () => (
+    <VStack spacing={4} align="stretch">
+      {/* Compact Header with AI Status - Single Line */}
+      <HStack justify="space-between" align="center">
+        <VStack spacing={0.5} align="start" flex={1}>
+          <Text fontSize="sm" color="gray.600" fontWeight="semibold">📸 Upload Media</Text>
+          <Text fontSize="xs" color="gray.500">Min 1 photo. AI analyzes automatically.</Text>
+        </VStack>
+        {isGenerating && (
+          <Badge colorScheme="purple" px={3} py={1.5} borderRadius="md" display="flex" alignItems="center" gap={2} whiteSpace="nowrap">
+            <Spinner size="xs" />
+            <Text fontSize="xs">Analyzing...</Text>
+          </Badge>
+        )}
+        {!isGenerating && aiDone && (
+          <Badge colorScheme="green" px={3} py={1.5} borderRadius="md" fontSize="xs" whiteSpace="nowrap">
+            ✓ Auto-filled
+          </Badge>
+        )}
+      </HStack>
+
+      {/* Streamlined Drop Zone - Balanced Height, Mobile Responsive */}
+      <Box
+        border="2px dashed"
+        borderColor={borderColor}
+        borderRadius="xl"
+        p={{ base: 4, sm: 5 }}
+        textAlign="center"
+        cursor="auto"
+        _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
+        transition="all 0.2s"
+        minH={{ base: '120px', sm: '140px' }}
+      >
+        <VStack spacing={4}>
+          <AddIcon boxSize={6} color="gray.400" />
+          
+          {/* Two Button Options - Side by Side */}
+          <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
+            <Button
+              leftIcon={<span>📁</span>}
+              colorScheme="brand"
+              variant="outline"
+              size="sm"
+              onClick={() => document.getElementById('img-upload')?.click()}
+              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+            >
+              Upload from Gallery
+            </Button>
+            <Button
+              leftIcon={<span>📷</span>}
+              colorScheme="brand"
+              variant="outline"
+              size="sm"
+              onClick={() => document.getElementById('img-camera')?.click()}
+              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+            >
+              Take Photo
+            </Button>
+          </HStack>
+
+          <Text fontSize="xs" color="gray.500" mt={2}>
+            JPEG/PNG • max 5MB • up to 8 images
+          </Text>
+        </VStack>
+      </Box>
+      
+      {/* Gallery Upload Input */}
+      <input id="img-upload" type="file" multiple accept="image/*" style={{ display: 'none' }}
+        onChange={e => handleImageUpload(e.target.files)} />
+      
+      {/* Camera Capture Input - Mobile friendly */}
+      <input id="img-camera" type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+        onChange={e => handleImageUpload(e.target.files)} />
+
+      {/* Image Preview Grid */}
+      {uploadedImages.length > 0 && (
+        <VStack spacing={3} align="stretch" bg="gray.50" p={4} borderRadius="lg" border="1px solid" borderColor="gray.200">
+          {/* Preview Header */}
+          <HStack justify="space-between" align="center">
+            <VStack spacing={0.5} align="start">
+              <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+                📷 Your Photos ({uploadedImages.length}/8)
+              </Text>
+              <Text fontSize="xs" color="gray.500">
+                {uploadedImages.length === 1 ? 'First image will be your cover photo' : 'First image is your cover photo • Tap × to remove'}
+              </Text>
+            </VStack>
+            {uploadedImages.length < 8 && (
+              <Button
+                size="xs"
+                variant="solid"
+                colorScheme="brand"
+                fontSize="xs"
+                h="28px"
+                px={2}
+                onClick={() => document.getElementById('img-upload')?.click()}
+                whiteSpace="nowrap"
+              >
+                + Add
+              </Button>
+            )}
+          </HStack>
+
+          {/* Horizontal Thumbnail Grid */}
+          <Box 
+            display="flex" 
+            gap={{ base: 1.5, sm: 2 }} 
+            overflowX="auto" 
+            pb={2}
+            css={{
+              '&::-webkit-scrollbar': {
+                height: '4px',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: 'transparent',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: '#cbd5e0',
+                borderRadius: '4px',
+                '&:hover': {
+                  background: '#a0aec0',
+                },
+              },
+            }}
+          >
+            {uploadedImages.map((_, i) => (
+              <Box 
+                key={i} 
+                position="relative" 
+                minW="90px" 
+                w="90px" 
+                h="90px" 
+                flexShrink={0}
+                borderRadius="lg"
+                overflow="hidden"
+                transition="all 0.2s"
+                _hover={{
+                  transform: 'scale(1.05)',
+                  shadow: 'md',
+                }}
+              >
+                <Image
+                  src={imagePreviewUrls[i]}
+                  alt={`Preview ${i + 1}`}
+                  borderRadius="lg"
+                  objectFit="cover"
+                  w="full"
+                  h="full"
+                  border={i === 0 ? '3px solid' : '1px solid'}
+                  borderColor={i === 0 ? 'brand.400' : 'gray.300'}
+                  shadow={i === 0 ? 'md' : 'sm'}
+                />
+                
+                {/* Cover Badge */}
+                {i === 0 && (
+                  <Badge 
+                    position="absolute" 
+                    bottom={2} 
+                    left={2} 
+                    colorScheme="brand" 
+                    fontSize="9px" 
+                    px={2}
+                    py={1}
+                    borderRadius="md"
+                  >
+                    ★ Cover
+                  </Badge>
+                )}
+                {/* Quality indicator badge on thumbnail */}
+                {clientQualityResults[i] && clientQualityResults[i].issues.length > 0 && (
+                  <Badge
+                    position="absolute"
+                    top={1}
+                    left={1}
+                    colorScheme={getQualityColorScheme(clientQualityResults[i].overallScore)}
+                    fontSize="7px"
+                    px={1.5}
+                    py={0.5}
+                    borderRadius="sm"
+                  >
+                    {clientQualityResults[i].issues.some(iss => iss.severity === 'error') ? '⚠' : '!'} {clientQualityResults[i].overallScore}
+                  </Badge>
+                )}
+                <IconButton
+                  icon={<CloseIcon boxSize={3} />}
+                  aria-label="Remove"
+                  size="sm"
+                  position="absolute"
+                  top={-3}
+                  right={-3}
+                  colorScheme="red"
+                  onClick={() => removeImage(i)}
+                  borderRadius="full"
+                  minW="24px"
+                  h="24px"
+                />
+                
+                {/* Position Counter */}
+                <Badge 
+                  position="absolute" 
+                  top={1} 
+                  left={1} 
+                  bg="rgba(0,0,0,0.6)" 
+                  color="white" 
+                  fontSize="10px" 
+                  px={1.5}
+                  borderRadius="md"
+                >
+                  #{i + 1}
+                </Badge>
+                
+                {/* Remove Button */}
+                <Tooltip label="Delete this photo" size="sm">
+                  <IconButton
+                    icon={<CloseIcon boxSize={3} />}
+                    aria-label="Remove photo"
+                    size="md"
+                    position="absolute"
+                    top={1}
+                    right={1}
+                    colorScheme="red"
+                    variant="solid"
+                    bg="red.500"
+                    _hover={{ bg: 'red.600' }}
+                    onClick={() => removeImage(i)}
+                    borderRadius="full"
+                    minW="28px"
+                    h="28px"
+                    boxShadow="md"
+                  />
+                </Tooltip>
+              </Box>
+            ))}
+          </Box>
+
+          {/* Info Text */}
+          <Text fontSize="xs" color="gray.500" mt={1}>
+            💡 Tip: Clear, well-lit photos get analyzed faster and attract more interest
+          </Text>
+        </VStack>
+      )}
+
+      {/* AI Analysis Status - Loading, Errors, & Warnings */}
+      {isGenerating && (
+        <VStack spacing={2} align="stretch" w="full" bg="blue.50" p={4} borderRadius="lg" border="1px solid" borderColor="blue.200">
+          <HStack spacing={2}>
+            <Spinner size="sm" color="blue.500" />
+            <Text fontSize="sm" fontWeight="semibold" color="blue.700">
+              🔍 Analyzing images...
             </Text>
+          </HStack>
+          <Text fontSize="xs" color="blue.600">
+            AI is checking image quality, detecting prohibited items, and extracting product details...
+          </Text>
+        </VStack>
+      )}
 
-            {/* Drag & Drop Area */}
+      {/* Client-side Image Quality Results (instant feedback) */}
+      {clientQualityResults.length > 0 && clientQualityResults.some(qr => qr.issues.length > 0) && !isGenerating && (
+        <Box bg="orange.50" p={4} borderRadius="lg" border="1px solid" borderColor="orange.200">
+          <HStack spacing={2} mb={2}>
+            <Text fontSize="sm" fontWeight="semibold" color="orange.700">
+              📸 Image Quality Check
+            </Text>
+            {(() => {
+              const avgScore = clientQualityResults.length > 0
+                ? Math.round(clientQualityResults.reduce((a, r) => a + r.overallScore, 0) / clientQualityResults.length)
+                : 100
+              return (
+                <Badge colorScheme={getQualityColorScheme(avgScore)} fontSize="xs" px={2} py={0.5} borderRadius="md">
+                  {getQualityLabel(avgScore)} ({avgScore}/100)
+                </Badge>
+              )
+            })()}
+          </HStack>
+          <VStack spacing={1.5} align="stretch">
+            {clientQualityResults.flatMap((qr, imgIdx) =>
+              qr.issues.map((issue, issIdx) => (
+                <HStack key={`${imgIdx}-${issIdx}`} spacing={2} align="flex-start">
+                  <Text fontSize="xs" color={issue.severity === 'error' ? 'red.600' : 'orange.600'} flexShrink={0}>
+                    {issue.severity === 'error' ? '❌' : '⚠️'}
+                  </Text>
+                  <Box>
+                    <Text fontSize="xs" color="gray.700" fontWeight="medium">
+                      {clientQualityResults.length > 1 ? `Photo ${imgIdx + 1}: ` : ''}{issue.message}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500">{issue.suggestion}</Text>
+                  </Box>
+                </HStack>
+              ))
+            )}
+          </VStack>
+        </Box>
+      )}
+
+      {aiBlockingError && (
+        <Alert status="error" borderRadius="lg" variant="left-accent">
+          <AlertIcon />
+          <Box flex="1">
+            <AlertTitle fontSize="sm" fontWeight="semibold">Cannot list this item</AlertTitle>
+            <AlertDescription fontSize="sm" mt={1}>
+              {aiBlockingError}
+            </AlertDescription>
+          </Box>
+        </Alert>
+      )}
+
+      {aiWarnings.length > 0 && (
+        <VStack spacing={2} align="stretch" w="full">
+          <Text fontSize="xs" fontWeight="semibold" color="orange.600" px={1}>
+            🤖 AI detected {aiWarnings.length} issue{aiWarnings.length > 1 ? 's' : ''} — these are suggestions, you can still post
+          </Text>
+          {aiWarnings.map((warning, idx) => (
+            <Alert key={idx} status="warning" borderRadius="lg" variant="left-accent">
+              <AlertIcon />
+              <Box flex="1">
+                <AlertDescription fontSize="sm">
+                  {warning}
+                </AlertDescription>
+              </Box>
+            </Alert>
+          ))}
+        </VStack>
+      )}
+
+      {/* Compact Video Upload - Same Row Style */}
+      <HStack spacing={3} align="flex-start">
+        <Box flex={1}>
+          <Text fontWeight="semibold" color="gray.700" fontSize="sm" mb={2}>
+            📹 Video <Badge colorScheme="gray" ml={2} fontSize="xs" py={1}>Optional</Badge>
+          </Text>
+          {!uploadedVideo ? (
             <Box
               border="2px dashed"
               borderColor={borderColor}
               borderRadius="lg"
-              p={4}
+              p={3}
               textAlign="center"
               cursor="pointer"
-              _hover={{ borderColor: 'brand.500' }}
-              onClick={() => document.getElementById('image-upload')?.click()}
+              _hover={{ borderColor: 'brand.400' }}
+              onClick={() => document.getElementById('vid-upload')?.click()}
+              minH="70px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
             >
-              <VStack spacing={2}>
-                <AddIcon boxSize={6} color="gray.400" />
-                <VStack spacing={0}>
-                  <Text fontSize="sm" color="gray.600" fontWeight="medium">
-                    Click to upload or drag and drop
-                  </Text>
-                  <Text fontSize="xs" color="gray.500">
-                    PNG, JPG up to 5MB (min. 3 images)
-                  </Text>
-                </VStack>
-              </VStack>
+              <Text fontSize="sm" color="gray.600">Click to add video</Text>
             </Box>
+          ) : (
+            <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" maxH="100px">
+              <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: '100px', objectFit: 'contain' }} />
+              <IconButton icon={<CloseIcon boxSize={3} />} aria-label="Remove video" size="sm"
+                position="absolute" top={2} right={2} colorScheme="red" onClick={removeVideo} />
+            </Box>
+          )}
+        </Box>
+        <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
+          onChange={e => handleVideoUpload(e.target.files)} />
+      </HStack>
 
-            <input
-              id="image-upload"
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={(e) => handleImageUpload(e.target.files)}
-              style={{ display: 'none' }}
-            />
+      {/* Helper Text */}
+      <Text fontSize="xs" color="gray.500" px={2}>
+        5–15 seconds • MP4/MOV • up to 50MB
+      </Text>
+    </VStack>
+  )
 
-            {/* Image Conversion Messages */}
-            {imageConversionMessages.length > 0 && (
-              <VStack spacing={2} align="stretch" mb={4}>
-                {imageConversionMessages.map((msg, idx) => (
-                  <Alert
-                    key={idx}
-                    status={msg.type === 'error' ? 'error' : msg.type === 'warning' ? 'warning' : 'info'}
-                    borderRadius="lg"
-                    fontSize="sm"
-                  >
-                    <AlertIcon />
-                    <VStack align="start" spacing={0}>
-                      <Text fontWeight="600">{msg.file}</Text>
-                      <Text fontSize="xs">{msg.message}</Text>
-                    </VStack>
-                  </Alert>
-                ))}
-              </VStack>
-            )}
-
-            {/* Image Count Status */}
-            <Box>
-              <HStack justify="space-between" mb={3}>
-                <Text fontWeight="semibold" color="gray.700">
-                  Images uploaded: {uploadedImages.length}/8
-                </Text>
-                {uploadedImages.length === 0 && (
-                  <Badge colorScheme="orange">
-                    Need {3 - uploadedImages.length} more image(s)
-                  </Badge>
-                )}
-                {uploadedImages.length >= 3 && (
-                  <Badge colorScheme="green">
-                    Ready to proceed
-                  </Badge>
-                )}
+  const renderStep2 = () => (
+    <VStack spacing={2} align="stretch">
+      {/* ──────── AI SUMMARY CARD (Collapsed by default) ──────── */}
+      <Box
+        bg="white"
+        borderRadius="lg"
+        borderWidth="1px"
+        borderColor="gray.200"
+        p={2.5}
+        cursor="pointer"
+        onClick={() => setExpandProductDetails(!expandProductDetails)}
+        transition="all 0.2s"
+        _hover={{ borderColor: "brand.300", shadow: "sm" }}
+      >
+        {/* Collapsed View */}
+        {!expandProductDetails ? (
+          <HStack justify="space-between" align="center" spacing={2}>
+            {/* AI Badges or Loading Skeleton */}
+            {isGenerating && !aiDone ? (
+              <HStack spacing={2} flex={1} minW={0}>
+                <Skeleton height="20px" width="60px" borderRadius="md" />
+                <Skeleton height="20px" width="80px" borderRadius="md" />
+                <Skeleton height="20px" width="70px" borderRadius="md" />
               </HStack>
-            </Box>
-
-            {/* Image Previews */}
-            {uploadedImages.length > 0 && (
-              <SimpleGrid columns={{ base: 4, md: 4 }} spacing={2}>
-                {uploadedImages.map((_, index) => (
-                  <Box key={index} position="relative" aspectRatio="1">
-                    <Image
-                      src={imagePreviewUrls[index]}
-                      alt={`Preview ${index + 1}`}
-                      borderRadius="md"
-                      objectFit="cover"
-                      w="full"
-                      h="full"
-                    />
-                    <IconButton
-                      icon={<CloseIcon />}
-                      aria-label="Remove image"
-                      size="xs"
-                      position="absolute"
-                      top={1}
-                      right={1}
-                      colorScheme="red"
-                      onClick={() => removeImage(index)}
-                    />
-                  </Box>
-                ))}
-              </SimpleGrid>
-            )}
-
-            {/* Video Upload Section */}
-            <Box mt={4}>
-              <Text fontWeight="semibold" color="gray.700" mb={2}>
-                Product Video (Optional)
-              </Text>
-              <Text fontSize="xs" color="gray.500" mb={2}>
-                Add a short 5-15 second video of your product
-              </Text>
-              {!uploadedVideo ? (
-                <Box
-                  border="2px dashed"
-                  borderColor={borderColor}
-                  borderRadius="lg"
-                  p={4}
-                  textAlign="center"
-                  cursor="pointer"
-                  _hover={{ borderColor: 'brand.500' }}
-                  onClick={() => document.getElementById('video-upload')?.click()}
-                >
-                  <VStack spacing={1}>
-                    <AddIcon boxSize={5} color="gray.400" />
-                    <Text fontSize="sm" color="gray.600">Upload Video</Text>
-                    <Text fontSize="xs" color="gray.500">MP4, MOV up to 50MB</Text>
-                  </VStack>
-                </Box>
-              ) : (
-                <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" maxH="200px">
-                  <video
-                    src={videoPreviewUrl}
-                    controls
-                    style={{ width: '100%', maxHeight: '200px', objectFit: 'contain' }}
-                  />
-                  <IconButton
-                    icon={<CloseIcon />}
-                    aria-label="Remove video"
-                    size="xs"
-                    position="absolute"
-                    top={2}
-                    right={2}
-                    colorScheme="red"
-                    onClick={removeVideo}
-                  />
-                </Box>
-              )}
-              <input
-                id="video-upload"
-                type="file"
-                accept="video/*"
-                onChange={(e) => handleVideoUpload(e.target.files)}
-                style={{ display: 'none' }}
-              />
-            </Box>
-          </VStack>
-        )
-
-      case 2:
-        return (
-          <VStack spacing={6} align="stretch">
-            <FormControl isRequired>
-              <HStack justify="space-between" align="center">
-                <FormLabel mb={0}>Product Name</FormLabel>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  colorScheme="purple"
-                  mb="2"
-                  title="Generate product details from images using AI"
-                  isLoading={isGenerating}
-                  loadingText="Analyzing..."
-                  isDisabled={uploadedImages.length < 3 || isGenerating}
-                  onClick={async () => {
-                    if (uploadedImages.length < 3) {
-                      toast({
-                        title: 'Insufficient images',
-                        description: 'Please upload at least 3 images to use AI generation',
-                        status: 'warning',
-                        duration: 3000,
-                        isClosable: true,
-                      })
-                      return
-                    }
-                    setIsGenerating(true)
-                    try {
-                      const formData = new FormData()
-                      uploadedImages.slice(0, 3).forEach((file) => {
-                        formData.append('images', file)
-                      })
-                      const response = await api.post('/api/products/generate-details', formData)
-                      const data = response.data
-                      if (data.success && data.data) {
-                        handleInputChange('title', data.data.title || '')
-                        handleInputChange('description', data.data.description || '')
-                        handleInputChange('condition', data.data.condition || 'Used')
-                        handleInputChange('category', data.data.category || 'General')
-                        toast({
-                          title: 'AI generation complete!',
-                          description: 'Product details have been auto-filled',
-                          status: 'success',
-                          duration: 3000,
-                          isClosable: true,
-                        })
-                      } else {
-                        throw new Error(data.error || 'AI generation failed')
-                      }
-                    } catch (error: any) {
-                      toast({
-                        title: 'Generation failed',
-                        description: error.message || 'Failed to generate product details',
-                        status: 'error',
-                        duration: 3000,
-                        isClosable: true,
-                      })
-                    } finally {
-                      setIsGenerating(false)
-                    }
-                  }}
-                >
-                  ✨ Auto Generate
-                </Button>
-              </HStack>
-              <Input
-                placeholder="e.g., iPhone 13 Pro"
-                value={formData.title}
-                onChange={(e) => handleInputChange('title', e.target.value)}
-                size="lg"
-                maxLength={25}
-              />
-              <HStack justify="space-between" mt={1}>
-                <FormHelperText>Be specific (max 25 chars)</FormHelperText>
+            ) : aiDone ? (
+              <HStack spacing={1} flex={1} minW={0}>
+                <Text fontSize="8px" fontWeight="bold" color="purple.600">✨</Text>
+                <Badge fontSize="7px" colorScheme="purple" py={0.5} noOfLines={1}>
+                  {formData.item_type || '—'}
+                </Badge>
+                <Badge fontSize="7px" colorScheme="gray" py={0.5} noOfLines={1}>
+                  {formData.brand || '—'}
+                </Badge>
                 <Badge
-                  colorScheme={titleLength === 0 ? 'gray' : titleLength <= 25 ? 'green' : 'orange'}
-                  fontSize="xs"
+                  fontSize="7px"
+                  colorScheme={
+                    formData.authenticity_risks === 'High' ? 'red' :
+                      formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                  }
+                  py={0.5}
+                  noOfLines={1}
                 >
-                  {titleLength}/25
+                  {formData.authenticity_risks || 'Low'}
                 </Badge>
               </HStack>
-            </FormControl>
-
-            <FormControl isRequired>
-              <FormLabel>
-                <HStack justify="space-between" w="full">
-                  <Text>Description</Text>
-                  <Badge
-                    colorScheme={
-                      descriptionLength < 50 ? 'red' :
-                        descriptionLength <= 500 ? 'green' : 'orange'
-                    }
-                    fontSize="xs"
-                  >
-                    {descriptionLength}/500 chars
-                  </Badge>
-                </HStack>
-              </FormLabel>
-              <Textarea
-                placeholder="Describe your product in detail..."
-                value={formData.description}
-                onChange={(e) => {
-                  handleInputChange('description', e.target.value)
-                }}
-                rows={6}
-                size="lg"
-                borderColor={
-                  descriptionLength < 50 ? 'red.300' :
-                    descriptionLength <= 500 ? 'green.300' : 'orange.300'
-                }
-                _focus={{
-                  borderColor:
-                    descriptionLength < 50 ? 'red.500' :
-                      descriptionLength <= 500 ? 'green.500' : 'orange.500',
-                }}
-              />
-              <Box
-                mt={2}
-                p={2}
-                bg={
-                  descriptionLength < 50 ? 'red.50' :
-                    descriptionLength <= 500 ? 'green.50' : 'orange.50'
-                }
-                borderRadius="md"
-                borderLeftWidth="4px"
-                borderLeftColor={
-                  descriptionLength < 50 ? 'red.400' :
-                    descriptionLength <= 500 ? 'green.400' : 'orange.400'
-                }
-              >
-                <Text fontSize="sm" color="gray.700">
-                  {descriptionLength < 50
-                    ? `⚠️ Add at least ${50 - descriptionLength} more characters (minimum 50)`
-                    : descriptionLength <= 500
-                      ? `✓ Perfect length! ${descriptionLength} characters`
-                      : `❌ Description exceeds limit by ${descriptionLength - 500} characters`
-                  }
-                </Text>
-              </Box>
-            </FormControl>
-
-            <FormControl isRequired>
-              <FormLabel>Condition <Text as="span" color="red.500">*</Text></FormLabel>
-              <Select
-                placeholder="Select condition"
-                value={formData.condition}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('condition', e.target.value)}
-                size="lg"
-                borderColor={!formData.condition ? 'red.300' : 'inherit'}
-              >
-                <option value="New">New</option>
-                <option value="Like-New">Like-New</option>
-                <option value="Used">Used</option>
-                <option value="Fair">Fair</option>
-              </Select>
-            </FormControl>
-
-            <FormControl isRequired>
-              <FormLabel>Category <Text as="span" color="red.500">*</Text></FormLabel>
-              <Select
-                placeholder="Select category"
-                value={formData.category}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleInputChange('category', e.target.value)}
-                size="lg"
-                borderColor={!formData.category ? 'red.300' : 'inherit'}
-              >
-                {PRODUCT_CATEGORIES.map(cat => (
-                  <option key={cat.value} value={cat.value}>{cat.label}</option>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl isRequired isInvalid={!formData.location?.trim() && !isGettingLocation}>
-              <FormLabel>Location <Text as="span" color="red.500">*</Text></FormLabel>
-              <VStack spacing={2}>
-                {isGettingLocation ? (
-                  <Box
-                    p={3}
-                    bg="yellow.50"
-                    borderRadius="md"
-                    w="full"
-                    borderLeft="3px solid"
-                    borderLeftColor="yellow.400"
-                  >
-                    <HStack spacing={2}>
-                      <Spinner size="sm" color="yellow.600" />
-                      <Text fontSize="sm" color="yellow.800">
-                        Detecting your location...
-                      </Text>
-                    </HStack>
-                  </Box>
-                ) : locationCoordinates && formData.location ? (
-                  <>
-                    <Box
-                      p={3}
-                      bg="green.50"
-                      borderRadius="md"
-                      w="full"
-                      borderLeft="3px solid"
-                      borderLeftColor="green.400"
-                    >
-                      <Text fontSize="sm" color="green.800" fontWeight="semibold" mb={1}>
-                        ✓ Location Detected
-                      </Text>
-                      <Text fontSize="sm" color="gray.700">
-                        {formData.location}
-                      </Text>
-                    </Box>
-                    <Button
-                      variant="outline"
-                      w="full"
-                      size="sm"
-                      onClick={() => {
-                        setLocationCoordinates(null)
-                        setLocationError(null)
-                        handleInputChange('location', '')
-                        handleGetCurrentLocation()
-                      }}
-                    >
-                      Detect Location Again
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Input
-                      placeholder="e.g., Cebu City, Cebu"
-                      value={formData.location}
-                      onChange={(e) => handleInputChange('location', e.target.value)}
-                      size="lg"
-                      borderColor={!formData.location?.trim() ? 'red.300' : 'inherit'}
-                    />
-                    <Button
-                      variant="outline"
-                      w="full"
-                      size="sm"
-                      colorScheme="brand"
-                      onClick={() => {
-                        setLocationCoordinates(null)
-                        setLocationError(null)
-                        handleInputChange('location', '')
-                        handleGetCurrentLocation()
-                      }}
-                    >
-                      🔄 Try Auto-Detect Again
-                    </Button>
-                  </>
-                )}
-                {locationError && (
-                  <Box
-                    p={2}
-                    bg="red.50"
-                    borderRadius="md"
-                    w="full"
-                    borderLeft="3px solid"
-                    borderLeftColor="red.400"
-                  >
-                    <HStack spacing={2}>
-                      <WarningIcon color="red.600" boxSize={3} />
-                      <Text fontSize="xs" color="red.700">
-                        {locationError} — Please type your location manually below.
-                      </Text>
-                    </HStack>
-                  </Box>
-                )}
-                {!formData.location?.trim() && !isGettingLocation && (
-                  <Box
-                    p={2}
-                    bg="red.50"
-                    borderRadius="md"
-                    w="full"
-                    borderLeftWidth="4px"
-                    borderLeftColor="red.400"
-                  >
-                    <Text fontSize="sm" color="red.700">
-                      ⚠️ Location is required to proceed
-                    </Text>
-                  </Box>
-                )}
-                <FormHelperText fontSize="xs">
-                  Your location helps buyers find nearby items. Auto-detected via GPS or enter manually.
-                </FormHelperText>
-              </VStack>
-            </FormControl>
-          </VStack>
-        )
-
-      case 3:
-        return (
-          <VStack spacing={6} align="stretch">
-            <Box>
-              <Heading size="sm" mb={2} color="gray.700">
-                What I Want in Exchange
-              </Heading>
-              <Text fontSize="sm" color="gray.500" mb={4}>
-                Specify the items or categories you're interested in trading for. This helps with multi-way trading loops.
-              </Text>
-            </Box>
-
-            <FormControl isRequired isInvalid={!!wantsValidationError}>
-              <FormLabel fontWeight="semibold">Desired Items</FormLabel>
-              <Textarea
-                placeholder="e.g., iPhone 12, gaming laptop, DSLR camera, collectible items, electronics..."
-                value={formData.wants}
-                onChange={(e) => {
-                  const newValue = e.target.value
-                  setFormData(prev => ({ ...prev, wants: newValue }))
-                  // Real-time validation
-                  const error = validateDesiredItems(newValue)
-                  setWantsValidationError(error)
-                }}
-                size="lg"
-                rows={6}
-                bg="white"
-                borderWidth="2px"
-                borderColor={wantsValidationError ? 'red.500' : 'gray.200'}
-                _focus={{ borderColor: wantsValidationError ? 'red.600' : 'brand.500', shadow: 'md' }}
-                fontSize="md"
-              />
-              {wantsValidationError ? (
-                <Box mt={2} p={3} bg="red.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="red.500">
-                  <Text fontSize="sm" color="red.700" fontWeight="600">
-                    {wantsValidationError}
-                  </Text>
-                  <Text fontSize="xs" color="red.600" mt={1}>
-                    Please remove prohibited items and only list legitimate items you want to trade for.
-                  </Text>
-                </Box>
-              ) : (
-                <FormHelperText>
-                  <VStack align="start" spacing={1} mt={2}>
-                    <Text fontSize="xs" color="gray.600">
-                      Be specific about what you're looking for. This enables advanced multi-way trading algorithms.
-                    </Text>
-                    <Text fontSize="xs" color="green.600" fontWeight="semibold">
-                      ✓ Items look good!
-                    </Text>
-                  </VStack>
-                </FormHelperText>
-              )}
-            </FormControl>
-
-            <FormControl>
-              <FormLabel fontWeight="semibold">Desired Categories</FormLabel>
-              <Text fontSize="xs" color="gray.500" mb={3}>
-                Tap categories you're interested in. This helps match you with relevant trades.
-              </Text>
-              <Box display="flex" flexWrap="wrap" gap={2}>
-                {PRODUCT_CATEGORIES.map((cat) => {
-                  const isSelected = wantedCategories.includes(cat.value)
-                  return (
-                    <Badge
-                      key={cat.value}
-                      px={3}
-                      py={1.5}
-                      borderRadius="full"
-                      cursor="pointer"
-                      fontSize="xs"
-                      fontWeight="semibold"
-                      bg={isSelected ? 'brand.500' : 'gray.100'}
-                      color={isSelected ? 'white' : 'gray.600'}
-                      borderWidth="1px"
-                      borderColor={isSelected ? 'brand.600' : 'gray.200'}
-                      _hover={{ bg: isSelected ? 'brand.600' : 'gray.200' }}
-                      transition="all 0.15s"
-                      onClick={() => {
-                        setWantedCategories(prev =>
-                          isSelected
-                            ? prev.filter(c => c !== cat.value)
-                            : [...prev, cat.value]
-                        )
-                      }}
-                    >
-                      {cat.label}
-                    </Badge>
-                  )
-                })}
-              </Box>
-              {wantedCategories.length > 0 && (
-                <Text fontSize="xs" color="green.600" fontWeight="semibold" mt={2}>
-                  ✓ {wantedCategories.length} {wantedCategories.length === 1 ? 'category' : 'categories'} selected
-                </Text>
-              )}
-            </FormControl>
-
-            <Box p={4} bg="blue.50" borderRadius="lg" borderLeftWidth="4px" borderLeftColor="blue.400">
-              <VStack align="start" spacing={2}>
-                <HStack>
-                  <Box color="blue.600" fontSize="lg">🔄</Box>
-                  <Text fontWeight="semibold" color="blue.800" fontSize="sm">
-                    Multi-Way Trading
-                  </Text>
-                </HStack>
-                <Text fontSize="xs" color="blue.700">
-                  Your "wants" list and desired categories will be used to find trading loops where multiple users can exchange items in a chain.
-                  For example: You want a laptop → Someone has a laptop but wants a camera → Someone has a camera but wants your item.
-                </Text>
-              </VStack>
-            </Box>
-          </VStack>
-        )
-
-      case 4:
-        return (
-          <VStack spacing={8} align="stretch">
-            <Box>
-              <Heading size="sm" mb={2} color="gray.700">
-                Exchange Preferences
-              </Heading>
-              <Text fontSize="sm" color="gray.500">
-                Choose how you'd like to exchange your product
-              </Text>
-            </Box>
-
-            {/* Barter Only - Available to All */}
-            <Box
-              p={5}
-              bg="blue.50"
-              borderRadius="lg"
-              borderLeft="4px solid"
-              borderLeftColor="blue.400"
-            >
-              <FormControl>
-                <HStack justify="space-between" align="start">
-                  <VStack align="start" spacing={1} flex={1}>
-                    <FormLabel m={0} fontWeight="semibold" color="gray.800">
-                      Barter Only
-                    </FormLabel>
-                    <Text fontSize="sm" color="gray.600">
-                      Accept item exchanges and barter.
-                    </Text>
-                    <Badge colorScheme="blue" variant="subtle" fontSize="xs" mt={2}>
-                      Available to All Users
-                    </Badge>
-                  </VStack>
-                  <Switch
-                    isChecked={formData.barter_only}
-                    onChange={(e) => handleInputChange('barter_only', e.target.checked)}
-                    colorScheme="blue"
-                  />
-                </HStack>
-              </FormControl>
-            </Box>
-
-
-
-            {/* Bidding Type Section */}
-            <Box>
-              <Heading size="sm" mb={4} color="gray.700">
-                Bidding & Offers Type
-              </Heading>
-              <FormControl>
-                <FormLabel fontWeight="semibold" mb={3}>
-                  How would you like buyers to interact with this item?
-                </FormLabel>
-                <VStack spacing={3} align="start">
-                  <Box
-                    p={3}
-                    borderWidth="2px"
-                    borderRadius="md"
-                    cursor="pointer"
-                    borderColor={formData.bidding_type === 'none' ? 'blue.500' : 'gray.200'}
-                    bg={formData.bidding_type === 'none' ? 'blue.50' : 'white'}
-                    _hover={{ borderColor: 'blue.400' }}
-                    onClick={() => handleInputChange('bidding_type', 'none')}
-                  >
-                    <HStack justify="space-between" w="100%">
-                      <VStack align="start" spacing={1}>
-                        <Text fontWeight="semibold" color="gray.800">
-                          No Bidding
-                        </Text>
-                        <Text fontSize="sm" color="gray.600">
-                          Buyers can only accept/decline your set price or make trade offers
-                        </Text>
-                      </VStack>
-                      <Box>
-                        <input
-                          type="radio"
-                          name="bidding_type"
-                          value="none"
-                          checked={formData.bidding_type === 'none'}
-                          onChange={() => { }}
-                        />
-                      </Box>
-                    </HStack>
-                  </Box>
-
-                  <Box
-                    p={3}
-                    borderWidth="2px"
-                    borderRadius="md"
-                    cursor="pointer"
-                    borderColor={formData.bidding_type === 'blind' ? 'blue.500' : 'gray.200'}
-                    bg={formData.bidding_type === 'blind' ? 'blue.50' : 'white'}
-                    _hover={{ borderColor: 'blue.400' }}
-                    onClick={() => handleInputChange('bidding_type', 'blind')}
-                  >
-                    <HStack justify="space-between" w="100%">
-                      <VStack align="start" spacing={1}>
-                        <Text fontWeight="semibold" color="gray.800">
-                          Blind Bidding
-                        </Text>
-                        <Text fontSize="sm" color="gray.600">
-                          Buyers submit private offers without seeing others' bids. You choose the best offer
-                        </Text>
-                      </VStack>
-                      <Box>
-                        <input
-                          type="radio"
-                          name="bidding_type"
-                          value="blind"
-                          checked={formData.bidding_type === 'blind'}
-                          onChange={() => { }}
-                        />
-                      </Box>
-                    </HStack>
-                  </Box>
-
-                  <Box
-                    p={3}
-                    borderWidth="2px"
-                    borderRadius="md"
-                    cursor="pointer"
-                    borderColor={formData.bidding_type === 'open' ? 'blue.500' : 'gray.200'}
-                    bg={formData.bidding_type === 'open' ? 'blue.50' : 'white'}
-                    _hover={{ borderColor: 'blue.400' }}
-                    onClick={() => handleInputChange('bidding_type', 'open')}
-                  >
-                    <HStack justify="space-between" w="100%">
-                      <VStack align="start" spacing={1}>
-                        <Text fontWeight="semibold" color="gray.800">
-                          Open Bidding
-                        </Text>
-                        <Text fontSize="sm" color="gray.600">
-                          Buyers can see all bids and counter-bid. Most competitive option for maximum price discovery
-                        </Text>
-                      </VStack>
-                      <Box>
-                        <input
-                          type="radio"
-                          name="bidding_type"
-                          value="open"
-                          checked={formData.bidding_type === 'open'}
-                          onChange={() => { }}
-                        />
-                      </Box>
-                    </HStack>
-                  </Box>
-                </VStack>
-              </FormControl>
-            </Box>
-
-            {/* Premium Features Section */}
-            <Box>
-              <Heading size="sm" mb={3} color="gray.700">
-                Premium Features
-              </Heading>
-
-              {!user?.is_premium && (
-                <Box
-                  p={4}
-                  bg="orange.50"
-                  borderRadius="lg"
-                  borderLeft="4px solid"
-                  borderLeftColor="orange.400"
-                  mb={4}
-                  cursor="pointer"
-                  _hover={{ bg: "orange.100", transform: "translateY(-2px)" }}
-                  transition="all 0.2s ease"
-                  onClick={onOpenPremiumModal}
-                >
-                  <HStack spacing={2}>
-                    <Box fontSize="lg">⭐</Box>
-                    <VStack align="start" spacing={0} flex={1}>
-                      <Text fontWeight="semibold" color="orange.900" fontSize="sm">
-                        Upgrade to Premium
-                      </Text>
-                      <Text fontSize="xs" color="orange.800">
-                        Unlock premium listing and buying features to reach more buyers
-                      </Text>
-                    </VStack>
-                    <Box fontSize="lg" color="orange.600">→</Box>
-                  </HStack>
-                </Box>
-              )}
-
-              {/* Premium Listing */}
-              <Box
-                p={5}
-                bg={user?.is_premium ? "yellow.50" : "gray.50"}
-                borderRadius="lg"
-                borderLeft="4px solid"
-                borderLeftColor={user?.is_premium ? "yellow.400" : "gray.300"}
-                opacity={user?.is_premium ? 1 : 0.6}
-                mb={3}
-              >
-                <FormControl isDisabled={!user?.is_premium}>
-                  <HStack justify="space-between" align="start">
-                    <VStack align="start" spacing={1} flex={1}>
-                      <HStack spacing={2}>
-                        <FormLabel m={0} fontWeight="semibold" color="gray.800">
-                          Premium Listing
-                        </FormLabel>
-                        <Badge colorScheme="yellow" variant="solid" fontSize="xs">
-                          ⭐ Premium
-                        </Badge>
-                      </HStack>
-                      <Text fontSize="sm" color={user?.is_premium ? "gray.600" : "gray.500"}>
-                        {user?.is_premium
-                          ? 'Feature your product at the top of search results for maximum visibility'
-                          : 'Feature your product at the top of search results'
-                        }
-                      </Text>
-                      {user?.is_premium && (
-                        <Badge colorScheme="purple" variant="subtle" fontSize="xs" mt={2}>
-                          Up to 20 premium listings
-                        </Badge>
-                      )}
-                    </VStack>
-                    <Switch
-                      isChecked={formData.premium}
-                      onChange={(e) => handleInputChange('premium', e.target.checked)}
-                      colorScheme="yellow"
-                      isDisabled={!user?.is_premium}
-                    />
-                  </HStack>
-                </FormControl>
-              </Box>
-
-              {/* Allow Buying */}
-              <Box
-                p={5}
-                bg={user?.is_premium ? "green.50" : "gray.50"}
-                borderRadius="lg"
-                borderLeft="4px solid"
-                borderLeftColor={user?.is_premium ? "green.400" : "gray.300"}
-                opacity={user?.is_premium ? 1 : 0.6}
-              >
-                <FormControl isDisabled={!user?.is_premium}>
-                  <HStack justify="space-between" align="start">
-                    <VStack align="start" spacing={1} flex={1}>
-                      <HStack spacing={2}>
-                        <FormLabel m={0} fontWeight="semibold" color="gray.800">
-                          Allow Buying
-                        </FormLabel>
-                        <Badge colorScheme="green" variant="solid" fontSize="xs">
-                          💰 Premium
-                        </Badge>
-                      </HStack>
-                      <Text fontSize="sm" color={user?.is_premium ? "gray.600" : "gray.500"}>
-                        {user?.is_premium
-                          ? 'Accept cash only offers'
-                          : 'Accept cash only offers'
-                        }
-                      </Text>
-                      {user?.is_premium && (
-                        <Badge colorScheme="purple" variant="subtle" fontSize="xs" mt={2}>
-                          Accept both barter & cash transactions
-                        </Badge>
-                      )}
-                    </VStack>
-                    <Switch
-                      isChecked={formData.allow_buying}
-                      onChange={(e) => {
-                        handleInputChange('allow_buying', e.target.checked)
-                        if (!e.target.checked) {
-                          handleInputChange('price', undefined)
-                        }
-                      }}
-                      colorScheme="green"
-                      isDisabled={!user?.is_premium}
-                    />
-                  </HStack>
-                </FormControl>
-              </Box>
-            </Box>
-          </VStack>
-        )
-
-      case 6:
-        return (
-          <VStack spacing={6} align="stretch">
-            {formData.allow_buying ? (
-              <FormControl isRequired>
-                <FormLabel>Price (PHP)</FormLabel>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={formData.price || ''}
-                  onChange={(e) => handleInputChange('price', e.target.value ? Number(e.target.value) : 0)}
-                  size="lg"
-                  min="0"
-                  step="0.01"
-                />
-                <FormHelperText>Set a fair price for your product</FormHelperText>
-              </FormControl>
             ) : (
-              <Center py={8}>
-                <VStack spacing={4}>
-                  <Badge colorScheme="green" variant="solid" size="lg">
-                    Barter Only
-                  </Badge>
-                  <Text color="gray.600">
-                    This product will only accept item exchanges. Price set to ₱0.00
-                  </Text>
-                </VStack>
-              </Center>
+              <Text fontSize="xs" color="gray.600" flex={1}>
+                {formData.title || 'Enter product details...'}
+              </Text>
             )}
-          </VStack>
-        )
-
-      case 5:
-        return (
-          <VStack spacing={6} align="stretch">
-            <Text fontSize="lg" color="gray.600">
-              Review your product details before posting
+            {/* Dropdown Arrow */}
+            <Text
+              fontSize="lg"
+              color="gray.500"
+              transform={expandProductDetails ? "rotate(180deg)" : "rotate(0deg)"}
+              transition="transform 0.2s"
+              flexShrink={0}
+            >
+              ▼
             </Text>
+          </HStack>
+        ) : (
+          /* Expanded View */
+          <VStack spacing={2} align="stretch">
+            {/* Close/Collapse hint - clicking these closes the dropdown */}
+            <HStack justify="space-between" align="center" onClick={() => setExpandProductDetails(false)}>
+              <Text fontSize="xs" fontWeight="bold" color="gray.700">Edit Details</Text>
+              <Text fontSize="lg" color="gray.500" cursor="pointer">▲</Text>
+            </HStack>
 
-            <Box bg="gray.50" p={6} borderRadius="lg">
-              <VStack spacing={4} align="stretch">
-                <HStack justify="space-between">
-                  <Text fontWeight="semibold">Title:</Text>
-                  <Text>{formData.title}</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text fontWeight="semibold">Images:</Text>
-                  <Text>{uploadedImages.length} photo(s)</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text fontWeight="semibold">Video:</Text>
-                  <Text>{uploadedVideo ? '1 video attached' : 'None'}</Text>
-                </HStack>
-                <HStack justify="space-between">
-                  <Text fontWeight="semibold">Premium:</Text>
-                  <Badge colorScheme={formData.premium ? 'yellow' : 'gray'}>
-                    {formData.premium ? 'Yes' : 'No'}
+            {/* AI Analyzing Indicator */}
+            {isGenerating && !aiDone && (
+              <Alert
+                status="info"
+                fontSize="xs"
+                borderRadius="md"
+                bg="blue.50"
+                borderColor="blue.200"
+                borderWidth="1px"
+              >
+                <Spinner size="xs" mr={2} color="blue.500" />
+                <Text color="blue.700">AI is analyzing your photos...</Text>
+              </Alert>
+            )}
+
+            {/* Product Name */}
+            <FormControl isRequired>
+              <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Product Name</FormLabel>
+              <Input
+                placeholder="e.g., Nike Air Force 1"
+                value={formData.title}
+                onChange={e => {
+                  handleField('title', e.target.value)
+                  setTitleLength(e.target.value.length)
+                }}
+                onFocus={() => setNameFieldFocused(true)}
+                onBlur={() => setNameFieldFocused(false)}
+                maxLength={25}
+                onClick={e => e.stopPropagation()}
+                size="sm"
+                h="32px"
+              />
+              {nameFieldFocused && (
+                <Badge colorScheme={titleLength <= 25 ? 'green' : 'orange'} fontSize="9px" mt={1}>
+                  {titleLength}/25
+                </Badge>
+              )}
+            </FormControl>
+
+            {/* Product Description */}
+            <FormControl isRequired>
+              <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Description</FormLabel>
+              <Textarea
+                placeholder="Describe your product..."
+                value={formData.description}
+                onChange={e => {
+                  handleField('description', e.target.value)
+                  setDescriptionLength(e.target.value.length)
+                }}
+                onFocus={() => setDescriptionFieldFocused(true)}
+                onBlur={() => setDescriptionFieldFocused(false)}
+                onClick={e => e.stopPropagation()}
+                rows={2}
+                size="sm"
+              />
+              {descriptionFieldFocused && (
+                <HStack justify="space-between" mt={1}>
+                  <Text fontSize="9px" color={descriptionLength < 50 ? 'red.500' : 'gray.500'}>
+                    {descriptionLength < 50 ? `${50 - descriptionLength} more chars` : '✓ Min met'}
+                  </Text>
+                  <Badge colorScheme={descriptionLength < 50 ? 'red' : 'green'} fontSize="9px">
+                    {descriptionLength}/800
                   </Badge>
                 </HStack>
-                <HStack justify="space-between">
-                  <Text fontWeight="semibold">Buying:</Text>
-                  <Badge colorScheme={formData.allow_buying ? 'blue' : 'green'}>
-                    {formData.allow_buying ? 'Allowed' : 'Barter Only'}
-                  </Badge>
-                </HStack>
-                {formData.allow_buying && formData.price && (
-                  <HStack justify="space-between">
-                    <Text fontWeight="semibold">Price:</Text>
-                    <Text color="brand.500" fontWeight="bold">
-                      ₱{formData.price.toFixed(2)}
-                    </Text>
-                  </HStack>
-                )}
+              )}
+            </FormControl>
+
+            {/* Condition + Category - Responsive */}
+            <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={2}>
+              <FormControl isRequired>
+                <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Condition</FormLabel>
+                <Select
+                  placeholder="Select"
+                  value={formData.condition}
+                  onChange={e => handleField('condition', e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  size="sm"
+                  h="32px"
+                >
+                  {CONDITION_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </FormControl>
+
+              <FormControl isRequired>
+                <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Category</FormLabel>
+                <Select
+                  placeholder="Select"
+                  value={formData.category}
+                  onChange={e => handleField('category', e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  size="sm"
+                  h="32px"
+                >
+                  {PRODUCT_CATEGORIES.map(cat => (
+                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                  ))}
+                </Select>
+              </FormControl>
+            </SimpleGrid>
+          </VStack>
+        )}
+      </Box>
+
+      {/* ──────── LOCATION BAR (Simple, subtle) ──────── */}
+      <Box bg="gray.100" p={2} borderRadius="md">
+        {isGettingLocation ? (
+          <HStack spacing={2}>
+            <Spinner size="sm" color="blue.600" />
+            <Text fontSize="xs" color="gray.600">Detecting location...</Text>
+          </HStack>
+        ) : locationDetected && locationText ? (
+          <HStack justify="space-between" align="center" spacing={2}>
+            <Text fontSize="xs" color="gray.700">
+              📍 {locationText}
+            </Text>
+            <Button
+              size="xs"
+              variant="ghost"
+              fontSize="9px"
+              h="auto"
+              py={1}
+              onClick={detectLocation}
+              isLoading={isGettingLocation}
+              _hover={{ bg: "gray.200" }}
+            >
+              Wrong Location?
+            </Button>
+          </HStack>
+        ) : (
+          <HStack spacing={2}>
+            <Text fontSize="xs" color="red.600">⚠️ Location access needed</Text>
+            <Button size="xs" onClick={detectLocation} isLoading={isGettingLocation} fontSize="9px">
+              Enable
+            </Button>
+          </HStack>
+        )}
+      </Box>
+
+      {/* ──────── WHAT I WANT (Main Focus) ──────── */}
+      <VStack spacing={1.5} align="stretch">
+        <Heading fontSize="sm" fontWeight="bold" color="gray.800">
+          🔄 What I Want in Exchange
+        </Heading>
+
+        {/* Desired Items */}
+        <FormControl isRequired isInvalid={!!wantsError}>
+          <Textarea
+            placeholder="List specific items you're looking for..."
+            value={formData.wants}
+            onChange={e => {
+              handleField('wants', e.target.value)
+              setWantsError(validateDesiredItems(e.target.value))
+            }}
+            rows={3}
+            size="sm"
+          />
+          {wantsError && <Text fontSize="xs" color="red.500" mt={1}>{wantsError}</Text>}
+        </FormControl>
+
+        {/* Categories - Horizontally Scrollable on Mobile */}
+        <FormControl>
+          <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Categories</FormLabel>
+          <Box
+            display={{ base: "flex", sm: "grid" }}
+            gridTemplateColumns={{ sm: "repeat(auto-fill, minmax(90px, 1fr))" }}
+            flexWrap={{ base: "nowrap", sm: "wrap" }}
+            overflowX={{ base: "auto", sm: "visible" }}
+            gap={1}
+            p={1.5}
+            bg="white"
+            borderRadius="md"
+            border="1px"
+            borderColor="gray.300"
+            maxH={{ base: "none", sm: showCategoryMore ? "none" : "80px" }}
+            overflow={{ base: "auto", sm: "hidden" }}
+            pb={{ base: 1, sm: 0 }}
+            transition="max-height 0.3s"
+          >
+            {PRODUCT_CATEGORIES.map(cat => {
+              const selected = wantedCategories.includes(cat.value)
+              return (
+                <Badge
+                  key={cat.value}
+                  px={2}
+                  py={1.5}
+                  borderRadius="full"
+                  cursor="pointer"
+                  fontSize="xs"
+                  fontWeight="medium"
+                  bg={selected ? 'brand.500' : 'gray.100'}
+                  color={selected ? 'white' : 'gray.700'}
+                  _hover={{ bg: selected ? 'brand.600' : 'gray.200' }}
+                  transition="all 0.15s"
+                  onClick={() => setWantedCategories(prev =>
+                    selected ? prev.filter(c => c !== cat.value) : [...prev, cat.value]
+                  )}
+                  justifyContent="center"
+                  minW={{ base: "max-content", sm: "auto" }}
+                  whiteSpace={{ base: "nowrap", sm: "normal" }}
+                >
+                  {cat.label}
+                </Badge>
+              )
+            })}
+          </Box>
+          {!showCategoryMore && PRODUCT_CATEGORIES.length > 12 && (
+            <Button
+              size="xs"
+              variant="ghost"
+              fontSize="xs"
+              mt={1}
+              onClick={() => setShowCategoryMore(true)}
+              colorScheme="gray"
+              w="full"
+              display={{ base: "none", sm: "block" }}
+            >
+              + {PRODUCT_CATEGORIES.length - 12} More Categories
+            </Button>
+          )}
+          {showCategoryMore && (
+            <Button
+              size="xs"
+              variant="ghost"
+              fontSize="xs"
+              mt={1}
+              onClick={() => setShowCategoryMore(false)}
+              colorScheme="gray"
+              w="full"
+              display={{ base: "none", sm: "block" }}
+            >
+              - Show Less
+            </Button>
+          )}
+        </FormControl>
+      </VStack>
+    </VStack>
+  )
+
+  const renderStep3 = () => {
+    const tags: string[] = (() => {
+      try { return formData.tags ? JSON.parse(formData.tags) : [] }
+      catch { return [] }
+    })()
+
+    const listingDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+    return (
+      <VStack spacing={4} align="stretch">
+        {/* ──────── PRODUCT IMAGES GALLERY ──────── */}
+        <Box>
+          {imagePreviewUrls.length > 0 ? (
+            <SimpleGrid columns={{ base: 5, sm: 6 }} spacing={0.5}>
+              {imagePreviewUrls.map((url, idx) => (
+                <Box
+                  key={idx}
+                  position="relative"
+                  paddingBottom="100%"
+                  bg="gray.100"
+                  borderRadius="xs"
+                  overflow="hidden"
+                >
+                  <Image
+                    src={url}
+                    alt={`Product ${idx + 1}`}
+                    position="absolute"
+                    top={0}
+                    left={0}
+                    w="full"
+                    h="full"
+                    objectFit="cover"
+                  />
+                </Box>
+              ))}
+            </SimpleGrid>
+          ) : (
+            <Box
+              w="full"
+              h="150px"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+              color="white"
+              borderRadius="lg"
+            >
+              <VStack spacing={2}>
+                <Text fontSize="3xl">📚</Text>
+                <Text fontSize="sm" fontWeight="medium">Product Images</Text>
               </VStack>
             </Box>
-          </VStack>
-        )
+          )}
+        </Box>
 
-      default:
-        return null
-    }
+        {/* ──────── TITLE ──────── */}
+        <Box>
+          <Heading fontSize="2xl" fontWeight="bold" color="gray.900" mb={2}>
+            {formData.title}
+          </Heading>
+
+          {/* Metadata Ribbon */}
+          <HStack
+            spacing={1.5}
+            p={2.5}
+            bg="gray.100"
+            borderRadius="lg"
+            flexWrap="wrap"
+            fontSize="xs"
+            color="gray.700"
+            fontWeight="medium"
+          >
+            <Text>✨ {formData.item_type || 'Item'}</Text>
+            <Text>•</Text>
+            <Text>{formData.brand || 'Unknown Brand'}</Text>
+            <Text>•</Text>
+            <Badge
+              colorScheme={
+                formData.authenticity_risks === 'High' ? 'red' :
+                  formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+              }
+              fontSize="xs"
+              variant="subtle"
+            >
+              {formData.authenticity_risks || 'Low'} Risk
+            </Badge>
+            <Text>•</Text>
+            <Text>{formData.condition}</Text>
+            <Text>•</Text>
+            <Text color="gray.600" fontSize="xs">Listed {listingDate}</Text>
+          </HStack>
+        </Box>
+
+        {/* ──────── ESTIMATED VALUE (Prominent) ──────── */}
+        <Box
+          p={4}
+          bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+          borderRadius="xl"
+          textAlign="center"
+          color="white"
+        >
+          <Text fontSize="xs" fontWeight="medium" opacity={0.9} mb={1}>
+            Estimated Value
+          </Text>
+          {isGenerating && !aiDone ? (
+            <Skeleton height="40px" borderRadius="md" />
+          ) : (
+            <Heading fontSize="3xl" fontWeight="bold">
+              ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
+            </Heading>
+          )}
+          <Text fontSize="xs" opacity={0.85} mt={2}>
+            {isGenerating && !aiDone ? 'Analyzing your product...' : 'Based on AI analysis of product condition and market data'}
+          </Text>
+        </Box>
+
+        {/* ──────── DESCRIPTION ──────── */}
+        <Box>
+          <Heading fontSize="sm" fontWeight="bold" color="gray.800" mb={2}>
+            About this item
+          </Heading>
+          <Text
+            fontSize="sm"
+            color="gray.700"
+            lineHeight={1.7}
+            whiteSpace="pre-wrap"
+            fontFamily="system-ui, -apple-system, sans-serif"
+          >
+            {formData.description}
+          </Text>
+        </Box>
+
+        {/* ──────── KEY DETAILS GRID - Responsive ──────── */}
+        <Box
+          p={3}
+          bg="gray.50"
+          borderRadius="lg"
+          display="grid"
+          gridTemplateColumns={{ base: "1fr", sm: "repeat(2, 1fr)" }}
+          gap={3}
+        >
+          <Box>
+            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Condition</Text>
+            <Text fontSize="sm" fontWeight="medium">{formData.condition}</Text>
+          </Box>
+          <Box>
+            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Category</Text>
+            <Text fontSize="sm" fontWeight="medium">{formData.category}</Text>
+          </Box>
+          {formData.authenticity_risks && (
+            <Box>
+              <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Authenticity Risk</Text>
+              <Badge
+                colorScheme={
+                  formData.authenticity_risks === 'High' ? 'red' :
+                    formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                }
+                fontSize="xs"
+              >
+                {formData.authenticity_risks}
+              </Badge>
+            </Box>
+          )}
+          <Box>
+            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Location</Text>
+            <Text fontSize="sm" fontWeight="medium">📍 {formData.location || 'Not detected'}</Text>
+          </Box>
+        </Box>
+
+        {/* ──────── TRADING SECTION ──────── */}
+        {(formData.wants || wantedCategories.length > 0) && (
+          <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
+            <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>
+              🔄 Open to Trading For
+            </Text>
+            {formData.wants && (
+              <Text fontSize="sm" color="gray.700" mb={2}>
+                {formData.wants}
+              </Text>
+            )}
+            {wantedCategories.length > 0 && (
+              <HStack flexWrap="wrap" spacing={1}>
+                {wantedCategories.map(cat => (
+                  <Badge key={cat} fontSize="xs" colorScheme="blue" variant="subtle">
+                    {cat}
+                  </Badge>
+                ))}
+              </HStack>
+            )}
+          </Box>
+        )}
+
+        {/* ──────── READY INDICATOR ──────── */}
+        <Box p={3} bg="green.50" borderRadius="lg" textAlign="center" borderLeft="3px solid" borderLeftColor="green.400">
+          <HStack justify="center" spacing={2}>
+            <CheckIcon color="green.600" boxSize={4} />
+            <Text fontWeight="semibold" fontSize="sm" color="green.800">
+              Everything looks great! Ready to publish.
+            </Text>
+          </HStack>
+        </Box>
+      </VStack>
+    )
   }
 
-  return (
-    // outer Box sets the viewport background color requested
-    <Box minH="100vh" bg={pageBg} py={8}>
-      <Box p={8} maxW="4xl" mx="auto">
-        <VStack spacing={8} align="stretch">
-          {/* Header */}
-          <Box textAlign="center">
-            <Heading size="xl" color="brand.500" mb={2}>
-              Add New Products
-            </Heading>
-            <Text color="gray.600">
-              Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
-            </Text>
-          </Box>
+  // ── Navigation ──────────────────────────────────────────────────────────
 
-          {/* Progress Bar */}
-          <Box>
-            <Progress
-              value={(currentStep / steps.length) * 100}
-              colorScheme="brand"
-              size="lg"
-              borderRadius="full"
-            />
-          </Box>
+  const handleNextClick = useCallback(() => {
+    // If on step 1 with images, navigate to step 2 first
+    if (currentStep === 1 && uploadedImages.length > 0) {
+      // Move to step 2 immediately (instant, snappy navigation)
+      setCurrentStep(2)
+      // Then trigger AI analysis in the background
+      setTimeout(() => {
+        triggerAI(uploadedImages)
+      }, 0)
+      return
+    }
+    // Otherwise, proceed to next step
+    setCurrentStep(s => s + 1)
+  }, [currentStep, uploadedImages, triggerAI])
+
+  const stepLabels = [
+    { number: 1, title: 'Upload Media', icon: '📸' },
+    { number: 2, title: 'Details & Preferences', icon: '✏️' },
+    { number: 3, title: 'Review & Post', icon: '📋' },
+  ]
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <Box minH="100vh" bg={pageBg} py={6}>
+      <Box p={6} maxW="3xl" mx="auto">
+        <VStack spacing={5} align="stretch">
+          {/* Enhanced Header with Step Breadcrumb */}
+          <VStack align="start" spacing={3}>
+            <Heading size="lg" color="brand.500">Post a Product</Heading>
+            
+            {/* Step Breadcrumb */}
+            <HStack spacing={2} fontSize="sm">
+              {stepLabels.map((step, idx) => (
+                <React.Fragment key={step.number}>
+                  <HStack 
+                    spacing={1.5}
+                    px={3}
+                    py={1.5}
+                    borderRadius="md"
+                    bg={currentStep === step.number ? 'brand.50' : 'transparent'}
+                    border={currentStep === step.number ? '1px solid' : 'none'}
+                    borderColor={currentStep === step.number ? 'brand.300' : 'transparent'}
+                    transition="all 0.2s"
+                    cursor={currentStep !== step.number ? 'pointer' : 'default'}
+                    _hover={currentStep !== step.number ? { bg: 'gray.50' } : {}}
+                    onClick={() => currentStep > step.number && setCurrentStep(step.number)}
+                  >
+                    <Text
+                      fontSize="sm"
+                      fontWeight={currentStep === step.number ? 'bold' : 'medium'}
+                      color={currentStep === step.number ? 'brand.600' : 'gray.600'}
+                    >
+                      {step.icon} {step.title}
+                    </Text>
+                    {currentStep === step.number && (
+                      <Badge colorScheme="brand" fontSize="10px">
+                        {Math.round((step.number / TOTAL_STEPS) * 100)}%
+                      </Badge>
+                    )}
+                  </HStack>
+                  {idx < stepLabels.length - 1 && (
+                    <Text color="gray.400" fontWeight="bold">→</Text>
+                  )}
+                </React.Fragment>
+              ))}
+            </HStack>
+          </VStack>
+
+          {/* Compact Step Progress Bar */}
+          <Progress
+            value={(currentStep / TOTAL_STEPS) * 100}
+            colorScheme="brand"
+            size="sm"
+            borderRadius="full"
+          />
 
           {/* Step Content */}
-          <Box bg={bgColor} p={8} borderRadius="lg" shadow="sm" border="1px" borderColor={borderColor}>
-            {renderStepContent()}
+          <Box bg={bgColor} p={{ base: 6, md: 8 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
+            {currentStep === 1 && renderStep1()}
+            {currentStep === 2 && renderStep2()}
+            {currentStep === 3 && renderStep3()}
           </Box>
 
-          {/* Navigation */}
-          <HStack justify="space-between" pb={{ base: 20, sm: 0 }}>
+          {/* Navigation - Mobile Friendly Button Sizing */}
+          <HStack justify="space-between" pb={{ base: 20, sm: 0 }} pt={2} spacing={{ base: 2, sm: 3 }}>
             <Button
               leftIcon={<ArrowBackIcon />}
-              onClick={prevStep}
+              onClick={() => setCurrentStep(s => Math.max(1, s - 1))}
               isDisabled={currentStep === 1}
               variant="outline"
+              size={{ base: "sm", sm: "md" }}
+              fontSize={{ base: "xs", sm: "sm" }}
+              minH={{ base: "36px", sm: "40px" }}
             >
-              Previous
+              Back
             </Button>
 
-            {currentStep < steps.length ? (
-              <Button
-                rightIcon={<ArrowForwardIcon />}
-                onClick={nextStep}
-                isDisabled={!canProceed()}
-                colorScheme="brand"
+            {currentStep < TOTAL_STEPS ? (
+              <Tooltip 
+                label={!canProceed() ? getDisabledReason() : 'Proceed to next step'}
+                isDisabled={canProceed()}
+                placement="top"
+                hasArrow
               >
-                Next
-              </Button>
+                <Button
+                  rightIcon={isGenerating ? <Spinner size="sm" /> : <ArrowForwardIcon />}
+                  onClick={handleNextClick}
+                  isDisabled={!canProceed()}
+                  isLoading={isGenerating && currentStep === 1}
+                  loadingText={isGenerating ? 'Analyzing...' : 'Next'}
+                  colorScheme="brand"
+                  size={{ base: "sm", sm: "md" }}
+                  fontSize={{ base: "xs", sm: "sm" }}
+                  minH={{ base: "36px", sm: "40px" }}
+                >
+                  {!isGenerating && !canMakeAIRequest() && currentStep === 1 ? 'Limit Reached' : 'Next'}
+                </Button>
+              </Tooltip>
             ) : (
               <Button
                 onClick={handleSubmit}
                 isLoading={isSubmitting}
                 loadingText="Posting..."
                 colorScheme="brand"
-                size="lg"
-                px={8}
+                size={{ base: "sm", sm: "md" }}
+                fontSize={{ base: "xs", sm: "sm" }}
+                minH={{ base: "36px", sm: "40px" }}
+                px={{ base: 4, sm: 8 }}
+                leftIcon={<CheckIcon />}
               >
                 Post Product
               </Button>
@@ -1573,235 +1694,6 @@ const AddProduct: React.FC = () => {
           </HStack>
         </VStack>
       </Box>
-
-      {/* Premium Upgrade Modal */}
-      <Modal isOpen={isPremiumModalOpen} onClose={onClosePremiumModal} isCentered size="md">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>
-            <HStack spacing={2}>
-              <Box fontSize="2xl">✨</Box>
-              <Box>
-                <Heading size="md">Upgrade to Premium</Heading>
-              </Box>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            <VStack spacing={4} align="stretch">
-              <Box>
-                <Text color="gray.700" fontSize="sm">
-                  Unlock powerful AI tools and premium features to maximize your trading potential.
-                </Text>
-              </Box>
-
-              {/* Pricing Box */}
-              <Box
-                p={4}
-                bg="gradient.500"
-                borderRadius="lg"
-                textAlign="center"
-                bgGradient="linear(to-br, purple.400, pink.400)"
-              >
-                <VStack spacing={1}>
-                  <Text fontSize="sm" color="white" fontWeight="semibold">
-                    Annual Membership
-                  </Text>
-                  <HStack justify="center" spacing={1}>
-                    <Text fontSize="3xl" fontWeight="bold" color="white">
-                      ₱299
-                    </Text>
-                    <Text fontSize="sm" color="whiteAlpha.900">
-                      /year
-                    </Text>
-                  </HStack>
-                  <Text fontSize="xs" color="whiteAlpha.800">
-                    That's just ₱25/month!
-                  </Text>
-                </VStack>
-              </Box>
-
-              {/* Features List */}
-              <Box
-                p={4}
-                bg="purple.50"
-                borderRadius="lg"
-              >
-                <VStack align="start" spacing={3}>
-                  <Text fontWeight="bold" color="purple.900" fontSize="sm">
-                    Premium Features Included:
-                  </Text>
-
-                  <HStack spacing={2} align="start">
-                    <Box color="purple.600" fontWeight="bold">✓</Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.800">AI-Powered Title Generation</Text>
-                      <Text fontSize="xs" color="gray.600">Auto-generate perfect titles from descriptions</Text>
-                    </VStack>
-                  </HStack>
-
-                  <HStack spacing={2} align="start">
-                    <Box color="purple.600" fontWeight="bold">✓</Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.800">Featured Listings</Text>
-                      <Text fontSize="xs" color="gray.600">Up to 20 products featured at top of search</Text>
-                    </VStack>
-                  </HStack>
-
-                  <HStack spacing={2} align="start">
-                    <Box color="purple.600" fontWeight="bold">✓</Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.800">Accept Cash Offers</Text>
-                      <Text fontSize="xs" color="gray.600">Enable buying functionality on your products</Text>
-                    </VStack>
-                  </HStack>
-
-                  <HStack spacing={2} align="start">
-                    <Box color="purple.600" fontWeight="bold">✓</Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.800">Priority Support</Text>
-                      <Text fontSize="xs" color="gray.600">Get help faster with dedicated support</Text>
-                    </VStack>
-                  </HStack>
-
-                  <HStack spacing={2} align="start">
-                    <Box color="purple.600" fontWeight="bold">✓</Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.800">Analytics Dashboard</Text>
-                      <Text fontSize="xs" color="gray.600">Track views, offers, and performance metrics</Text>
-                    </VStack>
-                  </HStack>
-
-                  <HStack spacing={2} align="start">
-                    <Box color="purple.600" fontWeight="bold">✓</Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.800">Bulk Product Upload</Text>
-                      <Text fontSize="xs" color="gray.600">List multiple products at once</Text>
-                    </VStack>
-                  </HStack>
-
-                  <HStack spacing={2} align="start">
-                    <Box color="purple.600" fontWeight="bold">✓</Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.800">Badge & Verification</Text>
-                      <Text fontSize="xs" color="gray.600">Stand out with a premium member badge</Text>
-                    </VStack>
-                  </HStack>
-                </VStack>
-              </Box>
-
-              {/* CTA Buttons */}
-              <VStack spacing={2}>
-                <Button
-                  colorScheme="purple"
-                  size="lg"
-                  w="full"
-                  fontWeight="bold"
-                  onClick={() => {
-                    onClosePremiumModal()
-                    navigate('/premium')
-                  }}
-                >
-                  Upgrade Now
-                </Button>
-                <Button
-                  variant="outline"
-                  w="full"
-                  onClick={onClosePremiumModal}
-                >
-                  Maybe Later
-                </Button>
-              </VStack>
-
-              <Text fontSize="xs" color="gray.500" textAlign="center">
-                Secure payment • Auto-renewable • Cancel anytime
-              </Text>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-
-      {/* Location Map Modal */}
-      <Modal isOpen={isLocationModalOpen} onClose={onCloseLocationModal} isCentered size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>
-            <HStack spacing={2}>
-              <Box fontSize="2xl">📍</Box>
-              <Box>
-                <Heading size="md">Product Location</Heading>
-              </Box>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            <VStack spacing={4} align="stretch">
-              <Box>
-                <Text fontSize="sm" color="gray.600" mb={2}>
-                  Your product location has been set. Buyers will see this location when viewing your product.
-                </Text>
-              </Box>
-
-              {/* Map Preview */}
-              {locationCoordinates && (
-                <Box
-                  w="full"
-                  h="300px"
-                  borderRadius="lg"
-                  overflow="hidden"
-                  border="1px"
-                  borderColor="gray.200"
-                >
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${locationCoordinates.lng - 0.01},${locationCoordinates.lat - 0.01},${locationCoordinates.lng + 0.01},${locationCoordinates.lat + 0.01}&layer=mapnik&marker=${locationCoordinates.lat},${locationCoordinates.lng}`}
-                    style={{ borderRadius: '8px' }}
-                  />
-                </Box>
-              )}
-
-              {/* Location Details */}
-              <Box p={4} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
-                <VStack align="start" spacing={2}>
-                  <Text fontWeight="semibold" color="blue.900" fontSize="sm">
-                    Location Details
-                  </Text>
-                  <Text fontSize="sm" color="gray.700">
-                    <strong>Address:</strong> {formData.location}
-                  </Text>
-                  <Text fontSize="xs" color="gray.600">
-                    ✓ Location confirmed via GPS
-                  </Text>
-                </VStack>
-              </Box>
-
-              {/* CTA Buttons */}
-              <VStack spacing={2}>
-                <Button
-                  colorScheme="brand"
-                  w="full"
-                  onClick={onCloseLocationModal}
-                >
-                  Confirm Location
-                </Button>
-                <Button
-                  variant="outline"
-                  w="full"
-                  onClick={() => {
-                    setLocationCoordinates(null)
-                    setLocationError(null)
-                    onCloseLocationModal()
-                  }}
-                >
-                  Select Different Location
-                </Button>
-              </VStack>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
 
       <FloatingTab showAddButton={false} />
     </Box>
