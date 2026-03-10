@@ -908,6 +908,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         <VStack spacing={8} align="stretch">
           {/* Seller Info Header */}
           <Card bg="white" border="1px" borderColor="gray.200" shadow="sm" overflow="hidden">
+            {/* Cover photo with gradient overlay */}
             <Box
               h="160px"
               w="100%"
@@ -915,6 +916,16 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               bgImage={`url(${user.background_url || '/profile-bg-default.jpg'})`}
               bgSize="cover"
               bgPos={user.background_position || 'center'}
+              _after={{
+                content: '""',
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                h: '70%',
+                bgGradient: 'linear(to-t, blackAlpha.600, transparent)',
+                pointerEvents: 'none',
+              }}
             >
               {currentUser && Number(id) === currentUser.id && (
                 <Button
@@ -924,12 +935,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   size="sm"
                   onClick={openEdit}
                   colorScheme="brand"
+                  zIndex={1}
                 >
                   Edit Profile
                 </Button>
               )}
 
-              <Box position="absolute" bottom="-50px" left="6">
+              <Box position="absolute" bottom="-50px" left="6" zIndex={1}>
                 <VerifiedAvatar
                   size="xl"
                   name={user.name}
@@ -945,124 +957,130 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
 
             <CardBody pt="60px">
-              <Flex justify="space-between" wrap="wrap">
-                <Box flex="1" minW="200px" mr={4}>
-                  <HStack spacing={3} align="center" mb={2} flexWrap="wrap">
-                    <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
-                    {(user.verification_status === 'verified' || user.verified) && (
-                      <Badge colorScheme="teal" borderRadius="full" px={3} py={1} fontSize="sm">
-                        <HStack spacing={1.5}>
-                          <Icon as={FiCheckCircle} boxSize={4} />
-                          <Text as="span">Verified</Text>
-                        </HStack>
-                      </Badge>
+              {/* Name + Verified inline + Key stats on same row */}
+              <Flex align="center" flexWrap="wrap" gap={3} mb={1}>
+                <HStack spacing={1.5} align="baseline">
+                  <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
+                  {(user.verification_status === 'verified' || user.verified) && (
+                    <HStack spacing={1} ml={1}>
+                      <Icon as={FiCheckCircle} color="teal.500" boxSize={4} />
+                      <Text fontSize="sm" color="teal.600" fontWeight="medium">Verified</Text>
+                    </HStack>
+                  )}
+                </HStack>
+
+                {/* Inline stats beside name */}
+                <HStack spacing={4} flexWrap="wrap" fontSize="sm" color="gray.600" ml={{ base: 0, md: 2 }}>
+                  <HStack spacing={1}>
+                    {displayTotalReviews === 0 ? (
+                      <Text color="gray.500">⭐ No reviews yet</Text>
+                    ) : (
+                      <>
+                        <Icon as={FiStar} color="yellow.400" />
+                        <Text fontWeight="semibold" color="gray.800">{displayRating.toFixed(1)}</Text>
+                        <Text color="gray.500">({displayTotalReviews})</Text>
+                      </>
                     )}
-                    {sellerStats?.trust_level && (
-                      <Badge
-                        colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
-                        borderRadius="full"
-                        px={3}
-                        py={1}
-                        fontSize="sm"
-                      >
-                        {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
-                      </Badge>
-                    )}
-                    <Badge
-                      colorScheme={user.activity_status === 'active_today' ? 'green' : user.activity_status === 'active_this_week' ? 'yellow' : 'red'}
-                      borderRadius="full"
-                      px={3}
-                      py={1}
-                      fontSize="sm"
-                    >
-                      {user.activity_status === 'active_today' ? '🟢 Active today' : user.activity_status === 'active_this_week' ? '🟡 Active this week' : '🔴 Inactive'}
-                    </Badge>
                   </HStack>
-
-
-                  <HStack spacing={6} mb={4} flexWrap="wrap">
-                    <HStack>
-                      <Icon as={FiStar} color="yellow.400" />
-                      <Text>{displayRating.toFixed(1)} <Text as="span" color="gray.500">({displayTotalReviews} reviews)</Text></Text>
-                    </HStack>
-                    <HStack>
-                      <Text color="green.500">{Math.round(displayPositivePercent)}%</Text>
-                      <Text color="gray.500">Positive Feedback</Text>
-                    </HStack>
-                    <HStack>
-                      <Text fontWeight="medium">{stats.completed}</Text>
-                      <Text color="gray.500">Trades Completed</Text>
-                    </HStack>
-                    <HStack>
-                      <Icon as={FiClock} color="gray.500" />
-                      <Text color="gray.500">Avg. Response: {stats.avgResponse}</Text>
-                    </HStack>
+                  <Text color="gray.300">|</Text>
+                  <HStack spacing={1}>
+                    <Text fontWeight="semibold" color="green.500">{Math.round(displayPositivePercent)}%</Text>
+                    <Text>Positive</Text>
                   </HStack>
-
-
-                  {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
-
-
-                  {/* Trust Score Card */}
-                  {sellerStats && (
-                    <Box mb={4}>
-                      <TrustScoreCard
-                        score={sellerStats.trust_score ?? 0}
-                        trustLevel={sellerStats.trust_level}
-                        factors={sellerStats.trust_factors}
-                        conductSummary={sellerStats.conduct_summary}
-                      />
-                    </Box>
-                  )}
-
-                  {/* Report Warning Banner */}
-                  {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
-                    <Alert status="warning" borderRadius="md" mb={4}>
-                      <AlertIcon />
-                      <Box>
-                        <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
-                        <Text fontSize="xs" color="gray.600">Trade with caution</Text>
-                      </Box>
-                    </Alert>
-                  )}
-
-
-
-                  {/* Show action buttons only when viewing someone else's profile */}
-                  {!(currentUser && Number(id) === currentUser.id) && (
-                    <HStack spacing={3}>
-                      <Button
-                        leftIcon={<Icon as={FiMessageSquare} />}
-                        colorScheme="brand"
-                        onClick={handleSendMessage}
-                      >
-                        Message Seller
-                      </Button>
-                    </HStack>
-                  )}
-                </Box>
-
-
-                <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }} minW={{ base: '100%', md: '280px' }}>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Member Since</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Items for Sale</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Department</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Total Listings</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
-                  </Box>
-                </SimpleGrid>
-
+                  <Text color="gray.300">|</Text>
+                  <HStack spacing={1}>
+                    <Text fontWeight="semibold" color="gray.800">{stats.completed}</Text>
+                    <Text>Trades</Text>
+                  </HStack>
+                  <Text color="gray.300">|</Text>
+                  <HStack spacing={1}>
+                    <Icon as={FiClock} boxSize={3.5} />
+                    <Text>{stats.avgResponse}</Text>
+                  </HStack>
+                </HStack>
               </Flex>
+
+              {/* Trust level + Activity badges */}
+              <HStack spacing={2} mb={3} flexWrap="wrap">
+                {sellerStats?.trust_level && (
+                  <Badge
+                    colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
+                    borderRadius="full"
+                    px={3}
+                    py={1}
+                    fontSize="xs"
+                  >
+                    {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                  </Badge>
+                )}
+                <Badge
+                  colorScheme={user.activity_status === 'active_today' ? 'green' : user.activity_status === 'active_this_week' ? 'yellow' : 'red'}
+                  borderRadius="full"
+                  px={3}
+                  py={1}
+                  fontSize="xs"
+                >
+                  {user.activity_status === 'active_today' ? '🟢 Active today' : user.activity_status === 'active_this_week' ? '🟡 Active this week' : '🔴 Inactive'}
+                </Badge>
+              </HStack>
+
+              {user.bio && <Text color="gray.700" fontSize="sm" mb={3}>{user.bio}</Text>}
+
+              {/* Stats card below */}
+              <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3} mb={4} p={3} bg="gray.50" borderRadius="md">
+                <Box lineHeight="1.4">
+                  <Text color="gray.500" fontSize="xs">Member Since</Text>
+                  <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                </Box>
+                <Box lineHeight="1.4">
+                  <Text color="gray.500" fontSize="xs">Items for Sale</Text>
+                  <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
+                </Box>
+                <Box lineHeight="1.4">
+                  <Text color="gray.500" fontSize="xs">Department</Text>
+                  <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
+                </Box>
+                <Box lineHeight="1.4">
+                  <Text color="gray.500" fontSize="xs">Total Listings</Text>
+                  <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
+                </Box>
+              </SimpleGrid>
+
+              {/* Trust Score Card */}
+              {sellerStats && (
+                <Box mb={3}>
+                  <TrustScoreCard
+                    score={sellerStats.trust_score ?? 0}
+                    trustLevel={sellerStats.trust_level}
+                    factors={sellerStats.trust_factors}
+                    conductSummary={sellerStats.conduct_summary}
+                  />
+                </Box>
+              )}
+
+              {/* Report Warning Banner */}
+              {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
+                <Alert status="warning" borderRadius="md" mb={3}>
+                  <AlertIcon />
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
+                    <Text fontSize="xs" color="gray.600">Trade with caution</Text>
+                  </Box>
+                </Alert>
+              )}
+
+              {/* Show action buttons only when viewing someone else's profile */}
+              {!(currentUser && Number(id) === currentUser.id) && (
+                <HStack spacing={3}>
+                  <Button
+                    leftIcon={<Icon as={FiMessageSquare} />}
+                    colorScheme="brand"
+                    onClick={handleSendMessage}
+                  >
+                    Message Seller
+                  </Button>
+                </HStack>
+              )}
             </CardBody>
           </Card>
 
@@ -1197,18 +1215,24 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <HStack justify="space-between" align="flex-start" flexWrap="wrap">
                     <Box>
                       <Heading size="md" mb={1}>Trade Activity</Heading>
-                      <HStack spacing={1} mb={2}>
-                        <Icon as={FiStar} color="yellow.400" boxSize={5} />
-                        <Text fontSize="xl" fontWeight="bold">
-                          {displayRating.toFixed(1)}
-                          <Text as="span" fontSize="md" fontWeight="normal" color="gray.600" ml={1}>
-                            ({displayTotalReviews} reviews)
+                      {displayTotalReviews === 0 ? (
+                        <Text fontSize="md" color="gray.500" mb={1}>⭐ No reviews yet</Text>
+                      ) : (
+                        <>
+                          <HStack spacing={1} mb={2}>
+                            <Icon as={FiStar} color="yellow.400" boxSize={5} />
+                            <Text fontSize="xl" fontWeight="bold">
+                              {displayRating.toFixed(1)}
+                              <Text as="span" fontSize="md" fontWeight="normal" color="gray.600" ml={1}>
+                                ({displayTotalReviews} reviews)
+                              </Text>
+                            </Text>
+                          </HStack>
+                          <Text color="green.600" fontSize="sm">
+                            {Math.round(displayPositivePercent)}% positive feedback
                           </Text>
-                        </Text>
-                      </HStack>
-                      <Text color="green.600" fontSize="sm">
-                        {Math.round(displayPositivePercent)}% positive feedback
-                      </Text>
+                        </>
+                      )}
                     </Box>
 
                     {!(currentUser && Number(id) === currentUser.id) && (
