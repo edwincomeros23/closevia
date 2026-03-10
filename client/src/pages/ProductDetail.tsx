@@ -1076,8 +1076,8 @@ const ProductDetail: React.FC = () => {
                         {product.estimated_value_min && product.estimated_value_max
                           ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
                           : product.price && product.price > 0
-                          ? `₱${product.price.toFixed(2)}`
-                          : 'Est. Value Unavailable'}
+                            ? `₱${product.price.toFixed(2)}`
+                            : 'Est. Value Unavailable'}
                       </Text>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
@@ -1455,7 +1455,7 @@ const ProductDetail: React.FC = () => {
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
-                <RouterLink to={`/users/${product.seller_id}`}>
+                <RouterLink to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}>
                   <VerifiedAvatar
                     size="lg"
                     src={sellerProfile?.profile_picture}
@@ -1470,15 +1470,15 @@ const ProductDetail: React.FC = () => {
                 </RouterLink>
                 <Box>
                   <HStack spacing={2} align="center" flexWrap="wrap">
-                    <Text
+                    <Button
                       as={RouterLink}
-                      to={`/users/${product.seller_id}`}
-                      fontWeight="bold"
-                      color="blue.600"
+                      to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}
+                      variant="link"
+                      color="brand.600"
                       _hover={{ textDecoration: 'underline' }}
                     >
                       {product.seller_name}
-                    </Text>
+                    </Button>
                     {(sellerProfile as any)?.verification_status === 'verified' && (
                       <Badge colorScheme="teal" borderRadius="full" px={2} py={0.5} fontSize="xs">
                         <HStack spacing={1}>
@@ -2030,8 +2030,8 @@ const ProductDetail: React.FC = () => {
                       {product.estimated_value_min && product.estimated_value_max
                         ? `₱${(product.estimated_value_min).toLocaleString()}–₱${(product.estimated_value_max).toLocaleString()}`
                         : product.price && product.price > 0
-                        ? `₱${product.price.toFixed(2)}`
-                        : 'Est. Value Unavailable'}
+                          ? `₱${product.price.toFixed(2)}`
+                          : 'Est. Value Unavailable'}
                     </Text>
                   </VStack>
                 </HStack>

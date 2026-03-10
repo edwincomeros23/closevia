@@ -1338,9 +1338,15 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 
 // GetUserTradeHistory returns completed trades for a specific user (public endpoint)
 func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
-	targetUserID, err := strconv.Atoi(c.Params("id"))
+	identifier := c.Params("id")
+	if identifier == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "User ID or handle is required"})
+	}
+
+	userHandler := NewUserHandler()
+	targetUserID, err := userHandler.ResolveUserID(identifier)
 	if err != nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid user ID"})
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
 	query := `

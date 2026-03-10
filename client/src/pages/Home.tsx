@@ -625,7 +625,7 @@ const Home: React.FC = () => {
                     borderRadius="full"
                     _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
                     transition="all 0.2s"
-                    onClick={() => navigate(`/users/${user.id}`)}
+                    onClick={() => navigate(`/users/${user.slug || user.id}`)}
                   >
                     <VerifiedAvatar
                       size="sm"

@@ -183,8 +183,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
       >
         {/* Seller row (desktop) */}
         <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-          <HStack spacing={2}>
-            <RouterLink to={`/users/${product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          <HStack spacing={2} align="center" mt="auto">
+            <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
               <VerifiedAvatar
                 size="sm"
                 src={sellerAvatar}
@@ -230,9 +230,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
         >
           {product.description
             ? product.description
-                .split(' ')
-                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+              .split(' ')
+              .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+              .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
             : 'No description available'}
         </Text>
 
