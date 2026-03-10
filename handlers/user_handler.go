@@ -609,16 +609,13 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	if schoolEmailVerifiedAt.Valid {
 		user.SchoolEmailVerifiedAt = &schoolEmailVerifiedAt.Time
 	}
-<<<<<<< Updated upstream
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
 	}
 	user.ActivityStatus = computeActivityStatus(user.LastLogin)
-=======
 	if slugNull.Valid {
 		user.Slug = slugNull.String
 	}
->>>>>>> Stashed changes
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
