@@ -1054,6 +1054,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     trustLevel={sellerStats.trust_level}
                     factors={sellerStats.trust_factors}
                     conductSummary={sellerStats.conduct_summary}
+                    isVerified={user.verification_status === 'verified' || user.verified}
+                    listingCount={stats.total}
+                    tradeCount={sellerStats.completed_trades ?? sellerStats.total_trades}
+                    positivePercent={sellerStats.positive_percent}
                   />
                 </Box>
               )}

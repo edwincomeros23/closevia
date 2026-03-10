@@ -42,6 +42,10 @@ interface TrustScoreCardProps {
   factors?: TrustFactor[]
   conductSummary?: ConductSummary
   compact?: boolean
+  isVerified?: boolean
+  listingCount?: number
+  tradeCount?: number
+  positivePercent?: number
 }
 
 const statusConfig = {
@@ -83,7 +87,7 @@ const categoryBarColor = (avg: number) => {
   return 'red'
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact }) => {
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent }) => {
   if (compact) {
     const tooltipLines = factors && factors.length > 0
       ? factors.map(f => `${f.status === 'pass' ? '✔' : f.status === 'warn' ? '⚠' : '✘'} ${f.label} (${f.points}/${f.max})`).join('\n')
@@ -91,9 +95,16 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
     const conductLine = conductSummary && conductSummary.total_grades > 0
       ? `\nConduct: ${conductSummary.letter_grade} (${conductSummary.overall_avg.toFixed(1)}/5)`
       : ''
+    const badgeLines = [
+      isVerified ? '✔ Verified' : '',
+      typeof listingCount === 'number' ? `📦 ${listingCount} listing${listingCount !== 1 ? 's' : ''}` : '',
+      typeof tradeCount === 'number' ? `🔁 ${tradeCount} trade${tradeCount !== 1 ? 's' : ''}` : '',
+      typeof positivePercent === 'number' && positivePercent > 0 ? `⭐ ${Math.round(positivePercent)}% positive` : '',
+    ].filter(Boolean).join('\n')
+    const badgeSection = badgeLines ? `\n${badgeLines}` : ''
     return (
       <Tooltip
-        label={tooltipLines + conductLine}
+        label={tooltipLines + conductLine + badgeSection}
         whiteSpace="pre-line"
         placement="top"
         hasArrow
@@ -133,6 +144,30 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
       shadow="sm"
       w="100%"
     >
+      {/* Trust Indicator Badges */}
+      <HStack spacing={3} mb={4} flexWrap="wrap">
+        {isVerified && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="green" fontSize="xs" fontWeight="medium">
+            ✔ Verified
+          </Badge>
+        )}
+        {typeof listingCount === 'number' && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="purple" fontSize="xs" fontWeight="medium">
+            📦 {listingCount} listing{listingCount !== 1 ? 's' : ''}
+          </Badge>
+        )}
+        {typeof tradeCount === 'number' && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="blue" fontSize="xs" fontWeight="medium">
+            🔁 {tradeCount} trade{tradeCount !== 1 ? 's' : ''}
+          </Badge>
+        )}
+        {typeof positivePercent === 'number' && positivePercent > 0 && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="yellow" fontSize="xs" fontWeight="medium">
+            ⭐ {Math.round(positivePercent)}% positive
+          </Badge>
+        )}
+      </HStack>
+
       <HStack spacing={5} align="start">
         {/* Circular Score */}
         <VStack spacing={1}>
