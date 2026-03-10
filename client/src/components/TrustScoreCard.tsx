@@ -36,6 +36,12 @@ interface ConductSummary {
   dispute_rate: number
 }
 
+interface TradeStats {
+  successful: number
+  cancelled: number
+  pending: number
+}
+
 interface TrustScoreCardProps {
   score: number
   trustLevel?: 'trusted' | 'new' | 'risky'
@@ -46,6 +52,7 @@ interface TrustScoreCardProps {
   listingCount?: number
   tradeCount?: number
   positivePercent?: number
+  tradeStats?: TradeStats
 }
 
 const statusConfig = {
@@ -87,7 +94,7 @@ const categoryBarColor = (avg: number) => {
   return 'red'
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent }) => {
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats }) => {
   if (compact) {
     const tooltipLines = factors && factors.length > 0
       ? factors.map(f => `${f.status === 'pass' ? '✔' : f.status === 'warn' ? '⚠' : '✘'} ${f.label} (${f.points}/${f.max})`).join('\n')
@@ -214,6 +221,54 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
           )}
         </VStack>
       </HStack>
+
+      {/* Trade Statistics Section */}
+      {tradeStats && (tradeStats.successful > 0 || tradeStats.cancelled > 0 || tradeStats.pending > 0) && (
+        <>
+          <Divider my={4} />
+          <VStack align="stretch" spacing={3}>
+            <Text fontSize="sm" fontWeight="bold" color="gray.700">
+              Trade Statistics
+            </Text>
+            <VStack align="stretch" spacing={1}>
+              <HStack justify="space-between">
+                <HStack spacing={2}>
+                  <Text fontSize="sm">✔</Text>
+                  <Text fontSize="sm" color="green.600">Successful</Text>
+                </HStack>
+                <Text fontSize="sm" fontWeight="bold" color="green.600">{tradeStats.successful}</Text>
+              </HStack>
+              <HStack justify="space-between">
+                <HStack spacing={2}>
+                  <Text fontSize="sm">❌</Text>
+                  <Text fontSize="sm" color="red.500">Cancelled</Text>
+                </HStack>
+                <Text fontSize="sm" fontWeight="bold" color="red.500">{tradeStats.cancelled}</Text>
+              </HStack>
+              <HStack justify="space-between">
+                <HStack spacing={2}>
+                  <Text fontSize="sm">⏳</Text>
+                  <Text fontSize="sm" color="orange.500">Pending</Text>
+                </HStack>
+                <Text fontSize="sm" fontWeight="bold" color="orange.500">{tradeStats.pending}</Text>
+              </HStack>
+            </VStack>
+            {(tradeStats.successful + tradeStats.cancelled) > 0 && (
+              <Box bg="gray.50" px={3} py={2} borderRadius="md">
+                <HStack justify="space-between">
+                  <Text fontSize="sm" fontWeight="medium" color="gray.600">Trade Success Rate</Text>
+                  <Text fontSize="sm" fontWeight="bold" color={
+                    Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100) >= 75 ? 'green.600' :
+                    Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100) >= 50 ? 'orange.500' : 'red.500'
+                  }>
+                    {Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100)}%
+                  </Text>
+                </HStack>
+              </Box>
+            )}
+          </VStack>
+        </>
+      )}
 
       {/* Conduct Grade Section */}
       {conductSummary && conductSummary.total_grades > 0 && (

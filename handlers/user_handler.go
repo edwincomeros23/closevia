@@ -1428,6 +1428,24 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 		stats.CompletedTrades = 0
 	}
 
+	// Calculate cancelled trades
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades 
+		WHERE seller_id = ? AND status = 'cancelled'
+	`, userID).Scan(&stats.CancelledTrades)
+	if err != nil {
+		stats.CancelledTrades = 0
+	}
+
+	// Calculate pending trades
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades 
+		WHERE seller_id = ? AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+	`, userID).Scan(&stats.PendingTrades)
+	if err != nil {
+		stats.PendingTrades = 0
+	}
+
 	// Calculate average rating and positive feedback percentage from reviews table
 	var avgRating sql.NullFloat64
 	var totalReviews sql.NullInt64

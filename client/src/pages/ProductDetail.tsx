@@ -1579,6 +1579,11 @@ const ProductDetail: React.FC = () => {
                   listingCount={sellerProducts.length}
                   tradeCount={sellerStats.completed_trades ?? sellerStats.total_trades}
                   positivePercent={sellerStats.positive_percent}
+                  tradeStats={{
+                    successful: sellerStats.completed_trades ?? 0,
+                    cancelled: sellerStats.cancelled_trades ?? 0,
+                    pending: sellerStats.pending_trades ?? 0,
+                  }}
                 />
               </Box>
             )}

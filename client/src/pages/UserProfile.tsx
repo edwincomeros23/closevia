@@ -102,6 +102,8 @@ type SellerStats = {
   total_feedback?: number
   total_trades?: number
   completed_trades?: number
+  cancelled_trades?: number
+  pending_trades?: number
   avg_response_time?: string
   trust_score?: number
   trust_level?: 'trusted' | 'new' | 'risky'
@@ -1058,6 +1060,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     listingCount={stats.total}
                     tradeCount={sellerStats.completed_trades ?? sellerStats.total_trades}
                     positivePercent={sellerStats.positive_percent}
+                    tradeStats={{
+                      successful: sellerStats.completed_trades ?? 0,
+                      cancelled: sellerStats.cancelled_trades ?? 0,
+                      pending: sellerStats.pending_trades ?? 0,
+                    }}
                   />
                 </Box>
               )}
