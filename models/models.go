@@ -173,6 +173,8 @@ type Product struct {
 	Category             string      `json:"category,omitempty"`
 	Wants                string      `json:"wants,omitempty"`
 	WantedCategories     StringArray `json:"wanted_categories,omitempty"`
+	DesiredPrice         *float64    `json:"desired_price,omitempty"`
+	DesiredProduct       string      `json:"desired_product,omitempty"`
 	ItemType             string      `json:"item_type,omitempty"`
 	Brand                string      `json:"brand,omitempty"`
 	AuthenticityRisks    string      `json:"authenticity_risks,omitempty"`
@@ -204,6 +206,8 @@ type ProductCreate struct {
 	Category         string      `json:"category,omitempty"`
 	Wants            string      `json:"wants,omitempty"`
 	WantedCategories StringArray `json:"wanted_categories,omitempty"`
+	DesiredPrice     *float64    `json:"desired_price,omitempty"`
+	DesiredProduct   string      `json:"desired_product,omitempty"`
 }
 
 // ProductUpdate represents data for updating a product

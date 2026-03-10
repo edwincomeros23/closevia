@@ -1326,7 +1326,7 @@ const Dashboard: React.FC = () => {
           </Box>
           <CardHeader pb={2}>
             <Flex justify="space-between" align="start">
-              <Heading size="sm" noOfLines={2} flex={1} mr={2}>
+              <Heading size="sm" noOfLines={2} flex={1} mr={2} wordBreak="break-word">
                 {product.title}
               </Heading>
               {product.premium && (
@@ -1335,7 +1335,7 @@ const Dashboard: React.FC = () => {
                 </Badge>
               )}
             </Flex>
-            <Text color="gray.600" noOfLines={2} fontSize="sm">
+            <Text color="gray.600" noOfLines={2} fontSize="sm" wordBreak="break-word">
               {product.description}
             </Text>
             {/* Wishlist Count Badge */}
@@ -1360,6 +1360,8 @@ const Dashboard: React.FC = () => {
                 <Text fontSize="md" fontWeight="semibold" color="brand.500">
                   {product.allow_buying && !product.barter_only && product.price
                     ? formatPHP(product.price)
+                    : product.desired_price
+                    ? `Desired: ${formatPHP(product.desired_price)}`
                     : ''}
                 </Text>
               </HStack>

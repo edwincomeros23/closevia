@@ -269,38 +269,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {product.status === 'sold' ? 'Sold' : 'Trade'}
           </Button>
 
-          {product.allow_buying && product.price && !product.barter_only && (
-            <Button
-              size={{ base: 'xs', md: 'sm' }}
-              colorScheme="orange"
-              flex={1}
-              minW={{ base: '60px', md: 'auto' }}
-              onClick={handleBuyoutClick}
-              isDisabled={product.status === 'sold'}
-              transition="all 0.2s"
-              _hover={{ transform: 'translateY(-1px)' }}
-              _active={{ transform: 'scale(0.98)' }}
-            >
-              {product.status === 'sold' ? 'Sold' : 'Buyout'}
-            </Button>
-          )}
-
-          {product.allow_buying && product.price && !product.barter_only && (
-            <Button
-              size={{ base: 'xs', md: 'sm' }}
-              colorScheme="brand"
-              flex={1}
-              minW={{ base: '50px', md: 'auto' }}
-              onClick={handleBuyClick}
-              isDisabled={product.status === 'sold'}
-              transition="all 0.2s"
-              _hover={{ transform: 'translateY(-1px)' }}
-              _active={{ transform: 'scale(0.98)' }}
-            >
-              {product.status === 'sold' ? 'Sold' : 'Buy'}
-            </Button>
-          )}
-
           <Tooltip label="Buyout offer" placement="top">
             <IconButton
               aria-label="Buyout offer"

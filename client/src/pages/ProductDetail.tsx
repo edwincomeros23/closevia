@@ -64,6 +64,7 @@ import { api } from '../services/api'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils';
 import { getProductUrl } from '../utils/productUtils'
 import TradeModal from '../components/TradeModal'
+import BuyoutModal from '../components/BuyoutModal'
 import CounterfeitWarning from '../components/CounterfeitWarning'
 import ProximityBadge from '../components/ProximityBadge'
 import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
@@ -86,6 +87,7 @@ const ProductDetail: React.FC = () => {
   const [error, setError] = useState('')
   const [purchasing, setPurchasing] = useState(false)
   const [isTradeOpen, setIsTradeOpen] = useState(false)
+  const [isBuyoutOpen, setIsBuyoutOpen] = useState(false)
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
   const [selectedImage, setSelectedImage] = useState<string>('')
   const [isSaved, setIsSaved] = useState(false)
@@ -544,6 +546,23 @@ const ProductDetail: React.FC = () => {
     if (product) {
       setTradeTargetProductId(product.id)
       setIsTradeOpen(true)
+    }
+  }
+
+  const openBuyout = () => {
+    if (!user) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please log in to make a buyout offer',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
+    if (product) {
+      setIsBuyoutOpen(true)
     }
   }
 
@@ -1045,7 +1064,7 @@ const ProductDetail: React.FC = () => {
                   <Box>
                     {/* Title and price on same horizontal axis */}
                     <Flex justify="space-between" align="center" gap={3} flexWrap="wrap">
-                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0}>
+                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0} wordBreak="break-word">
                         {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
                       </Heading>
                       <Text
@@ -1263,6 +1282,7 @@ const ProductDetail: React.FC = () => {
                       lineHeight="tall"
                       fontSize="sm"
                       whiteSpace="pre-line"
+                      wordBreak="break-word"
                       noOfLines={isDescriptionExpanded ? undefined : 6}
                     >
                       {product.description}
@@ -1304,47 +1324,6 @@ const ProductDetail: React.FC = () => {
                 <VStack spacing={{ base: 3, md: 4 }} mt={{ base: 6, md: 8 }} pt={{ base: 4, md: 6 }}>
                   {!isOwner && product.status === 'available' && (
                     <VStack spacing={{ base: 2, md: 3 }} w="full">
-                      {product.allow_buying && product.price && !product.barter_only ? (
-                        <HStack w="full" spacing={2} align="stretch">
-                          <Button
-                            flex={1}
-                            size="lg"
-                            borderRadius="8px"
-                            bg="gray.800"
-                            color="white"
-                            _hover={{ bg: 'gray.700' }}
-                            _active={{ transform: 'scale(0.98)' }}
-                            transition="all 0.15s"
-                            onClick={handlePurchase}
-                            isLoading={purchasing}
-                            loadingText="Processing..."
-                          >
-                            Buy Now - {product.estimated_value_min && product.estimated_value_max
-                              ? `₱${(product.estimated_value_min).toLocaleString()}`
-                              : product.price && product.price > 0
-                                ? `₱${product.price.toFixed(2)}`
-                                : 'Estimated'}
-                          </Button>
-                          <Tooltip label={`Offers (${(product as any).offer_count || 0})`}>
-                            <IconButton
-                              aria-label="View offers"
-                              icon={<FaHandshake />}
-                              w={{ base: "40px", md: "48px" }}
-                              h={{ base: "40px", md: "48px" }}
-                              minW={{ base: "40px", md: "48px" }}
-                              borderRadius="8px"
-                              variant="outline"
-                              borderColor="gray.200"
-                              color="gray.700"
-                              bg="white"
-                              onClick={handleViewOffers}
-                              _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
-                              _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.15s"
-                            />
-                          </Tooltip>
-                        </HStack>
-                      ) : (
                         <HStack w="full" spacing={2} align="stretch">
                           <Tooltip label={hasPendingOfferOnProduct ? "You already have a pending offer on this product" : "Propose a trade"}>
                             <Button
@@ -1358,7 +1337,22 @@ const ProductDetail: React.FC = () => {
                               isDisabled={hasPendingOfferOnProduct}
                               opacity={hasPendingOfferOnProduct ? 0.6 : 1}
                             >
-                              {hasPendingOfferOnProduct ? "Pending Offer Sent" : "Trade Offer"}
+                              {hasPendingOfferOnProduct ? "Pending Offer Sent" : "Trade"}
+                            </Button>
+                          </Tooltip>
+                          <Tooltip label="Offer to buy this item with cash">
+                            <Button
+                              flex={1}
+                              size="lg"
+                              borderRadius="8px"
+                              colorScheme="orange"
+                              _active={{ transform: 'scale(0.98)' }}
+                              transition="all 0.15s"
+                              onClick={openBuyout}
+                              isDisabled={hasPendingOfferOnProduct}
+                              opacity={hasPendingOfferOnProduct ? 0.6 : 1}
+                            >
+                              Buyout
                             </Button>
                           </Tooltip>
                           <Tooltip label={`Offers (${(product as any).offer_count || 0})`}>
@@ -1380,7 +1374,6 @@ const ProductDetail: React.FC = () => {
                             />
                           </Tooltip>
                         </HStack>
-                      )}
                     </VStack>
                   )}
 
@@ -1631,12 +1624,12 @@ const ProductDetail: React.FC = () => {
                     </Box>
                     <Box p={3}>
                       <HStack justify="space-between" mb={2}>
-                        <Heading size="sm" noOfLines={1}>{p.title}</Heading>
+                        <Heading size="sm" noOfLines={1} wordBreak="break-word">{p.title}</Heading>
                         {p.premium && (
                           <Badge colorScheme="orange" fontSize="xs">Premium</Badge>
                         )}
                       </HStack>
-                      <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
+                      <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2} wordBreak="break-word">
                         {p.description}
                       </Text>
                       <Text fontSize="sm" fontWeight="bold" color="brand.500">
@@ -1657,6 +1650,7 @@ const ProductDetail: React.FC = () => {
           </Box>
         </VStack>
         <TradeModal isOpen={isTradeOpen} onClose={() => setIsTradeOpen(false)} targetProductId={tradeTargetProductId} />
+        <BuyoutModal isOpen={isBuyoutOpen} onClose={() => setIsBuyoutOpen(false)} targetProductId={product?.id ?? null} />
 
         {/* Offers Modal - Simplified with Ranking */}
         <Modal isOpen={offersModalOpen} onClose={() => setOffersModalOpen(false)} size="2xl">

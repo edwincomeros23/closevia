@@ -148,8 +148,8 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// Now update with the additional fields
 	log.Printf("Updating trade with additional fields")
-	updateQuery := `UPDATE trades SET trade_option = ?, delivery_address = ?, message = ?, offered_cash_amount = ? WHERE id = ?`
-	_, err = tx.Exec(updateQuery, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, tradeID)
+	updateQuery := `UPDATE trades SET trade_option = ?, delivery_address = ?, message = ?, offered_cash_amount = ?, payment_method = ? WHERE id = ?`
+	_, err = tx.Exec(updateQuery, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod, tradeID)
 
 	if err != nil {
 		log.Printf("Trade update failed: %v", err)
@@ -536,6 +536,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "accepted"}})
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your trade offer was accepted: "+productTitle)
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "You accepted a trade offer: "+productTitle)
+
+		// Auto-create delivery record for delivery trades
+		if tradeOption == "delivery" {
+			go h.createDeliveryForTrade(tradeID, buyerID, sellerID)
+		}
 	case "decline":
 		tx, err := h.db.Begin()
 		if err != nil {
@@ -1038,6 +1043,127 @@ func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 	return nil
 }
 
+// createDeliveryForTrade auto-creates a delivery record linked to a trade when a delivery trade is accepted.
+// Runs as a goroutine so it does not block the trade acceptance response.
+func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
+	log.Printf("Creating delivery record for trade %d", tradeID)
+
+	// Get trade delivery info
+	var deliveryAddress sql.NullString
+	var deliveryType sql.NullString
+	err := h.db.QueryRow(
+		"SELECT delivery_address, delivery_type FROM trades WHERE id = ?", tradeID,
+	).Scan(&deliveryAddress, &deliveryType)
+	if err != nil {
+		log.Printf("Failed to get trade delivery info for trade %d: %v", tradeID, err)
+		return
+	}
+
+	// Get trade items (products being traded)
+	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
+	if err != nil {
+		log.Printf("Failed to get trade items for trade %d: %v", tradeID, err)
+		return
+	}
+	defer rows.Close()
+
+	var productIDs []int
+	for rows.Next() {
+		var pid int
+		if err := rows.Scan(&pid); err != nil {
+			continue
+		}
+		productIDs = append(productIDs, pid)
+	}
+
+	// Also include the target product
+	var targetProductID int
+	_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID)
+	productIDs = append(productIDs, targetProductID)
+
+	// Get seller location for pickup
+	var sellerLat, sellerLon sql.NullFloat64
+	var sellerAddr sql.NullString
+	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", sellerID).Scan(&sellerLat, &sellerLon, &sellerAddr)
+
+	// Get buyer location for delivery
+	var buyerLat, buyerLon sql.NullFloat64
+	_ = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon)
+
+	// Determine delivery type
+	delType := "standard"
+	if deliveryType.Valid && deliveryType.String != "" {
+		delType = deliveryType.String
+	}
+
+	// Calculate cost
+	var totalCost float64
+	if delType == "express" {
+		totalCost = 60.0
+	} else {
+		totalCost = 30.0
+	}
+
+	// Determine pickup address
+	pickupAddr := "Seller location"
+	if sellerAddr.Valid && sellerAddr.String != "" {
+		pickupAddr = sellerAddr.String
+	}
+
+	// Determine delivery address
+	delAddr := "Buyer location"
+	if deliveryAddress.Valid && deliveryAddress.String != "" {
+		delAddr = deliveryAddress.String
+	}
+
+	// Insert delivery record
+	result, err := h.db.Exec(`
+		INSERT INTO deliveries (
+			user_id, trade_id, delivery_type, status,
+			pickup_latitude, pickup_longitude, pickup_address,
+			delivery_latitude, delivery_longitude, delivery_address,
+			item_count, total_cost, is_fragile
+		) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+		sellerID, tradeID, delType,
+		sellerLat, sellerLon, pickupAddr,
+		buyerLat, buyerLon, delAddr,
+		len(productIDs), totalCost,
+	)
+	if err != nil {
+		log.Printf("Failed to create delivery for trade %d: %v", tradeID, err)
+		return
+	}
+
+	deliveryID64, _ := result.LastInsertId()
+	deliveryID := int(deliveryID64)
+	log.Printf("Created delivery %d for trade %d", deliveryID, tradeID)
+
+	// Insert delivery items for each product
+	for _, pid := range productIDs {
+		var productName string
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productName)
+		_, err := h.db.Exec(
+			"INSERT INTO delivery_items (delivery_id, product_id, product_name, is_fragile) VALUES (?, ?, ?, FALSE)",
+			deliveryID, pid, productName,
+		)
+		if err != nil {
+			log.Printf("Warning: failed to insert delivery item for product %d: %v", pid, err)
+		}
+	}
+
+	// Notify both parties
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+		buyerID, "A delivery has been created for your trade. A rider will pick it up soon.")
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+		sellerID, "A delivery request has been created. Please prepare items for pickup.")
+
+	// Send SSE events
+	publishToUser(buyerID, sseEvent{Type: "delivery_created", Data: fiber.Map{"trade_id": tradeID, "delivery_id": deliveryID}})
+	publishToUser(sellerID, sseEvent{Type: "delivery_created", Data: fiber.Map{"trade_id": tradeID, "delivery_id": deliveryID}})
+
+	log.Printf("Delivery %d for trade %d created successfully with %d items", deliveryID, tradeID, len(productIDs))
+}
+
 // GetTradeMessages returns messages for a trade
 func (h *TradeHandler) GetTradeMessages(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -1231,7 +1357,10 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 			ub.name AS buyer_name, us.name AS seller_name,
 			p.title AS product_title,
 			p.image_url AS product_image_url,
-			p.image_urls AS product_image_urls
+			p.image_urls AS product_image_urls,
+			t.buyer_rating, t.seller_rating,
+			COALESCE(t.buyer_feedback, '') as buyer_feedback,
+			COALESCE(t.seller_feedback, '') as seller_feedback
 		FROM trades t
 		JOIN users ub ON ub.id = t.buyer_id
 		JOIN users us ON us.id = t.seller_id
@@ -1249,19 +1378,23 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	type PublicTrade struct {
-		ID           int         `json:"id"`
-		BuyerID      int         `json:"buyer_id"`
-		SellerID     int         `json:"seller_id"`
-		ProductID    int         `json:"target_product_id"`
-		Status       string      `json:"status"`
-		Message      string      `json:"message,omitempty"`
-		CreatedAt    time.Time   `json:"created_at"`
-		CompletedAt  *time.Time  `json:"completed_at,omitempty"`
-		BuyerName    string      `json:"buyer_name"`
-		SellerName   string      `json:"seller_name"`
-		ProductTitle string      `json:"product_title"`
-		ProductImage string      `json:"product_image_url,omitempty"`
-		Items        []fiber.Map `json:"items"`
+		ID             int         `json:"id"`
+		BuyerID        int         `json:"buyer_id"`
+		SellerID       int         `json:"seller_id"`
+		ProductID      int         `json:"target_product_id"`
+		Status         string      `json:"status"`
+		Message        string      `json:"message,omitempty"`
+		CreatedAt      time.Time   `json:"created_at"`
+		CompletedAt    *time.Time  `json:"completed_at,omitempty"`
+		BuyerName      string      `json:"buyer_name"`
+		SellerName     string      `json:"seller_name"`
+		ProductTitle   string      `json:"product_title"`
+		ProductImage   string      `json:"product_image_url,omitempty"`
+		BuyerRating    *int        `json:"buyer_rating,omitempty"`
+		SellerRating   *int        `json:"seller_rating,omitempty"`
+		BuyerFeedback  string      `json:"buyer_feedback,omitempty"`
+		SellerFeedback string      `json:"seller_feedback,omitempty"`
+		Items          []fiber.Map `json:"items"`
 	}
 
 	var trades []PublicTrade
@@ -1277,6 +1410,8 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 			&t.CreatedAt, &completedAt,
 			&t.BuyerName, &t.SellerName, &t.ProductTitle,
 			&pimg, &pimgs,
+			&t.BuyerRating, &t.SellerRating,
+			&t.BuyerFeedback, &t.SellerFeedback,
 		); err != nil {
 			log.Printf("⚠️ GetUserTradeHistory: scan error: %v", err)
 			continue

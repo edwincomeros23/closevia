@@ -1,0 +1,32 @@
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 114,
+  "risk_level": "",
+  "seller_id": 2,
+  "timestamp": "2026-03-10T18:06:10+08:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 115,
+  "risk_level": "",
+  "seller_id": 2,
+  "timestamp": "2026-03-10T18:07:44+08:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 116,
+  "risk_level": "",
+  "seller_id": 2,
+  "timestamp": "2026-03-10T18:40:50+08:00"
+}
+{
+  "fraud_probability": 0,
+  "is_fraud": false,
+  "product_id": 117,
+  "risk_level": "",
+  "seller_id": 2,
+  "timestamp": "2026-03-10T19:04:40+08:00"
+}

@@ -22,6 +22,115 @@ func NewDeliveryHandler() *DeliveryHandler {
 	return &DeliveryHandler{db: database.DB}
 }
 
+// BackfillMissingDeliveries creates delivery records for active delivery trades that don't have one.
+// Called at server startup to handle trades accepted before auto-creation was deployed.
+func (h *DeliveryHandler) BackfillMissingDeliveries() {
+	rows, err := h.db.Query(`
+		SELECT t.id, t.buyer_id, t.seller_id
+		FROM trades t
+		WHERE COALESCE(t.trade_option, 'meetup') = 'delivery'
+		  AND t.status IN ('active', 'accepted', 'awaiting_confirmation')
+		  AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.trade_id = t.id)
+	`)
+	if err != nil {
+		log.Printf("BackfillMissingDeliveries: query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var tradeID, buyerID, sellerID int
+		if err := rows.Scan(&tradeID, &buyerID, &sellerID); err != nil {
+			log.Printf("BackfillMissingDeliveries: scan error: %v", err)
+			continue
+		}
+		newID, err := h.autoCreateDeliveryForTrade(tradeID, buyerID, sellerID)
+		if err != nil {
+			log.Printf("BackfillMissingDeliveries: failed for trade %d: %v", tradeID, err)
+			continue
+		}
+		log.Printf("BackfillMissingDeliveries: created delivery %d for trade %d", newID, tradeID)
+		count++
+	}
+	if count > 0 {
+		log.Printf("BackfillMissingDeliveries: created %d missing delivery records", count)
+	}
+}
+
+// RegisterAsRider allows a user to register themselves as a rider
+func (h *DeliveryHandler) RegisterAsRider(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var payload struct {
+		VehicleType  string `json:"vehicle_type"`
+		VehiclePlate string `json:"vehicle_plate"`
+		Phone        string `json:"phone"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	// Defaults
+	if payload.VehicleType == "" {
+		payload.VehicleType = "motorcycle"
+	}
+	if payload.Phone == "" {
+		payload.Phone = "N/A"
+	}
+
+	// Check if already registered
+	var existingID int
+	err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ?", userID).Scan(&existingID)
+	if err == nil {
+		// Already registered — reactivate if inactive
+		_, _ = h.db.Exec("UPDATE riders SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ?", existingID)
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_id": existingID, "message": "Rider account reactivated"}})
+	}
+
+	// Get user name
+	var userName string
+	_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&userName)
+	if userName == "" {
+		userName = fmt.Sprintf("Rider_%d", userID)
+	}
+
+	result, err := h.db.Exec(`
+		INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active)
+		VALUES (?, ?, ?, ?, ?, TRUE)`,
+		userID, userName, payload.VehicleType, payload.VehiclePlate, payload.Phone,
+	)
+	if err != nil {
+		log.Printf("Failed to register rider for user %d: %v", userID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to register as rider"})
+	}
+
+	riderID, _ := result.LastInsertId()
+	log.Printf("User %d registered as rider %d", userID, riderID)
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_id": riderID, "message": "Registered as rider successfully"}})
+}
+
+// CheckRiderStatus checks if the current user is a registered rider
+func (h *DeliveryHandler) CheckRiderStatus(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var riderID int
+	var isActive bool
+	err := h.db.QueryRow("SELECT id, is_active FROM riders WHERE user_id = ?", userID).Scan(&riderID, &isActive)
+	if err != nil {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_rider": false}})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_rider": true, "rider_id": riderID, "is_active": isActive}})
+}
+
 // CalculateDistance calculates distance between two GPS coordinates using Haversine formula
 func calculateDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	const R = 6371 // Earth radius in kilometers
@@ -330,7 +439,7 @@ func (h *DeliveryHandler) GetDeliveries(c *fiber.Ctx) error {
 		SELECT d.id, d.user_id, d.trade_id, d.delivery_type, d.status, d.rider_id,
 			d.pickup_latitude, d.pickup_longitude, d.pickup_address,
 			d.delivery_latitude, d.delivery_longitude, d.delivery_address,
-			d.special_instructions, d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
+			COALESCE(d.special_instructions, ''), d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
 			d.claimed_at, d.picked_up_at, d.in_transit_at, d.delivered_at,
 			d.created_at, d.updated_at,
 			u.name AS user_name
@@ -414,7 +523,7 @@ func (h *DeliveryHandler) GetDelivery(c *fiber.Ctx) error {
 
 // UpdateDeliveryStatus updates delivery status (for riders)
 func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
-	riderID, ok := middleware.GetUserIDFromContext(c)
+	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
@@ -427,6 +536,13 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 	var update models.DeliveryUpdate
 	if err := c.BodyParser(&update); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	// Look up rider record for this user
+	var riderID int
+	err = h.db.QueryRow("SELECT id FROM riders WHERE user_id = ? AND is_active = TRUE", userID).Scan(&riderID)
+	if err != nil {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not registered as an active rider"})
 	}
 
 	// Verify rider is assigned to this delivery
@@ -497,6 +613,38 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 	_, err = h.db.Exec(query, args...)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update delivery"})
+	}
+
+	// If delivery is marked as "delivered", sync status back to the linked trade
+	if update.Status != nil && *update.Status == "delivered" {
+		var tradeID sql.NullInt64
+		_ = h.db.QueryRow("SELECT trade_id FROM deliveries WHERE id = ?", deliveryID).Scan(&tradeID)
+		if tradeID.Valid {
+			log.Printf("Syncing delivery 'delivered' status to trade %d", tradeID.Int64)
+
+			// Mark both delivery confirmations and payment on the trade since rider physically delivered
+			_, syncErr := h.db.Exec(`
+				UPDATE trades
+				SET seller_confirmed_delivery = TRUE,
+					buyer_confirmed_receipt = TRUE,
+					payment_confirmed = TRUE,
+					updated_at = CURRENT_TIMESTAMP
+				WHERE id = ?`, tradeID.Int64)
+			if syncErr != nil {
+				log.Printf("Warning: failed to sync delivery status to trade %d: %v", tradeID.Int64, syncErr)
+			}
+
+			// Notify trade parties
+			var buyerID, sellerID int
+			_ = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID.Int64).Scan(&buyerID, &sellerID)
+
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+				buyerID, "Your delivery has arrived! Please confirm receipt and leave a review.")
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+				sellerID, "The rider has confirmed delivery. The trade can now be completed.")
+
+			log.Printf("Trade %d updated: delivery confirmed by rider", tradeID.Int64)
+		}
 	}
 
 	// Return updated delivery
@@ -582,7 +730,7 @@ func (h *DeliveryHandler) getDeliveryByID(deliveryID, userID int) (*models.Deliv
 		SELECT d.id, d.user_id, d.trade_id, d.delivery_type, d.status, d.rider_id,
 			d.pickup_latitude, d.pickup_longitude, d.pickup_address,
 			d.delivery_latitude, d.delivery_longitude, d.delivery_address,
-			d.special_instructions, d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
+			COALESCE(d.special_instructions, ''), d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
 			d.claimed_at, d.picked_up_at, d.in_transit_at, d.delivered_at,
 			d.created_at, d.updated_at,
 			u.name AS user_name
@@ -593,7 +741,7 @@ func (h *DeliveryHandler) getDeliveryByID(deliveryID, userID int) (*models.Deliv
 	args := []interface{}{deliveryID}
 
 	if userID > 0 {
-		query += " AND (d.user_id = ? OR d.rider_id = ?)"
+		query += " AND (d.user_id = ? OR d.rider_id IN (SELECT id FROM riders WHERE user_id = ?))"
 		args = append(args, userID, userID)
 	}
 
@@ -663,4 +811,345 @@ func (h *DeliveryHandler) loadDeliveryItems(d *models.Delivery) {
 	if len(items) > 0 {
 		d.Items = items
 	}
+}
+
+// GetAvailableDeliveries returns all pending, unclaimed deliveries for riders to browse
+func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
+	rows, err := h.db.Query(`
+		SELECT d.id, d.user_id, d.trade_id, d.delivery_type, d.status, d.rider_id,
+			d.pickup_latitude, d.pickup_longitude, d.pickup_address,
+			d.delivery_latitude, d.delivery_longitude, d.delivery_address,
+			COALESCE(d.special_instructions, ''), d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
+			d.claimed_at, d.picked_up_at, d.in_transit_at, d.delivered_at,
+			d.created_at, d.updated_at,
+			u.name AS user_name
+		FROM deliveries d
+		JOIN users u ON d.user_id = u.id
+		WHERE d.status = 'pending' AND d.rider_id IS NULL
+		ORDER BY d.created_at DESC
+	`)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch available deliveries"})
+	}
+	defer rows.Close()
+
+	deliveries := []models.Delivery{}
+	for rows.Next() {
+		var d models.Delivery
+		err := rows.Scan(
+			&d.ID, &d.UserID, &d.TradeID, &d.DeliveryType, &d.Status, &d.RiderID,
+			&d.PickupLatitude, &d.PickupLongitude, &d.PickupAddress,
+			&d.DeliveryLatitude, &d.DeliveryLongitude, &d.DeliveryAddress,
+			&d.SpecialInstructions, &d.TotalCost, &d.EstimatedETA, &d.ItemCount, &d.IsFragile,
+			&d.ClaimedAt, &d.PickedUpAt, &d.InTransitAt, &d.DeliveredAt,
+			&d.CreatedAt, &d.UpdatedAt,
+			&d.UserName,
+		)
+		if err != nil {
+			log.Printf("Error scanning available delivery: %v", err)
+			continue
+		}
+		h.loadDeliveryItems(&d)
+		deliveries = append(deliveries, d)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: deliveries})
+}
+
+// GetRiderDeliveries returns the authenticated rider's claimed/active deliveries
+func (h *DeliveryHandler) GetRiderDeliveries(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	// Find rider ID for this user
+	var riderID int
+	err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ?", userID).Scan(&riderID)
+	if err != nil {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not registered as a rider"})
+	}
+
+	statusFilter := c.Query("status", "")
+
+	query := `
+		SELECT d.id, d.user_id, d.trade_id, d.delivery_type, d.status, d.rider_id,
+			d.pickup_latitude, d.pickup_longitude, d.pickup_address,
+			d.delivery_latitude, d.delivery_longitude, d.delivery_address,
+			COALESCE(d.special_instructions, ''), d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
+			d.claimed_at, d.picked_up_at, d.in_transit_at, d.delivered_at,
+			d.created_at, d.updated_at,
+			u.name AS user_name
+		FROM deliveries d
+		JOIN users u ON d.user_id = u.id
+		WHERE d.rider_id = ?`
+
+	args := []interface{}{riderID}
+
+	if statusFilter != "" {
+		query += " AND d.status = ?"
+		args = append(args, statusFilter)
+	}
+
+	query += " ORDER BY d.updated_at DESC"
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch rider deliveries"})
+	}
+	defer rows.Close()
+
+	deliveries := []models.Delivery{}
+	for rows.Next() {
+		var d models.Delivery
+		err := rows.Scan(
+			&d.ID, &d.UserID, &d.TradeID, &d.DeliveryType, &d.Status, &d.RiderID,
+			&d.PickupLatitude, &d.PickupLongitude, &d.PickupAddress,
+			&d.DeliveryLatitude, &d.DeliveryLongitude, &d.DeliveryAddress,
+			&d.SpecialInstructions, &d.TotalCost, &d.EstimatedETA, &d.ItemCount, &d.IsFragile,
+			&d.ClaimedAt, &d.PickedUpAt, &d.InTransitAt, &d.DeliveredAt,
+			&d.CreatedAt, &d.UpdatedAt,
+			&d.UserName,
+		)
+		if err != nil {
+			log.Printf("Error scanning rider delivery: %v", err)
+			continue
+		}
+		h.loadRiderInfo(&d)
+		h.loadDeliveryItems(&d)
+		deliveries = append(deliveries, d)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: deliveries})
+}
+
+// ClaimDelivery allows a rider to self-claim an available delivery
+func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	deliveryID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid delivery ID"})
+	}
+
+	// Look up rider record for this user
+	var riderID int
+	err = h.db.QueryRow("SELECT id FROM riders WHERE user_id = ? AND is_active = TRUE", userID).Scan(&riderID)
+	if err != nil {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not registered as an active rider"})
+	}
+
+	// Atomically claim the delivery -- only succeeds if still pending and unclaimed
+	now := time.Now()
+	result, err := h.db.Exec(`
+		UPDATE deliveries
+		SET rider_id = ?, status = 'claimed', claimed_at = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status = 'pending' AND rider_id IS NULL`,
+		riderID, now, deliveryID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to claim delivery"})
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Delivery is no longer available for claiming"})
+	}
+
+	log.Printf("Rider %d (user %d) claimed delivery %d", riderID, userID, deliveryID)
+
+	// Notify the delivery owner
+	var deliveryUserID int
+	var tradeID sql.NullInt64
+	_ = h.db.QueryRow("SELECT user_id, trade_id FROM deliveries WHERE id = ?", deliveryID).Scan(&deliveryUserID, &tradeID)
+
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+		deliveryUserID, "A rider has claimed your delivery and will pick it up soon!")
+
+	// If linked to a trade, also notify the buyer
+	if tradeID.Valid {
+		var buyerID int
+		_ = h.db.QueryRow("SELECT buyer_id FROM trades WHERE id = ?", tradeID.Int64).Scan(&buyerID)
+		if buyerID != deliveryUserID {
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+				buyerID, "A rider has been assigned to your trade delivery!")
+		}
+	}
+
+	// Return updated delivery
+	delivery, err := h.getDeliveryByID(deliveryID, 0)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to retrieve updated delivery"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Delivery claimed successfully",
+		Data:    delivery,
+	})
+}
+
+// GetTradeDelivery returns the delivery record linked to a specific trade
+func (h *DeliveryHandler) GetTradeDelivery(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	tradeID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade ID"})
+	}
+
+	// Verify user is part of this trade
+	var buyerID, sellerID int
+	err = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
+	}
+	if userID != buyerID && userID != sellerID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
+	}
+
+	// Find the delivery for this trade
+	var deliveryID int
+	err = h.db.QueryRow("SELECT id FROM deliveries WHERE trade_id = ? ORDER BY created_at DESC LIMIT 1", tradeID).Scan(&deliveryID)
+	if err != nil {
+		// No delivery found — auto-create one if this is an active delivery trade
+		var tradeOption string
+		var tradeStatus string
+		_ = h.db.QueryRow("SELECT COALESCE(trade_option, 'meetup'), status FROM trades WHERE id = ?", tradeID).Scan(&tradeOption, &tradeStatus)
+
+		if tradeOption == "delivery" && (tradeStatus == "active" || tradeStatus == "accepted" || tradeStatus == "awaiting_confirmation") {
+			log.Printf("Auto-creating missing delivery record for trade %d", tradeID)
+			newID, createErr := h.autoCreateDeliveryForTrade(tradeID, buyerID, sellerID)
+			if createErr != nil {
+				log.Printf("Failed to auto-create delivery for trade %d: %v", tradeID, createErr)
+				return c.JSON(models.APIResponse{Success: true, Data: nil})
+			}
+			deliveryID = newID
+		} else {
+			return c.JSON(models.APIResponse{Success: true, Data: nil})
+		}
+	}
+
+	delivery, err := h.getDeliveryByID(deliveryID, 0)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to retrieve delivery"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: delivery})
+}
+
+// autoCreateDeliveryForTrade creates a missing delivery record for an active delivery trade.
+// This handles trades that were accepted before the auto-creation code was deployed.
+func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID int) (int, error) {
+	// Get trade delivery info
+	var deliveryAddress sql.NullString
+	var deliveryType sql.NullString
+	err := h.db.QueryRow(
+		"SELECT delivery_address, delivery_type FROM trades WHERE id = ?", tradeID,
+	).Scan(&deliveryAddress, &deliveryType)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get trade info: %w", err)
+	}
+
+	// Get trade items
+	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get trade items: %w", err)
+	}
+	defer rows.Close()
+
+	var productIDs []int
+	for rows.Next() {
+		var pid int
+		if err := rows.Scan(&pid); err != nil {
+			continue
+		}
+		productIDs = append(productIDs, pid)
+	}
+
+	// Also include the target product
+	var targetProductID int
+	_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID)
+	if targetProductID > 0 {
+		productIDs = append(productIDs, targetProductID)
+	}
+
+	// Get seller location for pickup
+	var sellerLat, sellerLon sql.NullFloat64
+	var sellerAddr sql.NullString
+	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", sellerID).Scan(&sellerLat, &sellerLon, &sellerAddr)
+
+	// Get buyer location for delivery
+	var buyerLat, buyerLon sql.NullFloat64
+	_ = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon)
+
+	// Determine delivery type
+	delType := "standard"
+	if deliveryType.Valid && deliveryType.String != "" {
+		delType = deliveryType.String
+	}
+
+	// Calculate cost
+	var totalCost float64
+	if delType == "express" {
+		totalCost = 60.0
+	} else {
+		totalCost = 30.0
+	}
+
+	// Determine pickup address
+	pickupAddr := "Seller location"
+	if sellerAddr.Valid && sellerAddr.String != "" {
+		pickupAddr = sellerAddr.String
+	}
+
+	// Determine delivery address
+	delAddr := "Buyer location"
+	if deliveryAddress.Valid && deliveryAddress.String != "" {
+		delAddr = deliveryAddress.String
+	}
+
+	// Insert delivery record
+	result, err := h.db.Exec(`
+		INSERT INTO deliveries (
+			user_id, trade_id, delivery_type, status,
+			pickup_latitude, pickup_longitude, pickup_address,
+			delivery_latitude, delivery_longitude, delivery_address,
+			item_count, total_cost, is_fragile
+		) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+		sellerID, tradeID, delType,
+		sellerLat, sellerLon, pickupAddr,
+		buyerLat, buyerLon, delAddr,
+		len(productIDs), totalCost,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert delivery: %w", err)
+	}
+
+	deliveryID64, _ := result.LastInsertId()
+	deliveryID := int(deliveryID64)
+	log.Printf("Auto-created delivery %d for trade %d with %d items", deliveryID, tradeID, len(productIDs))
+
+	// Insert delivery items
+	for _, pid := range productIDs {
+		var productName string
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productName)
+		_, _ = h.db.Exec(
+			"INSERT INTO delivery_items (delivery_id, product_id, product_name, is_fragile) VALUES (?, ?, ?, FALSE)",
+			deliveryID, pid, productName,
+		)
+	}
+
+	// Notify both parties
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+		buyerID, "A delivery has been created for your trade. A rider will pick it up soon.")
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+		sellerID, "A delivery request has been created. Please prepare items for pickup.")
+
+	return deliveryID, nil
 }

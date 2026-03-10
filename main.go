@@ -199,6 +199,7 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
+	deliveryHandler.BackfillMissingDeliveries() // Create delivery records for existing active delivery trades
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
@@ -312,6 +313,7 @@ func main() {
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
+	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
 
 	// Payment routes
 	payments := api.Group("/payments")
@@ -361,13 +363,19 @@ func main() {
 	wishlist.Post("/", middleware.AuthMiddleware(), wishlistHandler.AddToWishlist)
 	wishlist.Delete("/:productId", middleware.AuthMiddleware(), wishlistHandler.RemoveFromWishlist)
 
-	// Delivery routes
+	// Delivery routes (order matters: specific paths before :id)
 	deliveries := api.Group("/deliveries")
 	deliveries.Post("/", middleware.AuthMiddleware(), deliveryHandler.CreateDelivery)
 	deliveries.Get("/", middleware.AuthMiddleware(), deliveryHandler.GetDeliveries)
+	// Rider-specific routes must come before /:id to avoid shadowing
+	deliveries.Get("/available", middleware.AuthMiddleware(), deliveryHandler.GetAvailableDeliveries)
+	deliveries.Get("/my-jobs", middleware.AuthMiddleware(), deliveryHandler.GetRiderDeliveries)
+	deliveries.Post("/register-rider", middleware.AuthMiddleware(), deliveryHandler.RegisterAsRider)
+	deliveries.Get("/rider-status", middleware.AuthMiddleware(), deliveryHandler.CheckRiderStatus)
 	deliveries.Get("/:id", middleware.AuthMiddleware(), deliveryHandler.GetDelivery)
 	deliveries.Put("/:id/status", middleware.AuthMiddleware(), deliveryHandler.UpdateDeliveryStatus)
 	deliveries.Post("/:id/assign", middleware.AuthMiddleware(), deliveryHandler.AssignRider)
+	deliveries.Post("/:id/claim", middleware.AuthMiddleware(), deliveryHandler.ClaimDelivery)
 
 	// Generic image upload route (used by TradeCompletionModal, etc.)
 	api.Post("/upload", middleware.AuthMiddleware(), uploadHandler.UploadImage)

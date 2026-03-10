@@ -129,7 +129,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       (position) => {
         setDetectedCoords({ lat: position.coords.latitude, lng: position.coords.longitude })
         setDetectingLocation(false)
-        toast({ title: '📍 Location detected!', status: 'success', duration: 2000 })
+        toast({ title: 'Location detected!', status: 'success', duration: 2000 })
       },
       (error) => {
         setDetectingLocation(false)
@@ -219,18 +219,18 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                       <HStack spacing={3} align="start">
                         <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="80px" h="80px" objectFit="cover" rounded="md" loading="lazy" />
                         <VStack spacing={2} align="start" flex={1}>
-                          <Text fontWeight="semibold" fontSize="sm">{targetProduct.title}</Text>
-                          <Text fontSize="xs" color="gray.500" noOfLines={2}>{targetProduct.description}</Text>
+                          <Text fontWeight="semibold" fontSize="sm" wordBreak="break-word">{targetProduct.title}</Text>
+                          <Text fontSize="xs" color="gray.500" noOfLines={2} wordBreak="break-word">{targetProduct.description}</Text>
                           {targetProduct.bidding_type && targetProduct.bidding_type !== 'none' && (
                             <HStack spacing={2}>
                               {targetProduct.bidding_type === 'blind' && (
                                 <Badge colorScheme="orange" fontSize="xs">
-                                  🤐 Blind Bidding
+                                  Blind Bidding
                                 </Badge>
                               )}
                               {targetProduct.bidding_type === 'open' && (
                                 <Badge colorScheme="green" fontSize="xs">
-                                  🏆 Open Bidding
+                                  Open Bidding
                                 </Badge>
                               )}
                             </HStack>
@@ -252,7 +252,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                     <Box key={p.id} minH="120px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
                       <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="50px" objectFit="cover" loading="lazy" />
                       <Box p={2}>
-                        <Text fontSize="sm" noOfLines={2}>{p.title}</Text>
+                        <Text fontSize="sm" noOfLines={2} wordBreak="break-word">{p.title}</Text>
                       </Box>
                     </Box>
                   ))}
@@ -392,7 +392,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                               borderLeftColor="yellow.500"
                             >
                               <Text fontSize="sm" color="yellow.900" fontWeight="medium">
-                                ⚠️ Location not set
+                                Location not set
                               </Text>
                               <Text fontSize="xs" color="yellow.700" mt={1}>
                                 Detect your location or enter an address below
@@ -501,10 +501,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                       <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" loading="lazy" />
                       <Box p={2}>
                         <HStack justify="space-between">
-                          <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>{p.title}</Text>
+                          <Text fontSize="sm" fontWeight="semibold" noOfLines={1} wordBreak="break-word">{p.title}</Text>
                           {p.premium && <Badge colorScheme="yellow">Premium</Badge>}
                         </HStack>
-                        <Text fontSize="xs" color="gray.600" noOfLines={2}>{p.description}</Text>
+                        <Text fontSize="xs" color="gray.600" noOfLines={2} wordBreak="break-word">{p.description}</Text>
                       </Box>
                     </Box>
                   ))}
@@ -560,5 +560,3 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 }
 
 export default TradeModal
-
-
