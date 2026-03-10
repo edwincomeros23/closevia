@@ -406,7 +406,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 			productID,
 		)
 
-		if fraudResult.RiskLevel == "high" {
+		switch fraudResult.RiskLevel {
+		case "high":
 			log.Printf("🚫 [FRAUD] HIGH FRAUD RISK DETECTED (%.2f%%) - BLOCKING PRODUCT", fraudResult.FraudProbability*100)
 			// Delete the product since it failed fraud check
 			_, _ = h.db.Exec("DELETE FROM products WHERE id = ?", productID)
@@ -414,11 +415,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 				Success: false,
 				Error:   "Your product listing failed our security verification. This could be due to: incomplete/gibberish information, suspicious pricing, or patterns inconsistent with legitimate products. Please review your product details and try again.",
 			})
-		}
-
-		if fraudResult.RiskLevel == "medium" {
+		case "medium":
 			log.Printf("⚠️  [FRAUD] Medium fraud risk detected (%.2f%%) - Product allowed but monitored", fraudResult.FraudProbability*100)
-		} else if fraudResult.RiskLevel == "low" {
+		case "low":
 			log.Printf("✅ [FRAUD] Low fraud risk (%.2f%%) - Product approved", fraudResult.FraudProbability*100)
 		}
 	} else {

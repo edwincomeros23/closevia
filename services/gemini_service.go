@@ -410,34 +410,6 @@ Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohib
 	return nil, lastErr
 }
 
-// extractJSON finds and returns the first valid JSON object from a string.
-// Handles markdown code fences (```json ... ```) and raw JSON.
-func extractJSON(s string) string {
-	s = strings.TrimSpace(s)
-
-	// Try to strip markdown fences first
-	if idx := strings.Index(s, "```"); idx != -1 {
-		// find opening fence end
-		start := strings.Index(s[idx:], "\n")
-		if start != -1 {
-			start += idx + 1
-			// find closing fence
-			end := strings.LastIndex(s, "```")
-			if end > start {
-				s = strings.TrimSpace(s[start:end])
-			}
-		}
-	}
-
-	// Find the JSON object boundaries
-	start := strings.Index(s, "{")
-	end := strings.LastIndex(s, "}")
-	if start == -1 || end == -1 || end < start {
-		return ""
-	}
-	return s[start : end+1]
-}
-
 // truncate safely truncates a string to a maximum length
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
