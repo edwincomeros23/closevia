@@ -263,6 +263,19 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		counter++
 	}
 
+	// ==================== QUICK HEURISTIC FRAUD CHECKS ====================
+	// Check for obvious fraud patterns BEFORE creating the product
+	log.Printf("🔍 [FRAUD-HEURISTIC] Checking for obvious fraud patterns...")
+	isFraud, reason := services.FraudHeuristicCheck(title, description, wants, insertPrice)
+	if isFraud {
+		log.Printf("🚫 [FRAUD-HEURISTIC] BLOCKED - %s", reason)
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Your product listing failed our initial verification: " + reason + ". Please ensure your listing contains legitimate product information.",
+		})
+	}
+	log.Printf("✅ [FRAUD-HEURISTIC] Passed basic checks, will now create product...")
+
 	// Insert new product with slug. Build SQL dynamically so it's tolerant
 	// to missing latitude/longitude columns (some DBs may not have applied migrations).
 	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category", "wants", "wanted_categories", "item_type", "brand", "authenticity_risks", "tags", "estimated_value_min", "estimated_value_max"}
@@ -341,6 +354,69 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 			Error:   "Failed to retrieve created product",
 		})
 	}
+
+	// ==================== FRAUD DETECTION (BLOCKING) ====================
+	// Initialize fraud detection service
+	log.Printf("🔍 [FRAUD] Running fraud detection for product %d", productID)
+	fraudService := services.NewFraudDetectionService()
+
+	// Get seller statistics
+	sellerStats, err := services.GetSellerStats(h.db, userID)
+	if err != nil {
+		log.Printf("⚠️  [FRAUD] Failed to get seller stats: %v", err)
+		sellerStats = &services.SellerStats{
+			TotalTrades:     0,
+			TradesLast7Days: 0,
+			AvgItemValue:    0,
+			AccountAgeDays:  0,
+		}
+	}
+
+	// Extract fraud detection features
+	fraudInput := services.ExtractFraudDetectionFeatures(
+		h.db,
+		&createdProduct,
+		sellerStats,
+		category,
+		false,
+	)
+
+	// Run fraud detection
+	fraudResult, _ := fraudService.DetectFraud(fraudInput)
+
+	// Log for monitoring and model retraining
+	_ = services.LogFraudPrediction(int(productID), userID, fraudResult)
+
+	// Check fraud result - BLOCK if HIGH risk
+	if fraudResult.Success {
+		// Update product with fraud assessment
+		_, _ = h.db.Exec(
+			"UPDATE products SET fraud_risk_level = ?, fraud_probability = ?, last_fraud_check_at = CURRENT_TIMESTAMP WHERE id = ?",
+			fraudResult.RiskLevel,
+			fraudResult.FraudProbability,
+			productID,
+		)
+
+		if fraudResult.RiskLevel == "high" {
+			log.Printf("🚫 [FRAUD] HIGH FRAUD RISK DETECTED (%.2f%%) - BLOCKING PRODUCT", fraudResult.FraudProbability*100)
+			// Delete the product since it failed fraud check
+			_, _ = h.db.Exec("DELETE FROM products WHERE id = ?", productID)
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Your product listing failed our security verification. This could be due to: incomplete/gibberish information, suspicious pricing, or patterns inconsistent with legitimate products. Please review your product details and try again.",
+			})
+		}
+
+		if fraudResult.RiskLevel == "medium" {
+			log.Printf("⚠️  [FRAUD] Medium fraud risk detected (%.2f%%) - Product allowed but monitored", fraudResult.FraudProbability*100)
+		} else if fraudResult.RiskLevel == "low" {
+			log.Printf("✅ [FRAUD] Low fraud risk (%.2f%%) - Product approved", fraudResult.FraudProbability*100)
+		}
+	} else {
+		// Fraud detection failed, log but allow
+		log.Printf("⚠️  [FRAUD] Fraud detection service error: %s", fraudResult.Error)
+	}
+	// ========================================================================
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
@@ -1643,17 +1719,29 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 
 	// Check if analysis failed
 	if err != nil || aiResult == nil || !aiResult.Success {
-		errMsg := "AI analysis failed"
+		// Convert technical errors to user-friendly messages
+		userFriendlyMsg := "We couldn't analyze your image. Please check that:\n- Image is clear and well-lit\n- Image shows the actual product\n- File is a valid image (JPG, PNG)\n- File size is under 25MB"
+
 		if aiResult != nil && aiResult.Error != "" {
-			errMsg = aiResult.Error
+			errMsg := aiResult.Error
+			// Improve specific error messages
+			if strings.Contains(errMsg, "INVALID_ARGUMENT") || strings.Contains(errMsg, "safety") {
+				userFriendlyMsg = "The image appears to contain prohibited items or content. Please ensure your image shows a legitimate product."
+			} else if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline") {
+				userFriendlyMsg = "Image processing took too long. Please try again or use a smaller image."
+			} else if strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "API_KEY") {
+				userFriendlyMsg = "We're experiencing technical difficulties with our image analysis service. Please try again later."
+			} else if strings.Contains(errMsg, "RESOURCE_EXHAUSTED") {
+				userFriendlyMsg = "Our image analysis service is busy. Please try again in a few moments."
+			}
+			log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
 		} else if err != nil {
-			errMsg = err.Error()
+			log.Printf("GenerateProductDetailsWithAI error: %s", err.Error())
 		}
-		log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
 		// Return 422 (Unprocessable Entity) — the server worked fine, the AI couldn't process the input
 		return c.Status(422).JSON(models.APIResponse{
 			Success: false,
-			Error:   errMsg,
+			Error:   userFriendlyMsg,
 		})
 	}
 

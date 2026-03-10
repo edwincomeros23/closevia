@@ -153,6 +153,8 @@ PROHIBITED ITEMS - BLOCK IMMEDIATELY:
 - Counterfeit goods: fake branded items, pirated media, knockoffs, replicas
 - Adult content: sexual or explicit content
 - People/Faces: ANY visible human face, person, or body
+- Animals/Pets: living animals, dogs, cats, birds, reptiles, insects, ANY living creature (pet photos prohibited)
+- Illegal items: anything violating local laws
 
 IF THE IMAGE CONTAINS ANY PROHIBITED ITEM:
 Stop immediately and respond ONLY with this JSON (no other fields):
@@ -165,6 +167,7 @@ Examples of rejection reasons:
 - "This item can't be listed. Firearms and weapons are not allowed on this platform."
 - "This item can't be listed. Drugs and alcohol are not allowed on this platform."
 - "Please upload a photo of the item only. Photos containing people are not allowed for privacy reasons."
+- "This item can't be listed on our platform. Photos of animals and pets are not allowed."
 - "This item can't be listed on our platform. It violates our community guidelines."
 
 Do not analyze further. Do not return title, description, value, or condition. Return ONLY the rejected response.
@@ -252,145 +255,159 @@ Remember: Check for prohibited items FIRST. If found, respond ONLY with {"prohib
 		return nil, fmt.Errorf("failed to marshal request: %v", err)
 	}
 
-	// Use gemini-1.5-flash on v1 (stable) — v1beta does not support this model
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=%s", apiKey)
-	log.Printf("Making request to Gemini API (gemini-1.5-flash / v1) with %d image part(s)", len(parts)-1)
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		log.Printf("Error creating request: %v", err)
-		return nil, err
+	// Try multiple Gemini models with fallback
+	models := []string{
+		"gemini-2.5-flash",      // primary (most recent)
+		"gemini-2.0-flash",      // fallback
+		"gemini-2.5-flash-lite", // ultra-fallback (lightweight)
 	}
-	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error making request to Gemini API: %v", err)
-		return nil, err
-	}
-	defer resp.Body.Close()
+	var lastErr error
+	for _, model := range models {
+		log.Printf("[Gemini] Trying model: %s", model)
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+		log.Printf("Making request to Gemini API (%s / v1beta) with %d image part(s)", model, len(parts)-1)
 
-	body, _ := io.ReadAll(resp.Body)
-
-	log.Printf("Gemini API response status: %d", resp.StatusCode)
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Gemini API error response: %s", string(body))
-		// Special handling for quota exceeded (429)
-		if resp.StatusCode == 429 {
-			return nil, fmt.Errorf("AI service is temporarily rate-limited. Please try again in a few minutes.")
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Printf("Error creating request for %s: %v", model, err)
+			lastErr = err
+			continue
 		}
-		return nil, fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))
-	}
+		req.Header.Set("Content-Type", "application/json")
 
-	var geminiResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-			FinishReason string `json:"finishReason"`
-		} `json:"candidates"`
-		PromptFeedback struct {
-			BlockReason string `json:"blockReason"`
-		} `json:"promptFeedback"`
-		Error struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-
-	if err := json.Unmarshal(body, &geminiResp); err != nil {
-		log.Printf("Error unmarshaling Gemini response: %v", err)
-		log.Printf("Raw response: %s", string(body))
-		return nil, fmt.Errorf("failed to parse Gemini response: %v", err)
-	}
-
-	// Check for API errors in response body
-	if geminiResp.Error.Message != "" {
-		log.Printf("Gemini API returned error: %s", geminiResp.Error.Message)
-		errMsg := strings.ToLower(geminiResp.Error.Message)
-		if strings.Contains(errMsg, "model") && strings.Contains(errMsg, "not found") {
-			return nil, fmt.Errorf("AI model not available. Please contact support.")
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Error making request to Gemini API (%s): %v", model, err)
+			lastErr = err
+			continue
 		}
-		if strings.Contains(errMsg, "unable to process input image") {
-			return nil, fmt.Errorf("Gemini cannot process uploaded images. Please use clear JPEG/PNG photos.")
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+
+		log.Printf("Gemini API (%s) response status: %d", model, resp.StatusCode)
+		// Check for model not found errors
+		if resp.StatusCode == 404 {
+			log.Printf("Model %s not found (404), trying next model...", model)
+			lastErr = fmt.Errorf("model %s not found", model)
+			continue
 		}
-		if strings.Contains(errMsg, "invalid_argument") || strings.Contains(errMsg, "not supported") {
-			return nil, fmt.Errorf("Image format not supported. Please use JPEG, PNG, or WebP.")
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Gemini API error response: %s", string(body))
+			// Special handling for quota exceeded (429)
+			if resp.StatusCode == 429 {
+				lastErr = fmt.Errorf("AI service is temporarily rate-limited. Please try again in a few minutes.")
+				continue // Try fallback model
+			}
+			lastErr = fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(body))
+			continue
 		}
-		return nil, fmt.Errorf("AI error: %s", geminiResp.Error.Message)
+
+		var geminiResp struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+				FinishReason string `json:"finishReason"`
+			} `json:"candidates"`
+			PromptFeedback struct {
+				BlockReason string `json:"blockReason"`
+			} `json:"promptFeedback"`
+			Error struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+
+		if err := json.Unmarshal(body, &geminiResp); err != nil {
+			log.Printf("Error unmarshaling Gemini response from %s: %v", model, err)
+			log.Printf("Raw response: %s", string(body))
+			lastErr = fmt.Errorf("failed to parse Gemini response: %v", err)
+			continue
+		}
+
+		// Check for API errors in response body
+		if geminiResp.Error.Message != "" {
+			log.Printf("Gemini API (%s) returned error: %s", model, geminiResp.Error.Message)
+			errMsg := strings.ToLower(geminiResp.Error.Message)
+			if strings.Contains(errMsg, "model") && strings.Contains(errMsg, "not found") {
+				lastErr = fmt.Errorf("model %s: not found", model)
+				continue // Try next model
+			}
+			if strings.Contains(errMsg, "unable to process input image") {
+				return nil, fmt.Errorf("Gemini cannot process uploaded images. Please use clear JPEG/PNG photos.")
+			}
+			if strings.Contains(errMsg, "invalid_argument") || strings.Contains(errMsg, "not supported") {
+				return nil, fmt.Errorf("Image format not supported. Please use JPEG, PNG, or WebP.")
+			}
+			if strings.Contains(errMsg, "permission denied") || strings.Contains(errMsg, "authentication") || strings.Contains(errMsg, "api key") {
+				return nil, fmt.Errorf("Invalid API credentials for Gemini. Please check your GEMINI_API_KEY.")
+			}
+			lastErr = fmt.Errorf("Gemini API: %s", geminiResp.Error.Message)
+			continue
+		}
+
+		// Check for blocked content
+		if geminiResp.PromptFeedback.BlockReason != "" {
+			log.Printf("Gemini blocked request from %s: %s", model, geminiResp.PromptFeedback.BlockReason)
+			return nil, fmt.Errorf("Gemini blocked the request: %s", geminiResp.PromptFeedback.BlockReason)
+		}
+
+		if len(geminiResp.Candidates) == 0 {
+			log.Printf("No candidates in Gemini response from %s", model)
+			if geminiResp.PromptFeedback.BlockReason != "" {
+				return nil, fmt.Errorf("Gemini blocked the request: %s", geminiResp.PromptFeedback.BlockReason)
+			}
+			lastErr = errors.New("no response from Gemini")
+			continue
+		}
+
+		var sb strings.Builder
+		for _, candidate := range geminiResp.Candidates {
+			for _, part := range candidate.Content.Parts {
+				sb.WriteString(part.Text)
+			}
+		}
+		raw := sb.String()
+
+		log.Printf("Raw Gemini response from %s: %s", model, truncate(raw, 200))
+
+		// Remove markdown code blocks if present
+		raw = strings.TrimSpace(raw)
+		if strings.HasPrefix(raw, "```") {
+			old := raw
+			raw = strings.TrimPrefix(raw, "```")
+			if idx := strings.Index(raw, "\n"); idx != -1 {
+				raw = raw[idx+1:]
+			}
+			raw = strings.TrimSuffix(raw, "```")
+			raw = strings.TrimSpace(raw)
+			log.Printf("Stripped markdown: %q -> %q", truncate(old, 50), truncate(raw, 50))
+		}
+
+		var result GeminiResponse
+		if err := json.Unmarshal([]byte(raw), &result); err != nil {
+			log.Printf("Error unmarshaling JSON from Gemini (%s): %v", model, err)
+			log.Printf("Raw text: %s", raw)
+			lastErr = fmt.Errorf("failed to parse Gemini analysis: %v", err)
+			continue
+		}
+
+		// Success - return immediately
+		log.Printf("✅ [Gemini] Successfully analyzed with model: %s", model)
+		return &result, nil
 	}
 
-	// Check for blocked content
-	if geminiResp.PromptFeedback.BlockReason != "" {
-		log.Printf("Gemini blocked request: %s", geminiResp.PromptFeedback.BlockReason)
-		return nil, fmt.Errorf("AI request blocked: %s", geminiResp.PromptFeedback.BlockReason)
+	// All Gemini models failed
+	if lastErr == nil {
+		lastErr = errors.New("all Gemini models failed")
 	}
-
-	if len(geminiResp.Candidates) == 0 {
-		log.Printf("No candidates in Gemini response. Raw: %s", string(body))
-		return nil, errors.New("no response from AI — please try again")
-	}
-
-	if len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		log.Printf("No parts in Gemini response, finish reason: %s", geminiResp.Candidates[0].FinishReason)
-		return nil, errors.New("empty AI response — please try again")
-	}
-
-	rawText := geminiResp.Candidates[0].Content.Parts[0].Text
-	log.Printf("Raw Gemini text: %s", rawText)
-
-	// Robustly extract JSON from the response (handles markdown fences and extra text)
-	jsonText := extractJSON(rawText)
-	if jsonText == "" {
-		log.Printf("[ERROR] Could not extract JSON from Gemini response: %s", rawText)
-		_ = os.WriteFile("gemini_error.log", []byte(fmt.Sprintf("Could not extract JSON:\n%s", rawText)), 0644)
-		return nil, fmt.Errorf("AI returned unexpected format — please try again")
-	}
-
-	var result GeminiResponse
-	if err := json.Unmarshal([]byte(jsonText), &result); err != nil {
-		_ = os.WriteFile("gemini_error.log", []byte(fmt.Sprintf("JSON parse error: %v\nJSON: %s", err, jsonText)), 0644)
-		log.Printf("[ERROR] JSON parse failed: %v | text: %s", err, jsonText)
-		return nil, fmt.Errorf("failed to parse AI response: %v", err)
-	}
-
-	// CRITICAL: Validate response for safety violations
-	// If the AI returned product details for a prohibited item, override and reject it
-	if violatesProhibition(&result) {
-		log.Printf("⚠️ SAFETY VIOLATION: AI returned product analysis for prohibited item! Forcing rejection.")
-		return &GeminiResponse{
-			Prohibited: true,
-			Reason:     "This item can't be listed. Weapons and firearms are not allowed on this platform.",
-		}, nil
-	}
-
-	// Apply defaults and sanity-checks
-	if result.Condition == "" {
-		result.Condition = "Used"
-	}
-	if result.Category == "" {
-		result.Category = "General"
-	}
-	if result.AuthenticityRisks == "" {
-		result.AuthenticityRisks = "Low"
-	}
-	if len(result.Title) > 25 {
-		result.Title = result.Title[:25]
-	}
-	if result.Description == "" {
-		result.Description = "Product in good condition and ready for trade."
-	} else if len(result.Description) < 50 {
-		result.Description = result.Description + " This product is in good condition and ready for trade or purchase."
-	}
-	if len(result.Description) > 800 {
-		result.Description = result.Description[:800]
-	}
-
-	log.Printf("✅ Gemini success: title=%q condition=%s category=%s auth_risks=%s", result.Title, result.Condition, result.Category, result.AuthenticityRisks)
-	return &result, nil
+	log.Printf("❌ [Gemini] All models exhausted. Last error: %v", lastErr)
+	return nil, lastErr
 }
 
 // extractJSON finds and returns the first valid JSON object from a string.
@@ -419,4 +436,12 @@ func extractJSON(s string) string {
 		return ""
 	}
 	return s[start : end+1]
+}
+
+// truncate safely truncates a string to a maximum length
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

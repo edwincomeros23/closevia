@@ -170,8 +170,8 @@ Remember: SAFETY IS THE HIGHEST PRIORITY. Check for prohibited items first. If f
 
 	// Call Groq API with vision model (with fallback and retry logic)
 	models := []string{
-		"meta-llama/llama-4-scout-17b-16e-instruct",     // primary
-		"meta-llama/llama-4-maverick-17b-128e-instruct", // fallback
+		"llama-3.3-70b-versatile", // primary (most capable)
+		"llama-3.1-8b-instant",    // fallback (faster, smaller)
 	}
 
 	// Retry logic - max 3 attempts total
