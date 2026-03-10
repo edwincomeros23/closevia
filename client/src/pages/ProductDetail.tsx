@@ -1045,7 +1045,7 @@ const ProductDetail: React.FC = () => {
                   <Box>
                     {/* Title and price on same horizontal axis */}
                     <Flex justify="space-between" align="center" gap={3} flexWrap="wrap">
-                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0}>
+                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0} wordBreak="break-word">
                         {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
                       </Heading>
                       <Text
@@ -1263,6 +1263,7 @@ const ProductDetail: React.FC = () => {
                       lineHeight="tall"
                       fontSize="sm"
                       whiteSpace="pre-line"
+                      wordBreak="break-word"
                       noOfLines={isDescriptionExpanded ? undefined : 6}
                     >
                       {product.description}
@@ -1631,12 +1632,12 @@ const ProductDetail: React.FC = () => {
                     </Box>
                     <Box p={3}>
                       <HStack justify="space-between" mb={2}>
-                        <Heading size="sm" noOfLines={1}>{p.title}</Heading>
+                        <Heading size="sm" noOfLines={1} wordBreak="break-word">{p.title}</Heading>
                         {p.premium && (
                           <Badge colorScheme="orange" fontSize="xs">Premium</Badge>
                         )}
                       </HStack>
-                      <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2}>
+                      <Text fontSize="xs" color="gray.600" mb={2} noOfLines={2} wordBreak="break-word">
                         {p.description}
                       </Text>
                       <Text fontSize="sm" fontWeight="bold" color="brand.500">
@@ -1788,11 +1789,11 @@ const ProductDetail: React.FC = () => {
             <ModalBody display="flex" alignItems="center" justifyContent="center" p={0} position="relative">
               {product && product.image_urls && product.image_urls.length > 0 && (
                 <>
-                  <Box 
-                    maxW="90vw" 
-                    maxH="90vh" 
-                    display="flex" 
-                    alignItems="center" 
+                  <Box
+                    maxW="90vw"
+                    maxH="90vh"
+                    display="flex"
+                    alignItems="center"
                     justifyContent="center"
                     position="relative"
                   >
@@ -1803,7 +1804,7 @@ const ProductDetail: React.FC = () => {
                       maxH="90vh"
                       objectFit="contain"
                     />
-                    
+
                     {product.image_urls.length > 1 && (
                       <>
                         <IconButton
@@ -1834,10 +1835,10 @@ const ProductDetail: React.FC = () => {
                           }}
                           _hover={{ bg: "whiteAlpha.200" }}
                         />
-                        <Text 
-                          position="absolute" 
-                          bottom="-8" 
-                          color="white" 
+                        <Text
+                          position="absolute"
+                          bottom="-8"
+                          color="white"
                           fontWeight="bold"
                         >
                           {zoomImageIndex + 1} / {product.image_urls.length}

@@ -75,10 +75,10 @@ const ProductsList: React.FC = () => {
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={() => navigate(getProductUrl(p))}
     >
-      <Box 
-        position="relative" 
-        w="full" 
-        pt="100%" 
+      <Box
+        position="relative"
+        w="full"
+        pt="100%"
         overflow="hidden"
         cursor="zoom-in"
         onClick={(e) => handleImageZoom(e, getFirstImage(p.image_urls), p.title)}
@@ -107,18 +107,18 @@ const ProductsList: React.FC = () => {
         )}
       </Box>
       <Box p={4} display="flex" flexDirection="column" h={{ base: 180, md: 192 }} overflow="hidden">
-        <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0}>
+        <Heading size="sm" noOfLines={2} mb={2} color="gray.800" flexShrink={0} wordBreak="break-word">
           {p.title}
         </Heading>
-        <Text color="gray.600" noOfLines={2} mb={2} fontSize="sm" flexShrink={0}>
+        <Text color="gray.600" noOfLines={2} mb={2} fontSize="sm" flexShrink={0} wordBreak="break-word">
           {p.description || 'No description available'}
         </Text>
         {/* Wishlist Count Badge */}
         {p.wishlist_count > 0 && (
           <HStack mb={2} spacing={1}>
-            <Badge 
-              colorScheme="pink" 
-              variant="subtle" 
+            <Badge
+              colorScheme="pink"
+              variant="subtle"
               borderRadius="full"
               px={2}
               py={0.5}
