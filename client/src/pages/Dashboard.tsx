@@ -1360,6 +1360,8 @@ const Dashboard: React.FC = () => {
                 <Text fontSize="md" fontWeight="semibold" color="brand.500">
                   {product.allow_buying && !product.barter_only && product.price
                     ? formatPHP(product.price)
+                    : product.desired_price
+                    ? `Desired: ${formatPHP(product.desired_price)}`
                     : ''}
                 </Text>
               </HStack>
