@@ -204,17 +204,26 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	userID, _ := result.LastInsertId()
 
-	// ── EMAIL VERIFICATION TEMPORARILY DISABLED (Mailgun key not yet configured) ──
-	// To re-enable: remove the verified=TRUE line below and uncomment the OTP block.
-	h.db.Exec("UPDATE users SET verified = TRUE WHERE id = ?", userID)
-	// otpCode, otpHash, otpExpiry, otpErr := generateOTP()
-	// if otpErr == nil {
-	// 	h.db.Exec(
-	// 		"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
-	// 		otpHash, otpExpiry, userID,
-	// 	)
-	// 	go services.SendOTPEmail(user.Email, user.Name, otpCode)
-	// }
+	// Generate and send OTP for email verification
+	otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+	requiresVerification := false
+	if otpErr == nil {
+		requiresVerification = true
+		h.db.Exec(
+			"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
+			otpHash, otpExpiry, userID,
+		)
+		go func() {
+			err := services.SendOTPEmail(user.Email, user.Name, otpCode)
+			if err != nil {
+				fmt.Printf("❌ Failed to send OTP email: %v\n", err)
+			}
+		}()
+	} else {
+		fmt.Printf("⚠️ OTP generation failed: %v\n", otpErr)
+		// Fallback: If OTP generation fails, mark as verified for safety
+		h.db.Exec("UPDATE users SET verified = TRUE WHERE id = ?", userID)
+	}
 
 	// Auto-grant premium for WMSU students (@wmsu.edu.ph email)
 	isWmsuStudent := !user.IsOrganization && strings.HasSuffix(strings.ToLower(user.Email), "@wmsu.edu.ph")
@@ -237,7 +246,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				Slug:               slug,
 				Name:               user.Name,
 				Email:              user.Email,
-				Verified:           true,
+				Verified:           !requiresVerification,
 				IsOrganization:     user.IsOrganization,
 				OrgVerified:        false,
 				OrgName:            user.OrgName,
@@ -248,7 +257,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				LanguagePreference: "en",
 				IsPremium:          isWmsuStudent,
 			},
-			"requires_verification": false,
+			"requires_verification": requiresVerification,
 			"token":                 token,
 		},
 	})

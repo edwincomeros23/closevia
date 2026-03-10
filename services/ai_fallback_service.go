@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"mime/multipart"
+	"os"
 	"time"
 )
 
@@ -89,13 +90,11 @@ func GetActiveAIProvider() string {
 func isGeminiAvailable() bool {
 	// Check if GEMINI_API_KEY is set and not empty
 	// This is a simple check; actual availability is tested during analysis
-	geminiKey := GenerateProductDetails != nil // sentinel check
-	return geminiKey
+	return os.Getenv("GEMINI_API_KEY") != ""
 }
 
 func isGroqAvailable() bool {
 	// Check if GROQ_API_KEY is set and not empty
 	// This is a simple check; actual availability is tested during analysis
-	groqKey := AnalyzeProductWithGroq != nil // sentinel check
-	return groqKey
+	return os.Getenv("GROQ_API_KEY") != ""
 }
