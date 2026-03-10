@@ -96,6 +96,7 @@ func (a StringArray) Value() (driver.Value, error) {
 // User represents a user in the system
 type User struct {
 	ID                          int        `json:"id"`
+	Slug                        string     `json:"slug,omitempty"` // Unique URL identifier
 	Name                        string     `json:"name" validate:"required,min=2,max=255"`
 	Email                       string     `json:"email" validate:"required,email"`
 	PasswordHash                string     `json:"-" validate:"required"`

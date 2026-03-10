@@ -105,10 +105,18 @@ func (h *ReviewHandler) CreateReview(c *fiber.Ctx) error {
 
 // GetUserReviews retrieves all reviews for a specific user
 func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
-	userID, err := c.ParamsInt("id")
-	if err != nil {
+	identifier := c.Params("id")
+	if identifier == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
+			"error": "User ID or handle is required",
+		})
+	}
+
+	userHandler := NewUserHandler()
+	userID, err := userHandler.ResolveUserID(identifier)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "User not found",
 		})
 	}
 
@@ -249,10 +257,18 @@ func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
 
 // GetUserRating calculates the average rating for a user
 func (h *ReviewHandler) GetUserRating(c *fiber.Ctx) error {
-	userID, err := c.ParamsInt("id")
-	if err != nil {
+	identifier := c.Params("id")
+	if identifier == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid user ID",
+			"error": "User ID or handle is required",
+		})
+	}
+
+	userHandler := NewUserHandler()
+	userID, err := userHandler.ResolveUserID(identifier)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "User not found",
 		})
 	}
 

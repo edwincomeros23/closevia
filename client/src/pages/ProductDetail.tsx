@@ -1057,8 +1057,8 @@ const ProductDetail: React.FC = () => {
                         {product.estimated_value_min && product.estimated_value_max
                           ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
                           : product.price && product.price > 0
-                          ? `₱${product.price.toFixed(2)}`
-                          : 'Est. Value Unavailable'}
+                            ? `₱${product.price.toFixed(2)}`
+                            : 'Est. Value Unavailable'}
                       </Text>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
@@ -1322,8 +1322,8 @@ const ProductDetail: React.FC = () => {
                             Buy Now - {product.estimated_value_min && product.estimated_value_max
                               ? `₱${(product.estimated_value_min).toLocaleString()}`
                               : product.price && product.price > 0
-                              ? `₱${product.price.toFixed(2)}`
-                              : 'Estimated'}
+                                ? `₱${product.price.toFixed(2)}`
+                                : 'Estimated'}
                           </Button>
                           <Tooltip label={`Offers (${(product as any).offer_count || 0})`}>
                             <IconButton
@@ -1462,7 +1462,7 @@ const ProductDetail: React.FC = () => {
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
-                <RouterLink to={`/users/${product.seller_id}`}>
+                <RouterLink to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}>
                   <VerifiedAvatar
                     size="lg"
                     src={sellerProfile?.profile_picture}
@@ -1477,15 +1477,15 @@ const ProductDetail: React.FC = () => {
                 </RouterLink>
                 <Box>
                   <HStack spacing={2} align="center" flexWrap="wrap">
-                    <Text
+                    <Button
                       as={RouterLink}
-                      to={`/users/${product.seller_id}`}
-                      fontWeight="bold"
-                      color="blue.600"
+                      to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}
+                      variant="link"
+                      color="brand.600"
                       _hover={{ textDecoration: 'underline' }}
                     >
                       {product.seller_name}
-                    </Text>
+                    </Button>
                     {(sellerProfile as any)?.verification_status === 'verified' && (
                       <Badge colorScheme="teal" borderRadius="full" px={2} py={0.5} fontSize="xs">
                         <HStack spacing={1}>
@@ -1788,11 +1788,11 @@ const ProductDetail: React.FC = () => {
             <ModalBody display="flex" alignItems="center" justifyContent="center" p={0} position="relative">
               {product && product.image_urls && product.image_urls.length > 0 && (
                 <>
-                  <Box 
-                    maxW="90vw" 
-                    maxH="90vh" 
-                    display="flex" 
-                    alignItems="center" 
+                  <Box
+                    maxW="90vw"
+                    maxH="90vh"
+                    display="flex"
+                    alignItems="center"
                     justifyContent="center"
                     position="relative"
                   >
@@ -1803,7 +1803,7 @@ const ProductDetail: React.FC = () => {
                       maxH="90vh"
                       objectFit="contain"
                     />
-                    
+
                     {product.image_urls.length > 1 && (
                       <>
                         <IconButton
@@ -1834,10 +1834,10 @@ const ProductDetail: React.FC = () => {
                           }}
                           _hover={{ bg: "whiteAlpha.200" }}
                         />
-                        <Text 
-                          position="absolute" 
-                          bottom="-8" 
-                          color="white" 
+                        <Text
+                          position="absolute"
+                          bottom="-8"
+                          color="white"
                           fontWeight="bold"
                         >
                           {zoomImageIndex + 1} / {product.image_urls.length}
@@ -2036,8 +2036,8 @@ const ProductDetail: React.FC = () => {
                       {product.estimated_value_min && product.estimated_value_max
                         ? `₱${(product.estimated_value_min).toLocaleString()}–₱${(product.estimated_value_max).toLocaleString()}`
                         : product.price && product.price > 0
-                        ? `₱${product.price.toFixed(2)}`
-                        : 'Est. Value Unavailable'}
+                          ? `₱${product.price.toFixed(2)}`
+                          : 'Est. Value Unavailable'}
                     </Text>
                   </VStack>
                 </HStack>

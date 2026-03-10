@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
@@ -136,13 +137,37 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 
 	// Create Xendit Invoice Request
 
-	// Determine frontend URL based on environment
-	frontendURL := "http://localhost:5173" // Default for local dev
-	if os.Getenv("APP_ENV") == "production" || os.Getenv("FRONTEND_URL") != "" {
+	// Determine frontend URL dynamically
+	// We check the 'Origin' and 'Referer' headers directly from the Fiber Context
+	frontendURL := c.Get("Origin")
+	if frontendURL == "" {
+		referer := c.Get("Referer")
+		if referer != "" {
+			// Extract origin from referer (e.g., https://cloviaph.netlify.app/trades -> https://cloviaph.netlify.app)
+			// A simple approach is just checking if it contains the known domain, or parsing it
+			// But for simplicity, we can let Fiber's BaseURL be the fallback if we want backend relative,
+			// However usually the frontend is separate. So we default to FRONTEND_URL or local.
+			frontendURL = referer // This might be a full path, but Xendit might handle it, or we just strip path
+		}
+	}
+
+	// Clean up the URL if it was extracted from Referer
+	if frontendURL != "" {
+		// Just take the scheme and host
+		parsedURL, err := url.Parse(frontendURL)
+		if err == nil {
+			frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
 		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
 			frontendURL = envURL
-		} else {
+		} else if os.Getenv("APP_ENV") == "production" {
 			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
 		}
 	}
 

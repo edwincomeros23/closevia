@@ -1,5 +1,6 @@
 export interface User {
   id: number
+  slug?: string // Unique URL identifier
   name: string
   email: string
   role: string
