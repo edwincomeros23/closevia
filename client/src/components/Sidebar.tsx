@@ -332,7 +332,7 @@ const Sidebar: React.FC = () => {
                         bg: isActive ? 'brand.200' : 'gray.200',
                       }}
                       borderRadius="xl"
-                      transition="all 0.2s"
+                      transition="all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)"
                     />
                     {(item.label === 'Notifications' && notificationCount > 0) && (
                       <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="red" borderRadius="full">{notificationCount}</CBadge>
