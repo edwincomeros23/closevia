@@ -43,23 +43,23 @@ const Login: React.FC = () => {
   const navigate = useNavigate()
   const toast = useToast()
 
-  // Navigate to dashboard when user state is updated after Google login
+  // Navigate to appropriate page when user state is updated after Google login
   useEffect(() => {
     if (googleLoginSuccess && isAuthenticated && !isLoggingIn) {
-      console.log('Login: Authentication state ready after Google login, navigating to dashboard')
-      navigate('/dashboard')
+      console.log('Login: Authentication state ready after Google login, navigating')
+      navigate(user?.role === 'admin' ? '/admin' : '/dashboard')
     }
-  }, [googleLoginSuccess, isAuthenticated, isLoggingIn, navigate])
+  }, [googleLoginSuccess, isAuthenticated, isLoggingIn, navigate, user])
 
   // Redirect already authenticated users away from login page
   // ONLY when component first mounts, not on every auth state change
   useEffect(() => {
     // Check if we're actually on the login page before redirecting
     const isOnLoginPage = window.location.pathname === '/login'
-    
+
     if (isAuthenticated && !isLoggingIn && !loading && isOnLoginPage) {
-      console.log('Login: User already authenticated on login page, redirecting to dashboard')
-      navigate('/dashboard', { replace: true })
+      console.log('Login: User already authenticated on login page, redirecting')
+      navigate(user?.role === 'admin' ? '/admin' : '/dashboard', { replace: true })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only run once on mount
@@ -81,7 +81,7 @@ const Login: React.FC = () => {
       localStorage.removeItem('clovia_token')
       
       await login(email, password)
-      
+
       toast({
         title: 'Login successful!',
         description: 'Welcome back to Clovia',
@@ -89,10 +89,15 @@ const Login: React.FC = () => {
         duration: 3000,
         isClosable: true,
       })
-      
+
+      // Check user role from localStorage since state may not be updated yet
+      const storedUser = localStorage.getItem('clovia_user')
+      const parsedUser = storedUser ? JSON.parse(storedUser) : null
+      const redirectPath = parsedUser?.role === 'admin' ? '/admin' : '/dashboard'
+
       // Small delay to ensure auth state is updated
       setTimeout(() => {
-        navigate('/dashboard')
+        navigate(redirectPath)
       }, 100)
     } catch (error: any) {
       setError(error.message || 'Login failed')

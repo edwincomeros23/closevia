@@ -73,15 +73,15 @@ const Sidebar: React.FC = () => {
       { icon: FaHome, label: 'Home', path: '/home' },
     ]
     if (user) {
+      if (user?.role === 'admin') {
+        items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
+      }
       items.push(
         { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
         { icon: FaPlus, label: 'Add Product', path: '/add-product' },
         { icon: FiHeart, label: 'Saved', path: '/saved-products' },
         { icon: FiBell, label: 'Notifications', path: '/notifications' }
       )
-      if (user?.role === 'admin') {
-        items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
-      }
     }
     return items
   }, [user])
@@ -89,14 +89,15 @@ const Sidebar: React.FC = () => {
   // Memoize mobile navigation items to prevent recalculation
   const mobileNavItems = useMemo(() => {
     if (user) {
-      const items = [
+      const items: { icon: any; label: string; path: string }[] = []
+      if (user?.role === 'admin') {
+        items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
+      }
+      items.push(
         { icon: FiHeart, label: 'Saved', path: '/saved-products' },
         { icon: FiBell, label: 'Notifications', path: '/notifications' },
         { icon: FiSettings, label: 'Settings', path: '/settings' },
-      ]
-      if (user?.role === 'admin') {
-        items.splice(2, 0, { icon: FaStar, label: 'Admin', path: '/admin' })
-      }
+      )
       return items
     }
     return [
