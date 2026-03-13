@@ -271,6 +271,7 @@ func main() {
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
 	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct) // Boost a listing
+	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
