@@ -1,30 +1,28 @@
-import "@fontsource/prata/400.css"
-
 import React from 'react'
 import {
   Box, Container, VStack, Heading, Text, Button,
   Flex, HStack, Image, IconButton, useDisclosure,
   Drawer, DrawerBody, DrawerHeader, DrawerOverlay,
   DrawerContent, DrawerCloseButton, Link, Stack,
-  SimpleGrid, Icon, Card, CardBody, Avatar,
+  SimpleGrid, Icon, Avatar,
 } from '@chakra-ui/react'
 import { HamburgerIcon } from '@chakra-ui/icons'
 import { useNavigate } from 'react-router-dom'
 
-import { FiArrowRight, FiPhone, FiPlay, FiStar, FiCheck, FiUsers, FiRefreshCw, FiShield, FiTrendingUp } from 'react-icons/fi'
-import { FaLeaf, FaHandshake, FaExchangeAlt, FaBoxOpen } from 'react-icons/fa'
-import '@fontsource/prata'
+import { FiArrowRight, FiPhone, FiPlay, FiStar, FiRefreshCw, FiShield } from 'react-icons/fi'
+import { FaLeaf, FaHandshake, FaBoxOpen } from 'react-icons/fa'
 
-/* ─── color tokens ─── */
+/* ─── color tokens (aligned with homepage teal/cream theme) ─── */
 const C = {
-  darkGreen: '#0B2B1A',
-  midGreen: '#153D2B',
-  cardGreen: '#1A4A33',
-  gold: '#C5A55A',
-  goldLight: '#D4B96E',
-  cream: '#F5F0E8',
+  dark: '#1d4e4f',       // brand.800 - dark teal for hero overlay & dark sections
+  mid: '#285e61',        // brand.700 - medium teal for alternate sections
+  card: '#2c7a7b',       // brand.600 - card backgrounds in dark sections
+  accent: '#319795',     // brand.500 - primary accent (teal, same as homepage)
+  accentLight: '#38b2ac', // brand.400 - hover state for accent
+  cream: '#FFFDF1',      // same cream background as homepage
   white: '#FFFFFF',
-  textMuted: '#A8C5B8',
+  textMuted: '#b2f5ea',  // brand.100 - muted text on dark backgrounds
+  textDark: '#285e61',   // brand.700 - text on light backgrounds
 }
 
 /* ─── Navbar ─── */
@@ -34,7 +32,7 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
   const navItems = ['Home', 'About', 'How It Works', 'Features', 'Contact Us']
 
   return (
-    <Box position="fixed" top={0} left={0} right={0} zIndex={50} bg={C.darkGreen} borderBottom="1px solid" borderColor="whiteAlpha.100">
+    <Box position="fixed" top={0} left={0} right={0} zIndex={50} bg={C.dark} borderBottom="1px solid" borderColor="whiteAlpha.100">
       <Flex
         as="nav"
         h={{ base: '64px', md: '72px' }}
@@ -46,9 +44,9 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
       >
         {/* Logo */}
         <HStack spacing={2}>
-          <Icon as={FaLeaf} color={C.gold} boxSize={6} />
-          <Text fontFamily="Prata, serif" fontSize="xl" fontWeight="bold" color={C.white}>
-            Clovia<Text as="span" color={C.gold}>PH</Text>
+          <Icon as={FaLeaf} color={C.accentLight} boxSize={6} />
+          <Text fontSize="xl" fontWeight="bold" color={C.white}>
+            Clovia<Text as="span" color={C.accentLight}>PH</Text>
           </Text>
         </HStack>
 
@@ -61,7 +59,7 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
               color={C.textMuted}
               fontSize="sm"
               fontWeight="medium"
-              _hover={{ color: C.gold, textDecoration: 'none' }}
+              _hover={{ color: C.accentLight, textDecoration: 'none' }}
               transition="color 0.2s"
             >
               {item}
@@ -73,13 +71,13 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
         <HStack spacing={4}>
           <Button
             display={{ base: 'none', md: 'flex' }}
-            bg={C.gold}
-            color={C.darkGreen}
+            bg={C.accent}
+            color={C.white}
             size="sm"
             borderRadius="full"
             px={6}
             fontWeight="bold"
-            _hover={{ bg: C.goldLight, transform: 'translateY(-1px)' }}
+            _hover={{ bg: C.accentLight, transform: 'translateY(-1px)' }}
             transition="all 0.2s"
             onClick={onGetStarted}
           >
@@ -99,12 +97,12 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
         {/* Mobile Drawer */}
         <Drawer isOpen={isOpen} placement="right" onClose={onClose}>
           <DrawerOverlay />
-          <DrawerContent bg={C.darkGreen}>
+          <DrawerContent bg={C.dark}>
             <DrawerCloseButton color={C.white} />
             <DrawerHeader>
               <HStack spacing={2}>
-                <Icon as={FaLeaf} color={C.gold} boxSize={5} />
-                <Text fontFamily="Prata, serif" color={C.white}>CloviaPH</Text>
+                <Icon as={FaLeaf} color={C.accentLight} boxSize={5} />
+                <Text color={C.white}>CloviaPH</Text>
               </HStack>
             </DrawerHeader>
             <DrawerBody>
@@ -114,13 +112,13 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
                     key={item}
                     href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
                     color={C.textMuted}
-                    _hover={{ color: C.gold }}
+                    _hover={{ color: C.accentLight }}
                     onClick={onClose}
                   >
                     {item}
                   </Link>
                 ))}
-                <Button bg={C.gold} color={C.darkGreen} w="full" borderRadius="full" onClick={() => { onClose(); onGetStarted() }}>
+                <Button bg={C.accent} color={C.white} w="full" borderRadius="full" onClick={() => { onClose(); onGetStarted() }}>
                   Sign Up Now
                 </Button>
               </Stack>
@@ -135,7 +133,7 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
 /* ─── Stat Counter Card ─── */
 const StatCard = ({ value, label }: { value: string; label: string }) => (
   <VStack spacing={0}>
-    <Text fontFamily="Prata, serif" fontSize={{ base: '2xl', md: '3xl' }} fontWeight="bold" color={C.gold}>
+    <Text fontSize={{ base: '2xl', md: '3xl' }} fontWeight="bold" color={C.accentLight}>
       {value}
     </Text>
     <Text fontSize="xs" color={C.textMuted} textTransform="uppercase" letterSpacing="wider">
@@ -147,7 +145,7 @@ const StatCard = ({ value, label }: { value: string; label: string }) => (
 /* ─── Service Card ─── */
 const ServiceCard = ({ icon, title, desc }: { icon: React.ElementType; title: string; desc: string }) => (
   <VStack
-    bg={C.cardGreen}
+    bg={C.card}
     borderRadius="xl"
     p={6}
     spacing={4}
@@ -155,7 +153,7 @@ const ServiceCard = ({ icon, title, desc }: { icon: React.ElementType; title: st
     textAlign="center"
     border="1px solid"
     borderColor="whiteAlpha.100"
-    _hover={{ borderColor: C.gold, transform: 'translateY(-4px)' }}
+    _hover={{ borderColor: C.accentLight, transform: 'translateY(-4px)' }}
     transition="all 0.3s"
   >
     <Flex
@@ -166,11 +164,11 @@ const ServiceCard = ({ icon, title, desc }: { icon: React.ElementType; title: st
       align="center"
       justify="center"
     >
-      <Icon as={icon} boxSize={6} color={C.gold} />
+      <Icon as={icon} boxSize={6} color={C.accentLight} />
     </Flex>
-    <Text fontFamily="Prata, serif" fontSize="lg" color={C.white} fontWeight="semibold">{title}</Text>
+    <Text fontSize="lg" color={C.white} fontWeight="semibold">{title}</Text>
     <Text fontSize="sm" color={C.textMuted} lineHeight="1.7">{desc}</Text>
-    <HStack color={C.gold} fontSize="sm" cursor="pointer" _hover={{ gap: 3 }} transition="all 0.2s" spacing={1}>
+    <HStack color={C.accentLight} fontSize="sm" cursor="pointer" _hover={{ gap: 3 }} transition="all 0.2s" spacing={1}>
       <Text fontWeight="medium">Learn More</Text>
       <Icon as={FiArrowRight} />
     </HStack>
@@ -178,7 +176,7 @@ const ServiceCard = ({ icon, title, desc }: { icon: React.ElementType; title: st
 )
 
 /* ─── Product Card ─── */
-const ProductCard = ({ image, name, desc }: { image: string; name: string; desc: string }) => (
+const LandingProductCard = ({ image, name, desc }: { image: string; name: string; desc: string }) => (
   <Box
     borderRadius="xl"
     overflow="hidden"
@@ -207,7 +205,7 @@ const ProductCard = ({ image, name, desc }: { image: string; name: string; desc:
       spacing={1}
     >
       {[...Array(5)].map((_, i) => (
-        <Icon key={i} as={FiStar} boxSize={3} color={C.gold} fill={C.gold} />
+        <Icon key={i} as={FiStar} boxSize={3} color={C.accent} fill={C.accent} />
       ))}
       <Text fontSize="xs" fontWeight="bold" ml={1}>(5/5)</Text>
     </HStack>
@@ -219,13 +217,13 @@ const ProductCard = ({ image, name, desc }: { image: string; name: string; desc:
       w={8}
       h={8}
       borderRadius="full"
-      bg={C.gold}
-      color={C.darkGreen}
+      bg={C.accent}
+      color={C.white}
       align="center"
       justify="center"
       fontWeight="bold"
       fontSize="lg"
-      _groupHover={{ bg: C.goldLight }}
+      _groupHover={{ bg: C.accentLight }}
       transition="all 0.2s"
     >
       +
@@ -240,7 +238,7 @@ const ProductCard = ({ image, name, desc }: { image: string; name: string; desc:
       p={4}
       pt={12}
     >
-      <Text fontFamily="Prata, serif" color={C.white} fontWeight="semibold" fontSize="md">{name}</Text>
+      <Text color={C.white} fontWeight="semibold" fontSize="md">{name}</Text>
       <Text fontSize="xs" color="whiteAlpha.800" noOfLines={2}>{desc}</Text>
     </Box>
   </Box>
@@ -256,7 +254,7 @@ const LandingPage: React.FC = () => {
   }
 
   return (
-    <Box bg={C.darkGreen} color={C.white} overflowX="hidden">
+    <Box bg={C.dark} color={C.white} overflowX="hidden">
       <Navbar navigate={navigate} onGetStarted={handleGetStarted} />
 
       {/* ══════════ HERO SECTION ══════════ */}
@@ -271,7 +269,7 @@ const LandingPage: React.FC = () => {
         {/* BG image with overlay */}
         <Box position="absolute" inset={0} zIndex={0}>
           <Image src="/bgphoto.jpg" alt="" w="full" h="full" objectFit="cover" />
-          <Box position="absolute" inset={0} bg="linear-gradient(to bottom, rgba(11,43,26,0.85) 0%, rgba(11,43,26,0.7) 50%, rgba(11,43,26,0.95) 100%)" />
+          <Box position="absolute" inset={0} bg="linear-gradient(to bottom, rgba(29,78,79,0.88) 0%, rgba(29,78,79,0.72) 50%, rgba(29,78,79,0.95) 100%)" />
         </Box>
 
         <Container maxW="1200px" position="relative" zIndex={1}>
@@ -284,20 +282,19 @@ const LandingPage: React.FC = () => {
           >
             <Heading
               as="h1"
-              fontFamily="Prata, serif"
               fontSize={{ base: '3xl', md: '5xl', lg: '6xl' }}
-              fontWeight="normal"
+              fontWeight="bold"
               lineHeight="1.15"
               mb={4}
               maxW="700px"
             >
               Trade Smarter For{' '}
-              <Text as="span" color={C.gold}>Every</Text>{' '}
+              <Text as="span" color={C.accentLight}>Every</Text>{' '}
               Community.
             </Heading>
 
-            {/* Gold decorative line */}
-            <Box w="80px" h="3px" bg={C.gold} borderRadius="full" mb={6} />
+            {/* Decorative line */}
+            <Box w="80px" h="3px" bg={C.accent} borderRadius="full" mb={6} />
 
             <Text
               fontSize={{ base: 'sm', md: 'md' }}
@@ -320,14 +317,14 @@ const LandingPage: React.FC = () => {
                 px={6}
                 size="md"
                 leftIcon={<Icon as={FiPlay} />}
-                _hover={{ borderColor: C.gold, color: C.gold }}
+                _hover={{ borderColor: C.accentLight, color: C.accentLight }}
                 transition="all 0.2s"
               >
                 Watch Our Video
               </Button>
               <HStack spacing={3} color={C.textMuted}>
-                <Flex w={10} h={10} borderRadius="full" bg={C.gold} align="center" justify="center">
-                  <Icon as={FiPhone} color={C.darkGreen} boxSize={4} />
+                <Flex w={10} h={10} borderRadius="full" bg={C.accent} align="center" justify="center">
+                  <Icon as={FiPhone} color={C.white} boxSize={4} />
                 </Flex>
                 <VStack align="start" spacing={0}>
                   <Text fontSize="xs" color={C.textMuted}>Call Us Now:</Text>
@@ -340,7 +337,7 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ FEATURED / TESTIMONIAL SECTION ══════════ */}
-      <Box bg={C.midGreen} py={{ base: 12, md: 20 }}>
+      <Box bg={C.mid} py={{ base: 12, md: 20 }}>
         <Container maxW="1200px">
           <Flex
             direction={{ base: 'column', lg: 'row' }}
@@ -352,7 +349,7 @@ const LandingPage: React.FC = () => {
               <Box
                 borderRadius="2xl"
                 overflow="hidden"
-                bg={C.cardGreen}
+                bg={C.card}
                 p={6}
                 h="full"
                 border="1px solid"
@@ -360,10 +357,10 @@ const LandingPage: React.FC = () => {
               >
                 {/* Rating */}
                 <HStack mb={3} spacing={1}>
-                  <Box bg={C.gold} borderRadius="full" px={2} py={0.5}>
+                  <Box bg={C.accent} borderRadius="full" px={2} py={0.5}>
                     <HStack spacing={0.5}>
                       {[...Array(5)].map((_, i) => (
-                        <Icon key={i} as={FiStar} boxSize={3} color={C.darkGreen} fill={C.darkGreen} />
+                        <Icon key={i} as={FiStar} boxSize={3} color={C.white} fill={C.white} />
                       ))}
                     </HStack>
                   </Box>
@@ -377,7 +374,7 @@ const LandingPage: React.FC = () => {
                 </Text>
 
                 <HStack spacing={3}>
-                  <Avatar size="sm" name="Estelle Darcy" bg={C.gold} color={C.darkGreen} />
+                  <Avatar size="sm" name="Estelle Darcy" bg={C.accent} color={C.white} />
                   <VStack align="start" spacing={0}>
                     <Text fontSize="sm" fontWeight="bold" color={C.white}>Estelle Darcy</Text>
                     <Text fontSize="xs" color={C.textMuted}>Verified Trader</Text>
@@ -387,16 +384,16 @@ const LandingPage: React.FC = () => {
                 {/* Floating badges */}
                 <HStack position="absolute" top={4} right={4} spacing={2}>
                   <Box bg="whiteAlpha.200" borderRadius="lg" px={3} py={1.5}>
-                    <Text fontSize="xs" color={C.gold}>Quick Payment</Text>
+                    <Text fontSize="xs" color={C.accentLight}>Quick Payment</Text>
                   </Box>
                 </HStack>
                 <HStack position="absolute" bottom={20} right={4} spacing={2}>
                   <Box bg="whiteAlpha.200" borderRadius="lg" px={3} py={1.5}>
-                    <Text fontSize="xs" color={C.gold}>Safe Trades</Text>
+                    <Text fontSize="xs" color={C.accentLight}>Safe Trades</Text>
                   </Box>
                 </HStack>
                 <Box position="absolute" right={4} bottom={6} bg="whiteAlpha.200" borderRadius="lg" px={3} py={1.5}>
-                  <Text fontSize="xs" color={C.gold}>24/7 Support</Text>
+                  <Text fontSize="xs" color={C.accentLight}>24/7 Support</Text>
                 </Box>
               </Box>
             </Box>
@@ -416,7 +413,7 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ ABOUT / EXPERIENCE SECTION ══════════ */}
-      <Box id="about" py={{ base: 12, md: 20 }} bg={C.cream} color={C.darkGreen}>
+      <Box id="about" py={{ base: 12, md: 20 }} bg={C.cream} color={C.textDark}>
         <Container maxW="1200px">
           <Flex direction={{ base: 'column', lg: 'row' }} gap={10} align="center">
             {/* Left - Image with overlay badge */}
@@ -442,23 +439,23 @@ const LandingPage: React.FC = () => {
                 spacing={2}
               >
                 <Box w={2} h={2} borderRadius="full" bg="green.500" />
-                <Text fontSize="xs" fontWeight="semibold" color={C.darkGreen}>Community Marketplace</Text>
+                <Text fontSize="xs" fontWeight="semibold" color={C.textDark}>Community Marketplace</Text>
               </HStack>
               {/* Experience badge */}
               <Box
                 position="absolute"
                 bottom={6}
                 left={6}
-                bg={C.gold}
+                bg={C.accent}
                 borderRadius="xl"
                 p={4}
                 textAlign="center"
                 boxShadow="xl"
               >
-                <Text fontFamily="Prata, serif" fontSize="3xl" fontWeight="bold" color={C.darkGreen}>
+                <Text fontSize="3xl" fontWeight="bold" color={C.white}>
                   25+
                 </Text>
-                <Text fontSize="xs" color={C.darkGreen} fontWeight="semibold">
+                <Text fontSize="xs" color={C.white} fontWeight="semibold">
                   Universities<br />Connected
                 </Text>
               </Box>
@@ -466,9 +463,9 @@ const LandingPage: React.FC = () => {
 
             {/* Right - text */}
             <VStack flex={1} align="start" spacing={5}>
-              <Heading fontFamily="Prata, serif" fontSize={{ base: '2xl', md: '4xl' }} lineHeight="1.2">
+              <Heading fontSize={{ base: '2xl', md: '4xl' }} lineHeight="1.2">
                 Where Trades Find{' '}
-                <Text as="span" color={C.gold}>Their People.</Text>
+                <Text as="span" color={C.accent}>Their People.</Text>
               </Heading>
               <Text fontSize="sm" color="gray.600" lineHeight="1.8">
                 CloviaPH is revolutionizing the way students and communities exchange goods.
@@ -478,14 +475,14 @@ const LandingPage: React.FC = () => {
                 seamless, secure bartering.
               </Text>
               <Button
-                bg={C.gold}
-                color={C.darkGreen}
+                bg={C.accent}
+                color={C.white}
                 borderRadius="full"
                 px={8}
                 size="md"
                 fontWeight="bold"
                 rightIcon={<Icon as={FiArrowRight} />}
-                _hover={{ bg: C.goldLight, transform: 'translateY(-1px)' }}
+                _hover={{ bg: C.accentLight, transform: 'translateY(-1px)' }}
                 transition="all 0.2s"
                 onClick={handleGetStarted}
               >
@@ -497,11 +494,11 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ BEST PRODUCTS SECTION ══════════ */}
-      <Box id="features" py={{ base: 12, md: 20 }} bg={C.darkGreen}>
+      <Box id="features" py={{ base: 12, md: 20 }} bg={C.dark}>
         <Container maxW="1200px">
           <VStack spacing={3} mb={10} textAlign="center">
-            <Heading fontFamily="Prata, serif" fontSize={{ base: '2xl', md: '4xl' }}>
-              Our Best Traded{' '}<Text as="span" color={C.gold}>Items</Text>
+            <Heading fontSize={{ base: '2xl', md: '4xl' }}>
+              Our Best Traded{' '}<Text as="span" color={C.accentLight}>Items</Text>
             </Heading>
             <Text fontSize="sm" color={C.textMuted} maxW="600px">
               Popular items being exchanged in our community right now. From tech gadgets to study
@@ -510,17 +507,17 @@ const LandingPage: React.FC = () => {
           </VStack>
 
           <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} spacing={6}>
-            <ProductCard
+            <LandingProductCard
               image="/Wireless Earbuds for Students.jpg"
               name="Wireless Earbuds"
               desc="Premium wireless earbuds, perfect for study sessions and commuting."
             />
-            <ProductCard
+            <LandingProductCard
               image="/Student Backpack - Water Resistant.webp"
               name="Student Backpack"
               desc="Water-resistant backpack ideal for campus life."
             />
-            <ProductCard
+            <LandingProductCard
               image="/Portable Power Bank 20000mAh.webp"
               name="Power Bank 20000mAh"
               desc="Stay charged all day with this portable power bank."
@@ -542,10 +539,9 @@ const LandingPage: React.FC = () => {
             {['ECODE', 'CloviaPH', 'TradeHub', 'SwapNet', 'EcoTrade', 'BarterCo'].map((name) => (
               <Text
                 key={name}
-                fontFamily="Prata, serif"
                 fontSize={{ base: 'md', md: 'lg' }}
                 fontWeight="bold"
-                color={C.darkGreen}
+                color={C.textDark}
                 letterSpacing="wider"
               >
                 {name}
@@ -556,11 +552,11 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ SERVICES SECTION ══════════ */}
-      <Box id="how-it-works" py={{ base: 12, md: 20 }} bg={C.darkGreen}>
+      <Box id="how-it-works" py={{ base: 12, md: 20 }} bg={C.dark}>
         <Container maxW="1200px">
           <VStack spacing={3} mb={12} textAlign="center">
-            <Heading fontFamily="Prata, serif" fontSize={{ base: '2xl', md: '4xl' }}>
-              Service We{' '}<Text as="span" color={C.gold}>Provide</Text>
+            <Heading fontSize={{ base: '2xl', md: '4xl' }}>
+              Service We{' '}<Text as="span" color={C.accentLight}>Provide</Text>
             </Heading>
             <Text fontSize="sm" color={C.textMuted} maxW="600px">
               Everything you need for a safe and seamless trading experience, all in one place.
@@ -593,7 +589,7 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ STATS / ACHIEVEMENTS SECTION ══════════ */}
-      <Box id="contact-us" bg={C.midGreen} py={{ base: 12, md: 16 }}>
+      <Box id="contact-us" bg={C.mid} py={{ base: 12, md: 16 }}>
         <Container maxW="1200px">
           <Flex
             direction={{ base: 'column', md: 'row' }}
@@ -602,8 +598,8 @@ const LandingPage: React.FC = () => {
             gap={8}
           >
             <VStack align={{ base: 'center', md: 'start' }} spacing={2} flex={1}>
-              <Heading fontFamily="Prata, serif" fontSize={{ base: '2xl', md: '3xl' }} lineHeight="1.2">
-                We Achieved{' '}<Text as="span" color={C.gold}>Best</Text>
+              <Heading fontSize={{ base: '2xl', md: '3xl' }} lineHeight="1.2">
+                We Achieved{' '}<Text as="span" color={C.accentLight}>Best</Text>
                 <br />From Trading
               </Heading>
             </VStack>
@@ -619,11 +615,11 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ CTA / FOOTER ══════════ */}
-      <Box bg={C.darkGreen} py={{ base: 12, md: 16 }} borderTop="1px solid" borderColor="whiteAlpha.100">
+      <Box bg={C.dark} py={{ base: 12, md: 16 }} borderTop="1px solid" borderColor="whiteAlpha.100">
         <Container maxW="1200px">
           <VStack spacing={6} textAlign="center">
-            <Heading fontFamily="Prata, serif" fontSize={{ base: 'xl', md: '3xl' }}>
-              Ready to Start{' '}<Text as="span" color={C.gold}>Trading?</Text>
+            <Heading fontSize={{ base: 'xl', md: '3xl' }}>
+              Ready to Start{' '}<Text as="span" color={C.accentLight}>Trading?</Text>
             </Heading>
             <Text fontSize="sm" color={C.textMuted} maxW="500px">
               Join thousands of community members already trading on CloviaPH.
@@ -631,13 +627,13 @@ const LandingPage: React.FC = () => {
             </Text>
             <HStack spacing={4}>
               <Button
-                bg={C.gold}
-                color={C.darkGreen}
+                bg={C.accent}
+                color={C.white}
                 borderRadius="full"
                 px={8}
                 size="lg"
                 fontWeight="bold"
-                _hover={{ bg: C.goldLight, transform: 'translateY(-2px)' }}
+                _hover={{ bg: C.accentLight, transform: 'translateY(-2px)' }}
                 transition="all 0.2s"
                 onClick={handleGetStarted}
               >
@@ -650,7 +646,7 @@ const LandingPage: React.FC = () => {
                 borderRadius="full"
                 px={8}
                 size="lg"
-                _hover={{ borderColor: C.gold, color: C.gold }}
+                _hover={{ borderColor: C.accentLight, color: C.accentLight }}
                 transition="all 0.2s"
                 onClick={() => navigate('/company')}
               >
@@ -671,9 +667,9 @@ const LandingPage: React.FC = () => {
             gap={4}
           >
             <HStack spacing={2}>
-              <Icon as={FaLeaf} color={C.gold} boxSize={5} />
-              <Text fontFamily="Prata, serif" fontSize="lg" color={C.white}>
-                Clovia<Text as="span" color={C.gold}>PH</Text>
+              <Icon as={FaLeaf} color={C.accentLight} boxSize={5} />
+              <Text fontSize="lg" color={C.white}>
+                Clovia<Text as="span" color={C.accentLight}>PH</Text>
               </Text>
             </HStack>
             <Text fontSize="xs" color={C.textMuted}>
@@ -681,7 +677,7 @@ const LandingPage: React.FC = () => {
             </Text>
             <HStack spacing={6}>
               {['Privacy', 'Terms', 'Contact'].map((item) => (
-                <Link key={item} fontSize="xs" color={C.textMuted} _hover={{ color: C.gold }}>
+                <Link key={item} fontSize="xs" color={C.textMuted} _hover={{ color: C.accentLight }}>
                   {item}
                 </Link>
               ))}

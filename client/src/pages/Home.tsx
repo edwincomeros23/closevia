@@ -497,8 +497,8 @@ const Home: React.FC = () => {
           xl: 'repeat(5, 1fr)',
           '2xl': 'repeat(5, 1fr)',
         }}
-        gap={{ base: 2, md: 4, lg: 4, xl: 5 }}
-        alignItems="start"
+        gap={{ base: 2, md: 3, lg: 4, xl: 4 }}
+        alignItems="stretch"
         justifyContent="center"
         mx="auto"
         sx={{
