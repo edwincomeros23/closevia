@@ -265,6 +265,7 @@ func main() {
 	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
 	products.Post("/check-image-quality", productHandler.CheckImageQuality)             // Fast image quality check
 	products.Post("/report", middleware.AuthMiddleware(), productHandler.ReportListing) // Report a listing
+	products.Get("/boost-candidates", middleware.AuthMiddleware(), productHandler.GetBoostCandidates) // Listings eligible for boost
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id/comments", commentHandler.GetComments)
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)

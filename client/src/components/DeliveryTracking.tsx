@@ -33,7 +33,6 @@ import {
   FaMapMarkerAlt,
   FaClock,
   FaCheckCircle,
-  FaUser,
   FaMotorcycle,
   FaBicycle,
   FaCar,
@@ -62,7 +61,6 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
   // Status progression
   const statusSteps: { status: DeliveryStatus; label: string; icon: any }[] = [
     { status: 'pending', label: 'Pending', icon: FaClock },
-    { status: 'claimed', label: 'Claimed', icon: FaUser },
     { status: 'picked_up', label: 'Picked Up', icon: FaTruck },
     { status: 'in_transit', label: 'In Transit', icon: FaTruck },
     { status: 'delivered', label: 'Delivered', icon: FaCheckCircle },
@@ -129,8 +127,6 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
     switch (status) {
       case 'pending':
         return 'yellow'
-      case 'claimed':
-        return 'blue'
       case 'picked_up':
         return 'purple'
       case 'in_transit':
@@ -293,7 +289,7 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
                   <CardBody>
                     <VStack spacing={3} align="stretch">
                       <HStack>
-                        <Icon as={FaUser} color="brand.500" />
+                        <Icon as={FaMotorcycle} color="brand.500" />
                         <Text fontWeight="semibold">Rider Information</Text>
                       </HStack>
                       <HStack spacing={3}>
@@ -399,14 +395,6 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
                 <AlertIcon />
                 <AlertDescription fontSize="sm">
                   Waiting for a rider to claim your delivery. You'll be notified once a rider picks it up.
-                </AlertDescription>
-              </Alert>
-            )}
-            {delivery.status === 'claimed' && (
-              <Alert status="success" borderRadius="md">
-                <AlertIcon />
-                <AlertDescription fontSize="sm">
-                  A rider has claimed your delivery! They will pick it up soon.
                 </AlertDescription>
               </Alert>
             )}

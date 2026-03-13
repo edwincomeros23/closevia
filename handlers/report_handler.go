@@ -112,27 +112,22 @@ func (h *ReportHandler) CreateReport(c *fiber.Ctx) error {
 	})
 }
 
-// GetReports gets all reports (admin only)
+// GetReports gets all reports (admin only) — includes reporter/reported names
 func (h *ReportHandler) GetReports(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 	status := c.Query("status", "") // Filter by status
 	offset := (page - 1) * limit
 
-	// Build query
-	query := "SELECT id, reporter_id, reported_user_id, product_id, reason, description, status, reviewer_id, reviewer_comment, created_at, updated_at FROM reports"
+	// Build count query
 	countQuery := "SELECT COUNT(*) FROM reports"
-	var args []interface{}
-
+	var countArgs []interface{}
 	if status != "" {
-		query += " WHERE status = ?"
 		countQuery += " WHERE status = ?"
-		args = append(args, status)
+		countArgs = append(countArgs, status)
 	}
 
-	// Get total count
 	var total int
-	countArgs := args
 	err := h.db.QueryRow(countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
@@ -141,8 +136,26 @@ func (h *ReportHandler) GetReports(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get reports
-	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	// Rich query: JOIN with users to get names
+	query := `
+		SELECT 
+			r.id, r.reporter_id, r.reported_user_id, r.product_id,
+			r.reason, r.description, r.status, r.reviewer_id, r.reviewer_comment,
+			r.created_at, r.updated_at,
+			COALESCE(reporter.name, '') AS reporter_name,
+			COALESCE(reported.name, '') AS reported_name,
+			COALESCE(p.title, '') AS product_title
+		FROM reports r
+		LEFT JOIN users reporter ON reporter.id = r.reporter_id
+		LEFT JOIN users reported ON reported.id = r.reported_user_id
+		LEFT JOIN products p ON p.id = r.product_id
+	`
+	var args []interface{}
+	if status != "" {
+		query += " WHERE r.status = ?"
+		args = append(args, status)
+	}
+	query += " ORDER BY r.created_at DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := h.db.Query(query, args...)
@@ -154,30 +167,38 @@ func (h *ReportHandler) GetReports(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
-	var reports []models.Report
+	type RichReport struct {
+		models.Report
+		ReporterName  string `json:"reporter_name"`
+		ReportedName  string `json:"reported_name"`
+		ProductTitle  string `json:"product_title"`
+	}
+
+	var reports []RichReport
 	for rows.Next() {
-		var report models.Report
+		var r RichReport
 		err := rows.Scan(
-			&report.ID, &report.ReporterID, &report.ReportedUserID, &report.ProductID,
-			&report.Reason, &report.Description, &report.Status, &report.ReviewerID,
-			&report.ReviewerComment, &report.CreatedAt, &report.UpdatedAt,
+			&r.ID, &r.ReporterID, &r.ReportedUserID, &r.ProductID,
+			&r.Reason, &r.Description, &r.Status, &r.ReviewerID,
+			&r.ReviewerComment, &r.CreatedAt, &r.UpdatedAt,
+			&r.ReporterName, &r.ReportedName, &r.ProductTitle,
 		)
 		if err != nil {
 			continue
 		}
-		reports = append(reports, report)
+		reports = append(reports, r)
 	}
 
 	totalPages := (total + limit - 1) / limit
 
 	return c.JSON(models.APIResponse{
 		Success: true,
-		Data: models.PaginatedResponse{
-			Data:       reports,
-			Total:      total,
-			Page:       page,
-			Limit:      limit,
-			TotalPages: totalPages,
+		Data: fiber.Map{
+			"data":        reports,
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"total_pages": totalPages,
 		},
 	})
 }

@@ -170,6 +170,7 @@ type Product struct {
 	EstimatedValueMin    *float64    `json:"estimated_value_min,omitempty"`
 	EstimatedValueMax    *float64    `json:"estimated_value_max,omitempty"`
 	SuggestedValue       int         `json:"suggested_value,omitempty"`
+	Value                *float64    `json:"value,omitempty"` // User-defined product value
 	Category             string      `json:"category,omitempty"`
 	Wants                string      `json:"wants,omitempty"`
 	WantedCategories     StringArray `json:"wanted_categories,omitempty"`
@@ -194,20 +195,17 @@ type Product struct {
 
 // ProductCreate represents data for creating a product
 type ProductCreate struct {
-	Title            string      `json:"title" validate:"required,min=2,max=255"`
-	Description      string      `json:"description"`
-	Price            *float64    `json:"price,omitempty"` // Optional for barter-only items
-	ImageURLs        StringArray `json:"image_urls,omitempty"`
-	Premium          bool        `json:"premium"`
-	AllowBuying      bool        `json:"allow_buying"`
-	BarterOnly       bool        `json:"barter_only"`
-	Location         string      `json:"location,omitempty"`
-	Condition        string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category         string      `json:"category,omitempty"`
-	Wants            string      `json:"wants,omitempty"`
-	WantedCategories StringArray `json:"wanted_categories,omitempty"`
-	DesiredPrice     *float64    `json:"desired_price,omitempty"`
-	DesiredProduct   string      `json:"desired_product,omitempty"`
+	Title       string      `json:"title" validate:"required,min=2,max=255"`
+	Description string      `json:"description"`
+	Price       *float64    `json:"price,omitempty"` // Optional for barter-only items
+	ImageURLs   StringArray `json:"image_urls,omitempty"`
+	Premium     bool        `json:"premium"`
+	AllowBuying bool        `json:"allow_buying"`
+	BarterOnly  bool        `json:"barter_only"`
+	Location    string      `json:"location,omitempty"`
+	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category    string      `json:"category,omitempty"`
+	Value       *float64    `json:"value,omitempty"` // User-defined product value
 }
 
 // ProductUpdate represents data for updating a product
@@ -224,6 +222,7 @@ type ProductUpdate struct {
 	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	Category    *string      `json:"category,omitempty"`
 	BiddingType *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	Value       *float64     `json:"value,omitempty"` // User-defined product value
 }
 
 // ProductVote represents a user's vote on a product price

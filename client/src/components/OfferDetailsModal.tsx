@@ -496,6 +496,11 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                     {effectiveTrade.trade_option === 'delivery' && effectiveTrade.delivery_address && (
                       <Text fontSize="xs" color="gray.700">{effectiveTrade.delivery_address}</Text>
                     )}
+                    {effectiveTrade.trade_option === 'delivery' && (effectiveTrade as any).delivery_fee !== undefined && (
+                      <Text fontSize="xs" color="green.700" fontWeight="semibold">
+                        Delivery Fee: {formatPHP((effectiveTrade as any).delivery_fee)}
+                      </Text>
+                    )}
                   </VStack>
                 </HStack>
 

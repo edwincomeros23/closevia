@@ -236,6 +236,18 @@ const ProductCard: React.FC<ProductCardProps> = ({
             : 'No description available'}
         </Text>
 
+        {/* Product Value */}
+        {product.value !== undefined && product.value > 0 && (
+          <Text
+            fontSize="sm"
+            fontWeight="bold"
+            color="green.600"
+            mb={1}
+          >
+            ₱{(product.value as number).toLocaleString()}
+          </Text>
+        )}
+
         {/* Wishlist badge */}
         {product.wishlist_count > 0 && (
           <Flex mb={2} align="center" gap={1}>
