@@ -19,7 +19,6 @@ export interface CategoryConfig {
  * `value` must match exactly what is stored in the products.category column.
  */
 export const PRODUCT_CATEGORIES: CategoryConfig[] = [
-  { value: 'General',         label: 'General',         icon: MdLocalOffer, color: 'gray.500',    lightColor: 'gray.50',    accentColor: 'gray.600' },
   { value: 'Electronics',     label: 'Electronics',     icon: FaLaptop,     color: 'blue.500',    lightColor: 'blue.50',    accentColor: 'blue.600' },
   { value: 'Mobile Phones',   label: 'Phones',          icon: FaMobileScreen, color: 'cyan.500',  lightColor: 'cyan.50',    accentColor: 'cyan.600' },
   { value: 'Home Appliances', label: 'Appliances',      icon: FaBlender,    color: 'green.500',   lightColor: 'green.50',   accentColor: 'green.600' },

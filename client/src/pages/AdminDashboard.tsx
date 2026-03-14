@@ -1525,8 +1525,96 @@ const AdminDashboard: React.FC = () => {
   );
 
   // â”€â”€ SECTION: Moderation Queue â”€â”€
-  const ModerationSection = () => (
+  const ModerationSection = () => {
+    const pendingCount = reports.filter((r: any) => r.status === 'pending').length;
+    const reviewedCount = reports.filter((r: any) => r.status === 'reviewed').length;
+    const resolvedCount = reports.filter((r: any) => r.status === 'resolved').length;
+    const dismissedCount = reports.filter((r: any) => r.status === 'dismissed').length;
+    // By reason counts
+    const scamCount = reports.filter((r: any) => r.reason === 'scam').length;
+    const spamCount = reports.filter((r: any) => r.reason === 'spam').length;
+    const counterfeitCount = reports.filter((r: any) => r.reason === 'counterfeit').length;
+    const inappropriateCount = reports.filter((r: any) => r.reason === 'inappropriate').length;
+    const [expandedReportId, setExpandedReportId] = React.useState<number | null>(null);
+    const toggleExpand = (id: number) => setExpandedReportId(prev => prev === id ? null : id);
+    return (
     <VStack spacing={8} align="stretch">
+      {/* Report Summary Cards */}
+      <Box>
+        <HStack mb={3} spacing={2}>
+          <Icon as={FiAlertTriangle} color="#f43f5e" />
+          <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports Overview</Text>
+        </HStack>
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
+          <Card bg={pendingCount > 0 ? 'red.50' : cardBg} border="1px solid" borderColor={pendingCount > 0 ? 'red.200' : borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+            <CardBody py={4}>
+              <HStack mb={1}><Icon as={FiAlertCircle} color="red.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Pending</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="red.500">{pendingCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>Need action</Text>
+            </CardBody>
+          </Card>
+          <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+            <CardBody py={4}>
+              <HStack mb={1}><Icon as={FiEye} color="blue.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Reviewed</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="blue.500">{reviewedCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>Under review</Text>
+            </CardBody>
+          </Card>
+          <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+            <CardBody py={4}>
+              <HStack mb={1}><Icon as={FiCheckCircle} color="green.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Resolved</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="green.500">{resolvedCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>Closed</Text>
+            </CardBody>
+          </Card>
+          <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+            <CardBody py={4}>
+              <HStack mb={1}><Icon as={FiXCircle} color="gray.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Dismissed</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="gray.500">{dismissedCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>No action</Text>
+            </CardBody>
+          </Card>
+        </SimpleGrid>
+      </Box>
+
+      {/* Report Type Breakdown Cards */}
+      <Box>
+        <HStack mb={3} spacing={2}>
+          <Icon as={FiAlertCircle} color="orange.500" />
+          <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports by Reason</Text>
+        </HStack>
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
+          <Card bg="red.50" border="1px solid" borderColor="red.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s" cursor="pointer" onClick={() => { setReportsStatusFilter(''); fetchAdminReports(1, ''); }}>
+            <CardBody py={4}>
+              <HStack mb={1}><Text fontSize="lg">🚨</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Scam</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="red.600">{scamCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>Fraud / scam reports</Text>
+            </CardBody>
+          </Card>
+          <Card bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+            <CardBody py={4}>
+              <HStack mb={1}><Text fontSize="lg">📢</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Spam</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="yellow.600">{spamCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>Spam / repeated posts</Text>
+            </CardBody>
+          </Card>
+          <Card bg="orange.50" border="1px solid" borderColor="orange.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+            <CardBody py={4}>
+              <HStack mb={1}><Text fontSize="lg">🎭</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Counterfeit</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="orange.600">{counterfeitCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>Fake / counterfeit items</Text>
+            </CardBody>
+          </Card>
+          <Card bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+            <CardBody py={4}>
+              <HStack mb={1}><Text fontSize="lg">⚠️</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Inappropriate</Text></HStack>
+              <Text fontWeight="800" fontSize="2xl" color="purple.600">{inappropriateCount}</Text>
+              <Text fontSize="xs" color={mutedTextColor}>Inappropriate content</Text>
+            </CardBody>
+          </Card>
+        </SimpleGrid>
+      </Box>
+
       {/* User Reports */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
         <CardHeader>
@@ -1566,9 +1654,9 @@ const AdminDashboard: React.FC = () => {
                   <Thead bg={headerBg}>
                     <Tr>
                       <Th color={mutedTextColor} w="48px" px={2}>#</Th>
-                      <Th color={mutedTextColor} w="88px" px={2}>Reporter</Th>
-                      <Th color={mutedTextColor} w="88px" px={2}>Reported</Th>
-                      <Th color={mutedTextColor} w="96px" px={2}>Reason</Th>
+                      <Th color={mutedTextColor} w="100px" px={2}>Reporter</Th>
+                      <Th color={mutedTextColor} w="100px" px={2}>Against</Th>
+                      <Th color={mutedTextColor} px={2}>Details</Th>
                       <Th color={mutedTextColor} w="88px" px={2}>Status</Th>
                       <Th color={mutedTextColor} w="76px" px={2} display={{ base: 'none', md: 'table-cell' }}>Date</Th>
                       <Th color={mutedTextColor} w="44px" px={1} textAlign="center">Act</Th>
@@ -1576,31 +1664,92 @@ const AdminDashboard: React.FC = () => {
                   </Thead>
                   <Tbody>
                     {reports.map((report: any) => (
-                      <Tr key={report.id} _hover={{ bg: hoverBg }}>
-                        <Td px={2} fontWeight="bold" color="gray.500" fontSize="xs">#{report.id}</Td>
-                        <Td px={2}><Text fontSize="xs" isTruncated>{report.reporter_id}</Text></Td>
-                        <Td px={2}><Text fontSize="xs" isTruncated>{report.reported_user_id}</Text></Td>
-                        <Td px={2}><Badge colorScheme={report.reason === 'scam' ? 'red' : report.reason === 'counterfeit' ? 'orange' : 'gray'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{report.reason || 'Other'}</Badge></Td>
-                        <Td px={2}><Badge colorScheme={report.status === 'pending' ? 'orange' : report.status === 'resolved' ? 'green' : report.status === 'reviewed' ? 'blue' : 'gray'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{report.status}</Badge></Td>
-                        <Td px={2} fontSize="xs" color={mutedTextColor} display={{ base: 'none', md: 'table-cell' }}>{report.created_at ? new Date(report.created_at).toLocaleDateString() : '-'}</Td>
-                        <Td px={1} textAlign="center">
-                          <Menu>
-                            <MenuButton as={IconButton} icon={<FiMoreVertical />} size="xs" variant="ghost" aria-label="Actions" />
-                            <MenuList shadow="lg" borderRadius="lg" minW="180px">
-                              {['Warn User', 'Delete Listing', 'Suspend Account', 'Mark Resolved', 'Dismiss'].map(action => (
-                                <MenuItem
-                                  key={action}
-                                  fontSize="sm"
-                                  color={action === 'Suspend Account' || action === 'Delete Listing' ? '#f43f5e' : 'gray.700'}
-                                  onClick={() => setModerationTarget({ report, action })}
-                                >
-                                  {action}
-                                </MenuItem>
-                              ))}
-                            </MenuList>
-                          </Menu>
-                        </Td>
-                      </Tr>
+                      <React.Fragment key={report.id}>
+                        <Tr _hover={{ bg: hoverBg }} verticalAlign="top" cursor="pointer" onClick={() => toggleExpand(report.id)}>
+                          <Td px={2} fontWeight="bold" color="gray.500" fontSize="xs">#{report.id}</Td>
+                          <Td px={2}>
+                            <VStack align="start" spacing={0}>
+                              <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px">
+                                {report.reporter_name || `User #${report.reporter_id}`}
+                              </Text>
+                              <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reporter_id}</Text>
+                            </VStack>
+                          </Td>
+                          <Td px={2}>
+                            <VStack align="start" spacing={0}>
+                              <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px" color="red.600">
+                                {report.reported_name || `User #${report.reported_user_id}`}
+                              </Text>
+                              <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reported_user_id}</Text>
+                            </VStack>
+                          </Td>
+                          <Td px={2}>
+                            <VStack align="start" spacing={1}>
+                              <Badge
+                                colorScheme={report.reason === 'scam' ? 'red' : report.reason === 'counterfeit' ? 'orange' : report.reason === 'spam' ? 'yellow' : report.reason === 'inappropriate' ? 'purple' : 'gray'}
+                                borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize"
+                              >
+                                {report.reason || 'Other'}
+                              </Badge>
+                              {report.description && (
+                                <Text fontSize="2xs" color={mutedTextColor} noOfLines={2} maxW="180px">
+                                  {report.description}
+                                </Text>
+                              )}
+                              {report.product_title && (
+                                <Text fontSize="2xs" color="brand.500" isTruncated maxW="180px">
+                                  📦 {report.product_title}
+                                </Text>
+                              )}
+                            </VStack>
+                          </Td>
+                          <Td px={2}><Badge colorScheme={report.status === 'pending' ? 'orange' : report.status === 'resolved' ? 'green' : report.status === 'reviewed' ? 'blue' : 'gray'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{report.status}</Badge></Td>
+                          <Td px={2} fontSize="xs" color={mutedTextColor} display={{ base: 'none', md: 'table-cell' }}>{report.created_at ? new Date(report.created_at).toLocaleDateString() : '-'}</Td>
+                          <Td px={1} textAlign="center" onClick={(e) => e.stopPropagation()}>
+                            <Menu>
+                              <MenuButton as={IconButton} icon={<FiMoreVertical />} size="xs" variant="ghost" aria-label="Actions" />
+                              <MenuList shadow="lg" borderRadius="lg" minW="180px">
+                                {['Warn User', 'Delete Listing', 'Suspend Account', 'Mark Resolved', 'Dismiss'].map(action => (
+                                  <MenuItem
+                                    key={action}
+                                    fontSize="sm"
+                                    color={action === 'Suspend Account' || action === 'Delete Listing' ? '#f43f5e' : 'gray.700'}
+                                    onClick={() => setModerationTarget({ report, action })}
+                                  >
+                                    {action}
+                                  </MenuItem>
+                                ))}
+                              </MenuList>
+                            </Menu>
+                          </Td>
+                        </Tr>
+                        {expandedReportId === report.id && (
+                          <Tr bg={hoverBg}>
+                            <Td colSpan={7} px={4} py={3}>
+                              <VStack align="start" spacing={2}>
+                                <HStack spacing={4} flexWrap="wrap">
+                                  <Text fontSize="xs"><Text as="span" fontWeight="700">Reporter:</Text> {report.reporter_name} (ID: {report.reporter_id})</Text>
+                                  <Text fontSize="xs"><Text as="span" fontWeight="700">Reported:</Text> {report.reported_name} (ID: {report.reported_user_id})</Text>
+                                  {report.product_title && <Text fontSize="xs"><Text as="span" fontWeight="700">Listing:</Text> {report.product_title}</Text>}
+                                </HStack>
+                                {report.description && (
+                                  <Box bg="white" border="1px solid" borderColor={borderColor} borderRadius="md" p={3} w="full">
+                                    <Text fontSize="xs" fontWeight="600" color={mutedTextColor} mb={1}>Description</Text>
+                                    <Text fontSize="sm">{report.description}</Text>
+                                  </Box>
+                                )}
+                                {report.reviewer_comment && (
+                                  <Box bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="md" p={3} w="full">
+                                    <Text fontSize="xs" fontWeight="600" color="blue.600" mb={1}>Reviewer Comment</Text>
+                                    <Text fontSize="sm">{report.reviewer_comment}</Text>
+                                  </Box>
+                                )}
+                                <Text fontSize="2xs" color={mutedTextColor}>Submitted: {report.created_at ? new Date(report.created_at).toLocaleString() : '-'} • Updated: {report.updated_at ? new Date(report.updated_at).toLocaleString() : '-'}</Text>
+                              </VStack>
+                            </Td>
+                          </Tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </Tbody>
                 </ChakraTable>
@@ -1672,6 +1821,7 @@ const AdminDashboard: React.FC = () => {
       </Card>
     </VStack>
   );
+  };
 
   // â”€â”€ SECTION: Management â”€â”€
   const ManagementSection = () => (

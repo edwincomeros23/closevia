@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Box, HStack, Text, Icon } from '@chakra-ui/react';
 import { keyframes } from '@emotion/react';
-import { FaExchangeAlt, FaTag } from 'react-icons/fa';
+import { FaExchangeAlt, FaTag, FaMapMarkerAlt } from 'react-icons/fa';
 import { api } from '../services/api';
 
 const scrollAnimation = keyframes`
@@ -21,9 +21,14 @@ const ActivityFeed = () => {
     const [activities, setActivities] = useState<Activity[]>([]);
 
     useEffect(() => {
-        const fetchActivities = async () => {
+        const fetchActivities = async (lat?: number, lng?: number) => {
             try {
-                const res = await api.get('/activities');
+                const params: Record<string, string> = {};
+                if (lat !== undefined && lng !== undefined) {
+                    params.lat = lat.toFixed(6);
+                    params.lng = lng.toFixed(6);
+                }
+                const res = await api.get('/activities', { params });
                 if (res.data?.success && res.data?.data) {
                     setActivities(res.data.data);
                 }
@@ -31,9 +36,29 @@ const ActivityFeed = () => {
                 console.error('Failed to fetch activities', err);
             }
         };
-        fetchActivities();
-        const interval = setInterval(fetchActivities, 15000);
-        return () => clearInterval(interval);
+
+        // Try to get user location once; fall back to no-location fetch
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    fetchActivities(latitude, longitude);
+                    const interval = setInterval(() => fetchActivities(latitude, longitude), 15000);
+                    return () => clearInterval(interval);
+                },
+                () => {
+                    // Permission denied or unavailable — fetch without coordinates
+                    fetchActivities();
+                    const interval = setInterval(() => fetchActivities(), 15000);
+                    return () => clearInterval(interval);
+                },
+                { timeout: 4000, maximumAge: 60000 }
+            );
+        } else {
+            fetchActivities();
+            const interval = setInterval(() => fetchActivities(), 15000);
+            return () => clearInterval(interval);
+        }
     }, []);
 
     if (activities.length === 0) return null;
@@ -44,7 +69,7 @@ const ActivityFeed = () => {
                 <HStack spacing={12} display="inline-flex">
                     {activities.map((act, index) => (
                         <HStack key={`${act.id}-${index}`} spacing={2}>
-                            <Icon as={act.type === 'trade' ? FaExchangeAlt : FaTag} color="yellow.300" boxSize={3.5} />
+                            <Icon as={act.type === 'trade' ? FaExchangeAlt : act.type === 'near_you' ? FaMapMarkerAlt : FaTag} color={act.type === 'near_you' ? 'green.300' : 'yellow.300'} boxSize={3.5} />
                             <Text fontSize="sm" fontWeight="semibold" letterSpacing="wide">
                                 {act.message}
                             </Text>
@@ -56,7 +81,7 @@ const ActivityFeed = () => {
                     {/* Duplicate to prevent tearing at the end of the Marquee */}
                     {activities.map((act, index) => (
                         <HStack key={`dup-${act.id}-${index}`} spacing={2}>
-                            <Icon as={act.type === 'trade' ? FaExchangeAlt : FaTag} color="yellow.300" boxSize={3.5} />
+                            <Icon as={act.type === 'trade' ? FaExchangeAlt : act.type === 'near_you' ? FaMapMarkerAlt : FaTag} color={act.type === 'near_you' ? 'green.300' : 'yellow.300'} boxSize={3.5} />
                             <Text fontSize="sm" fontWeight="semibold" letterSpacing="wide">
                                 {act.message}
                             </Text>

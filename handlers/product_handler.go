@@ -222,7 +222,25 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Appraise product based on title and description
+	// Additional check: same cover image used within 24h by this seller (bypass prevention)
+	if len(imagePaths) > 0 {
+		firstImage := imagePaths[0]
+		var imgDupCount int
+		imgDupErr := h.db.QueryRow(
+			`SELECT COUNT(*) FROM products
+			 WHERE seller_id = ? AND image_urls LIKE ?
+			 AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
+			 AND status <> 'deleted'`,
+			userID, "%"+firstImage+"%",
+		).Scan(&imgDupCount)
+		if imgDupErr == nil && imgDupCount > 0 {
+			return c.Status(409).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Duplicate listing detected. You have recently posted an item using the same image.",
+			})
+		}
+	}
+
 	appraisal := services.AppraiseProduct(title, description)
 	category := appraisal.Category
 	if categoryOverride != "" {
@@ -425,6 +443,9 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		log.Printf("⚠️  [FRAUD] Fraud detection service error: %s", fraudResult.Error)
 	}
 	// ========================================================================
+
+	// Trigger smart notifications in background (new similar item + popularity alerts)
+	services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
@@ -889,7 +910,63 @@ func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
 	})
 }
 
-// GetSuggestedTrades finds potential trades for a given product
+// GetBoostCandidates returns the authenticated user's listings that qualify for a boost:
+// available, no pending offers, no wishlist saves, 3+ days old, not boosted in last 3 days.
+func (h *ProductHandler) GetBoostCandidates(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT p.id, p.title, p.image_urls, p.created_at, p.boosted_at
+		FROM products p
+		WHERE p.seller_id = ?
+		  AND p.status = 'available'
+		  AND p.created_at < DATE_SUB(NOW(), INTERVAL 3 DAY)
+		  AND (p.boosted_at IS NULL OR p.boosted_at < DATE_SUB(NOW(), INTERVAL 3 DAY))
+		  AND (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined','cancelled','completed')) = 0
+		  AND (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) = 0
+		ORDER BY p.created_at ASC
+		LIMIT 20
+	`, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch boost candidates"})
+	}
+	defer rows.Close()
+
+	type BoostCandidate struct {
+		ID        int     `json:"id"`
+		Title     string  `json:"title"`
+		ImageURL  string  `json:"image_url"`
+		CreatedAt string  `json:"created_at"`
+		BoostedAt *string `json:"boosted_at"`
+	}
+
+	var candidates []BoostCandidate
+	for rows.Next() {
+		var b BoostCandidate
+		var imageURLsJSON string
+		var boostedAt sql.NullString
+		if err := rows.Scan(&b.ID, &b.Title, &imageURLsJSON, &b.CreatedAt, &boostedAt); err != nil {
+			continue
+		}
+		if boostedAt.Valid {
+			b.BoostedAt = &boostedAt.String
+		}
+		var urls []string
+		if json.Unmarshal([]byte(imageURLsJSON), &urls) == nil && len(urls) > 0 {
+			b.ImageURL = urls[0]
+		}
+		candidates = append(candidates, b)
+	}
+	if candidates == nil {
+		candidates = []BoostCandidate{}
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: candidates})
+}
+
+
 func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 	productID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {

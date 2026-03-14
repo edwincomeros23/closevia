@@ -320,11 +320,9 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               ? '🚚 Rider is on the way'
               : linkedDelivery && linkedDelivery.status === 'picked_up'
                 ? '📦 Items picked up by rider'
-                : linkedDelivery && linkedDelivery.status === 'claimed'
-                  ? '🏍 Rider assigned - Awaiting pickup'
-                  : deliveryState.paymentConfirmed
-                    ? 'Payment Confirmed - Awaiting Rider'
-                    : 'Setup in Progress'}
+                : deliveryState.paymentConfirmed
+                  ? 'Payment Confirmed - Awaiting Rider'
+                  : 'Setup in Progress'}
         </Text>
       </Box>
 
@@ -642,7 +640,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                       deliveryCompleted ? 'green'
                       : linkedDelivery.status === 'in_transit' ? 'orange'
                       : linkedDelivery.status === 'picked_up' ? 'purple'
-                      : linkedDelivery.status === 'claimed' ? 'blue'
                       : 'gray'
                     }
                     fontSize="xs"
@@ -654,8 +651,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
                 {/* Status Steps */}
                 <HStack spacing={1} justify="space-between">
-                  {['pending', 'claimed', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
-                    const steps = ['pending', 'claimed', 'picked_up', 'in_transit', 'delivered']
+                  {['pending', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
+                    const steps = ['pending', 'picked_up', 'in_transit', 'delivered']
                     const currentIdx = steps.indexOf(linkedDelivery.status || 'pending')
                     const isComplete = i <= currentIdx
                     const isCurrent = i === currentIdx
