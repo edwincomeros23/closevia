@@ -1998,3 +1998,85 @@ func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
 		Message: "Report submitted successfully",
 	})
 }
+
+// ReorderImages allows a product owner to reorder their product images (e.g. set a new cover image)
+func (h *ProductHandler) ReorderImages(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	// Verify ownership
+	var sellerID int
+	var currentImageURLsJSON string
+	err = h.db.QueryRow("SELECT seller_id, image_urls FROM products WHERE id = ?", productID).Scan(&sellerID, &currentImageURLsJSON)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+		}
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get product"})
+	}
+
+	if sellerID != userID {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "You can only reorder images of your own products",
+		})
+	}
+
+	// Parse request body
+	var body struct {
+		ImageURLs []string `json:"image_urls"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	if len(body.ImageURLs) == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "image_urls cannot be empty"})
+	}
+
+	// Parse current image URLs to validate the reorder contains the same set
+	var currentURLs []string
+	if err := json.Unmarshal([]byte(currentImageURLsJSON), &currentURLs); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to parse current image URLs"})
+	}
+
+	if len(body.ImageURLs) != len(currentURLs) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reordered list must contain the same images"})
+	}
+
+	// Verify same set of URLs
+	currentSet := make(map[string]bool)
+	for _, u := range currentURLs {
+		currentSet[u] = true
+	}
+	for _, u := range body.ImageURLs {
+		if !currentSet[u] {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reordered list must contain the same images"})
+		}
+	}
+
+	// Update
+	imageURLsJSON, _ := json.Marshal(body.ImageURLs)
+	_, err = h.db.Exec("UPDATE products SET image_urls = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", string(imageURLsJSON), productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update image order"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Image order updated",
+	})
+}

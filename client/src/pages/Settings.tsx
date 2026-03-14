@@ -881,8 +881,8 @@ const SettingsPage: React.FC = () => {
             </CardBody>
           </Card>
 
-          {/* School ID Verification Section */}
-          <Card
+          {/* School ID Verification Section - hidden for admins */}
+          {user?.role !== 'admin' && <Card
             bg={cardBg}
             borderRadius="lg"
             overflow="hidden"
@@ -1063,7 +1063,7 @@ const SettingsPage: React.FC = () => {
                 </FormControl>
               </VStack>
             </CardBody>
-          </Card>
+          </Card>}
 
           {/* Notifications Section */}
           <Card

@@ -1475,20 +1475,28 @@ const AdminDashboard: React.FC = () => {
           </CardHeader>
           <CardBody>
             {loading ? <ChartSkeleton /> : (
-              <Box h="300px">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={[
-                    { name: 'Total', value: stats!.total_users || 0 },
-                    { name: 'Premium', value: stats!.premium_users || 0 },
-                    { name: 'Verified', value: stats!.verified_users || 0 },
-                  ]} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: '11px' }} />
-                    <YAxis stroke="#94a3b8" style={{ fontSize: '11px' }} />
-                    <RechartsTooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }} />
-                    <Bar dataKey="value" fill="#6366f1" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <Box>
+                <Flex justify="center" mb={4}>
+                  <Box textAlign="center" px={4} py={2} bg="indigo.50" borderRadius="lg">
+                    <Text fontSize="xs" color="gray.500" fontWeight="600" textTransform="uppercase">Total Users</Text>
+                    <Text fontSize="2xl" fontWeight="700" color="indigo.600">{(stats!.total_users || 0).toLocaleString()}</Text>
+                  </Box>
+                </Flex>
+                <Box h="260px">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[
+                      { name: 'Premium', value: stats!.premium_users || 0 },
+                      { name: 'Verified', value: stats!.verified_users || 0 },
+                      { name: 'Non-Verified', value: (stats!.total_users || 0) - (stats!.verified_users || 0) },
+                    ]} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: '11px' }} />
+                      <YAxis stroke="#94a3b8" style={{ fontSize: '11px' }} />
+                      <RechartsTooltip contentStyle={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }} />
+                      <Bar dataKey="value" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
               </Box>
             )}
           </CardBody>
