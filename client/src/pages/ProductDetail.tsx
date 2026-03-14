@@ -429,7 +429,7 @@ const ProductDetail: React.FC = () => {
       setIsBuyModalOpen(false)
       toast({
         title: 'Order placed successfully!',
-        description: 'Your order has been created and is pending seller confirmation.',
+        description: 'Your order has been created and is pending trader confirmation.',
         status: 'success',
         duration: 5000,
         isClosable: true,
@@ -1299,7 +1299,7 @@ const ProductDetail: React.FC = () => {
           {/* Seller Information */}
           <Box bg="white" p={6} rounded="lg" shadow="sm">
             <Heading size="md" mb={4}>
-              About the Seller
+              About the Trader
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
@@ -1452,7 +1452,7 @@ const ProductDetail: React.FC = () => {
           {/* Seller Products Section */}
           <Box bg="white" p={6} rounded="lg" shadow="sm">
             <Heading size="md" mb={6}>
-              Seller Products
+              Trader Products
             </Heading>
             <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={4}>
               {sellerProducts && sellerProducts.length > 0 ? (
@@ -1501,7 +1501,7 @@ const ProductDetail: React.FC = () => {
                 ))
               ) : (
                 <Box p={4} w="full">
-                  <Text color="gray.600">No other products from this seller.</Text>
+                  <Text color="gray.600">No other products from this trader.</Text>
                 </Box>
               )}
             </SimpleGrid>
@@ -1825,7 +1825,7 @@ const ProductDetail: React.FC = () => {
               )}
               <VStack align="stretch" spacing={1}>
                 <HStack justify="space-between">
-                  <Text fontSize="sm" color="gray.600">Seller</Text>
+                  <Text fontSize="sm" color="gray.600">Trader</Text>
                   <Text fontSize="sm" fontWeight="500">{product?.seller_name ?? 'Unknown'}</Text>
                 </HStack>
                 <HStack justify="space-between">
@@ -1835,7 +1835,7 @@ const ProductDetail: React.FC = () => {
               </VStack>
               <Alert status="info" borderRadius="10px" fontSize="sm">
                 <AlertIcon />
-                The seller will confirm your order. You will be notified once it is accepted.
+                The trader will confirm your order. You will be notified once it is accepted.
               </Alert>
             </VStack>
           </ModalBody>

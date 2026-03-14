@@ -3825,7 +3825,7 @@ const Dashboard: React.FC = () => {
                                     {tradingPartner}
                                   </Text>
                                   <Badge colorScheme="gray" fontSize="2xs" w="fit-content">
-                                    {isIncoming ? 'Buyer' : 'Seller'}
+                                    {isIncoming ? 'Buyer' : 'Trader'}
                                   </Badge>
                                 </VStack>
 

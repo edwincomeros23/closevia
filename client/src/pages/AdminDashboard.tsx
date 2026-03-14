@@ -1893,7 +1893,7 @@ const AdminDashboard: React.FC = () => {
                 <ChakraTable size="sm" variant="simple" style={{ tableLayout: 'fixed', width: '100%', minWidth: '480px' }}>
                   <Thead><Tr>
                     <Th color={mutedTextColor} px={2}>Item</Th>
-                    <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Seller</Th>
+                    <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Trader</Th>
                     <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
                     <Th isNumeric color={mutedTextColor} w="88px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
                     <Th textAlign="right" color={mutedTextColor} w="44px" px={1}></Th>

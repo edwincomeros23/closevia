@@ -144,7 +144,7 @@ const ProductsList: React.FC = () => {
         <VStack align="stretch" spacing={4}>
           <HStack justify="space-between" align="center">
             <Heading size="md" color="gray.800">
-              {sellerId ? 'Seller Products' : 'All Products'}
+              {sellerId ? 'Trader Products' : 'All Products'}
             </Heading>
             {sellerId && (
               <Button size="sm" variant="outline" onClick={() => navigate('/products')}>View All</Button>

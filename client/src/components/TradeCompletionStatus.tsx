@@ -62,7 +62,7 @@ const TradeCompletionStatus: React.FC<TradeCompletionStatusProps> = ({
   const isCurrentUserSeller = user?.id === sellerId
   const currentUserCompleted = isCurrentUserBuyer ? buyerCompleted : sellerCompleted
   const otherUserCompleted = isCurrentUserBuyer ? sellerCompleted : buyerCompleted
-  const otherUserName = isCurrentUserBuyer ? 'Seller' : 'Buyer'
+  const otherUserName = isCurrentUserBuyer ? 'Trader' : 'Buyer'
 
   const handleCompleteClick = async () => {
     setIsSubmitting(true)

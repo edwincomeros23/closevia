@@ -260,7 +260,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       } as TradeAction)
       toast({ 
         title: 'Option change requested', 
-        description: 'The seller will be notified of your request to change the trade option.', 
+        description: 'The trader will be notified of your request to change the trade option.', 
         status: 'success' 
       })
       setShowOptionChangeModal(false)

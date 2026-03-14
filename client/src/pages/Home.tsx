@@ -347,7 +347,7 @@ const Home: React.FC = () => {
       // Proceed with purchase
       toast({
         title: 'Purchase initiated!',
-        description: 'Contact the seller to complete the purchase.',
+        description: 'Contact the trader to complete the purchase.',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -795,16 +795,16 @@ const Home: React.FC = () => {
                 </FormControl>
 
                 <FormControl flex={1} minW={0}>
-                  <FormLabel fontSize="sm" color="gray.600">Seller</FormLabel>
+                  <FormLabel fontSize="sm" color="gray.600">Trader</FormLabel>
                   <Select
-                    aria-label="Seller verification"
-                    title="Seller verification"
+                    aria-label="Trader verification"
+                    title="Trader verification"
                     value={filters.verified_seller_only === undefined ? '' : filters.verified_seller_only.toString()}
                     onChange={(e) => handleFilterChange('verified_seller_only', e.target.value === '' ? undefined : e.target.value === 'true')}
                     size="sm"
                   >
-                    <option value="">All sellers</option>
-                    <option value="true">Verified sellers only</option>
+                    <option value="">All traders</option>
+                    <option value="true">Verified traders only</option>
                   </Select>
                 </FormControl>
 

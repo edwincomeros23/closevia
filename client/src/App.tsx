@@ -137,6 +137,12 @@ const AppContent: React.FC = () => {
             {localStorage.getItem('has_visited') === 'true' ? <Navigate to="/home" replace /> : <LandingPage />}
           </PageTransition>
         } />
+        {/* Always-accessible landing page route (for logo clicks) */}
+        <Route path="/landing" element={
+          <PageTransition>
+            <LandingPage />
+          </PageTransition>
+        } />
         <Route path="/company" element={
           <PageTransition>
             <Company />

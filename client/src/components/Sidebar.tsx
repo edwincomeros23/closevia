@@ -48,9 +48,9 @@ const Sidebar: React.FC = () => {
 
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleLogoClick = useCallback(() => {
-    window.location.href = '/'
+    navigate('/landing')
     onClose()
-  }, [onClose])
+  }, [navigate, onClose])
 
   const handleCompanyClick = useCallback(() => {
     navigate('/company')
@@ -292,7 +292,7 @@ const Sidebar: React.FC = () => {
                 h="35px"
                 objectFit="contain"
                 cursor="pointer"
-                onClick={() => (window.location.href = '/')}
+                onClick={handleLogoClick}
                 _hover={{ opacity: 0.8 }}
                 transition="opacity 0.2s"
               />
