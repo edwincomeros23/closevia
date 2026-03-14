@@ -9,10 +9,7 @@ import {
   Text,
   Button,
   Input,
-  InputGroup,
   Textarea,
-  Switch,
-  Checkbox,
   FormControl,
   FormLabel,
   FormHelperText,
@@ -25,17 +22,14 @@ import {
   Badge,
   Select,
   Spinner,
-  Divider,
   Alert,
   AlertIcon,
   AlertTitle,
   AlertDescription,
   Skeleton,
-  SkeletonText,
   Tooltip,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
-import { MdEdit } from 'react-icons/md'
 
 export interface ProductFormData {
   title: string
@@ -61,9 +55,8 @@ export interface ProductFormData {
   estimated_value_max?: number
   tags?: string
 
-  // Trading preferences
-  wants?: string
-  wanted_categories?: string[]
+  // Product value
+  value?: number
 }
 
 import { useAuth } from '../contexts/AuthContext'
@@ -102,30 +95,6 @@ const canMakeAIRequest = (): boolean => {
   return getCurrentDailyCount() < MAX_DAILY_AI_REQUESTS
 }
 
-const PROHIBITED_PATTERNS = [
-  /\b(gun|rifle|pistol|shotgun|firearm|ammunition|ammo|bomb|explosive|grenade|rocket|missile|landmine)\b/gi,
-  /\b(cocaine|heroin|meth|methamphetamine|fentanyl|lsd|ecstasy|mdma|cannabis|marijuana|weed|drug)\b/gi,
-  /\b(machete|sword|blade|knife|sharp weapon)\b/gi,
-  /\b(porn|pornography|adult content|sex content|nude|nudes|sex toy)\b/gi,
-  /\b(dog|cat|puppy|kitten|animal|pet|livestock|bird|horse|reptile|endangered animal)\b/gi,
-  /\b(kidney|liver|organ|heart|lung|body part)\b/gi,
-  /\b(counterfeit|fake|stolen|stole|replica)\b/gi,
-  /\b(explosives|hazardous|toxic|poison|radioactive|chemical weapon)\b/gi,
-  /\b(person|human|slave|slavery|human trafficking)\b/gi,
-]
-
-const validateDesiredItems = (text: string): string | null => {
-  const t = text.trim().toLowerCase()
-  if (!t) return null
-  for (const pattern of PROHIBITED_PATTERNS) {
-    if (pattern.test(t)) {
-      const match = t.match(pattern)
-      return `❌ Prohibited item: "${match?.[0]?.toUpperCase()}". Only list legitimate items.`
-    }
-  }
-  return null
-}
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 const AddProduct: React.FC = () => {
@@ -149,7 +118,6 @@ const AddProduct: React.FC = () => {
     location: '',
     condition: '',
     category: '',
-    wants: '',
     bidding_type: 'none',
     images: [],
     latitude: undefined,
@@ -160,7 +128,7 @@ const AddProduct: React.FC = () => {
     estimated_value_min: undefined,
     estimated_value_max: undefined,
     tags: '[]',
-    wanted_categories: [],
+    value: undefined,
   })
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -182,10 +150,7 @@ const AddProduct: React.FC = () => {
 
   const [titleLength, setTitleLength] = useState(0)
   const [descriptionLength, setDescriptionLength] = useState(0)
-  const [wantedCategories, setWantedCategories] = useState<string[]>([])
-  const [wantsError, setWantsError] = useState<string | null>(null)
-  const [showCategoryMore, setShowCategoryMore] = useState(false)
-  const [expandTradePrefs, setExpandTradePrefs] = useState(false)
+
 
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
@@ -571,9 +536,7 @@ const AddProduct: React.FC = () => {
           formData.description.trim().length >= 50 &&
           !!formData.condition &&
           !!formData.category &&
-          !!formData.location?.trim() &&
-          !!(formData.wants?.trim()) &&
-          !wantsError
+          !!formData.location?.trim()
         )
       case 3:
         return true
@@ -605,8 +568,6 @@ const AddProduct: React.FC = () => {
         if (!formData.condition) issues.push('Select a condition')
         if (!formData.category) issues.push('Select a category')
         if (!formData.location?.trim()) issues.push('Add a location')
-        if (!formData.wants?.trim()) issues.push('Describe what you want in return')
-        if (wantsError) issues.push(wantsError)
         return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
       case 3:
         return 'Ready to post'
@@ -655,8 +616,7 @@ const AddProduct: React.FC = () => {
       if (formData.estimated_value_min !== undefined) fd.append('estimated_value_min', String(formData.estimated_value_min))
       if (formData.estimated_value_max !== undefined) fd.append('estimated_value_max', String(formData.estimated_value_max))
       fd.append('tags', formData.tags || '[]')
-      if (formData.wants?.trim()) fd.append('wants', formData.wants.trim())
-      if (wantedCategories.length > 0) fd.append('wanted_categories', JSON.stringify(wantedCategories))
+      if (formData.value !== undefined) fd.append('value', String(formData.value))
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
@@ -1250,103 +1210,19 @@ const AddProduct: React.FC = () => {
         )}
       </Box>
 
-      {/* ──────── WHAT I WANT (Main Focus) ──────── */}
-      <VStack spacing={1.5} align="stretch">
-        <Heading fontSize="sm" fontWeight="bold" color="gray.800">
-          🔄 What I Want in Exchange
-        </Heading>
-
-        {/* Desired Items */}
-        <FormControl isRequired isInvalid={!!wantsError}>
-          <Textarea
-            placeholder="List specific items you're looking for..."
-            value={formData.wants}
-            onChange={e => {
-              handleField('wants', e.target.value)
-              setWantsError(validateDesiredItems(e.target.value))
-            }}
-            rows={3}
-            size="sm"
-          />
-          {wantsError && <Text fontSize="xs" color="red.500" mt={1}>{wantsError}</Text>}
-        </FormControl>
-
-        {/* Categories - Horizontally Scrollable on Mobile */}
-        <FormControl>
-          <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Categories</FormLabel>
-          <Box
-            display={{ base: "flex", sm: "grid" }}
-            gridTemplateColumns={{ sm: "repeat(auto-fill, minmax(90px, 1fr))" }}
-            flexWrap={{ base: "nowrap", sm: "wrap" }}
-            overflowX={{ base: "auto", sm: "visible" }}
-            gap={1}
-            p={1.5}
-            bg="white"
-            borderRadius="md"
-            border="1px"
-            borderColor="gray.300"
-            maxH={{ base: "none", sm: showCategoryMore ? "none" : "80px" }}
-            overflow={{ base: "auto", sm: "hidden" }}
-            pb={{ base: 1, sm: 0 }}
-            transition="max-height 0.3s"
-          >
-            {PRODUCT_CATEGORIES.map(cat => {
-              const selected = wantedCategories.includes(cat.value)
-              return (
-                <Badge
-                  key={cat.value}
-                  px={2}
-                  py={1.5}
-                  borderRadius="full"
-                  cursor="pointer"
-                  fontSize="xs"
-                  fontWeight="medium"
-                  bg={selected ? 'brand.500' : 'gray.100'}
-                  color={selected ? 'white' : 'gray.700'}
-                  _hover={{ bg: selected ? 'brand.600' : 'gray.200' }}
-                  transition="all 0.15s"
-                  onClick={() => setWantedCategories(prev =>
-                    selected ? prev.filter(c => c !== cat.value) : [...prev, cat.value]
-                  )}
-                  justifyContent="center"
-                  minW={{ base: "max-content", sm: "auto" }}
-                  whiteSpace={{ base: "nowrap", sm: "normal" }}
-                >
-                  {cat.label}
-                </Badge>
-              )
-            })}
-          </Box>
-          {!showCategoryMore && PRODUCT_CATEGORIES.length > 12 && (
-            <Button
-              size="xs"
-              variant="ghost"
-              fontSize="xs"
-              mt={1}
-              onClick={() => setShowCategoryMore(true)}
-              colorScheme="gray"
-              w="full"
-              display={{ base: "none", sm: "block" }}
-            >
-              + {PRODUCT_CATEGORIES.length - 12} More Categories
-            </Button>
-          )}
-          {showCategoryMore && (
-            <Button
-              size="xs"
-              variant="ghost"
-              fontSize="xs"
-              mt={1}
-              onClick={() => setShowCategoryMore(false)}
-              colorScheme="gray"
-              w="full"
-              display={{ base: "none", sm: "block" }}
-            >
-              - Show Less
-            </Button>
-          )}
-        </FormControl>
-      </VStack>
+      {/* ──────── VALUE FIELD ──────── */}
+      <FormControl>
+        <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Product Value (PHP) <Badge colorScheme="gray" ml={1} fontSize="8px">Optional</Badge></FormLabel>
+        <Input
+          type="number"
+          placeholder="e.g. 1500"
+          value={formData.value ?? ''}
+          onChange={e => handleField('value', e.target.value ? parseFloat(e.target.value) : undefined)}
+          size="sm"
+          h="32px"
+        />
+        <FormHelperText fontSize="xs">Helps others understand how much your product is worth.</FormHelperText>
+      </FormControl>
     </VStack>
   )
 
@@ -1519,26 +1395,11 @@ const AddProduct: React.FC = () => {
           </Box>
         </Box>
 
-        {/* ──────── TRADING SECTION ──────── */}
-        {(formData.wants || wantedCategories.length > 0) && (
-          <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
-            <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>
-              🔄 Open to Trading For
-            </Text>
-            {formData.wants && (
-              <Text fontSize="sm" color="gray.700" mb={2}>
-                {formData.wants}
-              </Text>
-            )}
-            {wantedCategories.length > 0 && (
-              <HStack flexWrap="wrap" spacing={1}>
-                {wantedCategories.map(cat => (
-                  <Badge key={cat} fontSize="xs" colorScheme="blue" variant="subtle">
-                    {cat}
-                  </Badge>
-                ))}
-              </HStack>
-            )}
+        {/* ──────── VALUE DISPLAY ──────── */}
+        {formData.value !== undefined && formData.value > 0 && (
+          <Box p={3} bg="green.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="green.400">
+            <Text fontSize="xs" fontWeight="bold" color="green.900" mb={1}>💰 Product Value</Text>
+            <Text fontSize="lg" fontWeight="bold" color="green.700">₱{formData.value.toLocaleString()}</Text>
           </Box>
         )}
 

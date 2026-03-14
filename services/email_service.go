@@ -1,77 +1,121 @@
 package services
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
-
-	"github.com/mailgun/mailgun-go/v5"
 )
 
 // SendOTPEmail sends a branded HTML email with a 6-digit OTP code to the user.
 func SendOTPEmail(toEmail, toName, code string) error {
-	domain := os.Getenv("MAILGUN_DOMAIN")
-	apiKey := os.Getenv("MAILGUN_API_KEY")
+	apiKey := os.Getenv("BREVO_API_KEY")
+	senderEmail := os.Getenv("BREVO_SENDER_EMAIL")
 
-	if domain == "" || apiKey == "" {
-		fmt.Println("⚠️  Mailgun not configured (MAILGUN_DOMAIN or MAILGUN_API_KEY missing) — skipping email send")
+	if apiKey == "" || senderEmail == "" {
+		fmt.Println("⚠️  Brevo not configured (BREVO_API_KEY or BREVO_SENDER_EMAIL missing) — skipping email send")
 		fmt.Printf("   [DEV] OTP for %s: %s\n", toEmail, code)
 		return nil
 	}
 
-	// v5 API: NewMailgun takes only the API key
-	mg := mailgun.NewMailgun(apiKey)
-
+	url := "https://api.brevo.com/v3/smtp/email"
 	subject := "Verify your Clovia account"
 	htmlBody := buildOTPEmailHTML(toName, code)
-	sender := fmt.Sprintf("Clovia <noreply@%s>", domain)
 
-	// v5 API: NewMessage is a package-level function, not a method
-	message := mailgun.NewMessage(domain, sender, subject, "", toEmail)
-	message.SetHTML(htmlBody)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// v5 API: Send returns (resp, err) — 2 values only
-	_, err := mg.Send(ctx, message)
-	if err != nil {
-		return fmt.Errorf("mailgun send error: %w", err)
+	payload := map[string]interface{}{
+		"sender": map[string]string{
+			"name":  "Clovia",
+			"email": senderEmail,
+		},
+		"to": []map[string]string{
+			{
+				"email": toEmail,
+				"name":  toName,
+			},
+		},
+		"subject":     subject,
+		"htmlContent": htmlBody,
 	}
 
-	fmt.Printf("✅ Verification email sent to %s\n", toEmail)
+	jsonPayload, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("api-key", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("brevo send error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("brevo api error (status %d)", resp.StatusCode)
+	}
+
+	fmt.Printf("✅ Verification email sent to %s via Brevo\n", toEmail)
 	return nil
 }
 
 // SendSchoolEmailOTP sends a 6-digit OTP to the user's school (.edu) email for verification.
 func SendSchoolEmailOTP(toEmail, toName, code string) error {
-	domain := os.Getenv("MAILGUN_DOMAIN")
-	apiKey := os.Getenv("MAILGUN_API_KEY")
+	apiKey := os.Getenv("BREVO_API_KEY")
+	senderEmail := os.Getenv("BREVO_SENDER_EMAIL")
 
-	if domain == "" || apiKey == "" {
-		fmt.Println("⚠️  Mailgun not configured — skipping school email send")
+	if apiKey == "" || senderEmail == "" {
+		fmt.Println("⚠️  Brevo not configured — skipping school email send")
 		fmt.Printf("   [DEV] School OTP for %s: %s\n", toEmail, code)
 		return nil
 	}
 
-	mg := mailgun.NewMailgun(apiKey)
+	url := "https://api.brevo.com/v3/smtp/email"
 	subject := "Verify your school email - Clovia"
 	htmlBody := buildSchoolEmailOTPHTML(toName, code)
-	sender := fmt.Sprintf("Clovia <noreply@%s>", domain)
 
-	message := mailgun.NewMessage(domain, sender, subject, "", toEmail)
-	message.SetHTML(htmlBody)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	_, err := mg.Send(ctx, message)
-	if err != nil {
-		return fmt.Errorf("mailgun send error: %w", err)
+	payload := map[string]interface{}{
+		"sender": map[string]string{
+			"name":  "Clovia",
+			"email": senderEmail,
+		},
+		"to": []map[string]string{
+			{
+				"email": toEmail,
+				"name":  toName,
+			},
+		},
+		"subject":     subject,
+		"htmlContent": htmlBody,
 	}
 
-	fmt.Printf("✅ School verification email sent to %s\n", toEmail)
+	jsonPayload, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("api-key", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("brevo send error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("brevo api error (status %d)", resp.StatusCode)
+	}
+
+	fmt.Printf("✅ School verification email sent to %s via Brevo\n", toEmail)
 	return nil
 }
 

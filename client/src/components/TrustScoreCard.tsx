@@ -36,12 +36,24 @@ interface ConductSummary {
   dispute_rate: number
 }
 
+interface TradeStats {
+  successful: number
+  cancelled: number
+  pending: number
+}
+
 interface TrustScoreCardProps {
   score: number
   trustLevel?: 'trusted' | 'new' | 'risky'
   factors?: TrustFactor[]
   conductSummary?: ConductSummary
   compact?: boolean
+  isVerified?: boolean
+  listingCount?: number
+  tradeCount?: number
+  positivePercent?: number
+  tradeStats?: TradeStats
+  responseTime?: string
 }
 
 const statusConfig = {
@@ -83,7 +95,20 @@ const categoryBarColor = (avg: number) => {
   return 'red'
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact }) => {
+const formatResponseTime = (raw?: string): { label: string; colorScheme: string } | null => {
+  if (!raw || raw === 'N/A') return null
+  const match = raw.match(/^(\d+)(m|h|d)$/)
+  if (!match) return null
+  const value = parseInt(match[1], 10)
+  const unit = match[2]
+  const totalMinutes = unit === 'm' ? value : unit === 'h' ? value * 60 : value * 1440
+  if (totalMinutes < 1440) return { label: '⚡ Responds within hours', colorScheme: 'green' }
+  if (totalMinutes < 4320) return { label: '⚡ Responds within a day', colorScheme: 'blue' }
+  return { label: '🐢 Responds in a few days', colorScheme: 'orange' }
+}
+
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime }) => {
+  const responseInfo = formatResponseTime(responseTime)
   if (compact) {
     const tooltipLines = factors && factors.length > 0
       ? factors.map(f => `${f.status === 'pass' ? '✔' : f.status === 'warn' ? '⚠' : '✘'} ${f.label} (${f.points}/${f.max})`).join('\n')
@@ -91,9 +116,17 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
     const conductLine = conductSummary && conductSummary.total_grades > 0
       ? `\nConduct: ${conductSummary.letter_grade} (${conductSummary.overall_avg.toFixed(1)}/5)`
       : ''
+    const badgeLines = [
+      isVerified ? '✔ Verified' : '',
+      typeof listingCount === 'number' ? `📦 ${listingCount} listing${listingCount !== 1 ? 's' : ''}` : '',
+      typeof tradeCount === 'number' ? `🔁 ${tradeCount} trade${tradeCount !== 1 ? 's' : ''}` : '',
+      typeof positivePercent === 'number' && positivePercent > 0 ? `⭐ ${Math.round(positivePercent)}% positive` : '',
+      responseInfo ? responseInfo.label : '',
+    ].filter(Boolean).join('\n')
+    const badgeSection = badgeLines ? `\n${badgeLines}` : ''
     return (
       <Tooltip
-        label={tooltipLines + conductLine}
+        label={tooltipLines + conductLine + badgeSection}
         whiteSpace="pre-line"
         placement="top"
         hasArrow
@@ -133,6 +166,35 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
       shadow="sm"
       w="100%"
     >
+      {/* Trust Indicator Badges */}
+      <HStack spacing={3} mb={4} flexWrap="wrap">
+        {isVerified && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="green" fontSize="xs" fontWeight="medium">
+            ✔ Verified
+          </Badge>
+        )}
+        {typeof listingCount === 'number' && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="purple" fontSize="xs" fontWeight="medium">
+            📦 {listingCount} listing{listingCount !== 1 ? 's' : ''}
+          </Badge>
+        )}
+        {typeof tradeCount === 'number' && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="blue" fontSize="xs" fontWeight="medium">
+            🔁 {tradeCount} trade{tradeCount !== 1 ? 's' : ''}
+          </Badge>
+        )}
+        {typeof positivePercent === 'number' && positivePercent > 0 && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="yellow" fontSize="xs" fontWeight="medium">
+            ⭐ {Math.round(positivePercent)}% positive
+          </Badge>
+        )}
+        {responseInfo && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme={responseInfo.colorScheme} fontSize="xs" fontWeight="medium">
+            {responseInfo.label}
+          </Badge>
+        )}
+      </HStack>
+
       <HStack spacing={5} align="start">
         {/* Circular Score */}
         <VStack spacing={1}>
@@ -179,6 +241,54 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
           )}
         </VStack>
       </HStack>
+
+      {/* Trade Statistics Section */}
+      {tradeStats && (tradeStats.successful > 0 || tradeStats.cancelled > 0 || tradeStats.pending > 0) && (
+        <>
+          <Divider my={4} />
+          <VStack align="stretch" spacing={3}>
+            <Text fontSize="sm" fontWeight="bold" color="gray.700">
+              Trade Statistics
+            </Text>
+            <VStack align="stretch" spacing={1}>
+              <HStack justify="space-between">
+                <HStack spacing={2}>
+                  <Text fontSize="sm">✔</Text>
+                  <Text fontSize="sm" color="green.600">Successful</Text>
+                </HStack>
+                <Text fontSize="sm" fontWeight="bold" color="green.600">{tradeStats.successful}</Text>
+              </HStack>
+              <HStack justify="space-between">
+                <HStack spacing={2}>
+                  <Text fontSize="sm">❌</Text>
+                  <Text fontSize="sm" color="red.500">Cancelled</Text>
+                </HStack>
+                <Text fontSize="sm" fontWeight="bold" color="red.500">{tradeStats.cancelled}</Text>
+              </HStack>
+              <HStack justify="space-between">
+                <HStack spacing={2}>
+                  <Text fontSize="sm">⏳</Text>
+                  <Text fontSize="sm" color="orange.500">Pending</Text>
+                </HStack>
+                <Text fontSize="sm" fontWeight="bold" color="orange.500">{tradeStats.pending}</Text>
+              </HStack>
+            </VStack>
+            {(tradeStats.successful + tradeStats.cancelled) > 0 && (
+              <Box bg="gray.50" px={3} py={2} borderRadius="md">
+                <HStack justify="space-between">
+                  <Text fontSize="sm" fontWeight="medium" color="gray.600">Trade Success Rate</Text>
+                  <Text fontSize="sm" fontWeight="bold" color={
+                    Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100) >= 75 ? 'green.600' :
+                    Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100) >= 50 ? 'orange.500' : 'red.500'
+                  }>
+                    {Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100)}%
+                  </Text>
+                </HStack>
+              </Box>
+            )}
+          </VStack>
+        </>
+      )}
 
       {/* Conduct Grade Section */}
       {conductSummary && conductSummary.total_grades > 0 && (

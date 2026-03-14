@@ -134,6 +134,15 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	wants := c.FormValue("wants")
 	wantedCategories := c.FormValue("wanted_categories")
 
+	desiredPriceStr := c.FormValue("desired_price")
+	var desiredPrice *float64
+	if desiredPriceStr != "" {
+		if val, err := strconv.ParseFloat(desiredPriceStr, 64); err == nil {
+			desiredPrice = &val
+		}
+	}
+	desiredProduct := c.FormValue("desired_product")
+
 	// Optional category override from client
 	categoryOverride := c.FormValue("category")
 
@@ -213,7 +222,25 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Appraise product based on title and description
+	// Additional check: same cover image used within 24h by this seller (bypass prevention)
+	if len(imagePaths) > 0 {
+		firstImage := imagePaths[0]
+		var imgDupCount int
+		imgDupErr := h.db.QueryRow(
+			`SELECT COUNT(*) FROM products
+			 WHERE seller_id = ? AND image_urls LIKE ?
+			 AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)
+			 AND status <> 'deleted'`,
+			userID, "%"+firstImage+"%",
+		).Scan(&imgDupCount)
+		if imgDupErr == nil && imgDupCount > 0 {
+			return c.Status(409).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Duplicate listing detected. You have recently posted an item using the same image.",
+			})
+		}
+	}
+
 	appraisal := services.AppraiseProduct(title, description)
 	category := appraisal.Category
 	if categoryOverride != "" {
@@ -263,11 +290,24 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		counter++
 	}
 
+	// ==================== QUICK HEURISTIC FRAUD CHECKS ====================
+	// Check for obvious fraud patterns BEFORE creating the product
+	log.Printf("🔍 [FRAUD-HEURISTIC] Checking for obvious fraud patterns...")
+	isFraud, reason := services.FraudHeuristicCheck(title, description, wants, insertPrice)
+	if isFraud {
+		log.Printf("🚫 [FRAUD-HEURISTIC] BLOCKED - %s", reason)
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Your product listing failed our initial verification: " + reason + ". Please ensure your listing contains legitimate product information.",
+		})
+	}
+	log.Printf("✅ [FRAUD-HEURISTIC] Passed basic checks, will now create product...")
+
 	// Insert new product with slug. Build SQL dynamically so it's tolerant
 	// to missing latitude/longitude columns (some DBs may not have applied migrations).
-	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category", "wants", "wanted_categories", "item_type", "brand", "authenticity_risks", "tags", "estimated_value_min", "estimated_value_max"}
-	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
-	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, wants, wantedCategories, itemType, brand, authenticityRisks, tags, estimatedValueMin, estimatedValueMax}
+	cols := []string{"slug", "title", "description", "price", "image_urls", "seller_id", "premium", "allow_buying", "barter_only", "location", "status", "`condition`", "suggested_value", "category", "wants", "wanted_categories", "item_type", "brand", "authenticity_risks", "tags", "estimated_value_min", "estimated_value_max", "desired_price", "desired_product"}
+	placeholders := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
+	args := []interface{}{slug, title, finalDescription, insertPrice, string(imageURLsJSONBytes), userID, premium, allowBuying, barterOnly, location, "available", finalCondition, suggestedValue, category, wants, wantedCategories, itemType, brand, authenticityRisks, tags, estimatedValueMin, estimatedValueMax, desiredPrice, desiredProduct}
 
 	// Include video_url if a video was uploaded
 	if videoURL != "" {
@@ -341,6 +381,71 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 			Error:   "Failed to retrieve created product",
 		})
 	}
+
+	// ==================== FRAUD DETECTION (BLOCKING) ====================
+	// Initialize fraud detection service
+	log.Printf("🔍 [FRAUD] Running fraud detection for product %d", productID)
+	fraudService := services.NewFraudDetectionService()
+
+	// Get seller statistics
+	sellerStats, err := services.GetSellerStats(h.db, userID)
+	if err != nil {
+		log.Printf("⚠️  [FRAUD] Failed to get seller stats: %v", err)
+		sellerStats = &services.SellerStats{
+			TotalTrades:     0,
+			TradesLast7Days: 0,
+			AvgItemValue:    0,
+			AccountAgeDays:  0,
+		}
+	}
+
+	// Extract fraud detection features
+	fraudInput := services.ExtractFraudDetectionFeatures(
+		h.db,
+		&createdProduct,
+		sellerStats,
+		category,
+		false,
+	)
+
+	// Run fraud detection
+	fraudResult, _ := fraudService.DetectFraud(fraudInput)
+
+	// Log for monitoring and model retraining
+	_ = services.LogFraudPrediction(int(productID), userID, fraudResult)
+
+	// Check fraud result - BLOCK if HIGH risk
+	if fraudResult.Success {
+		// Update product with fraud assessment
+		_, _ = h.db.Exec(
+			"UPDATE products SET fraud_risk_level = ?, fraud_probability = ?, last_fraud_check_at = CURRENT_TIMESTAMP WHERE id = ?",
+			fraudResult.RiskLevel,
+			fraudResult.FraudProbability,
+			productID,
+		)
+
+		switch fraudResult.RiskLevel {
+		case "high":
+			log.Printf("🚫 [FRAUD] HIGH FRAUD RISK DETECTED (%.2f%%) - BLOCKING PRODUCT", fraudResult.FraudProbability*100)
+			// Delete the product since it failed fraud check
+			_, _ = h.db.Exec("DELETE FROM products WHERE id = ?", productID)
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Your product listing failed our security verification. This could be due to: incomplete/gibberish information, suspicious pricing, or patterns inconsistent with legitimate products. Please review your product details and try again.",
+			})
+		case "medium":
+			log.Printf("⚠️  [FRAUD] Medium fraud risk detected (%.2f%%) - Product allowed but monitored", fraudResult.FraudProbability*100)
+		case "low":
+			log.Printf("✅ [FRAUD] Low fraud risk (%.2f%%) - Product approved", fraudResult.FraudProbability*100)
+		}
+	} else {
+		// Fraud detection failed, log but allow
+		log.Printf("⚠️  [FRAUD] Fraud detection service error: %s", fraudResult.Error)
+	}
+	// ========================================================================
+
+	// Trigger smart notifications in background (new similar item + popularity alerts)
+	services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
@@ -805,7 +910,63 @@ func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
 	})
 }
 
-// GetSuggestedTrades finds potential trades for a given product
+// GetBoostCandidates returns the authenticated user's listings that qualify for a boost:
+// available, no pending offers, no wishlist saves, 3+ days old, not boosted in last 3 days.
+func (h *ProductHandler) GetBoostCandidates(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT p.id, p.title, p.image_urls, p.created_at, p.boosted_at
+		FROM products p
+		WHERE p.seller_id = ?
+		  AND p.status = 'available'
+		  AND p.created_at < DATE_SUB(NOW(), INTERVAL 3 DAY)
+		  AND (p.boosted_at IS NULL OR p.boosted_at < DATE_SUB(NOW(), INTERVAL 3 DAY))
+		  AND (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined','cancelled','completed')) = 0
+		  AND (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) = 0
+		ORDER BY p.created_at ASC
+		LIMIT 20
+	`, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch boost candidates"})
+	}
+	defer rows.Close()
+
+	type BoostCandidate struct {
+		ID        int     `json:"id"`
+		Title     string  `json:"title"`
+		ImageURL  string  `json:"image_url"`
+		CreatedAt string  `json:"created_at"`
+		BoostedAt *string `json:"boosted_at"`
+	}
+
+	var candidates []BoostCandidate
+	for rows.Next() {
+		var b BoostCandidate
+		var imageURLsJSON string
+		var boostedAt sql.NullString
+		if err := rows.Scan(&b.ID, &b.Title, &imageURLsJSON, &b.CreatedAt, &boostedAt); err != nil {
+			continue
+		}
+		if boostedAt.Valid {
+			b.BoostedAt = &boostedAt.String
+		}
+		var urls []string
+		if json.Unmarshal([]byte(imageURLsJSON), &urls) == nil && len(urls) > 0 {
+			b.ImageURL = urls[0]
+		}
+		candidates = append(candidates, b)
+	}
+	if candidates == nil {
+		candidates = []BoostCandidate{}
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: candidates})
+}
+
+
 func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 	productID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -1173,6 +1334,20 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	if category != "" {
 		updateFields = append(updateFields, "category = ?")
 		args = append(args, category)
+	}
+
+	desiredPriceStr := c.FormValue("desired_price")
+	if desiredPriceStr != "" {
+		if val, err := strconv.ParseFloat(desiredPriceStr, 64); err == nil {
+			updateFields = append(updateFields, "desired_price = ?")
+			args = append(args, val)
+		}
+	}
+
+	desiredProductVal := c.FormValue("desired_product")
+	if desiredProductVal != "" {
+		updateFields = append(updateFields, "desired_product = ?")
+		args = append(args, desiredProductVal)
 	}
 
 	// Handle image updates
@@ -1643,17 +1818,29 @@ func (h *ProductHandler) GenerateProductDetailsWithAI(c *fiber.Ctx) error {
 
 	// Check if analysis failed
 	if err != nil || aiResult == nil || !aiResult.Success {
-		errMsg := "AI analysis failed"
+		// Convert technical errors to user-friendly messages
+		userFriendlyMsg := "We couldn't analyze your image. Please check that:\n- Image is clear and well-lit\n- Image shows the actual product\n- File is a valid image (JPG, PNG)\n- File size is under 25MB"
+
 		if aiResult != nil && aiResult.Error != "" {
-			errMsg = aiResult.Error
+			errMsg := aiResult.Error
+			// Improve specific error messages
+			if strings.Contains(errMsg, "INVALID_ARGUMENT") || strings.Contains(errMsg, "safety") {
+				userFriendlyMsg = "The image appears to contain prohibited items or content. Please ensure your image shows a legitimate product."
+			} else if strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "deadline") {
+				userFriendlyMsg = "Image processing took too long. Please try again or use a smaller image."
+			} else if strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "API_KEY") {
+				userFriendlyMsg = "We're experiencing technical difficulties with our image analysis service. Please try again later."
+			} else if strings.Contains(errMsg, "RESOURCE_EXHAUSTED") {
+				userFriendlyMsg = "Our image analysis service is busy. Please try again in a few moments."
+			}
+			log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
 		} else if err != nil {
-			errMsg = err.Error()
+			log.Printf("GenerateProductDetailsWithAI error: %s", err.Error())
 		}
-		log.Printf("GenerateProductDetailsWithAI error: %s", errMsg)
 		// Return 422 (Unprocessable Entity) — the server worked fine, the AI couldn't process the input
 		return c.Status(422).JSON(models.APIResponse{
 			Success: false,
-			Error:   errMsg,
+			Error:   userFriendlyMsg,
 		})
 	}
 
@@ -1809,5 +1996,87 @@ func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "Report submitted successfully",
+	})
+}
+
+// ReorderImages allows a product owner to reorder their product images (e.g. set a new cover image)
+func (h *ProductHandler) ReorderImages(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not authenticated",
+		})
+	}
+
+	productID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Invalid product ID",
+		})
+	}
+
+	// Verify ownership
+	var sellerID int
+	var currentImageURLsJSON string
+	err = h.db.QueryRow("SELECT seller_id, image_urls FROM products WHERE id = ?", productID).Scan(&sellerID, &currentImageURLsJSON)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+		}
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get product"})
+	}
+
+	if sellerID != userID {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "You can only reorder images of your own products",
+		})
+	}
+
+	// Parse request body
+	var body struct {
+		ImageURLs []string `json:"image_urls"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	if len(body.ImageURLs) == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "image_urls cannot be empty"})
+	}
+
+	// Parse current image URLs to validate the reorder contains the same set
+	var currentURLs []string
+	if err := json.Unmarshal([]byte(currentImageURLsJSON), &currentURLs); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to parse current image URLs"})
+	}
+
+	if len(body.ImageURLs) != len(currentURLs) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reordered list must contain the same images"})
+	}
+
+	// Verify same set of URLs
+	currentSet := make(map[string]bool)
+	for _, u := range currentURLs {
+		currentSet[u] = true
+	}
+	for _, u := range body.ImageURLs {
+		if !currentSet[u] {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reordered list must contain the same images"})
+		}
+	}
+
+	// Update
+	imageURLsJSON, _ := json.Marshal(body.ImageURLs)
+	_, err = h.db.Exec("UPDATE products SET image_urls = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", string(imageURLsJSON), productID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update image order"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Image order updated",
 	})
 }

@@ -62,6 +62,7 @@ import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag,
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
+import { PRODUCT_CATEGORIES } from '../utils/categories'
 import VerifiedAvatar from '../components/VerifiedAvatar'
 import OfferDetailsModal from '../components/OfferDetailsModal'
 import ImageZoomModal from '../components/ImageZoomModal'
@@ -144,6 +145,7 @@ const Dashboard: React.FC = () => {
 
   // Product filters
   const [productFilter, setProductFilter] = useState<'all' | 'available' | 'sold' | 'traded' | 'locked'>('all')
+  const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all')
   const [productSearch, setProductSearch] = useState('')
   const [productSort, setProductSort] = useState<'newest' | 'oldest'>('newest')
   const [productViewMode, setProductViewMode] = useState<'grid' | 'list'>('list')
@@ -310,6 +312,11 @@ const Dashboard: React.FC = () => {
       filtered = actualUserProducts.filter(p => p.status === productFilter)
     }
 
+    // Category filter
+    if (productCategoryFilter !== 'all') {
+      filtered = filtered.filter(p => p.category === productCategoryFilter)
+    }
+
     // Apply unified search (fallback to productSearch for backward compatibility)
     const searchTerm = unifiedSearch || productSearch
     if (searchTerm.trim()) {
@@ -317,7 +324,7 @@ const Dashboard: React.FC = () => {
     }
 
     return filtered
-  }, [actualUserProducts, productFilter, unifiedSearch, productSearch, applyUnifiedSearch])
+  }, [actualUserProducts, productFilter, productCategoryFilter, unifiedSearch, productSearch, applyUnifiedSearch])
 
   // Debounced cache invalidation for notification counts
   const invalidateCountsDebounced = useCallback(() => {
@@ -1360,6 +1367,8 @@ const Dashboard: React.FC = () => {
                 <Text fontSize="md" fontWeight="semibold" color="brand.500">
                   {product.allow_buying && !product.barter_only && product.price
                     ? formatPHP(product.price)
+                    : product.desired_price
+                    ? `Desired: ${formatPHP(product.desired_price)}`
                     : ''}
                 </Text>
               </HStack>
@@ -1959,7 +1968,7 @@ const Dashboard: React.FC = () => {
           <Box
             position="relative"
             w="full"
-            h="180px"
+            h="120px"
             overflow="hidden"
             borderTopRadius="md"
             bg="gray.100"
@@ -1976,21 +1985,6 @@ const Dashboard: React.FC = () => {
             />
           </Box>
           <CardHeader pb={2}>
-            <Flex justify="space-between" align="start" mb={2}>
-              <HStack spacing={1} flexWrap="wrap">
-                <Badge
-                  colorScheme={isIncoming ? 'blue' : 'green'}
-                  variant="subtle"
-                  fontSize="2xs"
-                  px={1.5}
-                  py={0.5}
-                  borderRadius="sm"
-                >
-                  {isIncoming ? 'Received' : 'Sent'}
-                </Badge>
-                {getStatusBadge(trade.status)}
-              </HStack>
-            </Flex>
             <HStack spacing={2} align="center" flexWrap="wrap">
               <Heading size="sm" noOfLines={2}>
                 {getProductTitle(trade.target_product_id, trade.product_title)}
@@ -2730,6 +2724,25 @@ const Dashboard: React.FC = () => {
                         {unifiedSearch && (
                           <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
                             Searching: "{unifiedSearch}"
+                          </Badge>
+                        )}
+                        {/* Category Filter Dropdown */}
+                        <Select
+                          size="sm"
+                          value={productCategoryFilter}
+                          onChange={e => { setProductCategoryFilter(e.target.value); setCurrentPage(1) }}
+                          maxW="160px"
+                          borderRadius="md"
+                          fontSize="sm"
+                        >
+                          <option value="all">All Categories</option>
+                          {PRODUCT_CATEGORIES.map(cat => (
+                            <option key={cat.value} value={cat.value}>{cat.label}</option>
+                          ))}
+                        </Select>
+                        {productCategoryFilter !== 'all' && (
+                          <Badge colorScheme="green" variant="subtle" fontSize="sm" px={2} py={1} cursor="pointer" onClick={() => setProductCategoryFilter('all')}>
+                            Category: {productCategoryFilter} ✕
                           </Badge>
                         )}
                       </HStack>
@@ -3812,7 +3825,7 @@ const Dashboard: React.FC = () => {
                                     {tradingPartner}
                                   </Text>
                                   <Badge colorScheme="gray" fontSize="2xs" w="fit-content">
-                                    {isIncoming ? 'Buyer' : 'Seller'}
+                                    {isIncoming ? 'Buyer' : 'Trader'}
                                   </Badge>
                                 </VStack>
 

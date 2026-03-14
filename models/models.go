@@ -96,6 +96,7 @@ func (a StringArray) Value() (driver.Value, error) {
 // User represents a user in the system
 type User struct {
 	ID                          int        `json:"id"`
+	Slug                        string     `json:"slug,omitempty"` // Unique URL identifier
 	Name                        string     `json:"name" validate:"required,min=2,max=255"`
 	Email                       string     `json:"email" validate:"required,email"`
 	PasswordHash                string     `json:"-" validate:"required"`
@@ -169,9 +170,12 @@ type Product struct {
 	EstimatedValueMin    *float64    `json:"estimated_value_min,omitempty"`
 	EstimatedValueMax    *float64    `json:"estimated_value_max,omitempty"`
 	SuggestedValue       int         `json:"suggested_value,omitempty"`
+	Value                *float64    `json:"value,omitempty"` // User-defined product value
 	Category             string      `json:"category,omitempty"`
 	Wants                string      `json:"wants,omitempty"`
 	WantedCategories     StringArray `json:"wanted_categories,omitempty"`
+	DesiredPrice         *float64    `json:"desired_price,omitempty"`
+	DesiredProduct       string      `json:"desired_product,omitempty"`
 	ItemType             string      `json:"item_type,omitempty"`
 	Brand                string      `json:"brand,omitempty"`
 	AuthenticityRisks    string      `json:"authenticity_risks,omitempty"`
@@ -191,18 +195,17 @@ type Product struct {
 
 // ProductCreate represents data for creating a product
 type ProductCreate struct {
-	Title            string      `json:"title" validate:"required,min=2,max=255"`
-	Description      string      `json:"description"`
-	Price            *float64    `json:"price,omitempty"` // Optional for barter-only items
-	ImageURLs        StringArray `json:"image_urls,omitempty"`
-	Premium          bool        `json:"premium"`
-	AllowBuying      bool        `json:"allow_buying"`
-	BarterOnly       bool        `json:"barter_only"`
-	Location         string      `json:"location,omitempty"`
-	Condition        string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category         string      `json:"category,omitempty"`
-	Wants            string      `json:"wants,omitempty"`
-	WantedCategories StringArray `json:"wanted_categories,omitempty"`
+	Title       string      `json:"title" validate:"required,min=2,max=255"`
+	Description string      `json:"description"`
+	Price       *float64    `json:"price,omitempty"` // Optional for barter-only items
+	ImageURLs   StringArray `json:"image_urls,omitempty"`
+	Premium     bool        `json:"premium"`
+	AllowBuying bool        `json:"allow_buying"`
+	BarterOnly  bool        `json:"barter_only"`
+	Location    string      `json:"location,omitempty"`
+	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category    string      `json:"category,omitempty"`
+	Value       *float64    `json:"value,omitempty"` // User-defined product value
 }
 
 // ProductUpdate represents data for updating a product
@@ -219,6 +222,7 @@ type ProductUpdate struct {
 	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
 	Category    *string      `json:"category,omitempty"`
 	BiddingType *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	Value       *float64     `json:"value,omitempty"` // User-defined product value
 }
 
 // ProductVote represents a user's vote on a product price
@@ -606,6 +610,8 @@ type SellerStats struct {
 	ResponseMetric  string              `json:"response_metric,omitempty"`   // "excellent", "good", etc.
 	MemberSinceYear int                 `json:"member_since_year,omitempty"` // Year user joined
 	CompletedTrades int                 `json:"completed_trades,omitempty"`
+	CancelledTrades int                 `json:"cancelled_trades,omitempty"`
+	PendingTrades   int                 `json:"pending_trades,omitempty"`
 	TrustScore      int                 `json:"trust_score"`               // 0-100 calculated trust score
 	TrustLevel      string              `json:"trust_level"`               // "trusted", "new", "risky"
 	ReportCount     int                 `json:"report_count"`              // Number of reviewed/resolved reports

@@ -183,8 +183,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
       >
         {/* Seller row (desktop) */}
         <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-          <HStack spacing={2}>
-            <RouterLink to={`/users/${product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+          <HStack spacing={2} align="center" mt="auto">
+            <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
               <VerifiedAvatar
                 size="sm"
                 src={sellerAvatar}
@@ -213,7 +213,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
           color="gray.800"
           flexShrink={0}
           textAlign="left"
-          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px' } }}
+          minH={{ base: '34px', md: '40px' }}
+          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px', minHeight: '34px' } }}
         >
           {product.title}
         </Heading>
@@ -226,19 +227,32 @@ const ProductCard: React.FC<ProductCardProps> = ({
           fontSize="sm"
           flexShrink={0}
           textAlign="left"
-          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px' } }}
+          minH={{ base: '18px', md: '42px' }}
+          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px', minHeight: '18px' } }}
         >
           {product.description
             ? product.description
-                .split(' ')
-                .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
-                .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
+              .split(' ')
+              .slice(0, product.description.split(' ').length > 15 ? 8 : 15)
+              .join(' ') + (product.description.split(' ').length > 15 ? '...' : '')
             : 'No description available'}
         </Text>
 
+        {/* Product Value */}
+        {product.value !== undefined && product.value > 0 && (
+          <Text
+            fontSize="sm"
+            fontWeight="bold"
+            color="green.600"
+            mb={1}
+          >
+            ₱{(product.value as number).toLocaleString()}
+          </Text>
+        )}
+
         {/* Wishlist badge */}
-        {product.wishlist_count > 0 && (
-          <Flex mb={2} align="center" gap={1}>
+        <Flex mb={2} align="center" gap={1} minH={{ base: '20px', md: '22px' }}>
+          {product.wishlist_count > 0 && (
             <Badge
               colorScheme="pink"
               variant="subtle"
@@ -249,8 +263,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
             >
               ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
             </Badge>
-          </Flex>
-        )}
+          )}
+        </Flex>
 
         {/* Action buttons */}
         <HStack spacing={{ base: 1, md: 2 }} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
@@ -268,38 +282,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
           >
             {product.status === 'sold' ? 'Sold' : 'Trade'}
           </Button>
-
-          {product.allow_buying && product.price && !product.barter_only && (
-            <Button
-              size={{ base: 'xs', md: 'sm' }}
-              colorScheme="orange"
-              flex={1}
-              minW={{ base: '60px', md: 'auto' }}
-              onClick={handleBuyoutClick}
-              isDisabled={product.status === 'sold'}
-              transition="all 0.2s"
-              _hover={{ transform: 'translateY(-1px)' }}
-              _active={{ transform: 'scale(0.98)' }}
-            >
-              {product.status === 'sold' ? 'Sold' : 'Buyout'}
-            </Button>
-          )}
-
-          {product.allow_buying && product.price && !product.barter_only && (
-            <Button
-              size={{ base: 'xs', md: 'sm' }}
-              colorScheme="brand"
-              flex={1}
-              minW={{ base: '50px', md: 'auto' }}
-              onClick={handleBuyClick}
-              isDisabled={product.status === 'sold'}
-              transition="all 0.2s"
-              _hover={{ transform: 'translateY(-1px)' }}
-              _active={{ transform: 'scale(0.98)' }}
-            >
-              {product.status === 'sold' ? 'Sold' : 'Buy'}
-            </Button>
-          )}
 
           <Tooltip label="Buyout offer" placement="top">
             <IconButton

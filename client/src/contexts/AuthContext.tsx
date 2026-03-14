@@ -223,13 +223,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       // Set state (also persists to localStorage via wrappers)
       setToken(newToken)
-      setUser(normalizeUser(userData))
+      const normalizedUser = normalizeUser(userData)
+      setUser(normalizedUser)
 
       if (!userData?.profile_picture) {
         await fetchUserProfile(newToken)
       }
 
       console.log('AuthContext: Login successful')
+      return normalizedUser
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Login failed')
     }
@@ -254,12 +256,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('AuthContext: Setting token and user state')
       // Set state (also persists to localStorage via wrappers)
       setToken(newToken)
-      setUser(normalizeUser(userDataResponse))
+      const normalizedUser = normalizeUser(userDataResponse)
+      setUser(normalizedUser)
 
       if (!userDataResponse?.profile_picture) {
         await fetchUserProfile(newToken)
       }
       console.log('AuthContext: Google login completed successfully')
+      return normalizedUser
     } catch (error: any) {
       console.error('AuthContext: Google login failed:', error)
       throw new Error(error.response?.data?.error || 'Google login failed')

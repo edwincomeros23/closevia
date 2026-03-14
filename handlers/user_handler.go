@@ -13,6 +13,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/google/uuid"
+
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
@@ -64,6 +66,63 @@ func derefString(p *string) string {
 	return *p
 }
 
+// generateUserSlug creates a URL-friendly slug from name and appends a short UUID
+func generateUserSlug(name string) string {
+	slug := strings.ToLower(name)
+
+	// Remove special characters, keep only alphanumeric, spaces, and hyphens
+	slug = strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == ' ' || r == '-' {
+			return r
+		}
+		return -1
+	}, slug)
+
+	// Replace spaces with hyphens
+	slug = strings.ReplaceAll(slug, " ", "-")
+
+	// Remove multiple consecutive hyphens
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+
+	slug = strings.Trim(slug, "-")
+
+	if len(slug) > 30 {
+		slug = slug[:30]
+		slug = strings.TrimRight(slug, "-")
+	}
+
+	shortUUID := uuid.New().String()[:8]
+	return fmt.Sprintf("%s-%s", slug, shortUUID)
+}
+
+// ResolveUserID resolves an identifier (either numeric ID or slug) to a numeric user ID
+func (h *UserHandler) ResolveUserID(identifier string) (int, error) {
+	// First, try parsing as an integer
+	if id, err := strconv.Atoi(identifier); err == nil {
+		// Verify the user exists with this ID
+		var exists int
+		err := h.db.QueryRow("SELECT id FROM users WHERE id = ?", id).Scan(&exists)
+		if err == nil {
+			return exists, nil
+		}
+		// If the ID isn't found, we can optionally fall back to checking if a slug is purely digits
+		// But usually it just means "not found"
+		if err != sql.ErrNoRows {
+			return 0, err
+		}
+	}
+
+	// If it's not a valid integer or ID not found, treat it as a slug
+	var id int
+	err := h.db.QueryRow("SELECT id FROM users WHERE slug = ?", identifier).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 // Register handles user registration
 func (h *UserHandler) Register(c *fiber.Ctx) error {
 	var user models.UserRegister
@@ -101,9 +160,26 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		})
 	}
 
+	// Generate slug for the new user
+	slug := generateUserSlug(user.Name)
+
+	// Ensure unique slug
+	baseSlug := slug
+	counter := 1
+	for {
+		var exists int
+		err := h.db.QueryRow("SELECT COUNT(*) FROM users WHERE slug = ?", slug).Scan(&exists)
+		if err != nil || exists == 0 {
+			break
+		}
+		slug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		counter++
+	}
+
 	// Insert new user
 	result, err := h.db.Exec(
-		"INSERT INTO users (name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?)",
+		"INSERT INTO users (slug, name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?)",
+		slug,
 		user.Name,
 		user.Email,
 		hashedPassword,
@@ -128,17 +204,26 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	userID, _ := result.LastInsertId()
 
-	// ── EMAIL VERIFICATION TEMPORARILY DISABLED (Mailgun key not yet configured) ──
-	// To re-enable: remove the verified=TRUE line below and uncomment the OTP block.
-	h.db.Exec("UPDATE users SET verified = TRUE WHERE id = ?", userID)
-	// otpCode, otpHash, otpExpiry, otpErr := generateOTP()
-	// if otpErr == nil {
-	// 	h.db.Exec(
-	// 		"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
-	// 		otpHash, otpExpiry, userID,
-	// 	)
-	// 	go services.SendOTPEmail(user.Email, user.Name, otpCode)
-	// }
+	// Generate and send OTP for email verification
+	otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+	requiresVerification := false
+	if otpErr == nil {
+		requiresVerification = true
+		h.db.Exec(
+			"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
+			otpHash, otpExpiry, userID,
+		)
+		go func() {
+			err := services.SendOTPEmail(user.Email, user.Name, otpCode)
+			if err != nil {
+				fmt.Printf("❌ Failed to send OTP email: %v\n", err)
+			}
+		}()
+	} else {
+		fmt.Printf("⚠️ OTP generation failed: %v\n", otpErr)
+		// Fallback: If OTP generation fails, mark as verified for safety
+		h.db.Exec("UPDATE users SET verified = TRUE WHERE id = ?", userID)
+	}
 
 	// Auto-grant premium for WMSU students (@wmsu.edu.ph email)
 	isWmsuStudent := !user.IsOrganization && strings.HasSuffix(strings.ToLower(user.Email), "@wmsu.edu.ph")
@@ -158,9 +243,10 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		Data: fiber.Map{
 			"user": models.User{
 				ID:                 int(userID),
+				Slug:               slug,
 				Name:               user.Name,
 				Email:              user.Email,
-				Verified:           true,
+				Verified:           !requiresVerification,
 				IsOrganization:     user.IsOrganization,
 				OrgVerified:        false,
 				OrgName:            user.OrgName,
@@ -171,7 +257,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				LanguagePreference: "en",
 				IsPremium:          isWmsuStudent,
 			},
-			"requires_verification": false,
+			"requires_verification": requiresVerification,
 			"token":                 token,
 		},
 	})
@@ -404,9 +490,26 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference)
 
 	if err == sql.ErrNoRows {
+		// Generate slug for the new user
+		slug := generateUserSlug(req.DisplayName)
+
+		// Ensure slug is unique
+		baseSlug := slug
+		counter := 1
+		for {
+			var exists int
+			err := h.db.QueryRow("SELECT COUNT(*) FROM users WHERE slug = ?", slug).Scan(&exists)
+			if err != nil || exists == 0 {
+				break
+			}
+			slug = fmt.Sprintf("%s-%d", baseSlug, counter)
+			counter++
+		}
+
 		// Create new user from Google info
 		result, err := h.db.Exec(
-			"INSERT INTO users (name, email, role, verified, profile_picture, is_organization, org_verified, badges, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
+			"INSERT INTO users (slug, name, email, role, verified, profile_picture, is_organization, org_verified, badges, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
+			slug,
 			req.DisplayName,
 			req.Email,
 			"user",
@@ -425,6 +528,7 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 
 		userID, _ := result.LastInsertId()
 		user.ID = int(userID)
+		user.Slug = slug
 		user.Name = req.DisplayName
 		user.Email = req.Email
 		user.Verified = true
@@ -477,14 +581,17 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var schoolEmailVerifiedAt sql.NullTime
 	var lastLogin sql.NullTime
 
+	var slugNull sql.NullString
 	err := h.db.QueryRow(
-		`SELECT id, name, email, role, verified, 
+		`SELECT id, slug, name, email, role, verified, 
+		        COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') AS org_name,
 		        COALESCE(org_logo_url, '') AS org_logo_url,
 		        COALESCE(profile_picture, '') AS profile_picture,
 		        COALESCE(bio, '') AS bio,
 		        COALESCE(background_image, '') AS background_image,
 		        COALESCE(background_position, '') AS background_position,
 		        COALESCE(department, '') AS department, 
+		        COALESCE(badges, '[]') AS badges,
 		        COALESCE(is_premium, FALSE) AS is_premium,
 		        COALESCE(verification_status, 'not_verified') AS verification_status,
 		        COALESCE(school_name, '') AS school_name,
@@ -498,8 +605,10 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		 FROM users WHERE id = ?`,
 		userID,
 	).Scan(
-		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.OrgLogoURL,
-		&user.ProfilePicture, &user.Bio, &user.BackgroundImage, &user.BackgroundPosition, &user.Department, &user.IsPremium,
+		&user.ID, &slugNull, &user.Name, &user.Email, &user.Role, &user.Verified,
+		&user.IsOrganization, &user.OrgVerified, &user.OrgName,
+		&user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage,
+		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.LanguagePreference,
@@ -513,6 +622,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		user.LastLogin = &lastLogin.Time
 	}
 	user.ActivityStatus = computeActivityStatus(user.LastLogin)
+	if slugNull.Valid {
+		user.Slug = slugNull.String
+	}
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
@@ -801,30 +913,38 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Password changed successfully"})
 }
 
-// GetUserByID gets a user by ID (public info only)
+// GetUserByID gets a user by ID or slug (public info only)
 func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
-	userID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
+	identifier := c.Params("id")
+	if identifier == "" {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Invalid user ID",
+			Error:   "User ID or handle is required",
+		})
+	}
+
+	userID, err := h.ResolveUserID(identifier)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
 		})
 	}
 
 	var user models.User
-	var profilePicture, backgroundImage, backgroundPosition, department, bio sql.NullString
+	var slugNull, profilePicture, backgroundImage, backgroundPosition, department, bio sql.NullString
 	var verificationStatus, schoolName, schoolEmail, rejectionReason sql.NullString
 	var emailVerifiedAt sql.NullTime
 	var lastLogin sql.NullTime
 	err = h.db.QueryRow(
-		`SELECT id, name, email, role, verified, is_organization, org_verified, org_name, org_logo_url,
-		        profile_picture, background_image, background_position, department, bio, badges,
+		`SELECT id, slug, name, email, role, verified, COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') as org_name, COALESCE(org_logo_url, '') as org_logo_url,
+		        profile_picture, background_image, background_position, department, bio, COALESCE(badges, '[]') as badges,
 		        verification_status, school_name, school_email, school_email_verified_at, verification_rejection_reason,
 		        created_at, updated_at, last_login
 		   FROM users WHERE id = ?`,
 		userID,
 	).Scan(
-		&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified,
+		&user.ID, &slugNull, &user.Name, &user.Email, &user.Role, &user.Verified,
 		&user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL,
 		&profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges,
 		&verificationStatus, &schoolName, &schoolEmail, &emailVerifiedAt, &rejectionReason,
@@ -1266,13 +1386,21 @@ func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
 	})
 }
 
-// GetSellerStats gets comprehensive seller statistics
+// GetSellerStats retrieves statistics for a seller profile
 func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
-	userID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
+	identifier := c.Params("id")
+	if identifier == "" {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Invalid user ID",
+			Error:   "User ID or handle is required",
+		})
+	}
+
+	userID, err := h.ResolveUserID(identifier)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
 		})
 	}
 
@@ -1307,6 +1435,24 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	`, userID).Scan(&stats.CompletedTrades)
 	if err != nil {
 		stats.CompletedTrades = 0
+	}
+
+	// Calculate cancelled trades
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades 
+		WHERE seller_id = ? AND status = 'cancelled'
+	`, userID).Scan(&stats.CancelledTrades)
+	if err != nil {
+		stats.CancelledTrades = 0
+	}
+
+	// Calculate pending trades
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades 
+		WHERE seller_id = ? AND status IN ('pending', 'accepted', 'active', 'awaiting_confirmation')
+	`, userID).Scan(&stats.PendingTrades)
+	if err != nil {
+		stats.PendingTrades = 0
 	}
 
 	// Calculate average rating and positive feedback percentage from reviews table

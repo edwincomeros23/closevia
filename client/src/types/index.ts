@@ -1,5 +1,6 @@
 export interface User {
   id: number
+  slug?: string // Unique URL identifier
   name: string
   email: string
   role: string
@@ -61,6 +62,8 @@ export interface Product {
   want_count?: number;
   estimated_value_min?: number;
   estimated_value_max?: number;
+  desired_price?: number;
+  desired_product?: string;
 }
 
 export interface Order {

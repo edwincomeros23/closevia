@@ -108,7 +108,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     if (hasPendingOfferOnTarget) {
       toast({ 
         title: 'Pending Offer Already Exists', 
-        description: 'You already have a pending offer on this product. Please wait for the seller to respond before sending another one.', 
+        description: 'You already have a pending offer on this product. Please wait for the trader to respond before sending another one.', 
         status: 'warning',
         duration: 4000,
         isClosable: true 
@@ -196,8 +196,8 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
               </FormControl>
 
               <FormControl>
-                <FormLabel fontSize="sm">Message to Seller (optional)</FormLabel>
-                <Textarea placeholder="Add a note to convince the seller to accept your buyout offer" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} rows={3} />
+                <FormLabel fontSize="sm">Message to Trader (optional)</FormLabel>
+                <Textarea placeholder="Add a note to convince the trader to accept your buyout offer" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} rows={3} />
               </FormControl>
 
               <Divider />
@@ -259,7 +259,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                         </Box>
                         <VStack spacing={1} align="center">
                           <Text fontWeight="semibold" fontSize="sm">Delivery</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">🚚 Payment method agreed with seller</Text>
+                          <Text fontSize="xs" color="gray.600" textAlign="center">🚚 Payment method agreed with trader</Text>
                         </VStack>
                         {tradeOption === 'delivery' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
                       </VStack>
@@ -323,7 +323,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
               {/* Payment Method Selection */}
               <FormControl isRequired>
                 <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Payment Method (Seller Decides)
+                  Payment Method (Trader Decides)
                 </FormLabel>
                 <Grid templateColumns="repeat(2, 1fr)" gap={4}>
                   {/* COD Option */}
@@ -387,7 +387,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                 
                 <Box mt={3} p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
                   <Text fontSize="xs" color="blue.900">
-                    <strong>ℹ️ Note:</strong> The seller will choose which payment method to accept. Offering both options increases your chances of a deal.
+                    <strong>ℹ️ Note:</strong> The trader will choose which payment method to accept. Offering both options increases your chances of a deal.
                   </Text>
                 </Box>
               </FormControl>
