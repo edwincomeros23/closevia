@@ -495,7 +495,7 @@ const Offers: React.FC = () => {
                 {type === 'progress' && (
                   <>
                     <Text><strong>Buyer:</strong> {trade.buyer_name || 'Anonymous User'}</Text>
-                    <Text><strong>Seller:</strong> {trade.seller_name || 'Anonymous User'}</Text>
+                    <Text><strong>Trader:</strong> {trade.seller_name || 'Anonymous User'}</Text>
                   </>
                 )}
                 <Text fontSize="xs" color="gray.500">{new Date(trade.created_at).toLocaleDateString()}</Text>
@@ -1058,7 +1058,7 @@ const Offers: React.FC = () => {
                               </Badge>
                             )}
                           </HStack>
-                          <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Seller: {t.seller_name || 'Anonymous User'}</Text>
+                          <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Trader: {t.seller_name || 'Anonymous User'}</Text>
                           {renderOfferedItems(t)}
                         </VStack>
                       </Box>
@@ -1107,7 +1107,7 @@ const Offers: React.FC = () => {
                     <HStack justify="space-between" align="start">
                       <VStack align="start" spacing={2}>
                         <Text fontWeight="semibold" color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Seller: {t.seller_name || 'Anonymous User'}</Text>
+                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Trader: {t.seller_name || 'Anonymous User'}</Text>
                         {renderOfferedItems(t)}
                         <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
                       </VStack>

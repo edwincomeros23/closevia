@@ -21,8 +21,7 @@ import {
   Icon,
   Flex,
   Progress,
-  Checkbox,
-  Image
+  Checkbox
 } from '@chakra-ui/react'
 import { keyframes } from '@emotion/react'
 import { FaStar, FaHeart, FaThumbsUp, FaCheck, FaHandshake, FaImage } from 'react-icons/fa'
@@ -446,89 +445,75 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                       Please rate your experience and confirm completion
                     </Text>
 
-                    {/* Upload Transaction Photo */}
+                    {/* Upload Transaction Photo — compact pill (never expands modal) */}
                     <Box w="full">
                       <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
                         Upload Proof of Transaction (Optional)
                       </Text>
-                      <Box
-                        p={4}
-                        border="2px dashed"
-                        borderColor={transactionProof ? 'green.300' : 'gray.300'}
-                        borderRadius="lg"
-                        textAlign="center"
-                        bg={transactionProof ? 'green.50' : 'white'}
-                        cursor="pointer"
-                        onClick={() => fileInputRef.current?.click()}
-                        _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
+                      <HStack
+                        p={2}
+                        px={3}
+                        border="1.5px dashed"
+                        borderColor={transactionProof ? 'green.400' : uploadingImage ? 'blue.300' : 'gray.300'}
+                        borderRadius="full"
+                        bg={transactionProof ? 'green.50' : uploadingImage ? 'blue.50' : 'gray.50'}
+                        spacing={2}
+                        justify="space-between"
+                        cursor={uploadingImage ? 'not-allowed' : 'pointer'}
+                        onClick={() => !uploadingImage && fileInputRef.current?.click()}
+                        _hover={!uploadingImage ? { borderColor: 'brand.400', bg: 'brand.50' } : {}}
                         transition="all 0.2s"
                       >
-                        <VStack spacing={3}>
-                          {transactionProof ? (
-                            <>
-                              <Image
-                                src={transactionProof}
-                                alt="Transaction proof"
-                                maxW="100%"
-                                maxH="200px"
-                                borderRadius="md"
-                                objectFit="contain"
-                              />
-                              <HStack spacing={2}>
-                                <Button
-                                  size="sm"
-                                  colorScheme="red"
-                                  variant="outline"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setTransactionProof(null)
-                                    if (fileInputRef.current) {
-                                      fileInputRef.current.value = ''
-                                    }
-                                  }}
-                                >
-                                  Remove
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  colorScheme="brand"
-                                  variant="outline"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    fileInputRef.current?.click()
-                                  }}
-                                >
-                                  Change
-                                </Button>
-                              </HStack>
-                            </>
+                        <HStack spacing={2} flex={1} minW={0}>
+                          {uploadingImage ? (
+                            <Spinner size="xs" color="blue.400" />
+                          ) : transactionProof ? (
+                            <Icon as={FaCheck} color="green.500" boxSize={3.5} />
                           ) : (
-                            <>
-                              <Icon as={FaImage} boxSize={8} color="gray.400" />
-                              <VStack spacing={1}>
-                                <Text fontSize="sm" fontWeight="medium" color="gray.700">
-                                  Upload Photo of Transaction
-                                </Text>
-                                <Text fontSize="xs" color="gray.500">
-                                  Click to upload (optional — you can skip this)
-                                </Text>
-                              </VStack>
-                              <Button
-                                size="sm"
-                                colorScheme="brand"
-                                variant="outline"
-                                isLoading={uploadingImage}
-                                loadingText="Uploading..."
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  fileInputRef.current?.click()
-                                }}
-                              >
-                                Choose File
-                              </Button>
-                            </>
+                            <Icon as={FaImage} color="gray.400" boxSize={3.5} />
                           )}
-                        </VStack>
+                          <Text fontSize="xs" color={transactionProof ? 'green.700' : 'gray.500'} isTruncated>
+                            {uploadingImage
+                              ? 'Uploading image…'
+                              : transactionProof
+                              ? 'Proof uploaded ✓'
+                              : 'Click to attach a photo (optional)'}
+                          </Text>
+                        </HStack>
+                        {transactionProof && !uploadingImage && (
+                          <HStack spacing={1}>
+                            <Button
+                              size="xs"
+                              colorScheme="brand"
+                              variant="ghost"
+                              px={2}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                fileInputRef.current?.click()
+                              }}
+                            >
+                              Change
+                            </Button>
+                            <Button
+                              size="xs"
+                              colorScheme="red"
+                              variant="ghost"
+                              px={2}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setTransactionProof(null)
+                                if (fileInputRef.current) fileInputRef.current.value = ''
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </HStack>
+                        )}
+                        {!transactionProof && !uploadingImage && (
+                          <Text fontSize="xs" color="brand.500" fontWeight="600" flexShrink={0}>
+                            Browse
+                          </Text>
+                        )}
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -536,7 +521,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                           style={{ display: 'none' }}
                           onChange={handleImageUpload}
                         />
-                      </Box>
+                      </HStack>
                     </Box>
 
                     <VStack spacing={3}>
@@ -584,7 +569,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                 isLoading={submitting}
                 loadingText="Confirming..."
                 leftIcon={<FaCheck />}
-                isDisabled={rating === 0 || !policyAgreed}
+                isDisabled={rating === 0 || !policyAgreed || uploadingImage}
               >
                 Confirm Trade Completion
               </Button>

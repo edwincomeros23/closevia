@@ -260,7 +260,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       } as TradeAction)
       toast({ 
         title: 'Option change requested', 
-        description: 'The seller will be notified of your request to change the trade option.', 
+        description: 'The trader will be notified of your request to change the trade option.', 
         status: 'success' 
       })
       setShowOptionChangeModal(false)
@@ -495,6 +495,11 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                     </Text>
                     {effectiveTrade.trade_option === 'delivery' && effectiveTrade.delivery_address && (
                       <Text fontSize="xs" color="gray.700">{effectiveTrade.delivery_address}</Text>
+                    )}
+                    {effectiveTrade.trade_option === 'delivery' && (effectiveTrade as any).delivery_fee !== undefined && (
+                      <Text fontSize="xs" color="green.700" fontWeight="semibold">
+                        Delivery Fee: {formatPHP((effectiveTrade as any).delivery_fee)}
+                      </Text>
                     )}
                   </VStack>
                 </HStack>

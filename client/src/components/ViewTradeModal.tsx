@@ -1304,7 +1304,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         paymentConfirmed: trade.payment_confirmed || false,
         buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
         sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
-        senderLocation: (trade as any).seller_location || 'Seller location - From product listing',
+        senderLocation: (trade as any).seller_location || 'Trader location - From product listing',
         receiverLocation: (trade as any).buyer_location || 'Buyer location - From user profile',
         assignedRider: {
           name: 'Wynry Perian (Mock Rider)',
@@ -2286,14 +2286,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                           <VStack spacing={2}>
                             <Avatar
-                              name={trade.seller_name || 'Seller'}
+                              name={trade.seller_name || 'Trader'}
                               size="md"
                               bg="green.500"
                               color="white"
                             />
                             <VStack spacing={1}>
                               <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
-                                Seller
+                                Trader
                               </Text>
                               <Badge
                                 colorScheme={sellerMeetupConfirmed ? 'green' : 'gray'}

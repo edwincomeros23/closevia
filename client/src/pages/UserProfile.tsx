@@ -193,7 +193,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
             reviewer: 'John D.',
             avatar: 'https://randomuser.me/api/portraits/men/1.jpg',
             rating: 5,
-            comment: 'Great seller! Item was exactly as described.',
+            comment: 'Great trader! Item was exactly as described.',
             date: '2023-10-15',
           },
           {
@@ -864,7 +864,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const badges = useMemo(() => {
     const list: { label: string; color: string }[] = []
     if (stats.completed >= 20) list.push({ label: 'Top Trader', color: 'purple' })
-    if (stats.completed >= 5) list.push({ label: 'Trusted Seller', color: 'green' })
+    if (stats.completed >= 5) list.push({ label: 'Trusted Trader', color: 'green' })
     list.push({ label: 'Fast Responder', color: 'blue' })
     return list
   }, [stats])
@@ -908,7 +908,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container maxW="container.xl" py={8}>
         <VStack spacing={8} align="stretch">
-          {/* Seller Info Header */}
+          {/* Trader Info Header */}
           <Card bg="white" border="1px" borderColor="gray.200" shadow="sm" overflow="hidden">
             {/* Cover photo with gradient overlay */}
             <Box
@@ -989,6 +989,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     <Text fontWeight="semibold" color="green.500">{Math.round(displayPositivePercent)}%</Text>
                     <Text>Positive</Text>
                   </HStack>
+<<<<<<< Updated upstream
                   <Text color="gray.300">|</Text>
                   <HStack spacing={1}>
                     <Text fontWeight="semibold" color="gray.800">{stats.completed}</Text>
@@ -1000,6 +1001,69 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     <Text>{stats.avgResponse}</Text>
                   </HStack>
                 </HStack>
+=======
+
+                  {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
+
+
+                  {/* Trust Score Card */}
+                  {sellerStats && (
+                    <Box mb={4}>
+                      <TrustScoreCard
+                        score={sellerStats.trust_score ?? 0}
+                        trustLevel={sellerStats.trust_level}
+                        factors={sellerStats.trust_factors}
+                        conductSummary={sellerStats.conduct_summary}
+                      />
+                    </Box>
+                  )}
+
+                  {/* Report Warning Banner */}
+                  {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
+                    <Alert status="warning" borderRadius="md" mb={4}>
+                      <AlertIcon />
+                      <Box>
+                        <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
+                        <Text fontSize="xs" color="gray.600">Trade with caution</Text>
+                      </Box>
+                    </Alert>
+                  )}
+
+
+                  {/* Show action buttons only when viewing someone else's profile */}
+                  {!(currentUser && Number(id) === currentUser.id) && (
+                    <HStack spacing={3}>
+                      <Button
+                        leftIcon={<Icon as={FiMessageSquare} />}
+                        colorScheme="brand"
+                        onClick={handleSendMessage}
+                      >
+                        Message Trader
+                      </Button>
+                    </HStack>
+                  )}
+                </Box>
+
+                <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }} minW={{ base: '100%', md: '280px' }}>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Member Since</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Items for Sale</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Department</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
+                  </Box>
+                  <Box lineHeight="1">
+                    <Text color="gray.500" fontSize="xs">Total Listings</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
+                  </Box>
+                </SimpleGrid>
+
+>>>>>>> Stashed changes
               </Flex>
 
               {/* Trust level + Activity badges */}
@@ -1297,6 +1361,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         ? new Date(trade.completed_at).toLocaleDateString()
                         : new Date(trade.created_at).toLocaleDateString()
 
+<<<<<<< Updated upstream
                       // Target product (what the seller listed)
                       const targetImage = trade.product_image_url || '/placeholder-item.jpg'
                       const targetTitle = trade.product_title || 'Product'
@@ -1376,6 +1441,27 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                   {review.comment && (
                                     <Text fontSize="xs" color="gray.600" fontStyle="italic">
                                       "{review.comment}"
+=======
+                            {/* Show existing reply if any */}
+                            {review.reply && (
+                              <Box
+                                mt={3}
+                                pl={4}
+                                borderLeft="2px"
+                                borderColor="brand.200"
+                                bg="gray.50"
+                                p={3}
+                                borderRadius="md"
+                              >
+                                <HStack spacing={2} mb={1}>
+                                  <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
+                                  <Text fontSize="sm" fontWeight="semibold" color="brand.600">
+                                    <Box as="span" textTransform="capitalize">{review.reply_author || user?.name || 'Trader'}</Box> replied:
+                                  </Text>
+                                  {review.reply_date && (
+                                    <Text fontSize="xs" color="gray.500">
+                                      {review.reply_date}
+>>>>>>> Stashed changes
                                     </Text>
                                   )}
                                 </Box>
@@ -1633,6 +1719,22 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 </FormControl>
 
 
+<<<<<<< Updated upstream
+=======
+                  <FormControl isRequired>
+                    <FormLabel>Your Review</FormLabel>
+                    <Textarea
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Share details about your experience with this trader..."
+                      rows={5}
+                      maxLength={500}
+                    />
+                    <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
+                      {reviewComment.length}/500 characters
+                    </Text>
+                  </FormControl>
+>>>>>>> Stashed changes
 
                 <FormControl isRequired>
                   <FormLabel>Your Review</FormLabel>

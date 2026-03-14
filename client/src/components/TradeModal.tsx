@@ -162,7 +162,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     if (hasPendingOfferOnTarget) {
       toast({
         title: 'Pending Offer Already Exists',
-        description: 'You already have a pending offer on this product. Please wait for the seller to respond to your existing offer before sending another one.',
+        description: 'You already have a pending offer on this product. Please wait for the trader to respond to your existing offer before sending another one.',
         status: 'warning',
         duration: 4000,
         isClosable: true
@@ -261,7 +261,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
               <FormControl>
                 <FormLabel fontSize="sm">Message (optional)</FormLabel>
-                <Input placeholder="Add a note for the seller" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} />
+                <Input placeholder="Add a note for the trader" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} />
               </FormControl>
 
               <FormControl>

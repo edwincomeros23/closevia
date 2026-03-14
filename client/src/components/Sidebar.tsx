@@ -48,9 +48,9 @@ const Sidebar: React.FC = () => {
 
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleLogoClick = useCallback(() => {
-    window.location.href = '/'
+    navigate('/landing')
     onClose()
-  }, [onClose])
+  }, [navigate, onClose])
 
   const handleCompanyClick = useCallback(() => {
     navigate('/company')
@@ -73,15 +73,15 @@ const Sidebar: React.FC = () => {
       { icon: FaHome, label: 'Home', path: '/home' },
     ]
     if (user) {
+      if (user?.role === 'admin') {
+        items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
+      }
       items.push(
         { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
         { icon: FaPlus, label: 'Add Product', path: '/add-product' },
         { icon: FiHeart, label: 'Saved', path: '/saved-products' },
         { icon: FiBell, label: 'Notifications', path: '/notifications' }
       )
-      if (user?.role === 'admin') {
-        items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
-      }
     }
     return items
   }, [user])
@@ -89,14 +89,15 @@ const Sidebar: React.FC = () => {
   // Memoize mobile navigation items to prevent recalculation
   const mobileNavItems = useMemo(() => {
     if (user) {
-      const items = [
+      const items: { icon: any; label: string; path: string }[] = []
+      if (user?.role === 'admin') {
+        items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
+      }
+      items.push(
         { icon: FiHeart, label: 'Saved', path: '/saved-products' },
         { icon: FiBell, label: 'Notifications', path: '/notifications' },
         { icon: FiSettings, label: 'Settings', path: '/settings' },
-      ]
-      if (user?.role === 'admin') {
-        items.splice(2, 0, { icon: FaStar, label: 'Admin', path: '/admin' })
-      }
+      )
       return items
     }
     return [
@@ -291,7 +292,7 @@ const Sidebar: React.FC = () => {
                 h="35px"
                 objectFit="contain"
                 cursor="pointer"
-                onClick={() => (window.location.href = '/')}
+                onClick={handleLogoClick}
                 _hover={{ opacity: 0.8 }}
                 transition="opacity 0.2s"
               />
@@ -331,7 +332,7 @@ const Sidebar: React.FC = () => {
                         bg: isActive ? 'brand.200' : 'gray.200',
                       }}
                       borderRadius="xl"
-                      transition="all 0.2s"
+                      transition="all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1)"
                     />
                     {(item.label === 'Notifications' && notificationCount > 0) && (
                       <CBadge position="absolute" right={0} top={0} transform="translate(30%, -30%)" colorScheme="red" borderRadius="full">{notificationCount}</CBadge>

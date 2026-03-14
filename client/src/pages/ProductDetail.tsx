@@ -70,10 +70,10 @@ import ProximityBadge from '../components/ProximityBadge'
 import ResponseMetricsBadge from '../components/ResponseMetricsBadge'
 import FloatingTab from '../components/FloatingTab'
 import VerifiedAvatar from '../components/VerifiedAvatar'
-import ImageZoomModal from '../components/ImageZoomModal'
+import MediaGallery from '../components/MediaGallery'
 import TrustScoreCard from '../components/TrustScoreCard'
 import axios from 'axios';
-import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'
+import { CloseIcon } from '@chakra-ui/icons'
 
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -89,7 +89,6 @@ const ProductDetail: React.FC = () => {
   const [isTradeOpen, setIsTradeOpen] = useState(false)
   const [isBuyoutOpen, setIsBuyoutOpen] = useState(false)
   const [tradeTargetProductId, setTradeTargetProductId] = useState<number | null>(null)
-  const [selectedImage, setSelectedImage] = useState<string>('')
   const [isSaved, setIsSaved] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [wishlistCount, setWishlistCount] = useState<number>(0)
@@ -108,9 +107,7 @@ const ProductDetail: React.FC = () => {
   const [hasPendingOfferOnProduct, setHasPendingOfferOnProduct] = useState(false)
   const [loadingPendingOffer, setLoadingPendingOffer] = useState(false)
   const [isBuyModalOpen, setIsBuyModalOpen] = useState(false)
-  const [isZoomOpen, setIsZoomOpen] = useState(false)
-  const [zoomImageUrl, setZoomImageUrl] = useState('')
-  const [zoomImageIndex, setZoomImageIndex] = useState(0)
+  const [isSettingCover, setIsSettingCover] = useState(false)
   const [isVoting, setIsVoting] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
   const [isWishlisting, setIsWishlisting] = useState(false)
@@ -119,27 +116,22 @@ const ProductDetail: React.FC = () => {
   const toast = useToast()
   const { isOpen: isShareOpen, onOpen: onShareOpen, onClose: onShareClose } = useDisclosure()
 
-  const openZoom = (index: number) => {
-    if (product && product.image_urls && index < product.image_urls.length) {
-      setZoomImageIndex(index)
-      setZoomImageUrl(getImageUrl(product.image_urls[index]))
-      setIsZoomOpen(true)
-    }
-  }
-
-  const nextZoomImage = () => {
-    if (product && product.image_urls) {
-      const nextIndex = (zoomImageIndex + 1) % product.image_urls.length
-      setZoomImageIndex(nextIndex)
-      setZoomImageUrl(getImageUrl(product.image_urls[nextIndex]))
-    }
-  }
-
-  const prevZoomImage = () => {
-    if (product && product.image_urls) {
-      const prevIndex = (zoomImageIndex - 1 + product.image_urls.length) % product.image_urls.length
-      setZoomImageIndex(prevIndex)
-      setZoomImageUrl(getImageUrl(product.image_urls[prevIndex]))
+  const handleSetCover = async (imageIndex: number) => {
+    if (!product) return
+    setIsSettingCover(true)
+    try {
+      const reordered = [...product.image_urls]
+      const [selected] = reordered.splice(imageIndex, 1)
+      reordered.unshift(selected)
+      await api.put(`/api/products/${product.id}/reorder-images`, { image_urls: reordered }, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('clovia_token')}` }
+      })
+      setProduct({ ...product, image_urls: reordered })
+      toast({ title: 'Cover image updated', status: 'success', duration: 2000 })
+    } catch {
+      toast({ title: 'Failed to update cover image', status: 'error', duration: 3000 })
+    } finally {
+      setIsSettingCover(false)
     }
   }
 
@@ -366,13 +358,11 @@ const ProductDetail: React.FC = () => {
             navigate(`/products/${p.slug}`, { replace: true })
             return
           }
-          if (p.image_urls && p.image_urls.length > 0) setSelectedImage(getImageUrl(p.image_urls[0]))
         } else if (data) {
           const p = data as Product
           setProduct(p)
           setVotes({ under: 0, over: 0 })
           setUserVote('')
-          if (p.image_urls && p.image_urls.length > 0) setSelectedImage(getImageUrl(p.image_urls[0]))
         } else {
           setError('Product not found')
         }
@@ -384,13 +374,11 @@ const ProductDetail: React.FC = () => {
           setProduct(p)
           setVotes(data.votes || { under: 0, over: 0 })
           setUserVote(data.user_vote || '')
-          if (p.image_urls && p.image_urls.length > 0) setSelectedImage(getImageUrl(p.image_urls[0]))
         } else if (data) {
           const p = data as Product
           setProduct(p)
           setVotes({ under: 0, over: 0 })
           setUserVote('')
-          if (p.image_urls && p.image_urls.length > 0) setSelectedImage(getImageUrl(p.image_urls[0]))
         } else {
           setError('Product not found')
         }
@@ -441,7 +429,7 @@ const ProductDetail: React.FC = () => {
       setIsBuyModalOpen(false)
       toast({
         title: 'Order placed successfully!',
-        description: 'Your order has been created and is pending seller confirmation.',
+        description: 'Your order has been created and is pending trader confirmation.',
         status: 'success',
         duration: 5000,
         isClosable: true,
@@ -790,11 +778,6 @@ const ProductDetail: React.FC = () => {
     }
   }
 
-  const handleImageZoom = (index: number) => {
-    setZoomImageIndex(index)
-    setIsZoomOpen(true)
-  }
-
   const handleViewOffers = async () => {
     try {
       setLoadingOffers(true)
@@ -896,155 +879,20 @@ const ProductDetail: React.FC = () => {
 
             {/* Product Content */}
 
-            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={product.video_url ? 4 : 6}>
-              {/* Product Image Gallery */}
+            <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6}>
+              {/* Product Media Gallery */}
               <VStack spacing={3} align="stretch" p={{ base: 2, md: 4 }}>
-                {/* When video exists: image and video side by side */}
-                {product.video_url ? (
-                  <>
-                    <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={3}>
-                      <Box position="relative" h={{ base: '200px', md: '280px' }} bg="gray.100" rounded="md" overflow="hidden">
-                        <Image
-                          src={selectedImage || getFirstImage(product.image_urls)}
-                          alt={product.title}
-                          w="full"
-                          h="full"
-                          objectFit="contain"
-                          fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
-                          cursor="zoom-in"
-                          onClick={() => {
-                            const index = product.image_urls.findIndex(url => getImageUrl(url) === (selectedImage || getFirstImage(product.image_urls)))
-                            openZoom(index >= 0 ? index : 0)
-                          }}
-                        />
-                        <HStack position="absolute" top={2} left={2} spacing={1}>
-                          {product.premium && (
-                            <Badge colorScheme="orange" px={1.5} py={0.5} fontSize="xs">
-                              Premium
-                            </Badge>
-                          )}
-                          <Badge
-                            colorScheme={
-                              product.status === 'available'
-                                ? 'teal'
-                                : product.status === 'locked'
-                                  ? 'orange'
-                                  : 'red'
-                            }
-                            px={1.5}
-                            py={0.5}
-                            fontSize="xs"
-                          >
-                            {product.status}
-                          </Badge>
-                        </HStack>
-                      </Box>
-                      <Box borderRadius="md" overflow="hidden" bg="black" h={{ base: '200px', md: '280px' }}>
-                        <video
-                          src={product.video_url}
-                          controls
-                          playsInline
-                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                        />
-                      </Box>
-                    </SimpleGrid>
-                    {product.image_urls && product.image_urls.length > 1 && (
-                      <HStack spacing={2} overflowX="auto">
-                        {product.image_urls.map((url, index) => (
-                          <Box
-                            key={index}
-                            as="button"
-                            w="70px"
-                            h="70px"
-                            flexShrink={0}
-                            p={1}
-                            border="2px solid"
-                            borderColor={selectedImage === getImageUrl(url) ? 'brand.500' : 'transparent'}
-                            rounded="md"
-                            onClick={() => setSelectedImage(getImageUrl(url))}
-                          >
-                            <Image
-                              src={getImageUrl(url)}
-                              alt={`Thumbnail ${index + 1}`}
-                              w="full"
-                              h="full"
-                              objectFit="cover"
-                              fallbackSrc="https://via.placeholder.com/80x80"
-                            />
-                          </Box>
-                        ))}
-                      </HStack>
-                    )}
-                    {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
-                  </>
-                ) : (
-                  <>
-                    <Box position="relative" h={{ base: '300px', md: '400px' }} bg="gray.100" rounded="md" overflow="hidden">
-                      <Image
-                        src={selectedImage || getFirstImage(product.image_urls)}
-                        alt={product.title}
-                        w="full"
-                        h="full"
-                        objectFit="contain"
-                        fallbackSrc="https://via.placeholder.com/600x400?text=No+Image"
-                        cursor="zoom-in"
-                        onClick={() => {
-                          const index = product.image_urls.findIndex(url => getImageUrl(url) === (selectedImage || getFirstImage(product.image_urls)))
-                          openZoom(index >= 0 ? index : 0)
-                        }}
-                      />
-                      <HStack position="absolute" top={3} left={3} spacing={2}>
-                        {product.premium && (
-                          <Badge colorScheme="orange" px={2} py={1} fontSize="sm">
-                            Premium Listing
-                          </Badge>
-                        )}
-                        <Badge
-                          colorScheme={
-                            product.status === 'available'
-                              ? 'teal'
-                              : product.status === 'locked'
-                                ? 'orange'
-                                : 'red'
-                          }
-                          px={2}
-                          py={1}
-                          fontSize="sm"
-                        >
-                          {product.status}
-                        </Badge>
-                        {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
-                      </HStack>
-                    </Box>
-                    {product.image_urls && product.image_urls.length > 1 && (
-                      <HStack spacing={2} overflowX="auto">
-                        {product.image_urls.map((url, index) => (
-                          <Box
-                            key={index}
-                            as="button"
-                            w="80px"
-                            h="80px"
-                            flexShrink={0}
-                            p={1}
-                            border="2px solid"
-                            borderColor={selectedImage === getImageUrl(url) ? 'brand.500' : 'transparent'}
-                            rounded="md"
-                            onClick={() => setSelectedImage(getImageUrl(url))}
-                          >
-                            <Image
-                              src={getImageUrl(url)}
-                              alt={`Thumbnail ${index + 1}`}
-                              w="full"
-                              h="full"
-                              objectFit="cover"
-                              fallbackSrc="https://via.placeholder.com/80x80"
-                            />
-                          </Box>
-                        ))}
-                      </HStack>
-                    )}
-                  </>
-                )}
+                <MediaGallery
+                  imageUrls={product.image_urls}
+                  videoUrl={product.video_url}
+                  productTitle={product.title}
+                  productStatus={product.status}
+                  isPremium={product.premium}
+                  isOwner={user?.id === product.seller_id}
+                  onSetCover={handleSetCover}
+                  isSettingCover={isSettingCover}
+                />
+                {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
               </VStack>
 
               {/* Product Details */}
@@ -1081,40 +929,43 @@ const ProductDetail: React.FC = () => {
                       </Text>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
-                    <HStack spacing={2} mt={2} flexWrap="wrap" align="center">
+                    <Flex gap={2.5} mt={2} flexWrap="wrap" align="center">
                       <Badge
                         colorScheme="pink"
                         variant="subtle"
-                        borderRadius="8px"
-                        px={2}
-                        py={0.5}
+                        borderRadius="full"
+                        px={3}
+                        py={1}
                         fontSize="xs"
+                        fontWeight="600"
                       >
                         <HStack spacing={1}>
                           <FiHeart />
-                          <Text as="span">{wishlistCount} wants</Text>
+                          <Text as="span">{wishlistCount} Wants</Text>
                         </HStack>
                       </Badge>
                       <Badge
                         colorScheme="gray"
                         variant="subtle"
-                        borderRadius="8px"
-                        px={2}
-                        py={0.5}
+                        borderRadius="full"
+                        px={3}
+                        py={1}
                         fontSize="xs"
+                        fontWeight="600"
                       >
                         <HStack spacing={1}>
                           <FiTrendingUp />
                           <Text as="span">Popularity</Text>
                         </HStack>
                       </Badge>
+                      <Divider orientation="vertical" h="16px" borderColor="gray.300" />
                       {product.condition && (
-                        <Badge colorScheme="blue" variant="subtle" borderRadius="8px" px={2} py={0.5} fontSize="xs">
+                        <Badge colorScheme="blue" variant="subtle" borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">
                           {product.condition}
                         </Badge>
                       )}
                       {product.category && (
-                        <Badge colorScheme="purple" variant="subtle" borderRadius="8px" px={2} py={0.5} fontSize="xs">
+                        <Badge colorScheme="purple" variant="subtle" borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">
                           {product.category}
                         </Badge>
                       )}
@@ -1122,33 +973,30 @@ const ProductDetail: React.FC = () => {
                         <Badge
                           colorScheme="gray"
                           variant="subtle"
-                          borderRadius="8px"
-                          px={2}
-                          py={0.5}
+                          borderRadius="full"
+                          px={3}
+                          py={1}
                           fontSize="xs"
+                          fontWeight="600"
                         >
                           {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
                         </Badge>
                       )}
-                      {(product.want_count && product.want_count > 0) ? (
-                        <Badge
-                          colorScheme="red"
-                          variant="subtle"
-                          borderRadius="8px"
-                          px={2}
-                          py={0.5}
-                          fontSize="xs"
-                        >
-                          <HStack spacing={1}>
-                            <FiHeart />
-                            <Text as="span">{product.want_count} {product.want_count === 1 ? 'user wants' : 'users want'} this</Text>
-                          </HStack>
-                        </Badge>
-                      ) : null}
-                      <Text fontSize="xs" color="gray.500">
-                        · Listed {new Date(product.created_at).toLocaleDateString()}
-                      </Text>
-                    </HStack>
+                      <Badge
+                        colorScheme="gray"
+                        variant="subtle"
+                        borderRadius="full"
+                        px={3}
+                        py={1}
+                        fontSize="xs"
+                        fontWeight="600"
+                      >
+                        <HStack spacing={1}>
+                          <FiCalendar />
+                          <Text as="span">Listed {new Date(product.created_at).toLocaleDateString()}</Text>
+                        </HStack>
+                      </Badge>
+                    </Flex>
                     {product.suggested_value != null && product.suggested_value > 0 && (
                       <Text mt={1} fontSize="xs" color="gray.500">
                         Trade points: {product.suggested_value}
@@ -1451,7 +1299,7 @@ const ProductDetail: React.FC = () => {
           {/* Seller Information */}
           <Box bg="white" p={6} rounded="lg" shadow="sm">
             <Heading size="md" mb={4}>
-              About the Seller
+              About the Trader
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6}>
               <HStack spacing={4} flex={1}>
@@ -1604,7 +1452,7 @@ const ProductDetail: React.FC = () => {
           {/* Seller Products Section */}
           <Box bg="white" p={6} rounded="lg" shadow="sm">
             <Heading size="md" mb={6}>
-              Seller Products
+              Trader Products
             </Heading>
             <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={4}>
               {sellerProducts && sellerProducts.length > 0 ? (
@@ -1653,7 +1501,7 @@ const ProductDetail: React.FC = () => {
                 ))
               ) : (
                 <Box p={4} w="full">
-                  <Text color="gray.600">No other products from this seller.</Text>
+                  <Text color="gray.600">No other products from this trader.</Text>
                 </Box>
               )}
             </SimpleGrid>
@@ -1780,77 +1628,6 @@ const ProductDetail: React.FC = () => {
                   </VStack>
                 )
               })()}
-            </ModalBody>
-          </ModalContent>
-        </Modal>
-
-        {/* Image Zoom Modal */}
-        <Modal isOpen={isZoomOpen} onClose={() => setIsZoomOpen(false)} size="full" scrollBehavior="inside">
-          <ModalOverlay bg="blackAlpha.900" />
-          <ModalContent bg="transparent" shadow="none" m={0}>
-            <ModalCloseButton color="white" size="lg" zIndex={2} />
-            <ModalBody display="flex" alignItems="center" justifyContent="center" p={0} position="relative">
-              {product && product.image_urls && product.image_urls.length > 0 && (
-                <>
-                  <Box
-                    maxW="90vw"
-                    maxH="90vh"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    position="relative"
-                  >
-                    <Image
-                      src={getImageUrl(product.image_urls[zoomImageIndex])}
-                      alt={`${product.title} - Zoomed View ${zoomImageIndex + 1}`}
-                      maxW="full"
-                      maxH="90vh"
-                      objectFit="contain"
-                    />
-
-                    {product.image_urls.length > 1 && (
-                      <>
-                        <IconButton
-                          aria-label="Previous image"
-                          icon={<ChevronLeftIcon boxSize={8} />}
-                          position="absolute"
-                          left={{ base: "-4", md: "-12" }}
-                          colorScheme="whiteAlpha"
-                          color="white"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            prevZoomImage()
-                          }}
-                          _hover={{ bg: "whiteAlpha.200" }}
-                        />
-                        <IconButton
-                          aria-label="Next image"
-                          icon={<ChevronRightIcon boxSize={8} />}
-                          position="absolute"
-                          right={{ base: "-4", md: "-12" }}
-                          colorScheme="whiteAlpha"
-                          color="white"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            nextZoomImage()
-                          }}
-                          _hover={{ bg: "whiteAlpha.200" }}
-                        />
-                        <Text
-                          position="absolute"
-                          bottom="-8"
-                          color="white"
-                          fontWeight="bold"
-                        >
-                          {zoomImageIndex + 1} / {product.image_urls.length}
-                        </Text>
-                      </>
-                    )}
-                  </Box>
-                </>
-              )}
             </ModalBody>
           </ModalContent>
         </Modal>
@@ -2048,7 +1825,7 @@ const ProductDetail: React.FC = () => {
               )}
               <VStack align="stretch" spacing={1}>
                 <HStack justify="space-between">
-                  <Text fontSize="sm" color="gray.600">Seller</Text>
+                  <Text fontSize="sm" color="gray.600">Trader</Text>
                   <Text fontSize="sm" fontWeight="500">{product?.seller_name ?? 'Unknown'}</Text>
                 </HStack>
                 <HStack justify="space-between">
@@ -2058,7 +1835,7 @@ const ProductDetail: React.FC = () => {
               </VStack>
               <Alert status="info" borderRadius="10px" fontSize="sm">
                 <AlertIcon />
-                The seller will confirm your order. You will be notified once it is accepted.
+                The trader will confirm your order. You will be notified once it is accepted.
               </Alert>
             </VStack>
           </ModalBody>
