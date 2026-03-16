@@ -44,7 +44,8 @@ const Offers: React.FC = () => {
       // Fetch product titles for all trades
       await fetchProductTitles([...incRes.data?.data || [], ...outRes.data?.data || []])
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
+      toast({
+        id: "offers-error", title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
     } finally {
       setLoading(false)
     }
@@ -132,10 +133,12 @@ const Offers: React.FC = () => {
   const updateTrade = async (id: number, action: TradeAction) => {
     try {
       await api.put(`/api/trades/${id}`, action)
-      toast({ title: 'Success', description: 'Offer updated', status: 'success' })
+      toast({
+        id: "offers-success", title: 'Success', description: 'Offer updated', status: 'success' })
       fetchAll()
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
+      toast({
+        id: "offers-error-2", title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
   }
 
@@ -157,6 +160,7 @@ const Offers: React.FC = () => {
       setCancelModalOpen(false)
       setTradeToCancel(null)
       toast({
+        id: "offers-offer-cancelled",
         title: 'Offer cancelled',
         description: 'The offer has been successfully cancelled',
         status: 'success',
@@ -164,6 +168,7 @@ const Offers: React.FC = () => {
       })
     } catch (error: any) {
       toast({
+        id: "offers-error-3",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to cancel offer',
         status: 'error'
@@ -189,6 +194,7 @@ const Offers: React.FC = () => {
       setTradeToDecline(null)
       setDeclineFeedback('')
       toast({
+        id: "offers-offer-declined",
         title: 'Offer declined',
         description: 'The offer has been successfully declined',
         status: 'success',
@@ -196,6 +202,7 @@ const Offers: React.FC = () => {
       })
     } catch (error: any) {
       toast({
+        id: "offers-error-4",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to decline offer',
         status: 'error'

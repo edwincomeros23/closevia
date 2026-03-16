@@ -170,11 +170,13 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     if (!effectiveTrade) return
     try {
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'accept' } as TradeAction)
-      toast({ title: 'Offer accepted', status: 'success' })
+      toast({
+        id: "offerdetailsmodal-offer-accepted", title: 'Offer accepted', status: 'success' })
       onAccepted()
       onClose()
     } catch (e: any) {
-      toast({ title: 'Failed to accept', description: e?.response?.data?.error || 'Try again', status: 'error' })
+      toast({
+        id: "offerdetailsmodal-failed-to-accept", title: 'Failed to accept', description: e?.response?.data?.error || 'Try again', status: 'error' })
     }
   }
 
@@ -186,12 +188,14 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     if (!effectiveTrade) return
     try {
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'decline' } as TradeAction)
-      toast({ title: 'Offer declined', status: 'success' })
+      toast({
+        id: "offerdetailsmodal-offer-declined", title: 'Offer declined', status: 'success' })
       onDeclined()
       onClose()
       onDeclineClose()
     } catch (e: any) {
-      toast({ title: 'Failed to decline', description: e?.response?.data?.error || 'Try again', status: 'error' })
+      toast({
+        id: "offerdetailsmodal-failed-to-decline", title: 'Failed to decline', description: e?.response?.data?.error || 'Try again', status: 'error' })
     }
   }
 
@@ -225,11 +229,13 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     if (!effectiveTrade) return
     try {
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'counter', counter_offered_product_ids: selectedCounterIds, message: counterMsg, counter_offered_cash_amount: cashDelta ? Number(cashDelta) : undefined } as TradeAction)
-      toast({ title: 'Counter offer sent', status: 'success' })
+      toast({
+        id: "offerdetailsmodal-counter-offer-sent", title: 'Counter offer sent', status: 'success' })
       onAccepted()
       onClose()
     } catch (e: any) {
-      toast({ title: 'Failed to counter', description: e?.response?.data?.error || 'Try again', status: 'error' })
+      toast({
+        id: "offerdetailsmodal-failed-to-counter", title: 'Failed to counter', description: e?.response?.data?.error || 'Try again', status: 'error' })
     }
   }
 
@@ -248,7 +254,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const requestOptionChange = async () => {
     if (!effectiveTrade || !requestedOption) return
     if (requestedOption === 'delivery' && !requestedDeliveryAddress.trim()) {
-      toast({ title: 'Delivery address required', description: 'Please provide a delivery address for delivery option.', status: 'warning' })
+      toast({
+        id: "offerdetailsmodal-delivery-address-required", title: 'Delivery address required', description: 'Please provide a delivery address for delivery option.', status: 'warning' })
       return
     }
     try {
@@ -258,7 +265,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         requested_option: requestedOption,
         delivery_address: requestedOption === 'delivery' ? requestedDeliveryAddress : undefined,
       } as TradeAction)
-      toast({ 
+      toast({
+        id: "offerdetailsmodal-option-change-requested", 
         title: 'Option change requested', 
         description: 'The trader will be notified of your request to change the trade option.', 
         status: 'success' 
@@ -268,7 +276,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       setRequestedDeliveryAddress('')
       onAccepted() // Refresh trade data
     } catch (e: any) {
-      toast({ title: 'Failed to request change', description: e?.response?.data?.error || 'Try again', status: 'error' })
+      toast({
+        id: "offerdetailsmodal-failed-to-request-change", title: 'Failed to request change', description: e?.response?.data?.error || 'Try again', status: 'error' })
     } finally {
       setRequestingOptionChange(false)
     }
@@ -280,10 +289,12 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       await api.put(`/api/trades/${effectiveTrade.id}`, {
         action: 'approve_option_change',
       } as TradeAction)
-      toast({ title: 'Option change approved', description: 'The trade option has been updated.', status: 'success' })
+      toast({
+        id: "offerdetailsmodal-option-change-approved", title: 'Option change approved', description: 'The trade option has been updated.', status: 'success' })
       onAccepted() // Refresh trade data
     } catch (e: any) {
-      toast({ title: 'Failed to approve change', description: e?.response?.data?.error || 'Try again', status: 'error' })
+      toast({
+        id: "offerdetailsmodal-failed-to-approve-change", title: 'Failed to approve change', description: e?.response?.data?.error || 'Try again', status: 'error' })
     }
   }
 
@@ -293,10 +304,12 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       await api.put(`/api/trades/${effectiveTrade.id}`, {
         action: 'reject_option_change',
       } as TradeAction)
-      toast({ title: 'Option change rejected', description: 'The trade will proceed with the original option.', status: 'success' })
+      toast({
+        id: "offerdetailsmodal-option-change-rejected", title: 'Option change rejected', description: 'The trade will proceed with the original option.', status: 'success' })
       onAccepted() // Refresh trade data
     } catch (e: any) {
-      toast({ title: 'Failed to reject change', description: e?.response?.data?.error || 'Try again', status: 'error' })
+      toast({
+        id: "offerdetailsmodal-failed-to-reject-change", title: 'Failed to reject change', description: e?.response?.data?.error || 'Try again', status: 'error' })
     }
   }
 

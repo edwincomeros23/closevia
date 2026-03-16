@@ -102,16 +102,18 @@ const ConnectionStatus: React.FC<ConnectionStatusProps> = ({ showDetails = false
   return (
     <Box
       position="fixed"
-      top={4}
-      right={4}
+      top={{ base: 2, md: 4 }}
+      right={{ base: 2, md: 4 }}
       zIndex={1000}
       bg={bgColor}
       border="1px"
       borderColor={borderColor}
       borderRadius="md"
-      px={3}
-      py={2}
+      px={{ base: 2, md: 3 }}
+      py={{ base: 1, md: 2 }}
       boxShadow="sm"
+      maxW={{ base: 'auto', md: 'unset' }}
+      fontSize={{ base: 'xs', md: 'sm' }}
     >
       <HStack spacing={2}>
         <Icon

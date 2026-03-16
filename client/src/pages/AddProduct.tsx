@@ -212,6 +212,7 @@ const AddProduct: React.FC = () => {
     // Check daily request limit
     if (!canMakeAIRequest()) {
       toast({
+        id: "addproduct-daily-limit-reached",
         title: '⏱️ Daily limit reached',
         description: 'AI analysis limit reached for today. Try again tomorrow.',
         status: 'warning',
@@ -227,6 +228,7 @@ const AddProduct: React.FC = () => {
     setIsGenerating(true)
 
     toast({
+        id: "addproduct-analyzing-images",
       title: '🔍 Analyzing images...',
       description: 'AI is scanning all photos for product details and checking image quality.',
       status: 'info',
@@ -259,6 +261,7 @@ const AddProduct: React.FC = () => {
 
           // Show prominent error message
           toast({
+        id: "addproduct-cannot-list-this-item",
             title: '❌ Cannot list this item',
             description: d.reason || 'This item cannot be listed for trading.',
             status: 'error',
@@ -284,6 +287,7 @@ const AddProduct: React.FC = () => {
           setAiBlockingError(d.prohibited_reason || 'This item cannot be listed for trading.')
           setIsGenerating(false)
           toast({
+        id: "addproduct-item-cannot-be-listed",
             title: '❌ Item cannot be listed',
             description: d.prohibited_reason || 'This item cannot be listed for trading.',
             status: 'error',
@@ -342,6 +346,7 @@ const AddProduct: React.FC = () => {
 
         if (warnings.length > 0) {
           toast({
+        id: "addproduct-ai-completed-with-notes",
             title: '⚠️ AI completed with notes',
             description: warnings[0],
             status: 'warning',
@@ -351,6 +356,7 @@ const AddProduct: React.FC = () => {
           })
         } else {
           toast({
+        id: "addproduct-ai-analysis-complete",
             title: '✨ AI analysis complete!',
             description: 'Product fields have been auto-filled. Review and edit as needed.',
             status: 'success',
@@ -369,6 +375,7 @@ const AddProduct: React.FC = () => {
       incrementDailyCount()
 
       toast({
+        id: "addproduct-ai-analysis-failed",
         title: 'AI analysis failed',
         description: err?.response?.data?.error || err.message || 'Could not analyze image. You can fill in details manually.',
         status: 'warning',
@@ -394,7 +401,8 @@ const AddProduct: React.FC = () => {
     if (!files) return
     const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
     if (!validFiles.length) {
-      toast({ title: 'Invalid file type', description: 'Please select image files only.', status: 'error', duration: 3000 })
+      toast({
+        id: "addproduct-invalid-file-type", title: 'Invalid file type', description: 'Please select image files only.', status: 'error', duration: 3000 })
       return
     }
 
@@ -413,7 +421,8 @@ const AddProduct: React.FC = () => {
           })
           previews.push(url)
         } catch (e: any) {
-          toast({ title: `Error processing ${file.name}`, description: e.message, status: 'error', duration: 3000 })
+          toast({
+        id: "addproduct-error-processing-file-name", title: `Error processing ${file.name}`, description: e.message, status: 'error', duration: 3000 })
         }
       }
 
@@ -441,6 +450,7 @@ const AddProduct: React.FC = () => {
         if (qualityWarnings.length > 0) {
           // Show the first quality warning as a toast
           toast({
+        id: "addproduct-image-quality-check",
             title: '📸 Image Quality Check',
             description: qualityWarnings[0],
             status: 'warning',
@@ -479,11 +489,13 @@ const AddProduct: React.FC = () => {
     if (!files || !files[0]) return
     const file = files[0]
     if (!file.type.startsWith('video/')) {
-      toast({ title: 'Invalid file type', status: 'error', duration: 3000 })
+      toast({
+        id: "addproduct-invalid-file-type-2", title: 'Invalid file type', status: 'error', duration: 3000 })
       return
     }
     if (file.size > 50 * 1024 * 1024) {
-      toast({ title: 'Video too large', description: 'Max 50MB', status: 'error', duration: 3000 })
+      toast({
+        id: "addproduct-video-too-large", title: 'Video too large', description: 'Max 50MB', status: 'error', duration: 3000 })
       return
     }
     setUploadedVideo(file)
@@ -580,15 +592,18 @@ const AddProduct: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!formData.title.trim()) {
-      toast({ title: 'Missing name', status: 'warning', duration: 3000 })
+      toast({
+        id: "addproduct-missing-name", title: 'Missing name', status: 'warning', duration: 3000 })
       return
     }
     if (formData.description.trim().length < 50) {
-      toast({ title: 'Description too short', description: 'Minimum 50 characters', status: 'warning', duration: 3000 })
+      toast({
+        id: "addproduct-description-too-short", title: 'Description too short', description: 'Minimum 50 characters', status: 'warning', duration: 3000 })
       return
     }
     if (uploadedImages.length === 0) {
-      toast({ title: 'No images', description: 'Please upload at least one photo', status: 'warning', duration: 3000 })
+      toast({
+        id: "addproduct-no-images", title: 'No images', description: 'Please upload at least one photo', status: 'warning', duration: 3000 })
       return
     }
 
@@ -623,11 +638,13 @@ const AddProduct: React.FC = () => {
 
       await createProduct(fd)
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
-      toast({ title: 'Product posted! 🎉', status: 'success', duration: 3000 })
+      toast({
+        id: "addproduct-product-posted", title: 'Product posted! 🎉', status: 'success', duration: 3000 })
       navigate('/dashboard')
     } catch (err: any) {
       const msg = err.response?.data?.error || err.message || 'Failed to create product'
-      toast({ title: 'Error creating product', description: msg, status: 'error', duration: 6000 })
+      toast({
+        id: "addproduct-error-creating-product", title: 'Error creating product', description: msg, status: 'error', duration: 6000 })
     } finally {
       setIsSubmitting(false)
     }

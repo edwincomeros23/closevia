@@ -90,23 +90,27 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     if (!targetProductId) return
     
     if (!cashAmount || Number(cashAmount) <= 0) {
-      toast({ title: 'Invalid amount', description: 'Please enter a valid cash amount to offer.', status: 'warning' })
+      toast({
+        id: "buyoutmodal-invalid-amount", title: 'Invalid amount', description: 'Please enter a valid cash amount to offer.', status: 'warning' })
       return
     }
     
     if (!tradeOption) {
-      toast({ title: 'Select fulfillment option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
+      toast({
+        id: "buyoutmodal-select-fulfillment-option", title: 'Select fulfillment option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
       return
     }
     
     if (!paymentMethod) {
-      toast({ title: 'Select payment method', description: 'Please choose COD or Upfront Payment.', status: 'warning' })
+      toast({
+        id: "buyoutmodal-select-payment-method", title: 'Select payment method', description: 'Please choose COD or Upfront Payment.', status: 'warning' })
       return
     }
     
     // Layer 2 validation: Check for pending offer before submission
     if (hasPendingOfferOnTarget) {
-      toast({ 
+      toast({
+        id: "buyoutmodal-pending-offer-already-exists", 
         title: 'Pending Offer Already Exists', 
         description: 'You already have a pending offer on this product. Please wait for the trader to respond before sending another one.', 
         status: 'warning',
@@ -143,7 +147,8 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
       onClose()
     } catch (e: any) {
       const errorMessage = e?.response?.data?.error || 'Failed to send buyout offer'
-      toast({ title: 'Failed', description: errorMessage, status: 'error' })
+      toast({
+        id: "buyoutmodal-failed", title: 'Failed', description: errorMessage, status: 'error' })
     } finally {
       setSubmittingTrade(false)
     }
@@ -285,7 +290,8 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                             size="sm" colorScheme="blue" mt={2} isLoading={detectingLocation} loadingText="Detecting..."
                             onClick={async () => {
                               if (!navigator.geolocation) {
-                                toast({ title: 'Geolocation not supported', status: 'error', duration: 3000 })
+                                toast({
+        id: "buyoutmodal-geolocation-not-supported", title: 'Geolocation not supported', status: 'error', duration: 3000 })
                                 return
                               }
                               setDetectingLocation(true)
@@ -295,14 +301,17 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                                   try {
                                     await api.put('/api/users/profile', { latitude, longitude })
                                     if (refreshUser) await refreshUser()
-                                    toast({ title: 'Location saved!', status: 'success', duration: 3000 })
+                                    toast({
+        id: "buyoutmodal-location-saved", title: 'Location saved!', status: 'success', duration: 3000 })
                                   } catch {
-                                    toast({ title: 'Failed to save location', status: 'error', duration: 3000 })
+                                    toast({
+        id: "buyoutmodal-failed-to-save-location", title: 'Failed to save location', status: 'error', duration: 3000 })
                                   }
                                   setDetectingLocation(false)
                                 },
                                 () => {
-                                  toast({ title: 'Location access denied', status: 'warning', duration: 4000 })
+                                  toast({
+        id: "buyoutmodal-location-access-denied", title: 'Location access denied', status: 'warning', duration: 4000 })
                                   setDetectingLocation(false)
                                 },
                                 { enableHighAccuracy: true, timeout: 10000 }

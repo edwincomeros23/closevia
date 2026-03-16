@@ -49,6 +49,7 @@ export const useTradeLoopNotifications = () => {
           // Show toast for new trade loop notifications
           newNotifications.forEach((notif) => {
             toast({
+        id: "usetradeloopnotifications-multi-way-trade-detected",
               title: '🔗 Multi-Way Trade Detected!',
               description: notif.message,
               status: 'success',

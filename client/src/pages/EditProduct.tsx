@@ -133,6 +133,7 @@ const EditProduct: React.FC = () => {
 
       if (readResults.length === 0) {
         toast({
+        id: "editproduct-no-images-added",
           title: 'No images added',
           description: 'Could not read any of the selected files. Try selecting fewer or smaller images.',
           status: 'warning',
@@ -212,6 +213,7 @@ const EditProduct: React.FC = () => {
       await updateProduct(parseInt(id!), formData)
 
       toast({
+        id: "editproduct-product-updated",
         title: 'Product updated!',
         description: 'Your product has been successfully updated',
         status: 'success',

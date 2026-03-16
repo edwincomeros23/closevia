@@ -93,6 +93,7 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
     // Validation
     if (!details.title.trim()) {
       toast({
+        id: "productuploadstep2-title-required",
         title: 'Title required',
         description: 'Please enter a product title',
         status: 'error',
@@ -104,6 +105,7 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
 
     if (!details.description.trim()) {
       toast({
+        id: "productuploadstep2-description-required",
         title: 'Description required',
         description: 'Please describe your product',
         status: 'error',
@@ -115,6 +117,7 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
 
     if (details.price <= 0 && details.allowBuying) {
       toast({
+        id: "productuploadstep2-invalid-price",
         title: 'Invalid price',
         description: 'Please enter a valid price',
         status: 'error',
