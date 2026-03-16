@@ -31,8 +31,9 @@ import {
   TabPanel,
   Spinner,
   Center,
+  Avatar,
 } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaClock, FaBox, FaMotorcycle, FaCar, FaStar } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaClock, FaBox, FaMotorcycle, FaCar, FaStar, FaPhone, FaIdBadge, FaCheckCircle } from 'react-icons/fa'
 import { InfoIcon, WarningIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'
 import { Delivery } from '../types'
@@ -66,6 +67,18 @@ interface ClaimedBatch {
   riderName?: string
   riderVehicle?: string
   riderRating?: number
+}
+
+interface RiderProfile {
+  rider_id: number
+  name: string
+  vehicle_type: string
+  vehicle_plate: string
+  phone: string
+  rating: number
+  created_at: string
+  completed_deliveries: number
+  is_active: boolean
 }
 
 // Map a Delivery API object to our local DeliveryJob interface
@@ -102,6 +115,7 @@ const RiderJobs: React.FC = () => {
   const [claiming, setClaiming] = useState(false)
   const [isRider, setIsRider] = useState<boolean | null>(null)
   const [registering, setRegistering] = useState(false)
+  const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null)
 
   // Check if current user is a registered rider
   const checkRiderStatus = async () => {
@@ -109,6 +123,19 @@ const RiderJobs: React.FC = () => {
       const response = await api.get('/api/deliveries/rider-status')
       const data = response.data?.data
       setIsRider(data?.is_rider && data?.is_active)
+      if (data?.is_rider) {
+        setRiderProfile({
+          rider_id: data.rider_id,
+          name: data.name || '',
+          vehicle_type: data.vehicle_type || '',
+          vehicle_plate: data.vehicle_plate || '',
+          phone: data.phone || '',
+          rating: data.rating || 0,
+          created_at: data.created_at || '',
+          completed_deliveries: data.completed_deliveries || 0,
+          is_active: data.is_active,
+        })
+      }
     } catch {
       setIsRider(false)
     }
@@ -294,6 +321,85 @@ const RiderJobs: React.FC = () => {
             {pendingJobs.filter(j => j.status === 'pending').length} jobs nearby
           </Text>
         </VStack>
+
+        {/* Rider Profile Card */}
+        {isRider && riderProfile && (
+          <Card bg="white" border="2px" borderColor="brand.200" w="full" shadow="sm">
+            <CardBody p={4}>
+              <VStack spacing={3} align="stretch">
+                <HStack spacing={4}>
+                  <Avatar
+                    name={riderProfile.name}
+                    size="lg"
+                    bg="brand.500"
+                    color="white"
+                  />
+                  <VStack align="start" spacing={1} flex={1}>
+                    <HStack>
+                      <Text fontWeight="bold" fontSize="md">{riderProfile.name}</Text>
+                      {riderProfile.is_active && (
+                        <Badge colorScheme="green" fontSize="2xs">Active</Badge>
+                      )}
+                    </HStack>
+                    <HStack spacing={1}>
+                      <Icon as={FaStar} color="yellow.400" boxSize={3} />
+                      <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+                        {riderProfile.rating > 0 ? riderProfile.rating.toFixed(1) : 'No rating yet'}
+                      </Text>
+                    </HStack>
+                  </VStack>
+                </HStack>
+
+                <Divider />
+
+                <SimpleGrid columns={2} spacing={3} fontSize="xs">
+                  <HStack spacing={2}>
+                    <Icon as={FaMotorcycle} color="brand.500" boxSize={4} />
+                    <VStack align="start" spacing={0}>
+                      <Text color="gray.500">Vehicle</Text>
+                      <Text fontWeight="semibold" color="gray.800">
+                        {riderProfile.vehicle_type.charAt(0).toUpperCase() + riderProfile.vehicle_type.slice(1)}
+                      </Text>
+                    </VStack>
+                  </HStack>
+                  <HStack spacing={2}>
+                    <Icon as={FaIdBadge} color="brand.500" boxSize={4} />
+                    <VStack align="start" spacing={0}>
+                      <Text color="gray.500">Plate</Text>
+                      <Text fontWeight="semibold" color="gray.800">
+                        {riderProfile.vehicle_plate || 'N/A'}
+                      </Text>
+                    </VStack>
+                  </HStack>
+                  <HStack spacing={2}>
+                    <Icon as={FaPhone} color="brand.500" boxSize={4} />
+                    <VStack align="start" spacing={0}>
+                      <Text color="gray.500">Phone</Text>
+                      <Text fontWeight="semibold" color="gray.800">
+                        {riderProfile.phone || 'N/A'}
+                      </Text>
+                    </VStack>
+                  </HStack>
+                  <HStack spacing={2}>
+                    <Icon as={FaCheckCircle} color="green.500" boxSize={4} />
+                    <VStack align="start" spacing={0}>
+                      <Text color="gray.500">Deliveries</Text>
+                      <Text fontWeight="semibold" color="gray.800">
+                        {riderProfile.completed_deliveries} completed
+                      </Text>
+                    </VStack>
+                  </HStack>
+                </SimpleGrid>
+
+                {riderProfile.created_at && (
+                  <Text fontSize="2xs" color="gray.400" textAlign="center">
+                    Rider since {new Date(riderProfile.created_at).toLocaleDateString()}
+                  </Text>
+                )}
+              </VStack>
+            </CardBody>
+          </Card>
+        )}
 
         {/* Rider Registration Banner */}
         {isRider === false && (

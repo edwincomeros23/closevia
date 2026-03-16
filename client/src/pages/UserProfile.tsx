@@ -989,7 +989,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     <Text fontWeight="semibold" color="green.500">{Math.round(displayPositivePercent)}%</Text>
                     <Text>Positive</Text>
                   </HStack>
-<<<<<<< Updated upstream
                   <Text color="gray.300">|</Text>
                   <HStack spacing={1}>
                     <Text fontWeight="semibold" color="gray.800">{stats.completed}</Text>
@@ -1001,69 +1000,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     <Text>{stats.avgResponse}</Text>
                   </HStack>
                 </HStack>
-=======
-
-                  {user.bio && <Text color="gray.700" mb={4}>{user.bio}</Text>}
-
-
-                  {/* Trust Score Card */}
-                  {sellerStats && (
-                    <Box mb={4}>
-                      <TrustScoreCard
-                        score={sellerStats.trust_score ?? 0}
-                        trustLevel={sellerStats.trust_level}
-                        factors={sellerStats.trust_factors}
-                        conductSummary={sellerStats.conduct_summary}
-                      />
-                    </Box>
-                  )}
-
-                  {/* Report Warning Banner */}
-                  {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
-                    <Alert status="warning" borderRadius="md" mb={4}>
-                      <AlertIcon />
-                      <Box>
-                        <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
-                        <Text fontSize="xs" color="gray.600">Trade with caution</Text>
-                      </Box>
-                    </Alert>
-                  )}
-
-
-                  {/* Show action buttons only when viewing someone else's profile */}
-                  {!(currentUser && Number(id) === currentUser.id) && (
-                    <HStack spacing={3}>
-                      <Button
-                        leftIcon={<Icon as={FiMessageSquare} />}
-                        colorScheme="brand"
-                        onClick={handleSendMessage}
-                      >
-                        Message Trader
-                      </Button>
-                    </HStack>
-                  )}
-                </Box>
-
-                <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }} minW={{ base: '100%', md: '280px' }}>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Member Since</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Items for Sale</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Department</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Total Listings</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
-                  </Box>
-                </SimpleGrid>
-
->>>>>>> Stashed changes
               </Flex>
 
               {/* Trust level + Activity badges */}
@@ -1361,7 +1297,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         ? new Date(trade.completed_at).toLocaleDateString()
                         : new Date(trade.created_at).toLocaleDateString()
 
-<<<<<<< Updated upstream
                       // Target product (what the seller listed)
                       const targetImage = trade.product_image_url || '/placeholder-item.jpg'
                       const targetTitle = trade.product_title || 'Product'
@@ -1441,7 +1376,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                   {review.comment && (
                                     <Text fontSize="xs" color="gray.600" fontStyle="italic">
                                       "{review.comment}"
-=======
+                                    </Text>
+                                  )}
+                                </Box>
+                              )}
+                            </Box>
+
                             {/* Show existing reply if any */}
                             {review.reply && (
                               <Box
@@ -1461,12 +1401,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                   {review.reply_date && (
                                     <Text fontSize="xs" color="gray.500">
                                       {review.reply_date}
->>>>>>> Stashed changes
                                     </Text>
                                   )}
-                                </Box>
-                              )}
-                            </Box>
+                                </HStack>
+                              </Box>
+                            )}
                           </VStack>
 
                           {/* Cancel Trade Button (only for locked trades) */}
@@ -1719,8 +1658,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 </FormControl>
 
 
-<<<<<<< Updated upstream
-=======
                   <FormControl isRequired>
                     <FormLabel>Your Review</FormLabel>
                     <Textarea
@@ -1734,21 +1671,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       {reviewComment.length}/500 characters
                     </Text>
                   </FormControl>
->>>>>>> Stashed changes
-
-                <FormControl isRequired>
-                  <FormLabel>Your Review</FormLabel>
-                  <Textarea
-                    value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
-                    placeholder="Share details about your experience with this seller..."
-                    rows={5}
-                    maxLength={500}
-                  />
-                  <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
-                    {reviewComment.length}/500 characters
-                  </Text>
-                </FormControl>
 
 
                 <HStack justify="flex-end" spacing={3}>
