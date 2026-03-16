@@ -55,6 +55,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     })()
   }, [isOpen, targetProductId])
 
+  // Reset form only when modal opens
   useEffect(() => {
     if (!isOpen) return
     setTradeMessage('')
@@ -62,29 +63,30 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     setTradeOption(null)
     setPaymentMethod(null)
     setHasPendingOfferOnTarget(false)
-    
+
     // Auto-set delivery option if user has location
     if (user?.latitude && user?.longitude) {
       setTradeOption('delivery')
     }
-    
-    if (user && targetProductId) {
-      ;(async () => {
-        try {
-          // Fetch user's pending trades to check for existing offer on this product
-          setLoadingPendingCheck(true)
-          const pendingRes = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
-          const trades = Array.isArray(pendingRes.data?.data) ? pendingRes.data.data : []
-          const hasPending = trades.some((trade: any) => trade.target_product_id === targetProductId)
-          setHasPendingOfferOnTarget(hasPending)
-        } catch (_) {
-          // Ignore
-        } finally {
-          setLoadingPendingCheck(false)
-        }
-      })()
-    }
-  }, [isOpen, user, targetProductId, targetProduct])
+  }, [isOpen, targetProduct])
+
+  // Check for pending offers separately
+  useEffect(() => {
+    if (!isOpen || !user || !targetProductId) return
+    ;(async () => {
+      try {
+        setLoadingPendingCheck(true)
+        const pendingRes = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
+        const trades = Array.isArray(pendingRes.data?.data) ? pendingRes.data.data : []
+        const hasPending = trades.some((trade: any) => trade.target_product_id === targetProductId)
+        setHasPendingOfferOnTarget(hasPending)
+      } catch (_) {
+        // Ignore
+      } finally {
+        setLoadingPendingCheck(false)
+      }
+    })()
+  }, [isOpen, user, targetProductId])
 
   const submitTrade = async () => {
     if (!targetProductId) return
@@ -98,12 +100,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
       toast({ title: 'Select fulfillment option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
       return
     }
-    
-    if (!paymentMethod) {
-      toast({ title: 'Select payment method', description: 'Please choose COD or Upfront Payment.', status: 'warning' })
-      return
-    }
-    
+
     // Layer 2 validation: Check for pending offer before submission
     if (hasPendingOfferOnTarget) {
       toast({ 
@@ -130,7 +127,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
         offered_cash_amount: Number(cashAmount),
         trade_option: tradeOption,
         delivery_address: tradeOption === 'delivery' ? deliveryAddress : undefined,
-        payment_method: paymentMethod || undefined,
       }
       
       console.log('Submitting buyout payload:', payload)
@@ -320,87 +316,13 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
 
               <Divider />
 
-              {/* Payment Method Selection */}
-              <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Payment Method (Trader Decides)
-                </FormLabel>
-                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
-                  {/* COD Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={paymentMethod === 'cod' ? '2px' : '1px'}
-                    borderColor={paymentMethod === 'cod' ? selectedBorder : borderColor}
-                    bg={paymentMethod === 'cod' ? selectedBg : cardBg}
-                    onClick={() => setPaymentMethod('cod')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: paymentMethod === 'cod' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={paymentMethod === 'cod' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'cod' ? 'white' : 'gray.600'}>
-                          <Icon as={FaMoneyBillWave} boxSize={6} />
-                        </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Cash on Delivery</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay when item arrives</Text>
-                        </VStack>
-                        {paymentMethod === 'cod' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-
-                  {/* Upfront Payment Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={paymentMethod === 'upfront' ? '2px' : '1px'}
-                    borderColor={paymentMethod === 'upfront' ? selectedBorder : borderColor}
-                    bg={paymentMethod === 'upfront' ? selectedBg : cardBg}
-                    onClick={() => setPaymentMethod('upfront')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: paymentMethod === 'upfront' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={paymentMethod === 'upfront' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'upfront' ? 'white' : 'gray.600'}>
-                          <Icon as={FaCheckCircle} boxSize={6} />
-                        </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Upfront Payment</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay before shipment</Text>
-                        </VStack>
-                        {paymentMethod === 'upfront' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                </Grid>
-                
-                <Box mt={3} p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
-                  <Text fontSize="xs" color="blue.900">
-                    <strong>ℹ️ Note:</strong> The trader will choose which payment method to accept. Offering both options increases your chances of a deal.
-                  </Text>
-                </Box>
-              </FormControl>
-
-              <Divider />
-
               <HStack justify="flex-end" spacing={3}>
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
                 <Button 
                   colorScheme="green" 
                   isLoading={submittingTrade} 
                   onClick={() => setShowConfirmModal(true)} 
-                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption || !paymentMethod}
+                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption}
                   leftIcon={<FaMoneyBillWave />}
                 >
                   Confirm Buyout

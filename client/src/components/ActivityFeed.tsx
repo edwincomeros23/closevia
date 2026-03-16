@@ -28,7 +28,7 @@ const ActivityFeed = () => {
                     params.lat = lat.toFixed(6);
                     params.lng = lng.toFixed(6);
                 }
-                const res = await api.get('/activities', { params });
+                const res = await api.get('/api/activities', { params });
                 if (res.data?.success && res.data?.data) {
                     setActivities(res.data.data);
                 }

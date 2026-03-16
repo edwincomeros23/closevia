@@ -710,6 +710,7 @@ func ensureTradeColumns() {
 		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
 		{"auto_completed_at", "TIMESTAMP NULL DEFAULT NULL"},
 		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
+		{"option_change_requested", "VARCHAR(20) NULL DEFAULT NULL"},
 	}
 
 	for _, col := range columns {
