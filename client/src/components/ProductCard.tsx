@@ -91,24 +91,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
       borderColor="gray.100"
       overflow="hidden"
       transition="all 0.2s ease"
+      maxW="250px"
       w="full"
-      maxW={{ base: '100%', md: '250px' }}
+      mx="auto"
       h="full"
       display="flex"
       flexDirection="column"
-      mx="auto"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={handleCardClick}
-      sx={{
-        '@media (max-width: 850px)': {
-          width: '100%',
-          minWidth: 0,
-          maxWidth: '100%',
-        },
-      }}
     >
       {/* Image section */}
-      <Box position="relative" w="full" aspectRatio={1} overflow="hidden" bg="gray.100">
+      <Box position="relative" w="full" h="200px" overflow="hidden" bg="gray.100">
         <Image
           src={getFirstImage(product.image_urls)}
           alt={product.title}

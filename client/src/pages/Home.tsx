@@ -492,21 +492,12 @@ const Home: React.FC = () => {
       <Grid
         templateColumns={{
           base: 'repeat(2, 1fr)',
-          md: 'repeat(3, 1fr)',
-          lg: 'repeat(4, 1fr)',
-          xl: 'repeat(5, 1fr)',
-          '2xl': 'repeat(5, 1fr)',
+          sm: 'repeat(2, 1fr)',
+          md: 'repeat(auto-fill, minmax(200px, 250px))',
         }}
-        gap={{ base: 2, md: 3, lg: 4, xl: 4 }}
-        alignItems="stretch"
+        gap={{ base: 1, md: 2 }}
         justifyContent="center"
-        mx="auto"
-        sx={{
-          '@media (max-width: 850px)': {
-            gridTemplateColumns: '1fr 1fr !important',
-            gap: '10px',
-          },
-        }}
+        w="full"
       >
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
