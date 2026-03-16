@@ -117,6 +117,7 @@ const Register: React.FC = () => {
 
       if (result.requiresVerification) {
         toast({
+        id: "register-account-created",
           title: 'Account created!',
           description: 'Please check your email for a verification code.',
           status: 'success',
@@ -133,6 +134,7 @@ const Register: React.FC = () => {
         const isWmsu = email.toLowerCase().endsWith('@wmsu.edu.ph')
         if (isWmsu) {
           toast({
+        id: "register-premium-access-granted",
             title: '🎓 Premium Access Granted!',
             description: 'As a verified WMSU student, you now have free Premium access including Multi-Way Trading Loops!',
             status: 'success',
@@ -142,6 +144,7 @@ const Register: React.FC = () => {
           })
         } else {
           toast({
+        id: "register-welcome",
             title: 'Welcome!',
             description: 'Your account has been created.',
             status: 'success',

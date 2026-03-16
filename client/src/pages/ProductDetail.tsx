@@ -127,9 +127,9 @@ const ProductDetail: React.FC = () => {
         headers: { Authorization: `Bearer ${localStorage.getItem('clovia_token')}` }
       })
       setProduct({ ...product, image_urls: reordered })
-      toast({ title: 'Cover image updated', status: 'success', duration: 2000 })
+      toast({ id: 'cover-image-updated', title: 'Cover image updated', status: 'success', duration: 2000 })
     } catch {
-      toast({ title: 'Failed to update cover image', status: 'error', duration: 3000 })
+      toast({ id: 'failed-update-cover-image', title: 'Failed to update cover image', status: 'error', duration: 3000 })
     } finally {
       setIsSettingCover(false)
     }
@@ -289,6 +289,7 @@ const ProductDetail: React.FC = () => {
   const handleWishlist = async () => {
     if (!user) {
       toast({
+        id: "auth-required-wishlist",
         title: "Authentication required",
         description: "Please log in to wishlist this product",
         status: "warning",
@@ -308,6 +309,7 @@ const ProductDetail: React.FC = () => {
         setWishlistCount(wishlistCount - 1);
         setIsWishlisted(false);
         toast({
+          id: "removed-from-wishlist",
           title: "Removed from wishlist",
           status: "success",
           duration: 2000,
@@ -318,6 +320,7 @@ const ProductDetail: React.FC = () => {
         setWishlistCount(wishlistCount + 1);
         setIsWishlisted(true);
         toast({
+          id: "added-to-wishlist",
           title: "Added to wishlist",
           status: "success",
           duration: 2000,
@@ -326,6 +329,7 @@ const ProductDetail: React.FC = () => {
       }
     } catch (error) {
       toast({
+        id: "error-wishlist",
         title: "Error",
         description: "Something went wrong. Please try again.",
         status: "error",
@@ -406,6 +410,7 @@ const ProductDetail: React.FC = () => {
   const handlePurchase = () => {
     if (!user) {
       toast({
+        id: 'auth-required-purchase',
         title: 'Authentication required',
         description: 'Please log in to purchase this product',
         status: 'warning',
@@ -428,6 +433,7 @@ const ProductDetail: React.FC = () => {
       })
       setIsBuyModalOpen(false)
       toast({
+        id: 'order-placed-successfully',
         title: 'Order placed successfully!',
         description: 'Your order has been created and is pending trader confirmation.',
         status: 'success',
@@ -443,6 +449,7 @@ const ProductDetail: React.FC = () => {
         description = err.message;
       }
       toast({
+        id: 'purchase-failed',
         title: 'Purchase failed',
         description,
         status: 'error',
@@ -457,6 +464,7 @@ const ProductDetail: React.FC = () => {
   const handleSubmitReport = async () => {
     if (!user) {
       toast({
+        id: 'auth-required-report',
         title: 'Authentication required',
         description: 'Please log in to report this trader',
         status: 'warning',
@@ -471,6 +479,7 @@ const ProductDetail: React.FC = () => {
 
     if (!reportReason.trim()) {
       toast({
+        id: 'reason-required',
         title: 'Reason required',
         description: 'Please select a reason for your report',
         status: 'warning',
@@ -489,6 +498,7 @@ const ProductDetail: React.FC = () => {
       })
 
       toast({
+        id: 'report-submitted',
         title: 'Report submitted',
         description: 'Thank you for helping keep Clovia safe. We will review your report.',
         status: 'success',
@@ -508,6 +518,7 @@ const ProductDetail: React.FC = () => {
         description = err.message;
       }
       toast({
+        id: 'report-failed',
         title: 'Report failed',
         description,
         status: 'error',
@@ -522,6 +533,7 @@ const ProductDetail: React.FC = () => {
   const openTrade = () => {
     if (!user) {
       toast({
+        id: 'auth-required-trade',
         title: 'Authentication required',
         description: 'Please log in to propose a trade',
         status: 'warning',
@@ -540,6 +552,7 @@ const ProductDetail: React.FC = () => {
   const openBuyout = () => {
     if (!user) {
       toast({
+        id: 'auth-required-buyout',
         title: 'Authentication required',
         description: 'Please log in to make a buyout offer',
         status: 'warning',
@@ -590,6 +603,7 @@ const ProductDetail: React.FC = () => {
         localStorage.setItem('savedProducts', JSON.stringify(updatedSaved))
         setIsSaved(false)
         toast({
+          id: 'removed-from-saved',
           title: 'Removed from saved',
           description: 'Product removed from your saved items',
           status: 'info',
@@ -601,6 +615,7 @@ const ProductDetail: React.FC = () => {
         localStorage.setItem('savedProducts', JSON.stringify(savedProducts))
         setIsSaved(true)
         toast({
+          id: 'saved-to-watchlist',
           title: 'Saved to watchlist',
           description: 'Product added to your saved items',
           status: 'success',
@@ -618,6 +633,7 @@ const ProductDetail: React.FC = () => {
         await api.delete(`/api/users/saved-products/${product.id}`)
         setIsSaved(false)
         toast({
+          id: 'removed-from-saved-api',
           title: 'Removed from saved',
           description: 'Product removed from your saved items',
           status: 'info',
@@ -628,6 +644,7 @@ const ProductDetail: React.FC = () => {
         await api.post(`/api/users/saved-products`, { product_id: product.id })
         setIsSaved(true)
         toast({
+          id: 'saved-to-watchlist-api',
           title: 'Saved to watchlist',
           description: 'Product added to your saved items',
           status: 'success',
@@ -650,6 +667,7 @@ const ProductDetail: React.FC = () => {
       }
 
       toast({
+        id: 'error-save',
         title: 'Error',
         description: errorMessage,
         status: 'error',
@@ -668,6 +686,7 @@ const ProductDetail: React.FC = () => {
   const handleVote = async (voteType: 'under' | 'over') => {
     if (!user) {
       toast({
+        id: 'auth-required-vote',
         title: 'Authentication required',
         description: 'Please log in to vote on price',
         status: 'warning',
@@ -685,6 +704,7 @@ const ProductDetail: React.FC = () => {
       setVotes(data?.votes || { under: 0, over: 0 })
       setUserVote(data?.user_vote || voteType)
       toast({
+        id: 'vote-recorded',
         title: 'Vote recorded',
         status: 'success',
         duration: 2000,
@@ -698,6 +718,7 @@ const ProductDetail: React.FC = () => {
         description = err.message
       }
       toast({
+        id: 'error-vote',
         title: 'Error',
         description,
         status: 'error',
@@ -719,6 +740,7 @@ const ProductDetail: React.FC = () => {
     try {
       await navigator.clipboard.writeText(url)
       toast({
+        id: "productdetail-link-copied",
         title: 'Link copied!',
         description: 'Product link copied to clipboard',
         status: 'success',
@@ -727,6 +749,7 @@ const ProductDetail: React.FC = () => {
       })
     } catch (error) {
       toast({
+        id: "productdetail-copy-failed",
         title: 'Copy failed',
         description: 'Failed to copy link to clipboard',
         status: 'error',
@@ -759,6 +782,7 @@ const ProductDetail: React.FC = () => {
         // Instagram doesn't support direct URL sharing, so we'll copy the link
         copyToClipboard()
         toast({
+        id: "productdetail-instagram-sharing",
           title: 'Instagram sharing',
           description: 'Link copied! Paste it in your Instagram story or post',
           status: 'info',
@@ -794,6 +818,7 @@ const ProductDetail: React.FC = () => {
       setOffersModalOpen(true)
     } catch (error) {
       toast({
+        id: "productdetail-error",
         title: 'Error',
         description: 'Failed to load offers for this product',
         status: 'error',

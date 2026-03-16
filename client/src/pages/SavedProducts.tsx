@@ -158,6 +158,7 @@ const SavedProducts: React.FC = () => {
       setSavedProducts(prev => prev.filter(p => p.id !== productId))
 
       toast({
+        id: "savedproducts-removed-from-saved",
         title: 'Removed from saved',
         description: 'Product removed from your saved items',
         status: 'info',
@@ -167,6 +168,7 @@ const SavedProducts: React.FC = () => {
     } catch (error: any) {
       console.error('Failed to remove saved product:', error)
       toast({
+        id: "savedproducts-error",
         title: 'Error',
         description: 'Failed to remove product from saved items',
         status: 'error',

@@ -78,6 +78,7 @@ const Notifications: React.FC = () => {
     } catch (error: any) {
       setError(error.message || 'Failed to fetch notifications')
       toast({
+        id: "notifications-error",
         title: 'Error',
         description: 'Failed to load notifications',
         status: 'error',
@@ -99,6 +100,7 @@ const Notifications: React.FC = () => {
       )
     } catch (error: any) {
       toast({
+        id: "notifications-error-2",
         title: 'Error',
         description: 'Failed to mark notification as read',
         status: 'error',
@@ -115,6 +117,7 @@ const Notifications: React.FC = () => {
         prev.map(notif => ({ ...notif, read: true }))
       )
       toast({
+        id: "notifications-success",
         title: 'Success',
         description: 'All notifications marked as read',
         status: 'success',
@@ -123,6 +126,7 @@ const Notifications: React.FC = () => {
       })
     } catch (error: any) {
       toast({
+        id: "notifications-error-3",
         title: 'Error',
         description: 'Failed to mark all notifications as read',
         status: 'error',

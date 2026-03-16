@@ -483,7 +483,7 @@ const Dashboard: React.FC = () => {
       setMultiWayTrades(response.data?.data || [])
     } catch (error) {
       console.error('Failed to fetch multi-way trades:', error)
-      toast({ title: 'Error', description: 'Failed to load multi-way trades', status: 'error' })
+      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: 'Failed to load multi-way trades', status: 'error' })
       setMultiWayTrades([])
     } finally {
       setMultiWayTradesLoading(false)
@@ -497,6 +497,7 @@ const Dashboard: React.FC = () => {
         user_id: user?.id,
       })
       toast({
+        id: 'success-joined-trade-loop',
         title: 'Success',
         description: 'You joined the trade loop!',
         status: 'success',
@@ -507,6 +508,7 @@ const Dashboard: React.FC = () => {
       await fetchMultiWayTrades()
     } catch (error: any) {
       toast({
+        id: 'error-join-trade',
         title: 'Error',
         description: error.response?.data?.message || 'Failed to join trade',
         status: 'error',
@@ -522,6 +524,7 @@ const Dashboard: React.FC = () => {
         reason: 'Not interested'
       })
       toast({
+        id: 'declined',
         title: 'Declined',
         description: 'You declined this multi-way trade',
         status: 'info',
@@ -532,6 +535,7 @@ const Dashboard: React.FC = () => {
       await fetchMultiWayTrades()
     } catch (error: any) {
       toast({
+        id: 'error-decline-trade',
         title: 'Error',
         description: error.response?.data?.message || 'Failed to decline trade',
         status: 'error',
@@ -583,12 +587,12 @@ const Dashboard: React.FC = () => {
   const updateTrade = useCallback(async (id: number, action: TradeAction) => {
     try {
       await api.put(`/api/trades/${id}`, action)
-      toast({ title: 'Success', description: 'Offer updated', status: 'success' })
+      toast({ id: 'success-offer-updated', title: 'Success', description: 'Offer updated', status: 'success' })
       // Invalidate cache to refresh data
       invalidateOffers()
       invalidateDashboard()
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
+      toast({ id: 'error-update-offer', title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
   }, [invalidateOffers, invalidateDashboard])
 
@@ -598,6 +602,7 @@ const Dashboard: React.FC = () => {
 
     if (!meetupConfirmed && (trade.status === 'accepted' || trade.status === 'active')) {
       toast({
+        id: 'meetup-required',
         title: 'Meetup Required',
         description: 'Please confirm the meetup location before completing the trade.',
         status: 'warning',
@@ -632,6 +637,7 @@ const Dashboard: React.FC = () => {
         setProcessModalOpen(false)
         setIsProcessing(false)
         toast({
+          id: 'success-offer-cancelled',
           title: 'Success',
           description: 'Offer cancelled successfully',
           status: 'success',
@@ -642,6 +648,7 @@ const Dashboard: React.FC = () => {
       setProcessModalOpen(false)
       setIsProcessing(false)
       toast({
+        id: 'error-cancel-offer',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to cancel offer',
         status: 'error'
@@ -673,6 +680,7 @@ const Dashboard: React.FC = () => {
         setProcessModalOpen(false)
         setIsProcessing(false)
         toast({
+          id: 'success-offer-declined',
           title: 'Success',
           description: 'Offer declined successfully',
           status: 'success',
@@ -683,6 +691,7 @@ const Dashboard: React.FC = () => {
       setProcessModalOpen(false)
       setIsProcessing(false)
       toast({
+        id: 'error-decline-offer',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to decline offer',
         status: 'error'
@@ -1031,7 +1040,7 @@ const Dashboard: React.FC = () => {
 
   const handleDeleteProductClick = (product: Product) => {
     if (product.status === 'locked') {
-      toast({ title: 'Cannot delete', description: 'Locked products cannot be deleted. Please unlock it first.', status: 'warning', duration: 3000, isClosable: true })
+      toast({ id: 'cannot-delete-locked', title: 'Cannot delete', description: 'Locked products cannot be deleted. Please unlock it first.', status: 'warning', duration: 3000, isClosable: true })
       return
     }
     setProductToDelete(product)
@@ -1063,7 +1072,7 @@ const Dashboard: React.FC = () => {
     })
 
     if (deletableIds.length === 0) {
-      toast({ title: 'Cannot delete', description: 'Selected products are locked. Locked products cannot be deleted.', status: 'warning', duration: 3000, isClosable: true })
+      toast({ id: 'cannot-delete-selected-locked', title: 'Cannot delete', description: 'Selected products are locked. Locked products cannot be deleted.', status: 'warning', duration: 3000, isClosable: true })
       return
     }
 
@@ -1085,9 +1094,9 @@ const Dashboard: React.FC = () => {
           invalidateOffers()
           setSelectedProductIds(new Set())
           setPopupOpen(false)
-          toast({ title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
+          toast({ id: 'deleted', title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
         } catch (e: any) {
-          toast({ title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
+          toast({ id: 'error-delete-products', title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
         } finally {
           setDeleting(false)
         }
@@ -1104,7 +1113,7 @@ const Dashboard: React.FC = () => {
     const productsToLock = filteredProducts.filter(p => ids.includes(p.id) && p.status === 'available')
     const productsToUnlock = filteredProducts.filter(p => ids.includes(p.id) && p.status === 'locked')
     if (productsToLock.length === 0 && productsToUnlock.length === 0) {
-      toast({ title: 'No action', description: 'Selected items are not available or locked', status: 'info', duration: 2000, isClosable: true })
+      toast({ id: 'no-action', title: 'No action', description: 'Selected items are not available or locked', status: 'info', duration: 2000, isClosable: true })
       return
     }
     try {
@@ -1120,9 +1129,9 @@ const Dashboard: React.FC = () => {
       const locked = productsToLock.length
       const unlocked = productsToUnlock.length
       const msg = [locked && `${locked} locked`, unlocked && `${unlocked} unlocked`].filter(Boolean).join(', ')
-      toast({ title: 'Updated', description: msg, status: 'success', duration: 3000, isClosable: true })
+      toast({ id: 'updated', title: 'Updated', description: msg, status: 'success', duration: 3000, isClosable: true })
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.message || 'Failed to update products', status: 'error', duration: 3000, isClosable: true })
+      toast({ id: 'error-update-products', title: 'Error', description: e?.message || 'Failed to update products', status: 'error', duration: 3000, isClosable: true })
     } finally {
       setDeleting(false)
     }
@@ -3509,7 +3518,8 @@ const Dashboard: React.FC = () => {
                               { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
                               { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
                             ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onJoinTrade={() => toast({
+        id: "dashboard-joined-trade-loop", title: 'Joined Trade Loop', status: 'success' })}
                             onViewDetails={() => { }}
                             onDecline={() => { }}
                             isLoading={false}
@@ -3525,7 +3535,8 @@ const Dashboard: React.FC = () => {
                               { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
                               { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
                             ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onJoinTrade={() => toast({
+        id: "dashboard-joined-trade-loop-2", title: 'Joined Trade Loop', status: 'success' })}
                             onViewDetails={() => { }}
                             onDecline={() => { }}
                             isLoading={false}
@@ -3542,7 +3553,8 @@ const Dashboard: React.FC = () => {
                               { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
                               { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
                             ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onJoinTrade={() => toast({
+        id: "dashboard-joined-trade-loop-3", title: 'Joined Trade Loop', status: 'success' })}
                             onViewDetails={() => { }}
                             onDecline={() => { }}
                             isLoading={false}

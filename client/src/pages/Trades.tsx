@@ -28,7 +28,8 @@ const Trades: React.FC = () => {
       // Combine both incoming and outgoing trades
       setTrades([...incomingTrades, ...outgoingTrades])
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load trades', status: 'error' })
+      toast({
+        id: "trades-error", title: 'Error', description: e?.response?.data?.error || 'Failed to load trades', status: 'error' })
     } finally {
       setLoading(false)
     }
@@ -57,17 +58,20 @@ const Trades: React.FC = () => {
       const res = await api.get(`/api/trades/${activeTradeId}/messages`)
       setMessages(Array.isArray(res.data?.data) ? res.data.data : [])
     } catch (e:any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to send message', status: 'error' })
+      toast({
+        id: "trades-error-2", title: 'Error', description: e?.response?.data?.error || 'Failed to send message', status: 'error' })
     }
   }
 
   const updateTrade = async (id: number, action: TradeAction) => {
     try {
       await api.put(`/api/trades/${id}`, action)
-      toast({ title: 'Success', description: 'Trade updated', status: 'success' })
+      toast({
+        id: "trades-success", title: 'Success', description: 'Trade updated', status: 'success' })
       fetchTrades()
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update trade', status: 'error' })
+      toast({
+        id: "trades-error-3", title: 'Error', description: e?.response?.data?.error || 'Failed to update trade', status: 'error' })
     }
   }
 

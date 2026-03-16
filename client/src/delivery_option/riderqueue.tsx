@@ -68,6 +68,7 @@ const RiderQueue: React.FC = () => {
     try {
       await api.post(`/api/deliveries/${deliveryId}/claim`)
       toast({
+        id: "riderqueue-delivery-claimed",
         title: 'Delivery Claimed!',
         description: 'Navigate to the task stepper to start.',
         status: 'success',
@@ -77,6 +78,7 @@ const RiderQueue: React.FC = () => {
     } catch (error: any) {
       const errMsg = error?.response?.data?.error || 'Failed to claim delivery'
       toast({
+        id: "riderqueue-error",
         title: 'Error',
         description: errMsg,
         status: 'error',

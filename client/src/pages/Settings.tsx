@@ -213,6 +213,7 @@ const SettingsPage: React.FC = () => {
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
+        id: 'invalid-file-type',
         title: 'Invalid file type',
         description: 'Please upload an image file.',
         status: 'error',
@@ -225,6 +226,7 @@ const SettingsPage: React.FC = () => {
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast({
+        id: 'file-too-large',
         title: 'File too large',
         description: 'Please upload an image smaller than 5MB.',
         status: 'error',
@@ -244,6 +246,7 @@ const SettingsPage: React.FC = () => {
       setUploadingImage(false)
       setHasUnsavedChanges(true)
       toast({
+        id: 'image-uploaded',
         title: 'Image uploaded',
         description: 'Profile picture updated. Click Save to apply changes.',
         status: 'success',
@@ -314,6 +317,7 @@ const SettingsPage: React.FC = () => {
           console.warn('Failed to refresh user after profile update', e)
         }
         toast({
+          id: 'password-changed',
           title: 'Password changed',
           description: 'Your password has been updated successfully.',
           status: 'success',
@@ -328,6 +332,7 @@ const SettingsPage: React.FC = () => {
         onPasswordModalClose()
       } else {
         toast({
+          id: 'error-password-change',
           title: 'Error',
           description: resp.data?.error || 'Failed to change password',
           status: 'error',
@@ -338,6 +343,7 @@ const SettingsPage: React.FC = () => {
     } catch (err: any) {
       const message = err?.response?.data?.error || err.message || 'Failed to change password'
       toast({
+        id: 'error-password-change-failed',
         title: 'Error',
         description: message,
         status: 'error',
@@ -360,6 +366,7 @@ const SettingsPage: React.FC = () => {
     // Validate email
     if (!validateEmail(email)) {
       toast({
+        id: 'invalid-email',
         title: 'Invalid email',
         description: 'Please enter a valid email address.',
         status: 'error',
@@ -372,6 +379,7 @@ const SettingsPage: React.FC = () => {
     // Validate username
     if (!username.trim()) {
       toast({
+        id: 'username-required',
         title: 'Username required',
         description: 'Please enter a username.',
         status: 'error',
@@ -466,6 +474,7 @@ const SettingsPage: React.FC = () => {
         setHasUnsavedChanges(false)
 
         toast({
+          id: 'settings-saved',
           title: 'Settings saved',
           description: 'Your preferences have been updated successfully.',
           status: 'success',
@@ -476,6 +485,7 @@ const SettingsPage: React.FC = () => {
         setIsSaving(false)
         setSaveStatus('error')
         toast({
+          id: 'error-save-settings',
           title: 'Error',
           description: resp.data?.error || 'Failed to update profile',
           status: 'error',
@@ -487,6 +497,7 @@ const SettingsPage: React.FC = () => {
       setIsSaving(false)
       setSaveStatus('error')
       toast({
+        id: "settings-error",
         title: 'Error',
         description: err?.response?.data?.error || err?.message || 'Failed to save settings',
         status: 'error',
@@ -499,6 +510,7 @@ const SettingsPage: React.FC = () => {
   const handleStartVerification = async () => {
     if (!schoolName || !schoolEmail) {
       toast({
+        id: "settings-school-and-email-required",
         title: 'School and email required',
         description: 'Please select your school and enter your official school email.',
         status: 'warning',
@@ -514,6 +526,7 @@ const SettingsPage: React.FC = () => {
         school_email: schoolEmail,
       })
       toast({
+        id: "settings-code-sent",
         title: 'Code sent',
         description: 'Enter the 6-digit code we sent to your school email.',
         status: 'success',
@@ -525,6 +538,7 @@ const SettingsPage: React.FC = () => {
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Failed to send code'
       toast({
+        id: "settings-verification-error",
         title: 'Verification error',
         description: message,
         status: 'error',
@@ -546,13 +560,15 @@ const SettingsPage: React.FC = () => {
   const handleVerifySchoolEmailCode = async () => {
     const code = schoolEmailCode.trim()
     if (code.length !== 6) {
-      toast({ title: 'Enter 6-digit code', description: 'The code from your email has 6 digits.', status: 'warning', duration: 3000, isClosable: true })
+      toast({
+        id: "settings-enter-6-digit-code", title: 'Enter 6-digit code', description: 'The code from your email has 6 digits.', status: 'warning', duration: 3000, isClosable: true })
       return
     }
     setSchoolEmailVerifyLoading(true)
     try {
       await api.post('/api/users/verification/verify-school-email', { code })
       toast({
+        id: "settings-school-email-verified",
         title: 'School email verified',
         description: 'You can now upload your school ID or COR.',
         status: 'success',
@@ -566,7 +582,8 @@ const SettingsPage: React.FC = () => {
       setVerificationReason(null)
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Invalid or expired code'
-      toast({ title: 'Verification failed', description: message, status: 'error', duration: 4000, isClosable: true })
+      toast({
+        id: "settings-verification-failed", title: 'Verification failed', description: message, status: 'error', duration: 4000, isClosable: true })
     } finally {
       setSchoolEmailVerifyLoading(false)
     }
@@ -577,11 +594,13 @@ const SettingsPage: React.FC = () => {
     setVerificationLoading(true)
     try {
       await api.post('/api/users/verification/resend-school-email-code')
-      toast({ title: 'Code resent', description: 'Check your school email for the new code.', status: 'success', duration: 3000, isClosable: true })
+      toast({
+        id: "settings-code-resent", title: 'Code resent', description: 'Check your school email for the new code.', status: 'success', duration: 3000, isClosable: true })
       setResendSchoolCooldown(60)
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Could not resend'
-      toast({ title: 'Resend failed', description: message, status: 'error', duration: 4000, isClosable: true })
+      toast({
+        id: "settings-resend-failed", title: 'Resend failed', description: message, status: 'error', duration: 4000, isClosable: true })
     } finally {
       setVerificationLoading(false)
     }
@@ -593,6 +612,7 @@ const SettingsPage: React.FC = () => {
     // Basic client-side validation for ID/COR upload
     if (!file.type.startsWith('image/')) {
       toast({
+        id: "settings-invalid-file-type",
         title: 'Invalid file type',
         description: 'Please upload a clear image of your school ID or COR.',
         status: 'error',
@@ -603,6 +623,7 @@ const SettingsPage: React.FC = () => {
     }
     if (file.size > 5 * 1024 * 1024) {
       toast({
+        id: "settings-file-too-large",
         title: 'File too large',
         description: 'Please upload an image smaller than 5MB.',
         status: 'error',
@@ -613,6 +634,7 @@ const SettingsPage: React.FC = () => {
     }
     if (!schoolName || !schoolEmail) {
       toast({
+        id: "settings-email-verification-required",
         title: 'Email verification required',
         description: 'Please verify your school email before uploading your ID.',
         status: 'warning',
@@ -628,6 +650,7 @@ const SettingsPage: React.FC = () => {
       form.append('document_type', documentType)
       await api.post('/api/users/verification/upload-id', form)
       toast({
+        id: "settings-id-submitted",
         title: 'ID submitted',
         description: 'Your school ID has been submitted for review.',
         status: 'success',
@@ -640,6 +663,7 @@ const SettingsPage: React.FC = () => {
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Failed to upload school ID'
       toast({
+        id: "settings-upload-error",
         title: 'Upload error',
         description: message,
         status: 'error',
@@ -677,6 +701,7 @@ const SettingsPage: React.FC = () => {
     }
 
     toast({
+        id: "settings-logged-out",
       title: 'Logged out',
       description: 'You have been successfully logged out.',
       status: 'success',
@@ -714,6 +739,7 @@ const SettingsPage: React.FC = () => {
       }
 
       toast({
+        id: "settings-account-deleted",
         title: 'Account deleted',
         description: 'Your account has been permanently deleted.',
         status: 'success',
@@ -727,6 +753,7 @@ const SettingsPage: React.FC = () => {
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Failed to delete account'
       toast({
+        id: "settings-error-2",
         title: 'Error',
         description: message,
         status: 'error',
@@ -1208,6 +1235,7 @@ const SettingsPage: React.FC = () => {
                     }
                     setHasUnsavedChanges(false)
                     toast({
+        id: "settings-changes-discarded",
                       title: 'Changes discarded',
                       description: 'Your changes have been reset.',
                       status: 'info',

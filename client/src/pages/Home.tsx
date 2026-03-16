@@ -346,6 +346,7 @@ const Home: React.FC = () => {
     } else {
       // Proceed with purchase
       toast({
+        id: "home-purchase-initiated",
         title: 'Purchase initiated!',
         description: 'Contact the trader to complete the purchase.',
         status: 'success',
@@ -382,6 +383,7 @@ const Home: React.FC = () => {
       setOffersForProduct(filteredOffers)
     } catch (error) {
       toast({
+        id: "home-error",
         title: 'Error',
         description: 'Failed to load offers for this product',
         status: 'error',
@@ -493,10 +495,9 @@ const Home: React.FC = () => {
         templateColumns={{
           base: 'repeat(2, 1fr)',
           sm: 'repeat(2, 1fr)',
-          md: 'repeat(auto-fill, minmax(200px, 250px))',
+          md: 'repeat(5, 1fr)',
         }}
-        gap={{ base: 1, md: 2 }}
-        justifyContent="center"
+        gap={{ base: 1, md: 3 }}
         w="full"
       >
         {itemsWithAds.map((item, displayIndex) =>

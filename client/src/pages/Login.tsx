@@ -83,6 +83,7 @@ const Login: React.FC = () => {
       await login(email, password)
 
       toast({
+        id: "login-login-successful",
         title: 'Login successful!',
         description: 'Welcome back to Clovia',
         status: 'success',
@@ -166,6 +167,7 @@ const Login: React.FC = () => {
 
       // Show success message
       toast({
+        id: "login-login-successful-2",
         title: 'Login successful!',
         description: `Welcome, ${user.displayName || user.email}`,
         status: 'success',
