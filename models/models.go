@@ -338,11 +338,13 @@ type TradeCreate struct {
 
 // TradeAction represents accept/decline/counter actions
 type TradeAction struct {
-	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup"`
+	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup update_delivery_state request_option_change approve_option_change reject_option_change"`
 	Message                  string   `json:"message,omitempty"`
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
 	MeetupLocation           string   `json:"meetup_location,omitempty"`
+	RequestedOption          string   `json:"requested_option,omitempty"`
+	DeliveryAddress          string   `json:"delivery_address,omitempty"`
 }
 
 // ChatConversation represents a conversation between a buyer and seller about a product

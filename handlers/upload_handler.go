@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/xashathebest/clovia/services"
 )
 
@@ -70,9 +74,28 @@ func (h *UploadHandler) UploadImage(c *fiber.Ctx) error {
 	url, err := services.UploadFileToCloudinary(file, folder)
 	if err != nil {
 		if err == services.ErrCloudinaryDisabled {
-			return c.Status(503).JSON(fiber.Map{
-				"success": false,
-				"error":   "Image upload service is not configured. Please set CLOUDINARY_URL in .env",
+			// Fallback: save locally
+			uploadsDir := filepath.Join(".", "uploads", folder)
+			os.MkdirAll(uploadsDir, 0755)
+			ext := filepath.Ext(file.Filename)
+			filename := fmt.Sprintf("%d_%s%s", time.Now().UnixMilli(), uuid.New().String()[:8], ext)
+			savePath := filepath.Join(uploadsDir, filename)
+			if saveErr := c.SaveFile(file, savePath); saveErr != nil {
+				return c.Status(500).JSON(fiber.Map{
+					"success": false,
+					"error":   "Failed to save image locally: " + saveErr.Error(),
+				})
+			}
+			localURL := fmt.Sprintf("/uploads/%s/%s", folder, filename)
+			return c.Status(201).JSON(fiber.Map{
+				"success": true,
+				"message": "Image uploaded successfully (local)",
+				"data": fiber.Map{
+					"url":           localURL,
+					"original_name": file.Filename,
+					"size":          file.Size,
+					"type":          uploadType,
+				},
 			})
 		}
 		fmt.Printf("❌ [Upload] Cloudinary error: %v\n", err)

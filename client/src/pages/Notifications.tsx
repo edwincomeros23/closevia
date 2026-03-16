@@ -72,7 +72,9 @@ const Notifications: React.FC = () => {
       setLoading(true)
       setCurrentPage(1)
       setError('')
-      const response = await api.get('/api/notifications')
+      // Admin only sees report notifications
+      const endpoint = user?.role === 'admin' ? '/api/notifications?type=report' : '/api/notifications'
+      const response = await api.get(endpoint)
       const list: Notification[] = Array.isArray(response.data?.data) ? response.data.data : []
       setNotifications(list)
     } catch (error: any) {
@@ -142,6 +144,8 @@ const Notifications: React.FC = () => {
         return '🔄'
       case 'trade_update':
         return '🔁'
+      case 'report':
+        return '🚨'
       case 'system':
         return '🔔'
       default:
@@ -159,6 +163,8 @@ const Notifications: React.FC = () => {
         return 'purple'
       case 'trade_update':
         return 'orange'
+      case 'report':
+        return 'red'
       case 'system':
         return 'purple'
       default:
@@ -251,7 +257,7 @@ const Notifications: React.FC = () => {
           <Flex align="center" justify="space-between" flexWrap="wrap">
             <VStack align="start" spacing={1} minW={0}>
               <Heading size="md" color="brand.500" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
-                Notifications
+                {user?.role === 'admin' ? 'User Reports' : 'Notifications'}
               </Heading>
               <Text color="gray.600" fontSize="sm" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
                 {unreadCount > 0 ? `${unreadCount} unread${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
@@ -314,10 +320,12 @@ const Notifications: React.FC = () => {
               ) : (
                 <Box textAlign="center" py={12}>
                   <Text fontSize="lg" color="gray.500" mb={4}>
-                    No notifications yet
+                    {user?.role === 'admin' ? 'No user reports yet' : 'No notifications yet'}
                   </Text>
                   <Text color="gray.400">
-                    We'll notify you about orders, messages, and important updates here.
+                    {user?.role === 'admin'
+                      ? "You'll be notified here when a user reports another user."
+                      : "We'll notify you about orders, messages, and important updates here."}
                   </Text>
                 </Box>
               )

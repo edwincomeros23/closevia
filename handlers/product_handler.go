@@ -966,7 +966,6 @@ func (h *ProductHandler) GetBoostCandidates(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: candidates})
 }
 
-
 func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 	productID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
@@ -1931,8 +1930,10 @@ func (h *ProductHandler) CheckImageQuality(c *fiber.Ctx) error {
 
 // ReportListing handles reporting a product listing for moderation
 func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
+	log.Println("[ReportListing] Handler called")
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
+		log.Println("[ReportListing] User not authenticated")
 		return c.Status(401).JSON(models.APIResponse{
 			Success: false,
 			Error:   "User not authenticated",
@@ -1942,11 +1943,13 @@ func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
 	// Parse request body
 	var req models.ListingReportCreate
 	if err := c.BodyParser(&req); err != nil {
+		log.Printf("[ReportListing] Body parse error: %v", err)
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Invalid request body",
 		})
 	}
+	log.Printf("[ReportListing] Parsed: product_id=%d reason=%s details=%s", req.ProductID, req.Reason, req.Details)
 
 	// Validate reason
 	validReasons := map[string]bool{
@@ -1963,9 +1966,9 @@ func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verify product exists
-	var productID int
-	err := h.db.QueryRow(`SELECT id FROM products WHERE id = $1`, req.ProductID).Scan(&productID)
+	// Verify product exists and get seller ID
+	var productID, sellerID int
+	err := h.db.QueryRow(`SELECT id, seller_id FROM products WHERE id = ?`, req.ProductID).Scan(&productID, &sellerID)
 	if err == sql.ErrNoRows {
 		return c.Status(404).JSON(models.APIResponse{
 			Success: false,
@@ -1979,18 +1982,43 @@ func (h *ProductHandler) ReportListing(c *fiber.Ctx) error {
 		})
 	}
 
-	// Insert report into database
+	// Insert report into reports table
+	details := req.Details
+	if details == "" {
+		details = "No additional details provided"
+	}
 	_, err = h.db.Exec(`
-		INSERT INTO listing_reports (product_id, reporter_id, reason, details, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-	`, req.ProductID, userID, req.Reason, req.Details, "pending")
+		INSERT INTO reports (reporter_id, reported_user_id, product_id, reason, description, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'pending', NOW(), NOW())
+	`, userID, sellerID, req.ProductID, req.Reason, details)
 
 	if err != nil {
-		log.Printf("Error creating listing report: %v", err)
+		log.Printf("Error creating listing report: %v | userID=%d sellerID=%d productID=%d reason=%s", err, userID, sellerID, req.ProductID, req.Reason)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to submit report",
 		})
+	}
+
+	// Notify all admin users about the report
+	var reporterName string
+	h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&reporterName)
+	var reportedName string
+	h.db.QueryRow("SELECT name FROM users WHERE id = ?", sellerID).Scan(&reportedName)
+
+	adminRows, adminErr := h.db.Query("SELECT id FROM users WHERE role = 'admin'")
+	if adminErr == nil {
+		defer adminRows.Close()
+		notifMsg := fmt.Sprintf("%s reported %s for: %s", reporterName, reportedName, req.Reason)
+		for adminRows.Next() {
+			var adminID int
+			if adminRows.Scan(&adminID) == nil {
+				h.db.Exec(
+					"INSERT INTO notifications (user_id, type, message, is_read, created_at) VALUES (?, 'report', ?, FALSE, NOW())",
+					adminID, notifMsg,
+				)
+			}
+		}
 	}
 
 	return c.JSON(models.APIResponse{

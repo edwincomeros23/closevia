@@ -75,11 +75,14 @@ const Sidebar: React.FC = () => {
     if (user) {
       if (user?.role === 'admin') {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
+      } else {
+        items.push(
+          { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
+          { icon: FaPlus, label: 'Add Product', path: '/add-product' },
+          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
+        )
       }
       items.push(
-        { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
-        { icon: FaPlus, label: 'Add Product', path: '/add-product' },
-        { icon: FiHeart, label: 'Saved', path: '/saved-products' },
         { icon: FiBell, label: 'Notifications', path: '/notifications' }
       )
     }
@@ -92,9 +95,10 @@ const Sidebar: React.FC = () => {
       const items: { icon: any; label: string; path: string }[] = []
       if (user?.role === 'admin') {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
+      } else {
+        items.push({ icon: FiHeart, label: 'Saved', path: '/saved-products' })
       }
       items.push(
-        { icon: FiHeart, label: 'Saved', path: '/saved-products' },
         { icon: FiBell, label: 'Notifications', path: '/notifications' },
         { icon: FiSettings, label: 'Settings', path: '/settings' },
       )
