@@ -123,12 +123,34 @@ func (h *DeliveryHandler) CheckRiderStatus(c *fiber.Ctx) error {
 
 	var riderID int
 	var isActive bool
-	err := h.db.QueryRow("SELECT id, is_active FROM riders WHERE user_id = ?", userID).Scan(&riderID, &isActive)
+	var name, vehicleType, phone string
+	var vehiclePlate sql.NullString
+	var rating float64
+	var createdAt string
+	err := h.db.QueryRow(
+		"SELECT id, is_active, name, vehicle_type, COALESCE(vehicle_plate, ''), phone, rating, created_at FROM riders WHERE user_id = ?",
+		userID,
+	).Scan(&riderID, &isActive, &name, &vehicleType, &vehiclePlate, &phone, &rating, &createdAt)
 	if err != nil {
 		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_rider": false}})
 	}
 
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_rider": true, "rider_id": riderID, "is_active": isActive}})
+	// Count completed deliveries
+	var completedCount int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM deliveries WHERE rider_id = ? AND status = 'delivered'", riderID).Scan(&completedCount)
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"is_rider":           true,
+		"rider_id":           riderID,
+		"is_active":          isActive,
+		"name":               name,
+		"vehicle_type":       vehicleType,
+		"vehicle_plate":      vehiclePlate.String,
+		"phone":              phone,
+		"rating":             rating,
+		"created_at":         createdAt,
+		"completed_deliveries": completedCount,
+	}})
 }
 
 // CalculateDistance calculates distance between two GPS coordinates using Haversine formula
