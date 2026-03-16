@@ -1490,96 +1490,167 @@ const Dashboard: React.FC = () => {
   }) => {
     const statusColor = product.status === 'available' ? 'green' : product.status === 'locked' ? 'orange' : product.status === 'sold' ? 'red' : 'blue'
     return (
-      <Flex
-        align="center"
-        gap={{ base: 2, md: 4 }}
+      <Box
         p={3}
         borderBottom="1px"
         borderColor={borderColor}
         _hover={{ bg: 'gray.50' }}
-        minW={0}
-        flexWrap={{ base: 'nowrap', md: 'nowrap' }}
       >
-        {showActions && (product.status === 'available' || product.status === 'locked') && (
-          <Checkbox
-            isChecked={isSelected}
-            onChange={onToggleSelect}
-            flexShrink={0}
-            aria-label={`Select ${product.title}`}
-          />
-        )}
-        <Box
-          w="60px"
-          h="60px"
-          flexShrink={0}
-          borderRadius="md"
-          overflow="hidden"
-          bg="gray.100"
+        <Flex
+          align="center"
+          gap={{ base: 2, md: 4 }}
+          minW={0}
         >
-          <Image
-            src={getFirstImage(product.image_urls)}
-            alt={product.title}
-            w="full"
-            h="full"
-            objectFit="cover"
-            fallbackSrc="https://via.placeholder.com/60?text=No+Image"
-          />
-        </Box>
-        <VStack align="start" spacing={0} flex={1} minW={0}>
-          <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-            {product.title}
-          </Text>
-          <HStack spacing={2} flexWrap="wrap" mt={1}>
-            <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
-              {product.status}
-            </Badge>
-            <HStack spacing={3} fontSize="xs" color="gray.500">
-              <HStack spacing={1}>
-                <Icon as={ViewIcon} boxSize={3} />
-                <Text>{viewsCount} views</Text>
-              </HStack>
-              <HStack spacing={1}>
-                <Icon as={FaHandshake} boxSize={3} />
-                <Text>{offersCount} offers</Text>
+          {showActions && (product.status === 'available' || product.status === 'locked') && (
+            <Checkbox
+              isChecked={isSelected}
+              onChange={onToggleSelect}
+              flexShrink={0}
+              aria-label={`Select ${product.title}`}
+            />
+          )}
+          <Box
+            w="60px"
+            h="60px"
+            flexShrink={0}
+            borderRadius="md"
+            overflow="hidden"
+            bg="gray.100"
+          >
+            <Image
+              src={getFirstImage(product.image_urls)}
+              alt={product.title}
+              w="full"
+              h="full"
+              objectFit="cover"
+              fallbackSrc="https://via.placeholder.com/60?text=No+Image"
+            />
+          </Box>
+          <VStack align="start" spacing={0} flex={1} minW={0}>
+            <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+              {product.title}
+            </Text>
+            <HStack spacing={2} flexWrap="wrap" mt={1}>
+              <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+                {product.status}
+              </Badge>
+              <HStack spacing={3} fontSize="xs" color="gray.500">
+                <HStack spacing={1}>
+                  <Icon as={ViewIcon} boxSize={3} />
+                  <Text>{viewsCount} views</Text>
+                </HStack>
+                <HStack spacing={1}>
+                  <Icon as={FaHandshake} boxSize={3} />
+                  <Text>{offersCount} offers</Text>
+                </HStack>
               </HStack>
             </HStack>
-          </HStack>
-        </VStack>
-        {(() => {
-          const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-          const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
-          const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
-          const shouldAct = showActions && product.status !== 'traded' && product.status !== 'sold'
+          </VStack>
+          {/* Desktop: show actions inline */}
+          <HStack spacing={1} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
+            {(() => {
+              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
+              const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
+              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
+              const shouldAct = showActions && product.status !== 'traded' && product.status !== 'sold'
 
-          if (isStag && isBoost && shouldAct) {
-            return (
-              <Button
-                size="sm"
-                colorScheme="blue"
-                variant="ghost"
-                leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
-                onClick={() => handleBoostProductClick(product)}
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
-                mr={1}
-              >
-                Boost
-              </Button>
-            )
-          }
-          return null
-        })()}
+              if (isStag && isBoost && shouldAct) {
+                return (
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    variant="ghost"
+                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
+                    onClick={() => handleBoostProductClick(product)}
+                    fontSize="sm"
+                    px={3}
+                    mr={1}
+                  >
+                    Boost
+                  </Button>
+                )
+              }
+              return null
+            })()}
+            {showActions && (
+              <>
+                {product.status === 'available' && (
+                  <Button
+                    size="sm"
+                    colorScheme="yellow"
+                    variant="ghost"
+                    leftIcon={<Icon as={FaRegLightbulb} boxSize={3} />}
+                    onClick={() => handleFindTradesClick(product)}
+                    fontSize="sm"
+                    px={3}
+                  >
+                    Find Trades
+                  </Button>
+                )}
+                <Button
+                  as={RouterLink}
+                  to={`/edit-product/${product.id}`}
+                  leftIcon={<EditIcon />}
+                  variant="outline"
+                  colorScheme="brand"
+                  size="sm"
+                  fontSize="sm"
+                  px={3}
+                >
+                  Edit
+                </Button>
+                <Tooltip
+                  label={product.status === 'locked' ? 'Cannot delete locked products' : ''}
+                  isDisabled={product.status !== 'locked'}
+                  hasArrow
+                >
+                  <IconButton
+                    aria-label="Delete"
+                    icon={<DeleteIcon />}
+                    variant="outline"
+                    colorScheme="red"
+                    size="sm"
+                    isDisabled={product.status === 'locked'}
+                    onClick={onDelete}
+                  />
+                </Tooltip>
+              </>
+            )}
+          </HStack>
+        </Flex>
+        {/* Mobile: show actions on a separate row below */}
         {showActions && (
-          <HStack spacing={1} flexShrink={0}>
+          <HStack spacing={1} mt={2} display={{ base: 'flex', md: 'none' }} justify="flex-end" flexWrap="wrap">
+            {(() => {
+              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
+              const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
+              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
+              const shouldAct = product.status !== 'traded' && product.status !== 'sold'
+
+              if (isStag && isBoost && shouldAct) {
+                return (
+                  <Button
+                    size="xs"
+                    colorScheme="blue"
+                    variant="ghost"
+                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
+                    onClick={() => handleBoostProductClick(product)}
+                    fontSize="xs"
+                  >
+                    Boost
+                  </Button>
+                )
+              }
+              return null
+            })()}
             {product.status === 'available' && (
               <Button
-                size="sm"
+                size="xs"
                 colorScheme="yellow"
                 variant="ghost"
                 leftIcon={<Icon as={FaRegLightbulb} boxSize={3} />}
                 onClick={() => handleFindTradesClick(product)}
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
+                fontSize="xs"
               >
                 Find Trades
               </Button>
@@ -1590,9 +1661,8 @@ const Dashboard: React.FC = () => {
               leftIcon={<EditIcon />}
               variant="outline"
               colorScheme="brand"
-              size="sm"
-              fontSize={{ base: 'xs', md: 'sm' }}
-              px={{ base: 2, md: 3 }}
+              size="xs"
+              fontSize="xs"
             >
               Edit
             </Button>
@@ -1606,14 +1676,14 @@ const Dashboard: React.FC = () => {
                 icon={<DeleteIcon />}
                 variant="outline"
                 colorScheme="red"
-                size="sm"
+                size="xs"
                 isDisabled={product.status === 'locked'}
                 onClick={onDelete}
               />
             </Tooltip>
           </HStack>
         )}
-      </Flex>
+      </Box>
     )
   })
 
@@ -1637,53 +1707,104 @@ const Dashboard: React.FC = () => {
     const userName = isIncoming ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous')
 
     return (
-      <Flex
-        align="center"
-        gap={{ base: 2, md: 4 }}
+      <Box
         p={3}
         borderBottom="1px"
         borderColor={borderColor}
         _hover={{ bg: 'gray.50' }}
-        minW={0}
-        flexWrap="wrap"
       >
-        <Box
-          w="60px"
-          h="60px"
-          flexShrink={0}
-          borderRadius="md"
-          overflow="hidden"
-          bg="gray.100"
+        <Flex
+          align="center"
+          gap={{ base: 2, md: 4 }}
+          minW={0}
         >
-          <ProductThumb
-            pid={trade.target_product_id}
-            alt={getProductTitle(trade.target_product_id, trade.product_title)}
-            size="100%"
-          />
-        </Box>
-        <VStack align="start" spacing={0} flex={1} minW={0}>
-          <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-            {getProductTitle(trade.target_product_id, trade.product_title)}
-          </Text>
-          <HStack spacing={2} mt={1}>
-            <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
-              {trade.status}
-            </Badge>
-            <Text fontSize="xs" color="gray.600">from {userName}</Text>
-            {trade.created_at && (
-              <Text fontSize="xs" color="gray.500">
-                {getTimeAgo(trade.created_at)}
-              </Text>
+          <Box
+            w="60px"
+            h="60px"
+            flexShrink={0}
+            borderRadius="md"
+            overflow="hidden"
+            bg="gray.100"
+          >
+            <ProductThumb
+              pid={trade.target_product_id}
+              alt={getProductTitle(trade.target_product_id, trade.product_title)}
+              size="100%"
+            />
+          </Box>
+          <VStack align="start" spacing={0} flex={1} minW={0}>
+            <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+              {getProductTitle(trade.target_product_id, trade.product_title)}
+            </Text>
+            <HStack spacing={2} mt={1} flexWrap="wrap">
+              <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+                {trade.status}
+              </Badge>
+              <Text fontSize="xs" color="gray.600" noOfLines={1}>from {userName}</Text>
+              {trade.created_at && (
+                <Text fontSize="xs" color="gray.500">
+                  {getTimeAgo(trade.created_at)}
+                </Text>
+              )}
+            </HStack>
+          </VStack>
+          {/* Desktop: inline actions */}
+          <HStack spacing={1} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
+            <Button
+              size="sm"
+              variant="outline"
+              colorScheme="brand"
+              fontSize="sm"
+              px={3}
+              onClick={onView}
+            >
+              View
+            </Button>
+            {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
+              <>
+                <Button
+                  size="sm"
+                  colorScheme="green"
+                  variant="solid"
+                  fontSize="sm"
+                  px={3}
+                  onClick={onAccept}
+                >
+                  Accept
+                </Button>
+                <Button
+                  size="sm"
+                  colorScheme="red"
+                  variant="outline"
+                  fontSize="sm"
+                  px={3}
+                  onClick={onDecline}
+                >
+                  Decline
+                </Button>
+              </>
+            )}
+            {!isIncoming && trade.status === 'pending' && onCancel && (
+              <Button
+                size="sm"
+                colorScheme="red"
+                variant="outline"
+                fontSize="sm"
+                px={3}
+                onClick={onCancel}
+              >
+                Cancel
+              </Button>
             )}
           </HStack>
-        </VStack>
-        <HStack spacing={1} flexShrink={0}>
+        </Flex>
+        {/* Mobile: actions on separate row */}
+        <HStack spacing={1} mt={2} display={{ base: 'flex', md: 'none' }} justify="flex-end">
           <Button
-            size="sm"
+            size="xs"
             variant="outline"
             colorScheme="brand"
-            fontSize={{ base: 'xs', md: 'sm' }}
-            px={{ base: 2, md: 3 }}
+            fontSize="xs"
             onClick={onView}
           >
             View
@@ -1691,21 +1812,19 @@ const Dashboard: React.FC = () => {
           {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
             <>
               <Button
-                size="sm"
+                size="xs"
                 colorScheme="green"
                 variant="solid"
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
+                fontSize="xs"
                 onClick={onAccept}
               >
                 Accept
               </Button>
               <Button
-                size="sm"
+                size="xs"
                 colorScheme="red"
                 variant="outline"
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
+                fontSize="xs"
                 onClick={onDecline}
               >
                 Decline
@@ -1714,18 +1833,17 @@ const Dashboard: React.FC = () => {
           )}
           {!isIncoming && trade.status === 'pending' && onCancel && (
             <Button
-              size="sm"
+              size="xs"
               colorScheme="red"
               variant="outline"
-              fontSize={{ base: 'xs', md: 'sm' }}
-              px={{ base: 2, md: 3 }}
+              fontSize="xs"
               onClick={onCancel}
             >
               Cancel
             </Button>
           )}
         </HStack>
-      </Flex>
+      </Box>
     )
   })
 
@@ -1802,7 +1920,7 @@ const Dashboard: React.FC = () => {
           borderLeftColor="green.400"
           role="article"
         >
-          <Box position="relative" w="full" h="140px" display="flex" gap={1} p={1} bg="gray.50" flexWrap="wrap" alignContent="flex-start" overflow="hidden">
+          <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
             {/* Your Item - Always flex=1 */}
             <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="0">
               <ProductThumb
@@ -2032,13 +2150,13 @@ const Dashboard: React.FC = () => {
             </VStack>
           </CardBody>
           <CardFooter pt={0}>
-            <HStack spacing={2} w="full" flexWrap="wrap">
+            <HStack spacing={{ base: 1, md: 2 }} w="full" flexWrap="wrap">
               <Button
-                size="sm"
+                size={{ base: 'xs', md: 'sm' }}
                 variant="outline"
                 colorScheme="brand"
                 flex={1}
-                minW="70px"
+                minW={{ base: '55px', md: '70px' }}
                 onClick={onView}
                 _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
                 transition="all 0.2s"
@@ -2048,10 +2166,10 @@ const Dashboard: React.FC = () => {
               {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
                 <>
                   <Button
-                    size="sm"
+                    size={{ base: 'xs', md: 'sm' }}
                     colorScheme="green"
                     flex={1}
-                    minW="70px"
+                    minW={{ base: '55px', md: '70px' }}
                     onClick={onAccept}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -2059,11 +2177,11 @@ const Dashboard: React.FC = () => {
                     Accept
                   </Button>
                   <Button
-                    size="sm"
+                    size={{ base: 'xs', md: 'sm' }}
                     colorScheme="red"
                     variant="outline"
                     flex={1}
-                    minW="70px"
+                    minW={{ base: '55px', md: '70px' }}
                     onClick={onDecline}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -2074,11 +2192,11 @@ const Dashboard: React.FC = () => {
               )}
               {!isIncoming && trade.status === 'pending' && onCancel && (
                 <Button
-                  size="sm"
+                  size={{ base: 'xs', md: 'sm' }}
                   colorScheme="red"
                   variant="outline"
                   flex={1}
-                  minW="70px"
+                  minW={{ base: '55px', md: '70px' }}
                   onClick={onCancel}
                   leftIcon={<Icon as={FaTimes} />}
                   _hover={{ transform: 'scale(1.02)' }}
@@ -2089,10 +2207,10 @@ const Dashboard: React.FC = () => {
               )}
               {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
                 <Button
-                  size="sm"
+                  size={{ base: 'xs', md: 'sm' }}
                   colorScheme="blue"
                   flex={1}
-                  minW="70px"
+                  minW={{ base: '55px', md: '70px' }}
                   onClick={onComplete}
                   leftIcon={<Icon as={FaHandshake} />}
                   _hover={{ transform: 'scale(1.02)' }}
@@ -2617,7 +2735,7 @@ const Dashboard: React.FC = () => {
                     overflowX={{ base: 'auto', md: 'visible' }}
                     display="flex"
                     flexWrap="nowrap"
-                    justifyContent={{ base: 'flex-start', md: 'flex-start' }}
+                    justifyContent={{ base: 'space-around', md: 'flex-start' }}
                     sx={{
                       '&::-webkit-scrollbar': { display: 'none' },
                       scrollbarWidth: 'none',
@@ -2628,21 +2746,24 @@ const Dashboard: React.FC = () => {
                         minW: { base: 'auto', md: 'auto' },
                         px: { base: '8px', sm: '12px', md: '16px' },
                         py: { base: '6px', sm: '10px', md: '12px' },
-                        flex: { base: 'none', md: 'initial' },
+                        flex: { base: 1, md: 'initial' },
                         justifyContent: 'center',
+                        borderBottomWidth: '3px',
+                        borderBottomColor: 'transparent',
                       }
                     }}>
                     <Tab
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
                       <HStack spacing={1}>
-                        <Icon as={FiShoppingBag} boxSize={{ base: 3.5, md: 5 }} />
-                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }}>Products</Text>
+                        <Icon as={FiShoppingBag} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Products</Text>
                         {actualUserProducts.length > 0 && (
                           <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                             {actualUserProducts.length}
@@ -2653,15 +2774,16 @@ const Dashboard: React.FC = () => {
                     <Tab
                       position="relative"
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
                       <HStack spacing={1}>
-                        <Icon as={FiMessageCircle} boxSize={{ base: 3.5, md: 5 }} />
-                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }}>Offers</Text>
+                        <Icon as={FiMessageCircle} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Offers</Text>
                         {(sentOffers.length + receivedOffers.length + ongoingTrades.length) > 0 && (
                           <Badge
                             colorScheme="orange"
@@ -2675,16 +2797,17 @@ const Dashboard: React.FC = () => {
                     </Tab>
                     <Tab
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
                       <HStack spacing={1}>
-                        <Icon as={FaExchangeAlt} boxSize={{ base: 3.5, md: 5 }} />
+                        <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
-                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'block', sm: 'none' }}>Trade</Text>
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
                         <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
                           PRO
                         </Badge>
@@ -2692,15 +2815,16 @@ const Dashboard: React.FC = () => {
                     </Tab>
                     <Tab
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
                       <HStack spacing={1}>
-                        <Icon as={FiRefreshCw} boxSize={{ base: 3.5, md: 5 }} />
-                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }}>History</Text>
+                        <Icon as={FiRefreshCw} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>History</Text>
                         {completedTradesCount > 0 && (
                           <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                             {completedTradesCount}
