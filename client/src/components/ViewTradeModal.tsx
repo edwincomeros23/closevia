@@ -1830,8 +1830,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Requested'}
                                 </Badge>
@@ -1866,8 +1869,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Offered'}
                                 </Badge>

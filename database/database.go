@@ -739,6 +739,21 @@ func ensureTradeColumns() {
 			}
 		}
 	}
+
+	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired
+	var tradeStatusType string
+	if err := DB.QueryRow(`
+		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME = 'status'
+	`).Scan(&tradeStatusType); err == nil {
+		if !contains(tradeStatusType, "'expired'") {
+			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired') DEFAULT 'pending'`); err != nil {
+				log.Printf("Warning: failed to update trades status enum: %v", err)
+			} else {
+				log.Println("Updated trades status enum to include 'expired'")
+			}
+		}
+	}
 }
 
 // contains checks if a string contains a substring

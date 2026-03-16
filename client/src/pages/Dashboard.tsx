@@ -80,6 +80,7 @@ import {
   useSentOffers,
   useReceivedOffers,
   useOngoingTrades,
+  useArchivedTrades,
   useTradeHistory,
   usePrefetchDashboard,
   useInvalidateDashboard,
@@ -99,6 +100,7 @@ const Dashboard: React.FC = () => {
   const { data: sentOffersData = [], isFetched: sentFetched } = useSentOffers()
   const { data: receivedOffersData = [], isFetched: receivedFetched } = useReceivedOffers()
   const { data: ongoingTradesData = [], isFetched: ongoingFetched } = useOngoingTrades()
+  const { data: archivedTradesData = [] } = useArchivedTrades()
   const { data: tradeHistoryData = [], isFetched: historyFetched } = useTradeHistory()
 
   // Unified initial loading: true until all critical queries have fetched at least once
@@ -690,7 +692,7 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const historyStatuses = ['declined', 'cancelled', 'completed']
+  const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'expired']
 
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
@@ -2969,6 +2971,15 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
+                        <Tab fontSize={{ base: '10px', md: 'sm' }}>
+                          <Box display={{ base: 'none', md: 'inline' }}>Archive</Box>
+                          <Box display={{ base: 'inline', md: 'none' }}>Archive</Box>
+                          {archivedTradesData.length > 0 && (
+                            <Badge ml={2} colorScheme="red" borderRadius="full" fontSize="xs">
+                              {archivedTradesData.length}
+                            </Badge>
+                          )}
+                        </Tab>
                       </TabList>
 
                       <TabPanels>
@@ -3474,6 +3485,54 @@ const Dashboard: React.FC = () => {
                                 </HStack>
                               )}
                             </>
+                          )}
+                        </TabPanel>
+
+                        {/* Archive (Expired Trades) */}
+                        <TabPanel px={0}>
+                          {archivedTradesData.length === 0 ? (
+                            <Box textAlign="center" py={8}>
+                              <Icon as={FaClock} boxSize={12} color="gray.300" mb={4} />
+                              <Text color="gray.500" fontSize="lg" fontWeight="medium" mb={2}>No archived trades</Text>
+                              <Text color="gray.400" fontSize="sm">Trades that expire after 7 days of inactivity will appear here.</Text>
+                            </Box>
+                          ) : (
+                            <VStack spacing={3} align="stretch">
+                              {archivedTradesData.map((trade) => {
+                                const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
+                                return (
+                                  <Box
+                                    key={trade.id}
+                                    p={4}
+                                    bg={cardBg}
+                                    borderRadius="lg"
+                                    borderWidth="1px"
+                                    borderColor="red.100"
+                                    _hover={{ boxShadow: 'md', transform: 'translateY(-1px)', borderColor: 'red.200' }}
+                                    transition="all 0.2s ease"
+                                    cursor="pointer"
+                                    onClick={() => { setSelectedTrade(trade); setViewTradeModalOpen(true) }}
+                                  >
+                                    <HStack justify="space-between" align="start">
+                                      <VStack align="start" spacing={1}>
+                                        <Text fontWeight="semibold" fontSize="sm" color="gray.800">
+                                          {trade.product_title || `Trade #${trade.id}`}
+                                        </Text>
+                                        <Text fontSize="xs" color="gray.500">
+                                          {isIncoming ? 'From' : 'To'}: {isIncoming ? (trade.buyer_name || 'Anonymous') : (trade.seller_name || 'Anonymous')}
+                                        </Text>
+                                        <Text fontSize="xs" color="red.400">
+                                          ⌛ Expired due to 7 days of inactivity
+                                        </Text>
+                                      </VStack>
+                                      <Badge colorScheme="gray" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full">
+                                        ⌛ Expired
+                                      </Badge>
+                                    </HStack>
+                                  </Box>
+                                )
+                              })}
+                            </VStack>
                           )}
                         </TabPanel>
 

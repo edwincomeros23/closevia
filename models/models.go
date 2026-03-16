@@ -272,7 +272,7 @@ type Trade struct {
 	BuyerID         int         `json:"buyer_id"`
 	SellerID        int         `json:"seller_id"`
 	TargetProductID int         `json:"target_product_id"`
-	Status          string      `json:"status" validate:"oneof=pending accepted declined countered active awaiting_confirmation completed auto_completed cancelled"`
+	Status          string      `json:"status" validate:"oneof=pending accepted declined countered active awaiting_confirmation completed auto_completed cancelled expired"`
 	Message         string      `json:"message,omitempty"`
 	OfferedCash     *float64    `json:"offered_cash_amount,omitempty"`
 	CreatedAt       time.Time   `json:"created_at"`

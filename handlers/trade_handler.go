@@ -1665,7 +1665,7 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 	}
 
 	// Validate status against a known whitelist. An empty status means no filter.
-	allowedStatuses := map[string]bool{"pending": true, "active": true, "completed": true, "declined": true, "cancelled": true, "countered": true}
+	allowedStatuses := map[string]bool{"pending": true, "accepted": true, "active": true, "completed": true, "declined": true, "cancelled": true, "countered": true, "expired": true, "auto_completed": true}
 	if status != "" && !allowedStatuses[status] {
 		fmt.Printf("CountTrades: unknown status='%s' from user=%d - ignoring status filter\n", status, userID)
 		status = ""
