@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -90,6 +90,7 @@ const Dashboard: React.FC = () => {
   const { deleteProduct, updateProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   // Use React Query hooks for cached data
   const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched } = useDashboardProducts(user?.id)
@@ -251,6 +252,47 @@ const Dashboard: React.FC = () => {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
+
+  // Handle return from Xendit payment redirect
+  useEffect(() => {
+    const tradeIdParam = searchParams.get('trade_id')
+    const paymentStatus = searchParams.get('payment')
+    if (!tradeIdParam) return
+
+    const tradeId = parseInt(tradeIdParam, 10)
+    if (isNaN(tradeId)) return
+
+    if (paymentStatus === 'failed') {
+      toast({
+        title: 'Payment Failed',
+        description: 'Your payment was not completed. Please try again.',
+        status: 'error',
+        duration: 5000,
+      })
+    } else {
+      toast({
+        title: 'Payment Successful! 🎉',
+        description: 'Your payment has been received. View trade details below.',
+        status: 'success',
+        duration: 5000,
+      })
+    }
+
+    // Switch to the Offers tab (tab index 1)
+    setActiveTab(1)
+
+    // Try to find the trade and open it
+    const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
+    const matchedTrade = allTrades.find(t => t.id === tradeId)
+    if (matchedTrade) {
+      setSelectedTrade(matchedTrade)
+      setViewTradeModalOpen(true)
+    }
+
+    // Clean up URL params
+    navigate('/dashboard', { replace: true })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, ongoingTradesData, sentOffersData, receivedOffersData])
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
@@ -477,7 +519,7 @@ const Dashboard: React.FC = () => {
   const fetchMultiWayTrades = async () => {
     try {
       setMultiWayTradesLoading(true)
-      const response = await api.get('/api/multi-way-trades/available', {
+      const response = await api.get('/api/trades/loops', {
         params: { user_id: user?.id }
       })
       setMultiWayTrades(response.data?.data || [])
@@ -493,7 +535,7 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      await api.post(`/api/multi-way-trades/${trade.id}/join`, {
+      await api.post(`/api/trades/loops/${trade.id}/accept`, {
         user_id: user?.id,
       })
       toast({
@@ -518,7 +560,7 @@ const Dashboard: React.FC = () => {
 
   const handleDeclineMultiWayTrade = async (trade: any) => {
     try {
-      await api.post(`/api/multi-way-trades/${trade.id}/decline`, {
+      await api.post(`/api/trades/loops/${trade.id}/decline`, {
         reason: 'Not interested'
       })
       toast({
@@ -688,6 +730,25 @@ const Dashboard: React.FC = () => {
         status: 'error'
       })
     }
+  }
+
+  const handleConvertToMultiWay = () => {
+    if (!tradeToDecline) {
+      setDeclineModalOpen(false)
+      return
+    }
+
+    // Keep the offer pending so it can still participate in loops.
+    setDeclineModalOpen(false)
+    toast({
+      title: 'Searching for multi-way trade',
+      description: 'We will look for matching trade loops. You will be notified if a multi-way opportunity is found.',
+      status: 'info',
+      duration: 5000
+    })
+
+    // Navigate the user to the premium / multi-way trading section if available.
+    navigate('/premium')
   }
 
   const historyStatuses = ['declined', 'cancelled', 'completed']
@@ -3489,67 +3550,15 @@ const Dashboard: React.FC = () => {
                       <Spinner size="lg" color="brand.500" />
                     </Center>
                   ) : multiWayTrades.length === 0 ? (
-                    multiWayTradesViewMode === 'list' ? (
-                      <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={6} textAlign="center">
-                        <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
-                        <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                          No multi-way trades available
-                        </Text>
-                        <Text color="gray.500" fontSize="sm">
-                          Multi-way trade opportunities will appear here. Check back soon!
-                        </Text>
-                      </Box>
-                    ) : (
-                      <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
-                        {/* Mock Trade Loop 1 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 1, user_name: 'John Doe', product_id: 1, product_title: 'PlayStation 5' },
-                              { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
-                              { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
-                            ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 2 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 4, user_name: 'Emma Wilson', product_id: 4, product_title: 'Galaxy S23' },
-                              { id: 5, user_name: 'Alex Chen', product_id: 5, product_title: 'iPad Air' },
-                              { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
-                              { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
-                            ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 3 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 8, user_name: 'Chris Martin', product_id: 8, product_title: 'Nintendo Switch' },
-                              { id: 9, user_name: 'Jessica Brown', product_id: 9, product_title: 'Bicycle' },
-                              { id: 10, user_name: 'Robert Taylor', product_id: 10, product_title: 'Guitar' },
-                              { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
-                              { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
-                            ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-                      </SimpleGrid>
-                    )
+                    <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={12} textAlign="center" w="full">
+                      <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
+                      <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                        No multi-way trades available
+                      </Text>
+                      <Text color="gray.500" fontSize="sm">
+                        Multi-way trade opportunities will appear here once they are matched. Check back soon!
+                      </Text>
+                    </Box>
                   ) : multiWayTradesViewMode === 'list' ? (
                     <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
                       <Box
@@ -4210,7 +4219,7 @@ const Dashboard: React.FC = () => {
                     </Text>
                   </VStack>
 
-                  <HStack spacing={3} w="full">
+                <HStack spacing={3} w="full">
                     <Button
                       variant="outline"
                       size="md"
@@ -4219,6 +4228,16 @@ const Dashboard: React.FC = () => {
                     >
                       Keep Offer
                     </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                    isDisabled={isProcessing}
+                  >
+                    Convert to Multi-Way
+                  </Button>
                     <Button
                       colorScheme="red"
                       size="md"

@@ -21,6 +21,7 @@ import {
   Grid,
   RadioGroup,
   Radio,
+  SimpleGrid,
 } from '@chakra-ui/react'
 import { ArrowBackIcon, ArrowForwardIcon } from '@chakra-ui/icons'
 import { FILTER_CATEGORIES } from '../utils/categories'
@@ -34,6 +35,8 @@ interface ProductDetails {
   location: string
   allowBuying: boolean
   barterOnly: boolean
+  wants: string
+  wanted_categories: string[] // List of desired categories
 }
 
 interface ProductUploadStep2Props {
@@ -76,6 +79,8 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
       location: '',
       allowBuying: true,
       barterOnly: false,
+      wants: '',
+      wanted_categories: [],
     }
   )
   const toast = useToast()
@@ -305,6 +310,55 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
               ✓ Your product will be available for trade offers. Price is optional for reference only.
             </Text>
           )}
+
+          {/* New Desired Exchange Section */}
+          <Box pt={4} borderTopWidth="1px" borderColor="green.200">
+            <FormLabel fontWeight="600" mb={2}>What are you looking for? (Optional)</FormLabel>
+            
+            <VStack spacing={4} align="stretch">
+              <FormControl>
+                <FormLabel fontSize="sm" color="gray.600">Desired Item Categories</FormLabel>
+                <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={2}>
+                  {FILTER_CATEGORIES.filter(c => (typeof c === 'string' ? c : c.value) !== 'All').map((cat) => {
+                    const value = typeof cat === 'string' ? cat : cat.value
+                    const label = typeof cat === 'string' ? cat : cat.label
+                    const isSelected = details.wanted_categories.includes(value)
+                    
+                    return (
+                      <Button
+                        key={value}
+                        size="xs"
+                        variant={isSelected ? 'solid' : 'outline'}
+                        colorScheme={isSelected ? 'brand' : 'gray'}
+                        onClick={() => {
+                          const next = isSelected 
+                            ? details.wanted_categories.filter(v => v !== value)
+                            : [...details.wanted_categories, value]
+                          handleChange('wanted_categories', next)
+                        }}
+                        rounded="full"
+                      >
+                        {label}
+                      </Button>
+                    )
+                  })}
+                </SimpleGrid>
+                <FormHelperText fontSize="2xs">Select categories you'd be interested in trading for</FormHelperText>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" color="gray.600">Specific Items (Optional)</FormLabel>
+                <Input
+                  placeholder="e.g., iPhone 13, mechanical keyboard, etc."
+                  value={details.wants}
+                  onChange={(e) => handleChange('wants', e.target.value)}
+                  size="sm"
+                  bg="white"
+                />
+                <FormHelperText fontSize="2xs">Specific items you have in mind</FormHelperText>
+              </FormControl>
+            </VStack>
+          </Box>
         </VStack>
 
         {/* AI Suggestions (if available) */}

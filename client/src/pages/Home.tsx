@@ -1035,9 +1035,6 @@ const Home: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Real-time Activity Feed Marquee */}
-      <ActivityFeed />
-
       {/* Main Content - desktop: centered max-width */}
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
@@ -1381,6 +1378,10 @@ const Home: React.FC = () => {
           </ModalBody>
         </ModalContent>
       </Modal>
+
+      <Box mt={12}>
+        <ActivityFeed />
+      </Box>
 
       <Box mb={{ base: 5, md: 0 }}>
         <FloatingTab />

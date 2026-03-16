@@ -238,17 +238,26 @@ const ProductCard: React.FC<ProductCardProps> = ({
             : 'No description available'}
         </Text>
 
-        {/* Product Value */}
-        {product.value !== undefined && product.value > 0 && (
-          <Text
-            fontSize="sm"
-            fontWeight="bold"
-            color="green.600"
-            mb={1}
-          >
-            ₱{(product.value as number).toLocaleString()}
-          </Text>
-        )}
+        {/* Value Display (AI Estimated or Manual) */}
+        <Box mb={1}>
+          {product.estimated_value_min && product.estimated_value_max ? (
+            <Text fontSize="sm" fontWeight="extrabold" color="brand.600">
+              ₱{product.estimated_value_min.toLocaleString()} - ₱{product.estimated_value_max.toLocaleString()}
+            </Text>
+          ) : product.value !== undefined && product.value > 0 ? (
+            <Text fontSize="sm" fontWeight="bold" color="green.600">
+              ₱{(product.value as number).toLocaleString()}
+            </Text>
+          ) : product.price && product.price > 0 ? (
+            <Text fontSize="sm" fontWeight="bold" color="gray.700">
+              ₱{product.price.toLocaleString()}
+            </Text>
+          ) : (
+            <Text fontSize="xs" color="gray.400" fontStyle="italic">
+              Value TBD
+            </Text>
+          )}
+        </Box>
 
         {/* Wishlist badge */}
         <Flex mb={2} align="center" gap={1} minH={{ base: '20px', md: '22px' }}>
