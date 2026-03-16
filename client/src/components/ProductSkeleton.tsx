@@ -13,10 +13,12 @@ export const ProductSkeleton: React.FC = () => {
       _hover={{ boxShadow: 'md' }}
     >
       {/* Image skeleton */}
-      <Skeleton h="200px" w="100%" />
+      <Box position="relative" w="full" pt="100%">
+        <Skeleton position="absolute" top={0} left={0} w="100%" h="100%" />
+      </Box>
 
       {/* Content skeleton */}
-      <VStack p={4} spacing={3} align="stretch">
+      <VStack p={3} spacing={2} align="stretch">
         {/* Seller info */}
         <HStack spacing={2}>
           <Skeleton borderRadius="full" w={8} h={8} />
@@ -54,13 +56,10 @@ export const ProductGridSkeleton: React.FC<ProductGridSkeletonProps> = ({ count 
     <Grid
       templateColumns={{
         base: 'repeat(2, 1fr)',
-        sm: 'repeat(2, 1fr)',
-        md: 'repeat(auto-fill, minmax(240px, 1fr))',
-        lg: 'repeat(3, 1fr)',
-        xl: 'repeat(4, 1fr)',
-        '2xl': 'repeat(5, 1fr)',
+        sm: 'repeat(3, 1fr)',
+        md: 'repeat(5, 1fr)',
       }}
-      gap={{ base: 2, md: 4 }}
+      gap={{ base: 2, md: 3 }}
       w="full"
     >
       {Array.from({ length: count }).map((_, idx) => (

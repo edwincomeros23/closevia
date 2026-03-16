@@ -494,15 +494,20 @@ const Home: React.FC = () => {
       <Grid
         templateColumns={{
           base: 'repeat(2, 1fr)',
-          sm: 'repeat(2, 1fr)',
+          sm: 'repeat(3, 1fr)',
           md: 'repeat(5, 1fr)',
         }}
-        gap={{ base: 1, md: 3 }}
+        gap={{ base: 2, md: 3 }}
         w="full"
+        sx={{
+          '& > *': {
+            minW: 0,
+          },
+        }}
       >
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
-            <Box key={`product-${item.data.id}`} sx={{ '@media (max-width: 850px)': { minWidth: 0, maxWidth: 'none' } }}>
+            <Box key={`product-${item.data.id}`} w="full" h="full">
               <ProductCard
                 product={item.data}
                 onTradeClick={handleTradeClick}
@@ -512,7 +517,7 @@ const Home: React.FC = () => {
               />
             </Box>
           ) : (
-            <Box key={`ad-${item.data.id}`}>
+            <Box key={`ad-${item.data.id}`} w="full" h="full">
               <StudentAdCard ad={item.data} />
             </Box>
           )
