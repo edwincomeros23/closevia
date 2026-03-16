@@ -919,10 +919,10 @@ const SettingsPage: React.FC = () => {
             transition="all 0.2s"
           >
             <CardHeader pb={3}>
-              <HStack spacing={3} justify="space-between">
-                <HStack spacing={3}>
-                  <Icon as={FaEnvelope} color="brand.500" boxSize={5} />
-                  <Heading size="md">School Verification (Optional)</Heading>
+              <HStack spacing={3} justify="space-between" flexWrap="wrap" gap={2}>
+                <HStack spacing={3} minW={0}>
+                  <Icon as={FaEnvelope} color="brand.500" boxSize={5} flexShrink={0} />
+                  <Heading size={{ base: 'sm', md: 'md' }}>School Verification</Heading>
                 </HStack>
                 <Badge
                   colorScheme={
@@ -970,13 +970,15 @@ const SettingsPage: React.FC = () => {
 
                 <FormControl>
                   <FormLabel>Official School Email</FormLabel>
-                  <HStack spacing={2} align="flex-end">
+                  <HStack spacing={2} align="flex-end" flexWrap="wrap">
                     <Input
                       type="email"
                       value={schoolEmail}
                       onChange={(e) => setSchoolEmail(e.target.value)}
                       placeholder="you@wmsu.edu.ph"
                       isDisabled={!!(user as any)?.school_email_verified_at}
+                      flex={1}
+                      minW="150px"
                     />
                     <Button
                       size="sm"
@@ -1030,7 +1032,7 @@ const SettingsPage: React.FC = () => {
 
                 <FormControl isDisabled={verificationStatus === 'pending' || !(user as any)?.school_email_verified_at}>
                   <FormLabel>Upload School ID or COR (front)</FormLabel>
-                  <HStack spacing={3} align="center">
+                  <HStack spacing={3} align="center" flexWrap="wrap" gap={2}>
                     <Input
                       type="file"
                       accept="image/*"

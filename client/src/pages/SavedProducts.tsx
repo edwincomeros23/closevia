@@ -295,7 +295,7 @@ const SavedProducts: React.FC = () => {
               </CardBody>
             </Card>
           ) : (
-            <SimpleGrid columns={{ base: 2, md: 2, lg: 4 }} spacing={3}>
+            <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={3}>
               {savedProducts.map((product) => (
                 <Card key={product.id} bg="white" shadow="sm" overflow="hidden" h="full">
                   <Box position="relative">

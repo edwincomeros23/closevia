@@ -91,7 +91,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       borderColor="gray.100"
       overflow="hidden"
       transition="all 0.2s ease"
-      maxW="250px"
+      maxW={{ base: '100%', md: '250px' }}
       w="full"
       mx="auto"
       h="full"
@@ -101,7 +101,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       onClick={handleCardClick}
     >
       {/* Image section */}
-      <Box position="relative" w="full" h="200px" overflow="hidden" bg="gray.100">
+      <Box position="relative" w="full" h={{ base: '160px', md: '200px' }} overflow="hidden" bg="gray.100">
         <Image
           src={getFirstImage(product.image_urls)}
           alt={product.title}
@@ -167,19 +167,18 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Info section */}
       <Box
-        p={4}
+        p={{ base: 2, md: 4 }}
         display="flex"
         flexDirection="column"
         flex={1}
         overflow="hidden"
-        sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
       >
         {/* Seller row (desktop) */}
-        <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-          <HStack spacing={2} align="center" mt="auto">
+        <Flex justify="space-between" align="center" mb={2}>
+          <HStack spacing={{ base: 1, md: 2 }} align="center" mt="auto">
             <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
               <VerifiedAvatar
-                size="sm"
+                size={{ base: 'xs', md: 'sm' } as any}
                 src={sellerAvatar}
                 name={product.seller_name || 'U'}
                 bg="brand.500"
@@ -189,7 +188,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 isVerified={product.seller_verified || false}
               />
             </RouterLink>
-            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
+            <Text fontSize={{ base: 'xs', md: 'sm' }} color="black" fontWeight="medium" noOfLines={1}>
               {product.seller_name || 'Unknown'}
             </Text>
           </HStack>
@@ -202,12 +201,13 @@ const ProductCard: React.FC<ProductCardProps> = ({
         <Heading
           size="sm"
           noOfLines={2}
-          mb={2}
+          mb={{ base: 1, md: 2 }}
           color="gray.800"
           flexShrink={0}
           textAlign="left"
+          fontSize={{ base: '13px', md: 'sm' }}
+          lineHeight={{ base: '1.3', md: 'normal' }}
           minH={{ base: '34px', md: '40px' }}
-          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px', minHeight: '34px' } }}
         >
           {product.title}
         </Heading>
@@ -216,12 +216,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
         <Text
           color="gray.600"
           noOfLines={{ base: 1, md: 2 }}
-          mb={2}
-          fontSize="sm"
+          mb={{ base: 1, md: 2 }}
+          fontSize={{ base: '12px', md: 'sm' }}
           flexShrink={0}
           textAlign="left"
           minH={{ base: '18px', md: '42px' }}
-          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px', minHeight: '18px' } }}
         >
           {product.description
             ? product.description

@@ -2198,15 +2198,15 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
-      <Container maxW="container.xl" py={8}>
-        <VStack spacing={6} align="stretch">
+      <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 3, md: 6 }}>
+        <VStack spacing={{ base: 3, md: 6 }} align="stretch">
           {/* Sticky header: search bar + view toggle stay visible when scrolling long product lists */}
           <Box position="sticky" top={0} zIndex={20} bg="#FFFDF1" py={2} mt={-2} mb={-2}>
-            <VStack spacing={4} align="stretch">
+            <VStack spacing={{ base: 2, md: 4 }} align="stretch">
               <Flex
                 align="center"
                 justify="space-between"
-                gap={4}
+                gap={{ base: 2, md: 4 }}
                 flexWrap={{ base: 'wrap', md: 'nowrap' }}
               >
                 {/* Left: Welcome Message */}
@@ -2609,27 +2609,27 @@ const Dashboard: React.FC = () => {
               borderTopRadius="lg"
               borderBottom="1px solid"
               borderColor="gray.200"
-              py={2}
+              py={{ base: 1, md: 2 }}
             >
-              <Flex justify="space-between" align="center" px={4} gap={{ base: 2, md: 4 }} flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+              <Flex justify="space-between" align="center" px={{ base: 2, md: 4 }} gap={{ base: 1, md: 4 }} flexWrap={{ base: 'nowrap', md: 'nowrap' }}>
                 <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1} minW={0}>
                   <TabList
-                    overflowX={{ base: 'visible', md: 'visible' }}
+                    overflowX={{ base: 'auto', md: 'visible' }}
                     display="flex"
-                    flexWrap={{ base: 'nowrap', md: 'nowrap' }}
-                    justifyContent={{ base: 'space-between', md: 'flex-start' }}
+                    flexWrap="nowrap"
+                    justifyContent={{ base: 'flex-start', md: 'flex-start' }}
                     sx={{
                       '&::-webkit-scrollbar': { display: 'none' },
                       scrollbarWidth: 'none',
                       msOverflowStyle: 'none',
                       '& > button': {
-                        fontSize: { base: '0.75rem', sm: '0.875rem', md: '1rem' },
+                        fontSize: { base: '0.7rem', sm: '0.8rem', md: '1rem' },
                         whiteSpace: 'nowrap',
                         minW: { base: 'auto', md: 'auto' },
-                        px: { base: '6px', sm: '12px', md: '16px' },
-                        py: { base: '8px', sm: '12px' },
-                        flex: { base: '1', md: 'initial' },
-                        justifyContent: { base: 'center', md: 'flex-start' },
+                        px: { base: '8px', sm: '12px', md: '16px' },
+                        py: { base: '6px', sm: '10px', md: '12px' },
+                        flex: { base: 'none', md: 'initial' },
+                        justifyContent: 'center',
                       }
                     }}>
                     <Tab
@@ -2640,11 +2640,11 @@ const Dashboard: React.FC = () => {
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>My Products</Text>
+                      <HStack spacing={1}>
+                        <Icon as={FiShoppingBag} boxSize={{ base: 3.5, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }}>Products</Text>
                         {actualUserProducts.length > 0 && (
-                          <Badge colorScheme="green" borderRadius="full" fontSize="xs" display={{ base: 'none', sm: 'inline-flex' }}>
+                          <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                             {actualUserProducts.length}
                           </Badge>
                         )}
@@ -2659,15 +2659,14 @@ const Dashboard: React.FC = () => {
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FiMessageCircle} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>Offers</Text>
+                      <HStack spacing={1}>
+                        <Icon as={FiMessageCircle} boxSize={{ base: 3.5, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }}>Offers</Text>
                         {(sentOffers.length + receivedOffers.length + ongoingTrades.length) > 0 && (
                           <Badge
                             colorScheme="orange"
                             borderRadius="full"
-                            fontSize="xs"
-                            display={{ base: 'none', sm: 'inline-flex' }}
+                            fontSize="2xs"
                           >
                             {sentOffers.length + receivedOffers.length + ongoingTrades.length}
                           </Badge>
@@ -2682,16 +2681,16 @@ const Dashboard: React.FC = () => {
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FaExchangeAlt} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>Multi-Way Trades</Text>
-                        <Badge colorScheme="purple" fontSize="2xs" px={{ base: 1, md: 1.5 }} display={{ base: 'none', sm: 'inline-flex' }}>
+                      <HStack spacing={1}>
+                        <Icon as={FaExchangeAlt} boxSize={{ base: 3.5, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'block', sm: 'none' }}>Trade</Text>
+                        <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
                           PRO
                         </Badge>
                       </HStack>
                     </Tab>
                     <Tab
-                      ml={{ base: 'auto', md: 0 }}
                       _selected={{
                         color: 'brand.600',
                         borderColor: 'brand.600',
@@ -2699,9 +2698,9 @@ const Dashboard: React.FC = () => {
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FiRefreshCw} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>Trade History</Text>
+                      <HStack spacing={1}>
+                        <Icon as={FiRefreshCw} boxSize={{ base: 3.5, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }}>History</Text>
                         {completedTradesCount > 0 && (
                           <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                             {completedTradesCount}
@@ -2711,21 +2710,13 @@ const Dashboard: React.FC = () => {
                     </Tab>
                   </TabList>
                 </Tabs>
-
-                {/* Right: Filter/Sort Controls - Icon Buttons */}
-                <HStack
-                  spacing={{ base: 1, md: 3 }}
-                  flexShrink={0}
-                  justify="flex-end"
-                >
-                </HStack>
               </Flex>
             </Box>
 
             <Tabs index={activeTab} onChange={setActiveTab}>
               <TabPanels>
                 {/* Products Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
                     {/* Filters and Actions (Search moved to top bar) */}
                     <HStack spacing={3} flexWrap="wrap" justify="space-between">
@@ -2761,7 +2752,7 @@ const Dashboard: React.FC = () => {
                     {productsLoading && !hasInitiallyLoaded.current ? (
                       <Fade in={true}>
                         {productViewMode === 'grid' ? (
-                          <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                          <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                             {Array.from({ length: 8 }).map((_, i) => (
                               <ProductCardSkeleton key={i} />
                             ))}
@@ -2784,14 +2775,14 @@ const Dashboard: React.FC = () => {
                       <Fade in={true}>
                         <Box
                           textAlign="center"
-                          py={16}
+                          py={{ base: 10, md: 16 }}
                           bg="green.50"
                           borderRadius="lg"
                           border="2px dashed"
                           borderColor="green.200"
                         >
-                          <Icon as={FiShoppingBag} boxSize={16} color="green.300" mb={4} />
-                          <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                          <Icon as={FiShoppingBag} boxSize={{ base: 12, md: 16 }} color="green.300" mb={4} />
+                          <Text color="gray.600" fontSize={{ base: 'md', md: 'lg' }} fontWeight="medium" mb={2}>
                             {(unifiedSearch || productSearch) || productFilter !== 'all'
                               ? 'No products match your search/filters'
                               : 'Start by adding your first product!'}
@@ -2888,7 +2879,7 @@ const Dashboard: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                        <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                           {getPaginatedItems(
                             [...filteredProducts].sort((a, b) => {
                               const aDate = new Date(a.created_at).getTime()
@@ -2912,7 +2903,7 @@ const Dashboard: React.FC = () => {
                 </TabPanel>
 
                 {/* Offers Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
                     {/* Sub-tabs for Offers */}
                     <Tabs
@@ -2925,24 +2916,25 @@ const Dashboard: React.FC = () => {
                       colorScheme="brand"
                     >
                       <TabList
-                        flexWrap={{ base: 'nowrap', md: 'nowrap' }}
+                        flexWrap="nowrap"
                         overflowX={{ base: 'auto', md: 'visible' }}
-                        justifyContent={{ base: 'space-between', md: 'flex-start' }}
+                        justifyContent={{ base: 'flex-start', md: 'flex-start' }}
                         w="100%"
                         sx={{
                           '&::-webkit-scrollbar': { display: 'none' },
                           scrollbarWidth: 'none',
                           msOverflowStyle: 'none',
-                          gap: '4px',
+                          gap: { base: '6px', md: '8px' },
                           '& > button': {
-                            px: '6px !important',
-                            py: '4px !important',
+                            px: { base: '10px', md: '14px' },
+                            py: { base: '5px', md: '6px' },
                             minW: 'fit-content',
-                            flex: { base: 'initial', md: 'initial' },
+                            flex: 'none',
+                            fontSize: { base: 'xs', md: 'sm' },
                           }
                         }}
                       >
-                        <Tab fontSize={{ base: '9px', md: 'sm' }} mr={{ base: 8, md: 0 }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Buyout Offers</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Buyout</Box>
                           {offersStats.buyout > 0 && (
@@ -2951,7 +2943,7 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 12, md: 0 }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
                           {offersStats.sentPending > 0 && (
@@ -2960,7 +2952,7 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 10, md: 0 }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
                           {offersStats.receivedPending > 0 && (
@@ -2969,7 +2961,7 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
                           {offersStats.ongoing > 0 && (
@@ -2984,7 +2976,7 @@ const Dashboard: React.FC = () => {
                         {/* Buyout Offers */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3052,7 +3044,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = true
                                   return (
@@ -3097,7 +3089,7 @@ const Dashboard: React.FC = () => {
                         {/* Sent Offers */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3164,7 +3156,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = false
                                   return (
@@ -3209,7 +3201,7 @@ const Dashboard: React.FC = () => {
                         {/* Received Offers */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3277,7 +3269,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = true
                                   return (
@@ -3322,7 +3314,7 @@ const Dashboard: React.FC = () => {
                         {/* Ongoing Trades */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3445,7 +3437,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
                                   return (
@@ -3492,7 +3484,7 @@ const Dashboard: React.FC = () => {
                 </TabPanel>
 
                 {/* Multi-Way Trades Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   {multiWayTradesLoading ? (
                     <Center py={12}>
                       <Spinner size="lg" color="brand.500" />
@@ -3509,7 +3501,7 @@ const Dashboard: React.FC = () => {
                         </Text>
                       </Box>
                     ) : (
-                      <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
                         {/* Mock Trade Loop 1 */}
                         <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                           <MultiWayTradeUI
@@ -3617,7 +3609,7 @@ const Dashboard: React.FC = () => {
                       ))}
                     </Box>
                   ) : (
-                    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                    <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
                       {multiWayTrades.map((trade) => (
                         <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                           <MultiWayTradeUI
@@ -3634,7 +3626,7 @@ const Dashboard: React.FC = () => {
                 </TabPanel>
 
                 {/* Trade History Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
                     {/* Trade History Grid */}
                     {allCompletedTrades.length === 0 ? (
@@ -4249,6 +4241,8 @@ const Dashboard: React.FC = () => {
           </Modal>
 
           {/* Notifications are handled on their own page at /notifications */}
+          {/* Bottom spacer so content isn't hidden behind FloatingTab on mobile */}
+          <Box display={{ base: 'block', sm: 'none' }} h="80px" flexShrink={0} />
         </VStack>
       </Container>
 

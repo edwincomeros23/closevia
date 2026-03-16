@@ -1322,11 +1322,11 @@ const ProductDetail: React.FC = () => {
           </Box>
 
           {/* Seller Information */}
-          <Box bg="white" p={6} rounded="lg" shadow="sm">
+          <Box bg="white" p={{ base: 4, md: 6 }} rounded="lg" shadow="sm">
             <Heading size="md" mb={4}>
               About the Trader
             </Heading>
-            <Flex justify="space-between" align="stretch" gap={6}>
+            <Flex justify="space-between" align="stretch" gap={6} flexDir={{ base: 'column', lg: 'row' }}>
               <HStack spacing={4} flex={1}>
                 <RouterLink to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}>
                   <VerifiedAvatar
@@ -1383,7 +1383,7 @@ const ProductDetail: React.FC = () => {
               </HStack>
 
               {/* Seller Stats */}
-              <SimpleGrid columns={{ base: 2, md: 5 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={-6}>
+              <SimpleGrid columns={{ base: 3, md: 5 }} spacing={{ base: 3, md: 4 }} flex={1} alignItems="start" mt={{ base: 0, lg: -6 }}>
                 <VStack spacing={1} align="center">
                   {sellerStats?.avg_rating ? (
                     <HStack spacing={1}>

@@ -625,13 +625,13 @@ const LandingPage: React.FC = () => {
               Join thousands of community members already trading on CloviaPH.
               Sign up today and discover a smarter way to exchange.
             </Text>
-            <HStack spacing={4}>
+            <HStack spacing={4} flexWrap="wrap" justify={{ base: 'center', md: 'flex-start' }}>
               <Button
                 bg={C.accent}
                 color={C.white}
                 borderRadius="full"
-                px={8}
-                size="lg"
+                px={{ base: 6, md: 8 }}
+                size={{ base: 'md', md: 'lg' }}
                 fontWeight="bold"
                 _hover={{ bg: C.accentLight, transform: 'translateY(-2px)' }}
                 transition="all 0.2s"
@@ -644,8 +644,8 @@ const LandingPage: React.FC = () => {
                 borderColor="whiteAlpha.300"
                 color={C.white}
                 borderRadius="full"
-                px={8}
-                size="lg"
+                px={{ base: 6, md: 8 }}
+                size={{ base: 'md', md: 'lg' }}
                 _hover={{ borderColor: C.accentLight, color: C.accentLight }}
                 transition="all 0.2s"
                 onClick={() => navigate('/company')}
