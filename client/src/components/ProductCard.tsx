@@ -128,6 +128,25 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </Badge>
         )}
 
+        {/* Trade Match score badge */}
+        {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (
+          <Badge
+            position="absolute"
+            top={2}
+            left={2}
+            variant="solid"
+            borderRadius="full"
+            px={2}
+            py={0.5}
+            fontSize="10px"
+            fontWeight="bold"
+            bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
+            color="white"
+          >
+            {product.tradeMatchScore}% Match
+          </Badge>
+        )}
+
         {/* Status badge (e.g. sold) */}
         {product.status === 'sold' && (
           <Badge
