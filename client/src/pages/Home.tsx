@@ -70,6 +70,7 @@ import VerifiedAvatar from '../components/VerifiedAvatar'
 import ProductCard from '../components/ProductCard'
 import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
+import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -510,6 +511,9 @@ const Home: React.FC = () => {
     return ranked
   }, [offersForProduct, offersSortBy])
 
+  // Trade match scores for logged-in users
+  const tradeScores = useTradeMatchScores(products)
+
   // Product card rendering now handled by memoized ProductCard component
 
   // Component to render product grid with git pull --no-edit injections
@@ -574,7 +578,7 @@ const Home: React.FC = () => {
           item.type === 'product' ? (
             <Box key={`product-${item.data.id}`} w="full" h="full">
               <ProductCard
-                product={item.data}
+                product={{ ...item.data, tradeMatchScore: tradeScores.get(item.data.id) }}
                 onTradeClick={handleTradeClick}
                 onBuyoutClick={handleBuyoutClick}
                 onBuyClick={handleBuyClick}
