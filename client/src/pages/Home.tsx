@@ -1376,7 +1376,7 @@ const Home: React.FC = () => {
         </ModalContent>
       </Modal>
 
-      <Box mt={12}>
+      <Box mt={{ base: 0, md: 6, lg: 8 }}>
         <ActivityFeed />
       </Box>
 
