@@ -127,6 +127,14 @@ export interface SearchFilters {
   allow_buying?: boolean
   page?: number
   limit?: number
+  useSmartSearch?: boolean
+}
+
+export interface SearchSuggestions {
+  products: string[]
+  categories: string[]
+  tags: string[]
+  brands: string[]
 }
 
 export interface PaginatedResponse<T> {

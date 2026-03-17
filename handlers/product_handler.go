@@ -502,9 +502,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	if keyword != "" {
 		// Broaden keyword search across product attributes and seller/org details
-		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ? OR u.name LIKE ?)"
+		whereClause += " AND (p.title LIKE ? OR p.description LIKE ? OR p.category LIKE ? OR p.`condition` LIKE ? OR u.name LIKE ? OR p.brand LIKE ? OR p.item_type LIKE ? OR p.tags LIKE ?)"
 		searchPattern := "%" + keyword + "%"
-		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
+		args = append(args, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern)
 	}
 
 	if condition != "" {
@@ -2140,5 +2140,386 @@ func (h *ProductHandler) ReorderImages(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "Image order updated",
+	})
+}
+
+// SearchSuggestions returns fast DB-based suggestions for autocomplete
+func (h *ProductHandler) SearchSuggestions(c *fiber.Ctx) error {
+	q := strings.TrimSpace(c.Query("q", ""))
+	if q == "" || len(q) < 2 {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: map[string]interface{}{
+				"products":   []string{},
+				"categories": []string{},
+				"tags":       []string{},
+				"brands":     []string{},
+			},
+		})
+	}
+
+	pattern := "%" + q + "%"
+
+	// Matching product titles (top 5)
+	var productTitles []string
+	rows, err := h.db.Query(
+		"SELECT DISTINCT title FROM products WHERE status = 'available' AND title LIKE ? ORDER BY premium DESC, created_at DESC LIMIT 5",
+		pattern,
+	)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var title string
+			if rows.Scan(&title) == nil {
+				productTitles = append(productTitles, title)
+			}
+		}
+	}
+
+	// Matching categories (top 3)
+	var categories []string
+	catRows, err := h.db.Query(
+		"SELECT DISTINCT category FROM products WHERE status = 'available' AND category LIKE ? AND category != '' LIMIT 3",
+		pattern,
+	)
+	if err == nil {
+		defer catRows.Close()
+		for catRows.Next() {
+			var cat string
+			if catRows.Scan(&cat) == nil {
+				categories = append(categories, cat)
+			}
+		}
+	}
+
+	// Matching tags (search inside JSON array, top 5)
+	var tags []string
+	tagRows, err := h.db.Query(
+		"SELECT DISTINCT tags FROM products WHERE status = 'available' AND tags IS NOT NULL AND tags LIKE ? LIMIT 10",
+		pattern,
+	)
+	if err == nil {
+		defer tagRows.Close()
+		seen := make(map[string]bool)
+		for tagRows.Next() {
+			var tagsJSON string
+			if tagRows.Scan(&tagsJSON) == nil {
+				var tagList []string
+				if json.Unmarshal([]byte(tagsJSON), &tagList) == nil {
+					for _, t := range tagList {
+						tLower := strings.ToLower(t)
+						qLower := strings.ToLower(q)
+						if strings.Contains(tLower, qLower) && !seen[tLower] {
+							tags = append(tags, t)
+							seen[tLower] = true
+							if len(tags) >= 5 {
+								break
+							}
+						}
+					}
+				}
+			}
+			if len(tags) >= 5 {
+				break
+			}
+		}
+	}
+
+	// Matching brands (top 3)
+	var brands []string
+	brandRows, err := h.db.Query(
+		"SELECT DISTINCT brand FROM products WHERE status = 'available' AND brand IS NOT NULL AND brand != '' AND brand LIKE ? LIMIT 3",
+		pattern,
+	)
+	if err == nil {
+		defer brandRows.Close()
+		for brandRows.Next() {
+			var brand string
+			if brandRows.Scan(&brand) == nil {
+				brands = append(brands, brand)
+			}
+		}
+	}
+
+	// Ensure non-nil slices
+	if productTitles == nil {
+		productTitles = []string{}
+	}
+	if categories == nil {
+		categories = []string{}
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	if brands == nil {
+		brands = []string{}
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"products":   productTitles,
+			"categories": categories,
+			"tags":       tags,
+			"brands":     brands,
+		},
+	})
+}
+
+// SmartSearch uses AI to parse natural language queries and return relevant products
+func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
+	q := strings.TrimSpace(c.Query("q", ""))
+	if q == "" {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: models.PaginatedResponse{
+				Data:       []models.Product{},
+				Total:      0,
+				Page:       1,
+				Limit:      20,
+				TotalPages: 0,
+			},
+		})
+	}
+
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	viewerLatStr := c.Query("lat", "")
+	viewerLngStr := c.Query("lng", "")
+	hasLocation := viewerLatStr != "" && viewerLngStr != ""
+
+	// Parse query with AI
+	parsed, err := services.ParseSearchQuery(q, hasLocation)
+	if err != nil {
+		log.Printf("[SmartSearch] AI parse error: %v — falling back to keyword search", err)
+		parsed = &services.SmartSearchResult{Keywords: strings.Fields(q)}
+	}
+
+	// Build WHERE clause
+	whereClause := "WHERE p.status = 'available'"
+	var args []interface{}
+
+	// Build keyword conditions from all parsed keywords
+	if len(parsed.Keywords) > 0 {
+		var keywordClauses []string
+		for _, kw := range parsed.Keywords {
+			pattern := "%" + kw + "%"
+			keywordClauses = append(keywordClauses, "(p.title LIKE ? OR p.description LIKE ? OR p.brand LIKE ? OR p.item_type LIKE ? OR p.tags LIKE ? OR p.category LIKE ?)")
+			args = append(args, pattern, pattern, pattern, pattern, pattern, pattern)
+		}
+		whereClause += " AND (" + strings.Join(keywordClauses, " OR ") + ")"
+	}
+
+	// Apply category filter if AI detected one
+	if parsed.Category != "" {
+		whereClause += " AND (p.category = ? OR p.category LIKE ?)"
+		args = append(args, parsed.Category, "%"+parsed.Category+"%")
+	}
+
+	// Apply price filters if AI detected price intent
+	if parsed.MinPrice != nil {
+		whereClause += " AND p.price >= ?"
+		args = append(args, *parsed.MinPrice)
+	}
+	if parsed.MaxPrice != nil {
+		whereClause += " AND p.price <= ?"
+		args = append(args, *parsed.MaxPrice)
+	}
+
+	// Apply condition filter
+	if parsed.Condition != "" {
+		whereClause += " AND p.`condition` = ?"
+		args = append(args, parsed.Condition)
+	}
+
+	// Count total
+	countQuery := "SELECT COUNT(*) FROM products p LEFT JOIN users u ON p.seller_id = u.id " + whereClause
+	var total int
+	if err := h.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		total = 0
+	}
+
+	// Main query
+	query := `
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `,
+		       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
+		       u.name as seller_name, u.profile_picture as seller_profile_picture,
+		       u.latitude as seller_latitude, u.longitude as seller_longitude,
+			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
+			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
+		FROM products p
+		LEFT JOIN users u ON p.seller_id = u.id
+		` + whereClause
+
+	// Sorting: distance-first if AI detected location intent and viewer has coords
+	if parsed.SortByDistance && hasLocation {
+		query += ` ORDER BY p.premium DESC, COALESCE(p.boosted_at, p.created_at) DESC`
+	} else {
+		query += ` ORDER BY p.premium DESC, COALESCE(p.boosted_at, p.created_at) DESC`
+	}
+
+	query += ` LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		log.Printf("[SmartSearch] Query error: %v", err)
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Smart search failed",
+		})
+	}
+	defer rows.Close()
+
+	// Parse viewer coordinates
+	var viewerLat, viewerLon *float64
+	if hasLocation {
+		if lat, err := strconv.ParseFloat(viewerLatStr, 64); err == nil {
+			if lon, err := strconv.ParseFloat(viewerLngStr, 64); err == nil {
+				viewerLat = &lat
+				viewerLon = &lon
+			}
+		}
+	}
+
+	var products []models.Product
+	for rows.Next() {
+		var product models.Product
+		var slugNull sql.NullString
+		var conditionNull sql.NullString
+		var priceNull sql.NullFloat64
+		var sellerProfile sql.NullString
+		var imageURLsJSONStr string
+		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
+		var boostedAtNull sql.NullTime
+		var offerCount int
+		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
+			&product.AllowBuying, &product.BarterOnly, &product.Location,
+			&conditionNull, &product.SuggestedValue, &product.Category,
+			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
+			&product.Wants, &product.WantedCategories,
+			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
+			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
+		if err != nil {
+			log.Printf("[SmartSearch] Row scan error: %v", err)
+			continue
+		}
+		if slugNull.Valid {
+			product.Slug = slugNull.String
+		}
+		if boostedAtNull.Valid {
+			product.BoostedAt = &boostedAtNull.Time
+		}
+		if conditionNull.Valid {
+			product.Condition = conditionNull.String
+		}
+		if priceNull.Valid {
+			p := priceNull.Float64
+			product.Price = &p
+		}
+		if sellerProfile.Valid {
+			product.SellerProfilePicture = sellerProfile.String
+		}
+
+		// Coordinates
+		var finalLat, finalLon *float64
+		if latNull.Valid {
+			l := latNull.Float64
+			product.Latitude = &l
+			finalLat = &l
+		} else if sLatNull.Valid {
+			l := sLatNull.Float64
+			product.Latitude = &l
+			finalLat = &l
+		}
+		if lonNull.Valid {
+			l := lonNull.Float64
+			product.Longitude = &l
+			finalLon = &l
+		} else if sLonNull.Valid {
+			l := sLonNull.Float64
+			product.Longitude = &l
+			finalLon = &l
+		}
+
+		// Parse image URLs
+		if imageURLsJSONStr != "" {
+			var imageURLs []string
+			if err := json.Unmarshal([]byte(imageURLsJSONStr), &imageURLs); err == nil {
+				product.ImageURLs = models.StringArray(imageURLs)
+			}
+		}
+
+		// Compute distance
+		if viewerLat != nil && viewerLon != nil && finalLat != nil && finalLon != nil {
+			result := services.CalculateDistance(*viewerLat, *viewerLon, *finalLat, *finalLon)
+			if result.DistanceKm < 1 {
+				product.Distance = fmt.Sprintf("%d M", int(result.DistanceM))
+			} else if result.DistanceKm < 10 {
+				product.Distance = fmt.Sprintf("%.1f KM", result.DistanceKm)
+			} else {
+				product.Distance = fmt.Sprintf("%d KM", int(result.DistanceKm))
+			}
+		}
+
+		product.OfferCount = offerCount
+		products = append(products, product)
+	}
+
+	// Sort by distance if requested and viewer has location
+	if parsed.SortByDistance && viewerLat != nil && viewerLon != nil {
+		// Simple sort: products with coordinates first, sorted by distance
+		type productWithDist struct {
+			product  models.Product
+			distance float64
+		}
+		var withDist []productWithDist
+		for _, p := range products {
+			dist := 999999.0
+			if p.Latitude != nil && p.Longitude != nil {
+				result := services.CalculateDistance(*viewerLat, *viewerLon, *p.Latitude, *p.Longitude)
+				dist = result.DistanceKm
+			}
+			withDist = append(withDist, productWithDist{product: p, distance: dist})
+		}
+		// Sort by distance (nearest first), premium products first within same distance range
+		for i := 0; i < len(withDist); i++ {
+			for j := i + 1; j < len(withDist); j++ {
+				if withDist[j].distance < withDist[i].distance {
+					withDist[i], withDist[j] = withDist[j], withDist[i]
+				}
+			}
+		}
+		products = make([]models.Product, len(withDist))
+		for i, wd := range withDist {
+			products[i] = wd.product
+		}
+	}
+
+	if products == nil {
+		products = []models.Product{}
+	}
+
+	totalPages := 0
+	if limit > 0 {
+		totalPages = (total + limit - 1) / limit
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: models.PaginatedResponse{
+			Data:       products,
+			Total:      total,
+			Page:       page,
+			Limit:      limit,
+			TotalPages: totalPages,
+		},
 	})
 }

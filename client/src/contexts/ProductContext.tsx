@@ -259,7 +259,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         setCurrentFilters(filters)
 
         const params = new URLSearchParams()
-        if (filters.keyword) params.append('keyword', filters.keyword)
+        if (filters.keyword) params.append(filters.useSmartSearch ? 'q' : 'keyword', filters.keyword)
         if (filters.category) params.append('category', filters.category)
         if (filters.condition) params.append('condition', filters.condition)
         if (filters.verified_seller_only !== undefined) params.append('verified_seller_only', filters.verified_seller_only.toString())
@@ -271,13 +271,14 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
         // Pass viewer coordinates for server-side distance calculation
         if (userLocation) {
-          params.append('viewer_lat', userLocation.lat.toString())
-          params.append('viewer_lng', userLocation.lng.toString())
+          params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', userLocation.lat.toString())
+          params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', userLocation.lng.toString())
         }
         params.append('page', (filters.page || 1).toString())
         params.append('limit', (filters.limit || 10).toString())
 
-        const response = await api.get(`/api/products?${params.toString()}`, {
+        const endpoint = filters.useSmartSearch ? '/api/products/smart-search' : '/api/products'
+        const response = await api.get(`${endpoint}?${params.toString()}`, {
           headers: getAuthHeaders(),
         })
 
@@ -353,7 +354,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
 
       const params = new URLSearchParams()
       const filters = currentFilters
-      if (filters.keyword) params.append('keyword', filters.keyword)
+      if (filters.keyword) params.append(filters.useSmartSearch ? 'q' : 'keyword', filters.keyword)
       if (filters.category) params.append('category', filters.category)
       if (filters.condition) params.append('condition', filters.condition)
       if (filters.verified_seller_only !== undefined) params.append('verified_seller_only', filters.verified_seller_only.toString())
@@ -365,14 +366,15 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       if (filters.allow_buying !== undefined) params.append('allow_buying', filters.allow_buying.toString())
       // Pass viewer coordinates for server-side distance calculation
       if (userLocation) {
-        params.append('viewer_lat', userLocation.lat.toString())
-        params.append('viewer_lng', userLocation.lng.toString())
+        params.append(filters.useSmartSearch ? 'lat' : 'viewer_lat', userLocation.lat.toString())
+        params.append(filters.useSmartSearch ? 'lng' : 'viewer_lng', userLocation.lng.toString())
       }
       params.append('page', nextPage.toString())
       params.append('limit', (filters.limit || 10).toString())
 
+      const endpoint = filters.useSmartSearch ? '/api/products/smart-search' : '/api/products'
       const response = await apiCallWithRetry(async () => {
-        return await api.get(`/api/products?${params.toString()}`, {
+        return await api.get(`${endpoint}?${params.toString()}`, {
           headers: getAuthHeaders(),
         })
       })
