@@ -221,6 +221,8 @@ func main() {
 	auth.Post("/google", userHandler.GoogleLogin)
 	auth.Post("/verify-email", userHandler.VerifyEmail)
 	auth.Post("/resend-verification", userHandler.ResendVerification)
+	auth.Post("/forgot-password", userHandler.ForgotPassword)
+	auth.Post("/reset-password", userHandler.ResetPassword)
 
 	// User routes (authentication required)
 	users := api.Group("/users")
@@ -265,6 +267,8 @@ func main() {
 	products.Get("", productHandler.GetProducts)                       // Support no trailing slash
 	products.Get("/user/:id", productHandler.GetUserProducts)          // Public route
 	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
+	products.Get("/search-suggestions", productHandler.SearchSuggestions) // Smart search autocomplete
+	products.Get("/smart-search", productHandler.SmartSearch)            // AI-powered search
 	// Specific routes must come before generic :id route
 	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
 	products.Post("/check-image-quality", productHandler.CheckImageQuality)                           // Fast image quality check
