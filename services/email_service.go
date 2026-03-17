@@ -5,9 +5,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/smtp"
 	"os"
 	"time"
 )
+
+// sendViaGmailSMTP sends an HTML email using Gmail SMTP as fallback when Brevo isn't configured.
+// Requires SMTP_EMAIL and SMTP_PASSWORD (Gmail App Password) in .env
+func sendViaGmailSMTP(toEmail, subject, htmlBody string) error {
+	smtpEmail := os.Getenv("SMTP_EMAIL")
+	smtpPassword := os.Getenv("SMTP_PASSWORD")
+
+	if smtpEmail == "" || smtpPassword == "" {
+		return fmt.Errorf("SMTP not configured (SMTP_EMAIL or SMTP_PASSWORD missing)")
+	}
+
+	from := smtpEmail
+	to := toEmail
+	host := "smtp.gmail.com"
+	port := "587"
+
+	headers := fmt.Sprintf("From: Clovia <%s>\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n", from, to, subject)
+	msg := []byte(headers + htmlBody)
+
+	auth := smtp.PlainAuth("", from, smtpPassword, host)
+	err := smtp.SendMail(host+":"+port, auth, from, []string{to}, msg)
+	if err != nil {
+		return fmt.Errorf("gmail SMTP error: %w", err)
+	}
+
+	fmt.Printf("✅ Email sent to %s via Gmail SMTP\n", toEmail)
+	return nil
+}
 
 // SendOTPEmail sends a branded HTML email with a 6-digit OTP code to the user.
 func SendOTPEmail(toEmail, toName, code string) error {
@@ -121,6 +150,105 @@ func SendSchoolEmailOTP(toEmail, toName, code string) error {
 
 	fmt.Printf("✅ School verification email sent to %s via Brevo\n", toEmail)
 	return nil
+}
+
+// SendPasswordResetEmail sends a 6-digit OTP for password reset.
+func SendPasswordResetEmail(toEmail, toName, code string) error {
+	apiKey := os.Getenv("BREVO_API_KEY")
+	senderEmail := os.Getenv("BREVO_SENDER_EMAIL")
+
+	subject := "Reset your Clovia password"
+	htmlBody := buildPasswordResetEmailHTML(toName, code)
+
+	// Try Brevo first
+	if apiKey != "" && senderEmail != "" {
+		url := "https://api.brevo.com/v3/smtp/email"
+
+		payload := map[string]interface{}{
+			"sender": map[string]string{
+				"name":  "Clovia",
+				"email": senderEmail,
+			},
+			"to": []map[string]string{
+				{
+					"email": toEmail,
+					"name":  toName,
+				},
+			},
+			"subject":     subject,
+			"htmlContent": htmlBody,
+		}
+
+		jsonPayload, _ := json.Marshal(payload)
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+		if err == nil {
+			req.Header.Set("api-key", apiKey)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/json")
+
+			client := &http.Client{Timeout: 10 * time.Second}
+			resp, err := client.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode < 300 {
+					fmt.Printf("✅ Password reset email sent to %s via Brevo\n", toEmail)
+					return nil
+				}
+				fmt.Printf("⚠️  Brevo failed (status %d), falling back to Gmail SMTP\n", resp.StatusCode)
+			} else {
+				fmt.Printf("⚠️  Brevo request error: %v, falling back to Gmail SMTP\n", err)
+			}
+		}
+	}
+
+	// Fallback to Gmail SMTP
+	if err := sendViaGmailSMTP(toEmail, subject, htmlBody); err == nil {
+		return nil
+	}
+
+	// Last resort: print to console
+	fmt.Println("⚠️  No email service configured — printing OTP to console")
+	fmt.Printf("   [DEV] Password reset OTP for %s: %s\n", toEmail, code)
+	return nil
+}
+
+// buildPasswordResetEmailHTML returns HTML for the password reset OTP email.
+func buildPasswordResetEmailHTML(name, code string) string {
+	displayCode := code
+	if len(code) >= 6 {
+		displayCode = code[:3] + " " + code[3:]
+	}
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Reset your password</title></head>
+<body style="margin:0;padding:0;background-color:#FFFDF1;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+  <table width="100%%" cellpadding="0" cellspacing="0" style="background-color:#FFFDF1;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.06);overflow:hidden;">
+        <tr><td style="background:linear-gradient(135deg,#6B9E78 0%%,#4a7c59 100%%);padding:32px 40px;text-align:center;">
+          <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;">Clovia</h1>
+          <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Campus Marketplace</p>
+        </td></tr>
+        <tr><td style="padding:40px 40px 32px;">
+          <p style="color:#374151;font-size:16px;margin:0 0 8px;">Hi %s,</p>
+          <p style="color:#374151;font-size:15px;margin:0 0 32px;line-height:1.6;">
+            We received a request to reset your password. Use the code below to proceed.
+            This code expires in <strong>15 minutes</strong>.
+          </p>
+          <div style="background:#FFF5F5;border:2px dashed #E53E3E;border-radius:12px;padding:28px;text-align:center;margin-bottom:32px;">
+            <p style="color:#E53E3E;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">Password reset code</p>
+            <p style="color:#1F2937;font-size:44px;font-weight:700;letter-spacing:8px;margin:0;font-family:'Courier New',monospace;">%s</p>
+          </div>
+          <p style="color:#6B7280;font-size:13px;margin:0;">If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.</p>
+        </td></tr>
+        <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;text-align:center;">
+          <p style="color:#9CA3AF;font-size:12px;margin:0;">© 2025 Clovia — WMSU Campus Marketplace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`, name, displayCode)
 }
 
 // buildSchoolEmailOTPHTML returns HTML for the school email verification OTP.

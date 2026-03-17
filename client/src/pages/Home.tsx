@@ -55,7 +55,7 @@ import { FiShoppingBag } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
-import { SearchFilters } from '../types'
+import { SearchFilters, SearchSuggestions } from '../types'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
@@ -124,6 +124,52 @@ const Home: React.FC = () => {
     limit: 20, // Load more products
   })
   const [hasSearched, setHasSearched] = useState(false)
+
+  // Smart search suggestions state
+  const [suggestions, setSuggestions] = useState<SearchSuggestions>({ products: [], categories: [], tags: [], brands: [] })
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+  const debouncedSuggestionTerm = useDebounce(searchTerm, 500)
+
+  // Fetch search suggestions
+  useEffect(() => {
+    if (debouncedSuggestionTerm.trim().length < 2) {
+      setSuggestions({ products: [], categories: [], tags: [], brands: [] })
+      setShowSuggestions(false)
+      return
+    }
+    let cancelled = false
+    const fetchSuggestions = async () => {
+      setSuggestionsLoading(true)
+      try {
+        const res = await api.get(`/api/products/search-suggestions?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}`)
+        if (!cancelled && res.data?.success && res.data?.data) {
+          setSuggestions(res.data.data)
+          const d = res.data.data
+          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0
+          setShowSuggestions(hasResults)
+        }
+      } catch {
+        // Silently fail — suggestions are non-critical
+      } finally {
+        if (!cancelled) setSuggestionsLoading(false)
+      }
+    }
+    fetchSuggestions()
+    return () => { cancelled = true }
+  }, [debouncedSuggestionTerm])
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Debounce search term for smooth UX
   const debouncedSearchTerm = useDebounce(searchTerm, 400)
@@ -242,7 +288,26 @@ const Home: React.FC = () => {
 
   const handleSearch = () => {
     setSelectedCategory('All')
-    setFilters(prev => ({ ...prev, keyword: searchTerm, category: '', page: 1 }))
+    setShowSuggestions(false)
+    // Detect natural language queries for smart search
+    const term = searchTerm.trim().toLowerCase()
+    const smartSignals = ['near me', 'nearby', 'cheap', 'budget', 'expensive', 'under ', 'below ', 'above ']
+    const isSmartQuery = term.split(/\s+/).length >= 2 && smartSignals.some(s => term.includes(s))
+    setFilters(prev => ({ ...prev, keyword: searchTerm, category: '', page: 1, useSmartSearch: isSmartQuery || undefined }))
+    setHasSearched(true)
+  }
+
+  const handleSuggestionClick = (text: string, type: 'product' | 'category' | 'tag' | 'brand') => {
+    setShowSuggestions(false)
+    if (type === 'category') {
+      setSearchTerm('')
+      setSelectedCategory(text)
+      setFilters(prev => ({ ...prev, keyword: '', category: text, page: 1, useSmartSearch: undefined }))
+    } else {
+      setSearchTerm(text)
+      setSelectedCategory('All')
+      setFilters(prev => ({ ...prev, keyword: text, category: '', page: 1, useSmartSearch: undefined }))
+    }
     setHasSearched(true)
   }
 
@@ -558,7 +623,7 @@ const Home: React.FC = () => {
           position="relative"
         >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap">
+          <HStack w="full" spacing={3} wrap="wrap" ref={searchContainerRef} position="relative">
             <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.400" />
@@ -566,8 +631,9 @@ const Home: React.FC = () => {
               <Input
                 placeholder="Search products, categories, or keywords..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value.trim().length >= 2) setShowSuggestions(true) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); if (e.key === 'Escape') setShowSuggestions(false) }}
+                onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0)) setShowSuggestions(true) }}
                 bg="white"
                 border="2px"
                 borderColor="gray.200"
@@ -577,6 +643,86 @@ const Home: React.FC = () => {
                 }}
               />
             </InputGroup>
+
+            {/* Search Suggestions Dropdown */}
+            {showSuggestions && (
+              <Box
+                position="absolute"
+                top="100%"
+                left={0}
+                right={{ base: 0, md: 'auto' }}
+                w={{ base: '100%', md: '60%' }}
+                maxW="600px"
+                bg="white"
+                border="1px solid"
+                borderColor="gray.200"
+                rounded="lg"
+                shadow="lg"
+                zIndex={200}
+                maxH="320px"
+                overflowY="auto"
+                mt={1}
+              >
+                {suggestionsLoading ? (
+                  <Center py={4}><Spinner size="sm" color="brand.500" /><Text ml={2} fontSize="sm" color="gray.500">Searching...</Text></Center>
+                ) : (
+                  <VStack align="stretch" spacing={0} py={1}>
+                    {suggestions.products.length > 0 && (
+                      <>
+                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Products</Text>
+                        {suggestions.products.map((p, i) => (
+                          <Box key={`p-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(p, 'product')}>
+                            <HStack spacing={2}>
+                              <SearchIcon color="gray.400" boxSize={3} />
+                              <Text fontSize="sm" noOfLines={1}>{p}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {suggestions.categories.length > 0 && (
+                      <>
+                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Categories</Text>
+                        {suggestions.categories.map((c, i) => (
+                          <Box key={`c-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(c, 'category')}>
+                            <HStack spacing={2}>
+                              <Icon as={FaTag} color="brand.400" boxSize={3} />
+                              <Text fontSize="sm">{c}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {suggestions.tags.length > 0 && (
+                      <>
+                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Tags</Text>
+                        {suggestions.tags.map((t, i) => (
+                          <Box key={`t-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(t, 'tag')}>
+                            <HStack spacing={2}>
+                              <Text color="brand.400" fontSize="xs">#</Text>
+                              <Text fontSize="sm">{t}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {suggestions.brands.length > 0 && (
+                      <>
+                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Brands</Text>
+                        {suggestions.brands.map((b, i) => (
+                          <Box key={`b-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(b, 'brand')}>
+                            <HStack spacing={2}>
+                              <StarIcon color="yellow.400" boxSize={3} />
+                              <Text fontSize="sm">{b}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                  </VStack>
+                )}
+              </Box>
+            )}
 
             {/* Toggle Filters icon (mobile inline, right side) */}
             <IconButton
