@@ -103,6 +103,7 @@ export interface ProductUpdate {
   barter_only?: boolean
   location?: string
   condition?: string
+  category?: string
   bidding_type?: 'none' | 'blind' | 'open'
 }
 

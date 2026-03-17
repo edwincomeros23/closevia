@@ -14,25 +14,18 @@ import {
   Text,
   Alert,
   AlertIcon,
-  NumberInput,
-  NumberInputField,
-  NumberInputStepper,
-  NumberIncrementStepper,
-  NumberDecrementStepper,
-  Switch,
-  FormHelperText,
   Spinner,
-  Center,
   useToast,
   Select,
   Image as ChakraImage,
+  Grid,
+  FormHelperText,
 } from '@chakra-ui/react'
-import { useProducts } from '../contexts/ProductContext'
 import { ProductUpdate } from '../types'
 import { api } from '../services/api'
+import { PRODUCT_CATEGORIES } from '../utils/categories'
 
 const EditProduct: React.FC = () => {
-  const { updateProduct } = useProducts()
   const { id } = useParams<{ id: string }>()
   const [formData, setFormData] = useState<ProductUpdate>({})
   const [loading, setLoading] = useState(false)
@@ -56,23 +49,34 @@ const EditProduct: React.FC = () => {
       setFetching(true)
       setError('')
       const response = await api.get(`/api/products/${id}`)
-      const product = response.data.data
+      const resData = response.data
+
+      // Handle different API response structures
+      let product: any = null
+      if (resData?.data?.product) {
+        product = resData.data.product
+      } else if (resData?.data?.id) {
+        product = resData.data
+      } else if (resData?.id) {
+        product = resData
+      }
+
+      if (!product) {
+        setError('Product not found')
+        return
+      }
+
       setOriginalProduct(product)
 
       // Pre-fill form with current values
       setFormData({
-        title: product.title,
-        description: product.description,
-        price: product.price,
+        title: product.title || '',
+        description: product.description || '',
+        price: product.price ?? 0,
         image_urls: product.image_urls || [],
-        premium: product.premium,
-        status: product.status,
-        condition: product.condition,
-        allow_buying: product.allow_buying,
-        barter_only: product.barter_only,
-        bidding_type: product.bidding_type || 'none',
-
-        location: product.location,
+        condition: product.condition || '',
+        category: product.category || '',
+        location: product.location || '',
       })
 
       // Load persisted previews for this product
@@ -81,14 +85,11 @@ const EditProduct: React.FC = () => {
         const raw = localStorage.getItem(key)
         const persisted = raw ? (JSON.parse(raw) as string[]).filter(Boolean) : []
 
-        // product.image_urls may contain server URLs and (rarely) data URLs — prefer server URLs and avoid duplicates
         const serverImages = (product.image_urls || []).filter((u: any) => typeof u === 'string' && !u.startsWith('data:'))
 
-        // Merge preserving order: server images first, then persisted local previews that aren't already present
-        const combined = [...serverImages, ...persisted.filter(p => !serverImages.includes(p))]
+        const combined = [...serverImages, ...persisted.filter((p: string) => !serverImages.includes(p))]
         setImagePreviews(combined)
       } catch (e) {
-        // Fallback: show whatever the server returned (ensure strings)
         const serverImages = (product.image_urls || []).filter((u: any) => typeof u === 'string')
         setImagePreviews(serverImages)
       }
@@ -110,8 +111,7 @@ const EditProduct: React.FC = () => {
     }
     if (incoming.length === 0) return
 
-    // Read files sequentially to avoid FileReader concurrency issues and handle per-file errors
-    (async () => {
+    ;(async () => {
       const readResults: string[] = []
       for (const f of incoming) {
         try {
@@ -133,22 +133,20 @@ const EditProduct: React.FC = () => {
 
       if (readResults.length === 0) {
         toast({
-        id: "editproduct-no-images-added",
+          id: 'editproduct-no-images-added',
           title: 'No images added',
           description: 'Could not read any of the selected files. Try selecting fewer or smaller images.',
           status: 'warning',
           duration: 4000,
           isClosable: true,
         })
-        // reset input
         try {
           const el = document.getElementById('edit-image-input') as HTMLInputElement | null
           if (el) el.value = ''
-        } catch { }
+        } catch {}
         return
       }
 
-      // Merge with existing previews but cap total to 20 to avoid huge localStorage
       const combined = [...imagePreviews, ...readResults]
       const capped = combined.slice(-20)
       setImagePreviews(capped)
@@ -156,19 +154,18 @@ const EditProduct: React.FC = () => {
       try {
         const pid = originalProduct?.id || (id ? parseInt(id) : 'unknown')
         const key = `edit_images_${pid}`
-        const onlyData = capped.filter(u => typeof u === 'string' && u.startsWith('data:'))
+        const onlyData = capped.filter((u) => typeof u === 'string' && u.startsWith('data:'))
         localStorage.setItem(key, JSON.stringify(onlyData))
       } catch (e) {
         console.warn('Failed to persist image previews', e)
       }
 
-      setFormData(prev => ({ ...prev, image_urls: capped }))
+      setFormData((prev) => ({ ...prev, image_urls: capped }))
 
-      // reset the file input so same file can be selected again if needed
       try {
         const el = document.getElementById('edit-image-input') as HTMLInputElement | null
         if (el) el.value = ''
-      } catch { }
+      } catch {}
     })()
   }
 
@@ -177,43 +174,68 @@ const EditProduct: React.FC = () => {
     setImagePreviews(next)
     try {
       const key = `edit_images_${originalProduct.id}`
-      const onlyData = next.filter(u => typeof u === 'string' && u.startsWith('data:'))
+      const onlyData = next.filter((u) => typeof u === 'string' && u.startsWith('data:'))
       localStorage.setItem(key, JSON.stringify(onlyData))
-    } catch { }
-    setFormData(prev => ({ ...prev, image_urls: next }))
+    } catch {}
+    setFormData((prev) => ({ ...prev, image_urls: next }))
   }
 
   const handleInputChange = (field: keyof ProductUpdate, value: any) => {
-    // Special handling for image_urls: accept a string and convert to array
-    if (field === 'image_urls') {
-      setFormData(prev => ({ ...prev, image_urls: value ? [value] : [] }))
-    } else {
-      setFormData(prev => ({ ...prev, [field]: value }))
-    }
+    setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.title && !formData.description && !formData.price &&
-      (!formData.image_urls || formData.image_urls.length === 0) && formData.premium === undefined &&
-      formData.status === undefined) {
-      setError('Please make at least one change to update the product')
+    if (!formData.title?.trim()) {
+      setError('Please enter a product title')
       return
     }
 
-    if (formData.price !== undefined && formData.price <= 0) {
-      setError('Price must be greater than 0')
+    if (!formData.description?.trim()) {
+      setError('Please enter a product description')
       return
     }
 
     try {
       setLoading(true)
       setError('')
-      await updateProduct(parseInt(id!), formData)
+
+      // Backend expects multipart form data, not JSON
+      const form = new FormData()
+      if (formData.title) form.append('title', formData.title)
+      if (formData.description) form.append('description', formData.description)
+      if (formData.price !== undefined && formData.price !== null) form.append('price', String(formData.price))
+      if (formData.condition) form.append('condition', formData.condition)
+      if (formData.category) form.append('category', formData.category)
+      if (formData.location) form.append('location', formData.location)
+
+      // Add image files from previews that are data URLs (newly uploaded)
+      // For existing server URLs, we keep them via image_urls field
+      const serverImages = imagePreviews.filter((u) => !u.startsWith('data:'))
+      const dataImages = imagePreviews.filter((u) => u.startsWith('data:'))
+
+      // Convert data URLs to File objects and append
+      for (const dataUrl of dataImages) {
+        try {
+          const res = await fetch(dataUrl)
+          const blob = await res.blob()
+          const file = new File([blob], `image_${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
+          form.append('images', file)
+        } catch (err) {
+          console.warn('Failed to convert data URL to file', err)
+        }
+      }
+
+      // If there are existing server images, append them as image_urls
+      if (serverImages.length > 0) {
+        form.append('image_urls', JSON.stringify(serverImages))
+      }
+
+      await api.put(`/api/products/${id}`, form)
 
       toast({
-        id: "editproduct-product-updated",
+        id: 'editproduct-product-updated',
         title: 'Product updated!',
         description: 'Your product has been successfully updated',
         status: 'success',
@@ -221,9 +243,14 @@ const EditProduct: React.FC = () => {
         isClosable: true,
       })
 
+      // Clear persisted local previews
+      try {
+        localStorage.removeItem(`edit_images_${originalProduct.id}`)
+      } catch {}
+
       navigate('/dashboard')
     } catch (error: any) {
-      setError(error.message || 'Failed to update product')
+      setError(error.response?.data?.error || error.message || 'Failed to update product')
     } finally {
       setLoading(false)
     }
@@ -271,9 +298,7 @@ const EditProduct: React.FC = () => {
             <Heading size="xl" color="brand.500" mb={2}>
               Edit Product
             </Heading>
-            <Text color="gray.600">
-              Update your product listing
-            </Text>
+            <Text color="gray.600">Update your product listing</Text>
           </Box>
 
           <Box bg="white" p={8} rounded="lg" shadow="sm" w="full">
@@ -286,88 +311,98 @@ const EditProduct: React.FC = () => {
                   </Alert>
                 )}
 
-                <FormControl>
-                  <FormLabel>Product Title</FormLabel>
+                {/* Title */}
+                <FormControl isRequired>
+                  <FormLabel fontWeight="600">Product Title</FormLabel>
                   <Input
-                    value={formData.title || originalProduct.title}
+                    value={formData.title || ''}
                     onChange={(e) => handleInputChange('title', e.target.value)}
                     placeholder="Enter product title"
+                    maxLength={60}
                     size="lg"
                   />
-                  <FormHelperText>
-                    Leave empty to keep current title
+                  <FormHelperText color={(formData.title?.length || 0) > 50 ? 'orange.500' : 'gray.500'}>
+                    {formData.title?.length || 0}/60 characters
                   </FormHelperText>
                 </FormControl>
-                <FormControl>
-                  <FormLabel>Description</FormLabel>
+
+                {/* Description */}
+                <FormControl isRequired>
+                  <FormLabel fontWeight="600">Description</FormLabel>
                   <Textarea
-                    value={formData.description || originalProduct.description}
+                    value={formData.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     placeholder="Describe your product in detail"
+                    maxLength={500}
                     size="lg"
                     rows={4}
                   />
-                  <FormHelperText>
-                    Leave empty to keep current description
+                  <FormHelperText color={(formData.description?.length || 0) > 450 ? 'orange.500' : 'gray.500'}>
+                    {formData.description?.length || 0}/500 characters
                   </FormHelperText>
                 </FormControl>
 
+                {/* Price */}
                 <FormControl>
-                  <FormLabel htmlFor="price">Price (PHP)</FormLabel>
-                  <NumberInput
-                    id="price"
-                    value={formData.price !== undefined ? formData.price : originalProduct.price}
-                    onChange={(value) => handleInputChange('price', parseFloat(value) || 0)}
-                    min={0}
-                    precision={2}
-                    size="lg"
-                  >
-                    <NumberInputField placeholder="0.00" />
-                    <NumberInputStepper>
-                      <NumberIncrementStepper />
-                      <NumberDecrementStepper />
-                    </NumberInputStepper>
-                  </NumberInput>
-                  <FormHelperText>
-                    Leave empty to keep current price
-                  </FormHelperText>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel htmlFor="condition">Condition</FormLabel>
-                  <Select
-                    id="condition"
-                    value={formData.condition || ''}
-                    onChange={(e) => handleInputChange('condition', e.target.value)}
-                    placeholder="Select condition"
-                    size="lg"
-                    aria-label="Product condition"
-                  >
-                    <option value="New">New</option>
-                    <option value="Like-New">Like-New</option>
-                    <option value="Used">Used</option>
-                    <option value="Fair">Fair</option>
-                  </Select>
-                  <FormHelperText>
-                    Leave empty to keep current condition
-                  </FormHelperText>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Image URL</FormLabel>
+                  <FormLabel fontWeight="600">Price (₱)</FormLabel>
                   <Input
-                    value={formData.image_urls && formData.image_urls.length > 0 ? formData.image_urls[0] : (originalProduct.image_urls && originalProduct.image_urls[0])}
-                    onChange={(e) => handleInputChange('image_urls', e.target.value)}
-                    placeholder="https://example.com/image.jpg"
+                    type="number"
+                    value={formData.price || ''}
+                    onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
+                    placeholder="Enter price"
+                    size="lg"
+                    min={0}
+                  />
+                </FormControl>
+
+                {/* Category & Condition */}
+                <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4} w="full">
+                  <FormControl>
+                    <FormLabel fontWeight="600">Category</FormLabel>
+                    <Select
+                      value={formData.category || ''}
+                      onChange={(e) => handleInputChange('category', e.target.value)}
+                      placeholder="Select category"
+                      size="lg"
+                    >
+                      {PRODUCT_CATEGORIES.map((cat) => (
+                        <option key={cat.value} value={cat.value}>
+                          {cat.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel fontWeight="600">Condition</FormLabel>
+                    <Select
+                      value={formData.condition || ''}
+                      onChange={(e) => handleInputChange('condition', e.target.value)}
+                      placeholder="Select condition"
+                      size="lg"
+                    >
+                      <option value="New">New</option>
+                      <option value="Like-New">Like-New</option>
+                      <option value="Used">Used</option>
+                      <option value="Fair">Fair</option>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {/* Location */}
+                <FormControl>
+                  <FormLabel fontWeight="600">Location</FormLabel>
+                  <Input
+                    value={formData.location || ''}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    placeholder="e.g., Cebu City, Philippines"
                     size="lg"
                   />
-                  <FormHelperText>
-                    Leave empty to keep current image
-                  </FormHelperText>
                 </FormControl>
 
+                {/* Upload Images */}
                 <FormControl>
-                  <FormLabel>Upload Images</FormLabel>
+                  <FormLabel fontWeight="600">Images</FormLabel>
                   <input
                     id="edit-image-input"
                     type="file"
@@ -376,162 +411,35 @@ const EditProduct: React.FC = () => {
                     hidden
                     onChange={(e) => handleAddImageFiles(e.target.files)}
                   />
-                  <Button onClick={() => document.getElementById('edit-image-input')?.click()}>Add image</Button>
-                  <Text fontSize="sm" color="gray.500">You can add multiple images. Previews are stored locally until you save.</Text>
+                  <Button onClick={() => document.getElementById('edit-image-input')?.click()}>
+                    Add image
+                  </Button>
+                  <Text fontSize="sm" color="gray.500" mt={1}>
+                    You can add multiple images.
+                  </Text>
 
                   {imagePreviews.length > 0 && (
                     <VStack align="stretch" spacing={2} mt={3}>
                       {imagePreviews.map((url, idx) => (
                         <HStack key={idx} spacing={3} align="center">
-                          <ChakraImage src={url} alt={`Preview ${idx + 1}`} boxSize="80px" objectFit="cover" borderRadius="6px" />
-                          <Text fontSize="sm" color="gray.600" noOfLines={1}>{url.startsWith('data:') ? 'Local preview' : url}</Text>
-                          <Button size="sm" onClick={() => removeImageAt(idx)}>Remove</Button>
+                          <ChakraImage
+                            src={url}
+                            alt={`Preview ${idx + 1}`}
+                            boxSize="80px"
+                            objectFit="cover"
+                            borderRadius="6px"
+                          />
+                          <Text fontSize="sm" color="gray.600" noOfLines={1}>
+                            {url.startsWith('data:') ? 'Local preview' : url}
+                          </Text>
+                          <Button size="sm" onClick={() => removeImageAt(idx)}>
+                            Remove
+                          </Button>
                         </HStack>
                       ))}
                     </VStack>
                   )}
                 </FormControl>
-
-                {/* Bidding Type Section */}
-                <Box mb={4}>
-                  <Heading size="sm" mb={4} color="gray.700">
-                    Bidding & Offers Type
-                  </Heading>
-                  <FormControl>
-                    <FormLabel fontWeight="semibold" mb={3}>
-                      How would you like buyers to interact with this item?
-                    </FormLabel>
-                    <VStack spacing={3} align="start">
-                      <Box
-                        p={3}
-                        borderWidth="2px"
-                        borderRadius="md"
-                        cursor="pointer"
-                        borderColor={formData.bidding_type === 'none' ? 'blue.500' : 'gray.200'}
-                        bg={formData.bidding_type === 'none' ? 'blue.50' : 'white'}
-                        _hover={{ borderColor: 'blue.400' }}
-                        onClick={() => handleInputChange('bidding_type', 'none')}
-                      >
-                        <HStack justify="space-between" w="100%">
-                          <VStack align="start" spacing={1}>
-                            <Text fontWeight="semibold" color="gray.800">
-                              No Bidding
-                            </Text>
-                            <Text fontSize="sm" color="gray.600">
-                              Buyers can only accept/decline your set price or make trade offers
-                            </Text>
-                          </VStack>
-                          <Box>
-                            <input
-                              type="radio"
-                              name="bidding_type_edit"
-                              value="none"
-                              checked={formData.bidding_type === 'none'}
-                              onChange={() => { }}
-                            />
-                          </Box>
-                        </HStack>
-                      </Box>
-
-                      <Box
-                        p={3}
-                        borderWidth="2px"
-                        borderRadius="md"
-                        cursor="pointer"
-                        borderColor={formData.bidding_type === 'blind' ? 'blue.500' : 'gray.200'}
-                        bg={formData.bidding_type === 'blind' ? 'blue.50' : 'white'}
-                        _hover={{ borderColor: 'blue.400' }}
-                        onClick={() => handleInputChange('bidding_type', 'blind')}
-                      >
-                        <HStack justify="space-between" w="100%">
-                          <VStack align="start" spacing={1}>
-                            <Text fontWeight="semibold" color="gray.800">
-                              Blind Bidding
-                            </Text>
-                            <Text fontSize="sm" color="gray.600">
-                              Buyers submit private offers without seeing others' bids. You choose the best offer
-                            </Text>
-                          </VStack>
-                          <Box>
-                            <input
-                              type="radio"
-                              name="bidding_type_edit"
-                              value="blind"
-                              checked={formData.bidding_type === 'blind'}
-                              onChange={() => { }}
-                            />
-                          </Box>
-                        </HStack>
-                      </Box>
-
-                      <Box
-                        p={3}
-                        borderWidth="2px"
-                        borderRadius="md"
-                        cursor="pointer"
-                        borderColor={formData.bidding_type === 'open' ? 'blue.500' : 'gray.200'}
-                        bg={formData.bidding_type === 'open' ? 'blue.50' : 'white'}
-                        _hover={{ borderColor: 'blue.400' }}
-                        onClick={() => handleInputChange('bidding_type', 'open')}
-                      >
-                        <HStack justify="space-between" w="100%">
-                          <VStack align="start" spacing={1}>
-                            <Text fontWeight="semibold" color="gray.800">
-                              Open Bidding
-                            </Text>
-                            <Text fontSize="sm" color="gray.600">
-                              Buyers can see all bids and counter-bid. Most competitive option for maximum price discovery
-                            </Text>
-                          </VStack>
-                          <Box>
-                            <input
-                              type="radio"
-                              name="bidding_type_edit"
-                              value="open"
-                              checked={formData.bidding_type === 'open'}
-                              onChange={() => { }}
-                            />
-                          </Box>
-                        </HStack>
-                      </Box>
-                    </VStack>
-                  </FormControl>
-                </Box>
-
-                <FormControl display="flex" alignItems="center">
-                  <FormLabel htmlFor="premium" mb="0">
-                    Premium Listing
-                  </FormLabel>
-                  <Switch
-                    id="premium"
-                    isChecked={formData.premium !== undefined ? formData.premium : originalProduct.premium}
-                    onChange={(e) => handleInputChange('premium', e.target.checked)}
-                    colorScheme="yellow"
-                  />
-                  <FormHelperText ml={3}>
-                    Premium listings get featured placement
-                  </FormHelperText>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel htmlFor="status">Status</FormLabel>
-                  <Select
-                    id="status"
-                    value={formData.status || originalProduct.status}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
-                    placeholder="Select status"
-                    size="lg"
-                    aria-label="Product status"
-                  >
-                    <option value="available">Available</option>
-                    <option value="bartered">Bartered</option>
-                  </Select>
-                  <FormHelperText>
-                    Select the current status of your product
-                  </FormHelperText>
-                </FormControl>
-
-
 
                 <Button
                   type="submit"
