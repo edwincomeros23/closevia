@@ -409,6 +409,19 @@ const Login: React.FC = () => {
                       </InputRightElement>
                     </InputGroup>
                   </FormControl>
+                  
+                  <Box w="full" textAlign="right" mt={-3}>
+                    <Link
+                      as={RouterLink}
+                      to="/forgot-password"
+                      fontSize="xs"
+                      color="#666"
+                      fontWeight="600"
+                      _hover={{ color: '#2D876D', textDecoration: 'underline' }}
+                    >
+                      Forgot password?
+                    </Link>
+                  </Box>
 
                   {/* Sign In Button */}
                   <Button

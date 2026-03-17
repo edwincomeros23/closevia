@@ -401,6 +401,96 @@ func (h *UserHandler) ResendVerification(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Verification code resent"})
 }
 
+// ForgotPassword initiates the password reset process by sending an OTP
+func (h *UserHandler) ForgotPassword(c *fiber.Ctx) error {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	var userID int
+	var userName string
+	err := h.db.QueryRow("SELECT id, name FROM users WHERE email = ?", req.Email).Scan(&userID, &userName)
+	if err != nil {
+		// For security, don't reveal if user exists. Just return Success: true.
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Message: "If your email is registered, you will receive a password reset code shortly.",
+		})
+	}
+
+	otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+	if otpErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate reset code"})
+	}
+
+	_, err = h.db.Exec(
+		"UPDATE users SET reset_password_otp_hash = ?, reset_password_otp_expires = ? WHERE id = ?",
+		otpHash, otpExpiry, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save reset code"})
+	}
+
+	go services.SendPasswordResetOTP(req.Email, userName, otpCode)
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "If your email is registered, you will receive a password reset code shortly.",
+	})
+}
+
+// ResetPassword validates the OTP and updates the user's password
+func (h *UserHandler) ResetPassword(c *fiber.Ctx) error {
+	var req struct {
+		Email       string `json:"email"`
+		Code        string `json:"code"`
+		NewPassword string `json:"newPassword"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	var userID int
+	var hash string
+	var expires time.Time
+	err := h.db.QueryRow(
+		"SELECT id, reset_password_otp_hash, reset_password_otp_expires FROM users WHERE email = ?",
+		req.Email,
+	).Scan(&userID, &hash, &expires)
+
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found or code expired"})
+	}
+
+	if time.Now().After(expires) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reset code has expired"})
+	}
+
+	if !utils.CheckPasswordHash(req.Code, hash) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid reset code"})
+	}
+
+	// Hash new password
+	newPasswordHash, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to hash password"})
+	}
+
+	// Update password and clear OTP
+	_, err = h.db.Exec(
+		"UPDATE users SET password_hash = ?, reset_password_otp_hash = NULL, reset_password_otp_expires = NULL WHERE id = ?",
+		newPasswordHash, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update password"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Password has been reset successfully"})
+}
+
 // Login handles user authentication
 func (h *UserHandler) Login(c *fiber.Ctx) error {
 	var login models.UserLogin
@@ -628,19 +718,17 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
-		// Return a friendly fallback (200) so frontend does not produce a network 404.
-		// Frontend expects a user-like object; provide minimal public fields.
-		fallback := models.User{
-			ID:             userID,
-			Name:           "User",
-			Verified:       false,
-			IsOrganization: false,
-			CreatedAt:      time.Now(),
-			ProfilePicture: "",
+		// Return a proper error response so frontend can handle it correctly
+		// Check if it's a "no rows" error (user doesn't exist)
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "User not found",
+			})
 		}
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Data:    fallback,
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to fetch user profile",
 		})
 	}
 

@@ -173,8 +173,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setToken(null)
         setUser(null)
         delete api.defaults.headers.common['Authorization']
+      } else if (error.response?.status === 404) {
+        // User not found in database - clear auth
+        console.log('AuthContext: User not found (404), clearing authentication')
+        setToken(null)
+        setUser(null)
+        delete api.defaults.headers.common['Authorization']
       } else {
-        // For network errors, timeouts, or server issues:
+        // For network errors, timeouts, or server errors (5xx):
         // Keep the token AND user from cache so the user stays logged in
         console.log('AuthContext: Network/server error, keeping cached authentication')
       }
