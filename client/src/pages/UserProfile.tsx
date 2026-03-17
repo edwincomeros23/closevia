@@ -1017,24 +1017,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   </HStack>
                 </HStack>
 
-                <SimpleGrid columns={2} spacing={{ base: 3, md: 4 }} minW={{ base: '100%', md: '280px' }}>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Member Since</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Items for Sale</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Department</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
-                  </Box>
-                  <Box lineHeight="1">
-                    <Text color="gray.500" fontSize="xs">Total Listings</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
-                  </Box>
-                </SimpleGrid>
               </Flex>
 
               {/* Trust level + Activity badges */}
