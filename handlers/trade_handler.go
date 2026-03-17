@@ -878,6 +878,60 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		publishToUser(otherUserID, sseEvent{Type: "trade_delivery_state_updated", Data: fiber.Map{"trade_id": tradeID}})
 
 		log.Printf("Delivery state updated successfully for trade %d", tradeID)
+	case "request_option_change":
+		requestedOption := payload.RequestedOption
+		if requestedOption != "meetup" && requestedOption != "delivery" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid option. Must be 'meetup' or 'delivery'"})
+		}
+		_, err = h.db.Exec("UPDATE trades SET option_change_requested=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", requestedOption, tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to request option change"})
+		}
+		// Notify the other party
+		var notifyID int
+		if userID == buyerID {
+			notifyID = sellerID
+		} else {
+			notifyID = buyerID
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", notifyID, fmt.Sprintf("Trade option change requested to %s", requestedOption))
+		publishToUser(notifyID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+
+	case "approve_option_change":
+		// Get the requested option
+		var requestedOption sql.NullString
+		h.db.QueryRow("SELECT option_change_requested FROM trades WHERE id=?", tradeID).Scan(&requestedOption)
+		if !requestedOption.Valid || requestedOption.String == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No pending option change"})
+		}
+		_, err = h.db.Exec("UPDATE trades SET trade_option=?, option_change_requested=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?", requestedOption.String, tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to approve option change"})
+		}
+		// Notify requester
+		var notifyID2 int
+		if userID == buyerID {
+			notifyID2 = sellerID
+		} else {
+			notifyID2 = buyerID
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", notifyID2, "Trade option change approved")
+		publishToUser(notifyID2, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+
+	case "reject_option_change":
+		_, err = h.db.Exec("UPDATE trades SET option_change_requested=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?", tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to reject option change"})
+		}
+		var notifyID3 int
+		if userID == buyerID {
+			notifyID3 = sellerID
+		} else {
+			notifyID3 = buyerID
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", notifyID3, "Trade option change rejected")
+		publishToUser(notifyID3, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+
 	default:
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
 	}
@@ -1611,7 +1665,7 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 	}
 
 	// Validate status against a known whitelist. An empty status means no filter.
-	allowedStatuses := map[string]bool{"pending": true, "active": true, "completed": true, "declined": true, "cancelled": true, "countered": true}
+	allowedStatuses := map[string]bool{"pending": true, "accepted": true, "active": true, "completed": true, "declined": true, "cancelled": true, "countered": true, "expired": true, "auto_completed": true}
 	if status != "" && !allowedStatuses[status] {
 		fmt.Printf("CountTrades: unknown status='%s' from user=%d - ignoring status filter\n", status, userID)
 		status = ""

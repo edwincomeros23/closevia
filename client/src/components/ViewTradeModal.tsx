@@ -616,8 +616,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
                 {/* Status Steps */}
                 <HStack spacing={1} justify="space-between">
-                  {['pending', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
-                    const steps = ['pending', 'picked_up', 'in_transit', 'delivered']
+                  {['pending', 'claimed', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
+                    const steps = ['pending', 'claimed', 'picked_up', 'in_transit', 'delivered']
                     const currentIdx = steps.indexOf(linkedDelivery.status || 'pending')
                     const isComplete = i <= currentIdx
                     const isCurrent = i === currentIdx
@@ -828,6 +828,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
   const [rating, setRating] = useState(5)
   const [feedback, setFeedback] = useState('')
   const [proofImage, setProofImage] = useState<string | null>(null)
+  const [proofFile, setProofFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [completionStatus, setCompletionStatus] = useState<any>(null)
   const [loadingStatus, setLoadingStatus] = useState(false)
@@ -864,11 +865,13 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
   const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
+      const file = e.target.files[0]
+      setProofFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setProofImage(reader.result as string)
       }
-      reader.readAsDataURL(e.target.files[0])
+      reader.readAsDataURL(file)
     }
   }
 
@@ -885,10 +888,23 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
     try {
       setSubmitting(true)
+
+      // Upload proof image first if provided
+      let uploadedProofUrl: string | undefined
+      if (proofFile) {
+        const formData = new FormData()
+        formData.append('image', proofFile)
+        formData.append('type', 'trade_proof')
+        const uploadRes = await api.post('/api/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        uploadedProofUrl = uploadRes.data?.data?.url
+      }
+
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim(),
-        proof_url: proofImage || undefined,
+        proof_url: uploadedProofUrl || undefined,
       })
 
       toast({
@@ -902,6 +918,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       setRating(5)
       setFeedback('')
       setProofImage(null)
+      setProofFile(null)
 
       // Refresh completion status
       await fetchCompletionStatus()
@@ -1824,8 +1841,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Requested'}
                                 </Badge>
@@ -1860,8 +1880,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Offered'}
                                 </Badge>

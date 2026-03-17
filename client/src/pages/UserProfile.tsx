@@ -1399,7 +1399,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                             </Box>
 
                             {/* Show existing reply if any */}
-                            {review.reply && (
+                            {review && review.reply && (
                               <Box
                                 mt={3}
                                 pl={4}
