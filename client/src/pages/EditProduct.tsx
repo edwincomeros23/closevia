@@ -291,21 +291,23 @@ const EditProduct: React.FC = () => {
   }
 
   return (
-    <Box minH="100vh" bg={pageBg} py={8}>
-      <Container maxW="container.md">
-        <VStack spacing={8}>
+    <Box minH="100vh" bg={pageBg} py={{ base: 4, md: 8 }}>
+      <Container maxW="container.md" px={{ base: 3, md: 6 }}>
+        <VStack spacing={{ base: 4, md: 8 }}>
           <Box textAlign="center">
-            <Heading size="xl" color="brand.500" mb={2}>
+            <Heading size={{ base: 'lg', md: 'xl' }} color="brand.500" mb={1}>
               Edit Product
             </Heading>
-            <Text color="gray.600">Update your product listing</Text>
+            <Text color="gray.600" fontSize={{ base: 'sm', md: 'md' }}>
+              Update your product listing
+            </Text>
           </Box>
 
-          <Box bg="white" p={8} rounded="lg" shadow="sm" w="full">
+          <Box bg="white" p={{ base: 4, md: 8 }} rounded="lg" shadow="sm" w="full">
             <form onSubmit={handleSubmit}>
-              <VStack spacing={6}>
+              <VStack spacing={{ base: 4, md: 6 }}>
                 {error && (
-                  <Alert status="error">
+                  <Alert status="error" fontSize="sm" rounded="md">
                     <AlertIcon />
                     {error}
                   </Alert>
@@ -313,57 +315,57 @@ const EditProduct: React.FC = () => {
 
                 {/* Title */}
                 <FormControl isRequired>
-                  <FormLabel fontWeight="600">Product Title</FormLabel>
+                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Product Title</FormLabel>
                   <Input
                     value={formData.title || ''}
                     onChange={(e) => handleInputChange('title', e.target.value)}
                     placeholder="Enter product title"
                     maxLength={60}
-                    size="lg"
+                    size={{ base: 'md', md: 'lg' }}
                   />
-                  <FormHelperText color={(formData.title?.length || 0) > 50 ? 'orange.500' : 'gray.500'}>
+                  <FormHelperText fontSize="xs" color={(formData.title?.length || 0) > 50 ? 'orange.500' : 'gray.500'}>
                     {formData.title?.length || 0}/60 characters
                   </FormHelperText>
                 </FormControl>
 
                 {/* Description */}
                 <FormControl isRequired>
-                  <FormLabel fontWeight="600">Description</FormLabel>
+                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Description</FormLabel>
                   <Textarea
                     value={formData.description || ''}
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     placeholder="Describe your product in detail"
                     maxLength={500}
-                    size="lg"
+                    size={{ base: 'md', md: 'lg' }}
                     rows={4}
                   />
-                  <FormHelperText color={(formData.description?.length || 0) > 450 ? 'orange.500' : 'gray.500'}>
+                  <FormHelperText fontSize="xs" color={(formData.description?.length || 0) > 450 ? 'orange.500' : 'gray.500'}>
                     {formData.description?.length || 0}/500 characters
                   </FormHelperText>
                 </FormControl>
 
                 {/* Price */}
                 <FormControl>
-                  <FormLabel fontWeight="600">Price (₱)</FormLabel>
+                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Price (₱)</FormLabel>
                   <Input
                     type="number"
                     value={formData.price || ''}
                     onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
                     placeholder="Enter price"
-                    size="lg"
+                    size={{ base: 'md', md: 'lg' }}
                     min={0}
                   />
                 </FormControl>
 
                 {/* Category & Condition */}
-                <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4} w="full">
+                <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={{ base: 3, md: 4 }} w="full">
                   <FormControl>
-                    <FormLabel fontWeight="600">Category</FormLabel>
+                    <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Category</FormLabel>
                     <Select
                       value={formData.category || ''}
                       onChange={(e) => handleInputChange('category', e.target.value)}
                       placeholder="Select category"
-                      size="lg"
+                      size={{ base: 'md', md: 'lg' }}
                     >
                       {PRODUCT_CATEGORIES.map((cat) => (
                         <option key={cat.value} value={cat.value}>
@@ -374,12 +376,12 @@ const EditProduct: React.FC = () => {
                   </FormControl>
 
                   <FormControl>
-                    <FormLabel fontWeight="600">Condition</FormLabel>
+                    <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Condition</FormLabel>
                     <Select
                       value={formData.condition || ''}
                       onChange={(e) => handleInputChange('condition', e.target.value)}
                       placeholder="Select condition"
-                      size="lg"
+                      size={{ base: 'md', md: 'lg' }}
                     >
                       <option value="New">New</option>
                       <option value="Like-New">Like-New</option>
@@ -391,18 +393,18 @@ const EditProduct: React.FC = () => {
 
                 {/* Location */}
                 <FormControl>
-                  <FormLabel fontWeight="600">Location</FormLabel>
+                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Location</FormLabel>
                   <Input
                     value={formData.location || ''}
                     onChange={(e) => handleInputChange('location', e.target.value)}
                     placeholder="e.g., Cebu City, Philippines"
-                    size="lg"
+                    size={{ base: 'md', md: 'lg' }}
                   />
                 </FormControl>
 
                 {/* Upload Images */}
                 <FormControl>
-                  <FormLabel fontWeight="600">Images</FormLabel>
+                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Images</FormLabel>
                   <input
                     id="edit-image-input"
                     type="file"
@@ -411,28 +413,38 @@ const EditProduct: React.FC = () => {
                     hidden
                     onChange={(e) => handleAddImageFiles(e.target.files)}
                   />
-                  <Button onClick={() => document.getElementById('edit-image-input')?.click()}>
+                  <Button
+                    size={{ base: 'sm', md: 'md' }}
+                    onClick={() => document.getElementById('edit-image-input')?.click()}
+                  >
                     Add image
                   </Button>
-                  <Text fontSize="sm" color="gray.500" mt={1}>
+                  <Text fontSize="xs" color="gray.500" mt={1}>
                     You can add multiple images.
                   </Text>
 
                   {imagePreviews.length > 0 && (
                     <VStack align="stretch" spacing={2} mt={3}>
                       {imagePreviews.map((url, idx) => (
-                        <HStack key={idx} spacing={3} align="center">
+                        <HStack key={idx} spacing={2} align="center">
                           <ChakraImage
                             src={url}
                             alt={`Preview ${idx + 1}`}
-                            boxSize="80px"
+                            boxSize={{ base: '56px', md: '80px' }}
+                            minW={{ base: '56px', md: '80px' }}
                             objectFit="cover"
                             borderRadius="6px"
                           />
-                          <Text fontSize="sm" color="gray.600" noOfLines={1}>
-                            {url.startsWith('data:') ? 'Local preview' : url}
+                          <Text fontSize="xs" color="gray.600" noOfLines={1} flex={1} minW={0}>
+                            {url.startsWith('data:') ? 'New image' : 'Uploaded image'}
                           </Text>
-                          <Button size="sm" onClick={() => removeImageAt(idx)}>
+                          <Button
+                            size="xs"
+                            colorScheme="red"
+                            variant="ghost"
+                            flexShrink={0}
+                            onClick={() => removeImageAt(idx)}
+                          >
                             Remove
                           </Button>
                         </HStack>
@@ -444,10 +456,10 @@ const EditProduct: React.FC = () => {
                 <Button
                   type="submit"
                   colorScheme="brand"
-                  size="lg"
+                  size={{ base: 'md', md: 'lg' }}
                   w="full"
                   isLoading={loading}
-                  loadingText="Updating product..."
+                  loadingText="Updating..."
                 >
                   Update Product
                 </Button>
