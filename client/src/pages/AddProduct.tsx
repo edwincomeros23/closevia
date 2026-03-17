@@ -28,6 +28,12 @@ import {
   AlertDescription,
   Skeleton,
   Tooltip,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
   Checkbox,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
@@ -109,6 +115,43 @@ const AddProduct: React.FC = () => {
   const { createProduct } = useProducts()
   const toast = useToast()
   const aiTriggeredRef = useRef(false)
+
+  // Webcam state for desktop camera capture
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+
+  const openCamera = useCallback(async () => {
+    if (isMobile) {
+      // On mobile, use the native file input with capture
+      document.getElementById('img-camera')?.click()
+      return
+    }
+    setIsCameraOpen(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
+    } catch (err) {
+      console.error('Camera access denied:', err)
+      toast({ id: 'camera-error', title: 'Camera unavailable', description: 'Could not access your camera. Please use "Upload from Gallery" instead.', status: 'warning', duration: 4000, isClosable: true })
+      setIsCameraOpen(false)
+    }
+  }, [isMobile, toast])
+
+  const closeCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+    setIsCameraOpen(false)
+  }, [])
 
   const [currentStep, setCurrentStep] = useState(1)
   const TOTAL_STEPS = 3
@@ -483,6 +526,25 @@ const AddProduct: React.FC = () => {
     processFiles()
   }, [uploadedImages.length, toast, triggerAI, uploadedImages])
 
+  const capturePhoto = useCallback(() => {
+    if (!videoRef.current) return
+    const video = videoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(video, 0, 0)
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      const dt = new DataTransfer()
+      dt.items.add(file)
+      handleImageUpload(dt.files)
+      closeCamera()
+    }, 'image/jpeg', 0.92)
+  }, [closeCamera, handleImageUpload])
+
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
     setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
@@ -718,7 +780,7 @@ const AddProduct: React.FC = () => {
               colorScheme="brand"
               variant="outline"
               size="sm"
-              onClick={() => document.getElementById('img-camera')?.click()}
+              onClick={openCamera}
               minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
             >
               Take Photo
@@ -1281,17 +1343,37 @@ const AddProduct: React.FC = () => {
           
           <FormControl>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
-            <Input
-              placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
-              value={formData.wants}
-              onChange={e => handleField('wants', e.target.value)}
-              size="sm"
-              bg="white"
-              maxLength={50}
-              h="32px"
-              onClick={e => e.stopPropagation()}
-            />
-            <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+            <HStack spacing={3} align="flex-start">
+              <Box flex={1}>
+                <FormControl>
+                  <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Price</FormLabel>
+                  <Input
+                    placeholder="e.g. 500"
+                    type="number"
+                    value={formData.price ?? ''}
+                    onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
+                    size="sm"
+                    bg="white"
+                    h="32px"
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
+                </FormControl>
+              </Box>
+              <Box flex={1}>
+                <Input
+                  placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
+                  value={formData.wants}
+                  onChange={e => handleField('wants', e.target.value)}
+                  size="sm"
+                  bg="white"
+                  maxLength={50}
+                  h="32px"
+                  onClick={e => e.stopPropagation()}
+                />
+                <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+              </Box>
+            </HStack>
           </FormControl>
         </VStack>
       </Box>
@@ -1711,6 +1793,48 @@ const AddProduct: React.FC = () => {
           </HStack>
         </VStack>
       </Box>
+
+      {/* Webcam Camera Modal for Desktop */}
+      <Modal isOpen={isCameraOpen} onClose={closeCamera} size="xl" isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Take a Photo</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <VStack spacing={4}>
+              <Box
+                w="100%"
+                borderRadius="md"
+                overflow="hidden"
+                bg="black"
+                position="relative"
+              >
+                <video
+                  ref={(el) => {
+                    videoRef.current = el
+                    if (el && streamRef.current) {
+                      el.srcObject = streamRef.current
+                    }
+                  }}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: '100%', maxHeight: '400px', objectFit: 'cover' }}
+                />
+              </Box>
+              <Button
+                colorScheme="brand"
+                size="lg"
+                w="full"
+                onClick={capturePhoto}
+                leftIcon={<span>📸</span>}
+              >
+                Capture
+              </Button>
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
 
       <FloatingTab showAddButton={false} />
     </Box>
