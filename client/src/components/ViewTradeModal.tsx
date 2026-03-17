@@ -572,7 +572,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                     ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured`
                     : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
                 </Button>
-              </Box>
+
 
               <Divider />
 
