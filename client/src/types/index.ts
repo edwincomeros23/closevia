@@ -64,6 +64,9 @@ export interface Product {
   estimated_value_max?: number;
   desired_price?: number;
   desired_product?: string;
+  wanted_categories?: string[];
+  wants?: string;
+  brand?: string;
 }
 
 export interface Order {
