@@ -77,10 +77,21 @@ const Register: React.FC = () => {
       else if (!email.includes('@')) errors.email = 'Please enter a valid email address'
     }
 
-    if (!password) errors.password = 'Password is required'
-    if (password && password.length < 6) errors.password = 'Password must be at least 6 characters'
+    if (!password) {
+      errors.password = 'Password is required'
+    } else {
+      const pwdErrors: string[] = []
+      if (password.length < 8) pwdErrors.push('at least 8 characters')
+      if (!/[A-Z]/.test(password)) pwdErrors.push('one uppercase letter')
+      if (!/[a-z]/.test(password)) pwdErrors.push('one lowercase letter')
+      if (!/[0-9]/.test(password)) pwdErrors.push('one number')
+      if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) pwdErrors.push('one special character')
+      if (pwdErrors.length > 0) {
+        errors.password = 'Password must contain: ' + pwdErrors.join(', ')
+      }
+    }
     if (!confirmPassword) errors.confirmPassword = 'Confirm password is required'
-    if (password !== confirmPassword) errors.confirmPassword = 'Passwords do not match'
+    if (password && confirmPassword && password !== confirmPassword) errors.confirmPassword = 'Passwords do not match'
 
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
@@ -675,7 +686,7 @@ const Register: React.FC = () => {
                           setPassword(e.target.value)
                           if (fieldErrors.password) setFieldErrors({ ...fieldErrors, password: '' })
                         }}
-                        placeholder="Minimum 6 characters"
+                        placeholder="Create a strong password"
                         bg="#F5F5F5"
                         borderColor={fieldErrors.password ? '#ef5350' : '#E0E0E0'}
                         borderWidth="1px"
@@ -704,6 +715,21 @@ const Register: React.FC = () => {
                       </InputRightElement>
                     </InputGroup>
                     {fieldErrors.password && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.password}</FormErrorMessage>}
+                    {password && !fieldErrors.password && (
+                      <Box mt={2} px={1}>
+                        {[
+                          { test: password.length >= 8, label: 'At least 8 characters' },
+                          { test: /[A-Z]/.test(password), label: 'One uppercase letter' },
+                          { test: /[a-z]/.test(password), label: 'One lowercase letter' },
+                          { test: /[0-9]/.test(password), label: 'One number' },
+                          { test: /[!@#$%^&*(),.?":{}|<>]/.test(password), label: 'One special character' },
+                        ].map((rule) => (
+                          <Text key={rule.label} fontSize="xs" color={rule.test ? 'green.500' : 'gray.400'} lineHeight="1.8">
+                            {rule.test ? '\u2713' : '\u2022'} {rule.label}
+                          </Text>
+                        ))}
+                      </Box>
+                    )}
                   </FormControl>
 
                   {/* Confirm Password Field */}
