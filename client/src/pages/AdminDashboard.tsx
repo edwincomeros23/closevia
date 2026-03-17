@@ -655,7 +655,7 @@ const AdminDashboard: React.FC = () => {
         await simulateApiDelay(500);
         setStats(mockAdminStats);
         setIsUsingMockData(true);
-        toast({ title: 'Using Demo Data', description: 'Showing mock data while API is unavailable', status: 'info', duration: 5000, isClosable: true });
+        toast({ id: 'using-demo-data', title: 'Using Demo Data', description: 'Showing mock data while API is unavailable', status: 'info', duration: 5000, isClosable: true });
         return;
       }
 
@@ -683,7 +683,7 @@ const AdminDashboard: React.FC = () => {
       }
       setError(err.message || 'Error fetching admin statistics');
       setRetryCount(prev => prev + 1);
-      toast({ title: 'Error', description: err.message || 'Failed to load dashboard data', status: 'error', duration: 5000, isClosable: true });
+      toast({ id: 'error', title: 'Error', description: err.message || 'Failed to load dashboard data', status: 'error', duration: 5000, isClosable: true });
     } finally {
       setLoading(false);
     }
@@ -716,7 +716,7 @@ const AdminDashboard: React.FC = () => {
         setSelectedDayDetail(response.data.data as DayDetail);
       }
     } catch {
-      toast({ title: 'Could not load day data', status: 'warning', duration: 3000, isClosable: true });
+      toast({ id: 'could-not-load-day-data', title: 'Could not load day data', status: 'warning', duration: 3000, isClosable: true });
     } finally {
       setDayDetailLoading(false);
     }
@@ -755,9 +755,9 @@ const AdminDashboard: React.FC = () => {
     setExportLoading(true);
     try {
       exportToPDF(stats);
-      toast({ title: 'PDF exported successfully', status: 'success', duration: 3000, isClosable: true });
+      toast({ id: 'pdf-exported-successfully', title: 'PDF exported successfully', status: 'success', duration: 3000, isClosable: true });
     } catch (e) {
-      toast({ title: 'PDF export failed', status: 'error', duration: 3000, isClosable: true });
+      toast({ id: 'pdf-export-failed', title: 'PDF export failed', status: 'error', duration: 3000, isClosable: true });
     } finally {
       setExportLoading(false);
     }
@@ -768,9 +768,9 @@ const AdminDashboard: React.FC = () => {
     setExportLoading(true);
     try {
       await exportToDOCX(stats);
-      toast({ title: 'DOCX exported successfully', status: 'success', duration: 3000, isClosable: true });
+      toast({ id: 'docx-exported-successfully', title: 'DOCX exported successfully', status: 'success', duration: 3000, isClosable: true });
     } catch (e) {
-      toast({ title: 'DOCX export failed', status: 'error', duration: 3000, isClosable: true });
+      toast({ id: 'docx-export-failed', title: 'DOCX export failed', status: 'error', duration: 3000, isClosable: true });
     } finally {
       setExportLoading(false);
     }
@@ -794,6 +794,7 @@ const AdminDashboard: React.FC = () => {
         }
       } catch (err: any) {
         toast({
+        id: "admindashboard-failed-to-load-reports",
           title: 'Failed to load reports',
           description: err?.response?.data?.error || err.message || 'Unable to fetch reports',
           status: 'error',
@@ -812,10 +813,12 @@ const AdminDashboard: React.FC = () => {
   const handleUpdateReportStatus = useCallback(async (reportId: number, newStatus: string) => {
     try {
       await api.put(`/api/admin/reports/${reportId}/status`, { status: newStatus });
-      toast({ title: 'Report updated', status: 'success', duration: 2000, isClosable: true });
+      toast({
+        id: "admindashboard-report-updated", title: 'Report updated', status: 'success', duration: 2000, isClosable: true });
       fetchAdminReports(reportsPage, reportsStatusFilter);
     } catch (err: any) {
       toast({
+        id: "admindashboard-failed-to-update-report",
         title: 'Failed to update report',
         description: err?.response?.data?.error || 'Update failed',
         status: 'error',
@@ -841,6 +844,7 @@ const AdminDashboard: React.FC = () => {
         }
       } catch (err: any) {
         toast({
+        id: "admindashboard-failed-to-load-users",
           title: 'Failed to load users',
           description: err?.response?.data?.error || err.message || 'Unable to fetch users',
           status: 'error',
@@ -871,6 +875,7 @@ const AdminDashboard: React.FC = () => {
         }
       } catch (err: any) {
         toast({
+        id: "admindashboard-failed-to-load-items",
           title: 'Failed to load items',
           description: err?.response?.data?.error || err.message || 'Unable to fetch items',
           status: 'error',
@@ -899,6 +904,7 @@ const AdminDashboard: React.FC = () => {
       ));
 
       toast({
+        id: "admindashboard-toast-13",
         title: isSuspended ? 'User Unsuspended' : 'User Suspended',
         description: `Successfully ${isSuspended ? 'restored' : 'suspended'} ${user.name}'s account.`,
         status: 'success',
@@ -907,6 +913,7 @@ const AdminDashboard: React.FC = () => {
       });
     } catch (err: any) {
       toast({
+        id: "admindashboard-action-failed",
         title: 'Action failed',
         description: err?.response?.data?.error || `Failed to modify user status.`,
         status: 'error',
@@ -926,6 +933,7 @@ const AdminDashboard: React.FC = () => {
       }
     } catch (err: any) {
       toast({
+        id: "admindashboard-failed-to-load-campaigns",
         title: 'Failed to load campaigns',
         description: err?.response?.data?.error || err.message || 'Unable to fetch campaigns',
         status: 'error',
@@ -941,7 +949,8 @@ const AdminDashboard: React.FC = () => {
   const handleSaveCampaign = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCampaign?.title) {
-      toast({ title: 'Title is required', status: 'warning', duration: 2000 });
+      toast({
+        id: "admindashboard-title-is-required", title: 'Title is required', status: 'warning', duration: 2000 });
       return;
     }
 
@@ -963,7 +972,8 @@ const AdminDashboard: React.FC = () => {
       if (editingCampaign.id) {
         // Update
         await api.put(`/api/admin/campaigns/${editingCampaign.id}`, payload);
-        toast({ title: 'Campaign updated', status: 'success', duration: 3000 });
+        toast({
+        id: "admindashboard-campaign-updated", title: 'Campaign updated', status: 'success', duration: 3000 });
       } else {
         // Create
         await api.post('/api/admin/campaigns', Object.assign({
@@ -971,13 +981,15 @@ const AdminDashboard: React.FC = () => {
           frequency: 'once_per_user',
           is_active: true,
         }, payload));
-        toast({ title: 'Campaign created', status: 'success', duration: 3000 });
+        toast({
+        id: "admindashboard-campaign-created", title: 'Campaign created', status: 'success', duration: 3000 });
       }
       closeCampaignModal();
       setEditingCampaign(null);
       fetchAdminCampaigns();
     } catch (err: any) {
       toast({
+        id: "admindashboard-save-failed",
         title: 'Save failed',
         description: err?.response?.data?.error || 'Could not save campaign',
         status: 'error',
@@ -998,10 +1010,12 @@ const AdminDashboard: React.FC = () => {
   const handleToggleCampaignStatus = useCallback(async (camp: Campaign) => {
     try {
       await api.put(`/api/admin/campaigns/${camp.id}`, { is_active: !camp.is_active });
-      toast({ title: `Campaign ${!camp.is_active ? 'activated' : 'deactivated'}`, status: 'success', duration: 2000 });
+      toast({
+        id: "admindashboard-campaign-camp-is-active", title: `Campaign ${!camp.is_active ? 'activated' : 'deactivated'}`, status: 'success', duration: 2000 });
       fetchAdminCampaigns();
     } catch (err: any) {
-      toast({ title: 'Status update failed', status: 'error', duration: 3000 });
+      toast({
+        id: "admindashboard-status-update-failed", title: 'Status update failed', status: 'error', duration: 3000 });
     }
   }, [toast, fetchAdminCampaigns]);
 
@@ -1017,6 +1031,7 @@ const AdminDashboard: React.FC = () => {
       }
     } catch (err: any) {
       toast({
+        id: "admindashboard-failed-to-load-verifications",
         title: 'Failed to load verifications',
         description: err?.response?.data?.error || err.message || 'Unable to fetch verifications',
         status: 'error',
@@ -1039,6 +1054,7 @@ const AdminDashboard: React.FC = () => {
       setIdImageUrl(url);
     } catch (err: any) {
       toast({
+        id: "admindashboard-could-not-load-image",
         title: 'Could not load image',
         description: err?.response?.data?.error || 'Image not found or access denied',
         status: 'error',
@@ -1059,10 +1075,12 @@ const AdminDashboard: React.FC = () => {
   const handleApproveVerification = useCallback(async (userId: number) => {
     try {
       await api.post(`/api/admin/verifications/${userId}/approve`);
-      toast({ title: 'User verified', description: 'Verification approved.', status: 'success', duration: 3000, isClosable: true });
+      toast({
+        id: "admindashboard-user-verified", title: 'User verified', description: 'Verification approved.', status: 'success', duration: 3000, isClosable: true });
       fetchAdminVerifications();
     } catch (err: any) {
       toast({
+        id: "admindashboard-approve-failed",
         title: 'Approve failed',
         description: err?.response?.data?.error || 'Could not approve',
         status: 'error',
@@ -1083,12 +1101,14 @@ const AdminDashboard: React.FC = () => {
     try {
       setRejectLoading(true);
       await api.post(`/api/admin/verifications/${rejectTarget.id}/reject`, { reason: rejectReason || 'Not specified' });
-      toast({ title: 'Verification declined', description: 'User has been notified.', status: 'success', duration: 3000, isClosable: true });
+      toast({
+        id: "admindashboard-verification-declined", title: 'Verification declined', description: 'User has been notified.', status: 'success', duration: 3000, isClosable: true });
       setRejectTarget(null);
       setRejectReason('');
       fetchAdminVerifications();
     } catch (err: any) {
       toast({
+        id: "admindashboard-reject-failed",
         title: 'Reject failed',
         description: err?.response?.data?.error || 'Could not reject',
         status: 'error',
@@ -1123,6 +1143,7 @@ const AdminDashboard: React.FC = () => {
         await api.delete(`/api/admin/users/${deleteTarget.id}`);
         setUsers(prev => prev.filter(u => u.id !== deleteTarget.id));
         toast({
+        id: "admindashboard-user-deleted",
           title: 'User deleted',
           description: 'The user and related data have been removed.',
           status: 'success',
@@ -1133,6 +1154,7 @@ const AdminDashboard: React.FC = () => {
         await api.delete(`/api/admin/products/${deleteTarget.id}`);
         setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
         toast({
+        id: "admindashboard-item-deleted",
           title: 'Item deleted',
           description: 'The item has been removed from the marketplace.',
           status: 'success',
@@ -1143,6 +1165,7 @@ const AdminDashboard: React.FC = () => {
         await api.delete(`/api/admin/campaigns/${deleteTarget.id}`);
         setCampaigns(prev => prev.filter(c => c.id !== deleteTarget.id));
         toast({
+        id: "admindashboard-campaign-deleted",
           title: 'Campaign deleted',
           status: 'success',
           duration: 3000,
@@ -1150,6 +1173,7 @@ const AdminDashboard: React.FC = () => {
       }
     } catch (err: any) {
       toast({
+        id: "admindashboard-deletion-failed",
         title: 'Deletion failed',
         description: err?.response?.data?.error || err.message || 'Unable to delete record',
         status: 'error',
@@ -1207,6 +1231,7 @@ const AdminDashboard: React.FC = () => {
       setModerationLoading(true);
       await api.put(`/api/admin/reports/${report.id}/status`, { status: newStatus });
       toast({
+        id: "admindashboard-action-applied-action",
         title: `Action applied: ${action}`,
         description: `Report #${report.id} has been updated.`,
         status: 'success',
@@ -1215,7 +1240,8 @@ const AdminDashboard: React.FC = () => {
       });
       fetchAdminReports(reportsPage, reportsStatusFilter);
     } catch (err: any) {
-      toast({ title: 'Action failed', description: err?.response?.data?.error || 'Could not apply action', status: 'error', duration: 3000, isClosable: true });
+      toast({
+        id: "admindashboard-action-failed-2", title: 'Action failed', description: err?.response?.data?.error || 'Could not apply action', status: 'error', duration: 3000, isClosable: true });
     } finally {
       setModerationLoading(false);
       setModerationTarget(null);

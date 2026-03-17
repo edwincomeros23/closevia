@@ -121,7 +121,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
   const handleDetectLocation = () => {
     if (!navigator.geolocation) {
-      toast({ title: 'Geolocation not supported', description: 'Your browser does not support location detection.', status: 'error' })
+      toast({
+        id: "trademodal-geolocation-not-supported", title: 'Geolocation not supported', description: 'Your browser does not support location detection.', status: 'error' })
       return
     }
     setDetectingLocation(true)
@@ -129,7 +130,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       (position) => {
         setDetectedCoords({ lat: position.coords.latitude, lng: position.coords.longitude })
         setDetectingLocation(false)
-        toast({ title: 'Location detected!', status: 'success', duration: 2000 })
+        toast({
+        id: "trademodal-location-detected", title: 'Location detected!', status: 'success', duration: 2000 })
       },
       (error) => {
         setDetectingLocation(false)
@@ -138,7 +140,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           2: 'Unable to determine your position. Please enter your address manually.',
           3: 'Location request timed out. Please enter your address manually.',
         }
-        toast({ title: 'Location error', description: messages[error.code] || 'Could not detect location.', status: 'warning', duration: 4000 })
+        toast({
+        id: "trademodal-location-error", title: 'Location error', description: messages[error.code] || 'Could not detect location.', status: 'warning', duration: 4000 })
       },
       { timeout: 10000 }
     )
@@ -146,21 +149,25 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
   const submitTrade = async () => {
     if (!targetProductId || selectedOfferIds.length === 0) {
-      toast({ title: 'Select items', description: 'Please select at least one of your items to offer.', status: 'warning' })
+      toast({
+        id: "trademodal-select-items", title: 'Select items', description: 'Please select at least one of your items to offer.', status: 'warning' })
       return
     }
     if (!tradeOption) {
-      toast({ title: 'Select trade option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
+      toast({
+        id: "trademodal-select-trade-option", title: 'Select trade option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
       return
     }
     if (tradeOption === 'delivery' && !hasDeliveryLocation) {
-      toast({ title: 'Delivery location required', description: 'Please detect your location or enter an address to use delivery.', status: 'warning' })
+      toast({
+        id: "trademodal-delivery-location-required", title: 'Delivery location required', description: 'Please detect your location or enter an address to use delivery.', status: 'warning' })
       return
     }
 
     // Layer 2 validation: Check for pending offer before submission
     if (hasPendingOfferOnTarget) {
       toast({
+        id: "trademodal-pending-offer-already-exists",
         title: 'Pending Offer Already Exists',
         description: 'You already have a pending offer on this product. Please wait for the trader to respond to your existing offer before sending another one.',
         status: 'warning',
@@ -193,7 +200,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       onClose()
     } catch (e: any) {
       const errorMessage = e?.response?.data?.error || 'Failed to send trade'
-      toast({ title: 'Failed', description: errorMessage, status: 'error' })
+      toast({
+        id: "trademodal-failed", title: 'Failed', description: errorMessage, status: 'error' })
     } finally {
       setSubmittingTrade(false)
     }

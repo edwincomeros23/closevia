@@ -65,6 +65,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setSelectedAction('accept')
       await acceptMultiWayTrade(multiWayTrade.loop_id)
       toast({
+        id: "multiwaytrademodal-success",
         title: 'Success',
         description: 'You accepted this multi-way trade opportunity',
         status: 'success',
@@ -73,6 +74,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       onClose()
     } catch (error: any) {
       toast({
+        id: "multiwaytrademodal-error",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to accept trade',
         status: 'error',
@@ -89,6 +91,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setSelectedAction('decline')
       await declineMultiWayTrade(multiWayTrade.loop_id)
       toast({
+        id: "multiwaytrademodal-declined",
         title: 'Declined',
         description: 'You declined this multi-way trade',
         status: 'info',
@@ -96,6 +99,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       onClose()
     } catch (error: any) {
       toast({
+        id: "multiwaytrademodal-error-2",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to decline trade',
         status: 'error',
@@ -112,6 +116,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setSelectedAction('execute')
       await executeMultiWayTrade(multiWayTrade.loop_id)
       toast({
+        id: "multiwaytrademodal-success-2",
         title: 'Success',
         description: 'Multi-way trade executed successfully!',
         status: 'success',
@@ -120,6 +125,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       onClose()
     } catch (error: any) {
       toast({
+        id: "multiwaytrademodal-error-3",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to execute trade',
         status: 'error',

@@ -328,7 +328,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
   const handleToggleSave = async (productId: number) => {
     if (!currentUser) {
-      toast({ title: 'Please log in to save items', status: 'warning', duration: 2000 })
+      toast({ id: 'please-log-in-to-save-items', title: 'Please log in to save items', status: 'warning', duration: 2000 })
       navigate('/login')
       return
     }
@@ -337,14 +337,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       if (isSaved) {
         await api.delete(`/api/users/saved-products/${productId}`)
         setSavedProductIds(prev => { const n = new Set(prev); n.delete(productId); return n })
-        toast({ title: 'Removed from saved', status: 'info', duration: 1500 })
+        toast({ id: 'removed-from-saved', title: 'Removed from saved', status: 'info', duration: 1500 })
       } else {
         await api.post(`/api/users/saved-products`, { product_id: productId })
         setSavedProductIds(prev => new Set(prev).add(productId))
-        toast({ title: 'Saved!', status: 'success', duration: 1500 })
+        toast({ id: 'saved', title: 'Saved!', status: 'success', duration: 1500 })
       }
     } catch {
-      toast({ title: 'Failed to update', status: 'error', duration: 2000 })
+      toast({ id: 'failed-to-update', title: 'Failed to update', status: 'error', duration: 2000 })
     }
   }
 
@@ -354,7 +354,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       navigator.share({ title: product.title, url }).catch(() => { })
     } else {
       navigator.clipboard.writeText(url)
-      toast({ title: 'Link copied!', status: 'success', duration: 1500 })
+      toast({ id: 'link-copied', title: 'Link copied!', status: 'success', duration: 1500 })
     }
   }
 
@@ -481,6 +481,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     } catch (err: any) {
       console.error('Failed to save profile', err)
       toast({
+        id: 'failed-to-save-profile',
         title: 'Failed to save profile',
         description: err?.response?.data?.message || err?.message || 'An error occurred',
         status: 'error',
@@ -490,6 +491,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       return
     }
     toast({
+      id: 'profile-updated',
       title: 'Profile updated',
       description: 'Your profile changes have been saved.',
       status: 'success',
@@ -593,6 +595,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       setUserTrades(prev => prev.filter(t => t.id !== tradeId))
 
       toast({
+        id: 'trade-canceled',
         title: 'Trade canceled',
         description: 'Item status has been reverted to Available',
         status: 'success',
@@ -601,6 +604,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       })
     } catch (err) {
       toast({
+        id: 'failed-to-cancel-trade',
         title: 'Failed to cancel trade',
         status: 'error',
         duration: 3000,
@@ -647,6 +651,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const handleSendMessage = () => {
     // In a real app, this would open a chat with the user
     toast({
+      id: 'message-sent',
       title: 'Message Sent',
       description: `Message sent to ${user?.name}`,
       status: 'success',
@@ -659,6 +664,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     const token = localStorage.getItem('clovia_token')
     if (!currentUser || !token) {
       toast({
+        id: "userprofile-login-required",
         title: 'Login required',
         description: 'Please sign in to leave a review.',
         status: 'warning',
@@ -671,6 +677,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
     if (!reviewRating || reviewRating === 0) {
       toast({
+        id: "userprofile-rating-required",
         title: 'Rating required',
         description: 'Please select a star rating before submitting.',
         status: 'warning',
@@ -682,6 +689,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
     if (!reviewComment.trim()) {
       toast({
+        id: "userprofile-review-required",
         title: 'Review required',
         description: 'Please write a review before submitting.',
         status: 'warning',
@@ -729,6 +737,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       }
 
       toast({
+        id: "userprofile-review-submitted",
         title: 'Review submitted!',
         description: 'Your review has been posted and is now visible on their profile.',
         status: 'success',
@@ -740,6 +749,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       const status = error?.response?.status
       if (status === 401) {
         toast({
+        id: "userprofile-login-required-2",
           title: 'Login required',
           description: 'Your session expired. Please sign in and try again.',
           status: 'warning',
@@ -749,6 +759,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         navigate('/login')
       } else {
         toast({
+        id: "userprofile-failed-to-submit-review",
           title: 'Failed to submit review',
           description: error?.response?.data?.message || error?.message || 'Please try again later.',
           status: 'error',
@@ -770,6 +781,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     const token = localStorage.getItem('clovia_token')
     if (!currentUser || !token) {
       toast({
+        id: "userprofile-login-required-3",
         title: 'Login required',
         description: 'Please sign in to leave a review.',
         status: 'warning',
@@ -789,6 +801,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const handleReplyToReview = async (reviewId: number) => {
     if (!currentUser) {
       toast({
+        id: "userprofile-login-required-4",
         title: 'Login required',
         description: 'Please sign in to reply.',
         status: 'warning',
@@ -801,6 +814,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
     if (!replyText.trim()) {
       toast({
+        id: "userprofile-reply-required",
         title: 'Reply required',
         description: 'Please write a reply.',
         status: 'warning',
@@ -841,6 +855,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       setReplyingTo(null)
 
       toast({
+        id: "userprofile-reply-posted",
         title: 'Reply posted',
         description: 'Your reply has been posted successfully.',
         status: 'success',
@@ -850,6 +865,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     } catch (error: any) {
       console.error('Failed to post reply:', error)
       toast({
+        id: "userprofile-failed-to-post-reply",
         title: 'Failed to post reply',
         description: error?.response?.data?.message || error?.message || 'Please try again later.',
         status: 'error',

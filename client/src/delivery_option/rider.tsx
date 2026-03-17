@@ -149,6 +149,7 @@ const RiderJobs: React.FC = () => {
         phone: 'N/A',
       })
       toast({
+        id: "rider-registered-as-rider",
         title: 'Registered as Rider!',
         description: 'You can now claim deliveries.',
         status: 'success',
@@ -158,6 +159,7 @@ const RiderJobs: React.FC = () => {
       await fetchClaimedDeliveries()
     } catch (error: any) {
       toast({
+        id: "rider-registration-failed",
         title: 'Registration Failed',
         description: error?.response?.data?.error || 'Could not register as rider',
         status: 'error',
@@ -234,6 +236,7 @@ const RiderJobs: React.FC = () => {
 
       if (hasActiveBatch) {
         toast({
+        id: "rider-active-batch-pending",
           title: 'Active Batch Pending',
           description: 'Complete your current batch before claiming a new one',
           status: 'warning',
@@ -270,6 +273,7 @@ const RiderJobs: React.FC = () => {
       }
 
       toast({
+        id: "rider-toast-4",
         title: selectedJob.deliveryType === 'express' ? 'Express Job Claimed!' : 'Batch Claimed!',
         description: `${suggestedBatch.length} delivery(s) claimed successfully.`,
         status: 'success',
@@ -284,6 +288,7 @@ const RiderJobs: React.FC = () => {
     } catch (error: any) {
       const errMsg = error?.response?.data?.error || 'Failed to claim delivery'
       toast({
+        id: "rider-error",
         title: 'Error',
         description: errMsg,
         status: 'error',

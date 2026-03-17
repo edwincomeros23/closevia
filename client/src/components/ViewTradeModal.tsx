@@ -878,6 +878,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
   const submitReview = async () => {
     if (!trade || !rating || !feedback.trim()) {
       toast({
+        id: "viewtrademodal-missing-information",
         title: 'Missing information',
         description: 'Please provide a rating and feedback.',
         status: 'warning',
@@ -907,6 +908,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       })
 
       toast({
+        id: "viewtrademodal-review-submitted",
         title: 'Review submitted',
         description: 'Your review has been submitted successfully.',
         status: 'success',
@@ -924,6 +926,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
     } catch (error: any) {
       console.error('Review submission error:', error)
       toast({
+        id: "viewtrademodal-error",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to submit review',
         status: 'error',
@@ -1294,6 +1297,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         console.error('Backend error details:', error.response.data)
       }
       toast({
+        id: "viewtrademodal-error-2",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to save delivery state',
         status: 'error',
@@ -1460,6 +1464,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       await fetchMessages({ showLoading: false })
     } catch (error: any) {
       toast({
+        id: "viewtrademodal-error-3",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to send message',
         status: 'error',
@@ -1487,6 +1492,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       }
 
       toast({
+        id: "viewtrademodal-meetup-location-confirmed",
         title: 'Meetup location confirmed',
         description: 'Waiting for the other party to confirm...',
         status: 'success',
@@ -1497,6 +1503,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       onStatusUpdate()
     } catch (error: any) {
       toast({
+        id: "viewtrademodal-error-4",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to confirm meetup',
         status: 'error',
@@ -1571,6 +1578,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       onStatusUpdate()
 
       toast({
+        id: "viewtrademodal-payment-confirmed",
         title: 'Payment confirmed',
         description: 'Your payment has been secured',
         status: 'success',
@@ -1578,6 +1586,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       })
     } catch (error) {
       toast({
+        id: "viewtrademodal-payment-failed",
         title: 'Payment failed',
         description: 'Please try again',
         status: 'error',
@@ -1624,6 +1633,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       onStatusUpdate()
 
       toast({
+        id: "viewtrademodal-delivery-confirmed",
         title: 'Delivery confirmed',
         description: 'Thank you for confirming',
         status: 'success',
@@ -1646,6 +1656,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       }
     } catch (error: any) {
       toast({
+        id: "viewtrademodal-delivery-confirmation-failed",
         title: 'Delivery confirmation failed',
         description: error?.response?.data?.error || 'Please try again',
         status: 'error',

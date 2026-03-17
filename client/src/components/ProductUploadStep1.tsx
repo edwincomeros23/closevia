@@ -71,6 +71,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
       // Validate file
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
         toast({
+        id: "productuploadstep1-invalid-file-type",
           title: 'Invalid file type',
           description: 'Only JPEG, PNG, or WebP are supported',
           status: 'error',
@@ -82,6 +83,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
 
       if (file.size > 5 * 1024 * 1024) {
         toast({
+        id: "productuploadstep1-file-too-large",
           title: 'File too large',
           description: 'Maximum file size is 5MB',
           status: 'error',
@@ -94,6 +96,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
       // Check total count
       if (images.length + newImages.length >= 8) {
         toast({
+        id: "productuploadstep1-maximum-images-exceeded",
           title: 'Maximum images exceeded',
           description: 'You can upload up to 8 images',
           status: 'warning',
@@ -160,6 +163,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
 
     if (!['video/mp4', 'video/quicktime'].includes(file.type)) {
       toast({
+        id: "productuploadstep1-invalid-file-type-2",
         title: 'Invalid file type',
         description: 'Only MP4 or MOV formats are supported',
         status: 'error',
@@ -171,6 +175,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
 
     if (file.size > 50 * 1024 * 1024) {
       toast({
+        id: "productuploadstep1-file-too-large-2",
         title: 'File too large',
         description: 'Maximum video size is 50MB',
         status: 'error',
@@ -193,6 +198,7 @@ const ProductUploadStep1: React.FC<ProductUploadStep1Props> = ({
   const handleNext = () => {
     if (images.length === 0) {
       toast({
+        id: "productuploadstep1-at-least-1-image-required",
         title: 'At least 1 image required',
         description: 'Please upload at least one product image',
         status: 'error',

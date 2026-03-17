@@ -115,6 +115,7 @@ const BatchPreview: React.FC = () => {
       }, 1000)
 
       toast({
+        id: "batchpreview-batch-locked",
         title: 'Batch Locked! ✅',
         description: 'Tasks secured for 15 minutes. Proceed to pickup.',
         status: 'success',
@@ -125,6 +126,7 @@ const BatchPreview: React.FC = () => {
       navigate(`/rider/task-stepper/${batchId}`)
     } catch (error) {
       toast({
+        id: "batchpreview-claim-failed",
         title: 'Claim Failed',
         description: 'Unable to lock batch. Please try again.',
         status: 'error',

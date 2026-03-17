@@ -54,6 +54,7 @@ const ProductUploadStep3: React.FC<ProductUploadStep3Props> = ({
   const handleSubmit = async () => {
     if (!agreeTerms) {
       toast({
+        id: "productuploadstep3-please-accept-terms",
         title: 'Please accept terms',
         description: 'You must agree to listing terms before posting',
         status: 'warning',
