@@ -1032,8 +1032,9 @@ const Home: React.FC = () => {
         </Box>
       </Box>
 
-      {/* Real-time Activity Feed Marquee */}
-      <ActivityFeed />
+      <Box mt={{ base: 0, md: 6, lg: 8 }}>
+        <ActivityFeed />
+      </Box>
 
       {/* Main Content - desktop: centered max-width */}
       <Box

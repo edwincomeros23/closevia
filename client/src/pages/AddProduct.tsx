@@ -57,6 +57,10 @@ export interface ProductFormData {
 
   // Product value
   value?: number
+
+  // Barter preferences
+  wanted_categories?: string[]
+  wants?: string
 }
 
 import { useAuth } from '../contexts/AuthContext'
@@ -129,6 +133,8 @@ const AddProduct: React.FC = () => {
     estimated_value_max: undefined,
     tags: '[]',
     value: undefined,
+    wanted_categories: [],
+    wants: '',
   })
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -274,6 +280,7 @@ const AddProduct: React.FC = () => {
           setAiBlockingError(d.reason || 'This item cannot be listed for trading.')
 
           // Stay on Step 1 - do NOT navigate to Step 2
+          setCurrentStep(1)
           return
         }
 
@@ -386,7 +393,7 @@ const AddProduct: React.FC = () => {
     } finally {
       setIsGenerating(false)
     }
-  }, [isGenerating, toast])
+  }, [toast])
 
   // ── Effects ───────────────────────────────────────────────────────────────
 
@@ -426,11 +433,12 @@ const AddProduct: React.FC = () => {
         }
       }
 
-      setUploadedImages(prev => {
-        const combined = [...prev, ...processed]
-        return combined.slice(0, 8)
-      })
+      const finalImages = [...uploadedImages, ...processed].slice(0, 8)
+      setUploadedImages(finalImages)
       setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
+
+      // Trigger AI analysis immediately for the new set of images
+      triggerAI(finalImages)
 
       // Run client-side image quality checks (instant, no network)
       setQualityChecking(true)
@@ -472,7 +480,7 @@ const AddProduct: React.FC = () => {
       setAiDone(false)
     }
     processFiles()
-  }, [uploadedImages.length, toast])
+  }, [uploadedImages.length, toast, triggerAI, uploadedImages])
 
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
@@ -632,6 +640,10 @@ const AddProduct: React.FC = () => {
       if (formData.estimated_value_max !== undefined) fd.append('estimated_value_max', String(formData.estimated_value_max))
       fd.append('tags', formData.tags || '[]')
       if (formData.value !== undefined) fd.append('value', String(formData.value))
+      if (formData.wanted_categories && formData.wanted_categories.length > 0) {
+        fd.append('wanted_categories', JSON.stringify(formData.wanted_categories))
+      }
+      if (formData.wants) fd.append('wants', formData.wants)
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
@@ -1227,19 +1239,61 @@ const AddProduct: React.FC = () => {
         )}
       </Box>
 
-      {/* ──────── VALUE FIELD ──────── */}
-      <FormControl>
-        <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Product Value (PHP) <Badge colorScheme="gray" ml={1} fontSize="8px">Optional</Badge></FormLabel>
-        <Input
-          type="number"
-          placeholder="e.g. 1500"
-          value={formData.value ?? ''}
-          onChange={e => handleField('value', e.target.value ? parseFloat(e.target.value) : undefined)}
-          size="sm"
-          h="32px"
-        />
-        <FormHelperText fontSize="xs">Helps others understand how much your product is worth.</FormHelperText>
-      </FormControl>
+      {/* Manual value field removed as per user request to use AI instead */}
+
+      {/* ──────── WHAT ARE YOU LOOKING FOR? (OPTIONAL) ──────── */}
+      <Box p={4} bg="brand.50" borderRadius="lg" border="1px dashed" borderColor="brand.200">
+        <Text fontSize="sm" fontWeight="bold" color="brand.700" mb={3}>
+          🔍 What are you looking for? (Optional)
+        </Text>
+        <VStack spacing={3} align="stretch">
+          <FormControl>
+            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Categories (Select multiple)</FormLabel>
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={1.5}>
+              {PRODUCT_CATEGORIES.map((cat) => {
+                const isSelected = formData.wanted_categories?.includes(cat.value)
+                return (
+                  <Button
+                    key={cat.value}
+                    size="xs"
+                    variant={isSelected ? 'solid' : 'outline'}
+                    colorScheme={isSelected ? 'brand' : 'gray'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const current = formData.wanted_categories || []
+                      const next = isSelected 
+                        ? current.filter(v => v !== cat.value)
+                        : [...current, cat.value]
+                      handleField('wanted_categories', next)
+                    }}
+                    fontSize="9px"
+                    h="24px"
+                    rounded="full"
+                    leftIcon={<cat.icon size={10} />}
+                  >
+                    {cat.label}
+                  </Button>
+                )
+              })}
+            </SimpleGrid>
+          </FormControl>
+          
+          <FormControl>
+            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
+            <Input
+              placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
+              value={formData.wants}
+              onChange={e => handleField('wants', e.target.value)}
+              size="sm"
+              bg="white"
+              maxLength={50}
+              h="32px"
+              onClick={e => e.stopPropagation()}
+            />
+            <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+          </FormControl>
+        </VStack>
+      </Box>
     </VStack>
   )
 
@@ -1417,6 +1471,29 @@ const AddProduct: React.FC = () => {
           <Box p={3} bg="green.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="green.400">
             <Text fontSize="xs" fontWeight="bold" color="green.900" mb={1}>💰 Product Value</Text>
             <Text fontSize="lg" fontWeight="bold" color="green.700">₱{formData.value.toLocaleString()}</Text>
+          </Box>
+        )}
+
+        {/* ──────── DESIRED ITEMS DISPLAY ──────── */}
+        {( (formData.wanted_categories && formData.wanted_categories.length > 0) || formData.wants) && (
+          <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
+            <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>🔍 Looking For</Text>
+            <VStack align="stretch" spacing={2}>
+              {formData.wanted_categories && formData.wanted_categories.length > 0 && (
+                <HStack spacing={1.5} flexWrap="wrap">
+                  {formData.wanted_categories.map(cat => (
+                    <Badge key={cat} colorScheme="blue" variant="solid" fontSize="9px" borderRadius="full" px={2} py={0.5}>
+                      {PRODUCT_CATEGORIES.find(c => c.value === cat)?.label || cat}
+                    </Badge>
+                  ))}
+                </HStack>
+              )}
+              {formData.wants && (
+                <Text fontSize="sm" fontWeight="medium" color="blue.800" fontStyle="italic">
+                  " {formData.wants} "
+                </Text>
+              )}
+            </VStack>
           </Box>
         )}
 

@@ -1016,6 +1016,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     <Text>{stats.avgResponse}</Text>
                   </HStack>
                 </HStack>
+
               </Flex>
 
               {/* Trust level + Activity badges */}
@@ -1394,6 +1395,34 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                                       "{review.comment}"
                                     </Text>
                                   )}
+
+                                  {/* Show existing reply if any */}
+                                  {review.reply && (
+                                    <Box
+                                      mt={3}
+                                      pl={4}
+                                      borderLeft="2px"
+                                      borderColor="brand.200"
+                                      bg="gray.50"
+                                      p={3}
+                                      borderRadius="md"
+                                    >
+                                      <HStack spacing={2} mb={1}>
+                                        <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
+                                        <Text fontSize="sm" fontWeight="semibold" color="brand.600">
+                                          <Box as="span" textTransform="capitalize">{review.reply_author || user?.name || 'Trader'}</Box> replied:
+                                        </Text>
+                                        {review.reply_date && (
+                                          <Text fontSize="xs" color="gray.500">
+                                            {review.reply_date}
+                                          </Text>
+                                        )}
+                                      </HStack>
+                                      <Text fontSize="sm" color="gray.700">
+                                        {review.reply}
+                                      </Text>
+                                    </Box>
+                                  )}
                                 </Box>
                               )}
                             </Box>
@@ -1674,19 +1703,19 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 </FormControl>
 
 
-                  <FormControl isRequired>
-                    <FormLabel>Your Review</FormLabel>
-                    <Textarea
-                      value={reviewComment}
-                      onChange={(e) => setReviewComment(e.target.value)}
-                      placeholder="Share details about your experience with this trader..."
-                      rows={5}
-                      maxLength={500}
-                    />
-                    <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
-                      {reviewComment.length}/500 characters
-                    </Text>
-                  </FormControl>
+                <FormControl isRequired>
+                  <FormLabel>Your Review</FormLabel>
+                  <Textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Share details about your experience with this trader..."
+                    rows={5}
+                    maxLength={500}
+                  />
+                  <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
+                    {reviewComment.length}/500 characters
+                  </Text>
+                </FormControl>
 
 
                 <HStack justify="flex-end" spacing={3}>

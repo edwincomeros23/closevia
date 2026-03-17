@@ -22,7 +22,11 @@ func main() {
 	// Load .env file only in local development (Render sets PORT automatically)
 	// This prevents a committed .env from overriding Render dashboard env vars
 	if os.Getenv("PORT") == "" {
-		if err := godotenv.Load(); err != nil {
+		// Prefer a developer-specific override file if present, then fallback to .env.
+		// This avoids breaking local dev when .env contains hosted DB settings.
+		if err := godotenv.Load(".env.local"); err == nil {
+			log.Println("Loaded .env.local file for local development")
+		} else if err := godotenv.Load(); err != nil {
 			log.Println("No .env file found, using system environment variables")
 		} else {
 			log.Println("Loaded .env file for local development")
@@ -217,6 +221,8 @@ func main() {
 	auth.Post("/google", userHandler.GoogleLogin)
 	auth.Post("/verify-email", userHandler.VerifyEmail)
 	auth.Post("/resend-verification", userHandler.ResendVerification)
+	auth.Post("/forgot-password", userHandler.ForgotPassword)
+	auth.Post("/reset-password", userHandler.ResetPassword)
 
 	// User routes (authentication required)
 	users := api.Group("/users")

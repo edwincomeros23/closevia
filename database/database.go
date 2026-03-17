@@ -139,6 +139,46 @@ func CreateTables() error {
 		log.Println("Adding missing language_preference column to users table...")
 		DB.Exec("ALTER TABLE users ADD COLUMN language_preference VARCHAR(10) NULL DEFAULT 'en'")
 	}
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews' AND COLUMN_NAME = 'reply'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing reply columns to reviews table...")
+		DB.Exec("ALTER TABLE reviews ADD COLUMN reply TEXT NULL")
+		DB.Exec("ALTER TABLE reviews ADD COLUMN reply_date DATETIME NULL")
+		DB.Exec("ALTER TABLE reviews ADD COLUMN replied_by_user_id INT NULL")
+		DB.Exec("ALTER TABLE reviews ADD CONSTRAINT fk_replied_by FOREIGN KEY (replied_by_user_id) REFERENCES users(id) ON DELETE SET NULL")
+	}
+	// Robust column migration for products table
+	productCols := map[string]string{
+		"value":               "DECIMAL(10,2) NULL",
+		"estimated_value_min": "DECIMAL(10,2) NULL",
+		"estimated_value_max": "DECIMAL(10,2) NULL",
+		"wants":               "TEXT NULL",
+		"wanted_categories":   "JSON NULL",
+		"desired_price":       "DECIMAL(10,2) NULL",
+		"desired_product":     "VARCHAR(255) NULL",
+		"item_type":           "VARCHAR(100) NULL",
+		"brand":               "VARCHAR(100) NULL",
+		"authenticity_risks":  "VARCHAR(50) NULL",
+		"tags":                "JSON NULL",
+		"boosted_at":          "TIMESTAMP NULL",
+	}
+
+	for col, def := range productCols {
+		columnName := col
+		if col == "value" {
+			columnName = "`value`"
+		}
+		_, err := DB.Exec(fmt.Sprintf("ALTER TABLE products ADD COLUMN %s %s", columnName, def))
+		if err != nil {
+			// Ignore error 1060 (Duplicate column name)
+			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == 1060 {
+				continue
+			}
+			log.Printf("Note: Could not add column %s to products table: %v", col, err)
+		} else {
+			log.Printf("Migration: Added column %s to products table", col)
+		}
+	}
 
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS users (
@@ -192,10 +232,22 @@ func CreateTables() error {
 			` + "`condition`" + ` VARCHAR(50),
 			suggested_value INT,
 			category VARCHAR(100),
+			estimated_value_min DECIMAL(10,2) NULL,
+			estimated_value_max DECIMAL(10,2) NULL,
+			value DECIMAL(10,2) NULL,
+			wants TEXT NULL,
+			wanted_categories JSON NULL,
+			desired_price DECIMAL(10,2) NULL,
+			desired_product VARCHAR(255) NULL,
+			item_type VARCHAR(100) NULL,
+			brand VARCHAR(100) NULL,
+			authenticity_risks VARCHAR(50) NULL,
+			tags JSON NULL,
 			latitude FLOAT,
 			longitude FLOAT,
 			video_url VARCHAR(500) NULL,
 			bidding_type ENUM('none', 'blind', 'open') DEFAULT 'none',
+			boosted_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -406,6 +458,15 @@ func CreateTables() error {
 			INDEX idx_delivery_status (status),
 			INDEX idx_delivery_type (delivery_type)
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_agreements (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id VARCHAR(255) NOT NULL,
+			user_id INT NOT NULL,
+			status ENUM('accepted', 'declined') NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_loop_user (loop_id, user_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS delivery_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			delivery_id INT NOT NULL,
@@ -422,10 +483,14 @@ func CreateTables() error {
 			reviewed_user_id INT NOT NULL,
 			rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
 			comment TEXT NOT NULL,
+			reply TEXT NULL,
+			reply_date DATETIME NULL,
+			replied_by_user_id INT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE CASCADE,
 			FOREIGN KEY (reviewed_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (replied_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
 			INDEX idx_reviewed_user (reviewed_user_id),
 			INDEX idx_reviewer (reviewer_id),
 			INDEX idx_created_at (created_at)
@@ -565,6 +630,8 @@ func ensureUserColumns() {
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"last_login", "TIMESTAMP NULL"},
+		{"password_reset_otp_hash", "VARCHAR(255) NULL"},
+		{"password_reset_otp_expires", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {
@@ -623,6 +690,7 @@ func ensureProductColumns() {
 		{"tags", "JSON NULL"},
 		{"estimated_value_min", "DECIMAL(10,2) NULL"},
 		{"estimated_value_max", "DECIMAL(10,2) NULL"},
+		{"value", "DECIMAL(10,2) NULL"},
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 		{"boosted_at", "TIMESTAMP NULL"},
 	}
@@ -645,7 +713,12 @@ func ensureProductColumns() {
 
 		// Add column if it doesn't exist
 		if count == 0 {
-			query := fmt.Sprintf("ALTER TABLE products ADD COLUMN %s %s", col.name, col.definition)
+			colName := col.name
+			// Escape reserved identifiers
+			if colName == "condition" || colName == "value" {
+				colName = "`" + colName + "`"
+			}
+			query := fmt.Sprintf("ALTER TABLE products ADD COLUMN %s %s", colName, col.definition)
 			if _, err := DB.Exec(query); err != nil {
 				log.Printf("Warning: failed to add column %s: %v", col.name, err)
 			} else {

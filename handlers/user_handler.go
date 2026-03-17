@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"log"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -399,6 +400,128 @@ func (h *UserHandler) ResendVerification(c *fiber.Ctx) error {
 	go services.SendOTPEmail(req.Email, userName, otpCode)
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Verification code resent"})
+}
+
+// ForgotPassword sends a password reset OTP to the user's email.
+// POST /api/auth/forgot-password  { email }
+func (h *UserHandler) ForgotPassword(c *fiber.Ctx) error {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	if req.Email == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Email is required"})
+	}
+
+	// Look up user — always return success to prevent email enumeration
+	var userID int
+	var userName string
+	var currentExpires sql.NullTime
+	err := h.db.QueryRow(
+		"SELECT id, name, password_reset_otp_expires FROM users WHERE email = ?",
+		req.Email,
+	).Scan(&userID, &userName, &currentExpires)
+	if err != nil {
+		// User not found — return success anyway (security: no email enumeration)
+		return c.JSON(models.APIResponse{Success: true, Message: "If an account with that email exists, a reset code has been sent."})
+	}
+
+	// Cooldown: block resend if previous OTP was sent less than 60 seconds ago
+	if currentExpires.Valid {
+		secondsUntilExpiry := time.Until(currentExpires.Time).Seconds()
+		// OTP is set for 15 min; if > 14 min remain it was sent <60s ago
+		if secondsUntilExpiry > float64(14*60) {
+			return c.Status(429).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Please wait 60 seconds before requesting a new code",
+			})
+		}
+	}
+
+	// Generate 6-digit OTP with 15-minute expiry
+	otpCode, otpHash, _, otpErr := generateOTP()
+	if otpErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate reset code"})
+	}
+	otpExpiry := time.Now().Add(15 * time.Minute)
+
+	_, err = h.db.Exec(
+		"UPDATE users SET password_reset_otp_hash = ?, password_reset_otp_expires = ? WHERE id = ?",
+		otpHash, otpExpiry, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to save reset code"})
+	}
+
+	go func() {
+		if err := services.SendPasswordResetEmail(req.Email, userName, otpCode); err != nil {
+			log.Printf("Failed to send password reset email to %s: %v", req.Email, err)
+		}
+	}()
+
+	return c.JSON(models.APIResponse{Success: true, Message: "If an account with that email exists, a reset code has been sent."})
+}
+
+// ResetPassword verifies OTP and updates the user's password.
+// POST /api/auth/reset-password  { email, code, new_password }
+func (h *UserHandler) ResetPassword(c *fiber.Ctx) error {
+	var req struct {
+		Email       string `json:"email"`
+		Code        string `json:"code"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	if req.Email == "" || req.Code == "" || req.NewPassword == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Email, code, and new password are required"})
+	}
+	if len(req.NewPassword) < 6 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Password must be at least 6 characters"})
+	}
+
+	// Look up user and OTP
+	var userID int
+	var otpHash sql.NullString
+	var otpExpires sql.NullTime
+	err := h.db.QueryRow(
+		"SELECT id, password_reset_otp_hash, password_reset_otp_expires FROM users WHERE email = ?",
+		req.Email,
+	).Scan(&userID, &otpHash, &otpExpires)
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid email or code"})
+	}
+
+	// Verify OTP exists and hasn't expired
+	if !otpHash.Valid || !otpExpires.Valid {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No reset code found. Please request a new one."})
+	}
+	if time.Now().After(otpExpires.Time) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reset code has expired. Please request a new one."})
+	}
+
+	// Verify OTP matches
+	if !utils.CheckPasswordHash(req.Code, otpHash.String) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid reset code"})
+	}
+
+	// Hash new password and update
+	newHash, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to process new password"})
+	}
+
+	_, err = h.db.Exec(
+		"UPDATE users SET password_hash = ?, password_reset_otp_hash = NULL, password_reset_otp_expires = NULL WHERE id = ?",
+		newHash, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update password"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Password reset successfully. You can now log in with your new password."})
 }
 
 // Login handles user authentication

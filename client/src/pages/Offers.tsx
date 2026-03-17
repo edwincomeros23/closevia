@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden, SimpleGrid, IconButton, Tooltip } from '@chakra-ui/react'
 import { FaHandshake, FaTimes, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { FiGrid, FiList } from 'react-icons/fi'
@@ -9,6 +10,7 @@ import OfferDetailsModal from '../components/OfferDetailsModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
 
 const Offers: React.FC = () => {
+  const navigate = useNavigate()
   const [incoming, setIncoming] = useState<Trade[]>([])
   const [outgoing, setOutgoing] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
@@ -208,6 +210,23 @@ const Offers: React.FC = () => {
         status: 'error'
       })
     }
+  }
+
+  const handleConvertToMultiWay = () => {
+    if (!tradeToDecline) {
+      setDeclineModalOpen(false)
+      return
+    }
+
+    setDeclineModalOpen(false)
+    toast({
+      title: 'Searching for multi-way trade',
+      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
+      status: 'info',
+      duration: 5000
+    })
+
+    navigate('/premium')
   }
 
   const sortList = (list: Trade[]) => {
@@ -1316,6 +1335,15 @@ const Offers: React.FC = () => {
                     onClick={() => setDeclineModalOpen(false)}
                   >
                     Keep Offer
+                  </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                  >
+                    Convert to Multi-Way
                   </Button>
                   <Button
                     colorScheme="red"
