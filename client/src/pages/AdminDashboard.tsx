@@ -118,13 +118,13 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import VerifiedAvatar from '../components/VerifiedAvatar';
 import { User, Product, PaginatedResponse, APIResponse } from '../types';
 
-// â”€â”€â”€ PDF / DOCX imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ PDF / DOCX imports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Document, Packer, Paragraph, Table, TableRow, TableCell, TableLayoutType, TextRun, HeadingLevel, AlignmentType, WidthType, ShadingType } from 'docx';
 import { saveAs } from 'file-saver';
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 interface AdminStats {
   total_users: number;
   premium_users: number;
@@ -178,7 +178,7 @@ export interface Campaign {
   created_at: string;
 }
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 
@@ -187,7 +187,7 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-// â”€â”€â”€ Export helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Export helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function buildReportRows(stats: AdminStats) {
   return [
     ['Total Users', stats.total_users?.toLocaleString() ?? '0'],
@@ -210,21 +210,21 @@ function exportToPDF(stats: AdminStats) {
   const now = new Date();
   const pageW = doc.internal.pageSize.getWidth();
 
-  // â”€â”€ Header band â”€â”€
+  // â"€â"€ Header band â"€â"€
   doc.setFillColor(49, 130, 206); // blue.500
   doc.rect(0, 0, pageW, 32, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text('Clovia Admin â€” Site Usage Report', pageW / 2, 14, { align: 'center' });
+  doc.text('Clovia Admin â€" Site Usage Report', pageW / 2, 14, { align: 'center' });
 
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text(`Generated: ${now.toLocaleString('en-PH')}`, pageW / 2, 22, { align: 'center' });
   doc.text(`Data as of: ${stats.last_updated ?? now.toLocaleString('en-PH')}`, pageW / 2, 28, { align: 'center' });
 
-  // â”€â”€ Section: Core Metrics â”€â”€
+  // â"€â"€ Section: Core Metrics â"€â"€
   doc.setTextColor(30, 30, 30);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
@@ -251,7 +251,7 @@ function exportToPDF(stats: AdminStats) {
     margin: { left: 14, right: 14 },
   });
 
-  // â”€â”€ Section: Revenue Breakdown â”€â”€
+  // â"€â"€ Section: Revenue Breakdown â"€â"€
   const afterTable = (doc as any).lastAutoTable.finalY + 10;
   if (stats.revenue_breakdown && stats.revenue_breakdown.length > 0) {
     doc.setFontSize(13);
@@ -276,7 +276,7 @@ function exportToPDF(stats: AdminStats) {
     });
   }
 
-  // â”€â”€ Footer â”€â”€
+  // â"€â"€ Footer â"€â"€
   const pageCount = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -348,7 +348,7 @@ async function exportToDOCX(stats: AdminStats) {
         properties: {},
         children: [
           new Paragraph({
-            text: 'Clovia Admin â€” Site Usage Report',
+            text: 'Clovia Admin â€" Site Usage Report',
             heading: HeadingLevel.HEADING_1,
             alignment: AlignmentType.CENTER,
           }),
@@ -397,7 +397,7 @@ async function exportToDOCX(stats: AdminStats) {
   saveAs(blob, `clovia-report-${now.toISOString().slice(0, 10)}.docx`);
 }
 
-// â”€â”€â”€ Calendar Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Calendar Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 interface CalendarProps {
   year: number;
   month: number; // 1-based
@@ -532,8 +532,8 @@ const UsageCalendar: React.FC<CalendarProps> = ({
       <HStack spacing={4} mt={3} justify="center" flexWrap="wrap">
         {[
           { color: 'green.400', label: 'High activity (>10)' },
-          { color: 'blue.400', label: 'Medium (4â€“10)' },
-          { color: 'orange.400', label: 'Low (1â€“3)' },
+          { color: 'blue.400', label: 'Medium (4â€"10)' },
+          { color: 'orange.400', label: 'Low (1â€"3)' },
         ].map(l => (
           <HStack key={l.label} spacing={1}>
             <Box w="8px" h="8px" borderRadius="full" bg={l.color} />
@@ -545,7 +545,7 @@ const UsageCalendar: React.FC<CalendarProps> = ({
   );
 };
 
-// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Main Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -666,7 +666,7 @@ const AdminDashboard: React.FC = () => {
   const sidebarBg = useColorModeValue('white', 'gray.800');
   const topBarBg = useColorModeValue('white', 'gray.800');
 
-  // â”€â”€ Connection check â”€â”€
+  // â"€â"€ Connection check â"€â"€
   const checkConnection = useCallback(async () => {
     try {
       const status = await checkConnectionStatus();
@@ -675,7 +675,7 @@ const AdminDashboard: React.FC = () => {
     } catch { }
   }, []);
 
-  // â”€â”€ Fetch main stats â”€â”€
+  // â"€â"€ Fetch main stats â"€â"€
   const fetchAdminStats = useCallback(async (useMockDataFallback = false) => {
     try {
       setLoading(true);
@@ -714,7 +714,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // â”€â”€ Fetch calendar daily stats â”€â”€
+  // â"€â"€ Fetch calendar daily stats â"€â"€
   const fetchDailyStats = useCallback(async (year: number, month: number) => {
     setCalendarLoading(true);
     try {
@@ -725,13 +725,13 @@ const AdminDashboard: React.FC = () => {
         setActivityMap(map);
       }
     } catch {
-      // silently fail â€” calendar is supplementary
+      // silently fail â€" calendar is supplementary
     } finally {
       setCalendarLoading(false);
     }
   }, []);
 
-  // â”€â”€ Fetch stats for a specific day â”€â”€
+  // â"€â"€ Fetch stats for a specific day â"€â"€
   const fetchDayDetail = useCallback(async (date: string) => {
     setDayDetailLoading(true);
     setSelectedDayDetail(null);
@@ -774,7 +774,7 @@ const AdminDashboard: React.FC = () => {
     await fetchAdminStats();
   }, [fetchAdminStats]);
 
-  // â”€â”€ Export handlers â”€â”€
+  // â"€â"€ Export handlers â"€â"€
   const handleExportPDF = useCallback(async () => {
     if (!stats) return;
     setExportLoading(true);
@@ -801,7 +801,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [stats, toast]);
 
-  // â”€â”€ Fetch reports for admin â”€â”€
+  // â"€â"€ Fetch reports for admin â"€â"€
   const fetchAdminReports = useCallback(
     async (page = 1, status = '') => {
       try {
@@ -834,7 +834,7 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
-  // â”€â”€ Update report status â”€â”€
+  // â"€â"€ Update report status â"€â"€
   const handleUpdateReportStatus = useCallback(async (reportId: number, newStatus: string) => {
     try {
       await api.put(`/api/admin/reports/${reportId}/status`, { status: newStatus });
@@ -853,7 +853,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [reportsPage, reportsStatusFilter, fetchAdminReports, toast]);
 
-  // â”€â”€ Fetch users for admin list â”€â”€
+  // â"€â"€ Fetch users for admin list â"€â"€
   const fetchAdminUsers = useCallback(
     async (page = 1) => {
       try {
@@ -884,7 +884,7 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
-  // â”€â”€ Fetch products for admin list â”€â”€
+  // â"€â"€ Fetch products for admin list â"€â"€
   const fetchAdminProducts = useCallback(
     async (page = 1) => {
       try {
@@ -915,7 +915,7 @@ const AdminDashboard: React.FC = () => {
     [toast],
   );
 
-  // â”€â”€ Suspend handler â”€â”€
+  // â"€â"€ Suspend handler â"€â"€
   const handleToggleSuspend = useCallback(async (user: User) => {
     try {
       const isSuspended = user.role === 'suspended';
@@ -948,7 +948,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // â”€â”€ Fetch campaigns for admin list â”€â”€
+  // â"€â"€ Fetch campaigns for admin list â"€â"€
   const fetchAdminCampaigns = useCallback(async () => {
     try {
       setCampaignsLoading(true);
@@ -970,7 +970,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // â”€â”€ Save campaign (Create/Update) â”€â”€
+  // â"€â"€ Save campaign (Create/Update) â"€â"€
   const handleSaveCampaign = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCampaign?.title) {
@@ -1031,7 +1031,7 @@ const AdminDashboard: React.FC = () => {
     openDeleteDialog();
   }, [openDeleteDialog]);
 
-  // â”€â”€ Toggle campaign active status â”€â”€
+  // â"€â"€ Toggle campaign active status â"€â"€
   const handleToggleCampaignStatus = useCallback(async (camp: Campaign) => {
     try {
       await api.put(`/api/admin/campaigns/${camp.id}`, { is_active: !camp.is_active });
@@ -1044,7 +1044,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast, fetchAdminCampaigns]);
 
-  // â”€â”€ Fetch ID/COR verifications (pending & rejected) â”€â”€
+  // â"€â"€ Fetch ID/COR verifications (pending & rejected) â"€â"€
   const fetchAdminVerifications = useCallback(async () => {
     try {
       setVerificationsLoading(true);
@@ -1152,7 +1152,7 @@ const AdminDashboard: React.FC = () => {
     setIdImageModal(null);
   }, [idImageUrl]);
 
-  // â”€â”€ Approve verification â”€â”€
+  // â"€â"€ Approve verification â"€â"€
   const handleApproveVerification = useCallback(async (userId: number) => {
     try {
       await api.post(`/api/admin/verifications/${userId}/approve`);
@@ -1171,7 +1171,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast, fetchAdminVerifications]);
 
-  // â”€â”€ Reject verification (open modal to enter reason) â”€â”€
+  // â"€â"€ Reject verification (open modal to enter reason) â"€â"€
   const openRejectModal = useCallback((item: VerificationItem) => {
     setRejectTarget(item);
     setRejectReason('');
@@ -1201,7 +1201,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [rejectTarget, rejectReason, toast, fetchAdminVerifications]);
 
-  // â”€â”€ Delete handlers â”€â”€
+  // â"€â"€ Delete handlers â"€â"€
   const askDeleteUser = useCallback((user: User) => {
     setDeleteTarget({ type: 'user', id: user.id, name: user.name || user.email });
     openDeleteDialog();
@@ -1289,15 +1289,15 @@ const AdminDashboard: React.FC = () => {
     fetchDailyStats(calYear, calMonth);
   }, [calYear, calMonth, fetchDailyStats]);
 
-  // â”€â”€ Loading / Error / No-data states â”€â”€
+  // â"€â"€ Loading / Error / No-data states â"€â"€
 
 
-  // â”€â”€ Sidebar / SPA state â”€â”€
+  // â"€â"€ Sidebar / SPA state â"€â"€
   type SectionId = 'overview' | 'moderation' | 'management' | 'system';
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const { isOpen: isSidebarOpen, onOpen: openSidebar, onClose: closeSidebar } = useDisclosure();
 
-  // â”€â”€ Report action moderation state â”€â”€
+  // â"€â"€ Report action moderation state â"€â"€
   const [moderationTarget, setModerationTarget] = useState<{ report: any; action: string } | null>(null);
   const [moderationLoading, setModerationLoading] = useState(false);
   const cancelModerationRef = useRef<HTMLButtonElement | null>(null);
@@ -1334,7 +1334,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [moderationTarget, fetchAdminReports, reportsPage, reportsStatusFilter, toast]);
 
-  // â”€â”€ Sidebar nav config â”€â”€
+  // â"€â"€ Sidebar nav config â"€â"€
   const sidebarNav = [
     { id: 'overview' as SectionId, label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
     { id: 'moderation' as SectionId, label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & verifications', badge: (reports.filter((r: any) => r.status === 'pending').length + verifications.filter(v => v.verification_status === 'pending').length + riderApplications.filter(r => r.status === 'pending').length) || undefined },
@@ -1394,10 +1394,10 @@ const AdminDashboard: React.FC = () => {
       </Container>
     );
   }
-  // â”€â”€ Main render â”€â”€
+  // â"€â"€ Main render â"€â"€
 
 
-  // â”€â”€ Sidebar nav item component â”€â”€
+  // â"€â"€ Sidebar nav item component â"€â"€
   const SidebarNavItem = ({ item }: { item: typeof sidebarNav[0] }) => {
     const isActive = activeSection === item.id;
     return (
@@ -1432,7 +1432,7 @@ const AdminDashboard: React.FC = () => {
     );
   };
 
-  // â”€â”€ Sidebar content â”€â”€
+  // â"€â"€ Sidebar content â"€â"€
   const SidebarContent = () => (
     <VStack spacing={1} align="stretch" p={4} ml={20} h="full">
       <Box px={4} pb={4} borderBottom="1px solid" borderColor={borderColor} mb={2}>
@@ -1450,7 +1450,7 @@ const AdminDashboard: React.FC = () => {
     </VStack>
   );
 
-  // â”€â”€ Metric card with hover lift â”€â”€
+  // â"€â"€ Metric card with hover lift â"€â"€
   const MetricCard = ({ icon, color, label, value, raw }: { icon: any; color: string; label: string; value: any; raw?: boolean }) => (
     <Card
       bg={cardBg}
@@ -1473,7 +1473,7 @@ const AdminDashboard: React.FC = () => {
     </Card>
   );
 
-  // â”€â”€ Chart Skeleton â”€â”€
+  // â"€â"€ Chart Skeleton â"€â"€
   const ChartSkeleton = () => (
     <Box h="300px" p={4}>
       <Skeleton height="20px" width="200px" mb={6} />
@@ -1487,7 +1487,7 @@ const AdminDashboard: React.FC = () => {
     </Box>
   );
 
-  // â”€â”€ SECTION: Overview â”€â”€
+  // â"€â"€ SECTION: Overview â"€â"€
   const OverviewSection = () => (
     <VStack spacing={8} pr={20} align="stretch">
       {/* User metrics group */}
@@ -1649,7 +1649,7 @@ const AdminDashboard: React.FC = () => {
     </VStack>
   );
 
-  // â”€â”€ SECTION: Moderation Queue â”€â”€
+  // â"€â"€ SECTION: Moderation Queue â"€â"€
   const ModerationSection = () => {
     const pendingCount = reports.filter((r: any) => r.status === 'pending').length;
     const reviewedCount = reports.filter((r: any) => r.status === 'reviewed').length;
@@ -1946,35 +1946,35 @@ const AdminDashboard: React.FC = () => {
       </Card>
 
       {/* Rider Applications */}
-      <Card bg={cardBg} border=”1px solid” borderColor={borderColor} borderRadius=”xl” maxW=”5xl”>
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
         <CardHeader>
-          <Flex justify=”space-between” align=”center” wrap=”wrap” gap={3}>
+          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
             <HStack>
-              <Icon as={FaMotorcycle} color=”brand.500” boxSize={5} />
-              <Heading size=”sm” color={textColor}>Rider Applications</Heading>
+              <Icon as={FaMotorcycle} color="brand.500" boxSize={5} />
+              <Heading size="sm" color={textColor}>Rider Applications</Heading>
               {riderApplications.filter(r => r.status === 'pending').length > 0 && (
-                <Badge colorScheme=”orange” borderRadius=”full” px={2}>{riderApplications.filter(r => r.status === 'pending').length} pending</Badge>
+                <Badge colorScheme="orange" borderRadius="full" px={2}>{riderApplications.filter(r => r.status === 'pending').length} pending</Badge>
               )}
             </HStack>
             <HStack spacing={2}>
-              <Select size=”sm” w=”130px” value={riderStatusFilter} onChange={e => setRiderStatusFilter(e.target.value)} placeholder=”All statuses”>
-                <option value=”pending”>Pending</option>
-                <option value=”under_review”>Under Review</option>
-                <option value=”approved”>Approved</option>
-                <option value=”rejected”>Rejected</option>
+              <Select size="sm" w="130px" value={riderStatusFilter} onChange={e => setRiderStatusFilter(e.target.value)} placeholder="All statuses">
+                <option value="pending">Pending</option>
+                <option value="under_review">Under Review</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
               </Select>
-              <Input size=”sm” w=”160px” placeholder=”Search name/email” value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
-              <Button size=”sm” leftIcon={<FiRefreshCw />} onClick={fetchRiderApplications} isLoading={riderAppsLoading}>Refresh</Button>
+              <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchRiderApplications} isLoading={riderAppsLoading}>Refresh</Button>
             </HStack>
           </Flex>
         </CardHeader>
-        <CardBody overflowX=”auto” px={0}>
+        <CardBody overflowX="auto" px={0}>
           {riderAppsLoading ? (
-            <Center py={8}><Spinner color=”teal.500” /></Center>
+            <Center py={8}><Spinner color="teal.500" /></Center>
           ) : riderApplications.length === 0 ? (
-            <Center py={8}><VStack spacing={2}><Icon as={FaMotorcycle} boxSize={10} color=”gray.300” /><Text color=”#64748b”>No rider applications</Text></VStack></Center>
+            <Center py={8}><VStack spacing={2}><Icon as={FaMotorcycle} boxSize={10} color="gray.300" /><Text color="#64748b">No rider applications</Text></VStack></Center>
           ) : (
-            <ChakraTable variant=”simple” size=”sm”>
+            <ChakraTable variant="simple" size="sm">
               <Thead bg={headerBg}>
                 <Tr>
                   <Th color={mutedTextColor}>Applicant</Th>
@@ -1989,43 +1989,43 @@ const AdminDashboard: React.FC = () => {
                 {riderApplications.map(app => (
                   <Tr key={app.id} _hover={{ bg: hoverBg }}>
                     <Td>
-                      <VStack align=”start” spacing={0}>
-                        <Text fontWeight=”600” fontSize=”sm”>{app.full_name || app.name}</Text>
-                        <Text fontSize=”xs” color={mutedTextColor}>{app.email}</Text>
+                      <VStack align="start" spacing={0}>
+                        <Text fontWeight="600" fontSize="sm">{app.full_name || app.name}</Text>
+                        <Text fontSize="xs" color={mutedTextColor}>{app.email}</Text>
                       </VStack>
                     </Td>
                     <Td>
-                      <VStack align=”start” spacing={0}>
-                        <Text fontSize=”sm” textTransform=”capitalize”>{app.vehicle_type}</Text>
-                        <Text fontSize=”xs” color={mutedTextColor}>{app.vehicle_plate || 'No plate'}</Text>
+                      <VStack align="start" spacing={0}>
+                        <Text fontSize="sm" textTransform="capitalize">{app.vehicle_type}</Text>
+                        <Text fontSize="xs" color={mutedTextColor}>{app.vehicle_plate || 'No plate'}</Text>
                       </VStack>
                     </Td>
-                    <Td fontSize=”sm”>{app.contact_number || '-'}</Td>
+                    <Td fontSize="sm">{app.contact_number || '-'}</Td>
                     <Td>
                       <Badge
                         colorScheme={app.status === 'approved' ? 'green' : app.status === 'rejected' ? 'red' : app.status === 'under_review' ? 'blue' : 'orange'}
-                        borderRadius=”full” px={2}
+                        borderRadius="full" px={2}
                       >
                         {app.status === 'under_review' ? 'Under Review' : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
                       </Badge>
                     </Td>
-                    <Td fontSize=”xs” color={mutedTextColor}>{new Date(app.created_at).toLocaleDateString()}</Td>
+                    <Td fontSize="xs" color={mutedTextColor}>{new Date(app.created_at).toLocaleDateString()}</Td>
                     <Td>
                       <HStack spacing={1}>
-                        <Tooltip label=”View Details” hasArrow>
-                          <IconButton aria-label=”View” size=”sm” variant=”outline” icon={<FiEye />} onClick={() => setSelectedRiderApp(app)} />
+                        <Tooltip label="View Details" hasArrow>
+                          <IconButton aria-label="View" size="sm" variant="outline" icon={<FiEye />} onClick={() => setSelectedRiderApp(app)} />
                         </Tooltip>
                         {app.status === 'pending' && (
                           <>
-                            <Button size=”xs” colorScheme=”blue” variant=”outline” onClick={() => handleMarkRiderUnderReview(app.id)}>Review</Button>
-                            <Button size=”xs” colorScheme=”green” leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
-                            <Button size=”xs” colorScheme=”red” variant=”outline” leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
+                            <Button size="xs" colorScheme="blue" variant="outline" onClick={() => handleMarkRiderUnderReview(app.id)}>Review</Button>
+                            <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
+                            <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
                           </>
                         )}
                         {app.status === 'under_review' && (
                           <>
-                            <Button size=”xs” colorScheme=”green” leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
-                            <Button size=”xs” colorScheme=”red” variant=”outline” leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
+                            <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
+                            <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
                           </>
                         )}
                       </HStack>
@@ -2039,77 +2039,77 @@ const AdminDashboard: React.FC = () => {
       </Card>
 
       {/* Rider Application Detail Modal */}
-      <Modal isOpen={!!selectedRiderApp} onClose={() => setSelectedRiderApp(null)} size=”lg” isCentered>
+      <Modal isOpen={!!selectedRiderApp} onClose={() => setSelectedRiderApp(null)} size="lg" isCentered>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader fontSize=”md”>
+          <ModalHeader fontSize="md">
             <HStack>
-              <Icon as={FaMotorcycle} color=”brand.500” />
+              <Icon as={FaMotorcycle} color="brand.500" />
               <Text>Rider Application Details</Text>
             </HStack>
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
             {selectedRiderApp && (
-              <VStack spacing={4} align=”stretch”>
+              <VStack spacing={4} align="stretch">
                 <SimpleGrid columns={2} spacing={4}>
                   <Box>
-                    <Text fontSize=”xs” color=”gray.500”>Full Name</Text>
-                    <Text fontWeight=”bold”>{selectedRiderApp.full_name || selectedRiderApp.name}</Text>
+                    <Text fontSize="xs" color="gray.500">Full Name</Text>
+                    <Text fontWeight="bold">{selectedRiderApp.full_name || selectedRiderApp.name}</Text>
                   </Box>
                   <Box>
-                    <Text fontSize=”xs” color=”gray.500”>Email</Text>
-                    <Text fontWeight=”bold”>{selectedRiderApp.email}</Text>
+                    <Text fontSize="xs" color="gray.500">Email</Text>
+                    <Text fontWeight="bold">{selectedRiderApp.email}</Text>
                   </Box>
                   <Box>
-                    <Text fontSize=”xs” color=”gray.500”>Contact Number</Text>
-                    <Text fontWeight=”bold”>{selectedRiderApp.contact_number || 'N/A'}</Text>
+                    <Text fontSize="xs" color="gray.500">Contact Number</Text>
+                    <Text fontWeight="bold">{selectedRiderApp.contact_number || 'N/A'}</Text>
                   </Box>
                   <Box>
-                    <Text fontSize=”xs” color=”gray.500”>Vehicle</Text>
-                    <Text fontWeight=”bold” textTransform=”capitalize”>{selectedRiderApp.vehicle_type} {selectedRiderApp.vehicle_plate ? `(${selectedRiderApp.vehicle_plate})` : ''}</Text>
+                    <Text fontSize="xs" color="gray.500">Vehicle</Text>
+                    <Text fontWeight="bold" textTransform="capitalize">{selectedRiderApp.vehicle_type} {selectedRiderApp.vehicle_plate ? `(${selectedRiderApp.vehicle_plate})` : ''}</Text>
                   </Box>
                   <Box>
-                    <Text fontSize=”xs” color=”gray.500”>Status</Text>
+                    <Text fontSize="xs" color="gray.500">Status</Text>
                     <Badge colorScheme={selectedRiderApp.status === 'approved' ? 'green' : selectedRiderApp.status === 'rejected' ? 'red' : selectedRiderApp.status === 'under_review' ? 'blue' : 'orange'}>
                       {selectedRiderApp.status === 'under_review' ? 'Under Review' : selectedRiderApp.status.charAt(0).toUpperCase() + selectedRiderApp.status.slice(1)}
                     </Badge>
                   </Box>
                   <Box>
-                    <Text fontSize=”xs” color=”gray.500”>Applied On</Text>
-                    <Text fontWeight=”bold”>{new Date(selectedRiderApp.created_at).toLocaleString()}</Text>
+                    <Text fontSize="xs" color="gray.500">Applied On</Text>
+                    <Text fontWeight="bold">{new Date(selectedRiderApp.created_at).toLocaleString()}</Text>
                   </Box>
                 </SimpleGrid>
 
                 {selectedRiderApp.rejection_reason && (
-                  <Box bg=”red.50” p={3} borderRadius=”md”>
-                    <Text fontSize=”xs” color=”red.600” fontWeight=”bold”>Rejection Reason</Text>
-                    <Text fontSize=”sm”>{selectedRiderApp.rejection_reason}</Text>
+                  <Box bg="red.50" p={3} borderRadius="md">
+                    <Text fontSize="xs" color="red.600" fontWeight="bold">Rejection Reason</Text>
+                    <Text fontSize="sm">{selectedRiderApp.rejection_reason}</Text>
                   </Box>
                 )}
 
                 {selectedRiderApp.reviewed_at && (
-                  <Text fontSize=”xs” color=”gray.500”>Reviewed at: {new Date(selectedRiderApp.reviewed_at).toLocaleString()}</Text>
+                  <Text fontSize="xs" color="gray.500">Reviewed at: {new Date(selectedRiderApp.reviewed_at).toLocaleString()}</Text>
                 )}
 
                 <Divider />
 
                 {selectedRiderApp.license_image_url && (
                   <Box>
-                    <Text fontSize=”sm” fontWeight=”bold” mb={2}>Driver's License</Text>
-                    <Image src={selectedRiderApp.license_image_url} alt=”License” maxH=”250px” borderRadius=”md” border=”1px solid” borderColor=”gray.200” objectFit=”contain” w=”full” bg=”gray.50” />
+                    <Text fontSize="sm" fontWeight="bold" mb={2}>Driver's License</Text>
+                    <Image src={selectedRiderApp.license_image_url} alt="License" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                   </Box>
                 )}
 
                 {selectedRiderApp.selfie_image_url && (
                   <Box>
-                    <Text fontSize=”sm” fontWeight=”bold” mb={2}>Selfie</Text>
-                    <Image src={selectedRiderApp.selfie_image_url} alt=”Selfie” maxH=”200px” borderRadius=”md” border=”1px solid” borderColor=”gray.200” objectFit=”contain” w=”full” bg=”gray.50” />
+                    <Text fontSize="sm" fontWeight="bold" mb={2}>Selfie</Text>
+                    <Image src={selectedRiderApp.selfie_image_url} alt="Selfie" maxH="200px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                   </Box>
                 )}
 
                 {!selectedRiderApp.license_image_url && !selectedRiderApp.selfie_image_url && (
-                  <Text color=”gray.400” fontSize=”sm” textAlign=”center”>No documents uploaded</Text>
+                  <Text color="gray.400" fontSize="sm" textAlign="center">No documents uploaded</Text>
                 )}
               </VStack>
             )}
@@ -2121,20 +2121,20 @@ const AdminDashboard: React.FC = () => {
       <Modal isOpen={!!rejectRiderTarget} onClose={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }} isCentered>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader fontSize=”md”>Reject Rider Application</ModalHeader>
+          <ModalHeader fontSize="md">Reject Rider Application</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
-            <Text fontSize=”sm” mb={3}>Applicant: <strong>{rejectRiderTarget?.full_name || rejectRiderTarget?.name}</strong> ({rejectRiderTarget?.email})</Text>
+            <Text fontSize="sm" mb={3}>Applicant: <strong>{rejectRiderTarget?.full_name || rejectRiderTarget?.name}</strong> ({rejectRiderTarget?.email})</Text>
             <Textarea
-              placeholder=”Reason for rejection (e.g., Invalid license, unclear documents)”
+              placeholder="Reason for rejection (e.g., Invalid license, unclear documents)"
               value={rejectRiderReason}
               onChange={e => setRejectRiderReason(e.target.value)}
               rows={3}
             />
           </ModalBody>
           <ModalFooter>
-            <Button variant=”ghost” mr={3} onClick={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }}>Cancel</Button>
-            <Button colorScheme=”red” onClick={handleConfirmRejectRider} isLoading={rejectRiderLoading} isDisabled={!rejectRiderReason.trim()}>
+            <Button variant="ghost" mr={3} onClick={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }}>Cancel</Button>
+            <Button colorScheme="red" onClick={handleConfirmRejectRider} isLoading={rejectRiderLoading} isDisabled={!rejectRiderReason.trim()}>
               Reject Application
             </Button>
           </ModalFooter>
@@ -2145,7 +2145,7 @@ const AdminDashboard: React.FC = () => {
   );
   };
 
-  // â”€â”€ SECTION: Management â”€â”€
+  // â"€â"€ SECTION: Management â"€â"€
   const ManagementSection = () => (
     <VStack spacing={8} align="stretch">
       {/* Users */}
@@ -2218,7 +2218,7 @@ const AdminDashboard: React.FC = () => {
                         <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
                         <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
                         <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : 'gray'}>{product.status}</Tag></Td>
-                        <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : 'â€”'}</Text></Td>
+                        <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : 'â€"'}</Text></Td>
                         <Td textAlign="right"><Tooltip label="Delete item" hasArrow><IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} /></Tooltip></Td>
                       </Tr>
                     ))}
@@ -2285,7 +2285,7 @@ const AdminDashboard: React.FC = () => {
     </VStack>
   );
 
-  // â”€â”€ SECTION: System â”€â”€
+  // â"€â"€ SECTION: System â"€â"€
   const SystemSection = () => (
     <VStack spacing={8} pr={20} align="stretch">
       <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
@@ -2334,7 +2334,7 @@ const AdminDashboard: React.FC = () => {
     <ErrorBoundary>
       <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')} display="flex">
 
-        {/* â”€â”€ Desktop Sidebar â”€â”€ */}
+        {/* â"€â"€ Desktop Sidebar â"€â"€ */}
         {!isMobile && (
           <Box
             w="260px"
@@ -2353,7 +2353,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         )}
 
-        {/* â”€â”€ Mobile Sidebar Drawer â”€â”€ */}
+        {/* â"€â"€ Mobile Sidebar Drawer â"€â"€ */}
         <Drawer isOpen={isSidebarOpen} placement="left" onClose={closeSidebar}>
           <DrawerOverlay />
           <DrawerContent maxW="260px">
@@ -2364,7 +2364,7 @@ const AdminDashboard: React.FC = () => {
           </DrawerContent>
         </Drawer>
 
-        {/* â”€â”€ Main Content â”€â”€ */}
+        {/* â"€â"€ Main Content â"€â"€ */}
         <Box flex={1} ml={isMobile ? 0 : '210px'} display="flex" flexDirection="column">
 
           {/* Top Bar */}
@@ -2417,7 +2417,7 @@ const AdminDashboard: React.FC = () => {
           </Box>
         </Box>
 
-        {/* â”€â”€ Day Detail Modal â”€â”€ */}
+        {/* â"€â"€ Day Detail Modal â"€â"€ */}
         <Modal isOpen={isDayModalOpen} onClose={closeDayModal} isCentered size="md">
           <ModalOverlay backdropFilter="blur(4px)" />
           <ModalContent borderRadius="xl" overflow="hidden">
@@ -2455,7 +2455,7 @@ const AdminDashboard: React.FC = () => {
           </ModalContent>
         </Modal>
 
-        {/* â”€â”€ Moderation Action Confirm Dialog â”€â”€ */}
+        {/* â"€â"€ Moderation Action Confirm Dialog â"€â"€ */}
         <AlertDialog isOpen={!!moderationTarget} leastDestructiveRef={cancelModerationRef} onClose={() => setModerationTarget(null)}>
           <AlertDialogOverlay>
             <AlertDialogContent borderRadius="xl">
@@ -2471,11 +2471,11 @@ const AdminDashboard: React.FC = () => {
           </AlertDialogOverlay>
         </AlertDialog>
 
-        {/* â”€â”€ ID Image Modal â”€â”€ */}
+        {/* â"€â"€ ID Image Modal â"€â"€ */}
         <Modal isOpen={!!idImageModal} onClose={closeIdImageModal} size="xl">
           <ModalOverlay />
           <ModalContent borderRadius="xl">
-            <ModalHeader>ID / COR â€” {idImageModal?.name}</ModalHeader>
+            <ModalHeader>ID / COR â€" {idImageModal?.name}</ModalHeader>
             <ModalCloseButton />
             <ModalBody pb={4}>
               {idImageUrl ? <Box as="img" src={idImageUrl} alt="Submitted ID" maxH="70vh" mx="auto" borderRadius="md" /> : <Center py={8}><Spinner size="lg" color="brand.500" /></Center>}
@@ -2483,7 +2483,7 @@ const AdminDashboard: React.FC = () => {
           </ModalContent>
         </Modal>
 
-        {/* â”€â”€ Reject Verification Modal â”€â”€ */}
+        {/* â"€â"€ Reject Verification Modal â"€â"€ */}
         <Modal isOpen={!!rejectTarget} onClose={() => { setRejectTarget(null); setRejectReason(''); }}>
           <ModalOverlay />
           <ModalContent borderRadius="xl">
@@ -2497,7 +2497,7 @@ const AdminDashboard: React.FC = () => {
           </ModalContent>
         </Modal>
 
-        {/* â”€â”€ Campaign Create/Edit Modal â”€â”€ */}
+        {/* â"€â"€ Campaign Create/Edit Modal â"€â"€ */}
         <Modal isOpen={isCampaignModalOpen} onClose={() => { closeCampaignModal(); setEditingCampaign(null); }} size="lg">
           <ModalOverlay />
           <ModalContent borderRadius="xl">
@@ -2529,7 +2529,7 @@ const AdminDashboard: React.FC = () => {
           </ModalContent>
         </Modal>
 
-        {/* â”€â”€ Delete Confirmation Dialog â”€â”€ */}
+        {/* â"€â"€ Delete Confirmation Dialog â"€â"€ */}
         <AlertDialog isOpen={isDeleteDialogOpen} leastDestructiveRef={cancelDeleteRef} onClose={closeDeleteDialog}>
           <AlertDialogOverlay>
             <AlertDialogContent borderRadius="xl">
