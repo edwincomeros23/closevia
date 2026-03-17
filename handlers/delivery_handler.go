@@ -222,7 +222,7 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 	result, err := h.db.Exec(`INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active, status,
 		full_name, contact_number, license_image_url, selfie_image_url)
 		VALUES (?, ?, ?, ?, ?, FALSE, 'pending', ?, ?, ?, ?)`,
-		userID, name, payload.VehicleType, payload.VehiclePlate, payload.ContactNumber, false,
+		userID, name, payload.VehicleType, payload.VehiclePlate, payload.ContactNumber,
 		payload.FullName, payload.ContactNumber, payload.LicenseImageURL, payload.SelfieImageURL)
 	if err != nil {
 		log.Printf("Failed to create rider application for user %d: %v", userID, err)

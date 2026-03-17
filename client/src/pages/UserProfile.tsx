@@ -51,8 +51,8 @@ import {
   Alert,
   AlertIcon,
 } from '@chakra-ui/react'
-import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera } from 'react-icons/fi'
-import { FaHeart } from 'react-icons/fa'
+import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera, FiActivity, FiTag } from 'react-icons/fi'
+import { FaHeart, FaBuilding, FaGraduationCap, FaStore, FaFileAlt, FaThumbsUp, FaThumbtack } from 'react-icons/fa'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import VerifiedAvatar from '../components/VerifiedAvatar'
@@ -73,11 +73,14 @@ type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verifi
   org_verified?: boolean
   org_name?: string
   org_logo_url?: string
+  organization_type?: 'business' | 'school_organization' | 'marketplace_partner' | string
   department?: string
   response_time_minutes?: number
   positive_feedback?: number
   total_reviews?: number
   activity_status?: 'active_today' | 'active_this_week' | 'inactive'
+  last_active_at?: string
+  document_type?: string
 }
 
 interface UserProfileProps {
@@ -963,15 +966,37 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
             <CardBody pt="60px">
               {/* Name + Edit button row */}
               <Flex align="center" justify="space-between" mb={1}>
-                <HStack spacing={1.5} align="baseline">
-                  <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
-                  {(user.verification_status === 'verified' || user.verified) && (
-                    <HStack spacing={1} ml={1}>
-                      <Icon as={FiCheckCircle} color="teal.500" boxSize={4} />
-                      <Text fontSize="sm" color="teal.600" fontWeight="medium">Verified</Text>
+                <VStack align="start" spacing={0.5}>
+                  <HStack spacing={1.5} align="baseline">
+                    <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
+                    {(user.verification_status === 'verified' || user.verified) && (
+                      <HStack spacing={1} ml={1}>
+                        <Icon as={FiCheckCircle} color="teal.500" boxSize={4} />
+                        <Text fontSize="sm" color="teal.600" fontWeight="medium">Verified</Text>
+                      </HStack>
+                    )}
+                  </HStack>
+                  {/* Organization Type tag */}
+                  {user.is_organization && user.organization_type && (
+                    <HStack spacing={1}>
+                      <Icon
+                        as={
+                          user.organization_type === 'business' ? FaBuilding :
+                          user.organization_type === 'school_organization' ? FaGraduationCap :
+                          user.organization_type === 'marketplace_partner' ? FaStore : FaBuilding
+                        }
+                        boxSize={3}
+                        color="purple.500"
+                      />
+                      <Text fontSize="xs" color="purple.600" fontWeight="medium">
+                        {user.organization_type === 'business' ? 'Business' :
+                         user.organization_type === 'school_organization' ? 'School Organization' :
+                         user.organization_type === 'marketplace_partner' ? 'Marketplace Partner' :
+                         user.organization_type}
+                      </Text>
                     </HStack>
                   )}
-                </HStack>
+                </VStack>
 
                 {currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) && (
                   <Button
@@ -1018,27 +1043,148 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
               {/* Trust level + Activity badges */}
               <HStack spacing={2} mb={3} flexWrap="wrap">
-                {sellerStats?.trust_level && (
-                  <Badge
-                    colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
-                    borderRadius="full"
-                    px={3}
-                    py={1}
-                    fontSize="xs"
-                  >
-                    {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
-                  </Badge>
-                )}
+                {sellerStats?.trust_level && (() => {
+                  const isOrg = user.is_organization
+                  const isNew = sellerStats.trust_level === 'new'
+                  const isRisky = sellerStats.trust_level === 'risky'
+                  const hasEnoughData = (sellerStats.completed_trades ?? 0) > 0 || (sellerStats.report_count ?? 0) > 0
+                  // For orgs: hide badge if no data, show "New Organization" if new, only show Risky if reports+low completion
+                  if (isOrg) {
+                    if (!hasEnoughData) return null
+                    if (isNew) return (
+                      <Tooltip label="This organization is new to the platform" hasArrow>
+                        <Badge colorScheme="gray" borderRadius="full" px={3} py={1} fontSize="xs" cursor="default">
+                          🏢 New Organization
+                        </Badge>
+                      </Tooltip>
+                    )
+                    if (isRisky && (sellerStats.report_count ?? 0) > 2 && (sellerStats.positive_percent ?? 100) < 50) return (
+                      <Badge colorScheme="red" borderRadius="full" px={3} py={1} fontSize="xs">
+                        🔴 Risky Trader
+                      </Badge>
+                    )
+                    if (!isRisky) return (
+                      <Badge colorScheme="green" borderRadius="full" px={3} py={1} fontSize="xs">
+                        🟢 Trusted Trader
+                      </Badge>
+                    )
+                    return null
+                  }
+                  return (
+                    <Badge
+                      colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
+                      borderRadius="full" px={3} py={1} fontSize="xs"
+                    >
+                      {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                    </Badge>
+                  )
+                })()}
                 <Badge
                   colorScheme={user.activity_status === 'active_today' ? 'green' : user.activity_status === 'active_this_week' ? 'yellow' : 'red'}
-                  borderRadius="full"
-                  px={3}
-                  py={1}
-                  fontSize="xs"
+                  borderRadius="full" px={3} py={1} fontSize="xs"
                 >
                   {user.activity_status === 'active_today' ? '🟢 Active today' : user.activity_status === 'active_this_week' ? '🟡 Active this week' : '🔴 Inactive'}
                 </Badge>
               </HStack>
+
+              {/* Verification Depth sub-badges (organization only) */}
+              {user.is_organization && (user.verification_status === 'verified' || user.verified || user.org_verified) && (
+                <HStack spacing={2} mb={3} flexWrap="wrap">
+                  {(user.verification_status === 'verified' || user.org_verified) && (
+                    <Tooltip
+                      label={
+                        user.organization_type === 'school_organization'
+                          ? 'This organization has been verified as a school organization'
+                          : 'This business has been verified by Clovia'
+                      }
+                      hasArrow
+                    >
+                      <Badge
+                        colorScheme="teal"
+                        borderRadius="full"
+                        px={3}
+                        py={1}
+                        fontSize="xs"
+                        cursor="default"
+                        display="flex"
+                        alignItems="center"
+                        gap={1}
+                      >
+                        {user.organization_type === 'school_organization' ? (
+                          <><Icon as={FaGraduationCap} mr={1} />School Verified</>
+                        ) : (
+                          <><Icon as={FaBuilding} mr={1} />Business Verified</>
+                        )}
+                      </Badge>
+                    </Tooltip>
+                  )}
+                  {user.document_type && (
+                    <Tooltip label="Documents have been submitted and reviewed" hasArrow>
+                      <Badge
+                        colorScheme="blue"
+                        borderRadius="full"
+                        px={3}
+                        py={1}
+                        fontSize="xs"
+                        cursor="default"
+                      >
+                        <Icon as={FaFileAlt} mr={1} />Documents Submitted
+                      </Badge>
+                    </Tooltip>
+                  )}
+                </HStack>
+              )}
+
+              {/* Activity & Transparency (organization only) */}
+              {user.is_organization && (
+                <Box mb={3} p={3} bg="gray.50" borderRadius="md" borderLeft="3px solid" borderLeftColor="purple.300">
+                  <HStack spacing={1} mb={2}>
+                    <Icon as={FiActivity} color="purple.500" boxSize={4} />
+                    <Text fontSize="xs" fontWeight="semibold" color="gray.600" textTransform="uppercase" letterSpacing="wide">
+                      Recent Activity
+                    </Text>
+                  </HStack>
+                  <VStack align="start" spacing={1}>
+                    {user.last_active_at && (
+                      <HStack spacing={2}>
+                        <Icon as={FiClock} boxSize={3} color="gray.400" />
+                        <Text fontSize="xs" color="gray.600">
+                          Active {(() => {
+                            const diff = Date.now() - new Date(user.last_active_at!).getTime()
+                            const hours = Math.floor(diff / 3600000)
+                            const days = Math.floor(diff / 86400000)
+                            if (hours < 1) return 'just now'
+                            if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`
+                            return `${days} day${days > 1 ? 's' : ''} ago`
+                          })()}
+                        </Text>
+                      </HStack>
+                    )}
+                    {(() => {
+                      const oneWeekAgo = new Date(Date.now() - 7 * 86400000)
+                      const recentListings = products.filter(p => new Date(p.created_at) > oneWeekAgo).length
+                      if (recentListings > 0) return (
+                        <HStack spacing={2}>
+                          <Icon as={FiTag} boxSize={3} color="gray.400" />
+                          <Text fontSize="xs" color="gray.600">Posted {recentListings} item{recentListings > 1 ? 's' : ''} this week</Text>
+                        </HStack>
+                      )
+                      return null
+                    })()}
+                    {(() => {
+                      const threeDaysAgo = new Date(Date.now() - 3 * 86400000)
+                      const recentTrades = userTrades.filter(t => t.status === 'completed' && new Date(t.completed_at || t.created_at) > threeDaysAgo).length
+                      if (recentTrades > 0) return (
+                        <HStack spacing={2}>
+                          <Icon as={FaThumbsUp} boxSize={3} color="gray.400" />
+                          <Text fontSize="xs" color="gray.600">Completed {recentTrades} trade{recentTrades > 1 ? 's' : ''} in the last 3 days</Text>
+                        </HStack>
+                      )
+                      return null
+                    })()}
+                  </VStack>
+                </Box>
+              )}
 
               {user.bio && <Text color="gray.700" fontSize="sm" mb={3}>{user.bio}</Text>}
 
@@ -1096,7 +1242,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               )}
 
               {/* Show action buttons only when viewing someone else's profile */}
-              {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && (
+              {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && !user.is_organization && (
                 <HStack spacing={3}>
                   <Button
                     leftIcon={<Icon as={FiMessageSquare} />}
@@ -1145,93 +1291,174 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   </HStack>
                 </Box>
 
-
                 {sortedProducts.length === 0 ? (
                   <Center p={10}>
-                    <VStack>
-                      <Text color="gray.500">No products found.</Text>
-                      <Button as={RouterLink} to="/add-product" colorScheme="brand" size="sm" mt={2}>
-                        List an Item
-                      </Button>
+                    <VStack spacing={3}>
+                      <Text fontSize="3xl">📦</Text>
+                      <Text fontWeight="semibold" color="gray.600">
+                        {user.is_organization ? `No listings yet` : 'No products found.'}
+                      </Text>
+                      <Text fontSize="sm" color="gray.400" textAlign="center" maxW="260px">
+                        {user.is_organization
+                          ? `No listings yet — this ${user.organization_type === 'school_organization' ? 'organization' : 'business'} is just getting started`
+                          : 'This user hasn\'t listed any items yet'}
+                      </Text>
+                      {currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) && (
+                        <Button as={RouterLink} to="/add-product" colorScheme="brand" size="sm" mt={2}>
+                          List an Item
+                        </Button>
+                      )}
                     </VStack>
                   </Center>
                 ) : (
-                  <SimpleGrid
-                    columns={{ base: 2, sm: 2, md: 3, lg: 4 }}
-                    spacing={{ base: 2, md: 4 }}
-                    p={4}
-                  >
-                    {sortedProducts.map((product) => (
-                      <Box
-                        key={product.id}
-                        border="1px"
-                        borderColor="gray.200"
-                        rounded="md"
-                        overflow="hidden"
-                        bg="white"
-                        _hover={{ transform: 'translateY(-4px)', shadow: 'md' }}
-                        transition="all 0.2s"
-                        position="relative"
-                      >
-                        <Box position="relative">
-                          <Image
-                            src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
-                            alt={product.title}
-                            h="180px"
-                            w="100%"
-                            objectFit="cover"
-                          />
-                          <Box position="absolute" top="2" right="2">
-                            <IconButton
-                              aria-label="Save item"
-                              icon={savedProductIds.has(product.id) ? <FaHeart /> : <FiHeart />}
-                              size="sm"
-                              borderRadius="full"
+                  <Box>
+                    {/* Pinned / Featured Listings */}
+                    {sortedProducts.length > 0 && (
+                      <Box p={4} borderBottom="1px" borderColor="gray.100">
+                        <HStack spacing={2} mb={3}>
+                          <Icon as={FaThumbtack} color="orange.400" boxSize={3.5} />
+                          <Text fontSize="sm" fontWeight="semibold" color="gray.700">Featured Listings</Text>
+                        </HStack>
+                        <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={3}>
+                          {sortedProducts.slice(0, 3).map((product) => (
+                            <Box
+                              key={`pin-${product.id}`}
+                              as={RouterLink}
+                              to={getProductUrl(product)}
+                              border="1px"
+                              borderColor="orange.200"
+                              rounded="md"
+                              overflow="hidden"
                               bg="white"
-                              color={savedProductIds.has(product.id) ? 'red.500' : 'gray.600'}
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleSave(product.id) }}
-                              _hover={{ color: savedProductIds.has(product.id) ? 'red.600' : 'red.500', bg: 'white' }}
-                            />
-                          </Box>
-                          <Box position="absolute" top="2" left="2">
-                            <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
-                              {product.status}
-                            </Badge>
-                          </Box>
-                        </Box>
+                              _hover={{ transform: 'translateY(-2px)', shadow: 'sm', borderColor: 'orange.400' }}
+                              transition="all 0.2s"
+                              display="flex"
+                              alignItems="center"
+                              gap={3}
+                              p={2}
+                            >
+                              <Image
+                                src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
+                                alt={product.title}
+                                boxSize="50px"
+                                objectFit="cover"
+                                borderRadius="md"
+                                flexShrink={0}
+                              />
+                              <Box minW={0}>
+                                <Text fontSize="xs" fontWeight="semibold" noOfLines={2} color="gray.800">{product.title}</Text>
+                                <Text fontSize="xs" color="brand.500" fontWeight="bold">
+                                  {product.price ? `₱${product.price.toFixed(2)}` : 'For Trade'}
+                                </Text>
+                              </Box>
+                            </Box>
+                          ))}
+                        </SimpleGrid>
+                      </Box>
+                    )}
 
-
-                        <Box p={3}>
-                          <Text
-                            as={RouterLink}
-                            to={getProductUrl(product)}
-                            fontWeight="medium"
-                            noOfLines={2}
-                            mb={1}
-                            wordBreak="break-word"
-                            _hover={{ color: 'brand.500' }}
-                          >
-                            {product.title}
-                          </Text>
-
-
-                          <HStack justify="space-between" align="center" mt={2}>
-                            <Text fontWeight="bold" color="gray.800">
-                              {product.price ? `$${product.price.toFixed(2)}` : 'Free'}
-                            </Text>
-                            <IconButton
-                              aria-label="Share item"
-                              icon={<FiShare2 />}
-                              size="sm"
-                              variant="ghost"
-                              color="gray.500"
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShareProduct(product) }}
-                            />
+                    {/* Category Breakdown */}
+                    {(() => {
+                      const catMap: Record<string, number> = {}
+                      sortedProducts.forEach(p => {
+                        const cat = (p as any).category || 'Other'
+                        catMap[cat] = (catMap[cat] || 0) + 1
+                      })
+                      const cats = Object.entries(catMap).sort((a, b) => b[1] - a[1])
+                      if (cats.length <= 1) return null
+                      return (
+                        <Box px={4} py={3} borderBottom="1px" borderColor="gray.100">
+                          <HStack spacing={2} mb={2}>
+                            <Icon as={FiTag} color="gray.500" boxSize={3.5} />
+                            <Text fontSize="xs" fontWeight="semibold" color="gray.500" textTransform="uppercase" letterSpacing="wide">Categories</Text>
+                          </HStack>
+                          <HStack spacing={2} flexWrap="wrap">
+                            {cats.map(([cat, count]) => (
+                              <Badge key={cat} colorScheme="gray" variant="subtle" borderRadius="full" px={2}>
+                                {cat} ({count})
+                              </Badge>
+                            ))}
                           </HStack>
                         </Box>
-                      </Box>
-                    ))}
-                  </SimpleGrid>
+                      )
+                    })()}
+
+                    {/* All listings grid */}
+                    <SimpleGrid
+                      columns={{ base: 2, sm: 2, md: 3, lg: 4 }}
+                      spacing={{ base: 2, md: 4 }}
+                      p={4}
+                    >
+                      {sortedProducts.map((product) => (
+                        <Box
+                          key={product.id}
+                          border="1px"
+                          borderColor="gray.200"
+                          rounded="md"
+                          overflow="hidden"
+                          bg="white"
+                          _hover={{ transform: 'translateY(-4px)', shadow: 'md' }}
+                          transition="all 0.2s"
+                          position="relative"
+                        >
+                          <Box position="relative">
+                            <Image
+                              src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
+                              alt={product.title}
+                              h="180px"
+                              w="100%"
+                              objectFit="cover"
+                            />
+                            <Box position="absolute" top="2" right="2">
+                              <IconButton
+                                aria-label="Save item"
+                                icon={savedProductIds.has(product.id) ? <FaHeart /> : <FiHeart />}
+                                size="sm"
+                                borderRadius="full"
+                                bg="white"
+                                color={savedProductIds.has(product.id) ? 'red.500' : 'gray.600'}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleSave(product.id) }}
+                                _hover={{ color: savedProductIds.has(product.id) ? 'red.600' : 'red.500', bg: 'white' }}
+                              />
+                            </Box>
+                            <Box position="absolute" top="2" left="2">
+                              <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
+                                {product.status}
+                              </Badge>
+                            </Box>
+                          </Box>
+
+                          <Box p={3}>
+                            <Text
+                              as={RouterLink}
+                              to={getProductUrl(product)}
+                              fontWeight="medium"
+                              noOfLines={2}
+                              mb={1}
+                              wordBreak="break-word"
+                              _hover={{ color: 'brand.500' }}
+                            >
+                              {product.title}
+                            </Text>
+
+                            <HStack justify="space-between" align="center" mt={2}>
+                              <Text fontWeight="bold" color="gray.800">
+                                {product.price ? `₱${product.price.toFixed(2)}` : 'Free'}
+                              </Text>
+                              <IconButton
+                                aria-label="Share item"
+                                icon={<FiShare2 />}
+                                size="sm"
+                                variant="ghost"
+                                color="gray.500"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShareProduct(product) }}
+                              />
+                            </HStack>
+                          </Box>
+                        </Box>
+                      ))}
+                    </SimpleGrid>
+                  </Box>
                 )}
               </TabPanel>
 
