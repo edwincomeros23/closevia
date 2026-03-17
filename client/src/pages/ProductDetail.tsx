@@ -936,22 +936,32 @@ const ProductDetail: React.FC = () => {
 
                   <Box>
                     {/* Title and price on same horizontal axis */}
-                    <Flex justify="space-between" align="center" gap={3} flexWrap="wrap">
+                    <Flex justify="space-between" align="flex-start" gap={3} flexWrap="wrap">
                       <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0} wordBreak="break-word">
                         {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
                       </Heading>
-                      <Text
-                        fontSize={{ base: 'xl', md: '2xl' }}
-                        fontWeight="extrabold"
-                        color="gray.800"
-                        whiteSpace="nowrap"
-                      >
-                        {product.estimated_value_min && product.estimated_value_max
-                          ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
-                          : product.price && product.price > 0
-                            ? `₱${product.price.toFixed(2)}`
-                            : 'Est. Value Unavailable'}
-                      </Text>
+                      <VStack spacing={0} align="flex-end" flexShrink={0}>
+                        <Text
+                          fontSize={{ base: 'xl', md: '2xl' }}
+                          fontWeight="extrabold"
+                          color="gray.800"
+                          whiteSpace="nowrap"
+                        >
+                          {product.price && product.price > 0
+                            ? `₱${product.price.toLocaleString()}`
+                            : product.estimated_value_min && product.estimated_value_max
+                              ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
+                              : 'Price Unavailable'}
+                        </Text>
+                        {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
+                          <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">
+                            AI Est. ₱{(product.estimated_value_min).toLocaleString()} – ₱{(product.estimated_value_max).toLocaleString()}
+                          </Text>
+                        )}
+                        {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
+                          <Text fontSize="xs" color="gray.400" whiteSpace="nowrap">AI Estimated</Text>
+                        )}
+                      </VStack>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
                     <Flex gap={2.5} mt={2} flexWrap="wrap" align="center">

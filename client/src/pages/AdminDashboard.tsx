@@ -108,8 +108,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { api } from '../services/api';
-import { mockAdminStats, simulateApiDelay } from '../utils/mockData';
-import { enhancedApiCall, checkConnectionStatus } from '../utils/apiUtils';
+import { mockAdminStats } from '../utils/mockData';
+import { checkConnectionStatus } from '../utils/apiUtils';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ErrorBoundary from '../components/ErrorBoundary';
 import VerifiedAvatar from '../components/VerifiedAvatar';
@@ -652,38 +652,32 @@ const AdminDashboard: React.FC = () => {
       setIsUsingMockData(false);
 
       if (useMockDataFallback) {
-        await simulateApiDelay(500);
         setStats(mockAdminStats);
         setIsUsingMockData(true);
         toast({ id: 'using-demo-data', title: 'Using Demo Data', description: 'Showing mock data while API is unavailable', status: 'info', duration: 5000, isClosable: true });
         return;
       }
 
-      const response = await enhancedApiCall<{ success: boolean; data: AdminStats; error?: string }>('/api/admin/stats', {
-        retryConfig: { maxRetries: 2 },
-        useMockData: true,
-      });
+      const response = await api.get('/api/admin/stats');
+      const result = response.data;
 
-      if (response.success) {
-        if (!response.data) {
-          await simulateApiDelay(300);
+      if (result.success) {
+        if (!result.data) {
           setStats(mockAdminStats);
           setIsUsingMockData(true);
         } else {
-          setStats(response.data);
+          setStats(result.data);
           setIsUsingMockData(false);
         }
       } else {
-        throw new Error(response.error || 'Failed to fetch admin statistics');
+        throw new Error(result.error || 'Failed to fetch admin statistics');
       }
     } catch (err: any) {
-      if (err.message === 'API_UNREACHABLE_MOCK_DATA_AVAILABLE') {
-        await fetchAdminStats(true);
-        return;
-      }
-      setError(err.message || 'Error fetching admin statistics');
+      // Fall back to mock data on failure
+      setStats(mockAdminStats);
+      setIsUsingMockData(true);
       setRetryCount(prev => prev + 1);
-      toast({ id: 'error', title: 'Error', description: err.message || 'Failed to load dashboard data', status: 'error', duration: 5000, isClosable: true });
+      toast({ id: 'error', title: 'Using demo data', description: 'Could not reach server — showing demo data', status: 'warning', duration: 5000, isClosable: true });
     } finally {
       setLoading(false);
     }
@@ -1188,13 +1182,17 @@ const AdminDashboard: React.FC = () => {
   }, [deleteTarget, toast, closeDeleteDialog]);
 
   useEffect(() => {
+    // Run all fetches in parallel instead of sequentially
+    Promise.allSettled([
+      fetchAdminStats(),
+      fetchAdminUsers(1),
+      fetchAdminProducts(1),
+      fetchAdminReports(1),
+      fetchAdminVerifications(),
+      fetchAdminCampaigns(),
+    ]);
+    // Check connection in background, don't block rendering
     checkConnection();
-    fetchAdminStats();
-    fetchAdminUsers(1);
-    fetchAdminProducts(1);
-    fetchAdminReports(1);
-    fetchAdminVerifications();
-    fetchAdminCampaigns();
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
   }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports, fetchAdminVerifications, fetchAdminCampaigns]);

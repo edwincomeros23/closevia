@@ -945,20 +945,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 pointerEvents: 'none',
               }}
             >
-              {currentUser && Number(id) === currentUser.id && (
-                <Button
-                  position="absolute"
-                  top={3}
-                  right={3}
-                  size="sm"
-                  onClick={openEdit}
-                  colorScheme="brand"
-                  zIndex={1}
-                >
-                  Edit Profile
-                </Button>
-              )}
-
               <Box position="absolute" bottom="-50px" left="6" zIndex={1}>
                 <VerifiedAvatar
                   size="xl"
@@ -975,8 +961,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
 
             <CardBody pt="60px">
-              {/* Name + Verified inline + Key stats on same row */}
-              <Flex align="center" flexWrap="wrap" gap={3} mb={1}>
+              {/* Name + Edit button row */}
+              <Flex align="center" justify="space-between" mb={1}>
                 <HStack spacing={1.5} align="baseline">
                   <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
                   {(user.verification_status === 'verified' || user.verified) && (
@@ -987,8 +973,21 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   )}
                 </HStack>
 
-                {/* Inline stats beside name */}
-                <HStack spacing={4} flexWrap="wrap" fontSize="sm" color="gray.600" ml={{ base: 0, md: 2 }}>
+                {currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) && (
+                  <Button
+                    size="sm"
+                    onClick={openEdit}
+                    colorScheme="brand"
+                    leftIcon={<Icon as={FiCamera} />}
+                    flexShrink={0}
+                  >
+                    Edit Profile
+                  </Button>
+                )}
+              </Flex>
+
+              {/* Inline stats */}
+              <HStack spacing={4} flexWrap="wrap" fontSize="sm" color="gray.600" mb={2}>
                   <HStack spacing={1}>
                     {displayTotalReviews === 0 ? (
                       <Text color="gray.500">⭐ No reviews yet</Text>
@@ -1016,8 +1015,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     <Text>{stats.avgResponse}</Text>
                   </HStack>
                 </HStack>
-
-              </Flex>
 
               {/* Trust level + Activity badges */}
               <HStack spacing={2} mb={3} flexWrap="wrap">
@@ -1099,7 +1096,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               )}
 
               {/* Show action buttons only when viewing someone else's profile */}
-              {!(currentUser && Number(id) === currentUser.id) && (
+              {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && (
                 <HStack spacing={3}>
                   <Button
                     leftIcon={<Icon as={FiMessageSquare} />}
@@ -1264,7 +1261,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       )}
                     </Box>
 
-                    {!(currentUser && Number(id) === currentUser.id) && (
+                    {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && (
                       <Button
                         colorScheme="brand"
                         size="sm"
@@ -1290,7 +1287,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <Center p={10}>
                     <VStack>
                       <Text color="gray.500">No completed trades yet.</Text>
-                      {!(currentUser && Number(id) === currentUser.id) && (
+                      {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && (
                         <Button
                           colorScheme="brand"
                           variant="outline"
@@ -1454,7 +1451,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                           </VStack>
 
                           {/* Cancel Trade Button (only for locked trades) */}
-                          {trade.status === 'locked' && currentUser && (Number(id) === currentUser.id) && (
+                          {trade.status === 'locked' && currentUser && ((String(currentUser.id) === id || (currentUser as any).slug === id)) && (
                             <HStack justify="flex-end" mt={3} pt={2} borderTop="1px solid" borderColor="gray.200">
                               <Button
                                 size="sm"

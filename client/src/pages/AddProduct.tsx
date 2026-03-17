@@ -1280,17 +1280,37 @@ const AddProduct: React.FC = () => {
           
           <FormControl>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
-            <Input
-              placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
-              value={formData.wants}
-              onChange={e => handleField('wants', e.target.value)}
-              size="sm"
-              bg="white"
-              maxLength={50}
-              h="32px"
-              onClick={e => e.stopPropagation()}
-            />
-            <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+            <HStack spacing={3} align="flex-start">
+              <Box flex={1}>
+                <FormControl>
+                  <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Price</FormLabel>
+                  <Input
+                    placeholder="e.g. 500"
+                    type="number"
+                    value={formData.price ?? ''}
+                    onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
+                    size="sm"
+                    bg="white"
+                    h="32px"
+                    onClick={e => e.stopPropagation()}
+                  />
+                  <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
+                </FormControl>
+              </Box>
+              <Box flex={1}>
+                <Input
+                  placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
+                  value={formData.wants}
+                  onChange={e => handleField('wants', e.target.value)}
+                  size="sm"
+                  bg="white"
+                  maxLength={50}
+                  h="32px"
+                  onClick={e => e.stopPropagation()}
+                />
+                <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+              </Box>
+            </HStack>
           </FormControl>
         </VStack>
       </Box>
