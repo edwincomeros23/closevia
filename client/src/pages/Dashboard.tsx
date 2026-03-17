@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -80,6 +80,7 @@ import {
   useSentOffers,
   useReceivedOffers,
   useOngoingTrades,
+  useArchivedTrades,
   useTradeHistory,
   usePrefetchDashboard,
   useInvalidateDashboard,
@@ -90,6 +91,7 @@ const Dashboard: React.FC = () => {
   const { deleteProduct, updateProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   // Use React Query hooks for cached data
   const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched } = useDashboardProducts(user?.id)
@@ -99,6 +101,7 @@ const Dashboard: React.FC = () => {
   const { data: sentOffersData = [], isFetched: sentFetched } = useSentOffers()
   const { data: receivedOffersData = [], isFetched: receivedFetched } = useReceivedOffers()
   const { data: ongoingTradesData = [], isFetched: ongoingFetched } = useOngoingTrades()
+  const { data: archivedTradesData = [] } = useArchivedTrades()
   const { data: tradeHistoryData = [], isFetched: historyFetched } = useTradeHistory()
 
   // Unified initial loading: true until all critical queries have fetched at least once
@@ -251,6 +254,47 @@ const Dashboard: React.FC = () => {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
+
+  // Handle return from Xendit payment redirect
+  useEffect(() => {
+    const tradeIdParam = searchParams.get('trade_id')
+    const paymentStatus = searchParams.get('payment')
+    if (!tradeIdParam) return
+
+    const tradeId = parseInt(tradeIdParam, 10)
+    if (isNaN(tradeId)) return
+
+    if (paymentStatus === 'failed') {
+      toast({
+        title: 'Payment Failed',
+        description: 'Your payment was not completed. Please try again.',
+        status: 'error',
+        duration: 5000,
+      })
+    } else {
+      toast({
+        title: 'Payment Successful! 🎉',
+        description: 'Your payment has been received. View trade details below.',
+        status: 'success',
+        duration: 5000,
+      })
+    }
+
+    // Switch to the Offers tab (tab index 1)
+    setActiveTab(1)
+
+    // Try to find the trade and open it
+    const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
+    const matchedTrade = allTrades.find(t => t.id === tradeId)
+    if (matchedTrade) {
+      setSelectedTrade(matchedTrade)
+      setViewTradeModalOpen(true)
+    }
+
+    // Clean up URL params
+    navigate('/dashboard', { replace: true })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, ongoingTradesData, sentOffersData, receivedOffersData])
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
@@ -480,7 +524,7 @@ const Dashboard: React.FC = () => {
   const fetchMultiWayTrades = async () => {
     try {
       setMultiWayTradesLoading(true)
-      const response = await api.get('/api/multi-way-trades/available', {
+      const response = await api.get('/api/trades/loops', {
         params: { user_id: user?.id }
       })
       setMultiWayTrades(response.data?.data || [])
@@ -496,7 +540,7 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      await api.post(`/api/multi-way-trades/${trade.id}/join`, {
+      await api.post(`/api/trades/loops/${trade.id}/accept`, {
         user_id: user?.id,
       })
       toast({
@@ -523,7 +567,7 @@ const Dashboard: React.FC = () => {
 
   const handleDeclineMultiWayTrade = async (trade: any) => {
     try {
-      await api.post(`/api/multi-way-trades/${trade.id}/decline`, {
+      await api.post(`/api/trades/loops/${trade.id}/decline`, {
         reason: 'Not interested'
       })
       toast({
@@ -702,7 +746,7 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const historyStatuses = ['declined', 'cancelled', 'completed']
+  const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'expired']
 
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
@@ -3097,6 +3141,15 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
+                        <Tab fontSize={{ base: '10px', md: 'sm' }}>
+                          <Box display={{ base: 'none', md: 'inline' }}>Archive</Box>
+                          <Box display={{ base: 'inline', md: 'none' }}>Archive</Box>
+                          {archivedTradesData.length > 0 && (
+                            <Badge ml={2} colorScheme="red" borderRadius="full" fontSize="xs">
+                              {archivedTradesData.length}
+                            </Badge>
+                          )}
+                        </Tab>
                       </TabList>
 
                       <TabPanels>
@@ -3602,6 +3655,54 @@ const Dashboard: React.FC = () => {
                                 </HStack>
                               )}
                             </>
+                          )}
+                        </TabPanel>
+
+                        {/* Archive (Expired Trades) */}
+                        <TabPanel px={0}>
+                          {archivedTradesData.length === 0 ? (
+                            <Box textAlign="center" py={8}>
+                              <Icon as={FaClock} boxSize={12} color="gray.300" mb={4} />
+                              <Text color="gray.500" fontSize="lg" fontWeight="medium" mb={2}>No archived trades</Text>
+                              <Text color="gray.400" fontSize="sm">Trades that expire after 7 days of inactivity will appear here.</Text>
+                            </Box>
+                          ) : (
+                            <VStack spacing={3} align="stretch">
+                              {archivedTradesData.map((trade) => {
+                                const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
+                                return (
+                                  <Box
+                                    key={trade.id}
+                                    p={4}
+                                    bg={cardBg}
+                                    borderRadius="lg"
+                                    borderWidth="1px"
+                                    borderColor="red.100"
+                                    _hover={{ boxShadow: 'md', transform: 'translateY(-1px)', borderColor: 'red.200' }}
+                                    transition="all 0.2s ease"
+                                    cursor="pointer"
+                                    onClick={() => { setSelectedTrade(trade); setViewTradeModalOpen(true) }}
+                                  >
+                                    <HStack justify="space-between" align="start">
+                                      <VStack align="start" spacing={1}>
+                                        <Text fontWeight="semibold" fontSize="sm" color="gray.800">
+                                          {trade.product_title || `Trade #${trade.id}`}
+                                        </Text>
+                                        <Text fontSize="xs" color="gray.500">
+                                          {isIncoming ? 'From' : 'To'}: {isIncoming ? (trade.buyer_name || 'Anonymous') : (trade.seller_name || 'Anonymous')}
+                                        </Text>
+                                        <Text fontSize="xs" color="red.400">
+                                          ⌛ Expired due to 7 days of inactivity
+                                        </Text>
+                                      </VStack>
+                                      <Badge colorScheme="gray" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full">
+                                        ⌛ Expired
+                                      </Badge>
+                                    </HStack>
+                                  </Box>
+                                )
+                              })}
+                            </VStack>
                           )}
                         </TabPanel>
 
@@ -4341,7 +4442,7 @@ const Dashboard: React.FC = () => {
                     </Text>
                   </VStack>
 
-                  <HStack spacing={3} w="full">
+                <HStack spacing={3} w="full">
                     <Button
                       variant="outline"
                       size="md"
@@ -4350,6 +4451,16 @@ const Dashboard: React.FC = () => {
                     >
                       Keep Offer
                     </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                    isDisabled={isProcessing}
+                  >
+                    Convert to Multi-Way
+                  </Button>
                     <Button
                       colorScheme="red"
                       size="md"

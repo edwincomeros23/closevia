@@ -631,6 +631,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 	case "complete":
 		log.Printf("=== TRADE COMPLETION REQUEST ===")
+		if currentStatus != "active" {
+			log.Printf("Attempted to complete non-active trade %d (status: %s)", tradeID, currentStatus)
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Only active trades can be marked as complete"})
+		}
 		log.Printf("User %d attempting to complete trade %d", userID, tradeID)
 		column := "buyer_completed"
 		if userID == sellerID {
@@ -878,6 +882,60 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		publishToUser(otherUserID, sseEvent{Type: "trade_delivery_state_updated", Data: fiber.Map{"trade_id": tradeID}})
 
 		log.Printf("Delivery state updated successfully for trade %d", tradeID)
+	case "request_option_change":
+		requestedOption := payload.RequestedOption
+		if requestedOption != "meetup" && requestedOption != "delivery" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid option. Must be 'meetup' or 'delivery'"})
+		}
+		_, err = h.db.Exec("UPDATE trades SET option_change_requested=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", requestedOption, tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to request option change"})
+		}
+		// Notify the other party
+		var notifyID int
+		if userID == buyerID {
+			notifyID = sellerID
+		} else {
+			notifyID = buyerID
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", notifyID, fmt.Sprintf("Trade option change requested to %s", requestedOption))
+		publishToUser(notifyID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+
+	case "approve_option_change":
+		// Get the requested option
+		var requestedOption sql.NullString
+		h.db.QueryRow("SELECT option_change_requested FROM trades WHERE id=?", tradeID).Scan(&requestedOption)
+		if !requestedOption.Valid || requestedOption.String == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No pending option change"})
+		}
+		_, err = h.db.Exec("UPDATE trades SET trade_option=?, option_change_requested=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?", requestedOption.String, tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to approve option change"})
+		}
+		// Notify requester
+		var notifyID2 int
+		if userID == buyerID {
+			notifyID2 = sellerID
+		} else {
+			notifyID2 = buyerID
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", notifyID2, "Trade option change approved")
+		publishToUser(notifyID2, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+
+	case "reject_option_change":
+		_, err = h.db.Exec("UPDATE trades SET option_change_requested=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?", tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to reject option change"})
+		}
+		var notifyID3 int
+		if userID == buyerID {
+			notifyID3 = sellerID
+		} else {
+			notifyID3 = buyerID
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", notifyID3, "Trade option change rejected")
+		publishToUser(notifyID3, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+
 	default:
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
 	}
@@ -1010,17 +1068,18 @@ func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 
 	log.Printf("Product %d current status: %s", productID, currentStatus)
 
-	// Only update if product is available
-	if currentStatus != "available" {
-		log.Printf("Warning: Product %d is already traded/unavailable (status: %s), skipping", productID, currentStatus)
-		return nil // Don't fail the entire trade if one product is already sold
+	// Allow both 'available' and 'locked' status. 
+	// Products are locked when a trade is accepted/active.
+	if currentStatus != "available" && currentStatus != "locked" {
+		log.Printf("Warning: Product %d is already in an un-tradable state (status: %s), skipping", productID, currentStatus)
+		return nil // Don't fail the entire trade if one product is already finalized/unavailable
 	}
 
 	// Update product status to traded
 	result, err := tx.Exec(`
 		UPDATE products 
 		SET status = 'traded', updated_at = CURRENT_TIMESTAMP 
-		WHERE id = ? AND status = 'available'`,
+		WHERE id = ? AND (status = 'available' OR status = 'locked')`,
 		productID)
 
 	if err != nil {
@@ -1611,7 +1670,7 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 	}
 
 	// Validate status against a known whitelist. An empty status means no filter.
-	allowedStatuses := map[string]bool{"pending": true, "active": true, "completed": true, "declined": true, "cancelled": true, "countered": true}
+	allowedStatuses := map[string]bool{"pending": true, "accepted": true, "active": true, "completed": true, "declined": true, "cancelled": true, "countered": true, "expired": true, "auto_completed": true}
 	if status != "" && !allowedStatuses[status] {
 		fmt.Printf("CountTrades: unknown status='%s' from user=%d - ignoring status filter\n", status, userID)
 		status = ""
@@ -1868,11 +1927,10 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	userLoops := []map[string]interface{}{}
 	for _, loopEdges := range allLoops {
 		involvesUser := false
-		var participants []int
+		// 4. Transform loops and filter to only those involving the current user
+		participants := []map[string]interface{}{}
 		var edges []map[string]interface{}
-
 		for _, edge := range loopEdges {
-			participants = append(participants, edge.FromUser)
 			if edge.FromUser == userID {
 				involvesUser = true
 			}
@@ -1881,23 +1939,33 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			var fromUserName, toUserName, productTitle string
 			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.FromUser).Scan(&fromUserName)
 			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.ToUser).Scan(&toUserName)
+			
 			// Get target product from trade
 			var targetProductID int
 			h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", edge.TradeID).Scan(&targetProductID)
 			h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetProductID).Scan(&productTitle)
 
-			edges = append(edges, map[string]interface{}{
+			edgeData := map[string]interface{}{
 				"from_user":      edge.FromUser,
 				"from_user_name": fromUserName,
 				"to_user":        edge.ToUser,
 				"to_user_name":   toUserName,
 				"trade_id":       edge.TradeID,
 				"product_title":  productTitle,
+			}
+			edges = append(edges, edgeData)
+			
+			// Add to participants list for UI
+			participants = append(participants, map[string]interface{}{
+				"id":            edge.FromUser,
+				"user_name":     fromUserName,
+				"product_title": productTitle,
 			})
 		}
 
 		if involvesUser {
 			userLoops = append(userLoops, map[string]interface{}{
+				"id":           loopEdges[0].TradeID, // Use first trade ID as loop identifier
 				"edges":        edges,
 				"loop_length":  len(loopEdges),
 				"participants": participants,
@@ -1995,15 +2063,140 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 
 // AcceptTradeLoop
 func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
-	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop accepted"})
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	loopID := c.Params("id") // Format: loop_tradeid1_tradeid2_tradeid3
+
+	// 1. Verify loop exists and user is part of it
+	parts := strings.Split(loopID, "_")
+	if len(parts) < 3 || parts[0] != "loop" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID"})
+	}
+
+	tradeIDs := []int{}
+	participantIDs := make(map[int]bool)
+	involvesUser := false
+
+	for i := 1; i < len(parts); i++ {
+		tid, _ := strconv.Atoi(parts[i])
+		tradeIDs = append(tradeIDs, tid)
+		
+		var bID, sID int
+		err := h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tid).Scan(&bID, &sID)
+		if err != nil {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Trade %d not found", tid)})
+		}
+		participantIDs[bID] = true
+		participantIDs[sID] = true
+		if bID == userID || sID == userID {
+			involvesUser = true
+		}
+	}
+
+	if !involvesUser {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this loop"})
+	}
+
+	// 2. Record acceptance
+	_, err := h.db.Exec(`
+		INSERT INTO trade_loop_agreements (loop_id, user_id, status)
+		VALUES (?, ?, 'accepted')
+		ON DUPLICATE KEY UPDATE status = 'accepted'
+	`, loopID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to record agreement"})
+	}
+
+	// 3. Check if all participants accepted
+	var acceptedCount int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM trade_loop_agreements WHERE loop_id = ? AND status = 'accepted'", loopID).Scan(&acceptedCount)
+	
+	if acceptedCount >= len(participantIDs) {
+		// All accepted! Execute.
+		return h.ExecuteTradeLoop(c)
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true, 
+		Message: "You have accepted the trade loop. Waiting for other participants.",
+		Data: fiber.Map{
+			"accepted_count": acceptedCount,
+			"target_count":   len(participantIDs),
+		},
+	})
 }
 
 // DeclineTradeLoop
 func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	loopID := c.Params("id")
+
+	_, err := h.db.Exec(`
+		INSERT INTO trade_loop_agreements (loop_id, user_id, status)
+		VALUES (?, ?, 'declined')
+		ON DUPLICATE KEY UPDATE status = 'declined'
+	`, loopID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to record decline"})
+	}
+
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop declined"})
 }
 
 // ExecuteTradeLoop
 func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
-	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop executed"})
+	loopID := c.Params("id")
+	parts := strings.Split(loopID, "_")
+	
+	// Start transaction
+	tx, err := h.db.Begin()
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
+	}
+	defer tx.Rollback()
+
+	tradeIDs := []int{}
+	for i := 1; i < len(parts); i++ {
+		tid, _ := strconv.Atoi(parts[i])
+		tradeIDs = append(tradeIDs, tid)
+
+		// 1. Update trade status to 'active' (since it's now a multi-way commitment)
+		_, err = tx.Exec("UPDATE trades SET status = 'active' WHERE id = ?", tid)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade status"})
+		}
+
+		// 2. Lock the target product
+		var targetProductID int
+		err = tx.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tid).Scan(&targetProductID)
+		if err == nil {
+			tx.Exec("UPDATE products SET status = 'locked' WHERE id = ?", targetProductID)
+		}
+
+		// 3. Lock offered products
+		rows, _ := tx.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tid)
+		for rows.Next() {
+			var pid int
+			rows.Scan(&pid)
+			tx.Exec("UPDATE products SET status = 'locked' WHERE id = ?", pid)
+		}
+		rows.Close()
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit transaction"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true, 
+		Message: "Multi-way trade loop executed successfully! All trades are now active.",
+	})
 }

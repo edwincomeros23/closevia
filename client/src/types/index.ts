@@ -137,7 +137,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled'
+export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
 export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
@@ -179,7 +179,7 @@ export interface Trade {
   delivery_address?: string // Delivery address if option is 'delivery'
   // Delivery state fields
   delivery_type?: 'standard' | 'express' | 'meetup'
-  payment_method?: 'gcash' | 'cod' | 'wallet'
+  payment_method?: 'gcash' | 'cod' | 'wallet' | 'online' // online includes GCash/PayMaya via Xendit
   payment_confirmed?: boolean
   proof_of_delivery?: string | null // Base64 encoded image
   buyer_confirmed_receipt?: boolean

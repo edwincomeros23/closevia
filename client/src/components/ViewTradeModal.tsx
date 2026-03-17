@@ -86,7 +86,7 @@ interface MeetupLocation {
 
 interface DeliveryState {
   deliveryType: 'standard' | 'express' | 'meetup'
-  paymentMethod: 'gcash' | 'cod' | 'wallet'
+  paymentMethod: 'online' | 'cod' | 'wallet'
   paymentConfirmed: boolean
   buyerConfirmedReceipt: boolean
   sellerConfirmedDelivery: boolean
@@ -363,159 +363,181 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           </AccordionButton>
 
           <AccordionPanel pb={4} pt={4}>
-            <VStack spacing={5} align="stretch">
+            <VStack spacing={3} align="stretch">
+              <Text fontSize="sm" color="gray.600">
+                Select your preferred delivery speed and cost:
+              </Text>
 
-              {/* --- Delivery Options --- */}
-              <Box>
-                <HStack spacing={2} mb={2}>
-                  <Icon as={FiTruck} boxSize={4} color="blue.500" />
-                  <Text fontWeight="semibold" fontSize="sm">Delivery Options</Text>
-                </HStack>
-                <Text fontSize="xs" color="gray.600" mb={3}>
-                  Select your preferred delivery speed and cost:
+              <Grid templateColumns="repeat(3, 1fr)" gap={3}>
+                {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
+                  <Card
+                    key={`delivery-${type}`}
+                    cursor="pointer"
+                    borderWidth="2px"
+                    borderColor={
+                      deliveryState.deliveryType === type ? 'blue.400' : 'gray.200'
+                    }
+                    bg={deliveryState.deliveryType === type ? 'blue.50' : 'white'}
+                    onClick={() => {
+                      const newState = type as DeliveryState['deliveryType']
+                      setDeliveryState(prev => ({
+                        ...prev,
+                        deliveryType: newState,
+                      }))
+                      saveDeliveryState({ deliveryType: newState })
+                    }}
+                    transition="all 0.2s"
+                    _hover={{
+                      borderColor: 'blue.300',
+                      shadow: 'md',
+                    }}
+                  >
+                    <CardBody p={4} textAlign="center">
+                      <Text fontSize="2xl" mb={2}>
+                        {option.icon}
+                      </Text>
+                      <Text fontSize="xs" fontWeight="bold" mb={1} color="gray.700">
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
+                      <Text fontSize="xs" color="gray.600" mb={2}>
+                        {option.time}
+                      </Text>
+                      <Badge colorScheme="blue" fontSize="xs">
+                        ₱{option.fee}
+                      </Badge>
+                      {deliveryState.deliveryType === type && (
+                        <Icon as={FiCheck} color="blue.500" boxSize={5} mt={2} />
+                      )}
+                    </CardBody>
+                  </Card>
+                ))}
+              </Grid>
+
+              {trade?.status === 'active' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  colorScheme="blue"
+                  leftIcon={<FiClock />}
+                  w="full"
+                >
+                  Track Delivery
+                </Button>
+              )}
+            </VStack>
+          </AccordionPanel>
+        </AccordionItem>
+
+        {/* 2. PAYMENT METHOD */}
+        <AccordionItem
+          border="2px"
+          borderColor={deliveryState.expandedSections.payment ? 'green.400' : 'gray.200'}
+          borderRadius="lg"
+          bg={deliveryState.expandedSections.payment ? 'green.50' : 'white'}
+          overflow="hidden"
+          mt={3}
+        >
+          <AccordionButton
+            onClick={() => toggleSection('payment')}
+            _hover={{ bg: deliveryState.expandedSections.payment ? 'green.100' : 'gray.50' }}
+            py={4}
+          >
+            <HStack spacing={3} flex={1}>
+              <Icon as={FiDollarSign} boxSize={5} color="green.500" />
+              <VStack align="start" spacing={0}>
+                <Text fontWeight="semibold">Payment Method</Text>
+                <Text fontSize="xs" color="gray.500">
+                  {paymentMethods[deliveryState.paymentMethod].label} •
+                  {deliveryState.paymentConfirmed ? ' ✓ Confirmed' : ' Pending'}
                 </Text>
-                <Grid templateColumns="repeat(3, 1fr)" gap={3}>
-                  {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
+              </VStack>
+            </HStack>
+            <Badge
+              colorScheme={deliveryState.paymentConfirmed ? 'green' : 'yellow'}
+              variant="subtle"
+              fontSize="xs"
+            >
+              {deliveryState.paymentConfirmed ? 'Paid' : 'Pending'}
+            </Badge>
+            <AccordionIcon />
+          </AccordionButton>
+
+          <AccordionPanel pb={4} pt={4}>
+            <VStack spacing={4} align="stretch">
+              <Text fontSize="sm" color="gray.600">
+                Choose your payment method:
+              </Text>
+
+              <VStack spacing={2} align="stretch">
+                {Object.entries(paymentMethods).map(([method, details]: [string, any]) => {
+                  const isLocked = false // Online/Xendit is now fully unlocked
+
+                  return (
                     <Card
-                      key={`delivery-${type}`}
-                      cursor="pointer"
+                      key={`payment-${method}`}
+                      cursor={isLocked || deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
                       borderWidth="2px"
                       borderColor={
-                        deliveryState.deliveryType === type ? 'blue.400' : 'gray.200'
+                        deliveryState.paymentMethod === method ? 'green.400' : isLocked ? 'gray.300' : 'gray.200'
                       }
-                      bg={deliveryState.deliveryType === type ? 'blue.50' : 'white'}
+                      bg={
+                        deliveryState.paymentMethod === method
+                          ? `${details.color}.50`
+                          : isLocked ? 'gray.100' : 'white'
+                      }
+                      opacity={isLocked ? 0.5 : (deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1)}
                       onClick={() => {
-                        const newState = type as DeliveryState['deliveryType']
+                        // Disable locked options
+                        if (isLocked) return
+                        // Disable changing payment method if already confirmed
+                        if (deliveryState.paymentConfirmed) return
+
+                        const newMethod = method as DeliveryState['paymentMethod']
                         setDeliveryState(prev => ({
                           ...prev,
-                          deliveryType: newState,
+                          paymentMethod: newMethod,
                         }))
-                        saveDeliveryState({ deliveryType: newState })
+                        saveDeliveryState({ paymentMethod: newMethod })
                       }}
                       transition="all 0.2s"
-                      _hover={{
-                        borderColor: 'blue.300',
+                      _hover={isLocked || deliveryState.paymentConfirmed ? {} : {
+                        borderColor: `${details.color}.300`,
                         shadow: 'md',
                       }}
                     >
-                      <CardBody p={4} textAlign="center">
-                        <Text fontSize="2xl" mb={2}>
-                          {option.icon}
-                        </Text>
-                        <Text fontSize="xs" fontWeight="bold" mb={1} color="gray.700">
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </Text>
-                        <Text fontSize="xs" color="gray.600" mb={2}>
-                          {option.time}
-                        </Text>
-                        <Badge colorScheme="blue" fontSize="xs">
-                          ₱{option.fee}
-                        </Badge>
-                        {deliveryState.deliveryType === type && (
-                          <Icon as={FiCheck} color="blue.500" boxSize={5} mt={2} />
-                        )}
+                      <CardBody>
+                        <HStack spacing={3} justify="space-between">
+                          <HStack spacing={3}>
+                            <Text fontSize="xl">{details.icon}</Text>
+                            <VStack spacing={0} align="start">
+                              <Text fontWeight="medium" fontSize="sm">
+                                {details.label}
+                              </Text>
+                              {isLocked && (
+                                <Text fontSize="xs" color="gray.500" fontWeight="semibold">
+                                  🔒 Coming Soon
+                                </Text>
+                              )}
+                              {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
+                                <Text fontSize="xs" color="green.600" fontWeight="semibold">
+                                  ✓ Secured
+                                </Text>
+                              )}
+                            </VStack>
+                          </HStack>
+                          {deliveryState.paymentMethod === method && (
+                            <Icon
+                              as={FiCheck}
+                              color={`${details.color}.500`}
+                              boxSize={5}
+                            />
+                          )}
+                        </HStack>
                       </CardBody>
                     </Card>
-                  ))}
-                </Grid>
-                {trade?.status === 'active' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    colorScheme="blue"
-                    leftIcon={<FiClock />}
-                    w="full"
-                    mt={3}
-                  >
-                    Track Delivery
-                  </Button>
-                )}
-              </Box>
-
-              <Divider />
-
-              {/* --- Payment Method --- */}
-              <Box>
-                <HStack spacing={2} mb={2}>
-                  <Icon as={FiDollarSign} boxSize={4} color="green.500" />
-                  <Text fontWeight="semibold" fontSize="sm">Payment Method</Text>
-                  <Badge
-                    colorScheme={deliveryState.paymentConfirmed ? 'green' : 'yellow'}
-                    variant="subtle"
-                    fontSize="xs"
-                  >
-                    {deliveryState.paymentConfirmed ? 'Paid' : 'Pending'}
-                  </Badge>
-                </HStack>
-                <Text fontSize="xs" color="gray.600" mb={3}>
-                  Choose your payment method:
-                </Text>
-                <VStack spacing={2} align="stretch">
-                  {Object.entries(paymentMethods).map(([method, details]: [string, any]) => {
-                    const isLocked = method === 'maya'
-                    return (
-                      <Card
-                        key={`payment-${method}`}
-                        cursor={isLocked || deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
-                        borderWidth="2px"
-                        borderColor={
-                          deliveryState.paymentMethod === method ? 'green.400' : isLocked ? 'gray.300' : 'gray.200'
-                        }
-                        bg={
-                          deliveryState.paymentMethod === method
-                            ? `${details.color}.50`
-                            : isLocked ? 'gray.100' : 'white'
-                        }
-                        opacity={isLocked ? 0.5 : (deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1)}
-                        onClick={() => {
-                          if (isLocked) return
-                          if (deliveryState.paymentConfirmed) return
-                          const newMethod = method as DeliveryState['paymentMethod']
-                          setDeliveryState(prev => ({
-                            ...prev,
-                            paymentMethod: newMethod,
-                          }))
-                          saveDeliveryState({ paymentMethod: newMethod })
-                        }}
-                        transition="all 0.2s"
-                        _hover={isLocked || deliveryState.paymentConfirmed ? {} : {
-                          borderColor: `${details.color}.300`,
-                          shadow: 'md',
-                        }}
-                      >
-                        <CardBody>
-                          <HStack spacing={3} justify="space-between">
-                            <HStack spacing={3}>
-                              <Text fontSize="xl">{details.icon}</Text>
-                              <VStack spacing={0} align="start">
-                                <Text fontWeight="medium" fontSize="sm">
-                                  {details.label}
-                                </Text>
-                                {isLocked && (
-                                  <Text fontSize="xs" color="gray.500" fontWeight="semibold">
-                                    🔒 Coming Soon
-                                  </Text>
-                                )}
-                                {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
-                                  <Text fontSize="xs" color="green.600" fontWeight="semibold">
-                                    ✓ Secured
-                                  </Text>
-                                )}
-                              </VStack>
-                            </HStack>
-                            {deliveryState.paymentMethod === method && (
-                              <Icon
-                                as={FiCheck}
-                                color={`${details.color}.500`}
-                                boxSize={5}
-                              />
-                            )}
-                          </HStack>
-                        </CardBody>
-                      </Card>
-                    )
-                  })}
-                </VStack>
+                  )
+                })}
+              </VStack>
 
                 <Box p={4} bg="gray.50" borderRadius="md" mt={3}>
                   <HStack justify="space-between" mb={2}>
@@ -616,8 +638,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
                 {/* Status Steps */}
                 <HStack spacing={1} justify="space-between">
-                  {['pending', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
-                    const steps = ['pending', 'picked_up', 'in_transit', 'delivered']
+                  {['pending', 'claimed', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
+                    const steps = ['pending', 'claimed', 'picked_up', 'in_transit', 'delivered']
                     const currentIdx = steps.indexOf(linkedDelivery.status || 'pending')
                     const isComplete = i <= currentIdx
                     const isCurrent = i === currentIdx
@@ -828,6 +850,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
   const [rating, setRating] = useState(5)
   const [feedback, setFeedback] = useState('')
   const [proofImage, setProofImage] = useState<string | null>(null)
+  const [proofFile, setProofFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [completionStatus, setCompletionStatus] = useState<any>(null)
   const [loadingStatus, setLoadingStatus] = useState(false)
@@ -864,11 +887,13 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
   const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
+      const file = e.target.files[0]
+      setProofFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setProofImage(reader.result as string)
       }
-      reader.readAsDataURL(e.target.files[0])
+      reader.readAsDataURL(file)
     }
   }
 
@@ -885,10 +910,23 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
     try {
       setSubmitting(true)
+
+      // Upload proof image first if provided
+      let uploadedProofUrl: string | undefined
+      if (proofFile) {
+        const formData = new FormData()
+        formData.append('image', proofFile)
+        formData.append('type', 'trade_proof')
+        const uploadRes = await api.post('/api/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        uploadedProofUrl = uploadRes.data?.data?.url
+      }
+
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim(),
-        proof_url: proofImage || undefined,
+        proof_url: uploadedProofUrl || undefined,
       })
 
       toast({
@@ -902,6 +940,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       setRating(5)
       setFeedback('')
       setProofImage(null)
+      setProofFile(null)
 
       // Refresh completion status
       await fetchCompletionStatus()
@@ -1180,7 +1219,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [deliveryState, setDeliveryState] = useState<DeliveryState>({
     deliveryType: 'standard',
-    paymentMethod: 'gcash',
+    paymentMethod: 'online',
     paymentConfirmed: false,
     buyerConfirmedReceipt: false,
     sellerConfirmedDelivery: false,
@@ -1204,13 +1243,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     ? trade?.seller_name || `User #${trade?.seller_id}`
     : trade?.buyer_name || `User #${trade?.buyer_id}`
 
-  // Suggested meetup locations (based on user locations)
+  // Suggested meetup locations (specifically for Zamboanga City)
   const suggestedLocations: MeetupLocation[] = [
-    { name: 'SM Mall of Asia', address: 'Seaside Boulevard, Pasay', type: 'mall' },
-    { name: 'Greenbelt Mall', address: 'Ayala Center, Makati', type: 'mall' },
-    { name: 'Starbucks Coffee', address: 'Various locations', type: 'cafe' },
-    { name: 'Robinsons Place', address: 'EDSA, Quezon City', type: 'mall' },
-    { name: 'Public Park', address: 'Rizal Park, Manila', type: 'public' },
+    { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public' },
+    { name: 'SM Mindpro', address: 'La Purisima St, Zamboanga City', type: 'mall' },
+    { name: 'KCC de Zamboanga', address: 'Gov. Camins Ave, Zamboanga City', type: 'mall' },
+    { name: 'Meet n Eat', address: 'Gov. Camins Ave, Zamboanga City', type: 'cafe' },
+    { name: 'Amethyst Eatery', address: 'Zamboanga City', type: 'cafe' },
+    { name: 'Paseo del Mar', address: 'Valderosa St, Zamboanga City', type: 'public' },
+    { name: 'Local coffee shops', address: 'Various locations in Zamboanga', type: 'cafe' },
   ]
 
   // Save delivery state to backend
@@ -1242,7 +1283,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 acc.delivery_type = value as 'standard' | 'express' | 'meetup'
                 break
               case 'paymentMethod':
-                acc.payment_method = value as 'gcash' | 'cod' | 'wallet'
+                acc.payment_method = value as 'online' | 'cod' | 'wallet'
                 break
               case 'paymentConfirmed':
                 acc.payment_confirmed = value as boolean
@@ -1304,7 +1345,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       setDeliveryState(prev => ({
         ...prev,
         deliveryType: (trade.delivery_type as any) || 'standard',
-        paymentMethod: (trade.payment_method as any) || 'gcash',
+        paymentMethod: (trade.payment_method as any) || 'online',
         paymentConfirmed: trade.payment_confirmed || false,
         buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
         sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
@@ -1318,7 +1359,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
       console.log('Delivery state loaded:', {
         deliveryType: (trade.delivery_type as any) || 'standard',
-        paymentMethod: (trade.payment_method as any) || 'gcash',
+        paymentMethod: (trade.payment_method as any) || 'online',
         paymentConfirmed: trade.payment_confirmed || false,
         buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
         sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
@@ -1507,8 +1548,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const paymentMethods = {
     cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
-    gcash: { label: 'GCash', icon: '💳', color: 'blue' },
-    maya: { label: 'Maya', icon: '📱', color: 'purple' },
+    upfront: { label: 'Prepayment (GCash/Maya)', icon: '📱', color: 'orange' },
+    online: { label: 'Online Payment (Clovia)', icon: '💳', color: 'blue' },
+    wallet: { label: 'Clovia Wallet', icon: '💼', color: 'purple' },
   }
 
   const toggleSection = (section: keyof typeof deliveryState.expandedSections) => {
@@ -1526,7 +1568,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       setConfirmingPayment(true)
 
       // Xendit Online Checkout Pipeline
-      if (deliveryState.paymentMethod === 'gcash') {
+      if (deliveryState.paymentMethod === 'online') {
         const xenditResponse = await api.post(`/api/payments/trade/${trade?.id}`)
         if (xenditResponse.data?.success && xenditResponse.data?.data?.checkout_url) {
           // Redirect the user securely to Xendit's hosted checkout page
@@ -1539,7 +1581,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       await api.put(`/api/trades/${trade?.id}`, {
         action: 'update_delivery_state',
         payment_confirmed: true,
-        payment_method: deliveryState.paymentMethod,
+        payment_method: deliveryState.paymentMethod as any,
       })
 
       setDeliveryState(prev => ({
@@ -1552,7 +1594,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         const updatedTrade: Trade = {
           ...trade,
           payment_confirmed: true,
-          payment_method: deliveryState.paymentMethod,
+          payment_method: deliveryState.paymentMethod as any,
         }
         onTradeUpdate(updatedTrade)
       }
@@ -1824,8 +1866,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Requested'}
                                 </Badge>
@@ -1860,8 +1905,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Offered'}
                                 </Badge>

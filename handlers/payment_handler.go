@@ -171,8 +171,8 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		}
 	}
 
-	successUrl := fmt.Sprintf("%s/trades", frontendURL)
-	failureUrl := fmt.Sprintf("%s/trades", frontendURL)
+	successUrl := fmt.Sprintf("%s/dashboard?trade_id=%d", frontendURL, trade.ID)
+	failureUrl := fmt.Sprintf("%s/dashboard?trade_id=%d&payment=failed", frontendURL, trade.ID)
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{

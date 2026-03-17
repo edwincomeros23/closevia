@@ -210,6 +210,23 @@ const Offers: React.FC = () => {
     }
   }
 
+  const handleConvertToMultiWay = () => {
+    if (!tradeToDecline) {
+      setDeclineModalOpen(false)
+      return
+    }
+
+    setDeclineModalOpen(false)
+    toast({
+      title: 'Searching for multi-way trade',
+      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
+      status: 'info',
+      duration: 5000
+    })
+
+    navigate('/premium')
+  }
+
   const sortList = (list: Trade[]) => {
     const sorted = [...list]
     sorted.sort((a, b) => {
@@ -223,11 +240,12 @@ const Offers: React.FC = () => {
   const incomingSorted = useMemo(() => sortList(incoming), [incoming, sort])
   const outgoingSorted = useMemo(() => sortList(outgoing), [outgoing, sort])
   // statuses that should be treated as "history"
-  const historyStatuses = ['declined', 'cancelled', 'completed']
+  const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed']
+  const archiveStatuses = ['expired']
 
-  // visible lists for the two main tabs (exclude history items)
-  const offersReceivedVisible = incomingSorted.filter(t => !historyStatuses.includes(t.status))
-  const offersSentVisible = outgoingSorted.filter(t => !historyStatuses.includes(t.status))
+  // visible lists for the two main tabs (exclude history and active/accepted items)
+  const offersReceivedVisible = incomingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && t.status !== 'accepted' && t.status !== 'active')
+  const offersSentVisible = outgoingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && t.status !== 'accepted' && t.status !== 'active')
 
   // Priority ranking: countered first, then pending, then others
   const statusRank = (s?: string) => {
@@ -265,6 +283,12 @@ const Offers: React.FC = () => {
   const historyItems: SourceTrade[] = [
     ...incomingSorted.filter(t => historyStatuses.includes(t.status)).map(t => ({ ...t, source: 'Offers Received' as const })),
     ...outgoingSorted.filter(t => historyStatuses.includes(t.status)).map(t => ({ ...t, source: 'Offers Sent' as const })),
+  ]
+
+  // archive list: expired/failed trades
+  const archiveItems: SourceTrade[] = [
+    ...incomingSorted.filter(t => archiveStatuses.includes(t.status)).map(t => ({ ...t, source: 'Offers Received' as const })),
+    ...outgoingSorted.filter(t => archiveStatuses.includes(t.status)).map(t => ({ ...t, source: 'Offers Sent' as const })),
   ]
 
   // Resolve image for an item coming from /api/trades (robust to various shapes)
@@ -711,6 +735,29 @@ const Offers: React.FC = () => {
                 {historyItems.length}
               </Badge>
             </Tab>
+            <Tab
+              _selected={{
+                bg: "blue.500",
+                color: "white",
+                transform: "translateY(-1px)",
+                boxShadow: "sm"
+              }}
+              _hover={{
+                bg: "red.50",
+                transform: "translateY(-1px)"
+              }}
+              transition="all 0.2s ease"
+              fontWeight="medium"
+              fontSize="sm"
+              borderRadius="md"
+              px={4}
+              py={2}
+            >
+              Archive
+              <Badge ml={2} colorScheme="red" variant="subtle" fontSize="xs">
+                {archiveItems.length}
+              </Badge>
+            </Tab>
           </TabList>
           <TabPanels bg={cardBg} p={5}>
           <TabPanel p={0}>
@@ -1077,7 +1124,7 @@ const Offers: React.FC = () => {
                           colorScheme="blue"
                           variant="solid"
                           onClick={() => handleCompleteTradeClick(t)}
-                          isDisabled={['completed', 'cancelled', 'declined'].includes(t.status)}
+                          isDisabled={['completed', 'auto_completed', 'cancelled', 'declined'].includes(t.status)}
                           title="Click to open trade completion modal"
                           _hover={{ transform: "translateY(-1px)" }}
                           leftIcon={<Icon as={FaHandshake} />}
@@ -1118,12 +1165,42 @@ const Offers: React.FC = () => {
                         {renderOfferedItems(t)}
                         <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
                       </VStack>
-                      <Badge colorScheme={
-                        t.status === 'pending' ? 'yellow' :
-                        t.status === 'accepted' || t.status === 'active' ? 'green' :
-                        t.status === 'declined' || t.status === 'cancelled' ? 'red' :
-                        'gray'
-                      } variant="subtle">{t.status}</Badge>
+                      {getStatusBadge(t.status)}
+                    </HStack>
+                  </Box>
+                </ScaleFade>
+              ))}
+            </VStack>
+          </TabPanel>
+          <TabPanel p={0}>
+            <VStack spacing={3} align="stretch">
+              {archiveItems.length === 0 ? (
+                <Text color="gray.500" textAlign="center" py={8}>No archived trades yet.</Text>
+              ) : archiveItems.map((t) => (
+                <ScaleFade in={true} key={t.id}>
+                  <Box
+                    bg="white"
+                    borderWidth="1px"
+                    borderColor="red.100"
+                    rounded="lg"
+                    p={5}
+                    boxShadow="sm"
+                    _hover={{
+                      boxShadow: "md",
+                      transform: "translateY(-1px)",
+                      borderColor: "red.200"
+                    }}
+                    transition="all 0.2s ease"
+                  >
+                    <HStack justify="space-between" align="start">
+                      <VStack align="start" spacing={2}>
+                        <Text fontWeight="semibold" color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Trader: {t.seller_name || 'Anonymous User'}</Text>
+                        {renderOfferedItems(t)}
+                        <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
+                        <Text fontSize="xs" color="red.400">Expired due to 7 days of inactivity</Text>
+                      </VStack>
+                      {getStatusBadge(t.status)}
                     </HStack>
                   </Box>
                 </ScaleFade>
@@ -1256,6 +1333,15 @@ const Offers: React.FC = () => {
                     onClick={() => setDeclineModalOpen(false)}
                   >
                     Keep Offer
+                  </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                  >
+                    Convert to Multi-Way
                   </Button>
                   <Button
                     colorScheme="red"
