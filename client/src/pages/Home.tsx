@@ -50,7 +50,7 @@ import {
   ArrowRightIcon,
   CloseIcon,
 } from '@chakra-ui/icons'
-import { FaUserCircle, FaHandshake, FaHome, FaTag } from 'react-icons/fa'
+import { FaUserCircle, FaHandshake, FaHome, FaTag, FaMotorcycle, FaCrown } from 'react-icons/fa'
 import { FiShoppingBag } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
@@ -97,6 +97,17 @@ const Home: React.FC = () => {
   const { onOpen: openMobileNav } = useMobileNav()
   const { isOpen: isLogoutModalOpen, onOpen: onOpenLogoutModal, onClose: onCloseLogoutModal } = useDisclosure()
   const { offerCount } = useRealtime() // added realtime usage
+
+  // Rider status for profile dropdown
+  const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
+
+  useEffect(() => {
+    if (user) {
+      api.get('/api/deliveries/rider-status').then(res => {
+        if (res.data?.success) setRiderStatus(res.data.data)
+      }).catch(() => {})
+    }
+  }, [user])
 
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
@@ -659,7 +670,12 @@ const Home: React.FC = () => {
                             </Text>
                             {user && (user as any).is_premium && (
                               <Badge colorScheme="yellow" fontSize="xs" mt={1}>
-                                ⭐ Premium Member
+                                Premium Member
+                              </Badge>
+                            )}
+                            {riderStatus?.is_rider && riderStatus?.status === 'approved' && (
+                              <Badge colorScheme="green" fontSize="xs" mt={1}>
+                                Verified Rider
                               </Badge>
                             )}
                           </Box>
@@ -675,6 +691,35 @@ const Home: React.FC = () => {
                           View Profile
                         </Button>
                       </Box>
+
+                      {/* Menu Items */}
+                      <Button
+                        as={RouterLink}
+                        to="/rider"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaMotorcycle} />}
+                      >
+                        {riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider'}
+                      </Button>
+
+                      {!(user as any).is_premium && (
+                        <Button
+                          as={RouterLink}
+                          to="/premium"
+                          size="sm"
+                          w="full"
+                          variant="ghost"
+                          justifyContent="flex-start"
+                          leftIcon={<Icon as={FaCrown} color="purple.500" />}
+                          color="purple.600"
+                        >
+                          Buy Premium
+                        </Button>
+                      )}
+
                       <Divider />
                       <Button
                         size="sm"

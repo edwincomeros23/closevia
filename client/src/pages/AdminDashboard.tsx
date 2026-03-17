@@ -69,6 +69,8 @@ import {
   Skeleton,
   SkeletonText,
   useBreakpointValue,
+  Image,
+  ModalFooter,
 } from '@chakra-ui/react';
 import {
   FiUsers,
@@ -96,6 +98,7 @@ import {
   FiAlertCircle,
 } from 'react-icons/fi';
 import { FiTrash2, FiEye, FiCheck, FiX, FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FaMotorcycle } from 'react-icons/fa';
 import {
   AreaChart,
   Area,
@@ -616,6 +619,33 @@ const AdminDashboard: React.FC = () => {
   const [idImageModal, setIdImageModal] = useState<{ userId: number; name: string } | null>(null);
   const [idImageUrl, setIdImageUrl] = useState<string | null>(null);
 
+  // Rider application verification state
+  type RiderAppItem = {
+    id: number;
+    user_id: number;
+    name: string;
+    full_name: string;
+    email: string;
+    vehicle_type: string;
+    vehicle_plate: string;
+    contact_number: string;
+    status: string;
+    license_image_url: string;
+    selfie_image_url: string;
+    rejection_reason: string;
+    reviewed_at: string;
+    created_at: string;
+    profile_picture: string;
+  };
+  const [riderApplications, setRiderApplications] = useState<RiderAppItem[]>([]);
+  const [riderAppsLoading, setRiderAppsLoading] = useState(false);
+  const [riderStatusFilter, setRiderStatusFilter] = useState('');
+  const [riderSearchQuery, setRiderSearchQuery] = useState('');
+  const [selectedRiderApp, setSelectedRiderApp] = useState<RiderAppItem | null>(null);
+  const [rejectRiderTarget, setRejectRiderTarget] = useState<RiderAppItem | null>(null);
+  const [rejectRiderReason, setRejectRiderReason] = useState('');
+  const [rejectRiderLoading, setRejectRiderLoading] = useState(false);
+
   const { isOpen: isDayModalOpen, onOpen: openDayModal, onClose: closeDayModal } = useDisclosure();
   const {
     isOpen: isDeleteDialogOpen,
@@ -1039,7 +1069,63 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
-  // â”€â”€ View ID image (fetch as blob and show in modal) â”€â”€
+  // ── Fetch rider applications ──
+  const fetchRiderApplications = useCallback(async () => {
+    try {
+      setRiderAppsLoading(true);
+      const params = new URLSearchParams();
+      if (riderStatusFilter) params.set('status', riderStatusFilter);
+      if (riderSearchQuery) params.set('search', riderSearchQuery);
+      const response = await api.get(`/api/admin/rider-applications?${params}`);
+      if (response.data?.success && Array.isArray(response.data.data)) {
+        setRiderApplications(response.data.data);
+      } else {
+        setRiderApplications([]);
+      }
+    } catch {
+      setRiderApplications([]);
+    } finally {
+      setRiderAppsLoading(false);
+    }
+  }, [riderStatusFilter, riderSearchQuery]);
+
+  const handleApproveRider = useCallback(async (riderId: number) => {
+    try {
+      await api.post(`/api/admin/rider-applications/${riderId}/approve`);
+      toast({ title: 'Rider approved', status: 'success', duration: 3000 });
+      fetchRiderApplications();
+    } catch (err: any) {
+      toast({ title: 'Failed to approve', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
+    }
+  }, [fetchRiderApplications, toast]);
+
+  const handleMarkRiderUnderReview = useCallback(async (riderId: number) => {
+    try {
+      await api.post(`/api/admin/rider-applications/${riderId}/review`);
+      toast({ title: 'Marked as under review', status: 'info', duration: 3000 });
+      fetchRiderApplications();
+    } catch (err: any) {
+      toast({ title: 'Failed', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
+    }
+  }, [fetchRiderApplications, toast]);
+
+  const handleConfirmRejectRider = useCallback(async () => {
+    if (!rejectRiderTarget || !rejectRiderReason.trim()) return;
+    setRejectRiderLoading(true);
+    try {
+      await api.post(`/api/admin/rider-applications/${rejectRiderTarget.id}/reject`, { reason: rejectRiderReason.trim() });
+      toast({ title: 'Rider application rejected', status: 'info', duration: 3000 });
+      setRejectRiderTarget(null);
+      setRejectRiderReason('');
+      fetchRiderApplications();
+    } catch (err: any) {
+      toast({ title: 'Failed to reject', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
+    } finally {
+      setRejectRiderLoading(false);
+    }
+  }, [rejectRiderTarget, rejectRiderReason, fetchRiderApplications, toast]);
+
+  // ── View ID image (fetch as blob and show in modal) ──
   const handleViewIdImage = useCallback(async (userId: number, name: string) => {
     setIdImageModal({ userId, name });
     setIdImageUrl(null);
@@ -1191,12 +1277,13 @@ const AdminDashboard: React.FC = () => {
       fetchAdminReports(1),
       fetchAdminVerifications(),
       fetchAdminCampaigns(),
+      fetchRiderApplications(),
     ]);
     // Check connection in background, don't block rendering
     checkConnection();
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
-  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports, fetchAdminVerifications, fetchAdminCampaigns]);
+  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports, fetchAdminVerifications, fetchAdminCampaigns, fetchRiderApplications]);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -1250,7 +1337,7 @@ const AdminDashboard: React.FC = () => {
   // â”€â”€ Sidebar nav config â”€â”€
   const sidebarNav = [
     { id: 'overview' as SectionId, label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
-    { id: 'moderation' as SectionId, label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & verifications', badge: (reports.filter((r: any) => r.status === 'pending').length + verifications.filter(v => v.verification_status === 'pending').length) || undefined },
+    { id: 'moderation' as SectionId, label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & verifications', badge: (reports.filter((r: any) => r.status === 'pending').length + verifications.filter(v => v.verification_status === 'pending').length + riderApplications.filter(r => r.status === 'pending').length) || undefined },
     { id: 'management' as SectionId, label: 'Management', icon: FiGrid, description: 'Users, items & campaigns' },
     { id: 'system' as SectionId, label: 'System', icon: FiSettings, description: 'Metrics & calendar' },
   ];
@@ -1857,6 +1944,203 @@ const AdminDashboard: React.FC = () => {
           )}
         </CardBody>
       </Card>
+
+      {/* Rider Applications */}
+      <Card bg={cardBg} border=”1px solid” borderColor={borderColor} borderRadius=”xl” maxW=”5xl”>
+        <CardHeader>
+          <Flex justify=”space-between” align=”center” wrap=”wrap” gap={3}>
+            <HStack>
+              <Icon as={FaMotorcycle} color=”brand.500” boxSize={5} />
+              <Heading size=”sm” color={textColor}>Rider Applications</Heading>
+              {riderApplications.filter(r => r.status === 'pending').length > 0 && (
+                <Badge colorScheme=”orange” borderRadius=”full” px={2}>{riderApplications.filter(r => r.status === 'pending').length} pending</Badge>
+              )}
+            </HStack>
+            <HStack spacing={2}>
+              <Select size=”sm” w=”130px” value={riderStatusFilter} onChange={e => setRiderStatusFilter(e.target.value)} placeholder=”All statuses”>
+                <option value=”pending”>Pending</option>
+                <option value=”under_review”>Under Review</option>
+                <option value=”approved”>Approved</option>
+                <option value=”rejected”>Rejected</option>
+              </Select>
+              <Input size=”sm” w=”160px” placeholder=”Search name/email” value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
+              <Button size=”sm” leftIcon={<FiRefreshCw />} onClick={fetchRiderApplications} isLoading={riderAppsLoading}>Refresh</Button>
+            </HStack>
+          </Flex>
+        </CardHeader>
+        <CardBody overflowX=”auto” px={0}>
+          {riderAppsLoading ? (
+            <Center py={8}><Spinner color=”teal.500” /></Center>
+          ) : riderApplications.length === 0 ? (
+            <Center py={8}><VStack spacing={2}><Icon as={FaMotorcycle} boxSize={10} color=”gray.300” /><Text color=”#64748b”>No rider applications</Text></VStack></Center>
+          ) : (
+            <ChakraTable variant=”simple” size=”sm”>
+              <Thead bg={headerBg}>
+                <Tr>
+                  <Th color={mutedTextColor}>Applicant</Th>
+                  <Th color={mutedTextColor}>Vehicle</Th>
+                  <Th color={mutedTextColor}>Contact</Th>
+                  <Th color={mutedTextColor}>Status</Th>
+                  <Th color={mutedTextColor}>Applied</Th>
+                  <Th color={mutedTextColor}>Actions</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {riderApplications.map(app => (
+                  <Tr key={app.id} _hover={{ bg: hoverBg }}>
+                    <Td>
+                      <VStack align=”start” spacing={0}>
+                        <Text fontWeight=”600” fontSize=”sm”>{app.full_name || app.name}</Text>
+                        <Text fontSize=”xs” color={mutedTextColor}>{app.email}</Text>
+                      </VStack>
+                    </Td>
+                    <Td>
+                      <VStack align=”start” spacing={0}>
+                        <Text fontSize=”sm” textTransform=”capitalize”>{app.vehicle_type}</Text>
+                        <Text fontSize=”xs” color={mutedTextColor}>{app.vehicle_plate || 'No plate'}</Text>
+                      </VStack>
+                    </Td>
+                    <Td fontSize=”sm”>{app.contact_number || '-'}</Td>
+                    <Td>
+                      <Badge
+                        colorScheme={app.status === 'approved' ? 'green' : app.status === 'rejected' ? 'red' : app.status === 'under_review' ? 'blue' : 'orange'}
+                        borderRadius=”full” px={2}
+                      >
+                        {app.status === 'under_review' ? 'Under Review' : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                      </Badge>
+                    </Td>
+                    <Td fontSize=”xs” color={mutedTextColor}>{new Date(app.created_at).toLocaleDateString()}</Td>
+                    <Td>
+                      <HStack spacing={1}>
+                        <Tooltip label=”View Details” hasArrow>
+                          <IconButton aria-label=”View” size=”sm” variant=”outline” icon={<FiEye />} onClick={() => setSelectedRiderApp(app)} />
+                        </Tooltip>
+                        {app.status === 'pending' && (
+                          <>
+                            <Button size=”xs” colorScheme=”blue” variant=”outline” onClick={() => handleMarkRiderUnderReview(app.id)}>Review</Button>
+                            <Button size=”xs” colorScheme=”green” leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
+                            <Button size=”xs” colorScheme=”red” variant=”outline” leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
+                          </>
+                        )}
+                        {app.status === 'under_review' && (
+                          <>
+                            <Button size=”xs” colorScheme=”green” leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
+                            <Button size=”xs” colorScheme=”red” variant=”outline” leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
+                          </>
+                        )}
+                      </HStack>
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </ChakraTable>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Rider Application Detail Modal */}
+      <Modal isOpen={!!selectedRiderApp} onClose={() => setSelectedRiderApp(null)} size=”lg” isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader fontSize=”md”>
+            <HStack>
+              <Icon as={FaMotorcycle} color=”brand.500” />
+              <Text>Rider Application Details</Text>
+            </HStack>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {selectedRiderApp && (
+              <VStack spacing={4} align=”stretch”>
+                <SimpleGrid columns={2} spacing={4}>
+                  <Box>
+                    <Text fontSize=”xs” color=”gray.500”>Full Name</Text>
+                    <Text fontWeight=”bold”>{selectedRiderApp.full_name || selectedRiderApp.name}</Text>
+                  </Box>
+                  <Box>
+                    <Text fontSize=”xs” color=”gray.500”>Email</Text>
+                    <Text fontWeight=”bold”>{selectedRiderApp.email}</Text>
+                  </Box>
+                  <Box>
+                    <Text fontSize=”xs” color=”gray.500”>Contact Number</Text>
+                    <Text fontWeight=”bold”>{selectedRiderApp.contact_number || 'N/A'}</Text>
+                  </Box>
+                  <Box>
+                    <Text fontSize=”xs” color=”gray.500”>Vehicle</Text>
+                    <Text fontWeight=”bold” textTransform=”capitalize”>{selectedRiderApp.vehicle_type} {selectedRiderApp.vehicle_plate ? `(${selectedRiderApp.vehicle_plate})` : ''}</Text>
+                  </Box>
+                  <Box>
+                    <Text fontSize=”xs” color=”gray.500”>Status</Text>
+                    <Badge colorScheme={selectedRiderApp.status === 'approved' ? 'green' : selectedRiderApp.status === 'rejected' ? 'red' : selectedRiderApp.status === 'under_review' ? 'blue' : 'orange'}>
+                      {selectedRiderApp.status === 'under_review' ? 'Under Review' : selectedRiderApp.status.charAt(0).toUpperCase() + selectedRiderApp.status.slice(1)}
+                    </Badge>
+                  </Box>
+                  <Box>
+                    <Text fontSize=”xs” color=”gray.500”>Applied On</Text>
+                    <Text fontWeight=”bold”>{new Date(selectedRiderApp.created_at).toLocaleString()}</Text>
+                  </Box>
+                </SimpleGrid>
+
+                {selectedRiderApp.rejection_reason && (
+                  <Box bg=”red.50” p={3} borderRadius=”md”>
+                    <Text fontSize=”xs” color=”red.600” fontWeight=”bold”>Rejection Reason</Text>
+                    <Text fontSize=”sm”>{selectedRiderApp.rejection_reason}</Text>
+                  </Box>
+                )}
+
+                {selectedRiderApp.reviewed_at && (
+                  <Text fontSize=”xs” color=”gray.500”>Reviewed at: {new Date(selectedRiderApp.reviewed_at).toLocaleString()}</Text>
+                )}
+
+                <Divider />
+
+                {selectedRiderApp.license_image_url && (
+                  <Box>
+                    <Text fontSize=”sm” fontWeight=”bold” mb={2}>Driver's License</Text>
+                    <Image src={selectedRiderApp.license_image_url} alt=”License” maxH=”250px” borderRadius=”md” border=”1px solid” borderColor=”gray.200” objectFit=”contain” w=”full” bg=”gray.50” />
+                  </Box>
+                )}
+
+                {selectedRiderApp.selfie_image_url && (
+                  <Box>
+                    <Text fontSize=”sm” fontWeight=”bold” mb={2}>Selfie</Text>
+                    <Image src={selectedRiderApp.selfie_image_url} alt=”Selfie” maxH=”200px” borderRadius=”md” border=”1px solid” borderColor=”gray.200” objectFit=”contain” w=”full” bg=”gray.50” />
+                  </Box>
+                )}
+
+                {!selectedRiderApp.license_image_url && !selectedRiderApp.selfie_image_url && (
+                  <Text color=”gray.400” fontSize=”sm” textAlign=”center”>No documents uploaded</Text>
+                )}
+              </VStack>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+
+      {/* Reject Rider Modal */}
+      <Modal isOpen={!!rejectRiderTarget} onClose={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader fontSize=”md”>Reject Rider Application</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text fontSize=”sm” mb={3}>Applicant: <strong>{rejectRiderTarget?.full_name || rejectRiderTarget?.name}</strong> ({rejectRiderTarget?.email})</Text>
+            <Textarea
+              placeholder=”Reason for rejection (e.g., Invalid license, unclear documents)”
+              value={rejectRiderReason}
+              onChange={e => setRejectRiderReason(e.target.value)}
+              rows={3}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant=”ghost” mr={3} onClick={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }}>Cancel</Button>
+            <Button colorScheme=”red” onClick={handleConfirmRejectRider} isLoading={rejectRiderLoading} isDisabled={!rejectRiderReason.trim()}>
+              Reject Application
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
     </VStack>
   );
   };

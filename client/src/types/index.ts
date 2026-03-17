@@ -304,6 +304,14 @@ export interface Rider {
   phone: string
   rating: number
   is_active: boolean
+  status?: 'pending' | 'under_review' | 'approved' | 'rejected'
+  license_image_url?: string
+  selfie_image_url?: string
+  contact_number?: string
+  full_name?: string
+  rejection_reason?: string
+  reviewed_at?: string
+  reviewed_by?: number
   latitude?: number
   longitude?: number
   created_at: string

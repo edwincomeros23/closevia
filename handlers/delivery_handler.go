@@ -87,7 +87,7 @@ func (h *DeliveryHandler) RegisterAsRider(c *fiber.Ctx) error {
 	err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ?", userID).Scan(&existingID)
 	if err == nil {
 		// Already registered — reactivate if inactive
-		_, _ = h.db.Exec("UPDATE riders SET is_active = TRUE, updated_at = CURRENT_TIMESTAMP WHERE id = ?", existingID)
+		_, _ = h.db.Exec("UPDATE riders SET is_active = TRUE, status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?", existingID)
 		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_id": existingID, "message": "Rider account reactivated"}})
 	}
 
@@ -99,8 +99,8 @@ func (h *DeliveryHandler) RegisterAsRider(c *fiber.Ctx) error {
 	}
 
 	result, err := h.db.Exec(`
-		INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active)
-		VALUES (?, ?, ?, ?, ?, TRUE)`,
+		INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active, status)
+		VALUES (?, ?, ?, ?, ?, TRUE, 'approved')`,
 		userID, userName, payload.VehicleType, payload.VehiclePlate, payload.Phone,
 	)
 	if err != nil {
@@ -123,14 +123,18 @@ func (h *DeliveryHandler) CheckRiderStatus(c *fiber.Ctx) error {
 
 	var riderID int
 	var isActive bool
-	var name, vehicleType, phone string
-	var vehiclePlate sql.NullString
+	var name, vehicleType, phone, status string
+	var vehiclePlate, rejectionReason sql.NullString
 	var rating float64
 	var createdAt string
+	var reviewedAt sql.NullString
 	err := h.db.QueryRow(
-		"SELECT id, is_active, name, vehicle_type, COALESCE(vehicle_plate, ''), phone, rating, created_at FROM riders WHERE user_id = ?",
+		`SELECT id, is_active, name, vehicle_type, COALESCE(vehicle_plate, ''), phone, rating, created_at,
+		 COALESCE(status, 'pending'), COALESCE(rejection_reason, ''), COALESCE(reviewed_at, '')
+		 FROM riders WHERE user_id = ?`,
 		userID,
-	).Scan(&riderID, &isActive, &name, &vehicleType, &vehiclePlate, &phone, &rating, &createdAt)
+	).Scan(&riderID, &isActive, &name, &vehicleType, &vehiclePlate, &phone, &rating, &createdAt,
+		&status, &rejectionReason, &reviewedAt)
 	if err != nil {
 		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"is_rider": false}})
 	}
@@ -150,7 +154,381 @@ func (h *DeliveryHandler) CheckRiderStatus(c *fiber.Ctx) error {
 		"rating":               rating,
 		"created_at":           createdAt,
 		"completed_deliveries": completedCount,
+		"status":               status,
+		"rejection_reason":     rejectionReason.String,
+		"reviewed_at":          reviewedAt.String,
 	}})
+}
+
+// ApplyAsRider handles the full rider application flow with document uploads
+func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var payload struct {
+		FullName        string `json:"full_name"`
+		ContactNumber   string `json:"contact_number"`
+		VehicleType     string `json:"vehicle_type"`
+		VehiclePlate    string `json:"vehicle_plate"`
+		LicenseImageURL string `json:"license_image_url"`
+		SelfieImageURL  string `json:"selfie_image_url"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	if payload.FullName == "" || payload.ContactNumber == "" || payload.VehicleType == "" || payload.LicenseImageURL == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Full name, contact number, vehicle type, and driver's license are required"})
+	}
+
+	validVehicles := map[string]bool{"motorcycle": true, "bicycle": true, "car": true}
+	if !validVehicles[payload.VehicleType] {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Vehicle type must be motorcycle, bicycle, or car"})
+	}
+
+	// Check if user already has a rider record
+	var existingID int
+	var existingStatus string
+	err := h.db.QueryRow("SELECT id, COALESCE(status, 'pending') FROM riders WHERE user_id = ?", userID).Scan(&existingID, &existingStatus)
+	if err == nil {
+		switch existingStatus {
+		case "pending", "under_review":
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You already have a pending application"})
+		case "approved":
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You are already an approved rider"})
+		case "rejected":
+			// Allow resubmission
+			_, err = h.db.Exec(`UPDATE riders SET full_name=?, contact_number=?, vehicle_type=?, vehicle_plate=?,
+				license_image_url=?, selfie_image_url=?, status='pending', rejection_reason=NULL,
+				reviewed_at=NULL, reviewed_by=NULL, name=?, updated_at=CURRENT_TIMESTAMP
+				WHERE id=?`,
+				payload.FullName, payload.ContactNumber, payload.VehicleType, payload.VehiclePlate,
+				payload.LicenseImageURL, payload.SelfieImageURL, payload.FullName, existingID)
+			if err != nil {
+				log.Printf("Failed to resubmit rider application for user %d: %v", userID, err)
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to resubmit application"})
+			}
+			// Notify admins
+			h.notifyAdmins(fmt.Sprintf("Rider application resubmitted by %s", payload.FullName), "rider_application")
+			return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_id": existingID, "message": "Application resubmitted successfully"}})
+		}
+	}
+
+	// Get user name as fallback
+	name := payload.FullName
+
+	result, err := h.db.Exec(`INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active, status,
+		full_name, contact_number, license_image_url, selfie_image_url)
+		VALUES (?, ?, ?, ?, ?, FALSE, 'pending', ?, ?, ?, ?)`,
+		userID, name, payload.VehicleType, payload.VehiclePlate, payload.ContactNumber, false,
+		payload.FullName, payload.ContactNumber, payload.LicenseImageURL, payload.SelfieImageURL)
+	if err != nil {
+		log.Printf("Failed to create rider application for user %d: %v", userID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to submit application"})
+	}
+
+	riderID, _ := result.LastInsertId()
+	log.Printf("User %d submitted rider application %d", userID, riderID)
+
+	// Notify admins
+	h.notifyAdmins(fmt.Sprintf("New rider application from %s", payload.FullName), "rider_application")
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_id": riderID, "message": "Application submitted successfully"}})
+}
+
+// GetRiderApplication returns the current user's rider application details
+func (h *DeliveryHandler) GetRiderApplication(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var riderID int
+	var name, vehicleType, phone, status string
+	var vehiclePlate, fullName, contactNumber, licenseImageURL, selfieImageURL, rejectionReason, reviewedAt sql.NullString
+	var rating float64
+	var isActive bool
+	var createdAt string
+
+	err := h.db.QueryRow(`SELECT id, name, vehicle_type, COALESCE(vehicle_plate,''), phone, rating, is_active,
+		COALESCE(status,'pending'), COALESCE(full_name,''), COALESCE(contact_number,''),
+		COALESCE(license_image_url,''), COALESCE(selfie_image_url,''),
+		COALESCE(rejection_reason,''), COALESCE(reviewed_at,''), created_at
+		FROM riders WHERE user_id = ?`, userID).Scan(
+		&riderID, &name, &vehicleType, &vehiclePlate, &phone, &rating, &isActive,
+		&status, &fullName, &contactNumber, &licenseImageURL, &selfieImageURL,
+		&rejectionReason, &reviewedAt, &createdAt)
+
+	if err != nil {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"has_applied": false}})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"has_applied":       true,
+		"rider_id":          riderID,
+		"name":              name,
+		"vehicle_type":      vehicleType,
+		"vehicle_plate":     vehiclePlate.String,
+		"phone":             phone,
+		"rating":            rating,
+		"is_active":         isActive,
+		"status":            status,
+		"full_name":         fullName.String,
+		"contact_number":    contactNumber.String,
+		"license_image_url": licenseImageURL.String,
+		"selfie_image_url":  selfieImageURL.String,
+		"rejection_reason":  rejectionReason.String,
+		"reviewed_at":       reviewedAt.String,
+		"created_at":        createdAt,
+	}})
+}
+
+// AdminListRiderApplications lists rider applications with optional status filter and search
+func (h *DeliveryHandler) AdminListRiderApplications(c *fiber.Ctx) error {
+	statusFilter := c.Query("status", "")
+	search := c.Query("search", "")
+
+	query := `SELECT r.id, r.user_id, r.name, r.vehicle_type, COALESCE(r.vehicle_plate,''),
+		r.phone, r.rating, r.is_active, COALESCE(r.status,'pending'),
+		COALESCE(r.full_name,''), COALESCE(r.contact_number,''),
+		COALESCE(r.license_image_url,''), COALESCE(r.selfie_image_url,''),
+		COALESCE(r.rejection_reason,''), COALESCE(r.reviewed_at,''),
+		r.created_at, u.email, COALESCE(u.profile_picture,'')
+		FROM riders r JOIN users u ON r.user_id = u.id WHERE 1=1`
+
+	args := []interface{}{}
+
+	if statusFilter != "" {
+		query += " AND r.status = ?"
+		args = append(args, statusFilter)
+	}
+	if search != "" {
+		query += " AND (r.full_name LIKE ? OR r.name LIKE ? OR u.email LIKE ?)"
+		searchTerm := "%" + search + "%"
+		args = append(args, searchTerm, searchTerm, searchTerm)
+	}
+
+	query += " ORDER BY r.created_at DESC LIMIT 100"
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		log.Printf("Failed to list rider applications: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to list rider applications"})
+	}
+	defer rows.Close()
+
+	var applications []fiber.Map
+	for rows.Next() {
+		var id, userID int
+		var name, vehicleType, phone, status, createdAt, email string
+		var vehiclePlate, fullName, contactNumber, licenseImageURL, selfieImageURL, rejectionReason, reviewedAt, profilePicture sql.NullString
+		var rating float64
+		var isActive bool
+
+		if err := rows.Scan(&id, &userID, &name, &vehicleType, &vehiclePlate, &phone, &rating, &isActive,
+			&status, &fullName, &contactNumber, &licenseImageURL, &selfieImageURL,
+			&rejectionReason, &reviewedAt, &createdAt, &email, &profilePicture); err != nil {
+			continue
+		}
+
+		applications = append(applications, fiber.Map{
+			"id":                id,
+			"user_id":           userID,
+			"name":              name,
+			"vehicle_type":      vehicleType,
+			"vehicle_plate":     vehiclePlate.String,
+			"phone":             phone,
+			"rating":            rating,
+			"is_active":         isActive,
+			"status":            status,
+			"full_name":         fullName.String,
+			"contact_number":    contactNumber.String,
+			"license_image_url": licenseImageURL.String,
+			"selfie_image_url":  selfieImageURL.String,
+			"rejection_reason":  rejectionReason.String,
+			"reviewed_at":       reviewedAt.String,
+			"created_at":        createdAt,
+			"email":             email,
+			"profile_picture":   profilePicture.String,
+		})
+	}
+
+	if applications == nil {
+		applications = []fiber.Map{}
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: applications})
+}
+
+// AdminGetRiderApplication returns a single rider application by ID
+func (h *DeliveryHandler) AdminGetRiderApplication(c *fiber.Ctx) error {
+	riderID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid rider ID"})
+	}
+
+	var id, userID int
+	var name, vehicleType, phone, status, createdAt, email string
+	var vehiclePlate, fullName, contactNumber, licenseImageURL, selfieImageURL, rejectionReason, reviewedAt, profilePicture sql.NullString
+	var rating float64
+	var isActive bool
+
+	err = h.db.QueryRow(`SELECT r.id, r.user_id, r.name, r.vehicle_type, COALESCE(r.vehicle_plate,''),
+		r.phone, r.rating, r.is_active, COALESCE(r.status,'pending'),
+		COALESCE(r.full_name,''), COALESCE(r.contact_number,''),
+		COALESCE(r.license_image_url,''), COALESCE(r.selfie_image_url,''),
+		COALESCE(r.rejection_reason,''), COALESCE(r.reviewed_at,''),
+		r.created_at, u.email, COALESCE(u.profile_picture,'')
+		FROM riders r JOIN users u ON r.user_id = u.id WHERE r.id = ?`, riderID).Scan(
+		&id, &userID, &name, &vehicleType, &vehiclePlate, &phone, &rating, &isActive,
+		&status, &fullName, &contactNumber, &licenseImageURL, &selfieImageURL,
+		&rejectionReason, &reviewedAt, &createdAt, &email, &profilePicture)
+
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Rider application not found"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"id":                id,
+		"user_id":           userID,
+		"name":              name,
+		"vehicle_type":      vehicleType,
+		"vehicle_plate":     vehiclePlate.String,
+		"phone":             phone,
+		"rating":            rating,
+		"is_active":         isActive,
+		"status":            status,
+		"full_name":         fullName.String,
+		"contact_number":    contactNumber.String,
+		"license_image_url": licenseImageURL.String,
+		"selfie_image_url":  selfieImageURL.String,
+		"rejection_reason":  rejectionReason.String,
+		"reviewed_at":       reviewedAt.String,
+		"created_at":        createdAt,
+		"email":             email,
+		"profile_picture":   profilePicture.String,
+	}})
+}
+
+// AdminApproveRider approves a rider application
+func (h *DeliveryHandler) AdminApproveRider(c *fiber.Ctx) error {
+	riderID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid rider ID"})
+	}
+	adminID, _ := middleware.GetUserIDFromContext(c)
+
+	res, err := h.db.Exec(`UPDATE riders SET status='approved', is_active=TRUE, reviewed_at=CURRENT_TIMESTAMP,
+		reviewed_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','under_review')`,
+		adminID, riderID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to approve rider"})
+	}
+
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rider not found or already processed"})
+	}
+
+	// Notify the applicant
+	var applicantUserID int
+	h.db.QueryRow("SELECT user_id FROM riders WHERE id = ?", riderID).Scan(&applicantUserID)
+	if applicantUserID > 0 {
+		h.db.Exec("INSERT INTO notifications (user_id, type, message) VALUES (?, 'rider_application', 'Your rider application has been approved! You can now claim deliveries.')",
+			applicantUserID)
+	}
+
+	log.Printf("Admin %d approved rider application %d", adminID, riderID)
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"message": "Rider application approved"}})
+}
+
+// AdminRejectRider rejects a rider application with a reason
+func (h *DeliveryHandler) AdminRejectRider(c *fiber.Ctx) error {
+	riderID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid rider ID"})
+	}
+	adminID, _ := middleware.GetUserIDFromContext(c)
+
+	var payload struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.BodyParser(&payload); err != nil || payload.Reason == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rejection reason is required"})
+	}
+
+	res, err := h.db.Exec(`UPDATE riders SET status='rejected', rejection_reason=?, reviewed_at=CURRENT_TIMESTAMP,
+		reviewed_by=?, is_active=FALSE, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','under_review')`,
+		payload.Reason, adminID, riderID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to reject rider"})
+	}
+
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rider not found or already processed"})
+	}
+
+	// Notify the applicant
+	var applicantUserID int
+	h.db.QueryRow("SELECT user_id FROM riders WHERE id = ?", riderID).Scan(&applicantUserID)
+	if applicantUserID > 0 {
+		msg := fmt.Sprintf("Your rider application was not approved. Reason: %s", payload.Reason)
+		h.db.Exec("INSERT INTO notifications (user_id, type, message) VALUES (?, 'rider_application', ?)",
+			applicantUserID, msg)
+	}
+
+	log.Printf("Admin %d rejected rider application %d: %s", adminID, riderID, payload.Reason)
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"message": "Rider application rejected"}})
+}
+
+// AdminMarkUnderReview marks a rider application as under review
+func (h *DeliveryHandler) AdminMarkUnderReview(c *fiber.Ctx) error {
+	riderID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid rider ID"})
+	}
+	adminID, _ := middleware.GetUserIDFromContext(c)
+
+	res, err := h.db.Exec(`UPDATE riders SET status='under_review', reviewed_at=CURRENT_TIMESTAMP,
+		reviewed_by=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'`,
+		adminID, riderID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update rider status"})
+	}
+
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rider not found or not in pending status"})
+	}
+
+	// Notify the applicant
+	var applicantUserID int
+	h.db.QueryRow("SELECT user_id FROM riders WHERE id = ?", riderID).Scan(&applicantUserID)
+	if applicantUserID > 0 {
+		h.db.Exec("INSERT INTO notifications (user_id, type, message) VALUES (?, 'rider_application', 'Your rider application is now under review.')",
+			applicantUserID)
+	}
+
+	log.Printf("Admin %d marked rider application %d as under review", adminID, riderID)
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"message": "Rider application marked as under review"}})
+}
+
+// notifyAdmins sends a notification to all admin users
+func (h *DeliveryHandler) notifyAdmins(message string, notifType string) {
+	rows, err := h.db.Query("SELECT id FROM users WHERE role = 'admin'")
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var adminID int
+		if rows.Scan(&adminID) == nil {
+			h.db.Exec("INSERT INTO notifications (user_id, type, message) VALUES (?, ?, ?)", adminID, notifType, message)
+		}
+	}
 }
 
 // CalculateDistance calculates distance between two GPS coordinates using Haversine formula

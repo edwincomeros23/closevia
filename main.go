@@ -267,8 +267,8 @@ func main() {
 	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
 	// Specific routes must come before generic :id route
 	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
-	products.Post("/check-image-quality", productHandler.CheckImageQuality)             // Fast image quality check
-	products.Post("/report", middleware.AuthMiddleware(), productHandler.ReportListing) // Report a listing
+	products.Post("/check-image-quality", productHandler.CheckImageQuality)                           // Fast image quality check
+	products.Post("/report", middleware.AuthMiddleware(), productHandler.ReportListing)               // Report a listing
 	products.Get("/boost-candidates", middleware.AuthMiddleware(), productHandler.GetBoostCandidates) // Listings eligible for boost
 	products.Get("/:id/wishlist/status", middleware.AuthMiddleware(), productHandler.GetUserWishlistStatus)
 	products.Get("/:id/comments", commentHandler.GetComments)
@@ -365,6 +365,12 @@ func main() {
 	admin.Post("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.CreateCampaign)
 	admin.Put("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.UpdateCampaign)
 	admin.Delete("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.DeleteCampaign)
+	// Admin rider verification
+	admin.Get("/rider-applications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminListRiderApplications)
+	admin.Get("/rider-applications/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminGetRiderApplication)
+	admin.Post("/rider-applications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminApproveRider)
+	admin.Post("/rider-applications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminRejectRider)
+	admin.Post("/rider-applications/:id/review", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminMarkUnderReview)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -381,6 +387,8 @@ func main() {
 	deliveries.Get("/my-jobs", middleware.AuthMiddleware(), deliveryHandler.GetRiderDeliveries)
 	deliveries.Post("/register-rider", middleware.AuthMiddleware(), deliveryHandler.RegisterAsRider)
 	deliveries.Get("/rider-status", middleware.AuthMiddleware(), deliveryHandler.CheckRiderStatus)
+	deliveries.Post("/apply-rider", middleware.AuthMiddleware(), deliveryHandler.ApplyAsRider)
+	deliveries.Get("/rider-application", middleware.AuthMiddleware(), deliveryHandler.GetRiderApplication)
 	deliveries.Get("/:id", middleware.AuthMiddleware(), deliveryHandler.GetDelivery)
 	deliveries.Put("/:id/status", middleware.AuthMiddleware(), deliveryHandler.UpdateDeliveryStatus)
 	deliveries.Post("/:id/assign", middleware.AuthMiddleware(), deliveryHandler.AssignRider)
