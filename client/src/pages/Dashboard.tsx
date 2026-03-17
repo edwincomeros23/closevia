@@ -308,7 +308,10 @@ const Dashboard: React.FC = () => {
     let filtered = actualUserProducts
 
     // Status filter - optimize by avoiding unnecessary filtering
-    if (productFilter !== 'all') {
+    if (productFilter === 'all') {
+      // Hide locked products by default (they are in active trades)
+      filtered = actualUserProducts.filter(p => p.status !== 'locked')
+    } else {
       filtered = actualUserProducts.filter(p => p.status === productFilter)
     }
 
@@ -2764,9 +2767,9 @@ const Dashboard: React.FC = () => {
                       <HStack spacing={1}>
                         <Icon as={FiShoppingBag} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Products</Text>
-                        {actualUserProducts.length > 0 && (
+                        {actualUserProducts.filter(p => p.status !== 'locked').length > 0 && (
                           <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
-                            {actualUserProducts.length}
+                            {actualUserProducts.filter(p => p.status !== 'locked').length}
                           </Badge>
                         )}
                       </HStack>
