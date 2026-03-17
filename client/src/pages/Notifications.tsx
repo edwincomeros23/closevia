@@ -26,6 +26,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon, AddIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
+import { useRealtime } from '../contexts/RealtimeContext'
 import { getFirstImage } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
@@ -45,6 +46,7 @@ interface Notification {
 const Notifications: React.FC = () => {
   const { user } = useAuth()
   const { products } = useProducts()
+  const { refreshCounts } = useRealtime()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -94,11 +96,12 @@ const Notifications: React.FC = () => {
   const markAsRead = async (notificationId: number) => {
     try {
       await api.put(`/api/notifications/${notificationId}/read`)
-      setNotifications(prev => 
-        prev.map(notif => 
+      setNotifications(prev =>
+        prev.map(notif =>
           notif.id === notificationId ? { ...notif, read: true } : notif
         )
       )
+      refreshCounts()
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -113,9 +116,10 @@ const Notifications: React.FC = () => {
   const markAllAsRead = async () => {
     try {
       await api.put('/api/notifications/read-all')
-      setNotifications(prev => 
+      setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       )
+      refreshCounts()
       toast({
         title: 'Success',
         description: 'All notifications marked as read',
@@ -371,16 +375,20 @@ const Notifications: React.FC = () => {
                   
                   <CardBody pt={0}>
                     <Text color="gray.700" mb={4}>{notification.message}</Text>
-                    
-                    {!notification.read && (
+
+                    {!notification.read ? (
                       <Button
                         size="sm"
-                        variant="ghost"
-                        colorScheme="brand"
+                        variant="solid"
+                        colorScheme="blue"
                         onClick={() => markAsRead(notification.id)}
                       >
                         Mark as Read
                       </Button>
+                    ) : (
+                      <Badge colorScheme="green" variant="subtle" px={2} py={1} borderRadius="full" fontSize="xs">
+                        ✓ Read
+                      </Badge>
                     )}
                   </CardBody>
                 </Card>

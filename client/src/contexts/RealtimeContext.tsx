@@ -26,9 +26,11 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const refreshCounts = useCallback(async () => {
     try {
+      // Admin only sees report notifications, so only count those for the badge
+      const notifEndpoint = user?.role === 'admin' ? '/api/notifications?type=report' : '/api/notifications'
       const [offersRes, notifRes] = await Promise.all([
         api.get('/api/trades/count', { params: { direction: 'incoming', status: 'pending' } }),
-        api.get('/api/notifications'),
+        api.get(notifEndpoint),
       ])
       const count = offersRes.data?.data?.count ?? 0
       setOfferCount(count)
@@ -54,7 +56,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         seenNotifIdsRef.current = new Set(ids)
       }
     } catch { }
-  }, [showNotification])
+  }, [user, showNotification])
 
   useEffect(() => {
     if (!user) {
