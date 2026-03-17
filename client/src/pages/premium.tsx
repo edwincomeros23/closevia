@@ -529,7 +529,7 @@ const Premium: React.FC = () => {
         <MultiWayTradeModal
           isOpen={isOpen}
           onClose={handleCloseModal}
-          loop={selectedLoop}
+          multiWayTrade={selectedLoop}
         />
       )}
     </Box>

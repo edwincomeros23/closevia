@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
-	"log"
 	"math/big"
 	"os"
 	"path/filepath"
