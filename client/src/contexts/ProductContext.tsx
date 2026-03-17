@@ -140,15 +140,22 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     return R * c
   }
 
-  // Format distance for display - show in M for < 1 KM, KM otherwise
+  // Format distance for display - refined for accuracy as per user request
   const formatDistance = (distanceKm: number): string => {
-    if (distanceKm < 1) {
-      const meters = Math.round(distanceKm * 1000)
-      return `${meters} M`
-    } else if (distanceKm < 10) {
-      return `${distanceKm.toFixed(1)} KM`
+    if (distanceKm === 0) return '0 M away'
+    
+    // Convert to meters
+    const meters = distanceKm * 1000
+    
+    if (meters < 1000) {
+      // If less than 1km, show in Meters with 1 decimal place if very close
+      if (meters < 10) {
+        return `${meters.toFixed(1)} M away`
+      }
+      return `${Math.round(meters)} M away`
     } else {
-      return `${Math.round(distanceKm)} KM`
+      // If more than 1km, show in KM with 1 decimal place
+      return `${distanceKm.toFixed(1)} KM away`
     }
   }
 
@@ -157,24 +164,52 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     if (!userLocation) return productsList
 
     const withDistance = productsList.map((product) => {
+      let dist = Infinity
       if (product.latitude && product.longitude) {
-        const dist = calculateDistance(
+        dist = calculateDistance(
           userLocation.lat,
           userLocation.lng,
           product.latitude,
           product.longitude
         )
-        return {
-          ...product,
-          distance: formatDistance(dist),
-          distanceKm: dist,
-        }
       }
-      return { ...product, distanceKm: Infinity }
+
+      return {
+        ...product,
+        distance: dist === Infinity ? 'Nearby' : formatDistance(dist),
+        distanceKm: dist,
+      }
     })
 
-    // Sort by distance (nearest first), premium products stay prioritized within same distance tier
-    withDistance.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+    // Sort by:
+    // 1. Premium status (tie-breaker)
+    // 2. Distance (nearest first)
+    // 3. Newest first (for identical distance)
+    withDistance.sort((a, b) => {
+      const distA = a.distanceKm
+      const distB = b.distanceKm
+      
+      const isAInf = distA === undefined || distA === Infinity
+      const isBInf = distB === undefined || distB === Infinity
+
+      if (isAInf && isBInf) {
+        // Continue to other tie-breakers
+      } else if (isAInf) {
+        return 1
+      } else if (isBInf) {
+        return -1
+      } else if (Math.abs(distA! - distB!) > 0.0001) {
+        return distA! - distB!
+      }
+      
+      // Otherwise, prioritize premium
+      if (a.premium !== b.premium) {
+        return a.premium ? -1 : 1
+      }
+      
+      // Finally, newest first
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
 
     return withDistance
   }

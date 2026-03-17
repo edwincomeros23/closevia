@@ -179,7 +179,7 @@ export interface Trade {
   delivery_address?: string // Delivery address if option is 'delivery'
   // Delivery state fields
   delivery_type?: 'standard' | 'express' | 'meetup'
-  payment_method?: 'gcash' | 'cod' | 'wallet'
+  payment_method?: 'gcash' | 'cod' | 'wallet' | 'online' // online includes GCash/PayMaya via Xendit
   payment_confirmed?: boolean
   proof_of_delivery?: string | null // Base64 encoded image
   buyer_confirmed_receipt?: boolean

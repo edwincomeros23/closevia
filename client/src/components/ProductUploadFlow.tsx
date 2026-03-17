@@ -19,6 +19,8 @@ interface ProductData {
   location: string
   allowBuying: boolean
   barterOnly: boolean
+  wants: string
+  wanted_categories: string[]
   aiAnalysis?: {
     success: boolean
     provider: string
@@ -54,6 +56,8 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
     location: '',
     allowBuying: true,
     barterOnly: false,
+    wants: '',
+    wanted_categories: [],
   })
 
   const navigate = useNavigate()
@@ -131,6 +135,8 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
       location: details.location,
       allowBuying: details.allowBuying,
       barterOnly: details.barterOnly,
+      wants: details.wants,
+      wanted_categories: details.wanted_categories,
     }))
     setCurrentStep(3)
   }
@@ -161,6 +167,15 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
       formData.append('location', productData.location)
       formData.append('allow_buying', productData.allowBuying.toString())
       formData.append('barter_only', productData.barterOnly.toString())
+      formData.append('wants', productData.wants)
+      formData.append('wanted_categories', JSON.stringify(productData.wanted_categories))
+      
+      if (productData.aiAnalysis?.data?.estimated_value_min !== undefined) {
+        formData.append('estimated_value_min', productData.aiAnalysis.data.estimated_value_min.toString())
+      }
+      if (productData.aiAnalysis?.data?.estimated_value_max !== undefined) {
+        formData.append('estimated_value_max', productData.aiAnalysis.data.estimated_value_max.toString())
+      }
 
       // Call API to create product
       const response = await api.post('/api/products', formData, {
@@ -231,6 +246,8 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
             location: productData.location,
             allowBuying: productData.allowBuying,
             barterOnly: productData.barterOnly,
+            wants: productData.wants,
+            wanted_categories: productData.wanted_categories,
           }}
           aiAnalysis={productData.aiAnalysis}
           isLoading={isLoading}
@@ -250,6 +267,11 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
             location: productData.location,
             allowBuying: productData.allowBuying,
             barterOnly: productData.barterOnly,
+            wants: productData.wants,
+            wanted_categories: productData.wanted_categories,
+            estimated_value_min: productData.aiAnalysis?.data?.estimated_value_min,
+            estimated_value_max: productData.aiAnalysis?.data?.estimated_value_max,
+            isAnalyzing: isLoading,
           }}
           onSubmit={handleStep3Submit}
           onBack={() => setCurrentStep(2)}

@@ -293,7 +293,11 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// ==================== QUICK HEURISTIC FRAUD CHECKS ====================
 	// Check for obvious fraud patterns BEFORE creating the product
 	log.Printf("🔍 [FRAUD-HEURISTIC] Checking for obvious fraud patterns...")
-	isFraud, reason := services.FraudHeuristicCheck(title, description, wants, insertPrice)
+	var evMin float64 = 0.0
+	if estimatedValueMin != nil {
+		evMin = *estimatedValueMin
+	}
+	isFraud, reason := services.FraudHeuristicCheck(title, description, wants, insertPrice, evMin, wantedCategories)
 	if isFraud {
 		log.Printf("🚫 [FRAUD-HEURISTIC] BLOCKED - %s", reason)
 		return c.Status(400).JSON(models.APIResponse{
@@ -361,12 +365,15 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	var slugNull sql.NullString
 	var createdVideoURL sql.NullString
 	err = h.db.QueryRow(
-		"SELECT id, slug, title, description, price, image_urls, video_url, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, created_at, updated_at FROM products WHERE id = ?",
+		"SELECT id, slug, title, description, price, image_urls, video_url, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, estimated_value_min, estimated_value_max, `value`, wants, wanted_categories, created_at, updated_at FROM products WHERE id = ?",
 		productID,
 	).Scan(&createdProduct.ID, &slugNull, &createdProduct.Title, &createdProduct.Description, &createdProduct.Price,
 		&createdProduct.ImageURLs, &createdVideoURL, &createdProduct.SellerID, &createdProduct.Premium, &createdProduct.Status,
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
-		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, &createdProduct.CreatedAt, &createdProduct.UpdatedAt)
+		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, 
+		&createdProduct.EstimatedValueMin, &createdProduct.EstimatedValueMax, &createdProduct.Value,
+		&createdProduct.Wants, &createdProduct.WantedCategories,
+		&createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if slugNull.Valid {
 		createdProduct.Slug = slugNull.String
@@ -586,7 +593,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
-		       p.suggested_value, p.category, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
+		       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
 			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
@@ -651,6 +658,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&conditionNull, &product.SuggestedValue, &product.Category,
+			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
+			&product.Wants, &product.WantedCategories,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 		if slugNull.Valid {
@@ -1093,7 +1102,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
-			       p.suggested_value, p.category, p.created_at, p.updated_at,
+			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
 			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 			FROM products p
@@ -1102,14 +1111,16 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		`, productID).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSON, &videoURLNull, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
-			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
+			&product.Condition, &product.SuggestedValue, &product.Category, 
+			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
+			&product.Wants, &product.WantedCategories,
+			&product.CreatedAt, &product.UpdatedAt,
 			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
 	} else {
-		// It's a slug
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
-			       p.suggested_value, p.category, p.created_at, p.updated_at,
+			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
 			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 			FROM products p
@@ -1118,7 +1129,10 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 		`, idOrSlug).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSON, &videoURLNull, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
-			&product.Condition, &product.SuggestedValue, &product.Category, &product.CreatedAt, &product.UpdatedAt,
+			&product.Condition, &product.SuggestedValue, &product.Category,
+			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
+			&product.Wants, &product.WantedCategories,
+			&product.CreatedAt, &product.UpdatedAt,
 			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
 	}
 
@@ -1335,6 +1349,14 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		args = append(args, category)
 	}
 
+	valueStr := c.FormValue("value")
+	if valueStr != "" {
+		if val, err := strconv.ParseFloat(valueStr, 64); err == nil {
+			updateFields = append(updateFields, "`value` = ?")
+			args = append(args, val)
+		}
+	}
+
 	desiredPriceStr := c.FormValue("desired_price")
 	if desiredPriceStr != "" {
 		if val, err := strconv.ParseFloat(desiredPriceStr, 64); err == nil {
@@ -1347,6 +1369,18 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	if desiredProductVal != "" {
 		updateFields = append(updateFields, "desired_product = ?")
 		args = append(args, desiredProductVal)
+	}
+
+	wants := c.FormValue("wants")
+	if wants != "" {
+		updateFields = append(updateFields, "wants = ?")
+		args = append(args, wants)
+	}
+
+	wantedCategories := c.FormValue("wanted_categories")
+	if wantedCategories != "" {
+		updateFields = append(updateFields, "wanted_categories = ?")
+		args = append(args, wantedCategories)
 	}
 
 	// Handle image updates

@@ -210,6 +210,23 @@ const Offers: React.FC = () => {
     }
   }
 
+  const handleConvertToMultiWay = () => {
+    if (!tradeToDecline) {
+      setDeclineModalOpen(false)
+      return
+    }
+
+    setDeclineModalOpen(false)
+    toast({
+      title: 'Searching for multi-way trade',
+      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
+      status: 'info',
+      duration: 5000
+    })
+
+    navigate('/premium')
+  }
+
   const sortList = (list: Trade[]) => {
     const sorted = [...list]
     sorted.sort((a, b) => {
@@ -1316,6 +1333,15 @@ const Offers: React.FC = () => {
                     onClick={() => setDeclineModalOpen(false)}
                   >
                     Keep Offer
+                  </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                  >
+                    Convert to Multi-Way
                   </Button>
                   <Button
                     colorScheme="red"

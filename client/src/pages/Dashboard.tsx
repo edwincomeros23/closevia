@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -91,6 +91,7 @@ const Dashboard: React.FC = () => {
   const { deleteProduct, updateProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   // Use React Query hooks for cached data
   const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched } = useDashboardProducts(user?.id)
@@ -253,6 +254,47 @@ const Dashboard: React.FC = () => {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
+
+  // Handle return from Xendit payment redirect
+  useEffect(() => {
+    const tradeIdParam = searchParams.get('trade_id')
+    const paymentStatus = searchParams.get('payment')
+    if (!tradeIdParam) return
+
+    const tradeId = parseInt(tradeIdParam, 10)
+    if (isNaN(tradeId)) return
+
+    if (paymentStatus === 'failed') {
+      toast({
+        title: 'Payment Failed',
+        description: 'Your payment was not completed. Please try again.',
+        status: 'error',
+        duration: 5000,
+      })
+    } else {
+      toast({
+        title: 'Payment Successful! 🎉',
+        description: 'Your payment has been received. View trade details below.',
+        status: 'success',
+        duration: 5000,
+      })
+    }
+
+    // Switch to the Offers tab (tab index 1)
+    setActiveTab(1)
+
+    // Try to find the trade and open it
+    const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
+    const matchedTrade = allTrades.find(t => t.id === tradeId)
+    if (matchedTrade) {
+      setSelectedTrade(matchedTrade)
+      setViewTradeModalOpen(true)
+    }
+
+    // Clean up URL params
+    navigate('/dashboard', { replace: true })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, ongoingTradesData, sentOffersData, receivedOffersData])
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
@@ -479,7 +521,7 @@ const Dashboard: React.FC = () => {
   const fetchMultiWayTrades = async () => {
     try {
       setMultiWayTradesLoading(true)
-      const response = await api.get('/api/multi-way-trades/available', {
+      const response = await api.get('/api/trades/loops', {
         params: { user_id: user?.id }
       })
       setMultiWayTrades(response.data?.data || [])
@@ -495,7 +537,7 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      await api.post(`/api/multi-way-trades/${trade.id}/join`, {
+      await api.post(`/api/trades/loops/${trade.id}/accept`, {
         user_id: user?.id,
       })
       toast({
@@ -522,7 +564,7 @@ const Dashboard: React.FC = () => {
 
   const handleDeclineMultiWayTrade = async (trade: any) => {
     try {
-      await api.post(`/api/multi-way-trades/${trade.id}/decline`, {
+      await api.post(`/api/trades/loops/${trade.id}/decline`, {
         reason: 'Not interested'
       })
       toast({
@@ -4397,7 +4439,7 @@ const Dashboard: React.FC = () => {
                     </Text>
                   </VStack>
 
-                  <HStack spacing={3} w="full">
+                <HStack spacing={3} w="full">
                     <Button
                       variant="outline"
                       size="md"
@@ -4406,6 +4448,16 @@ const Dashboard: React.FC = () => {
                     >
                       Keep Offer
                     </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                    isDisabled={isProcessing}
+                  >
+                    Convert to Multi-Way
+                  </Button>
                     <Button
                       colorScheme="red"
                       size="md"
