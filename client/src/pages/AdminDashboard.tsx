@@ -137,6 +137,7 @@ interface AdminStats {
   suspended_users: number;
   storage_usage_mb: number;
   revenue_breakdown: Array<{ period: string; amount: number }>;
+  revenue_by_source?: Record<string, number>;
   recent_activity: Array<{ action: string; count: number; latest: string }>;
   last_updated: string;
 }
@@ -1442,18 +1443,23 @@ const AdminDashboard: React.FC = () => {
           <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-3px)', boxShadow: 'lg' }} transition="all 0.2s ease">
             <CardBody>
               <HStack mb={3}>
-                <Box w={9} h={9} bg="purple.50" borderRadius="lg" display="flex" alignItems="center" justifyContent="center" mr={1}>
-                  <Icon as={FiBarChart2} color="purple.500" boxSize={5} />
+                <Box w={9} h={9} bg="blue.50" borderRadius="lg" display="flex" alignItems="center" justifyContent="center" mr={1}>
+                  <Icon as={FiDollarSign} color="blue.500" boxSize={5} />
                 </Box>
-                <Text fontSize="sm" color={mutedTextColor} fontWeight="500">Revenue (Last 4 Weeks)</Text>
+                <Text fontSize="sm" color={mutedTextColor} fontWeight="500">Revenue by Source</Text>
               </HStack>
               <VStack spacing={2} align="stretch">
-                {stats!.revenue_breakdown?.slice(0, 3).map((r, i) => (
+                {stats?.revenue_by_source && Object.entries(stats.revenue_by_source).map(([source, amount], i) => (
                   <HStack key={i} justify="space-between">
-                    <Text fontSize="xs" color="#64748b">{r.period}</Text>
-                    <Text fontSize="xs" fontWeight="700" color="green.600">{formatCurrency(r.amount)}</Text>
+                    <Text fontSize="xs" color="#64748b" textTransform="capitalize">
+                      {source.replace('_', ' ')}
+                    </Text>
+                    <Text fontSize="xs" fontWeight="700" color="blue.600">{formatCurrency(amount)}</Text>
                   </HStack>
                 ))}
+                {(!stats?.revenue_by_source || Object.keys(stats.revenue_by_source).length === 0) && (
+                  <Text fontSize="xs" color="gray.400" fontStyle="italic">No data available</Text>
+                )}
               </VStack>
             </CardBody>
           </Card>

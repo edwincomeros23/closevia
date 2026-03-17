@@ -324,6 +324,9 @@ func main() {
 	// Payment routes
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
+	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
+	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
+	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
 	payments.Post("/webhook/xendit", paymentHandler.XenditWebhook) // Public webhook endpoint
 
 	// Notifications routes
