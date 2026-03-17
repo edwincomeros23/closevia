@@ -74,6 +74,7 @@ const TradeCompletionStatus: React.FC<TradeCompletionStatusProps> = ({
       startPolling(2000) // Poll every 2 seconds
 
       toast({
+        id: "tradecompletionstatus-trade-marked-complete",
         title: 'Trade Marked Complete',
         description: `You've marked this trade as complete. Waiting for ${otherUserName} to confirm...`,
         status: 'info',
@@ -82,6 +83,7 @@ const TradeCompletionStatus: React.FC<TradeCompletionStatusProps> = ({
       })
     } catch (error: any) {
       toast({
+        id: "tradecompletionstatus-error",
         title: 'Error',
         description: error.response?.data?.error || 'Failed to complete trade',
         status: 'error',

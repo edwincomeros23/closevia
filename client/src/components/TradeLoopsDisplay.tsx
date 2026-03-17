@@ -45,6 +45,7 @@ const TradeLoopsDisplay: React.FC = () => {
       setLoops(data)
     } catch (error: any) {
       toast({
+        id: "tradeloopsdisplay-error",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to fetch trade loops',
         status: 'error',
@@ -72,6 +73,7 @@ const TradeLoopsDisplay: React.FC = () => {
       onOpen()
     } catch (error: any) {
       toast({
+        id: "tradeloopsdisplay-error-2",
         title: 'Error',
         description: 'Failed to load trade loop details',
         status: 'error',

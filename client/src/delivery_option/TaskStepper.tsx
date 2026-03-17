@@ -64,6 +64,7 @@ const TaskStepper: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch delivery:', error)
       toast({
+        id: "taskstepper-error",
         title: 'Error',
         description: 'Failed to load delivery details',
         status: 'error',
@@ -137,6 +138,7 @@ const TaskStepper: React.FC = () => {
   const handleQrScan = () => {
     setQrScanned(true)
     toast({
+        id: "taskstepper-qr-scanned",
       title: 'QR Scanned',
       description: 'Task verified at location',
       status: 'success',
@@ -147,6 +149,7 @@ const TaskStepper: React.FC = () => {
   const handleCapturePhoto = () => {
     setPhotoCaptured(true)
     toast({
+        id: "taskstepper-photo-saved",
       title: 'Photo Saved',
       description: 'Proof captured',
       status: 'success',
@@ -159,13 +162,15 @@ const TaskStepper: React.FC = () => {
 
     const nextStatus = getNextStatus()
     if (!nextStatus) {
-      toast({ title: 'Already completed', status: 'info', duration: 2000 })
+      toast({
+        id: "taskstepper-already-completed", title: 'Already completed', status: 'info', duration: 2000 })
       return
     }
 
     // For the final delivery step, require QR scan or notes
     if (nextStatus === 'delivered' && !qrScanned && !deliveryNotes) {
       toast({
+        id: "taskstepper-missing-confirmation",
         title: 'Missing Confirmation',
         description: 'Scan QR or add delivery notes',
         status: 'warning',
@@ -179,6 +184,7 @@ const TaskStepper: React.FC = () => {
       await api.put(`/api/deliveries/${delivery.id}/status`, { status: nextStatus })
 
       toast({
+        id: "taskstepper-toast-6",
         title: nextStatus === 'delivered' ? 'Delivery Complete!' : 'Status Updated',
         description: nextStatus === 'delivered'
           ? 'All items delivered. The trade can now be completed.'
@@ -202,6 +208,7 @@ const TaskStepper: React.FC = () => {
     } catch (error: any) {
       const errMsg = error?.response?.data?.error || 'Failed to update delivery status'
       toast({
+        id: "taskstepper-error-2",
         title: 'Error',
         description: errMsg,
         status: 'error',

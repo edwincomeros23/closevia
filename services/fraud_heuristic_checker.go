@@ -7,7 +7,7 @@ import (
 
 // FraudHeuristicCheck performs quick heuristic checks for obvious fraud patterns
 // Returns: (isFraud bool, reason string)
-func FraudHeuristicCheck(title, description, wants string, price float64) (bool, string) {
+func FraudHeuristicCheck(title, description, wants string, price float64, estimatedValueMin float64, wantedCategories string) (bool, string) {
 	// Normalize inputs
 	title = strings.TrimSpace(title)
 	description = strings.TrimSpace(description)
@@ -50,7 +50,7 @@ func FraudHeuristicCheck(title, description, wants string, price float64) (bool,
 	}
 
 	// Check 2: Detect repeated gibberish patterns (catches "dOGSCAMdOGSCAMdOGSCAM")
-	if HasRepeatedPatterns(title, 3) || HasRepeatedPatterns(description, 3) || HasRepeatedPatterns(wants, 3) {
+	if HasRepeatedPatterns(title, 6) || HasRepeatedPatterns(description, 8) || HasRepeatedPatterns(wants, 8) {
 		return true, "Product appears to contain repeated nonsense patterns and cannot be listed"
 	}
 
@@ -81,7 +81,7 @@ func FraudHeuristicCheck(title, description, wants string, price float64) (bool,
 
 	// Check 5: Zero or negative price (AFTER gibberish checks to prioritize obvious fraud)
 	if price <= 0 && len(description) > 0 && len(title) > 0 {
-		if !IsLegitimateBarterListing(title, description, wants) {
+		if !IsLegitimateBarterListing(title, description, wants, wantedCategories) && estimatedValueMin <= 0 {
 			return true, "Invalid pricing: Items must have a positive price or be clearly barter items"
 		}
 	}
@@ -237,9 +237,14 @@ func isVowel(ch rune) bool {
 }
 
 // IsLegitimateBarterListing checks if this is a valid barter-only listing (no price needed)
-func IsLegitimateBarterListing(title, description, wants string) bool {
+func IsLegitimateBarterListing(title, description, wants string, wantedCategories string) bool {
 	// Barter listings should have clear indication of what they want
-	if len(wants) > 5 && !strings.Contains(strings.ToLower(wants), "scam") {
+	// Either specific text or categories
+	lowerWants := strings.ToLower(wants)
+
+	// Treat short but clear inputs like "other", "anything", "open to trade" as valid
+	if (len(wants) >= 3 && !strings.Contains(lowerWants, "scam")) ||
+		(len(wantedCategories) > 0 && wantedCategories != "[]" && wantedCategories != "\"\"") {
 		return true
 	}
 	return false

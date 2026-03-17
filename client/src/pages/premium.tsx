@@ -61,6 +61,7 @@ const Premium: React.FC = () => {
       setLoops(data)
     } catch (error: any) {
       toast({
+        id: "premium-error",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to fetch trade loops',
         status: 'error',
@@ -83,6 +84,7 @@ const Premium: React.FC = () => {
   const handleSelectLoop = async (loop: TradeLoop) => {
     if (!isPremiumUser) {
       toast({
+        id: "premium-premium-feature",
         title: 'Premium Feature',
         description: 'Multi-way trading is available to premium members only',
         status: 'info',
@@ -99,6 +101,7 @@ const Premium: React.FC = () => {
       onOpen()
     } catch (error: any) {
       toast({
+        id: "premium-error-2",
         title: 'Error',
         description: 'Failed to load trade loop details',
         status: 'error',
@@ -309,6 +312,7 @@ const Premium: React.FC = () => {
               leftIcon={<FaCrown />}
               onClick={() => {
                 toast({
+        id: "premium-upgrade",
                   title: 'Upgrade',
                   description: 'Premium upgrade functionality coming soon',
                   status: 'info',

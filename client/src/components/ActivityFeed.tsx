@@ -5,8 +5,8 @@ import { FaExchangeAlt, FaTag, FaMapMarkerAlt } from 'react-icons/fa';
 import { api } from '../services/api';
 
 const scrollAnimation = keyframes`
-  0% { transform: translateX(100vw); }
-  100% { transform: translateX(-100%); }
+  0% { transform: translateX(0); }
+  100% { transform: translateX(calc(-100% * 4 - 144px)); }
 `;
 
 interface Activity {
@@ -65,10 +65,10 @@ const ActivityFeed = () => {
 
     return (
         <Box w="full" bgGradient="linear(to-r, brand.600, brand.500)" color="white" py={2.5} overflow="hidden" position="relative" borderY="1px solid" borderColor="brand.700" shadow="sm" zIndex={10}>
-            <Box animation={`${scrollAnimation} 35s linear infinite`} whiteSpace="nowrap" display="inline-block" pl="100%">
+            <Box animation={`${scrollAnimation} 80s linear infinite`} whiteSpace="nowrap" display="inline-block" pl="0">
                 <HStack spacing={12} display="inline-flex">
                     {activities.map((act, index) => (
-                        <HStack key={`${act.id}-${index}`} spacing={2}>
+                        <HStack key={`${act.id}-${index}-0`} spacing={2}>
                             <Icon as={act.type === 'trade' ? FaExchangeAlt : act.type === 'near_you' ? FaMapMarkerAlt : FaTag} color={act.type === 'near_you' ? 'green.300' : 'yellow.300'} boxSize={3.5} />
                             <Text fontSize="sm" fontWeight="semibold" letterSpacing="wide">
                                 {act.message}
@@ -78,9 +78,33 @@ const ActivityFeed = () => {
                             </Text>
                         </HStack>
                     ))}
-                    {/* Duplicate to prevent tearing at the end of the Marquee */}
+                    {/* Duplicate 1 */}
                     {activities.map((act, index) => (
-                        <HStack key={`dup-${act.id}-${index}`} spacing={2}>
+                        <HStack key={`${act.id}-${index}-1`} spacing={2}>
+                            <Icon as={act.type === 'trade' ? FaExchangeAlt : act.type === 'near_you' ? FaMapMarkerAlt : FaTag} color={act.type === 'near_you' ? 'green.300' : 'yellow.300'} boxSize={3.5} />
+                            <Text fontSize="sm" fontWeight="semibold" letterSpacing="wide">
+                                {act.message}
+                            </Text>
+                            <Text fontSize="xs" color="whiteAlpha.800" ml={1}>
+                                {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                        </HStack>
+                    ))}
+                    {/* Duplicate 2 */}
+                    {activities.map((act, index) => (
+                        <HStack key={`${act.id}-${index}-2`} spacing={2}>
+                            <Icon as={act.type === 'trade' ? FaExchangeAlt : act.type === 'near_you' ? FaMapMarkerAlt : FaTag} color={act.type === 'near_you' ? 'green.300' : 'yellow.300'} boxSize={3.5} />
+                            <Text fontSize="sm" fontWeight="semibold" letterSpacing="wide">
+                                {act.message}
+                            </Text>
+                            <Text fontSize="xs" color="whiteAlpha.800" ml={1}>
+                                {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                        </HStack>
+                    ))}
+                    {/* Duplicate 3 */}
+                    {activities.map((act, index) => (
+                        <HStack key={`${act.id}-${index}-3`} spacing={2}>
                             <Icon as={act.type === 'trade' ? FaExchangeAlt : act.type === 'near_you' ? FaMapMarkerAlt : FaTag} color={act.type === 'near_you' ? 'green.300' : 'yellow.300'} boxSize={3.5} />
                             <Text fontSize="sm" fontWeight="semibold" letterSpacing="wide">
                                 {act.message}

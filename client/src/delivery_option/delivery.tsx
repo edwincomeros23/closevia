@@ -110,6 +110,7 @@ const DeliveryUI: React.FC = () => {
       } catch (error) {
         console.error('Failed to fetch products:', error)
         toast({
+        id: "delivery-error",
           title: 'Error',
           description: 'Failed to load products',
           status: 'error',
@@ -164,7 +165,8 @@ const DeliveryUI: React.FC = () => {
 
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
-      toast({ title: 'Not supported', description: 'Geolocation not available', status: 'warning' })
+      toast({
+        id: "delivery-not-supported", title: 'Not supported', description: 'Geolocation not available', status: 'warning' })
       return
     }
 
@@ -180,15 +182,18 @@ const DeliveryUI: React.FC = () => {
         try {
           const address = await reverseGeocode(lat, lng)
           setDeliveryAddress(address)
-          toast({ title: 'Location detected & address filled', status: 'success', duration: 2000 })
+          toast({
+        id: "delivery-location-detected-address-filled", title: 'Location detected & address filled', status: 'success', duration: 2000 })
         } catch (error) {
-          toast({ title: 'Location detected', description: 'Could not find address', status: 'info', duration: 2000 })
+          toast({
+        id: "delivery-location-detected", title: 'Location detected', description: 'Could not find address', status: 'info', duration: 2000 })
         }
         setIsGettingLocation(false)
       },
       () => {
         setIsGettingLocation(false)
-        toast({ title: 'Location access denied', description: 'Enter address manually', status: 'warning' })
+        toast({
+        id: "delivery-location-access-denied", title: 'Location access denied', description: 'Enter address manually', status: 'warning' })
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     )
@@ -199,17 +204,20 @@ const DeliveryUI: React.FC = () => {
     const maxOrders = selectedOption?.maxOrders || 1
 
     if (!deliveryAddress.trim() && !deliveryLatitude) {
-      toast({ title: 'Missing Delivery Address', status: 'warning', duration: 3000 })
+      toast({
+        id: "delivery-missing-delivery-address", title: 'Missing Delivery Address', status: 'warning', duration: 3000 })
       return
     }
 
     if (products.length === 0) {
-      toast({ title: 'No Orders Selected', description: 'Please select orders to deliver', status: 'warning', duration: 3000 })
+      toast({
+        id: "delivery-no-orders-selected", title: 'No Orders Selected', description: 'Please select orders to deliver', status: 'warning', duration: 3000 })
       return
     }
 
     if (products.length > maxOrders) {
       toast({
+        id: "delivery-too-many-orders",
         title: 'Too Many Orders',
         description: `${selectedDelivery === 'express' ? 'Express' : 'Standard'} delivery allows maximum ${maxOrders} order(s)`,
         status: 'error',
@@ -236,7 +244,8 @@ const DeliveryUI: React.FC = () => {
       const response = await api.post('/api/deliveries', payload)
       const delivery = response.data?.data
 
-      toast({ title: 'Delivery Request Created', status: 'success', duration: 2000 })
+      toast({
+        id: "delivery-delivery-request-created", title: 'Delivery Request Created', status: 'success', duration: 2000 })
 
       // Show tracking modal
       if (delivery?.id) {
@@ -245,6 +254,7 @@ const DeliveryUI: React.FC = () => {
       }
     } catch (error: any) {
       toast({
+        id: "delivery-error-2",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to create delivery',
         status: 'error',

@@ -57,6 +57,10 @@ export interface ProductFormData {
 
   // Product value
   value?: number
+
+  // Barter preferences
+  wanted_categories?: string[]
+  wants?: string
 }
 
 import { useAuth } from '../contexts/AuthContext'
@@ -129,6 +133,8 @@ const AddProduct: React.FC = () => {
     estimated_value_max: undefined,
     tags: '[]',
     value: undefined,
+    wanted_categories: [],
+    wants: '',
   })
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -212,6 +218,7 @@ const AddProduct: React.FC = () => {
     // Check daily request limit
     if (!canMakeAIRequest()) {
       toast({
+        id: "addproduct-daily-limit-reached",
         title: '⏱️ Daily limit reached',
         description: 'AI analysis limit reached for today. Try again tomorrow.',
         status: 'warning',
@@ -227,6 +234,7 @@ const AddProduct: React.FC = () => {
     setIsGenerating(true)
 
     toast({
+        id: "addproduct-analyzing-images",
       title: '🔍 Analyzing images...',
       description: 'AI is scanning all photos for product details and checking image quality.',
       status: 'info',
@@ -259,6 +267,7 @@ const AddProduct: React.FC = () => {
 
           // Show prominent error message
           toast({
+        id: "addproduct-cannot-list-this-item",
             title: '❌ Cannot list this item',
             description: d.reason || 'This item cannot be listed for trading.',
             status: 'error',
@@ -271,6 +280,7 @@ const AddProduct: React.FC = () => {
           setAiBlockingError(d.reason || 'This item cannot be listed for trading.')
 
           // Stay on Step 1 - do NOT navigate to Step 2
+          setCurrentStep(1)
           return
         }
 
@@ -284,6 +294,7 @@ const AddProduct: React.FC = () => {
           setAiBlockingError(d.prohibited_reason || 'This item cannot be listed for trading.')
           setIsGenerating(false)
           toast({
+        id: "addproduct-item-cannot-be-listed",
             title: '❌ Item cannot be listed',
             description: d.prohibited_reason || 'This item cannot be listed for trading.',
             status: 'error',
@@ -342,6 +353,7 @@ const AddProduct: React.FC = () => {
 
         if (warnings.length > 0) {
           toast({
+        id: "addproduct-ai-completed-with-notes",
             title: '⚠️ AI completed with notes',
             description: warnings[0],
             status: 'warning',
@@ -351,6 +363,7 @@ const AddProduct: React.FC = () => {
           })
         } else {
           toast({
+        id: "addproduct-ai-analysis-complete",
             title: '✨ AI analysis complete!',
             description: 'Product fields have been auto-filled. Review and edit as needed.',
             status: 'success',
@@ -369,6 +382,7 @@ const AddProduct: React.FC = () => {
       incrementDailyCount()
 
       toast({
+        id: "addproduct-ai-analysis-failed",
         title: 'AI analysis failed',
         description: err?.response?.data?.error || err.message || 'Could not analyze image. You can fill in details manually.',
         status: 'warning',
@@ -379,7 +393,7 @@ const AddProduct: React.FC = () => {
     } finally {
       setIsGenerating(false)
     }
-  }, [isGenerating, toast])
+  }, [toast])
 
   // ── Effects ───────────────────────────────────────────────────────────────
 
@@ -394,7 +408,8 @@ const AddProduct: React.FC = () => {
     if (!files) return
     const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
     if (!validFiles.length) {
-      toast({ title: 'Invalid file type', description: 'Please select image files only.', status: 'error', duration: 3000 })
+      toast({
+        id: "addproduct-invalid-file-type", title: 'Invalid file type', description: 'Please select image files only.', status: 'error', duration: 3000 })
       return
     }
 
@@ -413,15 +428,17 @@ const AddProduct: React.FC = () => {
           })
           previews.push(url)
         } catch (e: any) {
-          toast({ title: `Error processing ${file.name}`, description: e.message, status: 'error', duration: 3000 })
+          toast({
+        id: "addproduct-error-processing-file-name", title: `Error processing ${file.name}`, description: e.message, status: 'error', duration: 3000 })
         }
       }
 
-      setUploadedImages(prev => {
-        const combined = [...prev, ...processed]
-        return combined.slice(0, 8)
-      })
+      const finalImages = [...uploadedImages, ...processed].slice(0, 8)
+      setUploadedImages(finalImages)
       setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
+
+      // Trigger AI analysis immediately for the new set of images
+      triggerAI(finalImages)
 
       // Run client-side image quality checks (instant, no network)
       setQualityChecking(true)
@@ -441,6 +458,7 @@ const AddProduct: React.FC = () => {
         if (qualityWarnings.length > 0) {
           // Show the first quality warning as a toast
           toast({
+        id: "addproduct-image-quality-check",
             title: '📸 Image Quality Check',
             description: qualityWarnings[0],
             status: 'warning',
@@ -462,7 +480,7 @@ const AddProduct: React.FC = () => {
       setAiDone(false)
     }
     processFiles()
-  }, [uploadedImages.length, toast])
+  }, [uploadedImages.length, toast, triggerAI, uploadedImages])
 
   const removeImage = (index: number) => {
     setUploadedImages(prev => prev.filter((_, i) => i !== index))
@@ -479,11 +497,13 @@ const AddProduct: React.FC = () => {
     if (!files || !files[0]) return
     const file = files[0]
     if (!file.type.startsWith('video/')) {
-      toast({ title: 'Invalid file type', status: 'error', duration: 3000 })
+      toast({
+        id: "addproduct-invalid-file-type-2", title: 'Invalid file type', status: 'error', duration: 3000 })
       return
     }
     if (file.size > 50 * 1024 * 1024) {
-      toast({ title: 'Video too large', description: 'Max 50MB', status: 'error', duration: 3000 })
+      toast({
+        id: "addproduct-video-too-large", title: 'Video too large', description: 'Max 50MB', status: 'error', duration: 3000 })
       return
     }
     setUploadedVideo(file)
@@ -580,15 +600,18 @@ const AddProduct: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!formData.title.trim()) {
-      toast({ title: 'Missing name', status: 'warning', duration: 3000 })
+      toast({
+        id: "addproduct-missing-name", title: 'Missing name', status: 'warning', duration: 3000 })
       return
     }
     if (formData.description.trim().length < 50) {
-      toast({ title: 'Description too short', description: 'Minimum 50 characters', status: 'warning', duration: 3000 })
+      toast({
+        id: "addproduct-description-too-short", title: 'Description too short', description: 'Minimum 50 characters', status: 'warning', duration: 3000 })
       return
     }
     if (uploadedImages.length === 0) {
-      toast({ title: 'No images', description: 'Please upload at least one photo', status: 'warning', duration: 3000 })
+      toast({
+        id: "addproduct-no-images", title: 'No images', description: 'Please upload at least one photo', status: 'warning', duration: 3000 })
       return
     }
 
@@ -617,17 +640,23 @@ const AddProduct: React.FC = () => {
       if (formData.estimated_value_max !== undefined) fd.append('estimated_value_max', String(formData.estimated_value_max))
       fd.append('tags', formData.tags || '[]')
       if (formData.value !== undefined) fd.append('value', String(formData.value))
+      if (formData.wanted_categories && formData.wanted_categories.length > 0) {
+        fd.append('wanted_categories', JSON.stringify(formData.wanted_categories))
+      }
+      if (formData.wants) fd.append('wants', formData.wants)
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
 
       await createProduct(fd)
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
-      toast({ title: 'Product posted! 🎉', status: 'success', duration: 3000 })
+      toast({
+        id: "addproduct-product-posted", title: 'Product posted! 🎉', status: 'success', duration: 3000 })
       navigate('/dashboard')
     } catch (err: any) {
       const msg = err.response?.data?.error || err.message || 'Failed to create product'
-      toast({ title: 'Error creating product', description: msg, status: 'error', duration: 6000 })
+      toast({
+        id: "addproduct-error-creating-product", title: 'Error creating product', description: msg, status: 'error', duration: 6000 })
     } finally {
       setIsSubmitting(false)
     }
@@ -1210,19 +1239,61 @@ const AddProduct: React.FC = () => {
         )}
       </Box>
 
-      {/* ──────── VALUE FIELD ──────── */}
-      <FormControl>
-        <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Product Value (PHP) <Badge colorScheme="gray" ml={1} fontSize="8px">Optional</Badge></FormLabel>
-        <Input
-          type="number"
-          placeholder="e.g. 1500"
-          value={formData.value ?? ''}
-          onChange={e => handleField('value', e.target.value ? parseFloat(e.target.value) : undefined)}
-          size="sm"
-          h="32px"
-        />
-        <FormHelperText fontSize="xs">Helps others understand how much your product is worth.</FormHelperText>
-      </FormControl>
+      {/* Manual value field removed as per user request to use AI instead */}
+
+      {/* ──────── WHAT ARE YOU LOOKING FOR? (OPTIONAL) ──────── */}
+      <Box p={4} bg="brand.50" borderRadius="lg" border="1px dashed" borderColor="brand.200">
+        <Text fontSize="sm" fontWeight="bold" color="brand.700" mb={3}>
+          🔍 What are you looking for? (Optional)
+        </Text>
+        <VStack spacing={3} align="stretch">
+          <FormControl>
+            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Categories (Select multiple)</FormLabel>
+            <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={1.5}>
+              {PRODUCT_CATEGORIES.map((cat) => {
+                const isSelected = formData.wanted_categories?.includes(cat.value)
+                return (
+                  <Button
+                    key={cat.value}
+                    size="xs"
+                    variant={isSelected ? 'solid' : 'outline'}
+                    colorScheme={isSelected ? 'brand' : 'gray'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const current = formData.wanted_categories || []
+                      const next = isSelected 
+                        ? current.filter(v => v !== cat.value)
+                        : [...current, cat.value]
+                      handleField('wanted_categories', next)
+                    }}
+                    fontSize="9px"
+                    h="24px"
+                    rounded="full"
+                    leftIcon={<cat.icon size={10} />}
+                  >
+                    {cat.label}
+                  </Button>
+                )
+              })}
+            </SimpleGrid>
+          </FormControl>
+          
+          <FormControl>
+            <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
+            <Input
+              placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
+              value={formData.wants}
+              onChange={e => handleField('wants', e.target.value)}
+              size="sm"
+              bg="white"
+              maxLength={50}
+              h="32px"
+              onClick={e => e.stopPropagation()}
+            />
+            <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+          </FormControl>
+        </VStack>
+      </Box>
     </VStack>
   )
 
@@ -1400,6 +1471,29 @@ const AddProduct: React.FC = () => {
           <Box p={3} bg="green.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="green.400">
             <Text fontSize="xs" fontWeight="bold" color="green.900" mb={1}>💰 Product Value</Text>
             <Text fontSize="lg" fontWeight="bold" color="green.700">₱{formData.value.toLocaleString()}</Text>
+          </Box>
+        )}
+
+        {/* ──────── DESIRED ITEMS DISPLAY ──────── */}
+        {( (formData.wanted_categories && formData.wanted_categories.length > 0) || formData.wants) && (
+          <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
+            <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>🔍 Looking For</Text>
+            <VStack align="stretch" spacing={2}>
+              {formData.wanted_categories && formData.wanted_categories.length > 0 && (
+                <HStack spacing={1.5} flexWrap="wrap">
+                  {formData.wanted_categories.map(cat => (
+                    <Badge key={cat} colorScheme="blue" variant="solid" fontSize="9px" borderRadius="full" px={2} py={0.5}>
+                      {PRODUCT_CATEGORIES.find(c => c.value === cat)?.label || cat}
+                    </Badge>
+                  ))}
+                </HStack>
+              )}
+              {formData.wants && (
+                <Text fontSize="sm" fontWeight="medium" color="blue.800" fontStyle="italic">
+                  " {formData.wants} "
+                </Text>
+              )}
+            </VStack>
           </Box>
         )}
 

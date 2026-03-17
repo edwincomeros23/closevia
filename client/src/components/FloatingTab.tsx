@@ -35,7 +35,7 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
       {/* Mobile Bottom Navigation Bar - Floating Tab */}
       <Box
         position="fixed"
-        bottom="44px"
+        bottom="env(safe-area-inset-bottom, 16px)"
         left="50%"
         transform="translateX(-50%)"
         display={{ base: 'block', sm: 'none' }}
@@ -95,7 +95,7 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
             gap={1}
             borderRadius="none"
             bg="brand.500"
-            px={7}
+            px={4}
             color="white"
             _hover={{ bg: 'brand.600' }}
             _active={{ bg: 'brand.700' }}
@@ -116,7 +116,7 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
               bg="brand.500"
               flexDirection="column"
               gap={1}
-              px={7}
+              px={4}
               borderRadius="none"
               _hover={{ bg: 'gray.50' }}
             >

@@ -76,6 +76,7 @@ const RemittanceLedger: React.FC = () => {
   const handleRemitFees = async () => {
     if (!selectedPaymentMethod) {
       toast({
+        id: "remittanceledger-select-payment-method",
         title: 'Select Payment Method',
         description: 'Choose how you want to pay',
         status: 'warning',
@@ -89,6 +90,7 @@ const RemittanceLedger: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 2000))
       
       toast({
+        id: "remittanceledger-payment-successful",
         title: 'Payment Successful! ✅',
         description: `₱${totalFeesDue} remitted via ${selectedPaymentMethod}`,
         status: 'success',
@@ -99,6 +101,7 @@ const RemittanceLedger: React.FC = () => {
       navigate('/rider-queue')
     } catch (error) {
       toast({
+        id: "remittanceledger-payment-failed",
         title: 'Payment Failed',
         description: 'Please try again',
         status: 'error',
@@ -325,22 +328,22 @@ const RemittanceLedger: React.FC = () => {
                   Select Payment Method:
                 </Text>
 
-                {/* GCash */}
+                {/* Online Payment */}
                 <Card
-                  bg={selectedPaymentMethod === 'gcash' ? 'blue.50' : 'white'}
+                  bg={selectedPaymentMethod === 'online' ? 'blue.50' : 'white'}
                   border="2px"
-                  borderColor={selectedPaymentMethod === 'gcash' ? 'blue.400' : 'gray.200'}
+                  borderColor={selectedPaymentMethod === 'online' ? 'blue.400' : 'gray.200'}
                   cursor="pointer"
-                  onClick={() => setSelectedPaymentMethod('gcash')}
+                  onClick={() => setSelectedPaymentMethod('online')}
                 >
                   <CardBody p={3}>
                     <HStack spacing={2}>
-                      <FaCreditCard size={24} color={selectedPaymentMethod === 'gcash' ? '#0066FF' : '#999'} />
+                      <FaCreditCard size={24} color={selectedPaymentMethod === 'online' ? '#0066FF' : '#999'} />
                       <VStack align="start" spacing={0} flex={1}>
-                        <Text fontWeight="bold" fontSize="sm">GCash</Text>
-                        <Text fontSize="xs" color="gray.600">Instant transfer to Clovia</Text>
+                        <Text fontWeight="bold" fontSize="sm">Online Payment</Text>
+                        <Text fontSize="xs" color="gray.600">Instant via Xendit (Online Payment)</Text>
                       </VStack>
-                      {selectedPaymentMethod === 'gcash' && <CheckCircleIcon color="green.500" />}
+                      {selectedPaymentMethod === 'online' && <CheckCircleIcon color="green.500" />}
                     </HStack>
                   </CardBody>
                 </Card>

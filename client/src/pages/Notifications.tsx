@@ -82,6 +82,7 @@ const Notifications: React.FC = () => {
     } catch (error: any) {
       setError(error.message || 'Failed to fetch notifications')
       toast({
+        id: "notifications-error",
         title: 'Error',
         description: 'Failed to load notifications',
         status: 'error',
@@ -104,6 +105,7 @@ const Notifications: React.FC = () => {
       refreshCounts()
     } catch (error: any) {
       toast({
+        id: "notifications-error-2",
         title: 'Error',
         description: 'Failed to mark notification as read',
         status: 'error',
@@ -121,6 +123,7 @@ const Notifications: React.FC = () => {
       )
       refreshCounts()
       toast({
+        id: "notifications-success",
         title: 'Success',
         description: 'All notifications marked as read',
         status: 'success',
@@ -129,6 +132,7 @@ const Notifications: React.FC = () => {
       })
     } catch (error: any) {
       toast({
+        id: "notifications-error-3",
         title: 'Error',
         description: 'Failed to mark all notifications as read',
         status: 'error',
@@ -268,13 +272,13 @@ const Notifications: React.FC = () => {
               </Text>
             </VStack>
 
-            <HStack spacing={3} align="center" mt={{ base: 3, md: 0 }}>
+            <HStack spacing={3} align="center" mt={{ base: 3, md: 0 }} flexWrap="wrap">
               <Input
-                placeholder="Search products or notifications..."
+                placeholder="Search..."
                 size="sm"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setCurrentPage(1); setPaginationStartPage(1) }}
-                w={{ base: '160px', md: '240px' }}
+                w={{ base: '140px', md: '240px' }}
                 bg={useColorModeValue('gray.50', 'gray.700')}
               />
               {unreadCount > 0 && (
@@ -346,14 +350,14 @@ const Notifications: React.FC = () => {
                   _hover={{ shadow: 'md' }}
                 >
                   <CardHeader pb={2}>
-                    <HStack justify="space-between" align="start">
-                      <HStack spacing={3} align="start">
+                    <HStack justify="space-between" align="start" flexWrap="wrap" gap={2}>
+                      <HStack spacing={3} align="start" minW={0} flex={1}>
                         <Text fontSize="2xl">
                           {getNotificationIcon(notification.type)}
                         </Text>
-                        <VStack align="start" spacing={1}>
-                          <HStack spacing={2}>
-                            <Text fontWeight="semibold" fontSize="md">
+                        <VStack align="start" spacing={1} minW={0}>
+                          <HStack spacing={2} flexWrap="wrap">
+                            <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }} noOfLines={1}>
                               {notification.type.replace('_', ' ').toUpperCase()}
                             </Text>
                             {!notification.read && (

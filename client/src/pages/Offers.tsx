@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden, SimpleGrid, IconButton, Tooltip } from '@chakra-ui/react'
 import { FaHandshake, FaTimes, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { FiGrid, FiList } from 'react-icons/fi'
@@ -9,6 +10,7 @@ import OfferDetailsModal from '../components/OfferDetailsModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
 
 const Offers: React.FC = () => {
+  const navigate = useNavigate()
   const [incoming, setIncoming] = useState<Trade[]>([])
   const [outgoing, setOutgoing] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,7 +46,8 @@ const Offers: React.FC = () => {
       // Fetch product titles for all trades
       await fetchProductTitles([...incRes.data?.data || [], ...outRes.data?.data || []])
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
+      toast({
+        id: "offers-error", title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
     } finally {
       setLoading(false)
     }
@@ -132,10 +135,12 @@ const Offers: React.FC = () => {
   const updateTrade = async (id: number, action: TradeAction) => {
     try {
       await api.put(`/api/trades/${id}`, action)
-      toast({ title: 'Success', description: 'Offer updated', status: 'success' })
+      toast({
+        id: "offers-success", title: 'Success', description: 'Offer updated', status: 'success' })
       fetchAll()
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
+      toast({
+        id: "offers-error-2", title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
   }
 
@@ -157,6 +162,7 @@ const Offers: React.FC = () => {
       setCancelModalOpen(false)
       setTradeToCancel(null)
       toast({
+        id: "offers-offer-cancelled",
         title: 'Offer cancelled',
         description: 'The offer has been successfully cancelled',
         status: 'success',
@@ -164,6 +170,7 @@ const Offers: React.FC = () => {
       })
     } catch (error: any) {
       toast({
+        id: "offers-error-3",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to cancel offer',
         status: 'error'
@@ -189,6 +196,7 @@ const Offers: React.FC = () => {
       setTradeToDecline(null)
       setDeclineFeedback('')
       toast({
+        id: "offers-offer-declined",
         title: 'Offer declined',
         description: 'The offer has been successfully declined',
         status: 'success',
@@ -196,11 +204,29 @@ const Offers: React.FC = () => {
       })
     } catch (error: any) {
       toast({
+        id: "offers-error-4",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to decline offer',
         status: 'error'
       })
     }
+  }
+
+  const handleConvertToMultiWay = () => {
+    if (!tradeToDecline) {
+      setDeclineModalOpen(false)
+      return
+    }
+
+    setDeclineModalOpen(false)
+    toast({
+      title: 'Searching for multi-way trade',
+      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
+      status: 'info',
+      duration: 5000
+    })
+
+    navigate('/premium')
   }
 
   const sortList = (list: Trade[]) => {
@@ -1309,6 +1335,15 @@ const Offers: React.FC = () => {
                     onClick={() => setDeclineModalOpen(false)}
                   >
                     Keep Offer
+                  </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                  >
+                    Convert to Multi-Way
                   </Button>
                   <Button
                     colorScheme="red"

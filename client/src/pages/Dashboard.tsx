@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Link as RouterLink, useNavigate } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
   Container,
@@ -91,6 +91,7 @@ const Dashboard: React.FC = () => {
   const { deleteProduct, updateProduct } = useProducts()
   const { refreshCounts } = useRealtime()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   // Use React Query hooks for cached data
   const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched } = useDashboardProducts(user?.id)
@@ -253,6 +254,47 @@ const Dashboard: React.FC = () => {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
+
+  // Handle return from Xendit payment redirect
+  useEffect(() => {
+    const tradeIdParam = searchParams.get('trade_id')
+    const paymentStatus = searchParams.get('payment')
+    if (!tradeIdParam) return
+
+    const tradeId = parseInt(tradeIdParam, 10)
+    if (isNaN(tradeId)) return
+
+    if (paymentStatus === 'failed') {
+      toast({
+        title: 'Payment Failed',
+        description: 'Your payment was not completed. Please try again.',
+        status: 'error',
+        duration: 5000,
+      })
+    } else {
+      toast({
+        title: 'Payment Successful! 🎉',
+        description: 'Your payment has been received. View trade details below.',
+        status: 'success',
+        duration: 5000,
+      })
+    }
+
+    // Switch to the Offers tab (tab index 1)
+    setActiveTab(1)
+
+    // Try to find the trade and open it
+    const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
+    const matchedTrade = allTrades.find(t => t.id === tradeId)
+    if (matchedTrade) {
+      setSelectedTrade(matchedTrade)
+      setViewTradeModalOpen(true)
+    }
+
+    // Clean up URL params
+    navigate('/dashboard', { replace: true })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, ongoingTradesData, sentOffersData, receivedOffersData])
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
@@ -479,13 +521,13 @@ const Dashboard: React.FC = () => {
   const fetchMultiWayTrades = async () => {
     try {
       setMultiWayTradesLoading(true)
-      const response = await api.get('/api/multi-way-trades/available', {
+      const response = await api.get('/api/trades/loops', {
         params: { user_id: user?.id }
       })
       setMultiWayTrades(response.data?.data || [])
     } catch (error) {
       console.error('Failed to fetch multi-way trades:', error)
-      toast({ title: 'Error', description: 'Failed to load multi-way trades', status: 'error' })
+      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: 'Failed to load multi-way trades', status: 'error' })
       setMultiWayTrades([])
     } finally {
       setMultiWayTradesLoading(false)
@@ -495,10 +537,11 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      await api.post(`/api/multi-way-trades/${trade.id}/join`, {
+      await api.post(`/api/trades/loops/${trade.id}/accept`, {
         user_id: user?.id,
       })
       toast({
+        id: 'success-joined-trade-loop',
         title: 'Success',
         description: 'You joined the trade loop!',
         status: 'success',
@@ -509,6 +552,7 @@ const Dashboard: React.FC = () => {
       await fetchMultiWayTrades()
     } catch (error: any) {
       toast({
+        id: 'error-join-trade',
         title: 'Error',
         description: error.response?.data?.message || 'Failed to join trade',
         status: 'error',
@@ -520,10 +564,11 @@ const Dashboard: React.FC = () => {
 
   const handleDeclineMultiWayTrade = async (trade: any) => {
     try {
-      await api.post(`/api/multi-way-trades/${trade.id}/decline`, {
+      await api.post(`/api/trades/loops/${trade.id}/decline`, {
         reason: 'Not interested'
       })
       toast({
+        id: 'declined',
         title: 'Declined',
         description: 'You declined this multi-way trade',
         status: 'info',
@@ -534,6 +579,7 @@ const Dashboard: React.FC = () => {
       await fetchMultiWayTrades()
     } catch (error: any) {
       toast({
+        id: 'error-decline-trade',
         title: 'Error',
         description: error.response?.data?.message || 'Failed to decline trade',
         status: 'error',
@@ -585,12 +631,12 @@ const Dashboard: React.FC = () => {
   const updateTrade = useCallback(async (id: number, action: TradeAction) => {
     try {
       await api.put(`/api/trades/${id}`, action)
-      toast({ title: 'Success', description: 'Offer updated', status: 'success' })
+      toast({ id: 'success-offer-updated', title: 'Success', description: 'Offer updated', status: 'success' })
       // Invalidate cache to refresh data
       invalidateOffers()
       invalidateDashboard()
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
+      toast({ id: 'error-update-offer', title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
     }
   }, [invalidateOffers, invalidateDashboard])
 
@@ -600,6 +646,7 @@ const Dashboard: React.FC = () => {
 
     if (!meetupConfirmed && (trade.status === 'accepted' || trade.status === 'active')) {
       toast({
+        id: 'meetup-required',
         title: 'Meetup Required',
         description: 'Please confirm the meetup location before completing the trade.',
         status: 'warning',
@@ -634,6 +681,7 @@ const Dashboard: React.FC = () => {
         setProcessModalOpen(false)
         setIsProcessing(false)
         toast({
+          id: 'success-offer-cancelled',
           title: 'Success',
           description: 'Offer cancelled successfully',
           status: 'success',
@@ -644,6 +692,7 @@ const Dashboard: React.FC = () => {
       setProcessModalOpen(false)
       setIsProcessing(false)
       toast({
+        id: 'error-cancel-offer',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to cancel offer',
         status: 'error'
@@ -675,6 +724,7 @@ const Dashboard: React.FC = () => {
         setProcessModalOpen(false)
         setIsProcessing(false)
         toast({
+          id: 'success-offer-declined',
           title: 'Success',
           description: 'Offer declined successfully',
           status: 'success',
@@ -685,11 +735,29 @@ const Dashboard: React.FC = () => {
       setProcessModalOpen(false)
       setIsProcessing(false)
       toast({
+        id: 'error-decline-offer',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to decline offer',
         status: 'error'
       })
     }
+  }
+
+  const handleConvertToMultiWay = () => {
+    if (!tradeToDecline) {
+      setDeclineModalOpen(false)
+      return
+    }
+
+    setDeclineModalOpen(false)
+    toast({
+      title: 'Searching for multi-way trade',
+      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
+      status: 'info',
+      duration: 5000
+    })
+
+    navigate('/premium')
   }
 
   const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'expired']
@@ -1033,7 +1101,7 @@ const Dashboard: React.FC = () => {
 
   const handleDeleteProductClick = (product: Product) => {
     if (product.status === 'locked') {
-      toast({ title: 'Cannot delete', description: 'Locked products cannot be deleted. Please unlock it first.', status: 'warning', duration: 3000, isClosable: true })
+      toast({ id: 'cannot-delete-locked', title: 'Cannot delete', description: 'Locked products cannot be deleted. Please unlock it first.', status: 'warning', duration: 3000, isClosable: true })
       return
     }
     setProductToDelete(product)
@@ -1065,7 +1133,7 @@ const Dashboard: React.FC = () => {
     })
 
     if (deletableIds.length === 0) {
-      toast({ title: 'Cannot delete', description: 'Selected products are locked. Locked products cannot be deleted.', status: 'warning', duration: 3000, isClosable: true })
+      toast({ id: 'cannot-delete-selected-locked', title: 'Cannot delete', description: 'Selected products are locked. Locked products cannot be deleted.', status: 'warning', duration: 3000, isClosable: true })
       return
     }
 
@@ -1087,9 +1155,9 @@ const Dashboard: React.FC = () => {
           invalidateOffers()
           setSelectedProductIds(new Set())
           setPopupOpen(false)
-          toast({ title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
+          toast({ id: 'deleted', title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
         } catch (e: any) {
-          toast({ title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
+          toast({ id: 'error-delete-products', title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
         } finally {
           setDeleting(false)
         }
@@ -1106,7 +1174,7 @@ const Dashboard: React.FC = () => {
     const productsToLock = filteredProducts.filter(p => ids.includes(p.id) && p.status === 'available')
     const productsToUnlock = filteredProducts.filter(p => ids.includes(p.id) && p.status === 'locked')
     if (productsToLock.length === 0 && productsToUnlock.length === 0) {
-      toast({ title: 'No action', description: 'Selected items are not available or locked', status: 'info', duration: 2000, isClosable: true })
+      toast({ id: 'no-action', title: 'No action', description: 'Selected items are not available or locked', status: 'info', duration: 2000, isClosable: true })
       return
     }
     try {
@@ -1122,9 +1190,9 @@ const Dashboard: React.FC = () => {
       const locked = productsToLock.length
       const unlocked = productsToUnlock.length
       const msg = [locked && `${locked} locked`, unlocked && `${unlocked} unlocked`].filter(Boolean).join(', ')
-      toast({ title: 'Updated', description: msg, status: 'success', duration: 3000, isClosable: true })
+      toast({ id: 'updated', title: 'Updated', description: msg, status: 'success', duration: 3000, isClosable: true })
     } catch (e: any) {
-      toast({ title: 'Error', description: e?.message || 'Failed to update products', status: 'error', duration: 3000, isClosable: true })
+      toast({ id: 'error-update-products', title: 'Error', description: e?.message || 'Failed to update products', status: 'error', duration: 3000, isClosable: true })
     } finally {
       setDeleting(false)
     }
@@ -1483,96 +1551,167 @@ const Dashboard: React.FC = () => {
   }) => {
     const statusColor = product.status === 'available' ? 'green' : product.status === 'locked' ? 'orange' : product.status === 'sold' ? 'red' : 'blue'
     return (
-      <Flex
-        align="center"
-        gap={{ base: 2, md: 4 }}
+      <Box
         p={3}
         borderBottom="1px"
         borderColor={borderColor}
         _hover={{ bg: 'gray.50' }}
-        minW={0}
-        flexWrap={{ base: 'nowrap', md: 'nowrap' }}
       >
-        {showActions && (product.status === 'available' || product.status === 'locked') && (
-          <Checkbox
-            isChecked={isSelected}
-            onChange={onToggleSelect}
-            flexShrink={0}
-            aria-label={`Select ${product.title}`}
-          />
-        )}
-        <Box
-          w="60px"
-          h="60px"
-          flexShrink={0}
-          borderRadius="md"
-          overflow="hidden"
-          bg="gray.100"
+        <Flex
+          align="center"
+          gap={{ base: 2, md: 4 }}
+          minW={0}
         >
-          <Image
-            src={getFirstImage(product.image_urls)}
-            alt={product.title}
-            w="full"
-            h="full"
-            objectFit="cover"
-            fallbackSrc="https://via.placeholder.com/60?text=No+Image"
-          />
-        </Box>
-        <VStack align="start" spacing={0} flex={1} minW={0}>
-          <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-            {product.title}
-          </Text>
-          <HStack spacing={2} flexWrap="wrap" mt={1}>
-            <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
-              {product.status}
-            </Badge>
-            <HStack spacing={3} fontSize="xs" color="gray.500">
-              <HStack spacing={1}>
-                <Icon as={ViewIcon} boxSize={3} />
-                <Text>{viewsCount} views</Text>
-              </HStack>
-              <HStack spacing={1}>
-                <Icon as={FaHandshake} boxSize={3} />
-                <Text>{offersCount} offers</Text>
+          {showActions && (product.status === 'available' || product.status === 'locked') && (
+            <Checkbox
+              isChecked={isSelected}
+              onChange={onToggleSelect}
+              flexShrink={0}
+              aria-label={`Select ${product.title}`}
+            />
+          )}
+          <Box
+            w="60px"
+            h="60px"
+            flexShrink={0}
+            borderRadius="md"
+            overflow="hidden"
+            bg="gray.100"
+          >
+            <Image
+              src={getFirstImage(product.image_urls)}
+              alt={product.title}
+              w="full"
+              h="full"
+              objectFit="cover"
+              fallbackSrc="https://via.placeholder.com/60?text=No+Image"
+            />
+          </Box>
+          <VStack align="start" spacing={0} flex={1} minW={0}>
+            <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+              {product.title}
+            </Text>
+            <HStack spacing={2} flexWrap="wrap" mt={1}>
+              <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+                {product.status}
+              </Badge>
+              <HStack spacing={3} fontSize="xs" color="gray.500">
+                <HStack spacing={1}>
+                  <Icon as={ViewIcon} boxSize={3} />
+                  <Text>{viewsCount} views</Text>
+                </HStack>
+                <HStack spacing={1}>
+                  <Icon as={FaHandshake} boxSize={3} />
+                  <Text>{offersCount} offers</Text>
+                </HStack>
               </HStack>
             </HStack>
-          </HStack>
-        </VStack>
-        {(() => {
-          const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
-          const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
-          const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
-          const shouldAct = showActions && product.status !== 'traded' && product.status !== 'sold'
+          </VStack>
+          {/* Desktop: show actions inline */}
+          <HStack spacing={1} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
+            {(() => {
+              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
+              const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
+              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
+              const shouldAct = showActions && product.status !== 'traded' && product.status !== 'sold'
 
-          if (isStag && isBoost && shouldAct) {
-            return (
-              <Button
-                size="sm"
-                colorScheme="blue"
-                variant="ghost"
-                leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
-                onClick={() => handleBoostProductClick(product)}
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
-                mr={1}
-              >
-                Boost
-              </Button>
-            )
-          }
-          return null
-        })()}
+              if (isStag && isBoost && shouldAct) {
+                return (
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    variant="ghost"
+                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
+                    onClick={() => handleBoostProductClick(product)}
+                    fontSize="sm"
+                    px={3}
+                    mr={1}
+                  >
+                    Boost
+                  </Button>
+                )
+              }
+              return null
+            })()}
+            {showActions && (
+              <>
+                {product.status === 'available' && (
+                  <Button
+                    size="sm"
+                    colorScheme="yellow"
+                    variant="ghost"
+                    leftIcon={<Icon as={FaRegLightbulb} boxSize={3} />}
+                    onClick={() => handleFindTradesClick(product)}
+                    fontSize="sm"
+                    px={3}
+                  >
+                    Find Trades
+                  </Button>
+                )}
+                <Button
+                  as={RouterLink}
+                  to={`/edit-product/${product.id}`}
+                  leftIcon={<EditIcon />}
+                  variant="outline"
+                  colorScheme="brand"
+                  size="sm"
+                  fontSize="sm"
+                  px={3}
+                >
+                  Edit
+                </Button>
+                <Tooltip
+                  label={product.status === 'locked' ? 'Cannot delete locked products' : ''}
+                  isDisabled={product.status !== 'locked'}
+                  hasArrow
+                >
+                  <IconButton
+                    aria-label="Delete"
+                    icon={<DeleteIcon />}
+                    variant="outline"
+                    colorScheme="red"
+                    size="sm"
+                    isDisabled={product.status === 'locked'}
+                    onClick={onDelete}
+                  />
+                </Tooltip>
+              </>
+            )}
+          </HStack>
+        </Flex>
+        {/* Mobile: show actions on a separate row below */}
         {showActions && (
-          <HStack spacing={1} flexShrink={0}>
+          <HStack spacing={1} mt={2} display={{ base: 'flex', md: 'none' }} justify="flex-end" flexWrap="wrap">
+            {(() => {
+              const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
+              const isStag = viewsCount === 0 && offersCount === 0 && daysOld > 3
+              const isBoost = !product.boosted_at || ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) >= 24
+              const shouldAct = product.status !== 'traded' && product.status !== 'sold'
+
+              if (isStag && isBoost && shouldAct) {
+                return (
+                  <Button
+                    size="xs"
+                    colorScheme="blue"
+                    variant="ghost"
+                    leftIcon={<Icon as={FaArrowUp} boxSize={3} />}
+                    onClick={() => handleBoostProductClick(product)}
+                    fontSize="xs"
+                  >
+                    Boost
+                  </Button>
+                )
+              }
+              return null
+            })()}
             {product.status === 'available' && (
               <Button
-                size="sm"
+                size="xs"
                 colorScheme="yellow"
                 variant="ghost"
                 leftIcon={<Icon as={FaRegLightbulb} boxSize={3} />}
                 onClick={() => handleFindTradesClick(product)}
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
+                fontSize="xs"
               >
                 Find Trades
               </Button>
@@ -1583,9 +1722,8 @@ const Dashboard: React.FC = () => {
               leftIcon={<EditIcon />}
               variant="outline"
               colorScheme="brand"
-              size="sm"
-              fontSize={{ base: 'xs', md: 'sm' }}
-              px={{ base: 2, md: 3 }}
+              size="xs"
+              fontSize="xs"
             >
               Edit
             </Button>
@@ -1599,14 +1737,14 @@ const Dashboard: React.FC = () => {
                 icon={<DeleteIcon />}
                 variant="outline"
                 colorScheme="red"
-                size="sm"
+                size="xs"
                 isDisabled={product.status === 'locked'}
                 onClick={onDelete}
               />
             </Tooltip>
           </HStack>
         )}
-      </Flex>
+      </Box>
     )
   })
 
@@ -1630,53 +1768,104 @@ const Dashboard: React.FC = () => {
     const userName = isIncoming ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous')
 
     return (
-      <Flex
-        align="center"
-        gap={{ base: 2, md: 4 }}
+      <Box
         p={3}
         borderBottom="1px"
         borderColor={borderColor}
         _hover={{ bg: 'gray.50' }}
-        minW={0}
-        flexWrap="wrap"
       >
-        <Box
-          w="60px"
-          h="60px"
-          flexShrink={0}
-          borderRadius="md"
-          overflow="hidden"
-          bg="gray.100"
+        <Flex
+          align="center"
+          gap={{ base: 2, md: 4 }}
+          minW={0}
         >
-          <ProductThumb
-            pid={trade.target_product_id}
-            alt={getProductTitle(trade.target_product_id, trade.product_title)}
-            size="100%"
-          />
-        </Box>
-        <VStack align="start" spacing={0} flex={1} minW={0}>
-          <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-            {getProductTitle(trade.target_product_id, trade.product_title)}
-          </Text>
-          <HStack spacing={2} mt={1}>
-            <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
-              {trade.status}
-            </Badge>
-            <Text fontSize="xs" color="gray.600">from {userName}</Text>
-            {trade.created_at && (
-              <Text fontSize="xs" color="gray.500">
-                {getTimeAgo(trade.created_at)}
-              </Text>
+          <Box
+            w="60px"
+            h="60px"
+            flexShrink={0}
+            borderRadius="md"
+            overflow="hidden"
+            bg="gray.100"
+          >
+            <ProductThumb
+              pid={trade.target_product_id}
+              alt={getProductTitle(trade.target_product_id, trade.product_title)}
+              size="100%"
+            />
+          </Box>
+          <VStack align="start" spacing={0} flex={1} minW={0}>
+            <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
+              {getProductTitle(trade.target_product_id, trade.product_title)}
+            </Text>
+            <HStack spacing={2} mt={1} flexWrap="wrap">
+              <Badge colorScheme={statusColor} variant="subtle" fontSize="2xs" px={1.5} py={0.5}>
+                {trade.status}
+              </Badge>
+              <Text fontSize="xs" color="gray.600" noOfLines={1}>from {userName}</Text>
+              {trade.created_at && (
+                <Text fontSize="xs" color="gray.500">
+                  {getTimeAgo(trade.created_at)}
+                </Text>
+              )}
+            </HStack>
+          </VStack>
+          {/* Desktop: inline actions */}
+          <HStack spacing={1} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
+            <Button
+              size="sm"
+              variant="outline"
+              colorScheme="brand"
+              fontSize="sm"
+              px={3}
+              onClick={onView}
+            >
+              View
+            </Button>
+            {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
+              <>
+                <Button
+                  size="sm"
+                  colorScheme="green"
+                  variant="solid"
+                  fontSize="sm"
+                  px={3}
+                  onClick={onAccept}
+                >
+                  Accept
+                </Button>
+                <Button
+                  size="sm"
+                  colorScheme="red"
+                  variant="outline"
+                  fontSize="sm"
+                  px={3}
+                  onClick={onDecline}
+                >
+                  Decline
+                </Button>
+              </>
+            )}
+            {!isIncoming && trade.status === 'pending' && onCancel && (
+              <Button
+                size="sm"
+                colorScheme="red"
+                variant="outline"
+                fontSize="sm"
+                px={3}
+                onClick={onCancel}
+              >
+                Cancel
+              </Button>
             )}
           </HStack>
-        </VStack>
-        <HStack spacing={1} flexShrink={0}>
+        </Flex>
+        {/* Mobile: actions on separate row */}
+        <HStack spacing={1} mt={2} display={{ base: 'flex', md: 'none' }} justify="flex-end">
           <Button
-            size="sm"
+            size="xs"
             variant="outline"
             colorScheme="brand"
-            fontSize={{ base: 'xs', md: 'sm' }}
-            px={{ base: 2, md: 3 }}
+            fontSize="xs"
             onClick={onView}
           >
             View
@@ -1684,21 +1873,19 @@ const Dashboard: React.FC = () => {
           {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
             <>
               <Button
-                size="sm"
+                size="xs"
                 colorScheme="green"
                 variant="solid"
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
+                fontSize="xs"
                 onClick={onAccept}
               >
                 Accept
               </Button>
               <Button
-                size="sm"
+                size="xs"
                 colorScheme="red"
                 variant="outline"
-                fontSize={{ base: 'xs', md: 'sm' }}
-                px={{ base: 2, md: 3 }}
+                fontSize="xs"
                 onClick={onDecline}
               >
                 Decline
@@ -1707,18 +1894,17 @@ const Dashboard: React.FC = () => {
           )}
           {!isIncoming && trade.status === 'pending' && onCancel && (
             <Button
-              size="sm"
+              size="xs"
               colorScheme="red"
               variant="outline"
-              fontSize={{ base: 'xs', md: 'sm' }}
-              px={{ base: 2, md: 3 }}
+              fontSize="xs"
               onClick={onCancel}
             >
               Cancel
             </Button>
           )}
         </HStack>
-      </Flex>
+      </Box>
     )
   })
 
@@ -1795,7 +1981,7 @@ const Dashboard: React.FC = () => {
           borderLeftColor="green.400"
           role="article"
         >
-          <Box position="relative" w="full" h="140px" display="flex" gap={1} p={1} bg="gray.50" flexWrap="wrap" alignContent="flex-start" overflow="hidden">
+          <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
             {/* Your Item - Always flex=1 */}
             <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="0">
               <ProductThumb
@@ -2025,13 +2211,13 @@ const Dashboard: React.FC = () => {
             </VStack>
           </CardBody>
           <CardFooter pt={0}>
-            <HStack spacing={2} w="full" flexWrap="wrap">
+            <HStack spacing={{ base: 1, md: 2 }} w="full" flexWrap="wrap">
               <Button
-                size="sm"
+                size={{ base: 'xs', md: 'sm' }}
                 variant="outline"
                 colorScheme="brand"
                 flex={1}
-                minW="70px"
+                minW={{ base: '55px', md: '70px' }}
                 onClick={onView}
                 _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
                 transition="all 0.2s"
@@ -2041,10 +2227,10 @@ const Dashboard: React.FC = () => {
               {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
                 <>
                   <Button
-                    size="sm"
+                    size={{ base: 'xs', md: 'sm' }}
                     colorScheme="green"
                     flex={1}
-                    minW="70px"
+                    minW={{ base: '55px', md: '70px' }}
                     onClick={onAccept}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -2052,11 +2238,11 @@ const Dashboard: React.FC = () => {
                     Accept
                   </Button>
                   <Button
-                    size="sm"
+                    size={{ base: 'xs', md: 'sm' }}
                     colorScheme="red"
                     variant="outline"
                     flex={1}
-                    minW="70px"
+                    minW={{ base: '55px', md: '70px' }}
                     onClick={onDecline}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -2067,11 +2253,11 @@ const Dashboard: React.FC = () => {
               )}
               {!isIncoming && trade.status === 'pending' && onCancel && (
                 <Button
-                  size="sm"
+                  size={{ base: 'xs', md: 'sm' }}
                   colorScheme="red"
                   variant="outline"
                   flex={1}
-                  minW="70px"
+                  minW={{ base: '55px', md: '70px' }}
                   onClick={onCancel}
                   leftIcon={<Icon as={FaTimes} />}
                   _hover={{ transform: 'scale(1.02)' }}
@@ -2082,10 +2268,10 @@ const Dashboard: React.FC = () => {
               )}
               {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
                 <Button
-                  size="sm"
+                  size={{ base: 'xs', md: 'sm' }}
                   colorScheme="blue"
                   flex={1}
-                  minW="70px"
+                  minW={{ base: '55px', md: '70px' }}
                   onClick={onComplete}
                   leftIcon={<Icon as={FaHandshake} />}
                   _hover={{ transform: 'scale(1.02)' }}
@@ -2191,15 +2377,15 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
-      <Container maxW="container.xl" py={8}>
-        <VStack spacing={6} align="stretch">
+      <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 3, md: 6 }}>
+        <VStack spacing={{ base: 3, md: 6 }} align="stretch">
           {/* Sticky header: search bar + view toggle stay visible when scrolling long product lists */}
           <Box position="sticky" top={0} zIndex={20} bg="#FFFDF1" py={2} mt={-2} mb={-2}>
-            <VStack spacing={4} align="stretch">
+            <VStack spacing={{ base: 2, md: 4 }} align="stretch">
               <Flex
                 align="center"
                 justify="space-between"
-                gap={4}
+                gap={{ base: 2, md: 4 }}
                 flexWrap={{ base: 'wrap', md: 'nowrap' }}
               >
                 {/* Left: Welcome Message */}
@@ -2602,42 +2788,45 @@ const Dashboard: React.FC = () => {
               borderTopRadius="lg"
               borderBottom="1px solid"
               borderColor="gray.200"
-              py={2}
+              py={{ base: 1, md: 2 }}
             >
-              <Flex justify="space-between" align="center" px={4} gap={{ base: 2, md: 4 }} flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+              <Flex justify="space-between" align="center" px={{ base: 2, md: 4 }} gap={{ base: 1, md: 4 }} flexWrap={{ base: 'nowrap', md: 'nowrap' }}>
                 <Tabs index={activeTab} onChange={setActiveTab} variant="line" colorScheme="brand" flex={1} minW={0}>
                   <TabList
-                    overflowX={{ base: 'visible', md: 'visible' }}
+                    overflowX={{ base: 'auto', md: 'visible' }}
                     display="flex"
-                    flexWrap={{ base: 'nowrap', md: 'nowrap' }}
-                    justifyContent={{ base: 'space-between', md: 'flex-start' }}
+                    flexWrap="nowrap"
+                    justifyContent={{ base: 'space-around', md: 'flex-start' }}
                     sx={{
                       '&::-webkit-scrollbar': { display: 'none' },
                       scrollbarWidth: 'none',
                       msOverflowStyle: 'none',
                       '& > button': {
-                        fontSize: { base: '0.75rem', sm: '0.875rem', md: '1rem' },
+                        fontSize: { base: '0.7rem', sm: '0.8rem', md: '1rem' },
                         whiteSpace: 'nowrap',
                         minW: { base: 'auto', md: 'auto' },
-                        px: { base: '6px', sm: '12px', md: '16px' },
-                        py: { base: '8px', sm: '12px' },
-                        flex: { base: '1', md: 'initial' },
-                        justifyContent: { base: 'center', md: 'flex-start' },
+                        px: { base: '8px', sm: '12px', md: '16px' },
+                        py: { base: '6px', sm: '10px', md: '12px' },
+                        flex: { base: 1, md: 'initial' },
+                        justifyContent: 'center',
+                        borderBottomWidth: '3px',
+                        borderBottomColor: 'transparent',
                       }
                     }}>
                     <Tab
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FiShoppingBag} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>My Products</Text>
+                      <HStack spacing={1}>
+                        <Icon as={FiShoppingBag} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Products</Text>
                         {actualUserProducts.length > 0 && (
-                          <Badge colorScheme="green" borderRadius="full" fontSize="xs" display={{ base: 'none', sm: 'inline-flex' }}>
+                          <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                             {actualUserProducts.length}
                           </Badge>
                         )}
@@ -2646,21 +2835,21 @@ const Dashboard: React.FC = () => {
                     <Tab
                       position="relative"
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FiMessageCircle} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>Offers</Text>
+                      <HStack spacing={1}>
+                        <Icon as={FiMessageCircle} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Offers</Text>
                         {(sentOffers.length + receivedOffers.length + ongoingTrades.length) > 0 && (
                           <Badge
                             colorScheme="orange"
                             borderRadius="full"
-                            fontSize="xs"
-                            display={{ base: 'none', sm: 'inline-flex' }}
+                            fontSize="2xs"
                           >
                             {sentOffers.length + receivedOffers.length + ongoingTrades.length}
                           </Badge>
@@ -2669,32 +2858,34 @@ const Dashboard: React.FC = () => {
                     </Tab>
                     <Tab
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FaExchangeAlt} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>Multi-Way Trades</Text>
-                        <Badge colorScheme="purple" fontSize="2xs" px={{ base: 1, md: 1.5 }} display={{ base: 'none', sm: 'inline-flex' }}>
+                      <HStack spacing={1}>
+                        <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
+                        <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
                           PRO
                         </Badge>
                       </HStack>
                     </Tab>
                     <Tab
-                      ml={{ base: 'auto', md: 0 }}
                       _selected={{
-                        color: 'brand.600',
-                        borderColor: 'brand.600',
+                        color: 'green.500',
+                        borderColor: 'green.500',
+                        borderBottomWidth: '3px',
                         fontWeight: 'semibold'
                       }}
                       transition="all 0.2s"
                     >
-                      <HStack spacing={{ base: 1, sm: 2, md: 3 }}>
-                        <Icon as={FiRefreshCw} boxSize={{ base: 4, sm: 4, md: 5 }} mr={{ base: 1, md: 2 }} />
-                        <Text display={{ base: 'none', sm: 'block' }}>Trade History</Text>
+                      <HStack spacing={1}>
+                        <Icon as={FiRefreshCw} boxSize={{ base: 4, md: 5 }} />
+                        <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>History</Text>
                         {completedTradesCount > 0 && (
                           <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
                             {completedTradesCount}
@@ -2704,21 +2895,13 @@ const Dashboard: React.FC = () => {
                     </Tab>
                   </TabList>
                 </Tabs>
-
-                {/* Right: Filter/Sort Controls - Icon Buttons */}
-                <HStack
-                  spacing={{ base: 1, md: 3 }}
-                  flexShrink={0}
-                  justify="flex-end"
-                >
-                </HStack>
               </Flex>
             </Box>
 
             <Tabs index={activeTab} onChange={setActiveTab}>
               <TabPanels>
                 {/* Products Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
                     {/* Filters and Actions (Search moved to top bar) */}
                     <HStack spacing={3} flexWrap="wrap" justify="space-between">
@@ -2754,7 +2937,7 @@ const Dashboard: React.FC = () => {
                     {productsLoading && !hasInitiallyLoaded.current ? (
                       <Fade in={true}>
                         {productViewMode === 'grid' ? (
-                          <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                          <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                             {Array.from({ length: 8 }).map((_, i) => (
                               <ProductCardSkeleton key={i} />
                             ))}
@@ -2777,14 +2960,14 @@ const Dashboard: React.FC = () => {
                       <Fade in={true}>
                         <Box
                           textAlign="center"
-                          py={16}
+                          py={{ base: 10, md: 16 }}
                           bg="green.50"
                           borderRadius="lg"
                           border="2px dashed"
                           borderColor="green.200"
                         >
-                          <Icon as={FiShoppingBag} boxSize={16} color="green.300" mb={4} />
-                          <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                          <Icon as={FiShoppingBag} boxSize={{ base: 12, md: 16 }} color="green.300" mb={4} />
+                          <Text color="gray.600" fontSize={{ base: 'md', md: 'lg' }} fontWeight="medium" mb={2}>
                             {(unifiedSearch || productSearch) || productFilter !== 'all'
                               ? 'No products match your search/filters'
                               : 'Start by adding your first product!'}
@@ -2881,7 +3064,7 @@ const Dashboard: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                        <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                           {getPaginatedItems(
                             [...filteredProducts].sort((a, b) => {
                               const aDate = new Date(a.created_at).getTime()
@@ -2905,7 +3088,7 @@ const Dashboard: React.FC = () => {
                 </TabPanel>
 
                 {/* Offers Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
                     {/* Sub-tabs for Offers */}
                     <Tabs
@@ -2918,24 +3101,25 @@ const Dashboard: React.FC = () => {
                       colorScheme="brand"
                     >
                       <TabList
-                        flexWrap={{ base: 'nowrap', md: 'nowrap' }}
+                        flexWrap="nowrap"
                         overflowX={{ base: 'auto', md: 'visible' }}
-                        justifyContent={{ base: 'space-between', md: 'flex-start' }}
+                        justifyContent={{ base: 'flex-start', md: 'flex-start' }}
                         w="100%"
                         sx={{
                           '&::-webkit-scrollbar': { display: 'none' },
                           scrollbarWidth: 'none',
                           msOverflowStyle: 'none',
-                          gap: '4px',
+                          gap: { base: '6px', md: '8px' },
                           '& > button': {
-                            px: '6px !important',
-                            py: '4px !important',
+                            px: { base: '10px', md: '14px' },
+                            py: { base: '5px', md: '6px' },
                             minW: 'fit-content',
-                            flex: { base: 'initial', md: 'initial' },
+                            flex: 'none',
+                            fontSize: { base: 'xs', md: 'sm' },
                           }
                         }}
                       >
-                        <Tab fontSize={{ base: '9px', md: 'sm' }} mr={{ base: 8, md: 0 }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Buyout Offers</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Buyout</Box>
                           {offersStats.buyout > 0 && (
@@ -2944,7 +3128,7 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 12, md: 0 }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
                           {offersStats.sentPending > 0 && (
@@ -2953,7 +3137,7 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }} mr={{ base: 10, md: 0 }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
                           {offersStats.receivedPending > 0 && (
@@ -2962,7 +3146,7 @@ const Dashboard: React.FC = () => {
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }}>
+                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
                           <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
                           <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
                           {offersStats.ongoing > 0 && (
@@ -2986,7 +3170,7 @@ const Dashboard: React.FC = () => {
                         {/* Buyout Offers */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3054,7 +3238,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = true
                                   return (
@@ -3099,7 +3283,7 @@ const Dashboard: React.FC = () => {
                         {/* Sent Offers */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3166,7 +3350,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = false
                                   return (
@@ -3211,7 +3395,7 @@ const Dashboard: React.FC = () => {
                         {/* Received Offers */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3279,7 +3463,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = true
                                   return (
@@ -3324,7 +3508,7 @@ const Dashboard: React.FC = () => {
                         {/* Ongoing Trades */}
                         <TabPanel px={0}>
                           {offersLoading ? (
-                            <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }}>
                               {Array.from({ length: 8 }).map((_, i) => (
                                 <ProductCardSkeleton key={i} />
                               ))}
@@ -3447,7 +3631,7 @@ const Dashboard: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4} mb={6}>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3, xl: 4 }} spacing={{ base: 3, md: 4 }} mb={6}>
                                 {paginatedTrades.map((trade) => {
                                   const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
                                   return (
@@ -3542,7 +3726,7 @@ const Dashboard: React.FC = () => {
                 </TabPanel>
 
                 {/* Multi-Way Trades Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   {multiWayTradesLoading ? (
                     <Center py={12}>
                       <Spinner size="lg" color="brand.500" />
@@ -3559,7 +3743,7 @@ const Dashboard: React.FC = () => {
                         </Text>
                       </Box>
                     ) : (
-                      <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
                         {/* Mock Trade Loop 1 */}
                         <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                           <MultiWayTradeUI
@@ -3568,7 +3752,8 @@ const Dashboard: React.FC = () => {
                               { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
                               { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
                             ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onJoinTrade={() => toast({
+        id: "dashboard-joined-trade-loop", title: 'Joined Trade Loop', status: 'success' })}
                             onViewDetails={() => { }}
                             onDecline={() => { }}
                             isLoading={false}
@@ -3584,7 +3769,8 @@ const Dashboard: React.FC = () => {
                               { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
                               { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
                             ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onJoinTrade={() => toast({
+        id: "dashboard-joined-trade-loop-2", title: 'Joined Trade Loop', status: 'success' })}
                             onViewDetails={() => { }}
                             onDecline={() => { }}
                             isLoading={false}
@@ -3601,7 +3787,8 @@ const Dashboard: React.FC = () => {
                               { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
                               { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
                             ]}
-                            onJoinTrade={() => toast({ title: 'Joined Trade Loop', status: 'success' })}
+                            onJoinTrade={() => toast({
+        id: "dashboard-joined-trade-loop-3", title: 'Joined Trade Loop', status: 'success' })}
                             onViewDetails={() => { }}
                             onDecline={() => { }}
                             isLoading={false}
@@ -3664,7 +3851,7 @@ const Dashboard: React.FC = () => {
                       ))}
                     </Box>
                   ) : (
-                    <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+                    <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
                       {multiWayTrades.map((trade) => (
                         <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                           <MultiWayTradeUI
@@ -3681,7 +3868,7 @@ const Dashboard: React.FC = () => {
                 </TabPanel>
 
                 {/* Trade History Tab */}
-                <TabPanel>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
                     {/* Trade History Grid */}
                     {allCompletedTrades.length === 0 ? (
@@ -4269,7 +4456,7 @@ const Dashboard: React.FC = () => {
                     </Text>
                   </VStack>
 
-                  <HStack spacing={3} w="full">
+                <HStack spacing={3} w="full">
                     <Button
                       variant="outline"
                       size="md"
@@ -4278,6 +4465,16 @@ const Dashboard: React.FC = () => {
                     >
                       Keep Offer
                     </Button>
+                  <Button
+                    colorScheme="green"
+                    variant="outline"
+                    size="md"
+                    flex={1}
+                    onClick={handleConvertToMultiWay}
+                    isDisabled={isProcessing}
+                  >
+                    Convert to Multi-Way
+                  </Button>
                     <Button
                       colorScheme="red"
                       size="md"
@@ -4296,6 +4493,8 @@ const Dashboard: React.FC = () => {
           </Modal>
 
           {/* Notifications are handled on their own page at /notifications */}
+          {/* Bottom spacer so content isn't hidden behind FloatingTab on mobile */}
+          <Box display={{ base: 'block', sm: 'none' }} h="80px" flexShrink={0} />
         </VStack>
       </Container>
 

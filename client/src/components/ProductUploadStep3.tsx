@@ -17,6 +17,10 @@ import {
   AlertIcon,
   Spinner,
   Center,
+  Wrap,
+  WrapItem,
+  Heading,
+  Skeleton,
 } from '@chakra-ui/react'
 import { ArrowBackIcon, CheckCircleIcon } from '@chakra-ui/icons'
 import { MdCheckCircle } from 'react-icons/md'
@@ -32,6 +36,11 @@ interface ReviewProduct {
   location: string
   allowBuying: boolean
   barterOnly: boolean
+  wants?: string
+  wanted_categories?: string[]
+  estimated_value_min?: number
+  estimated_value_max?: number
+  isAnalyzing?: boolean
 }
 
 interface ProductUploadStep3Props {
@@ -54,6 +63,7 @@ const ProductUploadStep3: React.FC<ProductUploadStep3Props> = ({
   const handleSubmit = async () => {
     if (!agreeTerms) {
       toast({
+        id: "productuploadstep3-please-accept-terms",
         title: 'Please accept terms',
         description: 'You must agree to listing terms before posting',
         status: 'warning',
@@ -138,6 +148,32 @@ const ProductUploadStep3: React.FC<ProductUploadStep3Props> = ({
           </Text>
         </VStack>
 
+        {/* AI Estimated Value Ribbon */}
+        {(product.estimated_value_min !== undefined || product.isAnalyzing) && (
+          <Box
+            p={4}
+            bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+            borderRadius="xl"
+            textAlign="center"
+            color="white"
+            shadow="md"
+          >
+            <Text fontSize="xs" fontWeight="semibold" opacity={0.9} mb={1} textTransform="uppercase" letterSpacing="1px">
+              Estimated Market Value
+            </Text>
+            {product.isAnalyzing ? (
+              <Skeleton height="36px" borderRadius="md" speed={0.8} />
+            ) : (
+              <Heading fontSize="3xl" fontWeight="800">
+                ₱{(product.estimated_value_min || 0).toLocaleString()} – ₱{(product.estimated_value_max || 0).toLocaleString()}
+              </Heading>
+            )}
+            <Text fontSize="2xs" opacity={0.85} mt={2}>
+              {product.isAnalyzing ? 'AI is analyzing your product...' : 'Based on AI analysis of product condition and market data'}
+            </Text>
+          </Box>
+        )}
+
         <Divider />
 
         {/* Product Details Card */}
@@ -183,14 +219,43 @@ const ProductUploadStep3: React.FC<ProductUploadStep3Props> = ({
             </HStack>
 
             {product.location && (
-              <HStack justify="space-between">
+              <HStack justify="space-between" align="start">
                 <Text fontSize="sm" color="gray.600">
                   Location
                 </Text>
-                <Text fontSize="sm" fontWeight="500" color="gray.900">
+                <Text fontSize="sm" fontWeight="500" color="gray.900" textAlign="right">
                   📍 {product.location}
                 </Text>
               </HStack>
+            )}
+
+            {(product.wants || (product.wanted_categories && product.wanted_categories.length > 0)) && (
+              <>
+                <Divider />
+                <VStack align="stretch" spacing={2}>
+                  <Text fontSize="xs" color="gray.500" fontWeight="600" textTransform="uppercase" letterSpacing="0.5px">
+                    Looking For
+                  </Text>
+                  
+                  {product.wanted_categories && product.wanted_categories.length > 0 && (
+                    <Wrap spacing={1}>
+                      {product.wanted_categories.map(cat => (
+                        <WrapItem key={cat}>
+                          <Badge size="sm" variant="subtle" colorScheme="brand" borderRadius="full">
+                            {cat}
+                          </Badge>
+                        </WrapItem>
+                      ))}
+                    </Wrap>
+                  )}
+                  
+                  {product.wants && (
+                    <Text fontSize="sm" color="gray.700" fontStyle="italic">
+                      " {product.wants} "
+                    </Text>
+                  )}
+                </VStack>
+              </>
             )}
           </VStack>
 
