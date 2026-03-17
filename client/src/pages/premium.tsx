@@ -34,6 +34,7 @@ import { TradeLoop, MultiWayTrade } from '../types'
 import { fetchTradeLoops, fetchMultiWayTrade } from '../services/tradeService'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
 import { useDisclosure } from '@chakra-ui/react'
+import { api } from '../services/api'
 
 const Premium: React.FC = () => {
   const { user } = useAuth()
@@ -292,6 +293,29 @@ const Premium: React.FC = () => {
     )
   }
 
+  const [upgrading, setUpgrading] = useState(false)
+
+  const handleUpgrade = async () => {
+    try {
+      setUpgrading(true)
+      const { data } = await api.post('/api/payments/subscription')
+      if (data?.success && data?.data?.checkout_url) {
+        window.location.href = data.data.checkout_url
+      } else {
+        throw new Error('Failed to create payment session')
+      }
+    } catch (error: any) {
+      toast({
+        id: 'premium-upgrade-error',
+        title: 'Upgrade Failed',
+        description: error.response?.data?.error || error.message || 'Something went wrong',
+        status: 'error',
+      })
+    } finally {
+      setUpgrading(false)
+    }
+  }
+
   const renderLockedContent = () => {
     return (
       <Card bg={lockedBg} borderWidth="2px" borderColor={borderColor}>
@@ -310,14 +334,8 @@ const Premium: React.FC = () => {
               colorScheme="purple"
               size="lg"
               leftIcon={<FaCrown />}
-              onClick={() => {
-                toast({
-        id: "premium-upgrade",
-                  title: 'Upgrade',
-                  description: 'Premium upgrade functionality coming soon',
-                  status: 'info',
-                })
-              }}
+              isLoading={upgrading}
+              onClick={handleUpgrade}
             >
               Upgrade to Premium
             </Button>

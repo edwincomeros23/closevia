@@ -108,7 +108,7 @@ func (h *VerificationHandler) StartVerification(c *fiber.Ctx) error {
 	go services.SendSchoolEmailOTP(req.SchoolEmail, userName, otpCode)
 
 	msg := "Verification code sent to your school email. Enter the code to verify."
-	if os.Getenv("MAILGUN_DOMAIN") == "" || os.Getenv("MAILGUN_API_KEY") == "" {
+	if os.Getenv("BREVO_API_KEY") == "" || os.Getenv("BREVO_SENDER_EMAIL") == "" {
 		msg += fmt.Sprintf(" (DEV CODE: %s)", otpCode)
 	}
 
@@ -216,7 +216,7 @@ func (h *VerificationHandler) ResendSchoolEmailCode(c *fiber.Ctx) error {
 	go services.SendSchoolEmailOTP(schoolEmail.String, userName, otpCode)
 
 	msg := "Verification code resent to your school email."
-	if os.Getenv("MAILGUN_DOMAIN") == "" || os.Getenv("MAILGUN_API_KEY") == "" {
+	if os.Getenv("BREVO_API_KEY") == "" || os.Getenv("BREVO_SENDER_EMAIL") == "" {
 		msg += fmt.Sprintf(" (DEV CODE: %s)", otpCode)
 	}
 

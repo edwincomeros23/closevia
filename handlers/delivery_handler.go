@@ -140,15 +140,15 @@ func (h *DeliveryHandler) CheckRiderStatus(c *fiber.Ctx) error {
 	_ = h.db.QueryRow("SELECT COUNT(*) FROM deliveries WHERE rider_id = ? AND status = 'delivered'", riderID).Scan(&completedCount)
 
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
-		"is_rider":           true,
-		"rider_id":           riderID,
-		"is_active":          isActive,
-		"name":               name,
-		"vehicle_type":       vehicleType,
-		"vehicle_plate":      vehiclePlate.String,
-		"phone":              phone,
-		"rating":             rating,
-		"created_at":         createdAt,
+		"is_rider":             true,
+		"rider_id":             riderID,
+		"is_active":            isActive,
+		"name":                 name,
+		"vehicle_type":         vehicleType,
+		"vehicle_plate":        vehiclePlate.String,
+		"phone":                phone,
+		"rating":               rating,
+		"created_at":           createdAt,
 		"completed_deliveries": completedCount,
 	}})
 }
@@ -1169,9 +1169,9 @@ func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID 
 
 	// Notify both parties
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		buyerID, "A delivery has been created for your trade. A rider will pick it up soon.")
+		buyerID, "Your offer has been accepted! A delivery will be arranged shortly.")
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		sellerID, "A delivery request has been created. Please prepare items for pickup.")
+		sellerID, "You accepted the offer. A delivery request is being prepared.")
 
 	return deliveryID, nil
 }

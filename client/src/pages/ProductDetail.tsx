@@ -111,6 +111,9 @@ const ProductDetail: React.FC = () => {
   const [isVoting, setIsVoting] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
   const [isWishlisting, setIsWishlisting] = useState(false)
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  const [upgradingPremium, setUpgradingPremium] = useState(false)
+  const [boosting, setBoosting] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -761,6 +764,55 @@ const ProductDetail: React.FC = () => {
     }
   }
 
+  const handleUpgradeToPremium = async () => {
+    if (!product || upgradingPremium) return
+    try {
+      setUpgradingPremium(true)
+      const response = await api.post(`/api/payments/premium/${product.id}`)
+      if (response.data?.success && response.data?.data?.checkout_url) {
+        window.location.href = response.data.data.checkout_url
+      } else {
+        throw new Error('Failed to create checkout session')
+      }
+    } catch (error: any) {
+      toast({
+        id: 'premium-upgrade-error',
+        title: 'Upgrade Failed',
+        description: error.response?.data?.error || error.message || 'An error occurred',
+        status: 'error',
+      })
+    } finally {
+      setUpgradingPremium(false)
+    }
+  }
+
+  const handleBoostNow = async () => {
+    if (!product || boosting) return
+    try {
+      setBoosting(true)
+      // For now, boosting is handled via direct API call, but we want to track it
+      const response = await api.post(`/api/products/${product.id}/boost`)
+      if (response.data?.success) {
+        toast({
+          id: 'boost-success',
+          title: 'Boost Successful!',
+          description: 'Your product visibility has been increased.',
+          status: 'success',
+        })
+        fetchProduct() // Refresh to update boosted_at
+      }
+    } catch (error: any) {
+      toast({
+        id: 'boost-error',
+        title: 'Boost Failed',
+        description: error.response?.data?.error || error.message || 'An error occurred',
+        status: 'error'
+      })
+    } finally {
+      setBoosting(false)
+    }
+  }
+
   const shareToSocial = (platform: string) => {
     // Use slug-based URL if available
     const productUrl = product?.slug
@@ -1261,30 +1313,59 @@ const ProductDetail: React.FC = () => {
                   )}
 
                   {isOwner && (
-                    <HStack spacing={{ base: 2, md: 4 }} w="full">
-                      <Button
-                        variant="outline"
-                        colorScheme="gray"
-                        size="lg"
-                        flex={1}
-                        borderRadius="8px"
-                        borderColor="gray.200"
-                        onClick={() => navigate(`/edit-product/${product.id}`)}
-                      >
-                        Edit Product
-                      </Button>
-                      <Button
-                        variant="outline"
-                        colorScheme="gray"
-                        size="lg"
-                        flex={1}
-                        borderRadius="8px"
-                        borderColor="gray.200"
-                        onClick={() => navigate('/dashboard')}
-                      >
-                        View Dashboard
-                      </Button>
-                    </HStack>
+                    <VStack spacing={4} w="full" align="stretch">
+                      <HStack spacing={{ base: 2, md: 4 }} w="full">
+                        <Button
+                          variant="outline"
+                          colorScheme="gray"
+                          size="lg"
+                          flex={1}
+                          borderRadius="8px"
+                          borderColor="gray.200"
+                          onClick={() => navigate(`/edit-product/${product.id}`)}
+                        >
+                          Edit Product
+                        </Button>
+                        <Button
+                          variant="outline"
+                          colorScheme="gray"
+                          size="lg"
+                          flex={1}
+                          borderRadius="8px"
+                          borderColor="gray.200"
+                          onClick={() => navigate('/dashboard')}
+                        >
+                          View Dashboard
+                        </Button>
+                      </HStack>
+
+                      <HStack spacing={{ base: 2, md: 4 }} w="full">
+                        {!product.premium && (
+                          <Button
+                            colorScheme="purple"
+                            size="lg"
+                            flex={1}
+                            borderRadius="8px"
+                            leftIcon={<FiStar />}
+                            isLoading={upgradingPremium}
+                            onClick={handleUpgradeToPremium}
+                          >
+                            Upgrade to Premium
+                          </Button>
+                        )}
+                        <Button
+                          colorScheme="blue"
+                          size="lg"
+                          flex={!product.premium ? 1 : 2}
+                          borderRadius="8px"
+                          leftIcon={<FiTrendingUp />}
+                          isLoading={boosting}
+                          onClick={handleBoostNow}
+                        >
+                          Boost listing
+                        </Button>
+                      </HStack>
+                    </VStack>
                   )}
 
                   {/* Unavailable Status Messages */}
