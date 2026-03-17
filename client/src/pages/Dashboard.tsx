@@ -746,6 +746,23 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  const handleConvertToMultiWay = () => {
+    if (!tradeToDecline) {
+      setDeclineModalOpen(false)
+      return
+    }
+
+    setDeclineModalOpen(false)
+    toast({
+      title: 'Searching for multi-way trade',
+      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
+      status: 'info',
+      duration: 5000
+    })
+
+    navigate('/premium')
+  }
+
   const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'expired']
 
   // Computed stats for offers (excluding completed - those go to Trade History)
