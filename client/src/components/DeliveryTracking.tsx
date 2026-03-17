@@ -85,6 +85,7 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to fetch delivery')
       toast({
+        id: "deliverytracking-error",
         title: 'Error',
         description: 'Failed to load delivery information',
         status: 'error',

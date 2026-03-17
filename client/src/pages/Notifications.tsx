@@ -72,12 +72,15 @@ const Notifications: React.FC = () => {
       setLoading(true)
       setCurrentPage(1)
       setError('')
-      const response = await api.get('/api/notifications')
+      // Admin only sees report notifications
+      const endpoint = user?.role === 'admin' ? '/api/notifications?type=report' : '/api/notifications'
+      const response = await api.get(endpoint)
       const list: Notification[] = Array.isArray(response.data?.data) ? response.data.data : []
       setNotifications(list)
     } catch (error: any) {
       setError(error.message || 'Failed to fetch notifications')
       toast({
+        id: "notifications-error",
         title: 'Error',
         description: 'Failed to load notifications',
         status: 'error',
@@ -99,6 +102,7 @@ const Notifications: React.FC = () => {
       )
     } catch (error: any) {
       toast({
+        id: "notifications-error-2",
         title: 'Error',
         description: 'Failed to mark notification as read',
         status: 'error',
@@ -115,6 +119,7 @@ const Notifications: React.FC = () => {
         prev.map(notif => ({ ...notif, read: true }))
       )
       toast({
+        id: "notifications-success",
         title: 'Success',
         description: 'All notifications marked as read',
         status: 'success',
@@ -123,6 +128,7 @@ const Notifications: React.FC = () => {
       })
     } catch (error: any) {
       toast({
+        id: "notifications-error-3",
         title: 'Error',
         description: 'Failed to mark all notifications as read',
         status: 'error',
@@ -142,6 +148,8 @@ const Notifications: React.FC = () => {
         return '🔄'
       case 'trade_update':
         return '🔁'
+      case 'report':
+        return '🚨'
       case 'system':
         return '🔔'
       default:
@@ -159,6 +167,8 @@ const Notifications: React.FC = () => {
         return 'purple'
       case 'trade_update':
         return 'orange'
+      case 'report':
+        return 'red'
       case 'system':
         return 'purple'
       default:
@@ -251,20 +261,20 @@ const Notifications: React.FC = () => {
           <Flex align="center" justify="space-between" flexWrap="wrap">
             <VStack align="start" spacing={1} minW={0}>
               <Heading size="md" color="brand.500" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
-                Notifications
+                {user?.role === 'admin' ? 'User Reports' : 'Notifications'}
               </Heading>
               <Text color="gray.600" fontSize="sm" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">
                 {unreadCount > 0 ? `${unreadCount} unread${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
               </Text>
             </VStack>
 
-            <HStack spacing={3} align="center" mt={{ base: 3, md: 0 }}>
+            <HStack spacing={3} align="center" mt={{ base: 3, md: 0 }} flexWrap="wrap">
               <Input
-                placeholder="Search products or notifications..."
+                placeholder="Search..."
                 size="sm"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setCurrentPage(1); setPaginationStartPage(1) }}
-                w={{ base: '160px', md: '240px' }}
+                w={{ base: '140px', md: '240px' }}
                 bg={useColorModeValue('gray.50', 'gray.700')}
               />
               {unreadCount > 0 && (
@@ -314,10 +324,12 @@ const Notifications: React.FC = () => {
               ) : (
                 <Box textAlign="center" py={12}>
                   <Text fontSize="lg" color="gray.500" mb={4}>
-                    No notifications yet
+                    {user?.role === 'admin' ? 'No user reports yet' : 'No notifications yet'}
                   </Text>
                   <Text color="gray.400">
-                    We'll notify you about orders, messages, and important updates here.
+                    {user?.role === 'admin'
+                      ? "You'll be notified here when a user reports another user."
+                      : "We'll notify you about orders, messages, and important updates here."}
                   </Text>
                 </Box>
               )
@@ -334,14 +346,14 @@ const Notifications: React.FC = () => {
                   _hover={{ shadow: 'md' }}
                 >
                   <CardHeader pb={2}>
-                    <HStack justify="space-between" align="start">
-                      <HStack spacing={3} align="start">
+                    <HStack justify="space-between" align="start" flexWrap="wrap" gap={2}>
+                      <HStack spacing={3} align="start" minW={0} flex={1}>
                         <Text fontSize="2xl">
                           {getNotificationIcon(notification.type)}
                         </Text>
-                        <VStack align="start" spacing={1}>
-                          <HStack spacing={2}>
-                            <Text fontWeight="semibold" fontSize="md">
+                        <VStack align="start" spacing={1} minW={0}>
+                          <HStack spacing={2} flexWrap="wrap">
+                            <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }} noOfLines={1}>
                               {notification.type.replace('_', ' ').toUpperCase()}
                             </Text>
                             {!notification.read && (

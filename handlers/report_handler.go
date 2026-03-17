@@ -103,6 +103,28 @@ func (h *ReportHandler) CreateReport(c *fiber.Ctx) error {
 
 	reportID, _ := result.LastInsertId()
 
+	// Get reporter name for notification message
+	var reporterName string
+	h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&reporterName)
+	var reportedName string
+	h.db.QueryRow("SELECT name FROM users WHERE id = ?", req.ReportedUserID).Scan(&reportedName)
+
+	// Notify all admin users about the new report
+	adminRows, err := h.db.Query("SELECT id FROM users WHERE role = 'admin'")
+	if err == nil {
+		defer adminRows.Close()
+		notifMsg := fmt.Sprintf("%s reported %s for %s", reporterName, reportedName, req.Reason)
+		for adminRows.Next() {
+			var adminID int
+			if adminRows.Scan(&adminID) == nil {
+				h.db.Exec(
+					"INSERT INTO notifications (user_id, type, message, is_read, created_at) VALUES (?, 'report', ?, FALSE, NOW())",
+					adminID, notifMsg,
+				)
+			}
+		}
+	}
+
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
 		Message: "Report submitted successfully",
@@ -169,9 +191,9 @@ func (h *ReportHandler) GetReports(c *fiber.Ctx) error {
 
 	type RichReport struct {
 		models.Report
-		ReporterName  string `json:"reporter_name"`
-		ReportedName  string `json:"reported_name"`
-		ProductTitle  string `json:"product_title"`
+		ReporterName string `json:"reporter_name"`
+		ReportedName string `json:"reported_name"`
+		ProductTitle string `json:"product_title"`
 	}
 
 	var reports []RichReport
@@ -326,12 +348,12 @@ func (h *ReportHandler) GetUserReports(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data: fiber.Map{
-			"total":          totalReports,
-			"inappropriate":  inappropriateCount,
-			"counterfeit":    counterfeitCount,
-			"spam":           spamCount,
-			"scam":           scamCount,
-			"is_flagged":     totalReports > 0,
+			"total":         totalReports,
+			"inappropriate": inappropriateCount,
+			"counterfeit":   counterfeitCount,
+			"spam":          spamCount,
+			"scam":          scamCount,
+			"is_flagged":    totalReports > 0,
 		},
 	})
 }

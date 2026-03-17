@@ -76,6 +76,7 @@ const RemittanceLedger: React.FC = () => {
   const handleRemitFees = async () => {
     if (!selectedPaymentMethod) {
       toast({
+        id: "remittanceledger-select-payment-method",
         title: 'Select Payment Method',
         description: 'Choose how you want to pay',
         status: 'warning',
@@ -89,6 +90,7 @@ const RemittanceLedger: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 2000))
       
       toast({
+        id: "remittanceledger-payment-successful",
         title: 'Payment Successful! ✅',
         description: `₱${totalFeesDue} remitted via ${selectedPaymentMethod}`,
         status: 'success',
@@ -99,6 +101,7 @@ const RemittanceLedger: React.FC = () => {
       navigate('/rider-queue')
     } catch (error) {
       toast({
+        id: "remittanceledger-payment-failed",
         title: 'Payment Failed',
         description: 'Please try again',
         status: 'error',

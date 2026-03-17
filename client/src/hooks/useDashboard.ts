@@ -10,6 +10,7 @@ export const DASHBOARD_QUERY_KEYS = {
   sentOffers: ['dashboard', 'offers', 'sent'] as const,
   receivedOffers: ['dashboard', 'offers', 'received'] as const,
   ongoingTrades: ['dashboard', 'offers', 'ongoing'] as const,
+  archivedTrades: ['dashboard', 'offers', 'archived'] as const,
   tradeHistory: ['dashboard', 'tradeHistory'] as const,
 }
 
@@ -167,6 +168,38 @@ export const useOngoingTrades = () => {
     refetchOnMount: true,
     refetchOnWindowFocus: true,
     refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    placeholderData: keepPreviousData,
+  })
+}
+
+// Custom hook for archived (expired) trades with caching
+export const useArchivedTrades = () => {
+  return useQuery({
+    queryKey: DASHBOARD_QUERY_KEYS.archivedTrades,
+    queryFn: async (): Promise<Trade[]> => {
+      const [incomingExpired, outgoingExpired] = await Promise.all([
+        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'expired', limit: 100 } }),
+        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'expired', limit: 100 } })
+      ])
+
+      const extractData = (response: any) => {
+        return Array.isArray(response?.data?.data) ? response.data.data : (Array.isArray(response?.data) ? response.data : [])
+      }
+
+      const allTrades = [
+        ...extractData(incomingExpired),
+        ...extractData(outgoingExpired)
+      ]
+
+      // Deduplicate by trade ID
+      const uniqueTrades = new Map<number, Trade>()
+      allTrades.forEach((tr: Trade) => {
+        if (tr && tr.id) uniqueTrades.set(tr.id, tr)
+      })
+
+      return Array.from(uniqueTrades.values())
+    },
+    staleTime: 1000 * 60 * 5,
     placeholderData: keepPreviousData,
   })
 }

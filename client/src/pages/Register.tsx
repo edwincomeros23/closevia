@@ -117,6 +117,7 @@ const Register: React.FC = () => {
 
       if (result.requiresVerification) {
         toast({
+        id: "register-account-created",
           title: 'Account created!',
           description: 'Please check your email for a verification code.',
           status: 'success',
@@ -133,6 +134,7 @@ const Register: React.FC = () => {
         const isWmsu = email.toLowerCase().endsWith('@wmsu.edu.ph')
         if (isWmsu) {
           toast({
+        id: "register-premium-access-granted",
             title: '🎓 Premium Access Granted!',
             description: 'As a verified WMSU student, you now have free Premium access including Multi-Way Trading Loops!',
             status: 'success',
@@ -142,6 +144,7 @@ const Register: React.FC = () => {
           })
         } else {
           toast({
+        id: "register-welcome",
             title: 'Welcome!',
             description: 'Your account has been created.',
             status: 'success',
@@ -190,7 +193,7 @@ const Register: React.FC = () => {
             <Box textAlign="center" mt={{ base: 8, md: 0 }} mb={{ base: 2, md: 0 }}>
               {/* Nature Illustration - SVG Plants */}
               <Flex justify="center" mb={6} h="100px">
-                <svg width="180" height="100" viewBox="0 0 200 120" fill="none">
+                <svg width="100%" height="100" viewBox="0 0 200 120" fill="none" style={{ maxWidth: '180px' }}>
                   {/* Left plant */}
                   <g>
                     <path d="M 40 100 Q 30 80 35 60 Q 40 40 45 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round" />
