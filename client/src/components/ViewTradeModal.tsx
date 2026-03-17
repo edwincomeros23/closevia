@@ -539,40 +539,39 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 })}
               </VStack>
 
-                <Box p={4} bg="gray.50" borderRadius="md" mt={3}>
-                  <HStack justify="space-between" mb={2}>
-                    <Text fontSize="sm" fontWeight="semibold">
-                      Payment Amount:
-                    </Text>
-                    <Text fontSize="lg" fontWeight="bold" color="brand.500">
-                      ₱{totalCost.toFixed(2)}
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between" mb={3} fontSize="xs" color="gray.600">
-                    <Text>Product + Delivery Fee:</Text>
-                    <Text>
-                      ₱{(requestedProduct?.price || 0).toFixed(2)} + ₱
-                      {deliveryOptions[deliveryState.deliveryType].fee}
-                    </Text>
-                  </HStack>
-                </Box>
-
-                <Button
-                  colorScheme="green"
-                  size="md"
-                  onClick={handleConfirmPayment}
-                  isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
-                  isLoading={confirmingPayment}
-                  loadingText="Confirming..."
-                  leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
-                  w="full"
-                  mt={3}
-                >
-                  {deliveryState.paymentConfirmed
-                    ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured`
-                    : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
-                </Button>
+              <Box p={4} bg="gray.50" borderRadius="md" mt={3}>
+                <HStack justify="space-between" mb={2}>
+                  <Text fontSize="sm" fontWeight="semibold">
+                    Payment Amount:
+                  </Text>
+                  <Text fontSize="lg" fontWeight="bold" color="brand.500">
+                    ₱{totalCost.toFixed(2)}
+                  </Text>
+                </HStack>
+                <HStack justify="space-between" mb={3} fontSize="xs" color="gray.600">
+                  <Text>Product + Delivery Fee:</Text>
+                  <Text>
+                    ₱{(requestedProduct?.price || 0).toFixed(2)} + ₱
+                    {deliveryOptions[deliveryState.deliveryType].fee}
+                  </Text>
+                </HStack>
               </Box>
+
+              <Button
+                colorScheme="green"
+                size="md"
+                onClick={handleConfirmPayment}
+                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
+                isLoading={confirmingPayment}
+                loadingText="Confirming..."
+                leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
+                w="full"
+                mt={3}
+              >
+                {deliveryState.paymentConfirmed
+                  ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured`
+                  : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
+              </Button>
 
               <Divider />
 
@@ -609,7 +608,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                   </Text>
                 </Box>
               </Box>
-
             </VStack>
           </AccordionPanel>
         </AccordionItem>
