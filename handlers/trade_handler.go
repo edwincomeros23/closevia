@@ -1153,9 +1153,9 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 
 	// Notify both parties
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		buyerID, "A delivery has been created for your trade. A rider will pick it up soon.")
+		buyerID, "Your offer has been accepted! A delivery will be arranged shortly.")
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		sellerID, "A delivery request has been created. Please prepare items for pickup.")
+		sellerID, "You accepted the offer. A delivery request is being prepared.")
 
 	// Send SSE events
 	publishToUser(buyerID, sseEvent{Type: "delivery_created", Data: fiber.Map{"trade_id": tradeID, "delivery_id": deliveryID}})
