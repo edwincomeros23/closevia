@@ -346,6 +346,7 @@ const Home: React.FC = () => {
     } else {
       // Proceed with purchase
       toast({
+        id: "home-purchase-initiated",
         title: 'Purchase initiated!',
         description: 'Contact the trader to complete the purchase.',
         status: 'success',
@@ -382,6 +383,7 @@ const Home: React.FC = () => {
       setOffersForProduct(filteredOffers)
     } catch (error) {
       toast({
+        id: "home-error",
         title: 'Error',
         description: 'Failed to load offers for this product',
         status: 'error',
@@ -492,25 +494,20 @@ const Home: React.FC = () => {
       <Grid
         templateColumns={{
           base: 'repeat(2, 1fr)',
-          md: 'repeat(3, 1fr)',
-          lg: 'repeat(4, 1fr)',
-          xl: 'repeat(5, 1fr)',
-          '2xl': 'repeat(5, 1fr)',
+          sm: 'repeat(3, 1fr)',
+          md: 'repeat(5, 1fr)',
         }}
-        gap={{ base: 2, md: 3, lg: 4, xl: 4 }}
-        alignItems="stretch"
-        justifyContent="center"
-        mx="auto"
+        gap={{ base: 2, md: 3 }}
+        w="full"
         sx={{
-          '@media (max-width: 850px)': {
-            gridTemplateColumns: '1fr 1fr !important',
-            gap: '10px',
+          '& > *': {
+            minW: 0,
           },
         }}
       >
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
-            <Box key={`product-${item.data.id}`} sx={{ '@media (max-width: 850px)': { minWidth: 0, maxWidth: 'none' } }}>
+            <Box key={`product-${item.data.id}`} w="full" h="full">
               <ProductCard
                 product={item.data}
                 onTradeClick={handleTradeClick}
@@ -520,7 +517,7 @@ const Home: React.FC = () => {
               />
             </Box>
           ) : (
-            <Box key={`ad-${item.data.id}`}>
+            <Box key={`ad-${item.data.id}`} w="full" h="full">
               <StudentAdCard ad={item.data} />
             </Box>
           )
@@ -1035,6 +1032,10 @@ const Home: React.FC = () => {
         </Box>
       </Box>
 
+      <Box mt={{ base: 0, md: 6, lg: 8 }}>
+        <ActivityFeed />
+      </Box>
+
       {/* Main Content - desktop: centered max-width */}
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
@@ -1378,10 +1379,6 @@ const Home: React.FC = () => {
           </ModalBody>
         </ModalContent>
       </Modal>
-
-      <Box mt={12}>
-        <ActivityFeed />
-      </Box>
 
       <Box mb={{ base: 5, md: 0 }}>
         <FloatingTab />

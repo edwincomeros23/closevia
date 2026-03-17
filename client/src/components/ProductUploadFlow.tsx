@@ -111,6 +111,7 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
       }))
 
       toast({
+        id: "productuploadflow-ai-analysis-complete",
         title: '✨ AI Analysis Complete',
         description: `Results from ${aiAnalysis.provider} (${aiAnalysis.time_ms}ms)${aiAnalysis.retried ? ' - Used backup AI' : ''}`,
         status: 'success',
@@ -184,6 +185,7 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
       })
 
       toast({
+        id: "productuploadflow-product-posted-successfully",
         title: '✓ Product posted successfully!',
         description: 'Your listing is now live',
         status: 'success',
@@ -200,6 +202,7 @@ const ProductUploadFlow: React.FC<ProductUploadFlowProps> = ({ onSuccess }) => {
     } catch (error: any) {
       console.error('Upload error:', error)
       toast({
+        id: "productuploadflow-failed-to-post-product",
         title: 'Failed to post product',
         description: error?.response?.data?.message || 'Please try again',
         status: 'error',

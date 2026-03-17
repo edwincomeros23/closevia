@@ -124,6 +124,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     // Validate file type
     if (!file.type.startsWith('image/')) {
       toast({
+        id: "tradecompletionmodal-invalid-file-type",
         title: 'Invalid file type',
         description: 'Please upload an image file',
         status: 'error',
@@ -134,6 +135,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast({
+        id: "tradecompletionmodal-file-too-large",
         title: 'File too large',
         description: 'Please upload an image smaller than 5MB',
         status: 'error',
@@ -157,6 +159,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       if (imageUrl) {
         setTransactionProof(imageUrl)
         toast({
+        id: "tradecompletionmodal-image-uploaded",
           title: 'Image uploaded',
           description: 'Transaction proof uploaded successfully',
           status: 'success',
@@ -166,6 +169,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       // Upload failed — non-blocking. User can still submit without proof.
       const isServiceUnavailable = error?.response?.status === 503
       toast({
+        id: "tradecompletionmodal-toast-4",
         title: isServiceUnavailable ? 'Image upload unavailable' : 'Upload failed',
         description: isServiceUnavailable
           ? 'Image upload service is not configured. You can still submit your completion without a proof photo.'
@@ -204,6 +208,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
       setHasSubmitted(true)
       toast({
+        id: "tradecompletionmodal-trade-completion-submitted",
         title: 'Trade completion submitted!',
         description: 'Waiting for the other party to confirm...',
         status: 'success',
@@ -224,6 +229,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       console.error('Error response:', error?.response?.data)
       console.error('Error status:', error?.response?.status)
       toast({
+        id: "tradecompletionmodal-error",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to submit completion',
         status: 'error'

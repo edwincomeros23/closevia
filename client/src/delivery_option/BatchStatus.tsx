@@ -115,6 +115,7 @@ const BatchStatus: React.FC = () => {
     )
 
     toast({
+        id: "batchstatus-jobid-updated",
       title: `✓ ${jobId} updated`,
       status: 'success',
       duration: 2000,

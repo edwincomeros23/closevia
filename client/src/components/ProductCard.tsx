@@ -92,23 +92,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
       overflow="hidden"
       transition="all 0.2s ease"
       w="full"
-      maxW={{ base: '100%', md: '250px' }}
       h="full"
       display="flex"
       flexDirection="column"
-      mx="auto"
       _hover={{ boxShadow: 'md', transform: 'translateY(-2px)', cursor: 'pointer' }}
       onClick={handleCardClick}
-      sx={{
-        '@media (max-width: 850px)': {
-          width: '100%',
-          minWidth: 0,
-          maxWidth: '100%',
-        },
-      }}
     >
       {/* Image section */}
-      <Box position="relative" w="full" aspectRatio={1} overflow="hidden" bg="gray.100">
+      <Box position="relative" w="full" pt="100%" overflow="hidden" bg="gray.100">
         <Image
           src={getFirstImage(product.image_urls)}
           alt={product.title}
@@ -174,19 +165,18 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Info section */}
       <Box
-        p={4}
+        p={{ base: 2, md: 2.5 }}
         display="flex"
         flexDirection="column"
         flex={1}
         overflow="hidden"
-        sx={{ '@media (max-width: 480px)': { padding: '4px' } }}
       >
         {/* Seller row (desktop) */}
-        <Flex justify="space-between" align="center" mb={2} display={{ base: 'none', md: 'flex' }}>
-          <HStack spacing={2} align="center" mt="auto">
+        <Flex justify="space-between" align="center" mb={1}>
+          <HStack spacing={1} align="center" mt="auto">
             <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
               <VerifiedAvatar
-                size="sm"
+                size={{ base: 'xs', md: 'sm' } as any}
                 src={sellerAvatar}
                 name={product.seller_name || 'U'}
                 bg="brand.500"
@@ -196,7 +186,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 isVerified={product.seller_verified || false}
               />
             </RouterLink>
-            <Text fontSize="sm" color="black" fontWeight="medium" noOfLines={1}>
+            <Text fontSize={{ base: 'xs', md: 'xs' }} color="black" fontWeight="medium" noOfLines={1}>
               {product.seller_name || 'Unknown'}
             </Text>
           </HStack>
@@ -208,13 +198,13 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Title */}
         <Heading
           size="sm"
-          noOfLines={2}
-          mb={2}
+          noOfLines={1}
+          mb={1}
           color="gray.800"
           flexShrink={0}
           textAlign="left"
-          minH={{ base: '34px', md: '40px' }}
-          sx={{ '@media (max-width: 850px)': { fontSize: '13px', lineHeight: '1.3', marginBottom: '4px', minHeight: '34px' } }}
+          fontSize={{ base: '12px', md: '13px' }}
+          lineHeight="1.3"
         >
           {product.title}
         </Heading>
@@ -222,13 +212,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Description */}
         <Text
           color="gray.600"
-          noOfLines={{ base: 1, md: 2 }}
-          mb={2}
-          fontSize="sm"
+          noOfLines={1}
+          mb={1}
+          fontSize={{ base: '11px', md: '12px' }}
           flexShrink={0}
           textAlign="left"
-          minH={{ base: '18px', md: '42px' }}
-          sx={{ '@media (max-width: 850px)': { fontSize: '12px', marginBottom: '4px', minHeight: '18px' } }}
         >
           {product.description
             ? product.description
@@ -238,29 +226,20 @@ const ProductCard: React.FC<ProductCardProps> = ({
             : 'No description available'}
         </Text>
 
-        {/* Value Display (AI Estimated or Manual) */}
-        <Box mb={1}>
-          {product.estimated_value_min && product.estimated_value_max ? (
-            <Text fontSize="sm" fontWeight="extrabold" color="brand.600">
-              ₱{product.estimated_value_min.toLocaleString()} - ₱{product.estimated_value_max.toLocaleString()}
-            </Text>
-          ) : product.value !== undefined && product.value > 0 ? (
-            <Text fontSize="sm" fontWeight="bold" color="green.600">
-              ₱{(product.value as number).toLocaleString()}
-            </Text>
-          ) : product.price && product.price > 0 ? (
-            <Text fontSize="sm" fontWeight="bold" color="gray.700">
-              ₱{product.price.toLocaleString()}
-            </Text>
-          ) : (
-            <Text fontSize="xs" color="gray.400" fontStyle="italic">
-              Value TBD
-            </Text>
-          )}
-        </Box>
+        {/* Product Value */}
+        {product.value !== undefined && product.value > 0 && (
+          <Text
+            fontSize="xs"
+            fontWeight="bold"
+            color="green.600"
+            mb={0.5}
+          >
+            ₱{(product.value as number).toLocaleString()}
+          </Text>
+        )}
 
         {/* Wishlist badge */}
-        <Flex mb={2} align="center" gap={1} minH={{ base: '20px', md: '22px' }}>
+        <Flex mb={1} align="center" gap={1} minH={{ base: '16px', md: '18px' }}>
           {product.wishlist_count > 0 && (
             <Badge
               colorScheme="pink"
@@ -276,13 +255,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
         </Flex>
 
         {/* Action buttons */}
-        <HStack spacing={{ base: 1, md: 2 }} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+        <HStack spacing={1} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
           <Button
-            size={{ base: 'xs', md: 'sm' }}
+            size="xs"
             variant="outline"
             colorScheme="brand"
             flex={1}
-            minW={{ base: '60px', md: 'auto' }}
+            minW={{ base: '50px', md: 'auto' }}
+            fontSize={{ base: '11px', md: '12px' }}
             onClick={handleTradeClick}
             isDisabled={product.status === 'sold'}
             transition="all 0.2s"
@@ -296,7 +276,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             <IconButton
               aria-label="Buyout offer"
               icon={<Icon as={FaTag} color="yellow.500" />}
-              size={{ base: 'xs', md: 'sm' }}
+              size="xs"
               variant="outline"
               borderColor="yellow.400"
               _hover={{ borderColor: 'yellow.500', bg: 'yellow.50', transform: 'translateY(-1px)' }}
@@ -312,7 +292,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             <IconButton
               aria-label="View offers"
               icon={<FaHandshake />}
-              size={{ base: 'xs', md: 'sm' }}
+              size="xs"
               variant="outline"
               colorScheme="blue"
               onClick={handleViewOffers}

@@ -98,6 +98,7 @@ const VerifyEmail: React.FC = () => {
                 api.defaults.headers.common['Authorization'] = `Bearer ${token}`
                 setSuccess(true)
                 toast({
+        id: "verifyemail-email-verified",
                     title: '✅ Email verified!',
                     description: 'Welcome to Clovia!',
                     status: 'success',
@@ -124,6 +125,7 @@ const VerifyEmail: React.FC = () => {
             setExpirySeconds(OTP_EXPIRY_SECONDS)
             setOtp('')
             toast({
+        id: "verifyemail-code-resent",
                 title: 'Code resent!',
                 description: 'A new verification code has been sent to your email.',
                 status: 'info',

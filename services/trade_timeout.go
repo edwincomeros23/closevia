@@ -85,6 +85,34 @@ func runTradeTimeoutPass(db *sql.DB) error {
 			}
 		}
 	}
+
+	// Stage 3: Expire inactive trades after 7 days with no progress
+	// Ping DB to recover stale connections before querying
+	if err := db.Ping(); err != nil {
+		return err
+	}
+	var expireIDs []int
+	expiredRows, err := db.Query(`
+		SELECT id FROM trades
+		WHERE status IN ('pending', 'accepted', 'countered', 'active')
+		  AND TIMESTAMPDIFF(DAY, updated_at, NOW()) >= 7
+	`)
+	if err != nil {
+		return err
+	}
+	for expiredRows.Next() {
+		var tradeID int
+		if err := expiredRows.Scan(&tradeID); err == nil {
+			expireIDs = append(expireIDs, tradeID)
+		}
+	}
+	expiredRows.Close()
+	for _, tradeID := range expireIDs {
+		if err := autoExpireTrade(db, tradeID); err != nil {
+			log.Printf("auto-expire trade %d failed: %v", tradeID, err)
+		}
+	}
+
 	return nil
 }
 
@@ -139,5 +167,80 @@ func autoCompleteTrade(db *sql.DB, tradeID int) error {
 	// Notify both users with dispute info
 	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Trade auto-completed after 48 hours. If there is an issue, open a dispute.")
 	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "Trade auto-completed after 48 hours. If there is an issue, open a dispute.")
+	return nil
+}
+
+func autoExpireTrade(db *sql.DB, tradeID int) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Lock trade and fetch participants and current status
+	var targetProductID, buyerID, sellerID int
+	var currentStatus string
+	err = tx.QueryRow(`
+		SELECT target_product_id, buyer_id, seller_id, status
+		FROM trades WHERE id = ? FOR UPDATE
+	`, tradeID).Scan(&targetProductID, &buyerID, &sellerID, &currentStatus)
+	if err != nil {
+		return err
+	}
+
+	// Double-check status hasn't changed since the SELECT outside the tx
+	switch currentStatus {
+	case "pending", "accepted", "countered", "active":
+		// valid for expiry
+	default:
+		return nil // Already moved to a terminal status; skip
+	}
+
+	// Unlock target product (only if currently locked)
+	if _, err := tx.Exec("UPDATE products SET status='available', updated_at=NOW() WHERE id = ? AND status='locked'", targetProductID); err != nil {
+		return err
+	}
+
+	// Unlock offered products
+	offeredRows, err := tx.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
+	if err != nil {
+		return err
+	}
+	var offeredPids []int
+	for offeredRows.Next() {
+		var pid int
+		if err := offeredRows.Scan(&pid); err != nil {
+			offeredRows.Close()
+			return err
+		}
+		offeredPids = append(offeredPids, pid)
+	}
+	offeredRows.Close()
+	for _, pid := range offeredPids {
+		if _, err := tx.Exec("UPDATE products SET status='available', updated_at=NOW() WHERE id = ? AND status='locked'", pid); err != nil {
+			return err
+		}
+	}
+
+	// Update trade status to expired
+	if _, err := tx.Exec("UPDATE trades SET status='expired', updated_at=NOW() WHERE id = ?", tradeID); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Notify both users (outside transaction)
+	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
+		buyerID, "A trade has expired due to 7 days of inactivity.")
+	_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
+		sellerID, "A trade has expired due to 7 days of inactivity.")
+
+	// Record trade event (system action, no actor)
+	_, _ = db.Exec("INSERT INTO trade_events (trade_id, from_status, to_status, note) VALUES (?, ?, 'expired', 'Auto-expired after 7 days of inactivity')",
+		tradeID, currentStatus)
+
+	log.Printf("Trade %d auto-expired (was %s, inactive 7+ days)", tradeID, currentStatus)
 	return nil
 }

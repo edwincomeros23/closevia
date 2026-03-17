@@ -539,40 +539,39 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 })}
               </VStack>
 
-                <Box p={4} bg="gray.50" borderRadius="md" mt={3}>
-                  <HStack justify="space-between" mb={2}>
-                    <Text fontSize="sm" fontWeight="semibold">
-                      Payment Amount:
-                    </Text>
-                    <Text fontSize="lg" fontWeight="bold" color="brand.500">
-                      ₱{totalCost.toFixed(2)}
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between" mb={3} fontSize="xs" color="gray.600">
-                    <Text>Product + Delivery Fee:</Text>
-                    <Text>
-                      ₱{(requestedProduct?.price || 0).toFixed(2)} + ₱
-                      {deliveryOptions[deliveryState.deliveryType].fee}
-                    </Text>
-                  </HStack>
-                </Box>
+              <Box p={4} bg="gray.50" borderRadius="md" mt={3}>
+                <HStack justify="space-between" mb={2}>
+                  <Text fontSize="sm" fontWeight="semibold">
+                    Payment Amount:
+                  </Text>
+                  <Text fontSize="lg" fontWeight="bold" color="brand.500">
+                    ₱{totalCost.toFixed(2)}
+                  </Text>
+                </HStack>
+                <HStack justify="space-between" mb={3} fontSize="xs" color="gray.600">
+                  <Text>Product + Delivery Fee:</Text>
+                  <Text>
+                    ₱{(requestedProduct?.price || 0).toFixed(2)} + ₱
+                    {deliveryOptions[deliveryState.deliveryType].fee}
+                  </Text>
+                </HStack>
+              </Box>
 
-                <Button
-                  colorScheme="green"
-                  size="md"
-                  onClick={handleConfirmPayment}
-                  isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
-                  isLoading={confirmingPayment}
-                  loadingText="Confirming..."
-                  leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
-                  w="full"
-                  mt={3}
-                >
-                  {deliveryState.paymentConfirmed
-                    ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured`
-                    : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
-                </Button>
-
+              <Button
+                colorScheme="green"
+                size="md"
+                onClick={handleConfirmPayment}
+                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
+                isLoading={confirmingPayment}
+                loadingText="Confirming..."
+                leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
+                w="full"
+                mt={3}
+              >
+                {deliveryState.paymentConfirmed
+                  ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured`
+                  : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
+              </Button>
 
               <Divider />
 
@@ -609,7 +608,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                   </Text>
                 </Box>
               </Box>
-
             </VStack>
           </AccordionPanel>
         </AccordionItem>
@@ -638,8 +636,8 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
                 {/* Status Steps */}
                 <HStack spacing={1} justify="space-between">
-                  {['pending', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
-                    const steps = ['pending', 'picked_up', 'in_transit', 'delivered']
+                  {['pending', 'claimed', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
+                    const steps = ['pending', 'claimed', 'picked_up', 'in_transit', 'delivered']
                     const currentIdx = steps.indexOf(linkedDelivery.status || 'pending')
                     const isComplete = i <= currentIdx
                     const isCurrent = i === currentIdx
@@ -850,6 +848,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
   const [rating, setRating] = useState(5)
   const [feedback, setFeedback] = useState('')
   const [proofImage, setProofImage] = useState<string | null>(null)
+  const [proofFile, setProofFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [completionStatus, setCompletionStatus] = useState<any>(null)
   const [loadingStatus, setLoadingStatus] = useState(false)
@@ -886,17 +885,20 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
   const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
+      const file = e.target.files[0]
+      setProofFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setProofImage(reader.result as string)
       }
-      reader.readAsDataURL(e.target.files[0])
+      reader.readAsDataURL(file)
     }
   }
 
   const submitReview = async () => {
     if (!trade || !rating || !feedback.trim()) {
       toast({
+        id: "viewtrademodal-missing-information",
         title: 'Missing information',
         description: 'Please provide a rating and feedback.',
         status: 'warning',
@@ -906,13 +908,27 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
     try {
       setSubmitting(true)
+
+      // Upload proof image first if provided
+      let uploadedProofUrl: string | undefined
+      if (proofFile) {
+        const formData = new FormData()
+        formData.append('image', proofFile)
+        formData.append('type', 'trade_proof')
+        const uploadRes = await api.post('/api/upload', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        uploadedProofUrl = uploadRes.data?.data?.url
+      }
+
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim(),
-        proof_url: proofImage || undefined,
+        proof_url: uploadedProofUrl || undefined,
       })
 
       toast({
+        id: "viewtrademodal-review-submitted",
         title: 'Review submitted',
         description: 'Your review has been submitted successfully.',
         status: 'success',
@@ -922,6 +938,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       setRating(5)
       setFeedback('')
       setProofImage(null)
+      setProofFile(null)
 
       // Refresh completion status
       await fetchCompletionStatus()
@@ -929,6 +946,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
     } catch (error: any) {
       console.error('Review submission error:', error)
       toast({
+        id: "viewtrademodal-error",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to submit review',
         status: 'error',
@@ -1301,6 +1319,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         console.error('Backend error details:', error.response.data)
       }
       toast({
+        id: "viewtrademodal-error-2",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to save delivery state',
         status: 'error',
@@ -1467,6 +1486,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       await fetchMessages({ showLoading: false })
     } catch (error: any) {
       toast({
+        id: "viewtrademodal-error-3",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to send message',
         status: 'error',
@@ -1494,6 +1514,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       }
 
       toast({
+        id: "viewtrademodal-meetup-location-confirmed",
         title: 'Meetup location confirmed',
         description: 'Waiting for the other party to confirm...',
         status: 'success',
@@ -1504,6 +1525,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       onStatusUpdate()
     } catch (error: any) {
       toast({
+        id: "viewtrademodal-error-4",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to confirm meetup',
         status: 'error',
@@ -1579,6 +1601,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       onStatusUpdate()
 
       toast({
+        id: "viewtrademodal-payment-confirmed",
         title: 'Payment confirmed',
         description: 'Your payment has been secured',
         status: 'success',
@@ -1586,6 +1609,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       })
     } catch (error) {
       toast({
+        id: "viewtrademodal-payment-failed",
         title: 'Payment failed',
         description: 'Please try again',
         status: 'error',
@@ -1632,6 +1656,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       onStatusUpdate()
 
       toast({
+        id: "viewtrademodal-delivery-confirmed",
         title: 'Delivery confirmed',
         description: 'Thank you for confirming',
         status: 'success',
@@ -1654,6 +1679,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       }
     } catch (error: any) {
       toast({
+        id: "viewtrademodal-delivery-confirmation-failed",
         title: 'Delivery confirmation failed',
         description: error?.response?.data?.error || 'Please try again',
         status: 'error',
@@ -1838,8 +1864,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'blue'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Requested'}
                                 </Badge>
@@ -1874,8 +1903,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <CardBody>
                             <VStack spacing={3} align="stretch">
                               <HStack>
-                                <Badge colorScheme={trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
-                                  {trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
+                                <Badge colorScheme={
+                                  trade.status === 'expired' ? 'gray'
+                                  : trade.status === 'accepted' || trade.status === 'active' || trade.status === 'completed' || trade.status === 'auto_completed' ? 'green' : 'green'}>
+                                  {trade.status === 'expired' ? 'Expired'
+                                    : trade.status === 'accepted' || trade.status === 'active' ? 'Trading'
                                     : trade.status === 'completed' || trade.status === 'auto_completed' ? 'Traded'
                                     : 'Offered'}
                                 </Badge>

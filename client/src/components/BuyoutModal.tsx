@@ -55,6 +55,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     })()
   }, [isOpen, targetProductId])
 
+  // Reset form only when modal opens
   useEffect(() => {
     if (!isOpen) return
     setTradeMessage('')
@@ -62,51 +63,56 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     setTradeOption(null)
     setPaymentMethod(null)
     setHasPendingOfferOnTarget(false)
-    
+
     // Auto-set delivery option if user has location
     if (user?.latitude && user?.longitude) {
       setTradeOption('delivery')
     }
-    
-    if (user && targetProductId) {
-      ;(async () => {
-        try {
-          // Fetch user's pending trades to check for existing offer on this product
-          setLoadingPendingCheck(true)
-          const pendingRes = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
-          const trades = Array.isArray(pendingRes.data?.data) ? pendingRes.data.data : []
-          const hasPending = trades.some((trade: any) => trade.target_product_id === targetProductId)
-          setHasPendingOfferOnTarget(hasPending)
-        } catch (_) {
-          // Ignore
-        } finally {
-          setLoadingPendingCheck(false)
-        }
-      })()
-    }
-  }, [isOpen, user, targetProductId, targetProduct])
+  }, [isOpen, targetProduct])
+
+  // Check for pending offers separately
+  useEffect(() => {
+    if (!isOpen || !user || !targetProductId) return
+    ;(async () => {
+      try {
+        setLoadingPendingCheck(true)
+        const pendingRes = await api.get(`/api/trades?direction=outgoing&status=pending&limit=100`)
+        const trades = Array.isArray(pendingRes.data?.data) ? pendingRes.data.data : []
+        const hasPending = trades.some((trade: any) => trade.target_product_id === targetProductId)
+        setHasPendingOfferOnTarget(hasPending)
+      } catch (_) {
+        // Ignore
+      } finally {
+        setLoadingPendingCheck(false)
+      }
+    })()
+  }, [isOpen, user, targetProductId])
 
   const submitTrade = async () => {
     if (!targetProductId) return
     
     if (!cashAmount || Number(cashAmount) <= 0) {
-      toast({ title: 'Invalid amount', description: 'Please enter a valid cash amount to offer.', status: 'warning' })
+      toast({
+        id: "buyoutmodal-invalid-amount", title: 'Invalid amount', description: 'Please enter a valid cash amount to offer.', status: 'warning' })
       return
     }
     
     if (!tradeOption) {
-      toast({ title: 'Select fulfillment option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
+      toast({
+        id: "buyoutmodal-select-fulfillment-option", title: 'Select fulfillment option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
       return
     }
     
     if (!paymentMethod) {
-      toast({ title: 'Select payment method', description: 'Please choose COD or Upfront Payment.', status: 'warning' })
+      toast({
+        id: "buyoutmodal-select-payment-method", title: 'Select payment method', description: 'Please choose COD or Upfront Payment.', status: 'warning' })
       return
     }
     
     // Layer 2 validation: Check for pending offer before submission
     if (hasPendingOfferOnTarget) {
-      toast({ 
+      toast({
+        id: "buyoutmodal-pending-offer-already-exists", 
         title: 'Pending Offer Already Exists', 
         description: 'You already have a pending offer on this product. Please wait for the trader to respond before sending another one.', 
         status: 'warning',
@@ -130,7 +136,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
         offered_cash_amount: Number(cashAmount),
         trade_option: tradeOption,
         delivery_address: tradeOption === 'delivery' ? deliveryAddress : undefined,
-        payment_method: paymentMethod || undefined,
       }
       
       console.log('Submitting buyout payload:', payload)
@@ -143,7 +148,8 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
       onClose()
     } catch (e: any) {
       const errorMessage = e?.response?.data?.error || 'Failed to send buyout offer'
-      toast({ title: 'Failed', description: errorMessage, status: 'error' })
+      toast({
+        id: "buyoutmodal-failed", title: 'Failed', description: errorMessage, status: 'error' })
     } finally {
       setSubmittingTrade(false)
     }
@@ -285,7 +291,8 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                             size="sm" colorScheme="blue" mt={2} isLoading={detectingLocation} loadingText="Detecting..."
                             onClick={async () => {
                               if (!navigator.geolocation) {
-                                toast({ title: 'Geolocation not supported', status: 'error', duration: 3000 })
+                                toast({
+        id: "buyoutmodal-geolocation-not-supported", title: 'Geolocation not supported', status: 'error', duration: 3000 })
                                 return
                               }
                               setDetectingLocation(true)
@@ -295,14 +302,17 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                                   try {
                                     await api.put('/api/users/profile', { latitude, longitude })
                                     if (refreshUser) await refreshUser()
-                                    toast({ title: 'Location saved!', status: 'success', duration: 3000 })
+                                    toast({
+        id: "buyoutmodal-location-saved", title: 'Location saved!', status: 'success', duration: 3000 })
                                   } catch {
-                                    toast({ title: 'Failed to save location', status: 'error', duration: 3000 })
+                                    toast({
+        id: "buyoutmodal-failed-to-save-location", title: 'Failed to save location', status: 'error', duration: 3000 })
                                   }
                                   setDetectingLocation(false)
                                 },
                                 () => {
-                                  toast({ title: 'Location access denied', status: 'warning', duration: 4000 })
+                                  toast({
+        id: "buyoutmodal-location-access-denied", title: 'Location access denied', status: 'warning', duration: 4000 })
                                   setDetectingLocation(false)
                                 },
                                 { enableHighAccuracy: true, timeout: 10000 }
@@ -320,87 +330,13 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
 
               <Divider />
 
-              {/* Payment Method Selection */}
-              <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Payment Method (Trader Decides)
-                </FormLabel>
-                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
-                  {/* COD Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={paymentMethod === 'cod' ? '2px' : '1px'}
-                    borderColor={paymentMethod === 'cod' ? selectedBorder : borderColor}
-                    bg={paymentMethod === 'cod' ? selectedBg : cardBg}
-                    onClick={() => setPaymentMethod('cod')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: paymentMethod === 'cod' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={paymentMethod === 'cod' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'cod' ? 'white' : 'gray.600'}>
-                          <Icon as={FaMoneyBillWave} boxSize={6} />
-                        </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Cash on Delivery</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay when item arrives</Text>
-                        </VStack>
-                        {paymentMethod === 'cod' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-
-                  {/* Upfront Payment Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={paymentMethod === 'upfront' ? '2px' : '1px'}
-                    borderColor={paymentMethod === 'upfront' ? selectedBorder : borderColor}
-                    bg={paymentMethod === 'upfront' ? selectedBg : cardBg}
-                    onClick={() => setPaymentMethod('upfront')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: paymentMethod === 'upfront' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={paymentMethod === 'upfront' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'upfront' ? 'white' : 'gray.600'}>
-                          <Icon as={FaCheckCircle} boxSize={6} />
-                        </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Upfront Payment</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay before shipment</Text>
-                        </VStack>
-                        {paymentMethod === 'upfront' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                </Grid>
-                
-                <Box mt={3} p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
-                  <Text fontSize="xs" color="blue.900">
-                    <strong>ℹ️ Note:</strong> The trader will choose which payment method to accept. Offering both options increases your chances of a deal.
-                  </Text>
-                </Box>
-              </FormControl>
-
-              <Divider />
-
               <HStack justify="flex-end" spacing={3}>
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
                 <Button 
                   colorScheme="green" 
                   isLoading={submittingTrade} 
                   onClick={() => setShowConfirmModal(true)} 
-                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption || !paymentMethod}
+                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption}
                   leftIcon={<FaMoneyBillWave />}
                 >
                   Confirm Buyout

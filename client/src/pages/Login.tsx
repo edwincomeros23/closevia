@@ -83,6 +83,7 @@ const Login: React.FC = () => {
       await login(email, password)
 
       toast({
+        id: "login-login-successful",
         title: 'Login successful!',
         description: 'Welcome back to Clovia',
         status: 'success',
@@ -166,6 +167,7 @@ const Login: React.FC = () => {
 
       // Show success message
       toast({
+        id: "login-login-successful-2",
         title: 'Login successful!',
         description: `Welcome, ${user.displayName || user.email}`,
         status: 'success',
@@ -264,7 +266,7 @@ const Login: React.FC = () => {
             >
               {/* Nature Illustration - SVG Plants */}
               <Flex justify="center" mb={6} h="120px">
-                <svg width="200" height="120" viewBox="0 0 200 120" fill="none">
+                <svg width="100%" height="120" viewBox="0 0 200 120" fill="none" style={{ maxWidth: '200px' }}>
                   {/* Left plant */}
                   <g>
                     <path d="M 40 100 Q 30 80 35 60 Q 40 40 45 20" stroke="#4CAF50" strokeWidth="3" fill="none" strokeLinecap="round"/>

@@ -88,6 +88,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
       toast({
+        id: "deliveryrequestmodal-location-not-supported",
         title: 'Location not supported',
         description: 'Your browser does not support geolocation.',
         status: 'warning',
@@ -103,6 +104,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
         setLocationPermission('granted')
         setIsGettingLocation(false)
         toast({
+        id: "deliveryrequestmodal-location-detected",
           title: 'Location detected',
           description: 'GPS coordinates have been captured.',
           status: 'success',
@@ -113,6 +115,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
         setIsGettingLocation(false)
         setLocationPermission('denied')
         toast({
+        id: "deliveryrequestmodal-location-access-denied",
           title: 'Location access denied',
           description: 'Please enter your address manually.',
           status: 'warning',
@@ -152,6 +155,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
     // Validation
     if (!pickupAddress.trim() && !pickupLatitude) {
       toast({
+        id: "deliveryrequestmodal-pickup-location-required",
         title: 'Pickup location required',
         description: 'Please provide a pickup address or allow location access.',
         status: 'warning',
@@ -161,6 +165,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
 
     if (!deliveryAddress.trim()) {
       toast({
+        id: "deliveryrequestmodal-delivery-address-required",
         title: 'Delivery address required',
         description: 'Please provide a delivery address.',
         status: 'warning',
@@ -170,6 +175,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
 
     if (!isValidItemCount) {
       toast({
+        id: "deliveryrequestmodal-invalid-item-count",
         title: 'Invalid item count',
         description:
           deliveryType === 'express'
@@ -200,6 +206,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
       const delivery = response.data?.data
 
       toast({
+        id: "deliveryrequestmodal-delivery-request-created",
         title: 'Delivery request created',
         description: 'Your delivery has been added to the rider queue.',
         status: 'success',
@@ -212,6 +219,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
       onClose()
     } catch (error: any) {
       toast({
+        id: "deliveryrequestmodal-failed-to-create-delivery",
         title: 'Failed to create delivery',
         description: error?.response?.data?.error || 'Please try again.',
         status: 'error',
