@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/xashathebest/clovia/models"
@@ -209,34 +210,252 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	})
 }
 
+// CreatePremiumInvoice generates a Xendit checkout URL for a Premium Upgrade
+func (h *PaymentHandler) CreatePremiumInvoice(c *fiber.Ctx) error {
+	productID := c.Params("id")
+	userID := c.Locals("user_id").(int)
+
+	// Verify ownership
+	var sellerID int
+	var title string
+	err := h.db.QueryRow("SELECT seller_id, title FROM products WHERE id = ?", productID).Scan(&sellerID, &title)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+	}
+	if sellerID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Unauthorized"})
+	}
+
+	amount := 99.0 // Fixed price for premium upgrade
+	var buyerName, buyerEmail string
+	h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
+
+	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	xenditClient := xendit.NewClient(apiKey)
+
+	externalID := fmt.Sprintf("premium_%s_%d", productID, userID)
+	description := fmt.Sprintf("Clovia Premium Upgrade: %s", title)
+
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	successUrl := fmt.Sprintf("%s/dashboard", frontendURL)
+
+	currency := "PHP"
+	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
+		ExternalId:  externalID,
+		Amount:      float32(amount),
+		Description: &description,
+		PayerEmail:  &buyerEmail,
+		SuccessRedirectUrl: &successUrl,
+		Currency:    &currency,
+	})
+
+	resp, _, execErr := req.Execute()
+	if execErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: execErr.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"checkout_url": resp.InvoiceUrl,
+		},
+	})
+}
+
+// CreateBoostInvoice generates a Xendit checkout URL for a Product Boost
+func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
+	productID := c.Params("id")
+	userID := c.Locals("user_id").(int)
+
+	// Verify ownership
+	var sellerID int
+	var title string
+	err := h.db.QueryRow("SELECT seller_id, title FROM products WHERE id = ?", productID).Scan(&sellerID, &title)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
+	}
+	if sellerID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Unauthorized"})
+	}
+
+	amount := 29.0 // Small fee for instant boost
+	var buyerName, buyerEmail string
+	h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
+
+	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	xenditClient := xendit.NewClient(apiKey)
+
+	externalID := fmt.Sprintf("boost_%s_%d", productID, userID)
+	description := fmt.Sprintf("Clovia Product Boost: %s", title)
+
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	successUrl := fmt.Sprintf("%s/products/%s", frontendURL, productID)
+
+	currency := "PHP"
+	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
+		ExternalId:  externalID,
+		Amount:      float32(amount),
+		Description: &description,
+		PayerEmail:  &buyerEmail,
+		SuccessRedirectUrl: &successUrl,
+		Currency:    &currency,
+	})
+
+	resp, _, execErr := req.Execute()
+	if execErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: execErr.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"checkout_url": resp.InvoiceUrl,
+		},
+	})
+}
+
+// CreateUserPremiumInvoice generates a Xendit checkout URL for a site-wide User Premium Subscription
+func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(int)
+
+	var buyerName, buyerEmail string
+	err := h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
+	}
+
+	amount := 499.0 // Pricing for full premium account
+	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	xenditClient := xendit.NewClient(apiKey)
+
+	externalID := fmt.Sprintf("user_premium_%d", userID)
+	description := "Clovia Premium Subscription (Lifetime)"
+
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	successUrl := fmt.Sprintf("%s/premium", frontendURL)
+
+	currency := "PHP"
+	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
+		ExternalId:  externalID,
+		Amount:      float32(amount),
+		Description: &description,
+		PayerEmail:  &buyerEmail,
+		SuccessRedirectUrl: &successUrl,
+		Currency:    &currency,
+	})
+
+	resp, _, execErr := req.Execute()
+	if execErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: execErr.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data": fiber.Map{
+			"checkout_url": resp.InvoiceUrl,
+		},
+	})
+}
+
 // XenditWebhook handles asynchronous payment confirmations
 func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
-	// Xendit sends a callback. We could verify the webhook token here.
 	var payload map[string]interface{}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).SendString("Invalid payload")
 	}
 
-	// Extract data
 	status, _ := payload["status"].(string)
 	externalID, _ := payload["external_id"].(string)
+	amount, _ := payload["amount"].(float64)
 
 	if status != "PAID" {
-		return c.SendStatus(200) // Ignore unpaid webhooks
+		return c.SendStatus(200)
 	}
 
-	// Parse Trade ID from external_id (format: trade_123_...)
-	var tradeID int
-	fmt.Sscanf(externalID, "trade_%d", &tradeID)
+	if strings.HasPrefix(externalID, "trade_") {
+		var tradeID int
+		fmt.Sscanf(externalID, "trade_%d", &tradeID)
 
-	if tradeID > 0 {
-		// Update trade payment status
-		_, err := h.db.Exec("UPDATE trades SET payment_confirmed = true WHERE id = ?", tradeID)
-		if err != nil {
-			fmt.Printf("Webhook Error: Failed to update trace %d: %v\n", tradeID, err)
-			return c.Status(500).SendString("DB Error")
+		if tradeID > 0 {
+			// Get buyer ID for earnings record
+			var buyerID int
+			h.db.QueryRow("SELECT buyer_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID)
+
+			// Update trade
+			_, err := h.db.Exec("UPDATE trades SET payment_confirmed = true, net_amount = ? WHERE id = ?", amount, tradeID)
+			if err != nil {
+				fmt.Printf("Webhook Error: Failed to update trade %d: %v\n", tradeID, err)
+			}
+
+			// Record Earnings
+			_, err = h.db.Exec(`
+				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
+				VALUES (?, ?, 'trade_escrow', ?, ?)`,
+				buyerID, amount, tradeID, externalID)
+			if err != nil {
+				fmt.Printf("Earnings Error (Trade %d): %v\n", tradeID, err)
+			}
 		}
-		fmt.Printf("Trade %d payment confirmed via Xendit Webhook.\n", tradeID)
+	} else if strings.HasPrefix(externalID, "premium_") {
+		var productID, userID int
+		fmt.Sscanf(externalID, "premium_%d_%d", &productID, &userID)
+
+		if productID > 0 {
+			// Update product to premium
+			_, err := h.db.Exec("UPDATE products SET premium = true WHERE id = ?", productID)
+			if err != nil {
+				fmt.Printf("Webhook Error: Premium upgrade failed for product %d: %v\n", productID, err)
+			}
+
+			// Record Earnings
+			_, err = h.db.Exec(`
+				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
+				VALUES (?, ?, 'premium_upgrade', ?, ?)`,
+				userID, amount, productID, externalID)
+		}
+	} else if strings.HasPrefix(externalID, "boost_") {
+		var productID, userID int
+		fmt.Sscanf(externalID, "boost_%d_%d", &productID, &userID)
+
+		if productID > 0 {
+			// Update product boosted_at
+			_, err := h.db.Exec("UPDATE products SET boosted_at = NOW() WHERE id = ?", productID)
+			if err != nil {
+				fmt.Printf("Webhook Error: Boost failed for product %d: %v\n", productID, err)
+			}
+
+			// Record Earnings
+			_, err = h.db.Exec(`
+				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
+				VALUES (?, ?, 'product_boost', ?, ?)`,
+				userID, amount, productID, externalID)
+		}
+	} else if strings.HasPrefix(externalID, "user_premium_") {
+		var userID int
+		fmt.Sscanf(externalID, "user_premium_%d", &userID)
+
+		if userID > 0 {
+			// Update user status
+			_, err := h.db.Exec("UPDATE users SET is_premium = true WHERE id = ?", userID)
+			if err != nil {
+				fmt.Printf("Webhook Error: User premium update failed for user %d: %v\n", userID, err)
+			}
+
+			// Record Earnings
+			_, err = h.db.Exec(`
+				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
+				VALUES (?, ?, 'premium_upgrade', ?, ?)`,
+				userID, amount, userID, externalID)
+		}
 	}
 
 	return c.SendStatus(200)

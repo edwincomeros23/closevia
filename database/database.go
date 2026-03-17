@@ -550,6 +550,18 @@ func CreateTables() error {
 			INDEX idx_campaigns_active (is_active),
 			INDEX idx_campaigns_dates (start_date, end_date)
 		)`,
+		`CREATE TABLE IF NOT EXISTS earnings (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			amount DECIMAL(10,2) NOT NULL,
+			source_type ENUM('trade_escrow', 'premium_upgrade', 'delivery_fee', 'product_boost') NOT NULL,
+			source_id INT NOT NULL,
+			external_id VARCHAR(255) NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_earnings_source (source_type, source_id),
+			INDEX idx_earnings_created (created_at)
+		)`,
 	}
 
 	// Execute table creation queries
@@ -782,6 +794,7 @@ func ensureTradeColumns() {
 		{"auto_completed_at", "TIMESTAMP NULL DEFAULT NULL"},
 		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
 		{"option_change_requested", "VARCHAR(20) NULL DEFAULT NULL"},
+		{"net_amount", "DECIMAL(10,2) DEFAULT 0.00"},
 	}
 
 	for _, col := range columns {
