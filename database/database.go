@@ -630,6 +630,8 @@ func ensureUserColumns() {
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"last_login", "TIMESTAMP NULL"},
+		{"password_reset_otp_hash", "VARCHAR(255) NULL"},
+		{"password_reset_otp_expires", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {

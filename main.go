@@ -221,6 +221,8 @@ func main() {
 	auth.Post("/google", userHandler.GoogleLogin)
 	auth.Post("/verify-email", userHandler.VerifyEmail)
 	auth.Post("/resend-verification", userHandler.ResendVerification)
+	auth.Post("/forgot-password", userHandler.ForgotPassword)
+	auth.Post("/reset-password", userHandler.ResetPassword)
 
 	// User routes (authentication required)
 	users := api.Group("/users")
