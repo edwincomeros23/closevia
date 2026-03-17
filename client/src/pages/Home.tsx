@@ -627,58 +627,57 @@ const Home: React.FC = () => {
           position="relative"
         >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap" ref={searchContainerRef} position="relative">
-            <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
-              <InputLeftElement pointerEvents="none">
-                <SearchIcon color="gray.400" />
-              </InputLeftElement>
-              <Input
-                placeholder="Search products, categories, or keywords..."
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value.trim().length >= 2) setShowSuggestions(true) }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); if (e.key === 'Escape') setShowSuggestions(false) }}
-                onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0)) setShowSuggestions(true) }}
-                bg="white"
-                border="2px"
-                borderColor="gray.200"
-                _focus={{
-                  borderColor: "brand.500",
-                  boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
-                }}
-              />
-            </InputGroup>
+          <HStack w="full" spacing={3} wrap="wrap" ref={searchContainerRef}>
+            <Box position="relative" flex={1} minW={{ base: 0, md: 'auto' }}>
+              <InputGroup size="lg">
+                <InputLeftElement pointerEvents="none">
+                  <SearchIcon color="gray.400" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Search products, categories, or keywords..."
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value.trim().length >= 2) setShowSuggestions(true) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); if (e.key === 'Escape') setShowSuggestions(false) }}
+                  onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0)) setShowSuggestions(true) }}
+                  bg="white"
+                  border="2px"
+                  borderColor="gray.200"
+                  _focus={{
+                    borderColor: "brand.500",
+                    boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
+                  }}
+                />
+              </InputGroup>
 
-            {/* Search Suggestions Dropdown */}
-            {showSuggestions && (
-              <Box
-                position="absolute"
-                top="100%"
-                left={0}
-                right={{ base: 0, md: 'auto' }}
-                w={{ base: '100%', md: '60%' }}
-                maxW="600px"
+              {/* Search Suggestions Dropdown */}
+              {showSuggestions && (
+                <Box
+                  position="absolute"
+                  top="calc(100% + 4px)"
+                  left={0}
+                  right={0}
+                  w="100%"
                 bg="white"
                 border="1px solid"
                 borderColor="gray.200"
-                rounded="lg"
-                shadow="lg"
-                zIndex={200}
-                maxH="320px"
+                rounded="xl"
+                shadow="0 4px 20px rgba(0,0,0,0.15)"
+                zIndex={999}
+                maxH="360px"
                 overflowY="auto"
-                mt={1}
               >
                 {suggestionsLoading ? (
                   <Center py={4}><Spinner size="sm" color="brand.500" /><Text ml={2} fontSize="sm" color="gray.500">Searching...</Text></Center>
                 ) : (
-                  <VStack align="stretch" spacing={0} py={1}>
+                  <VStack align="stretch" spacing={0} py={2}>
                     {suggestions.products.length > 0 && (
                       <>
-                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Products</Text>
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Products</Text>
                         {suggestions.products.map((p, i) => (
-                          <Box key={`p-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(p, 'product')}>
-                            <HStack spacing={2}>
+                          <Box key={`p-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(p, 'product')}>
+                            <HStack spacing={3}>
                               <SearchIcon color="gray.400" boxSize={3} />
-                              <Text fontSize="sm" noOfLines={1}>{p}</Text>
+                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{p}</Text>
                             </HStack>
                           </Box>
                         ))}
@@ -686,12 +685,13 @@ const Home: React.FC = () => {
                     )}
                     {suggestions.categories.length > 0 && (
                       <>
-                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Categories</Text>
+                        {suggestions.products.length > 0 && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Categories</Text>
                         {suggestions.categories.map((c, i) => (
-                          <Box key={`c-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(c, 'category')}>
-                            <HStack spacing={2}>
+                          <Box key={`c-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(c, 'category')}>
+                            <HStack spacing={3}>
                               <Icon as={FaTag} color="brand.400" boxSize={3} />
-                              <Text fontSize="sm">{c}</Text>
+                              <Text fontSize="sm" color="gray.700">{c}</Text>
                             </HStack>
                           </Box>
                         ))}
@@ -699,12 +699,13 @@ const Home: React.FC = () => {
                     )}
                     {suggestions.tags.length > 0 && (
                       <>
-                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Tags</Text>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Tags</Text>
                         {suggestions.tags.map((t, i) => (
-                          <Box key={`t-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(t, 'tag')}>
-                            <HStack spacing={2}>
-                              <Text color="brand.400" fontSize="xs">#</Text>
-                              <Text fontSize="sm">{t}</Text>
+                          <Box key={`t-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(t, 'tag')}>
+                            <HStack spacing={3}>
+                              <Text color="brand.400" fontSize="xs" fontWeight="bold">#</Text>
+                              <Text fontSize="sm" color="gray.700">{t}</Text>
                             </HStack>
                           </Box>
                         ))}
@@ -712,12 +713,13 @@ const Home: React.FC = () => {
                     )}
                     {suggestions.brands.length > 0 && (
                       <>
-                        <Text px={3} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase">Brands</Text>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Brands</Text>
                         {suggestions.brands.map((b, i) => (
-                          <Box key={`b-${i}`} px={3} py={2} cursor="pointer" _hover={{ bg: 'brand.50' }} onClick={() => handleSuggestionClick(b, 'brand')}>
-                            <HStack spacing={2}>
+                          <Box key={`b-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(b, 'brand')}>
+                            <HStack spacing={3}>
                               <StarIcon color="yellow.400" boxSize={3} />
-                              <Text fontSize="sm">{b}</Text>
+                              <Text fontSize="sm" color="gray.700">{b}</Text>
                             </HStack>
                           </Box>
                         ))}
@@ -727,6 +729,7 @@ const Home: React.FC = () => {
                 )}
               </Box>
             )}
+            </Box>
 
             {/* Toggle Filters icon (mobile inline, right side) */}
             <IconButton
