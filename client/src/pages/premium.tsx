@@ -39,7 +39,7 @@ import {
   Stack,
   useColorModeValue,
 } from '@chakra-ui/react'
-import { FaCrown, FaCheck, FaCheckCircle, FaStar, FaTruck, FaChartLine, FaPercentage, FaShieldAlt, FaInfinity, FaArrowRight, FaLock, FaLink, FaUser, FaBox, FaRocket, FaBolt, FaTimes, FaQuestionCircle, FaGift, FaChevronDown, FaChevronUp } from 'react-icons/fa'
+import { FaCrown, FaCheck, FaCheckCircle, FaStar, FaTruck, FaChartLine, FaPercentage, FaShieldAlt, FaInfinity, FaArrowRight, FaLock, FaLink, FaUser, FaBox, FaRocket, FaBolt, FaTimes, FaQuestionCircle, FaGift, FaChevronDown, FaChevronUp, FaHandshake } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { TradeLoop, MultiWayTrade } from '../types'
 import { fetchTradeLoops, fetchMultiWayTrade } from '../services/tradeService'
@@ -47,7 +47,7 @@ import MultiWayTradeModal from '../components/MultiWayTradeModal'
 import { api } from '../services/api'
 
 const Premium: React.FC = () => {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
   
@@ -65,12 +65,31 @@ const Premium: React.FC = () => {
   const isPremiumUser = user?.is_premium === true
 
   useEffect(() => {
+    // Refresh user profile on mount to capture any recent premium upgrades
+    refreshUser()
+
+    // Check if user was redirected from payment (Xendit)
+    const params = new URLSearchParams(window.location.search)
+    const isFromPayment = params.has('utm_source') || window.location.href.includes('premium')
+
+    if (isFromPayment) {
+      // Webhook might still be processing, refresh multiple times
+      const refreshAttempts = [1000, 2000, 3000, 5000] // Refresh at 1s, 2s, 3s, 5s
+      const timers = refreshAttempts.map(delay =>
+        setTimeout(() => {
+          console.log(`Refreshing premium status (${delay}ms after redirect)`)
+          refreshUser()
+        }, delay)
+      )
+      return () => timers.forEach(timer => clearTimeout(timer))
+    }
+
     if (isPremiumUser) {
       fetchLoops()
       const interval = setInterval(fetchLoops, 30000)
       return () => clearInterval(interval)
     }
-  }, [isPremiumUser])
+  }, [isPremiumUser, refreshUser])
 
   const fetchLoops = async () => {
     try {
@@ -119,11 +138,11 @@ const Premium: React.FC = () => {
     fetchLoops()
   }
 
-  const handleUpgrade = async () => {
+  const handleUpgrade = async (tier: 'plus' | 'pro') => {
     try {
       setUpgrading(true)
       const plan = isYearly ? 'yearly' : 'monthly'
-      const { data } = await api.post('/api/payments/subscription', { plan })
+      const { data } = await api.post('/api/payments/subscription', { tier, plan })
       if (data?.success && data?.data?.checkout_url) {
         window.location.href = data.data.checkout_url
       } else {
@@ -141,56 +160,89 @@ const Premium: React.FC = () => {
     }
   }
 
-  const premiumFeatures = [
-    {
-      title: 'Unlimited Trade Offers',
-      description: 'Make as many trade proposals as you want without limits.',
-      icon: FaInfinity,
-      color: 'blue.500'
-    },
-    {
-      title: 'Priority Listing',
-      description: 'Your products appear at the top of search results and home feed.',
-      icon: FaChartLine,
-      color: 'orange.500'
-    },
-    {
-      title: 'Can Sell (Buyout)',
-      description: 'Enable the buyout option for your products to accept direct payments.',
-      icon: FaCheckCircle,
-      color: 'green.500'
-    },
-    {
-      title: 'Express Delivery Access',
-      description: 'Get priority booking and faster shipping for all your trades.',
-      icon: FaTruck,
-      color: 'teal.500'
-    },
-    {
-      title: 'Lower Platform Fees',
-      description: 'Enjoy reduced transaction fees on all completed buyout sales.',
-      icon: FaPercentage,
-      color: 'red.500'
-    },
-    {
-      title: 'Verified Badge',
-      description: 'Build trust with a premium verified badge on your profile.',
-      icon: FaShieldAlt,
-      color: 'purple.500'
-    }
+  interface Feature {
+    title: string;
+    icon: any;
+    category?: string;
+  }
+
+  const freeFeatures: Feature[] = [
+    { title: '10 active listings', icon: FaBox, category: 'Listings' },
+    { title: 'No boosts included', icon: FaTimes, category: 'Listings' },
+    { title: 'Browse and trade freely', icon: FaHandshake, category: 'Trading' },
+    { title: 'Standard delivery only', icon: FaTruck, category: 'Trading' },
+    { title: 'Standard match feed', icon: FaStar, category: 'Trading' },
+    { title: 'See total profile views only', icon: FaUser, category: 'Insights' },
+    { title: 'AI price range shown', icon: FaBolt, category: 'Insights' },
   ]
 
+  const plusFeatures: Feature[] = [
+    { title: '30 active listings', icon: FaBox, category: 'Listings' },
+    { title: '3 boosted listings', icon: FaRocket, category: 'Listings' },
+    { title: 'Relist in one tap', icon: FaBolt, category: 'Listings' },
+    { title: 'Express delivery access', icon: FaTruck, category: 'Trading' },
+    { title: '10% off all delivery fees', icon: FaPercentage, category: 'Trading' },
+    { title: 'Priority matches', icon: FaArrowRight, category: 'Trading' },
+    { title: 'Trade dispute reviewed first', icon: FaShieldAlt, category: 'Trading' },
+    { title: 'Who viewed your profile (actual usernames)', icon: FaUser, category: 'Insights' },
+    { title: 'Item popularity breakdown', icon: FaChartLine, category: 'Insights' },
+    { title: 'AI price confidence', icon: FaCheckCircle, category: 'Insights' },
+    { title: 'Plus badge on profile', icon: FaCrown, category: 'Profile' },
+    { title: 'Power seller', icon: FaStar, category: 'Profile' },
+  ]
+
+  const proFeatures: Feature[] = [
+    { title: 'Unlimited listings', icon: FaInfinity, category: 'Listings' },
+    { title: '10 boosted listings always pinned', icon: FaRocket, category: 'Listings' },
+    { title: 'Bundle listing', icon: FaStar, category: 'Listings' },
+    { title: 'Relist in one tap', icon: FaBolt, category: 'Listings' },
+    { title: 'Express delivery access', icon: FaTruck, category: 'Trading' },
+    { title: '20% off all delivery fees', icon: FaPercentage, category: 'Trading' },
+    { title: 'First to see new nearby items', icon: FaStar, category: 'Trading' },
+    { title: 'Top of match queue', icon: FaArrowRight, category: 'Trading' },
+    { title: 'Trade dispute reviewed first', icon: FaShieldAlt, category: 'Trading' },
+    { title: 'Full trade analytics', icon: FaChartLine, category: 'Insights' },
+    { title: 'Who viewed your profile (full history)', icon: FaUser, category: 'Insights' },
+    { title: 'AI price confidence + market data', icon: FaCheckCircle, category: 'Insights' },
+    { title: 'Store page (own shop link)', icon: FaLink, category: 'Profile' },
+    { title: 'Featured on homepage banner', icon: FaStar, category: 'Profile' },
+    { title: 'Verified Pro badge', icon: FaCrown, category: 'Profile' },
+    { title: 'Priority support', icon: FaBolt, category: 'Profile' },
+  ]
+
+  const renderFeatureList = (features: Feature[]) => {
+    const categories = Array.from(new Set(features.map(f => f.category)));
+    return categories.map(cat => (
+      <VStack key={cat} align="start" w="full" spacing={2} mb={4}>
+        <Text fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase" letterSpacing="wider">
+          {cat}
+        </Text>
+        <List spacing={2} w="full">
+          {features.filter(f => f.category === cat).map((f, i) => (
+            <ListItem key={i} display="flex" alignItems="start" fontSize="sm">
+              <ListIcon as={f.icon === FaTimes ? FaTimes : FaCheckCircle} color={f.icon === FaTimes ? "red.400" : "purple.500"} mt={1} />
+              <Text color={f.icon === FaTimes ? "gray.400" : "gray.700"}>{f.title}</Text>
+            </ListItem>
+          ))}
+        </List>
+        <Divider />
+      </VStack>
+    ));
+  }
+
   const comparisonFeatures = [
-    { feature: 'Basic Trading', free: true, premium: true },
-    { feature: 'Product Listings', free: '10 max', premium: 'Unlimited' },
-    { feature: 'Trade Requests', free: true, premium: true },
-    { feature: 'Messaging', free: true, premium: true },
-    { feature: 'Multi-Way Trading', free: false, premium: true },
-    { feature: 'Priority Listing', free: false, premium: true },
-    { feature: 'Verified Badge', free: false, premium: true },
-    { feature: 'Lower Platform Fees', free: false, premium: true },
-    { feature: 'Buyout Option', free: false, premium: true },
-    { feature: 'Express Delivery', free: false, premium: true },
+    { feature: 'Listings Limit', free: '10', plus: '30', pro: 'Unlimited' },
+    { feature: 'Boosted Listings', free: 'None', plus: '3', pro: '10' },
+    { feature: 'Relist in one tap', free: false, plus: true, pro: true },
+    { feature: 'Express Delivery', free: false, plus: true, pro: true },
+    { feature: 'Delivery Discount', free: 'None', plus: '10%', pro: '20%' },
+    { feature: 'Priority Match Feed', free: 'Standard', plus: 'Priority', pro: 'Top Queue' },
+    { feature: 'AI Price Analysis', free: 'Range Only', plus: 'Confidence Score', pro: 'Full Market Data' },
+    { feature: 'Profile Views', free: 'Total Only', plus: 'Actual Usernames', pro: 'Full History' },
+    { feature: 'Badge', free: 'None', plus: 'Plus Badge', pro: 'Verified Pro Badge' },
+    { feature: 'Store Page', free: false, plus: false, pro: true },
+    { feature: 'Trade Dispute Priority', free: 'Standard', plus: 'First Review', pro: 'First Review' },
+    { feature: 'Priority Support', free: false, plus: false, pro: true },
   ]
 
   const faqItems = [
@@ -348,18 +400,17 @@ const Premium: React.FC = () => {
 
         {/* Benefits Grid */}
         <Box>
-          <Heading size="md" mb={6}>Core Premium Benefits</Heading>
+          <Heading size="md" mb={6}>Pro Features Included</Heading>
           <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4}>
-            {premiumFeatures.map((feature, idx) => (
+            {proFeatures.map((feature: any, idx: number) => (
               <Card key={idx} bg={cardBg} borderColor={borderColor} borderWidth="1px">
                 <CardBody p={4}>
                   <HStack spacing={4}>
-                    <Circle size="40px" bg={`${feature.color.split('.')[0]}.50`} color={feature.color}>
+                    <Circle size="40px" bg="purple.50" color="purple.500">
                       <Icon as={feature.icon} />
                     </Circle>
                     <VStack align="start" spacing={0}>
-                      <Text fontWeight="bold">{feature.title}</Text>
-                      <Text fontSize="sm" color="gray.600">{feature.description}</Text>
+                      <Text fontWeight="bold" fontSize="sm">{feature.title}</Text>
                     </VStack>
                   </HStack>
                 </CardBody>
@@ -414,94 +465,181 @@ const Premium: React.FC = () => {
             renderPremiumFeature()
           ) : (
             <VStack spacing={12} align="stretch">
-              <Center>
+              <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr 1fr' }} gap={8} display="flex" flexDirection={{ base: "column", lg: "row" }} alignItems="stretch">
+                {/* Free Tier */}
                 <Card 
-                  maxW="400px" 
-                  w="full" 
+                  flex={1}
                   borderRadius="2xl" 
-                  boxShadow="2xl" 
-                  borderWidth="2px" 
-                  borderColor="purple.400"
+                  boxShadow="lg" 
+                  borderWidth="1px" 
+                  borderColor={borderColor}
                   overflow="hidden"
+                  bg={cardBg}
                 >
-                  <Box bg="purple.500" h="8px" />
-                  <CardBody p={8}>
-                    <VStack spacing={6}>
-                      <VStack spacing={1}>
-                        <Text fontSize="sm" color="gray.500" fontWeight="bold">PREMIUM PLAN</Text>
+                  <Box bg="gray.400" h="8px" />
+                  <CardBody p={8} display="flex" flexDirection="column">
+                    <VStack spacing={6} align="start" flex={1}>
+                      <VStack spacing={1} align="start">
+                        <Text fontSize="md" color="gray.500" fontWeight="bold">Free</Text>
+                        <Text fontSize="lg" fontWeight="semibold" color="gray.800">Basic</Text>
                         <HStack align="baseline">
-                          <Text fontSize="5xl" fontWeight="extrabold">₱{isYearly ? '299' : '99'}</Text>
-                          <Text color="gray.500">/{isYearly ? 'year' : 'month'}</Text>
+                          <Text fontSize="4xl" fontWeight="extrabold">₱0</Text>
+                          <Text color="gray.500">/month</Text>
                         </HStack>
                       </VStack>
 
                       <Divider />
 
-                      <List spacing={3} w="full">
-                        {premiumFeatures.map((f, i) => (
-                          <ListItem key={i} display="flex" alignItems="center" fontSize="sm">
-                            <ListIcon as={FaCheckCircle} color="purple.500" />
-                            <Text fontWeight="medium">{f.title}</Text>
-                          </ListItem>
-                        ))}
-                      </List>
-
-                      <Button
-                        w="full"
-                        size="lg"
-                        colorScheme="purple"
-                        borderRadius="xl"
-                        h="60px"
-                        fontSize="lg"
-                        leftIcon={<FaCrown />}
-                        isLoading={upgrading}
-                        onClick={handleUpgrade}
-                        boxShadow="0 4px 14px 0 rgba(128, 90, 213, 0.39)"
-                        _hover={{
-                          transform: 'translateY(-2px)',
-                          boxShadow: '0 6px 20px rgba(128, 90, 213, 0.43)',
-                        }}
-                      >
-                        Subscribe Now
-                      </Button>
-                      <Text fontSize="xs" color="gray.500">
-                        Secure payment via Xendit. Cancel anytime.
-                      </Text>
+                      <Box w="full">
+                        {renderFeatureList(freeFeatures)}
+                      </Box>
                     </VStack>
+                    <Button
+                      w="full"
+                      mt={8}
+                      size="lg"
+                      variant="outline"
+                      colorScheme="gray"
+                      isDisabled={true}
+                    >
+                      Current Plan
+                    </Button>
                   </CardBody>
                 </Card>
-              </Center>
+
+                {/* Plus Tier */}
+                <Card 
+                  flex={1}
+                  borderRadius="2xl" 
+                  boxShadow="2xl" 
+                  borderWidth="2px" 
+                  borderColor="purple.400"
+                  overflow="hidden"
+                  bg={cardBg}
+                  position="relative"
+                  transform={{ lg: "scale(1.05)" }}
+                  zIndex={1}
+                >
+                  <Box bg="purple.500" h="8px" />
+                  <Badge 
+                    position="absolute" 
+                    top={4} 
+                    right={4} 
+                    colorScheme="purple" 
+                    variant="solid" 
+                    borderRadius="full" 
+                    px={3}
+                  >
+                    Most popular
+                  </Badge>
+                  <CardBody p={8} display="flex" flexDirection="column">
+                    <VStack spacing={6} align="start" flex={1}>
+                      <VStack spacing={1} align="start">
+                        <Text fontSize="md" color="purple.500" fontWeight="bold">Plus</Text>
+                        <HStack align="baseline">
+                          <Text fontSize="4xl" fontWeight="extrabold">₱{isYearly ? '699' : '79'}</Text>
+                          <Text color="gray.500">/{isYearly ? 'year' : 'month'}</Text>
+                        </HStack>
+                        {isYearly && <Text fontSize="sm" color="gray.500">or ₱58/mo billled yearly</Text>}
+                        {isYearly && <Text fontSize="xs" color="green.500" fontWeight="bold">save 26%</Text>}
+                      </VStack>
+
+                      <Divider />
+
+                      <Box w="full">
+                        {renderFeatureList(plusFeatures)}
+                      </Box>
+                    </VStack>
+                    <Button
+                      w="full"
+                      mt={8}
+                      size="lg"
+                      colorScheme="purple"
+                      isLoading={upgrading}
+                      onClick={() => handleUpgrade('plus')}
+                      leftIcon={<FaCrown />}
+                    >
+                      Upgrade to Plus
+                    </Button>
+                  </CardBody>
+                </Card>
+
+                {/* Pro Tier */}
+                <Card 
+                  flex={1}
+                  borderRadius="2xl" 
+                  boxShadow="lg" 
+                  borderWidth="1px" 
+                  borderColor={borderColor}
+                  overflow="hidden"
+                  bg={cardBg}
+                >
+                  <Box bg="orange.400" h="8px" />
+                  <CardBody p={8} display="flex" flexDirection="column">
+                    <VStack spacing={6} align="start" flex={1}>
+                      <VStack spacing={1} align="start">
+                        <Text fontSize="md" color="orange.400" fontWeight="bold">Pro</Text>
+                        <HStack align="baseline">
+                          <Text fontSize="4xl" fontWeight="extrabold">₱{isYearly ? '1099' : '120'}</Text>
+                          <Text color="gray.500">/{isYearly ? 'year' : 'month'}</Text>
+                        </HStack>
+                        {isYearly && <Text fontSize="sm" color="gray.500">or ₱91/mo billled yearly</Text>}
+                        {isYearly && <Text fontSize="xs" color="green.500" fontWeight="bold">save 24%</Text>}
+                      </VStack>
+
+                      <Divider />
+
+                      <Box w="full">
+                        {renderFeatureList(proFeatures)}
+                      </Box>
+                    </VStack>
+                    <Button
+                      w="full"
+                      mt={8}
+                      size="lg"
+                      colorScheme="orange"
+                      isLoading={upgrading}
+                      onClick={() => handleUpgrade('pro')}
+                      leftIcon={<FaStar />}
+                    >
+                      Go Pro
+                    </Button>
+                  </CardBody>
+                </Card>
+              </Grid>
 
               {/* Comparison & FAQ */}
               <Tabs isFitted variant="soft-rounded" colorScheme="purple">
                 <TabList mb="1em">
-                  <Tab>Comparison</Tab>
+                  <Tab>Feature Comparison</Tab>
                   <Tab>FAQ</Tab>
                 </TabList>
                 <TabPanels>
-                  <TabPanel>
+                  <TabPanel p={0}>
                     <TableContainer bg={cardBg} borderRadius="xl" border="1px" borderColor={borderColor}>
-                      <Table variant="simple">
+                      <Table variant="simple" size="sm">
                         <Thead>
                           <Tr>
                             <Th>Feature</Th>
                             <Th>Free</Th>
-                            <Th color="purple.500">Premium</Th>
+                            <Th color="purple.500">Plus</Th>
+                            <Th color="orange.500">Pro</Th>
                           </Tr>
                         </Thead>
                         <Tbody>
-                          {comparisonFeatures.map((item, idx) => (
+                          {comparisonFeatures.map((item: any, idx) => (
                             <Tr key={idx}>
-                              <Td fontWeight="medium">{item.feature}</Td>
-                              <Td>{typeof item.free === 'boolean' ? (item.free ? <Icon as={FaCheck} color="green.500" /> : <Icon as={FaTimes} color="red.400" />) : item.free}</Td>
-                              <Td>{typeof item.premium === 'boolean' ? (item.premium ? <Icon as={FaCheck} color="green.500" /> : <Icon as={FaTimes} color="red.400" />) : <Badge colorScheme="purple" variant="subtle">{item.premium}</Badge>}</Td>
+                              <Td fontWeight="medium" py={4}>{item.feature}</Td>
+                              <Td py={4}>{typeof item.free === 'boolean' ? (item.free ? <Icon as={FaCheck} color="green.500" /> : <Icon as={FaTimes} color="red.400" />) : item.free}</Td>
+                              <Td py={4}>{typeof item.plus === 'boolean' ? (item.plus ? <Icon as={FaCheck} color="green.500" /> : <Icon as={FaTimes} color="red.400" />) : <Badge colorScheme="purple" variant="subtle">{item.plus}</Badge>}</Td>
+                              <Td py={4}>{typeof item.pro === 'boolean' ? (item.pro ? <Icon as={FaCheck} color="green.500" /> : <Icon as={FaTimes} color="red.400" />) : <Badge colorScheme="orange" variant="subtle">{item.pro}</Badge>}</Td>
                             </Tr>
                           ))}
                         </Tbody>
                       </Table>
                     </TableContainer>
                   </TabPanel>
-                  <TabPanel>
+                  <TabPanel p={0}>
                     <VStack spacing={4} align="stretch">
                       {faqItems.map((faq, idx) => (
                         <Card key={idx} variant="outline" borderRadius="xl">

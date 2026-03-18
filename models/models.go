@@ -116,6 +116,7 @@ type User struct {
 	Latitude                    *float64   `json:"latitude,omitempty"`
 	Longitude                   *float64   `json:"longitude,omitempty"`
 	IsPremium                   bool       `json:"is_premium"`
+	PremiumTier                 string     `json:"premium_tier"` // "free", "plus", "pro"
 	CreatedAt                   time.Time  `json:"created_at"`
 	UpdatedAt                   time.Time  `json:"updated_at"`
 	VerificationStatus          string     `json:"verification_status,omitempty"`
@@ -149,48 +150,57 @@ type UserRegister struct {
 	Bio            string  `json:"bio"`
 }
 
+// ProductAnalytics represents popularity statistics for a listing
+type ProductAnalytics struct {
+	Views int    `json:"views"`
+	Saves int    `json:"saves"`
+	Rank  string `json:"rank"` // Percentile rank (e.g. "Top 5%")
+}
+
 // Product represents a product listing
 type Product struct {
-	ID                   int         `json:"id"`
-	Slug                 string      `json:"slug,omitempty"` // SEO-friendly URL identifier
-	Title                string      `json:"title" validate:"required,min=2,max=255"`
-	Description          string      `json:"description"`
-	Price                *float64    `json:"price,omitempty"`      // Optional for barter-only items
-	ImageURLs            StringArray `json:"image_urls,omitempty"` // Multiple images
-	ImageURL             string      `json:"image_url,omitempty"`  // Single image for compatibility
-	SellerID             int         `json:"seller_id"`
-	SellerName           string      `json:"seller_name,omitempty"`
-	SellerProfilePicture string      `json:"seller_profile_picture,omitempty"`
-	Premium              bool        `json:"premium"`
-	Status               string      `json:"status" validate:"oneof=available sold traded locked"`
-	AllowBuying          bool        `json:"allow_buying"` // Whether buying is allowed
-	BarterOnly           bool        `json:"barter_only"`  // Whether it's barter only
-	Location             string      `json:"location,omitempty"`
-	Condition            string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	EstimatedValueMin    *float64    `json:"estimated_value_min,omitempty"`
-	EstimatedValueMax    *float64    `json:"estimated_value_max,omitempty"`
-	SuggestedValue       int         `json:"suggested_value,omitempty"`
-	Value                *float64    `json:"value,omitempty"` // User-defined product value
-	Category             string      `json:"category,omitempty"`
-	Wants                string      `json:"wants,omitempty"`
-	WantedCategories     StringArray `json:"wanted_categories,omitempty"`
-	DesiredPrice         *float64    `json:"desired_price,omitempty"`
-	DesiredProduct       string      `json:"desired_product,omitempty"`
-	ItemType             string      `json:"item_type,omitempty"`
-	Brand                string      `json:"brand,omitempty"`
-	AuthenticityRisks    string      `json:"authenticity_risks,omitempty"`
-	Tags                 StringArray `json:"tags,omitempty"`
-	Latitude             *float64    `json:"latitude,omitempty"`
-	Longitude            *float64    `json:"longitude,omitempty"`
-	VideoURL             string      `json:"video_url,omitempty"`
-	Distance             string      `json:"distance,omitempty"` // Computed distance from viewer (e.g. "3.2 KM")
-	CreatedAt            time.Time   `json:"created_at"`
-	UpdatedAt            time.Time   `json:"updated_at"`
-	BiddingType          string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
-	WishlistCount        int         `json:"wishlist_count,omitempty"`
-	WantCount            int         `json:"want_count"`
-	OfferCount           int         `json:"offer_count"`
-	BoostedAt            *time.Time  `json:"boosted_at,omitempty"`
+	ID                   int               `json:"id"`
+	Slug                 string            `json:"slug,omitempty"` // SEO-friendly URL identifier
+	Title                string            `json:"title" validate:"required,min=2,max=255"`
+	Description          string            `json:"description"`
+	Price                *float64          `json:"price,omitempty"`      // Optional for barter-only items
+	ImageURLs            StringArray       `json:"image_urls,omitempty"` // Multiple images
+	ImageURL             string            `json:"image_url,omitempty"`  // Single image for compatibility
+	SellerID             int               `json:"seller_id"`
+	SellerName           string            `json:"seller_name,omitempty"`
+	SellerProfilePicture string            `json:"seller_profile_picture,omitempty"`
+	Premium              bool              `json:"premium"`
+	Status               string            `json:"status" validate:"oneof=available sold traded locked"`
+	AllowBuying          bool              `json:"allow_buying"` // Whether buying is allowed
+	BarterOnly           bool              `json:"barter_only"`  // Whether it's barter only
+	Location             string            `json:"location,omitempty"`
+	Condition            string            `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	EstimatedValueMin    *float64          `json:"estimated_value_min,omitempty"`
+	EstimatedValueMax    *float64          `json:"estimated_value_max,omitempty"`
+	SuggestedValue       int               `json:"suggested_value,omitempty"`
+	Value                *float64          `json:"value,omitempty"` // User-defined product value
+	Category             string            `json:"category,omitempty"`
+	Wants                string            `json:"wants,omitempty"`
+	WantedCategories     StringArray       `json:"wanted_categories,omitempty"`
+	DesiredPrice         *float64          `json:"desired_price,omitempty"`
+	DesiredProduct       string            `json:"desired_product,omitempty"`
+	ItemType             string            `json:"item_type,omitempty"`
+	Brand                string            `json:"brand,omitempty"`
+	AuthenticityRisks    string            `json:"authenticity_risks,omitempty"`
+	PriceReasoning       string            `json:"price_reasoning,omitempty"`
+	Tags                 StringArray       `json:"tags,omitempty"`
+	Latitude             *float64          `json:"latitude,omitempty"`
+	Longitude            *float64          `json:"longitude,omitempty"`
+	VideoURL             string            `json:"video_url,omitempty"`
+	Analytics            *ProductAnalytics `json:"analytics,omitempty"`
+	Distance             string            `json:"distance,omitempty"` // Computed distance from viewer (e.g. "3.2 KM")
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
+	BiddingType          string            `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	WishlistCount        int               `json:"wishlist_count,omitempty"`
+	WantCount            int               `json:"want_count"`
+	OfferCount           int               `json:"offer_count"`
+	BoostedAt            *time.Time        `json:"boosted_at,omitempty"`
 }
 
 // ProductCreate represents data for creating a product

@@ -870,19 +870,78 @@ const SettingsPage: React.FC = () => {
 
                 {/* Email */}
                 <FormControl>
-                  <FormLabel>Email Address</FormLabel>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value)
-                      setHasUnsavedChanges(true)
-                    }}
-                    placeholder="you@example.com"
-                  />
+                  <HStack justify="space-between" mb={2}>
+                    <FormLabel mb={0}>Email Address</FormLabel>
+                    <HStack spacing={2}>
+                      {user?.verified ? (
+                        <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
+                          <HStack spacing={1}>
+                            <Icon as={FaCheckCircle} boxSize={3} />
+                            <Text fontSize="2xs">Verified</Text>
+                          </HStack>
+                        </Badge>
+                      ) : (
+                        <Badge colorScheme="orange" variant="subtle" borderRadius="full" px={2}>
+                          <Text fontSize="2xs">Unverified</Text>
+                        </Badge>
+                      )}
+                    </HStack>
+                  </HStack>
+                  <HStack spacing={2}>
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value)
+                        setHasUnsavedChanges(true)
+                      }}
+                      placeholder="you@example.com"
+                    />
+                    {!user?.verified && email === user?.email && (
+                      <Button
+                        size="sm"
+                        colorScheme="orange"
+                        variant="ghost"
+                        fontSize="xs"
+                        isLoading={verificationLoading}
+                        onClick={async () => {
+                          setVerificationLoading(true)
+                          try {
+                            await api.post('/api/auth/resend-verification', { email: user?.email })
+                            toast({
+                              title: 'Verification email sent',
+                              description: 'Please check your inbox for the code.',
+                              status: 'info',
+                              duration: 5000,
+                              isClosable: true,
+                            })
+                            // Redirect to verification page
+                            navigate('/verify-email', { state: { email: user?.email } })
+                          } catch (err: any) {
+                            toast({
+                              title: 'Error',
+                              description: err.response?.data?.error || 'Failed to send verification email',
+                              status: 'error',
+                              duration: 3000,
+                              isClosable: true,
+                            })
+                          } finally {
+                            setVerificationLoading(false)
+                          }
+                        }}
+                      >
+                        Verify Now
+                      </Button>
+                    )}
+                  </HStack>
                   {email && !validateEmail(email) && (
                     <Text fontSize="xs" color="red.500" mt={1}>
                       Please enter a valid email address
+                    </Text>
+                  )}
+                  {!user?.verified && (
+                    <Text fontSize="xs" color="orange.500" mt={2}>
+                      ⚠️ Your email is not verified. Some features may be restricted.
                     </Text>
                   )}
                 </FormControl>

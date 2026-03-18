@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -97,9 +98,20 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		fmt.Printf("🛒 Purchase detected (0 items offered). Added product price: %.2f\n", productPrice)
 	}
 
-	// 3. Delivery Fee
+	// 3. Delivery Fee (Express is a Premium feature)
 	deliveryFee := 0.0
-	if deliveryType.Valid {
+	if deliveryType.Valid && deliveryType.String != "" {
+		// Check premium status for express delivery
+		var isPremium bool
+		h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
+
+		if deliveryType.String == "express" && !isPremium {
+			return c.Status(403).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Express Delivery is a Premium feature. Please upgrade to use it.",
+			})
+		}
+
 		switch deliveryType.String {
 		case "express":
 			deliveryFee = 150.0
@@ -262,12 +274,12 @@ func (h *PaymentHandler) CreatePremiumInvoice(c *fiber.Ctx) error {
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -335,12 +347,12 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -361,10 +373,18 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(int)
 
 	var payload struct {
-		Plan string `json:"plan"`
+		Tier string `json:"tier"` // "plus" or "pro"
+		Plan string `json:"plan"` // "monthly" or "yearly"
 	}
 	if err := c.BodyParser(&payload); err != nil {
-		// Default to monthly if parsing fails
+		// Default to plus/monthly if parsing fails
+		payload.Tier = "plus"
+		payload.Plan = "monthly"
+	}
+	if payload.Tier == "" {
+		payload.Tier = "plus"
+	}
+	if payload.Plan == "" {
 		payload.Plan = "monthly"
 	}
 
@@ -374,18 +394,29 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
-	amount := 99.0 // Pricing for monthly premium
-	description := "Clovia Premium Subscription (Monthly)"
+	amount := 79.0 // Default for Plus Monthly
+	description := "Plus Subscription (Monthly)"
 
-	if payload.Plan == "yearly" {
-		amount = 299.0
-		description = "Clovia Premium Subscription (Yearly)"
+	if payload.Tier == "pro" {
+		if payload.Plan == "yearly" {
+			amount = 1099.0
+			description = "Pro Subscription (Yearly)"
+		} else {
+			amount = 120.0
+			description = "Pro Subscription (Monthly)"
+		}
+	} else {
+		// Default to Plus
+		if payload.Plan == "yearly" {
+			amount = 699.0
+			description = "Plus Subscription (Yearly)"
+		}
 	}
 
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	xenditClient := xendit.NewClient(apiKey)
 
-	externalID := fmt.Sprintf("user_premium_%d", userID)
+	externalID := fmt.Sprintf("user_premium_%s_%d", payload.Tier, userID)
 
 	// Determine frontend URL dynamically
 	frontendURL := c.Get("Origin")
@@ -413,12 +444,12 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -438,6 +469,7 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	var payload map[string]interface{}
 	if err := c.BodyParser(&payload); err != nil {
+		log.Printf("❌ Webhook Error: Invalid payload: %v", err)
 		return c.Status(400).SendString("Invalid payload")
 	}
 
@@ -445,7 +477,10 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	externalID, _ := payload["external_id"].(string)
 	amount, _ := payload["amount"].(float64)
 
+	log.Printf("🔔 Webhook Received: Status=%s, ExternalID=%s, Amount=%.2f", status, externalID, amount)
+
 	if status != "PAID" {
+		log.Printf("⏭️  Webhook: Ignoring non-PAID status: %s", status)
 		return c.SendStatus(200)
 	}
 
@@ -509,13 +544,27 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 		}
 	} else if strings.HasPrefix(externalID, "user_premium_") {
 		var userID int
-		fmt.Sscanf(externalID, "user_premium_%d", &userID)
+		var tier string
+		if strings.Count(externalID, "_") >= 3 {
+			// user_premium_<tier>_<userID>
+			parts := strings.Split(externalID, "_")
+			tier = parts[2]
+			fmt.Sscanf(parts[3], "%d", &userID)
+		} else {
+			// user_premium_<userID> (legacy support)
+			fmt.Sscanf(externalID, "user_premium_%d", &userID)
+			tier = "plus" // Default to plus for legacy
+		}
 
 		if userID > 0 {
 			// Update user status
-			_, err := h.db.Exec("UPDATE users SET is_premium = true WHERE id = ?", userID)
+			log.Printf("💎 Webhook: Granting %s premium to user %d (Amount: %.2f)", tier, userID, amount)
+			_, err := h.db.Exec("UPDATE users SET is_premium = true, premium_tier = ?, verified = true WHERE id = ?", tier, userID)
 			if err != nil {
+				log.Printf("❌ Webhook Error: User premium update failed for user %d: %v\n", userID, err)
 				fmt.Printf("Webhook Error: User premium update failed for user %d: %v\n", userID, err)
+			} else {
+				log.Printf("✅ Webhook SUCCESS: Updated user %d to premium tier %s\n", userID, tier)
 			}
 
 			// Record Earnings
@@ -523,6 +572,10 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
 				VALUES (?, ?, 'premium_upgrade', ?, ?)`,
 				userID, amount, userID, externalID)
+			if err != nil {
+				log.Printf("❌ Earnings Error (User %d): %v\n", userID, err)
+				fmt.Printf("Earnings Error (User %d): %v\n", userID, err)
+			}
 		}
 	}
 

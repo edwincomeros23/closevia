@@ -28,7 +28,7 @@ func NewTradeGraph(db *sql.DB) (*TradeGraph, error) {
 		Nodes: make(map[int]bool),
 	}
 
-	rows, err := db.Query("SELECT id, buyer_id, seller_id FROM trades WHERE status = 'pending'")
+	rows, err := db.Query("SELECT id, buyer_id, seller_id FROM trades WHERE status IN ('pending', 'pending_multiway')")
 	if err != nil {
 		return nil, err
 	}

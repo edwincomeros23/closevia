@@ -559,12 +559,22 @@ func calculateETA(distanceKm float64, deliveryType string) time.Time {
 	return time.Now().Add(time.Duration(hours * float64(time.Hour)))
 }
 
-// CalculateCost calculates delivery cost based on type
-func calculateCost(deliveryType string) float64 {
+// CalculateCost calculates delivery cost based on type and user tier
+func calculateCost(deliveryType string, tier string) float64 {
+	baseCost := 30.0
 	if deliveryType == "express" {
-		return 60.0 // ₱60 for express
+		baseCost = 60.0
 	}
-	return 30.0 // ₱30 for standard
+
+	discount := 1.0
+	switch tier {
+	case "plus":
+		discount = 0.9 // 10% off
+	case "pro":
+		discount = 0.8 // 20% off
+	}
+
+	return baseCost * discount
 }
 
 // CheckFragileItems checks if any products in the delivery are fragile
@@ -680,9 +690,17 @@ func (h *DeliveryHandler) CreateDelivery(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
 	}
 
-	// Validate delivery type
+	// Fetch user tier
+	var tier string
+	h.db.QueryRow("SELECT COALESCE(premium_tier, 'free') FROM users WHERE id = ?", userID).Scan(&tier)
+
+	// Validate delivery type and access
 	if req.DeliveryType != "standard" && req.DeliveryType != "express" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid delivery type. Must be 'standard' or 'express'"})
+	}
+
+	if req.DeliveryType == "express" && tier == "free" {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Express delivery is only available for Plus and Pro members."})
 	}
 
 	// Validate item count
@@ -747,7 +765,7 @@ func (h *DeliveryHandler) CreateDelivery(c *fiber.Ctx) error {
 	}
 
 	// Calculate cost
-	totalCost := calculateCost(req.DeliveryType)
+	totalCost := calculateCost(req.DeliveryType, tier)
 
 	// Find nearest rider (will be assigned when claimed)
 	var riderID *int
