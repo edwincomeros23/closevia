@@ -328,13 +328,13 @@ func (h *UserHandler) VerifyEmail(c *fiber.Ctx) error {
 	// Mark verified and clear OTP
 	// Auto-grant premium for WMSU students (@wmsu.edu.ph email) after verification
 	isWmsuStudent := strings.HasSuffix(strings.ToLower(req.Email), "@wmsu.edu.ph")
-	
+
 	query := "UPDATE users SET verified = true, email_otp_hash = NULL, email_otp_expires = NULL"
 	if isWmsuStudent {
 		query += ", is_premium = true, premium_tier = 'plus'"
 	}
 	query += " WHERE id = ?"
-	
+
 	_, err = h.db.Exec(query, userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify email"})
@@ -796,7 +796,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to fetch user profile",
+			Error:   "Failed to fetch user profile: " + err.Error(),
 		})
 	}
 
@@ -882,7 +882,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		err := h.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&currentEmail)
 		if err == nil && newEmail != "" && newEmail != currentEmail {
 			emailChanged = true
-			
+
 			// Check if new email is already taken by another user
 			var exists int
 			h.db.QueryRow("SELECT COUNT(*) FROM users WHERE email = ? AND id != ?", newEmail, userID).Scan(&exists)
@@ -909,10 +909,10 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		if emailChanged {
 			query += ", verified = false"
 			// Revoke is_premium if it was from WMSU, they will get it back after verifying new WMSU email
-			query += ", is_premium = false" 
+			query += ", is_premium = false"
 		}
 	}
-	
+
 	// ... (rest of field updates)
 	if updateData.ProfilePicture != nil {
 		query += ", profile_picture = ?"
@@ -981,11 +981,11 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		if otpErr == nil {
 			// Save OTP to DB
 			h.db.Exec("UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?", otpHash, otpExpiry, userID)
-			
+
 			// Send Email
 			var userName string
 			_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&userName)
-			
+
 			go func() {
 				err := services.SendOTPEmail(newEmail, userName, otpCode)
 				if err != nil {
@@ -993,7 +993,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 				}
 			}()
 		}
-		
+
 		return c.JSON(models.APIResponse{
 			Success: true,
 			Message: "Profile updated. Please verify your new email address. A verification code has been sent.",
@@ -1183,9 +1183,9 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	var lastLogin sql.NullTime
 	err = h.db.QueryRow(
 		`SELECT id, slug, name, email, role, verified, COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') as org_name, COALESCE(org_logo_url, '') as org_logo_url,
-		        profile_picture, background_image, background_position, department, bio, COALESCE(badges, '[]') as badges,
-		        verification_status, school_name, school_email, school_email_verified_at, verification_rejection_reason,
-		        created_at, updated_at, last_login
+		        COALESCE(profile_picture, '') as profile_picture, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, COALESCE(department, '') as department, COALESCE(bio, '') as bio, COALESCE(badges, '[]') as badges,
+		        COALESCE(verification_status, 'not_verified') as verification_status, COALESCE(school_name, '') as school_name, COALESCE(school_email, '') as school_email, COALESCE(school_email_verified_at, NULL) as school_email_verified_at, COALESCE(verification_rejection_reason, '') as verification_rejection_reason,
+		        COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at, COALESCE(last_login, NULL) as last_login
 		   FROM users WHERE id = ?`,
 		userID,
 	).Scan(
@@ -1199,18 +1199,16 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	fmt.Printf("🔍 GetUserByID(%d) query result - error: %v\n", userID, err)
 	if err != nil {
 		fmt.Printf("❌ Database error for user %d: %v\n", userID, err)
-		// Return a friendly fallback (200) so frontend does not produce a network 404.
-		fallback := models.User{
-			ID:             userID,
-			Name:           "User",
-			Verified:       false,
-			IsOrganization: false,
-			CreatedAt:      time.Now(),
-			ProfilePicture: "",
+		// Return proper error response so we can debug the actual database issue
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "User not found",
+			})
 		}
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Data:    fallback,
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Database error: " + err.Error(),
 		})
 	}
 
