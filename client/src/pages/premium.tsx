@@ -38,11 +38,8 @@ import {
   Flex,
   Stack,
   useColorModeValue,
-  useDisclosure,
-  Circle,
 } from '@chakra-ui/react'
-import { FaLock, FaCrown, FaLink, FaArrowRight, FaCheck, FaUser, FaBox, FaStar, FaRocket, FaShieldAlt, FaBolt, FaCheckCircle, FaTimes, FaQuestionCircle, FaGift, FaInfinity, FaChevronDown, FaChevronUp, FaChartLine } from 'react-icons/fa'
-import { FaCrown, FaCheck, FaCheckCircle, FaStar, FaTruck, FaChartLine, FaPercentage, FaShieldAlt, FaInfinity, FaArrowRight, FaLock, FaLink, FaUser, FaBox, FaRocket, FaBolt, FaTimes, FaQuestionCircle, FaGift, FaChevronDown, FaChevronUp, FaHandshake } from 'react-icons/fa'
+import { FaLock, FaCrown, FaLink, FaArrowRight, FaCheck, FaUser, FaBox, FaStar, FaRocket, FaShieldAlt, FaBolt, FaCheckCircle, FaTimes, FaQuestionCircle, FaGift, FaInfinity, FaChevronDown, FaChevronUp, FaChartLine, FaTruck, FaHandshake, FaPercentage } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { TradeLoop, MultiWayTrade } from '../types'
 import { fetchTradeLoops, fetchMultiWayTrade } from '../services/tradeService'
@@ -428,29 +425,6 @@ const Premium: React.FC = () => {
   return (
     <Box>
       <Container maxW="container.xl" py={12}>
-        <VStack spacing={8} align="stretch">
-          {/* Pricing Card (if not premium) */}
-        {!isPremiumUser && (
-          <Center>
-              <Card 
-                maxW="400px" 
-                w="full" 
-                borderRadius="2xl" 
-                boxShadow="2xl" 
-                borderWidth="2px" 
-                borderColor="purple.400"
-                overflow="hidden"
-              >
-                <Box bg="purple.500" h="8px" />
-                <CardBody p={8}>
-                  <VStack spacing={6}>
-                    <VStack spacing={1}>
-                      <Text fontSize="sm" color="gray.500" fontWeight="bold">PREMIUM PLAN</Text>
-                      <HStack align="baseline">
-                        <Text fontSize="5xl" fontWeight="extrabold">₱{isYearly ? '299' : '99'}</Text>
-                        <Text color="gray.500">/{isYearly ? 'year' : 'month'}</Text>
-                      </HStack>
-                    </VStack>
         <VStack spacing={12} align="stretch">
           <VStack spacing={4} textAlign="center">
             <Badge 
