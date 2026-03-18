@@ -58,6 +58,7 @@ const Premium: React.FC = () => {
 
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const hoverBg = useColorModeValue('gray.50', 'gray.700')
 
   const isPremiumUser = user?.is_premium === true
 
@@ -84,6 +85,14 @@ const Premium: React.FC = () => {
     setSelectedLoop(null)
     // Refresh loops when modal closes
     fetchLoops()
+  }
+
+  const handleSelectLoop = (loop: TradeLoop) => {
+    const loopId = `loop_${loop.edges.map(e => e.trade_id).join('_')}`
+    fetchMultiWayTrade(loopId).then(data => {
+      setSelectedLoop(data)
+      onOpen()
+    })
   }
 
   const renderPremiumFeature = () => {
@@ -272,12 +281,50 @@ const Premium: React.FC = () => {
     )
   }
 
-  const [upgrading, setUpgrading] = useState(false)
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
 
   const toggleFaq = (index: number) => {
     setExpandedFaq(expandedFaq === index ? null : index)
   }
+
+  const premiumFeatures = [
+    {
+      icon: FaInfinity,
+      title: 'Unlimited Listings',
+      description: 'Post as many products as you want without limits',
+      color: 'purple.500'
+    },
+    {
+      icon: FaBolt,
+      title: 'Fast-Track Trading',
+      description: 'Your listings get priority visibility in search results',
+      color: 'orange.500'
+    },
+    {
+      icon: FaShieldAlt,
+      title: 'Verified Seller Badge',
+      description: 'Increase buyer confidence with your premium status',
+      color: 'blue.500'
+    },
+    {
+      icon: FaRocket,
+      title: 'Boosted Listings',
+      description: 'Appear at the top of category searches and trending',
+      color: 'green.500'
+    },
+    {
+      icon: FaLink,
+      title: 'Multi-Way Trading',
+      description: 'Participate in complex trading chains and loops',
+      color: 'pink.500'
+    },
+    {
+      icon: FaCrown,
+      title: 'Priority Support',
+      description: 'Get faster response times from our support team',
+      color: 'yellow.500'
+    }
+  ]
 
   const faqItems = [
     {
@@ -728,7 +775,7 @@ const Premium: React.FC = () => {
                     <Divider />
 
                     <List spacing={3} w="full">
-                      {premiumFeatures.map((f, i) => (
+                      {premiumFeatures.map((f: typeof premiumFeatures[0], i: number) => (
                         <ListItem key={i} display="flex" alignItems="center" fontSize="sm">
                           <ListIcon as={FaCheckCircle} color="purple.500" />
                           <Text fontWeight="medium">{f.title}</Text>
@@ -768,7 +815,7 @@ const Premium: React.FC = () => {
             <VStack spacing={8}>
               <Heading size="lg">Everything you get with Premium</Heading>
               <Grid templateColumns={{ base: '1fr', md: '1fr 1fr', lg: '1fr 1fr 1fr' }} gap={8} w="full">
-                {premiumFeatures.map((feature, index) => (
+                {premiumFeatures.map((feature: typeof premiumFeatures[0], index: number) => (
                   <Card key={index} variant="outline" borderRadius="xl" _hover={{ shadow: 'md', borderColor: 'purple.200' }} transition="all 0.2s">
                     <CardBody p={6}>
                       <VStack align="start" spacing={4}>

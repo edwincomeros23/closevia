@@ -34,6 +34,7 @@ import {
   ModalHeader,
   ModalBody,
   ModalCloseButton,
+  Checkbox,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
 
