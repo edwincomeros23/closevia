@@ -56,7 +56,6 @@ const Premium: React.FC = () => {
   const [selectedLoop, setSelectedLoop] = useState<MultiWayTrade | null>(null)
   const [isYearly, setIsYearly] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
 
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
