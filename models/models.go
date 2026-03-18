@@ -468,18 +468,26 @@ func (r APIResponse) MarshalJSON() ([]byte, error) {
 
 // Rider represents a delivery rider
 type Rider struct {
-	ID           int       `json:"id"`
-	UserID       int       `json:"user_id"`
-	Name         string    `json:"name"`
-	VehicleType  string    `json:"vehicle_type" validate:"oneof=motorcycle bicycle car"`
-	VehiclePlate string    `json:"vehicle_plate,omitempty"`
-	Phone        string    `json:"phone"`
-	Rating       float64   `json:"rating"` // Average rating from deliveries
-	IsActive     bool      `json:"is_active"`
-	Latitude     *float64  `json:"latitude,omitempty"`
-	Longitude    *float64  `json:"longitude,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID              int        `json:"id"`
+	UserID          int        `json:"user_id"`
+	Name            string     `json:"name"`
+	VehicleType     string     `json:"vehicle_type" validate:"oneof=motorcycle bicycle car"`
+	VehiclePlate    string     `json:"vehicle_plate,omitempty"`
+	Phone           string     `json:"phone"`
+	Rating          float64    `json:"rating"`
+	IsActive        bool       `json:"is_active"`
+	Status          string     `json:"status"`
+	LicenseImageURL string     `json:"license_image_url,omitempty"`
+	SelfieImageURL  string     `json:"selfie_image_url,omitempty"`
+	ContactNumber   string     `json:"contact_number,omitempty"`
+	FullName        string     `json:"full_name,omitempty"`
+	RejectionReason string     `json:"rejection_reason,omitempty"`
+	ReviewedAt      *time.Time `json:"reviewed_at,omitempty"`
+	ReviewedBy      *int       `json:"reviewed_by,omitempty"`
+	Latitude        *float64   `json:"latitude,omitempty"`
+	Longitude       *float64   `json:"longitude,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 // Delivery represents a delivery request

@@ -27,13 +27,25 @@ import {
   TabPanels,
   Tab,
   TabPanel,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  TableContainer,
+  Collapse,
+  List,
+  ListItem,
+  ListIcon,
 } from '@chakra-ui/react'
-import { FaLock, FaCrown, FaLink, FaArrowRight, FaCheck, FaUser, FaBox, FaStar } from 'react-icons/fa'
+import { FaLock, FaCrown, FaLink, FaArrowRight, FaCheck, FaUser, FaBox, FaStar, FaRocket, FaShieldAlt, FaBolt, FaCheckCircle, FaTimes, FaQuestionCircle, FaGift, FaInfinity, FaChevronDown, FaChevronUp } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { TradeLoop, MultiWayTrade } from '../types'
 import { fetchTradeLoops, fetchMultiWayTrade } from '../services/tradeService'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
 import { useDisclosure } from '@chakra-ui/react'
+import { api } from '../services/api'
 
 const Premium: React.FC = () => {
   const { user } = useAuth()
@@ -121,22 +133,66 @@ const Premium: React.FC = () => {
   const renderPremiumFeature = () => {
     return (
       <VStack spacing={8} align="stretch">
-        {/* Premium Header */}
-        <Card bg={premiumBadgeBg} borderWidth="2px" borderColor="purple.400">
+        {/* Subscription Status Card */}
+        <Card bg="green.50" borderWidth="2px" borderColor="green.300">
           <CardBody>
-            <HStack spacing={4} justify="center" py={6}>
-              <Icon as={FaCrown} fontSize="3xl" color={premiumBadgeColor} />
-              <VStack align="start" spacing={0}>
-                <Heading size="lg" color={premiumBadgeColor}>
-                  Premium Member Benefits
-                </Heading>
-                <Text color={premiumBadgeColor} fontSize="sm">
-                  Unlock advanced trading opportunities with multi-way trading
-                </Text>
-              </VStack>
-            </HStack>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={4} py={2}>
+              <HStack spacing={4}>
+                <Icon as={FaCheckCircle} fontSize="2xl" color="green.500" />
+                <VStack align="start" spacing={0}>
+                  <Heading size="md" color="green.800">Premium Active</Heading>
+                  <Text color="green.600" fontSize="sm">Lifetime membership - All features unlocked</Text>
+                </VStack>
+              </HStack>
+              <Badge colorScheme="green" fontSize="md" px={4} py={1} borderRadius="full">Active</Badge>
+            </Flex>
           </CardBody>
         </Card>
+
+        {/* Your Benefits Grid */}
+        <Box>
+          <Heading size="md" mb={4}>Your Premium Benefits</Heading>
+          <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4}>
+            <Card bg={cardBg} borderColor="purple.200" borderWidth="1px">
+              <CardBody>
+                <HStack spacing={3} mb={2}>
+                  <Icon as={FaRocket} fontSize="xl" color="purple.500" />
+                  <Heading size="sm">Boosted Listings</Heading>
+                </HStack>
+                <Text fontSize="sm" color="gray.600">Your products get priority visibility in search results and feeds</Text>
+              </CardBody>
+            </Card>
+            <Card bg={cardBg} borderColor="purple.200" borderWidth="1px">
+              <CardBody>
+                <HStack spacing={3} mb={2}>
+                  <Icon as={FaLink} fontSize="xl" color="green.500" />
+                  <Heading size="sm">Multi-Way Trading</Heading>
+                </HStack>
+                <Text fontSize="sm" color="gray.600">Access advanced trading loops and chains with multiple users</Text>
+              </CardBody>
+            </Card>
+            <Card bg={cardBg} borderColor="purple.200" borderWidth="1px">
+              <CardBody>
+                <HStack spacing={3} mb={2}>
+                  <Icon as={FaCrown} fontSize="xl" color="yellow.500" />
+                  <Heading size="sm">Premium Badge</Heading>
+                </HStack>
+                <Text fontSize="sm" color="gray.600">Stand out with an exclusive premium badge on your profile</Text>
+              </CardBody>
+            </Card>
+            <Card bg={cardBg} borderColor="purple.200" borderWidth="1px">
+              <CardBody>
+                <HStack spacing={3} mb={2}>
+                  <Icon as={FaShieldAlt} fontSize="xl" color="blue.500" />
+                  <Heading size="sm">Priority Support</Heading>
+                </HStack>
+                <Text fontSize="sm" color="gray.600">Get faster responses from our support team</Text>
+              </CardBody>
+            </Card>
+          </Grid>
+        </Box>
+
+        <Divider />
 
         {/* Multi-Way Trading Section */}
         <Box>
@@ -256,74 +312,432 @@ const Premium: React.FC = () => {
             </VStack>
           )}
         </Box>
-
-        {/* Additional Premium Features */}
-        <Box>
-          <Heading size="md" mb={4}>
-            Other Premium Features
-          </Heading>
-          <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={4}>
-            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px">
-              <CardBody>
-                <HStack spacing={3} mb={3}>
-                  <Icon as={FaStar} fontSize="xl" color="yellow.500" />
-                  <Heading size="sm">Priority Support</Heading>
-                </HStack>
-                <Text fontSize="sm" color="gray.600">
-                  Get faster responses from our support team
-                </Text>
-              </CardBody>
-            </Card>
-
-            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px">
-              <CardBody>
-                <HStack spacing={3} mb={3}>
-                  <Icon as={FaLink} fontSize="xl" color="green.500" />
-                  <Heading size="sm">Multi-Way Trading</Heading>
-                </HStack>
-                <Text fontSize="sm" color="gray.600">
-                  Access advanced trading loops and chains
-                </Text>
-              </CardBody>
-            </Card>
-          </Grid>
-        </Box>
       </VStack>
     )
   }
 
+  const [upgrading, setUpgrading] = useState(false)
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
+
+  const toggleFaq = (index: number) => {
+    setExpandedFaq(expandedFaq === index ? null : index)
+  }
+
+  const faqItems = [
+    {
+      question: 'Is this a one-time payment or subscription?',
+      answer: 'Premium is a one-time lifetime payment of P499. No recurring charges or hidden fees. Pay once and enjoy all premium features forever.'
+    },
+    {
+      question: 'What is Multi-Way Trading?',
+      answer: 'Multi-Way Trading allows you to participate in trading chains where multiple users exchange products simultaneously. For example, User A gives to User B, who gives to User C, who gives back to User A - completing a trading loop.'
+    },
+    {
+      question: 'How does Boosted Listings work?',
+      answer: 'Your products will appear higher in search results and the main feed. Premium listings are prioritized over regular listings, giving you more visibility and faster trades.'
+    },
+    {
+      question: 'Can I get a refund?',
+      answer: 'Due to the digital nature of premium features, refunds are handled on a case-by-case basis. Contact our support team if you have any concerns.'
+    },
+    {
+      question: 'Will I lose my premium if the app updates?',
+      answer: 'No! Your premium status is tied to your account and will remain active through all updates. You may even get access to new premium features as we add them.'
+    }
+  ]
+
+  const comparisonFeatures = [
+    { feature: 'Basic Trading', free: true, premium: true },
+    { feature: 'Product Listings', free: '10 max', premium: 'Unlimited' },
+    { feature: 'Trade Requests', free: true, premium: true },
+    { feature: 'Messaging', free: true, premium: true },
+    { feature: 'Multi-Way Trading', free: false, premium: true },
+    { feature: 'Boosted Listings', free: false, premium: true },
+    { feature: 'Premium Badge', free: false, premium: true },
+    { feature: 'Priority Support', free: false, premium: true },
+    { feature: 'Early Access Features', free: false, premium: true },
+    { feature: 'Search Priority', free: 'Standard', premium: 'Top Results' },
+  ]
+
+  const handleUpgrade = async () => {
+    try {
+      setUpgrading(true)
+      const { data } = await api.post('/api/payments/subscription')
+      if (data?.success && data?.data?.checkout_url) {
+        window.location.href = data.data.checkout_url
+      } else {
+        throw new Error('Failed to create payment session')
+      }
+    } catch (error: any) {
+      toast({
+        id: 'premium-upgrade-error',
+        title: 'Upgrade Failed',
+        description: error.response?.data?.error || error.message || 'Something went wrong',
+        status: 'error',
+      })
+    } finally {
+      setUpgrading(false)
+    }
+  }
+
   const renderLockedContent = () => {
     return (
-      <Card bg={lockedBg} borderWidth="2px" borderColor={borderColor}>
-        <CardBody py={12}>
-          <VStack spacing={6} align="center">
-            <Icon as={FaLock} fontSize="4xl" color={lockedText} />
-            <VStack spacing={2} textAlign="center">
-              <Heading size="lg" color={lockedText}>
-                Premium Features Locked
+      <VStack spacing={10} align="stretch">
+        {/* Plan Hero Card */}
+        <Card
+          bg="linear-gradient(135deg, #9F7AEA 0%, #805AD5 50%, #6B46C1 100%)"
+          borderWidth="0"
+          overflow="hidden"
+          position="relative"
+        >
+          <Box
+            position="absolute"
+            top="-50px"
+            right="-50px"
+            w="200px"
+            h="200px"
+            bg="whiteAlpha.100"
+            borderRadius="full"
+          />
+          <Box
+            position="absolute"
+            bottom="-30px"
+            left="-30px"
+            w="150px"
+            h="150px"
+            bg="whiteAlpha.100"
+            borderRadius="full"
+          />
+          <CardBody py={12} position="relative">
+            <VStack spacing={5} align="center">
+              <Badge colorScheme="yellow" fontSize="sm" px={3} py={1} borderRadius="full">
+                <HStack spacing={1}>
+                  <Icon as={FaGift} />
+                  <Text>LIFETIME ACCESS</Text>
+                </HStack>
+              </Badge>
+              <Icon as={FaCrown} fontSize="6xl" color="yellow.300" />
+              <Heading size="2xl" color="white" textAlign="center">Clovia Premium</Heading>
+              <Text color="whiteAlpha.900" fontSize="lg" textAlign="center" maxW="500px">
+                Unlock the full potential of your trading experience with exclusive features and priority access
+              </Text>
+              <HStack align="baseline" spacing={1} mt={2}>
+                <Text fontSize="xl" color="whiteAlpha.800" textDecoration="line-through">P999</Text>
+                <Text fontSize="5xl" fontWeight="bold" color="white">P499</Text>
+                <VStack spacing={0} align="start">
+                  <Text fontSize="lg" color="whiteAlpha.800">one-time</Text>
+                  <Badge colorScheme="green" fontSize="xs">50% OFF</Badge>
+                </VStack>
+              </HStack>
+              <Button
+                colorScheme="yellow"
+                color="purple.800"
+                size="lg"
+                px={10}
+                leftIcon={<FaCrown />}
+                isLoading={upgrading}
+                onClick={handleUpgrade}
+                _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }}
+                transition="all 0.2s"
+              >
+                Get Premium Now
+              </Button>
+              <HStack spacing={4} color="whiteAlpha.800" fontSize="sm">
+                <HStack spacing={1}>
+                  <Icon as={FaInfinity} />
+                  <Text>Lifetime access</Text>
+                </HStack>
+                <HStack spacing={1}>
+                  <Icon as={FaShieldAlt} />
+                  <Text>Secure payment</Text>
+                </HStack>
+              </HStack>
+            </VStack>
+          </CardBody>
+        </Card>
+
+        {/* Plan Comparison Table */}
+        <Box>
+          <Heading size="lg" mb={2} textAlign="center">Free vs Premium</Heading>
+          <Text color="gray.500" textAlign="center" mb={6}>See what you're missing out on</Text>
+          <TableContainer>
+            <Table variant="simple" bg={cardBg} borderRadius="lg" overflow="hidden" boxShadow="sm">
+              <Thead bg={hoverBg}>
+                <Tr>
+                  <Th>Feature</Th>
+                  <Th textAlign="center">Free</Th>
+                  <Th textAlign="center" color="purple.500">Premium</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {comparisonFeatures.map((item, idx) => (
+                  <Tr key={idx} _hover={{ bg: hoverBg }}>
+                    <Td fontWeight="medium">{item.feature}</Td>
+                    <Td textAlign="center">
+                      {typeof item.free === 'boolean' ? (
+                        item.free ? (
+                          <Icon as={FaCheck} color="green.500" />
+                        ) : (
+                          <Icon as={FaTimes} color="red.400" />
+                        )
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">{item.free}</Text>
+                      )}
+                    </Td>
+                    <Td textAlign="center">
+                      {typeof item.premium === 'boolean' ? (
+                        item.premium ? (
+                          <Icon as={FaCheck} color="green.500" />
+                        ) : (
+                          <Icon as={FaTimes} color="red.400" />
+                        )
+                      ) : (
+                        <Badge colorScheme="purple" variant="subtle">{item.premium}</Badge>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+
+        {/* Detailed Feature Breakdown */}
+        <Box>
+          <Heading size="lg" mb={2} textAlign="center">Premium Features in Detail</Heading>
+          <Text color="gray.500" textAlign="center" mb={6}>Everything you need to trade smarter</Text>
+          <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={6}>
+            {/* Multi-Way Trading Detail */}
+            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px" overflow="hidden">
+              <Box h="4px" bg="linear-gradient(90deg, #48BB78, #38A169)" />
+              <CardBody>
+                <VStack align="start" spacing={4}>
+                  <HStack spacing={3}>
+                    <Box bg="green.100" p={3} borderRadius="xl">
+                      <Icon as={FaLink} fontSize="2xl" color="green.500" />
+                    </Box>
+                    <VStack align="start" spacing={0}>
+                      <Heading size="md">Multi-Way Trading</Heading>
+                      <Badge colorScheme="green" variant="subtle">Most Popular</Badge>
+                    </VStack>
+                  </HStack>
+                  <Text color="gray.600">
+                    Participate in advanced trading loops where multiple users exchange items simultaneously.
+                    Perfect for when direct trades aren't available.
+                  </Text>
+                  <List spacing={2}>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">3-way, 4-way, and larger trading chains</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Automatic loop detection algorithm</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Secure simultaneous exchanges</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Real-time loop notifications</Text>
+                    </ListItem>
+                  </List>
+                </VStack>
+              </CardBody>
+            </Card>
+
+            {/* Boosted Listings Detail */}
+            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px" overflow="hidden">
+              <Box h="4px" bg="linear-gradient(90deg, #9F7AEA, #805AD5)" />
+              <CardBody>
+                <VStack align="start" spacing={4}>
+                  <HStack spacing={3}>
+                    <Box bg="purple.100" p={3} borderRadius="xl">
+                      <Icon as={FaRocket} fontSize="2xl" color="purple.500" />
+                    </Box>
+                    <VStack align="start" spacing={0}>
+                      <Heading size="md">Boosted Listings</Heading>
+                      <Badge colorScheme="purple" variant="subtle">High Impact</Badge>
+                    </VStack>
+                  </HStack>
+                  <Text color="gray.600">
+                    Get your products seen first. Premium listings appear at the top of search results
+                    and the main feed, increasing your chances of successful trades.
+                  </Text>
+                  <List spacing={2}>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Priority placement in search results</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Featured in homepage feed</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Unlimited product listings</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Category spotlight opportunities</Text>
+                    </ListItem>
+                  </List>
+                </VStack>
+              </CardBody>
+            </Card>
+
+            {/* Premium Badge Detail */}
+            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px" overflow="hidden">
+              <Box h="4px" bg="linear-gradient(90deg, #ECC94B, #D69E2E)" />
+              <CardBody>
+                <VStack align="start" spacing={4}>
+                  <HStack spacing={3}>
+                    <Box bg="yellow.100" p={3} borderRadius="xl">
+                      <Icon as={FaCrown} fontSize="2xl" color="yellow.500" />
+                    </Box>
+                    <VStack align="start" spacing={0}>
+                      <Heading size="md">Premium Badge</Heading>
+                      <Badge colorScheme="yellow" variant="subtle">Trust Signal</Badge>
+                    </VStack>
+                  </HStack>
+                  <Text color="gray.600">
+                    Stand out from the crowd with an exclusive premium badge displayed on your
+                    profile and all your listings, signaling trust and commitment.
+                  </Text>
+                  <List spacing={2}>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Exclusive crown badge on profile</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Premium indicator on all listings</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Increased trust from other traders</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Special profile highlight</Text>
+                    </ListItem>
+                  </List>
+                </VStack>
+              </CardBody>
+            </Card>
+
+            {/* Priority Support Detail */}
+            <Card bg={cardBg} borderColor={borderColor} borderWidth="1px" overflow="hidden">
+              <Box h="4px" bg="linear-gradient(90deg, #4299E1, #3182CE)" />
+              <CardBody>
+                <VStack align="start" spacing={4}>
+                  <HStack spacing={3}>
+                    <Box bg="blue.100" p={3} borderRadius="xl">
+                      <Icon as={FaShieldAlt} fontSize="2xl" color="blue.500" />
+                    </Box>
+                    <VStack align="start" spacing={0}>
+                      <Heading size="md">Priority Support</Heading>
+                      <Badge colorScheme="blue" variant="subtle">VIP Service</Badge>
+                    </VStack>
+                  </HStack>
+                  <Text color="gray.600">
+                    Get the help you need, when you need it. Premium members receive priority
+                    support with faster response times and dedicated assistance.
+                  </Text>
+                  <List spacing={2}>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Priority ticket handling</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Faster response times</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Dedicated support channel</Text>
+                    </ListItem>
+                    <ListItem display="flex" alignItems="center">
+                      <ListIcon as={FaCheck} color="green.500" />
+                      <Text fontSize="sm">Early access to new features</Text>
+                    </ListItem>
+                  </List>
+                </VStack>
+              </CardBody>
+            </Card>
+          </Grid>
+        </Box>
+
+        {/* FAQ Section */}
+        <Box>
+          <Heading size="lg" mb={2} textAlign="center">
+            <Icon as={FaQuestionCircle} mr={2} color="purple.500" />
+            Frequently Asked Questions
+          </Heading>
+          <Text color="gray.500" textAlign="center" mb={6}>Got questions? We've got answers</Text>
+          <VStack spacing={3} align="stretch" maxW="700px" mx="auto">
+            {faqItems.map((faq, idx) => (
+              <Card
+                key={idx}
+                bg={expandedFaq === idx ? hoverBg : cardBg}
+                borderColor={expandedFaq === idx ? 'purple.300' : borderColor}
+                borderWidth="1px"
+                cursor="pointer"
+                onClick={() => toggleFaq(idx)}
+                transition="all 0.2s"
+                _hover={{ borderColor: 'purple.300' }}
+              >
+                <CardBody py={4}>
+                  <Flex justify="space-between" align="center">
+                    <Text fontWeight="semibold" color={expandedFaq === idx ? 'purple.600' : 'inherit'}>
+                      {faq.question}
+                    </Text>
+                    <Icon
+                      as={expandedFaq === idx ? FaChevronUp : FaChevronDown}
+                      color={expandedFaq === idx ? 'purple.500' : 'gray.400'}
+                    />
+                  </Flex>
+                  <Collapse in={expandedFaq === idx} animateOpacity>
+                    <Text mt={3} color="gray.600" fontSize="sm">
+                      {faq.answer}
+                    </Text>
+                  </Collapse>
+                </CardBody>
+              </Card>
+            ))}
+          </VStack>
+        </Box>
+
+        {/* Final CTA */}
+        <Card bg="purple.50" borderWidth="2px" borderColor="purple.200">
+          <CardBody py={8}>
+            <VStack spacing={4} align="center">
+              <Heading size="lg" color="purple.800" textAlign="center">
+                Ready to Upgrade Your Trading?
               </Heading>
-              <Text color={lockedText} maxW="400px">
-                Upgrade to premium to unlock multi-way trading and other exclusive features
+              <Text color="purple.600" textAlign="center" maxW="500px">
+                Join thousands of premium traders and unlock the full Clovia experience today.
+              </Text>
+              <Button
+                colorScheme="purple"
+                size="lg"
+                px={12}
+                leftIcon={<FaCrown />}
+                isLoading={upgrading}
+                onClick={handleUpgrade}
+                _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                transition="all 0.2s"
+              >
+                Upgrade to Premium - P499
+              </Button>
+              <Text fontSize="xs" color="gray.500" textAlign="center">
+                One-time payment · Lifetime access · No hidden fees
               </Text>
             </VStack>
-            <Button
-              colorScheme="purple"
-              size="lg"
-              leftIcon={<FaCrown />}
-              onClick={() => {
-                toast({
-        id: "premium-upgrade",
-                  title: 'Upgrade',
-                  description: 'Premium upgrade functionality coming soon',
-                  status: 'info',
-                })
-              }}
-            >
-              Upgrade to Premium
-            </Button>
-          </VStack>
-        </CardBody>
-      </Card>
+          </CardBody>
+        </Card>
+      </VStack>
     )
   }
 

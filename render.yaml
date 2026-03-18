@@ -19,5 +19,9 @@ services:
         scope: build
       - key: PORT
         value: 4000
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
       - key: CORS_ORIGINS
         value: https://cloviaph.netlify.app,https://cloviaph.site,https://closevia.onrender.com

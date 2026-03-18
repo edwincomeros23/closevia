@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -150,6 +151,23 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		if user.Department == nil || *user.Department == "" {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please select your department/college for WMSU registration"})
 		}
+	}
+
+	// Strict password validation
+	if len(user.Password) < 8 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Password must be at least 8 characters long"})
+	}
+	if matched, _ := regexp.MatchString(`[A-Z]`, user.Password); !matched {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Password must contain at least one uppercase letter"})
+	}
+	if matched, _ := regexp.MatchString(`[a-z]`, user.Password); !matched {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Password must contain at least one lowercase letter"})
+	}
+	if matched, _ := regexp.MatchString(`[0-9]`, user.Password); !matched {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Password must contain at least one number"})
+	}
+	if matched, _ := regexp.MatchString(`[!@#$%^&*(),.?":{}|<>]`, user.Password); !matched {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Password must contain at least one special character"})
 	}
 
 	// Hash password

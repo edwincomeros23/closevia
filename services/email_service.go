@@ -86,7 +86,9 @@ func SendOTPEmail(toEmail, toName, code string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("brevo api error (status %d)", resp.StatusCode)
+		var errResp map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("brevo api error (status %d): %v", resp.StatusCode, errResp)
 	}
 
 	fmt.Printf("✅ Verification email sent to %s via Brevo\n", toEmail)
@@ -141,7 +143,9 @@ func SendSchoolEmailOTP(toEmail, toName, code string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("brevo api error (status %d)", resp.StatusCode)
+		var errResp map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("brevo api error (status %d): %v", resp.StatusCode, errResp)
 	}
 
 	fmt.Printf("✅ School verification email sent to %s via Brevo\n", toEmail)

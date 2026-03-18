@@ -111,6 +111,9 @@ const ProductDetail: React.FC = () => {
   const [isVoting, setIsVoting] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
   const [isWishlisting, setIsWishlisting] = useState(false)
+  const [loadingProducts, setLoadingProducts] = useState(false)
+  const [upgradingPremium, setUpgradingPremium] = useState(false)
+  const [boosting, setBoosting] = useState(false)
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -761,6 +764,55 @@ const ProductDetail: React.FC = () => {
     }
   }
 
+  const handleUpgradeToPremium = async () => {
+    if (!product || upgradingPremium) return
+    try {
+      setUpgradingPremium(true)
+      const response = await api.post(`/api/payments/premium/${product.id}`)
+      if (response.data?.success && response.data?.data?.checkout_url) {
+        window.location.href = response.data.data.checkout_url
+      } else {
+        throw new Error('Failed to create checkout session')
+      }
+    } catch (error: any) {
+      toast({
+        id: 'premium-upgrade-error',
+        title: 'Upgrade Failed',
+        description: error.response?.data?.error || error.message || 'An error occurred',
+        status: 'error',
+      })
+    } finally {
+      setUpgradingPremium(false)
+    }
+  }
+
+  const handleBoostNow = async () => {
+    if (!product || boosting) return
+    try {
+      setBoosting(true)
+      // For now, boosting is handled via direct API call, but we want to track it
+      const response = await api.post(`/api/products/${product.id}/boost`)
+      if (response.data?.success) {
+        toast({
+          id: 'boost-success',
+          title: 'Boost Successful!',
+          description: 'Your product visibility has been increased.',
+          status: 'success',
+        })
+        fetchProduct() // Refresh to update boosted_at
+      }
+    } catch (error: any) {
+      toast({
+        id: 'boost-error',
+        title: 'Boost Failed',
+        description: error.response?.data?.error || error.message || 'An error occurred',
+        status: 'error'
+      })
+    } finally {
+      setBoosting(false)
+    }
+  }
+
   const shareToSocial = (platform: string) => {
     // Use slug-based URL if available
     const productUrl = product?.slug
@@ -936,22 +988,32 @@ const ProductDetail: React.FC = () => {
 
                   <Box>
                     {/* Title and price on same horizontal axis */}
-                    <Flex justify="space-between" align="center" gap={3} flexWrap="wrap">
+                    <Flex justify="space-between" align="flex-start" gap={3} flexWrap="wrap">
                       <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0} wordBreak="break-word">
                         {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
                       </Heading>
-                      <Text
-                        fontSize={{ base: 'xl', md: '2xl' }}
-                        fontWeight="extrabold"
-                        color="gray.800"
-                        whiteSpace="nowrap"
-                      >
-                        {product.estimated_value_min && product.estimated_value_max
-                          ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
-                          : product.price && product.price > 0
-                            ? `₱${product.price.toFixed(2)}`
-                            : 'Est. Value Unavailable'}
-                      </Text>
+                      <VStack spacing={0} align="flex-end" flexShrink={0}>
+                        <Text
+                          fontSize={{ base: 'xl', md: '2xl' }}
+                          fontWeight="extrabold"
+                          color="gray.800"
+                          whiteSpace="nowrap"
+                        >
+                          {product.price && product.price > 0
+                            ? `₱${product.price.toLocaleString()}`
+                            : product.estimated_value_min && product.estimated_value_max
+                              ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
+                              : 'Price Unavailable'}
+                        </Text>
+                        {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
+                          <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">
+                            AI Est. ₱{(product.estimated_value_min).toLocaleString()} – ₱{(product.estimated_value_max).toLocaleString()}
+                          </Text>
+                        )}
+                        {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
+                          <Text fontSize="xs" color="gray.400" whiteSpace="nowrap">AI Estimated</Text>
+                        )}
+                      </VStack>
                     </Flex>
                     {/* Wants, Popularity, and metadata (condition/category) on same line */}
                     <Flex gap={2.5} mt={2} flexWrap="wrap" align="center">
@@ -1251,30 +1313,59 @@ const ProductDetail: React.FC = () => {
                   )}
 
                   {isOwner && (
-                    <HStack spacing={{ base: 2, md: 4 }} w="full">
-                      <Button
-                        variant="outline"
-                        colorScheme="gray"
-                        size="lg"
-                        flex={1}
-                        borderRadius="8px"
-                        borderColor="gray.200"
-                        onClick={() => navigate(`/edit-product/${product.id}`)}
-                      >
-                        Edit Product
-                      </Button>
-                      <Button
-                        variant="outline"
-                        colorScheme="gray"
-                        size="lg"
-                        flex={1}
-                        borderRadius="8px"
-                        borderColor="gray.200"
-                        onClick={() => navigate('/dashboard')}
-                      >
-                        View Dashboard
-                      </Button>
-                    </HStack>
+                    <VStack spacing={4} w="full" align="stretch">
+                      <HStack spacing={{ base: 2, md: 4 }} w="full">
+                        <Button
+                          variant="outline"
+                          colorScheme="gray"
+                          size="lg"
+                          flex={1}
+                          borderRadius="8px"
+                          borderColor="gray.200"
+                          onClick={() => navigate(`/edit-product/${product.id}`)}
+                        >
+                          Edit Product
+                        </Button>
+                        <Button
+                          variant="outline"
+                          colorScheme="gray"
+                          size="lg"
+                          flex={1}
+                          borderRadius="8px"
+                          borderColor="gray.200"
+                          onClick={() => navigate('/dashboard')}
+                        >
+                          View Dashboard
+                        </Button>
+                      </HStack>
+
+                      <HStack spacing={{ base: 2, md: 4 }} w="full">
+                        {!product.premium && (
+                          <Button
+                            colorScheme="purple"
+                            size="lg"
+                            flex={1}
+                            borderRadius="8px"
+                            leftIcon={<FiStar />}
+                            isLoading={upgradingPremium}
+                            onClick={handleUpgradeToPremium}
+                          >
+                            Upgrade to Premium
+                          </Button>
+                        )}
+                        <Button
+                          colorScheme="blue"
+                          size="lg"
+                          flex={!product.premium ? 1 : 2}
+                          borderRadius="8px"
+                          leftIcon={<FiTrendingUp />}
+                          isLoading={boosting}
+                          onClick={handleBoostNow}
+                        >
+                          Boost listing
+                        </Button>
+                      </HStack>
+                    </VStack>
                   )}
 
                   {/* Unavailable Status Messages */}

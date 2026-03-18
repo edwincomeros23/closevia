@@ -15,6 +15,37 @@ type AdminHandler struct {
 	db *sql.DB
 }
 
+type RevenueBreakdown struct {
+	Period string  `json:"period"`
+	Amount float64 `json:"amount"`
+}
+
+type RecentActivity struct {
+	Action string    `json:"action"`
+	Count  int       `json:"count"`
+	Latest time.Time `json:"latest"`
+}
+
+type AdminStats struct {
+	TotalUsers           int                `json:"total_users"`
+	PremiumUsers         int                `json:"premium_users"`
+	TotalIncome          float64            `json:"total_income"`
+	ActiveListings       int                `json:"active_listings"`
+	TotalTrades          int                `json:"total_trades"`
+	NewUsersToday        int                `json:"new_users_today"`
+	NewListingsToday     int                `json:"new_listings_today"`
+	VerifiedUsers        int                `json:"verified_users"`
+	PendingApprovals     int                `json:"pending_approvals"`
+	PendingVerifications int                `json:"pending_verifications"`
+	ReportsFiled         int                `json:"reports_filed"`
+	SuspendedUsers       int                `json:"suspended_users"`
+	StorageUsageMB       float64            `json:"storage_usage_mb"`
+	RevenueBreakdown     []RevenueBreakdown `json:"revenue_breakdown"`
+	RevenueBySource      map[string]float64 `json:"revenue_by_source"`
+	RecentActivity       []RecentActivity   `json:"recent_activity"`
+	LastUpdated          string             `json:"last_updated"`
+}
+
 func NewAdminHandler() *AdminHandler {
 	return &AdminHandler{db: database.DB}
 }
@@ -43,11 +74,13 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		premiumUsers = 0
 	}
 
-	// Total Income (completed trades revenue)
+	// Total Income (from earnings table + fallback to legacy trades)
 	var totalIncome float64
 	err = h.db.QueryRow(`
-		SELECT COALESCE(SUM(COALESCE(net_amount, 0)), 0) FROM trades
-		WHERE status = 'completed'
+		SELECT COALESCE(
+			(SELECT SUM(amount) FROM earnings),
+			(SELECT SUM(net_amount) FROM trades WHERE status = 'completed')
+		, 0)
 	`).Scan(&totalIncome)
 	if err != nil {
 		totalIncome = 0
@@ -141,27 +174,18 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 	}
 
 	// Revenue Breakdown (last 30 days by week)
+	var revenueBreakdown []RevenueBreakdown
 	revenueRows, err := h.db.Query(`
-		SELECT
+		SELECT 
 			DATE_FORMAT(created_at, '%Y-%U') as week,
-			COALESCE(SUM(COALESCE(net_amount, 0)), 0) as revenue
-		FROM trades
-		WHERE status = 'completed' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+			SUM(amount) as revenue
+		FROM earnings
+		WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
 		GROUP BY week
 		ORDER BY week DESC
 		LIMIT 4
 	`)
-	if err != nil {
-		revenueRows = nil
-	}
-
-	type RevenueBreakdown struct {
-		Period string  `json:"period"`
-		Amount float64 `json:"amount"`
-	}
-
-	var revenueBreakdown []RevenueBreakdown
-	if revenueRows != nil {
+	if err == nil {
 		defer revenueRows.Close()
 		for revenueRows.Next() {
 			var rb RevenueBreakdown
@@ -170,6 +194,19 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 				rb.Period = "Week " + rb.Period[len(rb.Period)-2:]
 				revenueBreakdown = append(revenueBreakdown, rb)
 			}
+		}
+	}
+
+	// Revenue by Source
+	revenueBySource := make(map[string]float64)
+	sourceRows, err := h.db.Query(`SELECT source_type, SUM(amount) FROM earnings GROUP BY source_type`)
+	if err == nil {
+		defer sourceRows.Close()
+		for sourceRows.Next() {
+			var st string
+			var amt float64
+			sourceRows.Scan(&st, &amt)
+			revenueBySource[st] = amt
 		}
 	}
 
@@ -188,17 +225,11 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		activityRows = nil
 	}
 
-	type ActivityItem struct {
-		Action string    `json:"action"`
-		Count  int       `json:"count"`
-		Latest time.Time `json:"latest"`
-	}
-
-	var recentActivity []ActivityItem
+	var recentActivity []RecentActivity
 	if activityRows != nil {
 		defer activityRows.Close()
 		for activityRows.Next() {
-			var ai ActivityItem
+			var ai RecentActivity
 			if err := activityRows.Scan(&ai.Action, &ai.Count, &ai.Latest); err == nil {
 				recentActivity = append(recentActivity, ai)
 			}
@@ -207,32 +238,24 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 
 	// ===== COMPILE ESSENTIAL STATISTICS =====
 
-	stats := fiber.Map{
-		// Core Metrics
-		"total_users":     totalUsers,
-		"premium_users":   premiumUsers,
-		"total_income":    totalIncome,
-		"active_listings": activeListings,
-		"total_trades":    totalTrades,
-
-		// Daily Metrics
-		"new_users_today":    newUsersToday,
-		"new_listings_today": newListingsToday,
-
-		// User Management
-		"verified_users":       verifiedUsers,
-		"pending_approvals":    pendingApprovals,
-		"pending_verifications": pendingVerifications,
-		"reports_filed":        reportsFiled,
-		"suspended_users":   suspendedUsers,
-
-		// System Metrics
-		"storage_usage_mb":  storageUsageMB,
-		"revenue_breakdown": revenueBreakdown,
-		"recent_activity":   recentActivity,
-
-		// Metadata
-		"last_updated": now.Format("2006-01-02 15:04:05"),
+	stats := AdminStats{
+		TotalUsers:           totalUsers,
+		PremiumUsers:         premiumUsers,
+		TotalIncome:          totalIncome,
+		ActiveListings:       activeListings,
+		TotalTrades:          totalTrades,
+		NewUsersToday:        newUsersToday,
+		NewListingsToday:     newListingsToday,
+		VerifiedUsers:        verifiedUsers,
+		PendingApprovals:     pendingApprovals,
+		PendingVerifications: pendingVerifications,
+		ReportsFiled:         reportsFiled,
+		SuspendedUsers:       suspendedUsers,
+		StorageUsageMB:       storageUsageMB,
+		RevenueBreakdown:     revenueBreakdown,
+		RevenueBySource:      revenueBySource,
+		RecentActivity:       recentActivity,
+		LastUpdated:          now.Format("2006-01-02 15:04:05"),
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: stats})
@@ -354,7 +377,11 @@ func (h *AdminHandler) GetStatsByDate(c *fiber.Ctx) error {
 
 	// Revenue for that day
 	var dayRevenue float64
-	h.db.QueryRow(`SELECT COALESCE(SUM(COALESCE(net_amount,0)),0) FROM trades WHERE status='completed' AND DATE(created_at) = ?`, dateStr).Scan(&dayRevenue)
+	h.db.QueryRow(`SELECT COALESCE(SUM(amount), 0) FROM earnings WHERE DATE(created_at) = ?`, dateStr).Scan(&dayRevenue)
+	if dayRevenue == 0 {
+		// Fallback to legacy trades if no earnings recorded yet
+		h.db.QueryRow(`SELECT COALESCE(SUM(net_amount), 0) FROM trades WHERE status='completed' AND DATE(created_at) = ?`, dateStr).Scan(&dayRevenue)
+	}
 
 	// Active listings snapshot (products that existed on that day and were active)
 	var activeListings int

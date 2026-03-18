@@ -50,12 +50,12 @@ import {
   ArrowRightIcon,
   CloseIcon,
 } from '@chakra-ui/icons'
-import { FaUserCircle, FaHandshake, FaHome, FaTag } from 'react-icons/fa'
+import { FaUserCircle, FaHandshake, FaHome, FaTag, FaMotorcycle, FaCrown } from 'react-icons/fa'
 import { FiShoppingBag } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
-import { SearchFilters } from '../types'
+import { SearchFilters, SearchSuggestions } from '../types'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { formatPHP } from '../utils/currency'
 import { getProductUrl } from '../utils/productUtils'
@@ -70,6 +70,7 @@ import VerifiedAvatar from '../components/VerifiedAvatar'
 import ProductCard from '../components/ProductCard'
 import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
+import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -98,6 +99,17 @@ const Home: React.FC = () => {
   const { isOpen: isLogoutModalOpen, onOpen: onOpenLogoutModal, onClose: onCloseLogoutModal } = useDisclosure()
   const { offerCount } = useRealtime() // added realtime usage
 
+  // Rider status for profile dropdown
+  const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
+
+  useEffect(() => {
+    if (user) {
+      api.get('/api/deliveries/rider-status').then(res => {
+        if (res.data?.success) setRiderStatus(res.data.data)
+      }).catch(() => {})
+    }
+  }, [user])
+
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
   const [showFilters, setShowFilters] = useState(false)
@@ -113,6 +125,52 @@ const Home: React.FC = () => {
     limit: 20, // Load more products
   })
   const [hasSearched, setHasSearched] = useState(false)
+
+  // Smart search suggestions state
+  const [suggestions, setSuggestions] = useState<SearchSuggestions>({ products: [], categories: [], tags: [], brands: [] })
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+  const debouncedSuggestionTerm = useDebounce(searchTerm, 500)
+
+  // Fetch search suggestions
+  useEffect(() => {
+    if (debouncedSuggestionTerm.trim().length < 2) {
+      setSuggestions({ products: [], categories: [], tags: [], brands: [] })
+      setShowSuggestions(false)
+      return
+    }
+    let cancelled = false
+    const fetchSuggestions = async () => {
+      setSuggestionsLoading(true)
+      try {
+        const res = await api.get(`/api/products/search-suggestions?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}`)
+        if (!cancelled && res.data?.success && res.data?.data) {
+          setSuggestions(res.data.data)
+          const d = res.data.data
+          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0
+          setShowSuggestions(hasResults)
+        }
+      } catch {
+        // Silently fail — suggestions are non-critical
+      } finally {
+        if (!cancelled) setSuggestionsLoading(false)
+      }
+    }
+    fetchSuggestions()
+    return () => { cancelled = true }
+  }, [debouncedSuggestionTerm])
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Debounce search term for smooth UX
   const debouncedSearchTerm = useDebounce(searchTerm, 400)
@@ -231,7 +289,26 @@ const Home: React.FC = () => {
 
   const handleSearch = () => {
     setSelectedCategory('All')
-    setFilters(prev => ({ ...prev, keyword: searchTerm, category: '', page: 1 }))
+    setShowSuggestions(false)
+    // Detect natural language queries for smart search
+    const term = searchTerm.trim().toLowerCase()
+    const smartSignals = ['near me', 'nearby', 'cheap', 'budget', 'expensive', 'under ', 'below ', 'above ']
+    const isSmartQuery = term.split(/\s+/).length >= 2 && smartSignals.some(s => term.includes(s))
+    setFilters(prev => ({ ...prev, keyword: searchTerm, category: '', page: 1, useSmartSearch: isSmartQuery || undefined }))
+    setHasSearched(true)
+  }
+
+  const handleSuggestionClick = (text: string, type: 'product' | 'category' | 'tag' | 'brand') => {
+    setShowSuggestions(false)
+    if (type === 'category') {
+      setSearchTerm('')
+      setSelectedCategory(text)
+      setFilters(prev => ({ ...prev, keyword: '', category: text, page: 1, useSmartSearch: undefined }))
+    } else {
+      setSearchTerm(text)
+      setSelectedCategory('All')
+      setFilters(prev => ({ ...prev, keyword: text, category: '', page: 1, useSmartSearch: undefined }))
+    }
     setHasSearched(true)
   }
 
@@ -445,6 +522,9 @@ const Home: React.FC = () => {
     return ranked
   }, [offersForProduct, offersSortBy])
 
+  // Trade match scores for logged-in users
+  const tradeScores = useTradeMatchScores(products)
+
   // Product card rendering now handled by memoized ProductCard component
 
   // Component to render product grid with git pull --no-edit injections
@@ -509,7 +589,7 @@ const Home: React.FC = () => {
           item.type === 'product' ? (
             <Box key={`product-${item.data.id}`} w="full" h="full">
               <ProductCard
-                product={item.data}
+                product={{ ...item.data, tradeMatchScore: tradeScores.get(item.data.id) }}
                 onTradeClick={handleTradeClick}
                 onBuyoutClick={handleBuyoutClick}
                 onBuyClick={handleBuyClick}
@@ -547,25 +627,109 @@ const Home: React.FC = () => {
           position="relative"
         >
           {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap">
-            <InputGroup size="lg" flex={1} minW={{ base: 0, md: 'auto' }}>
-              <InputLeftElement pointerEvents="none">
-                <SearchIcon color="gray.400" />
-              </InputLeftElement>
-              <Input
-                placeholder="Search products, categories, or keywords..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          <HStack w="full" spacing={3} wrap="wrap" ref={searchContainerRef}>
+            <Box position="relative" flex={1} minW={{ base: 0, md: 'auto' }}>
+              <InputGroup size="lg">
+                <InputLeftElement pointerEvents="none">
+                  <SearchIcon color="gray.400" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Search products, categories, or keywords..."
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value.trim().length >= 2) setShowSuggestions(true) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); if (e.key === 'Escape') setShowSuggestions(false) }}
+                  onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0)) setShowSuggestions(true) }}
+                  bg="white"
+                  border="2px"
+                  borderColor="gray.200"
+                  _focus={{
+                    borderColor: "brand.500",
+                    boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
+                  }}
+                />
+              </InputGroup>
+
+              {/* Search Suggestions Dropdown */}
+              {showSuggestions && (
+                <Box
+                  position="absolute"
+                  top="calc(100% + 4px)"
+                  left={0}
+                  right={0}
+                  w="100%"
                 bg="white"
-                border="2px"
+                border="1px solid"
                 borderColor="gray.200"
-                _focus={{
-                  borderColor: "brand.500",
-                  boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
-                }}
-              />
-            </InputGroup>
+                rounded="xl"
+                shadow="0 4px 20px rgba(0,0,0,0.15)"
+                zIndex={999}
+                maxH="360px"
+                overflowY="auto"
+              >
+                {suggestionsLoading ? (
+                  <Center py={4}><Spinner size="sm" color="brand.500" /><Text ml={2} fontSize="sm" color="gray.500">Searching...</Text></Center>
+                ) : (
+                  <VStack align="stretch" spacing={0} py={2}>
+                    {suggestions.products.length > 0 && (
+                      <>
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Products</Text>
+                        {suggestions.products.map((p, i) => (
+                          <Box key={`p-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(p, 'product')}>
+                            <HStack spacing={3}>
+                              <SearchIcon color="gray.400" boxSize={3} />
+                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{p}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {suggestions.categories.length > 0 && (
+                      <>
+                        {suggestions.products.length > 0 && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Categories</Text>
+                        {suggestions.categories.map((c, i) => (
+                          <Box key={`c-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(c, 'category')}>
+                            <HStack spacing={3}>
+                              <Icon as={FaTag} color="brand.400" boxSize={3} />
+                              <Text fontSize="sm" color="gray.700">{c}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {suggestions.tags.length > 0 && (
+                      <>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Tags</Text>
+                        {suggestions.tags.map((t, i) => (
+                          <Box key={`t-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(t, 'tag')}>
+                            <HStack spacing={3}>
+                              <Text color="brand.400" fontSize="xs" fontWeight="bold">#</Text>
+                              <Text fontSize="sm" color="gray.700">{t}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {suggestions.brands.length > 0 && (
+                      <>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Brands</Text>
+                        {suggestions.brands.map((b, i) => (
+                          <Box key={`b-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(b, 'brand')}>
+                            <HStack spacing={3}>
+                              <StarIcon color="yellow.400" boxSize={3} />
+                              <Text fontSize="sm" color="gray.700">{b}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                  </VStack>
+                )}
+              </Box>
+            )}
+            </Box>
 
             {/* Toggle Filters icon (mobile inline, right side) */}
             <IconButton
@@ -659,7 +823,12 @@ const Home: React.FC = () => {
                             </Text>
                             {user && (user as any).is_premium && (
                               <Badge colorScheme="yellow" fontSize="xs" mt={1}>
-                                ⭐ Premium Member
+                                Premium Member
+                              </Badge>
+                            )}
+                            {riderStatus?.is_rider && riderStatus?.status === 'approved' && (
+                              <Badge colorScheme="green" fontSize="xs" mt={1}>
+                                Verified Rider
                               </Badge>
                             )}
                           </Box>
@@ -675,6 +844,35 @@ const Home: React.FC = () => {
                           View Profile
                         </Button>
                       </Box>
+
+                      {/* Menu Items */}
+                      <Button
+                        as={RouterLink}
+                        to="/rider"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaMotorcycle} />}
+                      >
+                        {riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider'}
+                      </Button>
+
+                      {!(user as any).is_premium && (
+                        <Button
+                          as={RouterLink}
+                          to="/premium"
+                          size="sm"
+                          w="full"
+                          variant="ghost"
+                          justifyContent="flex-start"
+                          leftIcon={<Icon as={FaCrown} color="purple.500" />}
+                          color="purple.600"
+                        >
+                          Buy Premium
+                        </Button>
+                      )}
+
                       <Divider />
                       <Button
                         size="sm"
