@@ -28,7 +28,7 @@ import { useMobileNav } from '../contexts/MobileNavContext'
 import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
-import { FaHome, FaPlus, FaStar, FaCrown } from 'react-icons/fa'
+import { FaHome, FaPlus, FaStar, FaMotorcycle, FaCrown } from 'react-icons/fa'
 import { FiGrid, FiHeart, FiLogOut, FiUser, FiBell, FiSettings } from 'react-icons/fi'
 import { getImageUrl } from '../utils/imageUtils'
 import VerifiedAvatar from './VerifiedAvatar'
@@ -98,6 +98,12 @@ const Sidebar: React.FC = () => {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
       } else {
         items.push({ icon: FiHeart, label: 'Saved', path: '/saved-products' })
+      }
+      items.push(
+        { icon: FaMotorcycle, label: 'Rider', path: '/rider' },
+      )
+      if (!user?.is_premium) {
+        items.push({ icon: FaCrown, label: 'Buy Premium', path: '/premium' })
       }
       items.push(
         { icon: FiBell, label: 'Notifications', path: '/notifications' },

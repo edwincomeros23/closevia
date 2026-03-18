@@ -1024,72 +1024,9 @@ const SettingsPage: React.FC = () => {
                 {(user as any)?.school_email_verified_at && (
                   <HStack color="green.600" fontSize="sm">
                     <Icon as={FaCheckCircle} />
-                    <Text>School email verified. You can upload your ID or COR below.</Text>
+                    <Text>School email verified.</Text>
                   </HStack>
                 )}
-
-                <Divider />
-
-                <FormControl isDisabled={verificationStatus === 'pending' || !(user as any)?.school_email_verified_at}>
-                  <FormLabel>Upload School ID or COR (front)</FormLabel>
-                  <HStack spacing={3} align="center" flexWrap="wrap" gap={2}>
-                    <Input
-                      type="file"
-                      accept="image/*"
-                      id="school-id-upload"
-                      display="none"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0] || null
-                        if (file) {
-                          handleUploadSchoolID(file)
-                          // Reset input so the same file can be re-selected if needed
-                          e.target.value = ''
-                        }
-                      }}
-                    />
-                    <Select
-                      value={documentType}
-                      onChange={(e) => setDocumentType(e.target.value as 'id' | 'cor')}
-                      maxW="160px"
-                      size="sm"
-                    >
-                      <option value="id">School ID</option>
-                      <option value="cor">COR</option>
-                    </Select>
-                    <Button
-                      as="label"
-                      htmlFor="school-id-upload"
-                      leftIcon={<FaUpload />}
-                      variant="outline"
-                      size="sm"
-                      isLoading={idUploadLoading}
-                      loadingText="Uploading..."
-                    >
-                      Upload ID Image
-                    </Button>
-                    {verificationStatus === 'pending' && (
-                      <HStack spacing={1}>
-                        <Spinner size="sm" color="orange.400" />
-                        <Text fontSize="xs" color={useColorModeValue('orange.600', 'orange.300')}>
-                          Under review by admin
-                        </Text>
-                      </HStack>
-                    )}
-                  </HStack>
-                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
-                    Upload a clear photo of your school ID or COR showing your full name, school name, and student details.
-                  </Text>
-                  {verificationStatus === 'rejected' && verificationReason && (
-                    <Box mt={2}>
-                      <Text fontSize="xs" color="red.500" fontWeight="semibold">
-                        Rejection reason:
-                      </Text>
-                      <Text fontSize="xs" color="red.500">
-                        {verificationReason}
-                      </Text>
-                    </Box>
-                  )}
-                </FormControl>
               </VStack>
             </CardBody>
           </Card>}

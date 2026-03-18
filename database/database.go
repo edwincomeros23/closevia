@@ -576,6 +576,7 @@ func CreateTables() error {
 	ensureUserColumns()
 	ensureProductColumns()
 	ensureTradeColumns()
+	ensureRiderColumns()
 
 	// Seed Mock Rider: Wynry Perian
 	mockRiderEmail := "wynry@clovia.com"
@@ -597,8 +598,8 @@ func CreateTables() error {
 		var riderCount int
 		DB.QueryRow("SELECT COUNT(*) FROM riders WHERE user_id = ?", riderUserID).Scan(&riderCount)
 		if riderCount == 0 {
-			_, err := DB.Exec("INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, rating, is_active, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-				riderUserID, "Wynry Perian", "motorcycle", "WMSU-RX7", "09991234567", 5.0, true, 6.9214, 122.0790)
+			_, err := DB.Exec("INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, rating, is_active, latitude, longitude, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				riderUserID, "Wynry Perian", "motorcycle", "WMSU-RX7", "09991234567", 5.0, true, 6.9214, 122.0790, "approved")
 			if err == nil {
 				log.Println("Seeded mock rider Wynry Perian into the database.")
 			} else {
@@ -646,6 +647,8 @@ func ensureUserColumns() {
 		{"email_otp_expires", "TIMESTAMP NULL"},
 		{"reset_password_otp_hash", "VARCHAR(255) NULL"},
 		{"reset_password_otp_expires", "TIMESTAMP NULL"},
+		{"password_reset_otp_hash", "VARCHAR(255) NULL"},
+		{"password_reset_otp_expires", "TIMESTAMP NULL"},
 	}
 
 	for _, col := range columns {
@@ -842,6 +845,51 @@ func ensureTradeColumns() {
 			}
 		}
 	}
+}
+
+// ensureRiderColumns adds missing columns to the riders table for the application flow
+func ensureRiderColumns() {
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"status", "ENUM('pending','under_review','approved','rejected') NOT NULL DEFAULT 'pending'"},
+		{"license_image_url", "VARCHAR(512) NULL"},
+		{"selfie_image_url", "VARCHAR(512) NULL"},
+		{"contact_number", "VARCHAR(20) NULL"},
+		{"full_name", "VARCHAR(255) NULL"},
+		{"rejection_reason", "TEXT NULL"},
+		{"reviewed_at", "TIMESTAMP NULL"},
+		{"reviewed_by", "INT NULL"},
+	}
+
+	for _, col := range columns {
+		var count int
+		err := DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = 'riders'
+			AND COLUMN_NAME = ?
+		`, col.name).Scan(&count)
+
+		if err != nil {
+			log.Printf("Warning: failed to check rider column %s: %v", col.name, err)
+			continue
+		}
+
+		if count == 0 {
+			query := fmt.Sprintf("ALTER TABLE riders ADD COLUMN %s %s", col.name, col.definition)
+			if _, err := DB.Exec(query); err != nil {
+				log.Printf("Warning: failed to add rider column %s: %v", col.name, err)
+			} else {
+				log.Printf("Added missing rider column: %s", col.name)
+			}
+		}
+	}
+
+	// Backfill existing active riders as approved
+	DB.Exec("UPDATE riders SET status = 'approved' WHERE is_active = TRUE AND status = 'pending'")
 }
 
 // contains checks if a string contains a substring

@@ -64,6 +64,9 @@ export interface Product {
   estimated_value_max?: number;
   desired_price?: number;
   desired_product?: string;
+  wanted_categories?: string[];
+  wants?: string;
+  brand?: string;
 }
 
 export interface Order {
@@ -103,6 +106,7 @@ export interface ProductUpdate {
   barter_only?: boolean
   location?: string
   condition?: string
+  category?: string
   bidding_type?: 'none' | 'blind' | 'open'
 }
 
@@ -127,6 +131,14 @@ export interface SearchFilters {
   allow_buying?: boolean
   page?: number
   limit?: number
+  useSmartSearch?: boolean
+}
+
+export interface SearchSuggestions {
+  products: string[]
+  categories: string[]
+  tags: string[]
+  brands: string[]
 }
 
 export interface PaginatedResponse<T> {
@@ -304,6 +316,14 @@ export interface Rider {
   phone: string
   rating: number
   is_active: boolean
+  status?: 'pending' | 'under_review' | 'approved' | 'rejected'
+  license_image_url?: string
+  selfie_image_url?: string
+  contact_number?: string
+  full_name?: string
+  rejection_reason?: string
+  reviewed_at?: string
+  reviewed_by?: number
   latitude?: number
   longitude?: number
   created_at: string
