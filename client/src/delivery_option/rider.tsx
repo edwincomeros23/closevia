@@ -267,9 +267,13 @@ const RiderApplicationForm: React.FC<{
                 <FormLabel fontSize="sm">Contact Number</FormLabel>
                 <Input
                   value={contactNumber}
-                  onChange={e => setContactNumber(e.target.value)}
-                  placeholder="09XX-XXX-XXXX"
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '')
+                    if (val.length <= 11) setContactNumber(val)
+                  }}
+                  placeholder="09XXXXXXXXX"
                   type="tel"
+                  maxLength={11}
                 />
               </FormControl>
 

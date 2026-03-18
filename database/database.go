@@ -674,6 +674,8 @@ func ensureUserColumns() {
 		{"last_login", "TIMESTAMP NULL"},
 		{"email_otp_hash", "VARCHAR(255) NULL"},
 		{"email_otp_expires", "TIMESTAMP NULL"},
+		{"reset_password_otp_hash", "VARCHAR(255) NULL"},
+		{"reset_password_otp_expires", "TIMESTAMP NULL"},
 		{"password_reset_otp_hash", "VARCHAR(255) NULL"},
 		{"password_reset_otp_expires", "TIMESTAMP NULL"},
 	}

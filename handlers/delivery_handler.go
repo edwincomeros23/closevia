@@ -183,6 +183,18 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Full name, contact number, vehicle type, and driver's license are required"})
 	}
 
+	// Validate contact number: must be exactly 11 digits
+	contactDigits := ""
+	for _, r := range payload.ContactNumber {
+		if r >= '0' && r <= '9' {
+			contactDigits += string(r)
+		}
+	}
+	if len(contactDigits) != 11 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Contact number must be exactly 11 digits"})
+	}
+	payload.ContactNumber = contactDigits
+
 	validVehicles := map[string]bool{"motorcycle": true, "bicycle": true, "car": true}
 	if !validVehicles[payload.VehicleType] {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Vehicle type must be motorcycle, bicycle, or car"})
