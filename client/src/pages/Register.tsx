@@ -22,6 +22,7 @@ import {
   FormErrorMessage,
   FormHelperText,
   Flex,
+  Checkbox,
 } from '@chakra-ui/react'
 import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -40,10 +41,12 @@ const Register: React.FC = () => {
   const [isOrganization, setIsOrganization] = useState(false)
   const [orgName, setOrgName] = useState('')
   const [orgLogoUrl, setOrgLogoUrl] = useState('')
+  const [organizationType, setOrganizationType] = useState<'business' | 'school_organization' | 'marketplace_partner'>('school_organization')
   const [department, setDepartment] = useState('')
   const [bio, setBio] = useState('')
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [tncAccepted, setTncAccepted] = useState(false)
 
   const { register } = useAuth()
   const navigate = useNavigate()
@@ -93,6 +96,10 @@ const Register: React.FC = () => {
     if (!confirmPassword) errors.confirmPassword = 'Confirm password is required'
     if (password && confirmPassword && password !== confirmPassword) errors.confirmPassword = 'Passwords do not match'
 
+    if (!tncAccepted) {
+      errors.tnc = 'You must agree to the Terms & Conditions to create an account'
+    }
+
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -122,6 +129,7 @@ const Register: React.FC = () => {
         is_organization: isOrganization,
         org_name: isOrganization ? orgName : undefined,
         org_logo_url: isOrganization ? orgLogoUrl : undefined,
+        organization_type: isOrganization ? organizationType : undefined,
         department: !isOrganization ? department : undefined,
         bio: bio || undefined,
       })
@@ -564,6 +572,37 @@ const Register: React.FC = () => {
                   {/* ORGANIZATION ACCOUNT FIELDS */}
                   {isOrganization && (
                     <>
+                      {/* Organization Type */}
+                      <FormControl>
+                        <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Organization Type</FormLabel>
+                        <HStack spacing={2}>
+                          <Button
+                            size="sm"
+                            variant={organizationType === 'school_organization' ? 'solid' : 'outline'}
+                            colorScheme="purple"
+                            onClick={() => setOrganizationType('school_organization')}
+                          >
+                            School Organization
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={organizationType === 'business' ? 'solid' : 'outline'}
+                            colorScheme="purple"
+                            onClick={() => setOrganizationType('business')}
+                          >
+                            Business
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={organizationType === 'marketplace_partner' ? 'solid' : 'outline'}
+                            colorScheme="purple"
+                            onClick={() => setOrganizationType('marketplace_partner')}
+                          >
+                            Marketplace Partner
+                          </Button>
+                        </HStack>
+                      </FormControl>
+
                       {/* Organization Name */}
                       <FormControl isRequired isInvalid={!!fieldErrors.orgName}>
                         <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Organization Name</FormLabel>
@@ -772,6 +811,28 @@ const Register: React.FC = () => {
                       </InputRightElement>
                     </InputGroup>
                     {fieldErrors.confirmPassword && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.confirmPassword}</FormErrorMessage>}
+                  </FormControl>
+
+                  {/* Terms & Conditions */}
+                  <FormControl isRequired isInvalid={!!fieldErrors.tnc}>
+                    <Checkbox
+                      isChecked={tncAccepted}
+                      onChange={(e) => {
+                        setTncAccepted(e.target.checked)
+                        if (fieldErrors.tnc) setFieldErrors({ ...fieldErrors, tnc: '' })
+                      }}
+                      colorScheme="teal"
+                      alignItems="flex-start"
+                    >
+                      <Text fontSize="xs" color="#444">
+                        By creating an account, you confirm that you have read and agree to Clovia&apos;s Terms &amp; Conditions. You understand that Clovia provides a platform for bartering and deliveries and may facilitate access to independent riders or delivery partners, but Clovia is not a party to any trade, barter, or delivery contract between users. Riders and delivery partners are independent providers, and you acknowledge that any transport, pickup, or delivery activities involve inherent risks. To the maximum extent permitted by law, Clovia is not responsible or liable for any loss, damage, injury, accident (including rider accidents), delay, or dispute arising from transactions, meetups, or deliveries arranged through the platform. Any issues, claims, or disputes must be resolved directly between the parties involved.
+                      </Text>
+                    </Checkbox>
+                    {fieldErrors.tnc && (
+                      <FormErrorMessage fontSize="xs" mt={1}>
+                        {fieldErrors.tnc}
+                      </FormErrorMessage>
+                    )}
                   </FormControl>
 
                   {/* Create Account Button */}
