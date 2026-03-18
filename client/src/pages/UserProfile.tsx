@@ -1128,9 +1128,9 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         fontSize="xs"
                         cursor="default"
                       >
-                        Message Trader
-                      </Button>
-                    </HStack>
+                        Documents Verified
+                      </Badge>
+                    </Tooltip>
                   )}
                 </HStack>
               )}
