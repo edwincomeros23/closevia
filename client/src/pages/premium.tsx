@@ -35,8 +35,10 @@ import {
   List,
   ListItem,
   ListIcon,
+  useDisclosure,
+  Circle,
 } from '@chakra-ui/react'
-import { FaLock, FaCrown, FaLink, FaArrowRight, FaCheck, FaUser, FaBox, FaStar, FaRocket, FaShieldAlt, FaBolt, FaCheckCircle, FaTimes, FaQuestionCircle, FaGift, FaInfinity, FaChevronDown, FaChevronUp } from 'react-icons/fa'
+import { FaLock, FaCrown, FaLink, FaArrowRight, FaCheck, FaUser, FaBox, FaStar, FaRocket, FaShieldAlt, FaBolt, FaCheckCircle, FaTimes, FaQuestionCircle, FaGift, FaInfinity, FaChevronDown, FaChevronUp, FaChartLine } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { TradeLoop, MultiWayTrade } from '../types'
 import { fetchTradeLoops, fetchMultiWayTrade } from '../services/tradeService'
@@ -696,9 +698,13 @@ const Premium: React.FC = () => {
     )
   }
 
+  return (
+    <Box>
+      <Container maxW="container.xl" py={12}>
+        <VStack spacing={8} align="stretch">
           {/* Pricing Card (if not premium) */}
-          {!isPremiumUser && (
-            <Center>
+        {!isPremiumUser && (
+          <Center>
               <Card 
                 maxW="400px" 
                 w="full" 
@@ -757,8 +763,8 @@ const Premium: React.FC = () => {
             </Center>
           )}
 
-          {/* Features Grid */}
-          <Box pt={8}>
+        {/* Features Grid */}
+        <Box pt={8}>
             <VStack spacing={8}>
               <Heading size="lg">Everything you get with Premium</Heading>
               <Grid templateColumns={{ base: '1fr', md: '1fr 1fr', lg: '1fr 1fr 1fr' }} gap={8} w="full">
@@ -779,10 +785,10 @@ const Premium: React.FC = () => {
                 ))}
               </Grid>
             </VStack>
-          </Box>
+        </Box>
 
-          {/* If already premium - Show Multi-way Trading Loops */}
-          {isPremiumUser && (
+        {/* If already premium - Show Multi-way Trading Loops */}
+        {isPremiumUser && (
             <VStack spacing={6} align="stretch" pt={8} borderTopWidth="1px">
               <HStack justify="space-between">
                 <VStack align="start" spacing={1}>
