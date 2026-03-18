@@ -138,138 +138,12 @@ const Premium: React.FC = () => {
     fetchLoops()
   }
 
-  const handleUpgrade = async (tier: 'plus' | 'pro') => {
-    try {
-      setUpgrading(true)
-      const plan = isYearly ? 'yearly' : 'monthly'
-      const { data } = await api.post('/api/payments/subscription', { tier, plan })
-      if (data?.success && data?.data?.checkout_url) {
-        window.location.href = data.data.checkout_url
-      } else {
-        throw new Error('Failed to create payment session')
-      }
-    } catch (error: any) {
-      toast({
-        id: 'premium-upgrade-error',
-        title: 'Upgrade Failed',
-        description: error.response?.data?.error || error.message || 'Something went wrong',
-        status: 'error',
-      })
-    } finally {
-      setUpgrading(false)
-    }
-  }
-
-  interface Feature {
-    title: string;
-    icon: any;
-    category?: string;
-  }
-
-  const freeFeatures: Feature[] = [
-    { title: '10 active listings', icon: FaBox, category: 'Listings' },
-    { title: 'No boosts included', icon: FaTimes, category: 'Listings' },
-    { title: 'Browse and trade freely', icon: FaHandshake, category: 'Trading' },
-    { title: 'Standard delivery only', icon: FaTruck, category: 'Trading' },
-    { title: 'Standard match feed', icon: FaStar, category: 'Trading' },
-    { title: 'See total profile views only', icon: FaUser, category: 'Insights' },
-    { title: 'AI price range shown', icon: FaBolt, category: 'Insights' },
-  ]
-
-  const plusFeatures: Feature[] = [
-    { title: '30 active listings', icon: FaBox, category: 'Listings' },
-    { title: '3 boosted listings', icon: FaRocket, category: 'Listings' },
-    { title: 'Relist in one tap', icon: FaBolt, category: 'Listings' },
-    { title: 'Express delivery access', icon: FaTruck, category: 'Trading' },
-    { title: '10% off all delivery fees', icon: FaPercentage, category: 'Trading' },
-    { title: 'Priority matches', icon: FaArrowRight, category: 'Trading' },
-    { title: 'Trade dispute reviewed first', icon: FaShieldAlt, category: 'Trading' },
-    { title: 'Who viewed your profile (actual usernames)', icon: FaUser, category: 'Insights' },
-    { title: 'Item popularity breakdown', icon: FaChartLine, category: 'Insights' },
-    { title: 'AI price confidence', icon: FaCheckCircle, category: 'Insights' },
-    { title: 'Plus badge on profile', icon: FaCrown, category: 'Profile' },
-    { title: 'Power seller', icon: FaStar, category: 'Profile' },
-  ]
-
-  const proFeatures: Feature[] = [
-    { title: 'Unlimited listings', icon: FaInfinity, category: 'Listings' },
-    { title: '10 boosted listings always pinned', icon: FaRocket, category: 'Listings' },
-    { title: 'Bundle listing', icon: FaStar, category: 'Listings' },
-    { title: 'Relist in one tap', icon: FaBolt, category: 'Listings' },
-    { title: 'Express delivery access', icon: FaTruck, category: 'Trading' },
-    { title: '20% off all delivery fees', icon: FaPercentage, category: 'Trading' },
-    { title: 'First to see new nearby items', icon: FaStar, category: 'Trading' },
-    { title: 'Top of match queue', icon: FaArrowRight, category: 'Trading' },
-    { title: 'Trade dispute reviewed first', icon: FaShieldAlt, category: 'Trading' },
-    { title: 'Full trade analytics', icon: FaChartLine, category: 'Insights' },
-    { title: 'Who viewed your profile (full history)', icon: FaUser, category: 'Insights' },
-    { title: 'AI price confidence + market data', icon: FaCheckCircle, category: 'Insights' },
-    { title: 'Store page (own shop link)', icon: FaLink, category: 'Profile' },
-    { title: 'Featured on homepage banner', icon: FaStar, category: 'Profile' },
-    { title: 'Verified Pro badge', icon: FaCrown, category: 'Profile' },
-    { title: 'Priority support', icon: FaBolt, category: 'Profile' },
-  ]
-
-  const renderFeatureList = (features: Feature[]) => {
-    const categories = Array.from(new Set(features.map(f => f.category)));
-    return categories.map(cat => (
-      <VStack key={cat} align="start" w="full" spacing={2} mb={4}>
-        <Text fontSize="xs" fontWeight="bold" color="gray.400" textTransform="uppercase" letterSpacing="wider">
-          {cat}
-        </Text>
-        <List spacing={2} w="full">
-          {features.filter(f => f.category === cat).map((f, i) => (
-            <ListItem key={i} display="flex" alignItems="start" fontSize="sm">
-              <ListIcon as={f.icon === FaTimes ? FaTimes : FaCheckCircle} color={f.icon === FaTimes ? "red.400" : "purple.500"} mt={1} />
-              <Text color={f.icon === FaTimes ? "gray.400" : "gray.700"}>{f.title}</Text>
-            </ListItem>
-          ))}
-        </List>
-        <Divider />
-      </VStack>
-    ));
-  }
-
-  const comparisonFeatures = [
-    { feature: 'Listings Limit', free: '10', plus: '30', pro: 'Unlimited' },
-    { feature: 'Boosted Listings', free: 'None', plus: '3', pro: '10' },
-    { feature: 'Relist in one tap', free: false, plus: true, pro: true },
-    { feature: 'Express Delivery', free: false, plus: true, pro: true },
-    { feature: 'Delivery Discount', free: 'None', plus: '10%', pro: '20%' },
-    { feature: 'Priority Match Feed', free: 'Standard', plus: 'Priority', pro: 'Top Queue' },
-    { feature: 'AI Price Analysis', free: 'Range Only', plus: 'Confidence Score', pro: 'Full Market Data' },
-    { feature: 'Profile Views', free: 'Total Only', plus: 'Actual Usernames', pro: 'Full History' },
-    { feature: 'Badge', free: 'None', plus: 'Plus Badge', pro: 'Verified Pro Badge' },
-    { feature: 'Store Page', free: false, plus: false, pro: true },
-    { feature: 'Trade Dispute Priority', free: 'Standard', plus: 'First Review', pro: 'First Review' },
-    { feature: 'Priority Support', free: false, plus: false, pro: true },
-  ]
-
-  const faqItems = [
-    {
-      question: 'Is this a monthly or yearly subscription?',
-      answer: `You can choose between a student-friendly monthly plan for P99 or a yearly plan for P299 (which gives you 75% off equivalent monthly cost).`
-    },
-    {
-      question: 'What is Multi-Way Trading?',
-      answer: 'Multi-Way Trading allows you to participate in trading chains where multiple users exchange products simultaneously. For example, User A gives to User B, who gives to User C, who gives back to User A - completing a trading loop.'
-    },
-    {
-      question: 'How does Priority Listing work?',
-      answer: 'Your products will appear higher in search results and the main feed. Premium listings are prioritized over regular listings, giving you more visibility and faster trades.'
-    },
-    {
-      question: 'Can I cancel my subscription?',
-      answer: 'Yes, you can cancel your subscription at any time from your account settings. You will continue to have premium access until the end of your current billing period.'
-    },
-    {
-      question: 'What is the "Verified Badge"?',
-      answer: 'The verified badge builds trust by signaling to other users that you are a premium, verified member of the community, which typically leads to faster and more reliable trades.'
-    }
-  ]
-
-  const toggleFaq = (index: number) => {
-    setExpandedFaq(expandedFaq === index ? null : index)
+  const handleSelectLoop = (loop: TradeLoop) => {
+    const loopId = `loop_${loop.edges.map(e => e.trade_id).join('_')}`
+    fetchMultiWayTrade(loopId).then(data => {
+      setSelectedLoop(data)
+      onOpen()
+    })
   }
 
   const renderPremiumFeature = () => {
@@ -395,8 +269,234 @@ const Premium: React.FC = () => {
             </VStack>
           )}
         </Box>
+      </VStack>
+    )
+  }
 
-        <Divider />
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
+
+  const toggleFaq = (index: number) => {
+    setExpandedFaq(expandedFaq === index ? null : index)
+  }
+
+  const premiumFeatures = [
+    {
+      icon: FaInfinity,
+      title: 'Unlimited Listings',
+      description: 'Post as many products as you want without limits',
+      color: 'purple.500'
+    },
+    {
+      icon: FaBolt,
+      title: 'Fast-Track Trading',
+      description: 'Your listings get priority visibility in search results',
+      color: 'orange.500'
+    },
+    {
+      icon: FaShieldAlt,
+      title: 'Verified Seller Badge',
+      description: 'Increase buyer confidence with your premium status',
+      color: 'blue.500'
+    },
+    {
+      icon: FaRocket,
+      title: 'Boosted Listings',
+      description: 'Appear at the top of category searches and trending',
+      color: 'green.500'
+    },
+    {
+      icon: FaLink,
+      title: 'Multi-Way Trading',
+      description: 'Participate in complex trading chains and loops',
+      color: 'pink.500'
+    },
+    {
+      icon: FaCrown,
+      title: 'Priority Support',
+      description: 'Get faster response times from our support team',
+      color: 'yellow.500'
+    }
+  ]
+
+  const faqItems = [
+    {
+      question: 'Is this a one-time payment or subscription?',
+      answer: 'Premium is a one-time lifetime payment of P499. No recurring charges or hidden fees. Pay once and enjoy all premium features forever.'
+    },
+    {
+      question: 'What is Multi-Way Trading?',
+      answer: 'Multi-Way Trading allows you to participate in trading chains where multiple users exchange products simultaneously. For example, User A gives to User B, who gives to User C, who gives back to User A - completing a trading loop.'
+    },
+    {
+      question: 'How does Boosted Listings work?',
+      answer: 'Your products will appear higher in search results and the main feed. Premium listings are prioritized over regular listings, giving you more visibility and faster trades.'
+    },
+    {
+      question: 'Can I get a refund?',
+      answer: 'Due to the digital nature of premium features, refunds are handled on a case-by-case basis. Contact our support team if you have any concerns.'
+    },
+    {
+      question: 'Will I lose my premium if the app updates?',
+      answer: 'No! Your premium status is tied to your account and will remain active through all updates. You may even get access to new premium features as we add them.'
+    }
+  ]
+
+  const comparisonFeatures = [
+    { feature: 'Basic Trading', free: true, premium: true },
+    { feature: 'Product Listings', free: '10 max', premium: 'Unlimited' },
+    { feature: 'Trade Requests', free: true, premium: true },
+    { feature: 'Messaging', free: true, premium: true },
+    { feature: 'Multi-Way Trading', free: false, premium: true },
+    { feature: 'Boosted Listings', free: false, premium: true },
+    { feature: 'Premium Badge', free: false, premium: true },
+    { feature: 'Priority Support', free: false, premium: true },
+    { feature: 'Early Access Features', free: false, premium: true },
+    { feature: 'Search Priority', free: 'Standard', premium: 'Top Results' },
+  ]
+
+  const handleUpgrade = async () => {
+    try {
+      setUpgrading(true)
+      const plan = isYearly ? 'yearly' : 'monthly'
+      const { data } = await api.post('/api/payments/subscription', { plan })
+      if (data?.success && data?.data?.checkout_url) {
+        window.location.href = data.data.checkout_url
+      } else {
+        throw new Error('Failed to create payment session')
+      }
+    } catch (error: any) {
+      toast({
+        id: 'premium-upgrade-error',
+        title: 'Upgrade Failed',
+        description: error.response?.data?.error || error.message || 'Something went wrong',
+        status: 'error',
+      })
+    } finally {
+      setUpgrading(false)
+    }
+  }
+
+  const renderLockedContent = () => {
+    return (
+      <VStack spacing={10} align="stretch">
+        {/* Plan Hero Card */}
+        <Card
+          bg="linear-gradient(135deg, #9F7AEA 0%, #805AD5 50%, #6B46C1 100%)"
+          borderWidth="0"
+          overflow="hidden"
+          position="relative"
+        >
+          <Box
+            position="absolute"
+            top="-50px"
+            right="-50px"
+            w="200px"
+            h="200px"
+            bg="whiteAlpha.100"
+            borderRadius="full"
+          />
+          <Box
+            position="absolute"
+            bottom="-30px"
+            left="-30px"
+            w="150px"
+            h="150px"
+            bg="whiteAlpha.100"
+            borderRadius="full"
+          />
+          <CardBody py={12} position="relative">
+            <VStack spacing={5} align="center">
+              <Badge colorScheme="yellow" fontSize="sm" px={3} py={1} borderRadius="full">
+                <HStack spacing={1}>
+                  <Icon as={FaGift} />
+                  <Text>LIFETIME ACCESS</Text>
+                </HStack>
+              </Badge>
+              <Icon as={FaCrown} fontSize="6xl" color="yellow.300" />
+              <Heading size="2xl" color="white" textAlign="center">Clovia Premium</Heading>
+              <Text color="whiteAlpha.900" fontSize="lg" textAlign="center" maxW="500px">
+                Unlock the full potential of your trading experience with exclusive features and priority access
+              </Text>
+              <HStack align="baseline" spacing={1} mt={2}>
+                <Text fontSize="xl" color="whiteAlpha.800" textDecoration="line-through">P999</Text>
+                <Text fontSize="5xl" fontWeight="bold" color="white">P499</Text>
+                <VStack spacing={0} align="start">
+                  <Text fontSize="lg" color="whiteAlpha.800">one-time</Text>
+                  <Badge colorScheme="green" fontSize="xs">50% OFF</Badge>
+                </VStack>
+              </HStack>
+              <Button
+                colorScheme="yellow"
+                color="purple.800"
+                size="lg"
+                px={10}
+                leftIcon={<FaCrown />}
+                isLoading={upgrading}
+                onClick={handleUpgrade}
+                _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }}
+                transition="all 0.2s"
+              >
+                Get Premium Now
+              </Button>
+              <HStack spacing={4} color="whiteAlpha.800" fontSize="sm">
+                <HStack spacing={1}>
+                  <Icon as={FaInfinity} />
+                  <Text>Lifetime access</Text>
+                </HStack>
+                <HStack spacing={1}>
+                  <Icon as={FaShieldAlt} />
+                  <Text>Secure payment</Text>
+                </HStack>
+              </HStack>
+            </VStack>
+          </CardBody>
+        </Card>
+
+        {/* Plan Comparison Table */}
+        <Box>
+          <Heading size="lg" mb={2} textAlign="center">Free vs Premium</Heading>
+          <Text color="gray.500" textAlign="center" mb={6}>See what you're missing out on</Text>
+          <TableContainer>
+            <Table variant="simple" bg={cardBg} borderRadius="lg" overflow="hidden" boxShadow="sm">
+              <Thead bg={hoverBg}>
+                <Tr>
+                  <Th>Feature</Th>
+                  <Th textAlign="center">Free</Th>
+                  <Th textAlign="center" color="purple.500">Premium</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {comparisonFeatures.map((item, idx) => (
+                  <Tr key={idx} _hover={{ bg: hoverBg }}>
+                    <Td fontWeight="medium">{item.feature}</Td>
+                    <Td textAlign="center">
+                      {typeof item.free === 'boolean' ? (
+                        item.free ? (
+                          <Icon as={FaCheck} color="green.500" />
+                        ) : (
+                          <Icon as={FaTimes} color="red.400" />
+                        )
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">{item.free}</Text>
+                      )}
+                    </Td>
+                    <Td textAlign="center">
+                      {typeof item.premium === 'boolean' ? (
+                        item.premium ? (
+                          <Icon as={FaCheck} color="green.500" />
+                        ) : (
+                          <Icon as={FaTimes} color="red.400" />
+                        )
+                      ) : (
+                        <Badge colorScheme="purple" variant="subtle">{item.premium}</Badge>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
 
         {/* Benefits Grid */}
         <Box>
@@ -544,7 +644,14 @@ const Premium: React.FC = () => {
                         {isYearly && <Text fontSize="xs" color="green.500" fontWeight="bold">save 26%</Text>}
                       </VStack>
 
-                      <Divider />
+                    <List spacing={3} w="full">
+                      {premiumFeatures.map((f: typeof premiumFeatures[0], i: number) => (
+                        <ListItem key={i} display="flex" alignItems="center" fontSize="sm">
+                          <ListIcon as={FaCheckCircle} color="purple.500" />
+                          <Text fontWeight="medium">{f.title}</Text>
+                        </ListItem>
+                      ))}
+                    </List>
 
                       <Box w="full">
                         {renderFeatureList(plusFeatures)}
@@ -564,27 +671,22 @@ const Premium: React.FC = () => {
                   </CardBody>
                 </Card>
 
-                {/* Pro Tier */}
-                <Card 
-                  flex={1}
-                  borderRadius="2xl" 
-                  boxShadow="lg" 
-                  borderWidth="1px" 
-                  borderColor={borderColor}
-                  overflow="hidden"
-                  bg={cardBg}
-                >
-                  <Box bg="orange.400" h="8px" />
-                  <CardBody p={8} display="flex" flexDirection="column">
-                    <VStack spacing={6} align="start" flex={1}>
-                      <VStack spacing={1} align="start">
-                        <Text fontSize="md" color="orange.400" fontWeight="bold">Pro</Text>
-                        <HStack align="baseline">
-                          <Text fontSize="4xl" fontWeight="extrabold">₱{isYearly ? '1099' : '120'}</Text>
-                          <Text color="gray.500">/{isYearly ? 'year' : 'month'}</Text>
-                        </HStack>
-                        {isYearly && <Text fontSize="sm" color="gray.500">or ₱91/mo billled yearly</Text>}
-                        {isYearly && <Text fontSize="xs" color="green.500" fontWeight="bold">save 24%</Text>}
+        {/* Features Grid */}
+        <Box pt={8}>
+            <VStack spacing={8}>
+              <Heading size="lg">Everything you get with Premium</Heading>
+              <Grid templateColumns={{ base: '1fr', md: '1fr 1fr', lg: '1fr 1fr 1fr' }} gap={8} w="full">
+                {premiumFeatures.map((feature: typeof premiumFeatures[0], index: number) => (
+                  <Card key={index} variant="outline" borderRadius="xl" _hover={{ shadow: 'md', borderColor: 'purple.200' }} transition="all 0.2s">
+                    <CardBody p={6}>
+                      <VStack align="start" spacing={4}>
+                        <Circle size="48px" bg={`${feature.color.split('.')[0]}.50`} color={feature.color}>
+                          <Icon as={feature.icon} fontSize="20px" />
+                        </Circle>
+                        <VStack align="start" spacing={1}>
+                          <Text fontWeight="bold" fontSize="lg">{feature.title}</Text>
+                          <Text fontSize="sm" color="gray.600">{feature.description}</Text>
+                        </VStack>
                       </VStack>
 
                       <Divider />

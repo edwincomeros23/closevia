@@ -43,7 +43,9 @@ export default defineConfig({
                 ]
             },
             workbox: {
-                globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2,ttf,eot}'],
+                globPatterns: ['**/*.{js,css,html,ico,png,webp,woff,woff2,ttf,eot}'],
+                globIgnores: ['**/*.svg', '**/Group*.svg'],
+                maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10 MB
                 runtimeCaching: [
                     {
                         urlPattern: /^https:\/\/api\..*/i,
