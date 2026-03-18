@@ -193,18 +193,29 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Seller row (desktop) */}
         <Flex justify="space-between" align="center" mb={1}>
           <HStack spacing={1} align="center" mt="auto">
-            <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+            {((product as any).seller_slug || product.seller_id) ? (
+              <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                <VerifiedAvatar
+                  size={{ base: 'xs', md: 'sm' } as any}
+                  src={sellerAvatar}
+                  name={product.seller_name || 'U'}
+                  bg="brand.500"
+                  flexShrink={0}
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8 }}
+                  isVerified={product.seller_verified || false}
+                />
+              </RouterLink>
+            ) : (
               <VerifiedAvatar
                 size={{ base: 'xs', md: 'sm' } as any}
                 src={sellerAvatar}
                 name={product.seller_name || 'U'}
                 bg="brand.500"
                 flexShrink={0}
-                cursor="pointer"
-                _hover={{ opacity: 0.8 }}
                 isVerified={product.seller_verified || false}
               />
-            </RouterLink>
+            )}
             <Text fontSize={{ base: 'xs', md: 'xs' }} color="black" fontWeight="medium" noOfLines={1}>
               {product.seller_name || 'Unknown'}
             </Text>

@@ -150,8 +150,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearTimeout(timeoutId)
       console.log('AuthContext: User profile response received:', response.data)
 
-      const userData = normalizeUser(response.data.data as any)
+      const rawData = response.data.data
+      const userData = normalizeUser(rawData?.user || rawData)
       console.log('AuthContext: Setting user data:', userData)
+      console.log('AuthContext: User ID from response:', userData?.id, 'Type:', typeof userData?.id)
+      console.log('AuthContext: User object keys:', userData ? Object.keys(userData) : 'null')
       setUser(userData)
 
       // If token was passed, ensure it's set in state

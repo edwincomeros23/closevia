@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
@@ -551,9 +552,9 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 	// Find user by email
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
 		login.Email,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier)
 
 	if err != nil {
 		return c.Status(401).JSON(models.APIResponse{
@@ -630,9 +631,9 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	// Check if user exists
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
 		req.Email,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier)
 
 	if err == sql.ErrNoRows {
 		// Generate slug for the new user
@@ -802,18 +803,30 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	// Profile Insights
 	var profileViews int
-	h.db.QueryRow("SELECT COUNT(*) FROM profile_views WHERE target_user_id = ?", user.ID).Scan(&profileViews)
+	// Use a short timeout for profile_views queries to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err = h.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM profile_views WHERE target_user_id = ?", user.ID).Scan(&profileViews)
+	if err != nil {
+		// If profile_views query fails (table missing or timeout), just set to 0
+		fmt.Printf("⚠️ Profile views query failed: %v\n", err)
+		profileViews = 0
+	}
 
 	var viewHistory []fiber.Map
 	// Plus and Pro users can see who viewed their profile
 	if user.PremiumTier != "free" {
-		rows, qErr := h.db.Query(`
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel2()
+
+		rows, qErr := h.db.QueryContext(ctx2, `
 			SELECT DISTINCT u.id, u.name, COALESCE(u.profile_picture, '') as profile_picture, MAX(pv.viewed_at) as last_viewed
-			FROM profile_views pv 
-			JOIN users u ON pv.viewer_user_id = u.id 
-			WHERE pv.target_user_id = ? 
+			FROM profile_views pv
+			JOIN users u ON pv.viewer_user_id = u.id
+			WHERE pv.target_user_id = ?
 			GROUP BY u.id, u.name, u.profile_picture
-			ORDER BY last_viewed DESC 
+			ORDER BY last_viewed DESC
 			LIMIT 10`, user.ID)
 		if qErr == nil && rows != nil {
 			defer rows.Close()
@@ -829,6 +842,8 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 					"viewed_at": lv,
 				})
 			}
+		} else if qErr != nil {
+			fmt.Printf("⚠️ View history query failed: %v\n", qErr)
 		}
 	}
 
@@ -1212,13 +1227,17 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		})
 	}
 
-	// Log profile view
+	// Log profile view (with timeout to prevent hanging)
 	viewerID, _ := middleware.GetUserIDFromContext(c)
 	if viewerID > 0 && viewerID != userID { // Don't log self-views or anonymous views without ID
-		h.db.Exec("INSERT INTO profile_views (target_user_id, viewer_user_id) VALUES (?, ?)", userID, viewerID)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		h.db.ExecContext(ctx, "INSERT INTO profile_views (target_user_id, viewer_user_id) VALUES (?, ?)", userID, viewerID)
+		cancel()
 	} else if viewerID == 0 {
 		// Optional: log anonymous views with NULL viewer_user_id
-		h.db.Exec("INSERT INTO profile_views (target_user_id, viewer_user_id) VALUES (?, NULL)", userID)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		h.db.ExecContext(ctx, "INSERT INTO profile_views (target_user_id, viewer_user_id) VALUES (?, NULL)", userID)
+		cancel()
 	}
 
 	// Convert sql.NullString to regular strings AFTER error check

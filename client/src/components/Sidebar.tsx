@@ -167,12 +167,14 @@ const Sidebar: React.FC = () => {
                   </Box>
                   <Button
                     as={RouterLink}
-                    to={`/users/${(user as any).slug || user.id}`}
+                    to={user.id ? `/users/${(user as any).slug || user.id}` : '#'}
+                    isDisabled={!user.id}
                     size="sm"
                     w="full"
                     colorScheme="brand"
                     variant="outline"
                     onClick={handleProfileClick}
+                    title={!user.id ? 'User ID not available' : 'View Profile'}
                   >
                     View Profile
                   </Button>
@@ -350,9 +352,25 @@ const Sidebar: React.FC = () => {
             })}
           </VStack>
 
-          {/* Settings at the bottom - only when logged in */}
+          {/* Profile and Settings at the bottom - only when logged in */}
           {user && (
-            <Box mb={4}>
+            <VStack spacing={3} mb={4}>
+              <Tooltip label="My Profile" placement="right" hasArrow>
+                <IconButton
+                  as={RouterLink}
+                  to={user.id ? `/users/${(user as any).slug || user.id}` : '#'}
+                  isDisabled={!user.id}
+                  aria-label="My Profile"
+                  icon={<FiUser />}
+                  variant="ghost"
+                  size="lg"
+                  color={location.pathname.startsWith('/users/') ? activeIconColor : iconColor}
+                  bg={location.pathname.startsWith('/users/') ? 'brand.50' : 'transparent'}
+                  _hover={{ bg: location.pathname.startsWith('/users/') ? 'brand.100' : 'gray.100' }}
+                  borderRadius="xl"
+                  transition="all 0.2s"
+                />
+              </Tooltip>
               <Tooltip label="Settings" placement="right" hasArrow>
                 <IconButton
                   as={RouterLink}
@@ -368,7 +386,7 @@ const Sidebar: React.FC = () => {
                   transition="all 0.2s"
                 />
               </Tooltip>
-            </Box>
+            </VStack>
           )}
         </Box>
       </Box>

@@ -30,6 +30,24 @@ const Profile: React.FC = () => {
     )
   }
 
+  console.log('Profile: Received user object:', user)
+  console.log('Profile: User ID:', user.id, 'Type:', typeof user.id)
+
+  // Guard against undefined user.id
+  if (!user.id) {
+    console.error('Profile: user.id is undefined or falsy!', user)
+    return (
+      <Box bg="#FFFDF1" minH="100vh" w="100%">
+        <Center h="50vh">
+          <Box textAlign="center">
+            <Box fontSize="lg" fontWeight="bold" mb={2}>Error Loading Profile</Box>
+            <Box fontSize="sm" color="gray.600">User ID is not available. Please try logging in again.</Box>
+          </Box>
+        </Center>
+      </Box>
+    )
+  }
+
   return <UserProfile userId={user.id} />
 }
 
