@@ -236,9 +236,27 @@ func (h *PaymentHandler) CreatePremiumInvoice(c *fiber.Ctx) error {
 	externalID := fmt.Sprintf("premium_%s_%d", productID, userID)
 	description := fmt.Sprintf("Clovia Premium Upgrade: %s", title)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/dashboard", frontendURL)
 
@@ -291,9 +309,27 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 	externalID := fmt.Sprintf("boost_%s_%d", productID, userID)
 	description := fmt.Sprintf("Clovia Product Boost: %s", title)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/products/%s", frontendURL, productID)
 
@@ -324,22 +360,54 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(int)
 
+	var payload struct {
+		Plan string `json:"plan"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		// Default to monthly if parsing fails
+		payload.Plan = "monthly"
+	}
+
 	var buyerName, buyerEmail string
 	err := h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
-	amount := 499.0 // Pricing for full premium account
+	amount := 99.0 // Pricing for monthly premium
+	description := "Clovia Premium Subscription (Monthly)"
+
+	if payload.Plan == "yearly" {
+		amount = 299.0
+		description = "Clovia Premium Subscription (Yearly)"
+	}
+
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	xenditClient := xendit.NewClient(apiKey)
 
 	externalID := fmt.Sprintf("user_premium_%d", userID)
-	description := "Clovia Premium Subscription (Lifetime)"
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/premium", frontendURL)
 

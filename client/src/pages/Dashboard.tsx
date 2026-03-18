@@ -58,7 +58,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
-import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
+import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
@@ -203,6 +203,7 @@ const Dashboard: React.FC = () => {
   const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
+  const [showPremiumModal, setShowPremiumModal] = useState(false)
 
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
@@ -238,6 +239,20 @@ const Dashboard: React.FC = () => {
       prefetchDashboardData()
     }
   }, [user?.id, prefetchDashboardData])
+
+  useEffect(() => {
+    if (!loading && isAuthenticated && user && !user.is_premium) {
+      const hasShown = sessionStorage.getItem('clovia_premium_up_shown')
+      if (!hasShown) {
+        // Delay slightly for better UX after dashboard load
+        const timer = setTimeout(() => {
+          setShowPremiumModal(true)
+          sessionStorage.setItem('clovia_premium_up_shown', 'true')
+        }, 3000)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [isAuthenticated, user, loading])
 
   // Check if user is authenticated, redirect to login if not
   // Only redirect if not loading (to prevent race conditions after login)
@@ -3746,58 +3761,19 @@ const Dashboard: React.FC = () => {
                         </Text>
                       </Box>
                     ) : (
-                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                        {/* Mock Trade Loop 1 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 1, user_name: 'John Doe', product_id: 1, product_title: 'PlayStation 5' },
-                              { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
-                              { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 2 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 4, user_name: 'Emma Wilson', product_id: 4, product_title: 'Galaxy S23' },
-                              { id: 5, user_name: 'Alex Chen', product_id: 5, product_title: 'iPad Air' },
-                              { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
-                              { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop-2", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 3 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 8, user_name: 'Chris Martin', product_id: 8, product_title: 'Nintendo Switch' },
-                              { id: 9, user_name: 'Jessica Brown', product_id: 9, product_title: 'Bicycle' },
-                              { id: 10, user_name: 'Robert Taylor', product_id: 10, product_title: 'Guitar' },
-                              { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
-                              { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop-3", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-                      </SimpleGrid>
+                      <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={8} textAlign="center" w="100%">
+                        <VStack spacing={4}>
+                          <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={2} />
+                          <VStack spacing={1}>
+                            <Text color="gray.600" fontSize="lg" fontWeight="semibold">
+                              No multi-way trades available
+                            </Text>
+                            <Text color="gray.500" fontSize="sm" maxW="400px">
+                              Multi-way trade opportunities will appear here once we find a trading loop that involves your products. Check back later!
+                            </Text>
+                          </VStack>
+                        </VStack>
+                      </Box>
                     )
                   ) : multiWayTradesViewMode === 'list' ? (
                     <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
@@ -4523,6 +4499,72 @@ const Dashboard: React.FC = () => {
         imageUrl={zoomImageUrl}
         altText={zoomAltText}
       />
+
+      {/* Premium Opportunity Modal */}
+      <Modal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} isCentered size="md">
+        <ModalOverlay backdropFilter="blur(8px)" />
+        <ModalContent borderRadius="2xl" overflow="hidden" boxShadow="2xl">
+          <ModalBody p={0}>
+            <Box position="relative">
+              <Box bg="purple.600" h="140px" display="flex" alignItems="center" justifyContent="center">
+                <Icon as={FaCrown} color="yellow.400" fontSize="60px" filter="drop-shadow(0 0 10px rgba(236, 201, 75, 0.4))" />
+              </Box>
+              <ModalCloseButton color="white" top={4} right={4} />
+              
+              <VStack spacing={6} p={8} textAlign="center">
+                <VStack spacing={2}>
+                  <Heading size="lg" fontWeight="extrabold">Level Up to Premium!</Heading>
+                  <Text color="gray.500" fontSize="md">
+                    Unlock exclusive features like unlimited trade offers, priority listing, and verified badge.
+                  </Text>
+                </VStack>
+
+                <SimpleGrid columns={2} spacing={3} w="full">
+                  {[
+                    'Unlimited Offers',
+                    'Priority Listing',
+                    'Can Sell (Buyout)',
+                    'Express Delivery',
+                    'Lower Fees',
+                    'Verified Badge'
+                  ].map((f, i) => (
+                    <HStack key={i} spacing={2}>
+                      <Icon as={CheckIcon} color="green.500" boxSize={3} />
+                      <Text fontSize="xs" fontWeight="bold" color="gray.600">{f}</Text>
+                    </HStack>
+                  ))}
+                </SimpleGrid>
+
+                <VStack spacing={3} w="full">
+                  <Button 
+                    colorScheme="purple" 
+                    w="full" 
+                    size="lg" 
+                    h="56px"
+                    fontSize="lg"
+                    borderRadius="xl"
+                    leftIcon={<FaCrown />}
+                    onClick={() => {
+                      setShowPremiumModal(false)
+                      navigate('/premium')
+                    }}
+                    _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                  >
+                    Take Me There
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    w="full"
+                    onClick={() => setShowPremiumModal(false)}
+                  >
+                    Maybe Later
+                  </Button>
+                </VStack>
+              </VStack>
+            </Box>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Box>
   )
 }

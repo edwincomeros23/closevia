@@ -80,6 +80,7 @@ const Sidebar: React.FC = () => {
           { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
           { icon: FaPlus, label: 'Add Product', path: '/add-product' },
           { icon: FiHeart, label: 'Saved', path: '/saved-products' },
+          { icon: FaCrown, label: 'Premium', path: '/premium' },
         )
       }
       items.push(
@@ -106,6 +107,7 @@ const Sidebar: React.FC = () => {
       }
       items.push(
         { icon: FiBell, label: 'Notifications', path: '/notifications' },
+        { icon: FaCrown, label: 'Premium', path: '/premium' },
         { icon: FiSettings, label: 'Settings', path: '/settings' },
       )
       return items

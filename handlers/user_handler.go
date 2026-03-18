@@ -769,19 +769,17 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
-		// Return a friendly fallback (200) so frontend does not produce a network 404.
-		// Frontend expects a user-like object; provide minimal public fields.
-		fallback := models.User{
-			ID:             userID,
-			Name:           "User",
-			Verified:       false,
-			IsOrganization: false,
-			CreatedAt:      time.Now(),
-			ProfilePicture: "",
+		// Return a proper error response so frontend can handle it correctly
+		// Check if it's a "no rows" error (user doesn't exist)
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "User not found",
+			})
 		}
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Data:    fallback,
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to fetch user profile",
 		})
 	}
 

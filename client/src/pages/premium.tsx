@@ -1,4 +1,3 @@
-// ADD LANG DITO IF NEEDED
 import React, { useState, useEffect } from 'react'
 import {
   Box,
@@ -15,9 +14,7 @@ import {
   Center,
   useToast,
   Icon,
-  Image,
   Grid,
-  GridItem,
   Divider,
   useColorModeValue,
   Flex,
@@ -44,7 +41,6 @@ import { useAuth } from '../contexts/AuthContext'
 import { TradeLoop, MultiWayTrade } from '../types'
 import { fetchTradeLoops, fetchMultiWayTrade } from '../services/tradeService'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
-import { useDisclosure } from '@chakra-ui/react'
 import { api } from '../services/api'
 
 const Premium: React.FC = () => {
@@ -55,16 +51,19 @@ const Premium: React.FC = () => {
   const [loops, setLoops] = useState<TradeLoop[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedLoop, setSelectedLoop] = useState<MultiWayTrade | null>(null)
-  
+  const [isYearly, setIsYearly] = useState(false)
+  const [upgrading, setUpgrading] = useState(false)
+
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
-  const hoverBg = useColorModeValue('blue.50', 'blue.900')
-  const premiumBadgeBg = useColorModeValue('purple.100', 'purple.900')
-  const premiumBadgeColor = useColorModeValue('purple.800', 'purple.100')
-  const lockedBg = useColorModeValue('gray.100', 'gray.700')
-  const lockedText = useColorModeValue('gray.500', 'gray.400')
 
   const isPremiumUser = user?.is_premium === true
+
+  useEffect(() => {
+    if (isPremiumUser) {
+      fetchLoops()
+    }
+  }, [isPremiumUser])
 
   const fetchLoops = async () => {
     try {
@@ -72,52 +71,7 @@ const Premium: React.FC = () => {
       const data = await fetchTradeLoops()
       setLoops(data)
     } catch (error: any) {
-      toast({
-        id: "premium-error",
-        title: 'Error',
-        description: error?.response?.data?.error || 'Failed to fetch trade loops',
-        status: 'error',
-        duration: 5000,
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (isPremiumUser) {
-      fetchLoops()
-      // Refresh every 30 seconds to check for new loops
-      const interval = setInterval(fetchLoops, 30000)
-      return () => clearInterval(interval)
-    }
-  }, [isPremiumUser])
-
-  const handleSelectLoop = async (loop: TradeLoop) => {
-    if (!isPremiumUser) {
-      toast({
-        id: "premium-premium-feature",
-        title: 'Premium Feature',
-        description: 'Multi-way trading is available to premium members only',
-        status: 'info',
-      })
-      return
-    }
-
-    try {
-      setLoading(true)
-      // Construct loop ID from edges
-      const loopId = `loop_${loop.edges.map(e => e.trade_id).join('_')}`
-      const multiWayTrade = await fetchMultiWayTrade(loopId)
-      setSelectedLoop(multiWayTrade)
-      onOpen()
-    } catch (error: any) {
-      toast({
-        id: "premium-error-2",
-        title: 'Error',
-        description: 'Failed to load trade loop details',
-        status: 'error',
-      })
+      // Silently fail or log
     } finally {
       setLoading(false)
     }
@@ -362,7 +316,8 @@ const Premium: React.FC = () => {
   const handleUpgrade = async () => {
     try {
       setUpgrading(true)
-      const { data } = await api.post('/api/payments/subscription')
+      const plan = isYearly ? 'yearly' : 'monthly'
+      const { data } = await api.post('/api/payments/subscription', { plan })
       if (data?.success && data?.data?.checkout_url) {
         window.location.href = data.data.checkout_url
       } else {
@@ -741,36 +696,187 @@ const Premium: React.FC = () => {
     )
   }
 
-  return (
-    <Container maxW="container.lg" py={8}>
-      <VStack spacing={8} align="stretch">
-        {/* Page Header */}
-        <VStack spacing={2} align="start">
-          <Heading size="xl" display="flex" alignItems="center" gap={2}>
-            <Icon as={FaCrown} color="purple.500" />
-            Premium Features
-          </Heading>
-          <Text color="gray.600">
-            {isPremiumUser
-              ? 'Welcome to premium! Access exclusive trading features and benefits.'
-              : 'Unlock premium features to enhance your trading experience.'}
-          </Text>
-        </VStack>
+          {/* Pricing Card (if not premium) */}
+          {!isPremiumUser && (
+            <Center>
+              <Card 
+                maxW="400px" 
+                w="full" 
+                borderRadius="2xl" 
+                boxShadow="2xl" 
+                borderWidth="2px" 
+                borderColor="purple.400"
+                overflow="hidden"
+              >
+                <Box bg="purple.500" h="8px" />
+                <CardBody p={8}>
+                  <VStack spacing={6}>
+                    <VStack spacing={1}>
+                      <Text fontSize="sm" color="gray.500" fontWeight="bold">PREMIUM PLAN</Text>
+                      <HStack align="baseline">
+                        <Text fontSize="5xl" fontWeight="extrabold">₱{isYearly ? '299' : '99'}</Text>
+                        <Text color="gray.500">/{isYearly ? 'year' : 'month'}</Text>
+                      </HStack>
+                    </VStack>
 
-        {/* Main Content */}
-        {isPremiumUser ? renderPremiumFeature() : renderLockedContent()}
-      </VStack>
+                    <Divider />
+
+                    <List spacing={3} w="full">
+                      {premiumFeatures.map((f, i) => (
+                        <ListItem key={i} display="flex" alignItems="center" fontSize="sm">
+                          <ListIcon as={FaCheckCircle} color="purple.500" />
+                          <Text fontWeight="medium">{f.title}</Text>
+                        </ListItem>
+                      ))}
+                    </List>
+
+                    <Button
+                      w="full"
+                      size="lg"
+                      colorScheme="purple"
+                      borderRadius="xl"
+                      h="60px"
+                      fontSize="lg"
+                      leftIcon={<FaCrown />}
+                      isLoading={upgrading}
+                      onClick={handleUpgrade}
+                      boxShadow="0 4px 14px 0 rgba(128, 90, 213, 0.39)"
+                      _hover={{
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 6px 20px rgba(128, 90, 213, 0.43)',
+                      }}
+                    >
+                      Subscribe Now
+                    </Button>
+                    <Text fontSize="xs" color="gray.500">
+                      Secure payment via Xendit. Cancel anytime.
+                    </Text>
+                  </VStack>
+                </CardBody>
+              </Card>
+            </Center>
+          )}
+
+          {/* Features Grid */}
+          <Box pt={8}>
+            <VStack spacing={8}>
+              <Heading size="lg">Everything you get with Premium</Heading>
+              <Grid templateColumns={{ base: '1fr', md: '1fr 1fr', lg: '1fr 1fr 1fr' }} gap={8} w="full">
+                {premiumFeatures.map((feature, index) => (
+                  <Card key={index} variant="outline" borderRadius="xl" _hover={{ shadow: 'md', borderColor: 'purple.200' }} transition="all 0.2s">
+                    <CardBody p={6}>
+                      <VStack align="start" spacing={4}>
+                        <Circle size="48px" bg={`${feature.color.split('.')[0]}.50`} color={feature.color}>
+                          <Icon as={feature.icon} fontSize="20px" />
+                        </Circle>
+                        <VStack align="start" spacing={1}>
+                          <Text fontWeight="bold" fontSize="lg">{feature.title}</Text>
+                          <Text fontSize="sm" color="gray.600">{feature.description}</Text>
+                        </VStack>
+                      </VStack>
+                    </CardBody>
+                  </Card>
+                ))}
+              </Grid>
+            </VStack>
+          </Box>
+
+          {/* If already premium - Show Multi-way Trading Loops */}
+          {isPremiumUser && (
+            <VStack spacing={6} align="stretch" pt={8} borderTopWidth="1px">
+              <HStack justify="space-between">
+                <VStack align="start" spacing={1}>
+                  <Heading size="lg" color="purple.600">Your Premium Dashboard</Heading>
+                  <Text color="gray.600">Detecting multi-way trade opportunities for your items...</Text>
+                </VStack>
+                <Badge colorScheme="purple" variant="solid" p={2} borderRadius="md" >
+                  <HStack spacing={1}>
+                    <Icon as={FaCrown} />
+                    <Text>PREMIUM ACTIVE</Text>
+                  </HStack>
+                </Badge>
+              </HStack>
+
+              <Box>
+                {loading && loops.length === 0 ? (
+                  <Center py={12}><Spinner color="purple.500" size="xl" /></Center>
+                ) : loops.length === 0 ? (
+                  <Card variant="outline" borderRadius="xl" borderStyle="dashed">
+                    <CardBody py={12}>
+                      <VStack spacing={4}>
+                        <Icon as={FaChartLine} fontSize="4xl" color="gray.300" />
+                        <Text fontWeight="medium" color="gray.500">No trading loops detected for your items yet. Keep posting!</Text>
+                      </VStack>
+                    </CardBody>
+                  </Card>
+                ) : (
+                  <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={6}>
+                    {loops.map((loop, idx) => (
+                      <Card 
+                        key={idx} 
+                        variant="outline" 
+                        borderRadius="xl" 
+                        overflow="hidden"
+                        _hover={{ shadow: 'lg', transform: 'translateY(-2px)', borderColor: 'purple.300' }}
+                        transition="all 0.2s"
+                        cursor="pointer"
+                        onClick={() => {
+                          const loopId = `loop_${loop.edges.map(e => e.trade_id).join('_')}`
+                          fetchMultiWayTrade(loopId).then(data => {
+                            setSelectedLoop(data)
+                            onOpen()
+                          })
+                        }}
+                      >
+                        <Box bg="purple.50" p={4} borderBottomWidth="1px">
+                          <HStack justify="space-between">
+                            <Badge colorScheme="purple">{loop.loop_length}-Way Loop</Badge>
+                            <Text fontSize="xs" fontWeight="bold" color="purple.600">ACTIVE OPPORTUNITY</Text>
+                          </HStack>
+                        </Box>
+                        <CardBody p={4}>
+                          <VStack align="stretch" spacing={4}>
+                            <Flex align="center" justify="space-between" px={2}>
+                              {loop.edges.map((edge, eIdx) => (
+                                <React.Fragment key={eIdx}>
+                                  <VStack spacing={0}>
+                                    <Text fontSize="xs" color="gray.500">P{eIdx + 1}</Text>
+                                    <Circle size="30px" bg="purple.500" color="white" fontWeight="bold" fontSize="xs">
+                                      {edge.from_user}
+                                    </Circle>
+                                  </VStack>
+                                  {eIdx < loop.edges.length - 1 && <Icon as={FaArrowRight} color="purple.300" />}
+                                </React.Fragment>
+                              ))}
+                              <Icon as={FaArrowRight} color="purple.300" />
+                              <Circle size="30px" bg="purple.500" color="white" fontWeight="bold" fontSize="xs">
+                                {loop.edges[0].from_user}
+                              </Circle>
+                            </Flex>
+                            <Divider />
+                            <Button size="sm" variant="ghost" colorScheme="purple">View details & Join</Button>
+                          </VStack>
+                        </CardBody>
+                      </Card>
+                    ))}
+                  </Grid>
+                )}
+              </Box>
+            </VStack>
+          )}
+        </VStack>
+      </Container>
 
       {/* Multi-Way Trade Modal */}
       {selectedLoop && (
         <MultiWayTradeModal
           isOpen={isOpen}
-          onClose={handleCloseModal}
+          onClose={onClose}
           multiWayTrade={selectedLoop}
           onTradeCompleted={fetchLoops}
         />
       )}
-    </Container>
+    </Box>
   )
 }
 

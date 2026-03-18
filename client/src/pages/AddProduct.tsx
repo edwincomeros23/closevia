@@ -1376,6 +1376,67 @@ const AddProduct: React.FC = () => {
           </FormControl>
         </VStack>
       </Box>
+      
+      {/* ──────── PREMIUM SELLING OPTIONS ──────── */}
+      <Box p={4} bg="purple.50" borderRadius="lg" border="1px dashed" borderColor="purple.200">
+        <HStack justify="space-between" mb={3}>
+          <HStack>
+            <Text fontSize="sm" fontWeight="bold" color="purple.700">
+              💎 Premium Selling Options
+            </Text>
+            {!user?.is_premium && (
+              <Badge colorScheme="purple" fontSize="9px">PRO</Badge>
+            )}
+          </HStack>
+          {!user?.is_premium && (
+            <Button 
+              size="xs" 
+              colorScheme="purple" 
+              variant="link" 
+              fontSize="10px"
+              onClick={() => navigate('/premium')}
+            >
+              Upgrade Now
+            </Button>
+          )}
+        </HStack>
+        
+        <VStack spacing={3} align="stretch">
+          <FormControl display="flex" alignItems="center">
+            <Checkbox 
+              isChecked={formData.allow_buying}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleField('allow_buying', e.target.checked)}
+              isDisabled={!user?.is_premium}
+              colorScheme="purple"
+              mr={2}
+            />
+            <Box>
+              <FormLabel mb={0} fontSize="xs" fontWeight="bold" cursor={user?.is_premium ? "pointer" : "not-allowed"}>
+                Enable Direct Purchase (Buyout)
+              </FormLabel>
+              <Text fontSize="10px" color="gray.500">
+                Allow buyers to purchase this item directly with cash.
+              </Text>
+            </Box>
+          </FormControl>
+
+          {formData.allow_buying && (
+            <FormControl>
+              <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Buyout Price (₱)</FormLabel>
+              <Input
+                type="number"
+                placeholder="Enter amount"
+                value={formData.price || ''}
+                onChange={e => handleField('price', parseFloat(e.target.value) || 0)}
+                size="sm"
+                bg="white"
+                h="32px"
+              />
+              <FormHelperText fontSize="10px">The cash amount a buyer must pay to buy the item immediately.</FormHelperText>
+            </FormControl>
+          )}
+        </VStack>
+      </Box>
     </VStack>
   )
 

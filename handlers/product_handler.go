@@ -364,6 +364,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	var createdProduct models.Product
 	var slugNull sql.NullString
 	var createdVideoURL sql.NullString
+	var wantsNull sql.NullString
 	err = h.db.QueryRow(
 		"SELECT id, slug, title, description, price, image_urls, video_url, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, estimated_value_min, estimated_value_max, `value`, wants, wanted_categories, created_at, updated_at FROM products WHERE id = ?",
 		productID,
@@ -372,8 +373,12 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
 		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category, 
 		&createdProduct.EstimatedValueMin, &createdProduct.EstimatedValueMax, &createdProduct.Value,
-		&createdProduct.Wants, &createdProduct.WantedCategories,
+		&wantsNull, &createdProduct.WantedCategories,
 		&createdProduct.CreatedAt, &createdProduct.UpdatedAt)
+
+	if wantsNull.Valid {
+		createdProduct.Wants = wantsNull.String
+	}
 
 	if slugNull.Valid {
 		createdProduct.Slug = slugNull.String
@@ -591,10 +596,10 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	// Use the full query with proper WHERE clause handling
 	query := `
-		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
-		       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
-		       u.name as seller_name, u.profile_picture as seller_profile_picture,
+		SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, p.price, COALESCE(p.image_urls, '[]') as image_urls, p.seller_id, 
+		       p.premium, p.status, p.allow_buying, p.barter_only, COALESCE(p.location, '') as location, COALESCE(p.` + "`condition`" + `, '') as ` + "`condition`" + `, 
+		       p.suggested_value, COALESCE(p.category, 'General') as category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
+		       COALESCE(u.name, 'User') as seller_name, COALESCE(u.profile_picture, '') as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
 			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
 			   (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
@@ -653,15 +658,19 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var imageURLsJSONStr string
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		var boostedAtNull sql.NullTime
-		var offerCount int
+		var wantsNull sql.NullString
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&conditionNull, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&product.Wants, &product.WantedCategories,
+			&wantsNull, &product.WantedCategories,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
+		
+		if wantsNull.Valid {
+			product.Wants = wantsNull.String
+		}
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -729,8 +738,6 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			}
 		}
 
-		// Set the offer count from the query result
-		product.OfferCount = offerCount
 
 		products = append(products, product)
 	}
@@ -1096,6 +1103,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var videoURLNull sql.NullString
 	var err error
 
+	var wantsNull sql.NullString
 	productID, parseErr := strconv.Atoi(idOrSlug)
 	if parseErr == nil {
 		// It's a numeric ID
@@ -1113,7 +1121,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category, 
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&product.Wants, &product.WantedCategories,
+			&wantsNull, &product.WantedCategories,
 			&product.CreatedAt, &product.UpdatedAt,
 			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
 	} else {
@@ -1131,9 +1139,13 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&product.Wants, &product.WantedCategories,
+			&wantsNull, &product.WantedCategories,
 			&product.CreatedAt, &product.UpdatedAt,
 			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
+	}
+
+	if wantsNull.Valid {
+		product.Wants = wantsNull.String
 	}
 
 	if err != nil {
