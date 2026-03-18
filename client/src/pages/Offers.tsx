@@ -25,6 +25,7 @@ const Offers: React.FC = () => {
   const [tradeToDecline, setTradeToDecline] = useState<Trade | null>(null)
   const [declineFeedback, setDeclineFeedback] = useState('')
   const [activeTab, setActiveTab] = useState(0)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<number | undefined>()
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const toast = useToast()
@@ -157,6 +158,7 @@ const Offers: React.FC = () => {
   const handleConfirmCancel = async () => {
     if (!tradeToCancel) return
     
+    setIsProcessing(true)
     try {
       await updateTrade(tradeToCancel.id, { action: 'cancel' })
       setCancelModalOpen(false)
@@ -175,6 +177,8 @@ const Offers: React.FC = () => {
         description: error?.response?.data?.error || 'Failed to cancel offer',
         status: 'error'
       })
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -187,6 +191,7 @@ const Offers: React.FC = () => {
   const handleConfirmDecline = async () => {
     if (!tradeToDecline) return
     
+    setIsProcessing(true)
     try {
       await updateTrade(tradeToDecline.id, { 
         action: 'decline',
@@ -209,24 +214,68 @@ const Offers: React.FC = () => {
         description: error?.response?.data?.error || 'Failed to decline offer',
         status: 'error'
       })
+    } finally {
+      setIsProcessing(false)
     }
   }
 
-  const handleConvertToMultiWay = () => {
+  const handleConvertToMultiWay = async () => {
     if (!tradeToDecline) {
       setDeclineModalOpen(false)
       return
     }
 
+    setIsProcessing(true)
     setDeclineModalOpen(false)
-    toast({
-      title: 'Searching for multi-way trade',
-      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
-      status: 'info',
-      duration: 5000
-    })
 
-    navigate('/premium')
+    try {
+      await updateTrade(tradeToDecline.id, {
+        action: 'convert_to_multiway'
+      })
+
+      setTradeToDecline(null)
+      setDeclineFeedback('')
+
+      toast({
+        id: 'success-convert-multiway',
+        title: 'Converting to Multi-Way',
+        description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
+        status: 'success',
+        duration: 5000
+      })
+
+      // Refresh trades after conversion
+      setTimeout(() => {
+        setIsProcessing(false)
+      }, 1000)
+    } catch (error: any) {
+      setIsProcessing(false)
+
+      const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
+
+      // If error is premium-related, redirect to premium page
+      if (errorMsg.includes('premium') || error?.response?.status === 403) {
+        toast({
+          id: 'error-convert-multiway-premium',
+          title: 'Premium Feature',
+          description: 'Multi-way trading is a premium feature. Upgrade to enable it!',
+          status: 'warning',
+          duration: 5000
+        })
+
+        // Redirect to premium after showing message
+        setTimeout(() => {
+          navigate('/premium')
+        }, 1500)
+      } else {
+        toast({
+          id: 'error-convert-multiway',
+          title: 'Error',
+          description: errorMsg,
+          status: 'error'
+        })
+      }
+    }
   }
 
   const sortList = (list: Trade[]) => {
@@ -254,7 +303,7 @@ const Offers: React.FC = () => {
     if (!s) return 3
     const v = s.toLowerCase()
     if (v === 'countered') return 0
-    if (v === 'pending') return 1
+    if (v === 'pending' || v === 'pending_multiway') return 1
     return 2
   }
 
@@ -1269,6 +1318,7 @@ const Offers: React.FC = () => {
                     size="md"
                     flex={1}
                     onClick={handleConfirmCancel}
+                    isLoading={isProcessing}
                     leftIcon={<Icon as={FaTimes} />}
                   >
                     Cancel Offer
@@ -1342,6 +1392,7 @@ const Offers: React.FC = () => {
                     size="md"
                     flex={1}
                     onClick={handleConvertToMultiWay}
+                    isLoading={isProcessing}
                   >
                     Convert to Multi-Way
                   </Button>
@@ -1350,6 +1401,7 @@ const Offers: React.FC = () => {
                     size="md"
                     flex={1}
                     onClick={handleConfirmDecline}
+                    isLoading={isProcessing}
                     leftIcon={<Icon as={FaTimes} />}
                   >
                     Decline Offer

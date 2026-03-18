@@ -36,6 +36,7 @@ type GeminiResponse struct {
 	SuspiciousReason  string   `json:"suspicious_reason,omitempty"`
 	IsBlurryOrDark    bool     `json:"is_blurry_or_dark,omitempty"`
 	QualityWarning    string   `json:"quality_warning,omitempty"`
+	PriceReasoning    string   `json:"price_reasoning,omitempty"`
 
 	// Enhanced image quality fields
 	ImageQualityScore  int                 `json:"image_quality_score,omitempty"`
@@ -187,6 +188,7 @@ IF THE IMAGE IS SAFE, proceed with normal analysis. Return ONLY this exact struc
   "authenticity_risks": "one of: Low, Medium, High",
   "estimated_value_min": 0,
   "estimated_value_max": 0,
+  "price_reasoning": "Briefly explain what data or facts back this estimate (e.g., matching retail price, market demand, condition-based depreciation).",
   "tags": ["tag1", "tag2", "tag3"],
   "is_prohibited": false,
   "prohibited_reason": "",

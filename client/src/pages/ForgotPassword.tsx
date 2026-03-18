@@ -19,6 +19,7 @@ import {
   useToast,
   PinInput,
   PinInputField,
+  Container,
 } from '@chakra-ui/react'
 import { ViewIcon, ViewOffIcon, ArrowBackIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'

@@ -113,6 +113,21 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check existing trades"})
 	}
 
+	// CHECK PREMIUM LIMITS: Non-premium users are limited to 5 pending offers
+	var isPremium bool
+	_ = h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
+
+	if !isPremium {
+		var pendingCount int
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE buyer_id = ? AND status = 'pending'", userID).Scan(&pendingCount)
+		if pendingCount >= 5 {
+			return c.Status(403).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Standard users are limited to 5 pending trade offers. Upgrade to Premium for 💎 Unlimited Trade Offers!",
+			})
+		}
+	}
+
 	// Use a transaction to ensure trade and items are created together
 	tx, err := h.db.Begin()
 	if err != nil {
@@ -260,8 +275,12 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		args = []interface{}{userID}
 	}
 	if status != "" {
-		where += " AND t.status = ?"
-		args = append(args, status)
+		if status == "pending" {
+			where += " AND (t.status = 'pending' OR t.status = 'pending_multiway')"
+		} else {
+			where += " AND t.status = ?"
+			args = append(args, status)
+		}
 	}
 
 	// Build query dynamically to handle missing columns
@@ -936,6 +955,52 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", notifyID3, "Trade option change rejected")
 		publishToUser(notifyID3, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
 
+	case "convert_to_multiway":
+		// Check if user is premium
+		var isPremium bool
+		err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify premium status"})
+		}
+		if !isPremium {
+			return c.Status(403).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Multi-way trading is a premium feature. Upgrade to Premium to enable multiway trades.",
+			})
+		}
+
+		// Mark trade as pending_multiway (keep it open for multiway matching instead of declining)
+		_, err = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to convert to multiway"})
+		}
+
+		// Notify both parties
+		var pid int
+		_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&pid)
+		var productTitle string
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productTitle)
+
+		buyerMsg := "Keeping your offer open for multi-way trading opportunities!"
+		sellerMsg := "This offer is now available for multi-way trading chains!"
+
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, buyerMsg)
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, sellerMsg)
+		publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
+		publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
+
+		// Trigger loop detection immediately
+		go h.CheckForTradeLoops()
+
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Message: "Offer converted to multi-way! We're searching for matching trade loops...",
+			Data: fiber.Map{
+				"trade_id": tradeID,
+				"status":   "pending_multiway",
+			},
+		})
+
 	default:
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
 	}
@@ -1068,7 +1133,7 @@ func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 
 	log.Printf("Product %d current status: %s", productID, currentStatus)
 
-	// Allow both 'available' and 'locked' status. 
+	// Allow both 'available' and 'locked' status.
 	// Products are locked when a trade is accepted/active.
 	if currentStatus != "available" && currentStatus != "locked" {
 		log.Printf("Warning: Product %d is already in an un-tradable state (status: %s), skipping", productID, currentStatus)
@@ -1670,7 +1735,11 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 	}
 
 	// Validate status against a known whitelist. An empty status means no filter.
-	allowedStatuses := map[string]bool{"pending": true, "accepted": true, "active": true, "completed": true, "declined": true, "cancelled": true, "countered": true, "expired": true, "auto_completed": true}
+	allowedStatuses := map[string]bool{
+		"pending": true, "pending_multiway": true, "accepted": true, "active": true,
+		"completed": true, "declined": true, "cancelled": true, "countered": true,
+		"expired": true, "auto_completed": true,
+	}
 	if status != "" && !allowedStatuses[status] {
 		fmt.Printf("CountTrades: unknown status='%s' from user=%d - ignoring status filter\n", status, userID)
 		status = ""
@@ -1682,20 +1751,35 @@ func (h *TradeHandler) CountTrades(c *fiber.Ctx) error {
 		where = "WHERE t.buyer_id = ?"
 	}
 	if status != "" {
-		where += " AND t.status = ?"
-		args = append(args, status)
+		if status == "pending" {
+			where += " AND (t.status = 'pending' OR t.status = 'pending_multiway')"
+		} else {
+			where += " AND t.status = ?"
+			args = append(args, status)
+		}
 	}
 
 	var count int
 	// Use a prepared-like query with args to avoid injection and driver issues
 	query := "SELECT COUNT(*) FROM trades t " + where
-	if err := h.db.QueryRow(query, args...).Scan(&count); err != nil {
-		// Log and return zero as a safe fallback to avoid 400 responses for UI polling
-		fmt.Printf("CountTrades: db query error for user=%d query='%s' args=%v: %v - returning count=0\n", userID, query, args, err)
-		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": 0}})
+
+	// Retry logic for transient connection errors
+	maxRetries := 2
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt*100) * time.Millisecond) // Exponential backoff
+		}
+		if err := h.db.QueryRow(query, args...).Scan(&count); err == nil {
+			return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": count}})
+		} else {
+			lastErr = err
+		}
 	}
 
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": count}})
+	// Log and return zero as a safe fallback to avoid 400 responses for UI polling
+	fmt.Printf("CountTrades: db query error for user=%d query='%s' args=%v: %v (after %d retries) - returning count=0\n", userID, query, args, lastErr, maxRetries)
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"count": 0}})
 }
 
 // CompleteTrade handles trade completion with rating, feedback, and proof
@@ -1939,7 +2023,7 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			var fromUserName, toUserName, productTitle string
 			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.FromUser).Scan(&fromUserName)
 			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.ToUser).Scan(&toUserName)
-			
+
 			// Get target product from trade
 			var targetProductID int
 			h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", edge.TradeID).Scan(&targetProductID)
@@ -1954,7 +2038,7 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 				"product_title":  productTitle,
 			}
 			edges = append(edges, edgeData)
-			
+
 			// Add to participants list for UI
 			participants = append(participants, map[string]interface{}{
 				"id":            edge.FromUser,
@@ -2083,7 +2167,7 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 	for i := 1; i < len(parts); i++ {
 		tid, _ := strconv.Atoi(parts[i])
 		tradeIDs = append(tradeIDs, tid)
-		
+
 		var bID, sID int
 		err := h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tid).Scan(&bID, &sID)
 		if err != nil {
@@ -2113,14 +2197,14 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 	// 3. Check if all participants accepted
 	var acceptedCount int
 	err = h.db.QueryRow("SELECT COUNT(*) FROM trade_loop_agreements WHERE loop_id = ? AND status = 'accepted'", loopID).Scan(&acceptedCount)
-	
+
 	if acceptedCount >= len(participantIDs) {
 		// All accepted! Execute.
 		return h.ExecuteTradeLoop(c)
 	}
 
 	return c.JSON(models.APIResponse{
-		Success: true, 
+		Success: true,
 		Message: "You have accepted the trade loop. Waiting for other participants.",
 		Data: fiber.Map{
 			"accepted_count": acceptedCount,
@@ -2154,7 +2238,7 @@ func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
 func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	loopID := c.Params("id")
 	parts := strings.Split(loopID, "_")
-	
+
 	// Start transaction
 	tx, err := h.db.Begin()
 	if err != nil {
@@ -2196,7 +2280,81 @@ func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{
-		Success: true, 
+		Success: true,
 		Message: "Multi-way trade loop executed successfully! All trades are now active.",
 	})
+}
+
+// GetTradeLoopNotifications returns notifications specifically related to trade loops
+func (h *TradeHandler) GetTradeLoopNotifications(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT id, message, created_at, is_read 
+		FROM notifications 
+		WHERE user_id = ? AND type = 'trade_loop' AND is_read = FALSE
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch notifications"})
+	}
+	defer rows.Close()
+
+	var notifs []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var message, createdAt string
+		var read bool
+		if err := rows.Scan(&id, &message, &createdAt, &read); err == nil {
+			notifs = append(notifs, map[string]interface{}{
+				"id":                strconv.Itoa(id),
+				"type":              "trade_loop",
+				"message":           message,
+				"participant_count": 0,     // We can compute this if worth it, but 0 is safe
+				"loop_id":           "all", // Directs user to the loops list
+				"created_at":        createdAt,
+				"read":              read,
+			})
+		}
+	}
+
+	if notifs == nil {
+		notifs = []map[string]interface{}{}
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: notifs})
+}
+
+// MarkLoopNotificationRead marks a trade loop notification as read
+func (h *TradeHandler) MarkLoopNotificationRead(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	notifID := c.Params("id")
+	_, err := h.db.Exec("UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?", notifID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update notification"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true})
+}
+
+// ClearLoopNotifications marks all loop notifications as read/cleared
+func (h *TradeHandler) ClearLoopNotifications(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	_, err := h.db.Exec("UPDATE notifications SET is_read = TRUE WHERE user_id = ? AND type = 'trade_loop'", userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to clear notifications"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true})
 }

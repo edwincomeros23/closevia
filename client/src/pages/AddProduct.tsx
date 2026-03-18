@@ -208,6 +208,13 @@ const AddProduct: React.FC = () => {
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
+  
+  // Premium Upsell Modal for Non-Premium User
+  const { 
+    isOpen: isPremiumModalOpen, 
+    onOpen: onOpenPremiumModal, 
+    onClose: onClosePremiumModal 
+  } = useDisclosure()
 
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -1395,18 +1402,24 @@ const AddProduct: React.FC = () => {
               colorScheme="purple" 
               variant="link" 
               fontSize="10px"
-              onClick={() => navigate('/premium')}
+              onClick={onOpenPremiumModal}
             >
-              Upgrade Now
+              Learn More
             </Button>
           )}
         </HStack>
         
-        <VStack spacing={3} align="stretch">
+        <VStack spacing={3} align="stretch" cursor={!user?.is_premium ? "pointer" : "auto"} onClick={!user?.is_premium ? onOpenPremiumModal : undefined}>
           <FormControl display="flex" alignItems="center">
             <Checkbox 
               isChecked={formData.allow_buying}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleField('allow_buying', e.target.checked)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                if (!user?.is_premium) {
+                  onOpenPremiumModal()
+                  return
+                }
+                handleField('allow_buying', e.target.checked)
+              }}
               isDisabled={!user?.is_premium}
               colorScheme="purple"
               mr={2}
@@ -1421,7 +1434,7 @@ const AddProduct: React.FC = () => {
             </Box>
           </FormControl>
 
-          {formData.allow_buying && (
+          {formData.allow_buying && user?.is_premium && (
             <FormControl>
               <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Buyout Price (₱)</FormLabel>
               <Input
@@ -1438,6 +1451,58 @@ const AddProduct: React.FC = () => {
           )}
         </VStack>
       </Box>
+
+      {/* Premium Upsell Modal */}
+      <Modal isOpen={isPremiumModalOpen} onClose={onClosePremiumModal} isCentered>
+        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(5px)" />
+        <ModalContent borderRadius="2xl" overflow="hidden">
+          <ModalHeader bg="purple.600" color="white" textAlign="center" py={6}>
+            <VStack spacing={2}>
+              <Text fontSize="4xl">💎</Text>
+              <Heading size="md">Premium Required</Heading>
+            </VStack>
+          </ModalHeader>
+          <ModalCloseButton color="white" />
+          <ModalBody py={8} px={6}>
+            <VStack spacing={6} align="stretch">
+              <VStack spacing={3} align="start">
+                <HStack spacing={3}>
+                  <Box color="purple.500" fontSize="xl">✅</Box>
+                  <Text fontWeight="medium">Enable Direct Purchase (Buyout)</Text>
+                </HStack>
+                <HStack spacing={3}>
+                  <Box color="purple.500" fontSize="xl">✅</Box>
+                  <Text fontWeight="medium">Unlimited Trade Offers</Text>
+                </HStack>
+                <HStack spacing={3}>
+                  <Box color="purple.500" fontSize="xl">✅</Box>
+                  <Text fontWeight="medium">Priority Listing in Feed</Text>
+                </HStack>
+                <HStack spacing={3}>
+                  <Box color="purple.500" fontSize="xl">✅</Box>
+                  <Text fontWeight="medium">Verified User Badge</Text>
+                </HStack>
+              </VStack>
+              
+              <Button 
+                colorScheme="purple" 
+                size="lg" 
+                h="56px"
+                fontSize="md"
+                onClick={() => {
+                  onClosePremiumModal()
+                  navigate('/premium')
+                }}
+              >
+                Upgrade to Premium
+              </Button>
+              <Button variant="ghost" onClick={onClosePremiumModal}>
+                Maybe Later
+              </Button>
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </VStack>
   )
 

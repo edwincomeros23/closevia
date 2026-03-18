@@ -20,6 +20,7 @@ export interface User {
   latitude?: number
   longitude?: number
   is_premium?: boolean
+  premium_tier?: 'free' | 'plus' | 'pro'
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
   school_name?: string
   school_email?: string
@@ -254,7 +255,7 @@ export interface TradeCreate {
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number

@@ -101,13 +101,8 @@ const Sidebar: React.FC = () => {
       }
       items.push(
         { icon: FaMotorcycle, label: 'Rider', path: '/rider' },
-      )
-      if (!user?.is_premium) {
-        items.push({ icon: FaCrown, label: 'Buy Premium', path: '/premium' })
-      }
-      items.push(
+        { icon: FaCrown, label: (user?.is_premium ? 'Premium' : 'Buy Premium'), path: '/premium' },
         { icon: FiBell, label: 'Notifications', path: '/notifications' },
-        { icon: FaCrown, label: 'Premium', path: '/premium' },
         { icon: FiSettings, label: 'Settings', path: '/settings' },
       )
       return items

@@ -761,21 +761,64 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleConvertToMultiWay = () => {
+  const handleConvertToMultiWay = async () => {
     if (!tradeToDecline) {
       setDeclineModalOpen(false)
       return
     }
 
+    setIsProcessing(true)
     setDeclineModalOpen(false)
-    toast({
-      title: 'Searching for multi-way trade',
-      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
-      status: 'info',
-      duration: 5000
-    })
 
-    navigate('/premium')
+    try {
+      await updateTrade(tradeToDecline.id, {
+        action: 'convert_to_multiway'
+      })
+
+      setTradeToDecline(null)
+      setDeclineFeedback('')
+
+      toast({
+        id: 'success-convert-multiway',
+        title: 'Converting to Multi-Way',
+        description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
+        status: 'success',
+        duration: 5000
+      })
+
+      // Refresh trades after conversion
+      setTimeout(() => {
+        setIsProcessing(false)
+        // Optionally refetch trades or let real-time update handle it
+      }, 1000)
+    } catch (error: any) {
+      setIsProcessing(false)
+
+      const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
+
+      // If error is premium-related, redirect to premium page
+      if (errorMsg.includes('premium') || error?.response?.status === 403) {
+        toast({
+          id: 'error-convert-multiway-premium',
+          title: 'Premium Feature',
+          description: 'Multi-way trading is a premium feature. Upgrade to enable it!',
+          status: 'warning',
+          duration: 5000
+        })
+
+        // Redirect to premium after showing message
+        setTimeout(() => {
+          navigate('/premium')
+        }, 1500)
+      } else {
+        toast({
+          id: 'error-convert-multiway',
+          title: 'Error',
+          description: errorMsg,
+          status: 'error'
+        })
+      }
+    }
   }
 
   const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'expired']

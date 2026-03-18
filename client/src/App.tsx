@@ -12,6 +12,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import VerifyEmail from './pages/VerifyEmail'
 import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import ProductDetail from './pages/ProductDetail'
 import AddProduct from './pages/AddProduct'
@@ -216,6 +217,11 @@ const AppContent: React.FC = () => {
                 <Route path="/forgot-password" element={
                   <PageTransition>
                     <ForgotPassword />
+                  </PageTransition>
+                } />
+                <Route path="/reset-password" element={
+                  <PageTransition>
+                    <ResetPassword />
                   </PageTransition>
                 } />
                 <Route path="/products/:id" element={
