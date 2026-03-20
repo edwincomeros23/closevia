@@ -861,20 +861,45 @@ func ensureTradeColumns() {
 		}
 	}
 
-	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired
+	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired, pending_multiway, multiway_active
 	var tradeStatusType string
 	if err := DB.QueryRow(`
 		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME = 'status'
 	`).Scan(&tradeStatusType); err == nil {
-		if !contains(tradeStatusType, "'expired'") {
-			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired') DEFAULT 'pending'`); err != nil {
+		if !contains(tradeStatusType, "'pending_multiway'") || !contains(tradeStatusType, "'multiway_active'") {
+			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired','pending_multiway','multiway_active') DEFAULT 'pending'`); err != nil {
 				log.Printf("Warning: failed to update trades status enum: %v", err)
 			} else {
-				log.Println("Updated trades status enum to include 'expired'")
+				log.Println("Updated trades status enum to include 'pending_multiway' and 'multiway_active'")
 			}
 		}
 	}
+
+	// Ensure multiway_trades table exists for tracking multiway chain participants
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_trades (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		original_trade_id INT NOT NULL,
+		initiator_user_id INT NOT NULL COMMENT 'User 2 who converted to multiway',
+		user1_id INT NOT NULL COMMENT 'Original buyer (User 1)',
+		user2_id INT NOT NULL COMMENT 'User who converted to multiway (User 2)',
+		user3_id INT NULL COMMENT 'Matched third party (User 3)',
+		user3_trade_id INT NULL COMMENT 'Trade ID linking User 3',
+		status ENUM('searching','pending_user3','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching',
+		trade_option VARCHAR(20) NULL DEFAULT 'meetup',
+		meetup_location VARCHAR(500) NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (original_trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+		FOREIGN KEY (initiator_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user3_id) REFERENCES users(id) ON DELETE SET NULL,
+		INDEX idx_multiway_chain (chain_id),
+		INDEX idx_multiway_status (status),
+		INDEX idx_multiway_user3 (user3_id)
+	)`)
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow

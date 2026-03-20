@@ -378,6 +378,11 @@ func main() {
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	
+	// Multi-way chain specific routes
+	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
+	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
+	trades.Post("/multiway/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineMultiwayChain)
 
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)

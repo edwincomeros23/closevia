@@ -295,8 +295,19 @@ const Dashboard: React.FC = () => {
       })
     }
 
+    // Handle tab parameter
+    const tabParam = searchParams.get('tab')
+    if (tabParam) {
+      const tabIndex = parseInt(tabParam, 10)
+      if (!isNaN(tabIndex)) {
+        setActiveTab(tabIndex)
+      }
+    }
+
     // Switch to the Offers tab (tab index 1)
-    setActiveTab(1)
+    if (tradeIdParam) {
+      setActiveTab(1)
+    }
 
     // Try to find the trade and open it
     const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
@@ -555,9 +566,17 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      await api.post(`/api/trades/loops/${trade.id}/accept`, {
-        user_id: user?.id,
-      })
+      const tradeIdString = String(trade.id)
+      
+      if (tradeIdString.startsWith('chain_')) {
+        const id = tradeIdString.replace('chain_', '')
+        await api.post(`/api/trades/multiway/${id}/accept`)
+      } else {
+        await api.post(`/api/trades/loops/${trade.id}/accept`, {
+          user_id: user?.id,
+        })
+      }
+      
       toast({
         id: 'success-joined-trade-loop',
         title: 'Success',
@@ -572,7 +591,7 @@ const Dashboard: React.FC = () => {
       toast({
         id: 'error-join-trade',
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to join trade',
+        description: error.response?.data?.error || error.response?.data?.message || 'Failed to join trade',
         status: 'error',
       })
     } finally {
@@ -580,11 +599,21 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleDeclineMultiWayTrade = async (trade: any) => {
+  const handleDeclineMultiWayTrade = async (trade: any, searchAgain: boolean = false) => {
     try {
-      await api.post(`/api/trades/loops/${trade.id}/decline`, {
-        reason: 'Not interested'
-      })
+      const tradeIdString = String(trade.id)
+      
+      if (tradeIdString.startsWith('chain_')) {
+        const id = tradeIdString.replace('chain_', '')
+        await api.post(`/api/trades/multiway/${id}/decline`, {
+          search_again: searchAgain
+        })
+      } else {
+        await api.post(`/api/trades/loops/${trade.id}/decline`, {
+          reason: 'Not interested'
+        })
+      }
+      
       toast({
         id: 'declined',
         title: 'Declined',
@@ -599,7 +628,7 @@ const Dashboard: React.FC = () => {
       toast({
         id: 'error-decline-trade',
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to decline trade',
+        description: error.response?.data?.error || error.response?.data?.message || 'Failed to decline trade',
         status: 'error',
       })
     }
@@ -3878,9 +3907,10 @@ const Dashboard: React.FC = () => {
                         <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                           <MultiWayTradeUI
                             participants={trade.participants || []}
+                            isChain={trade.is_chain}
                             onJoinTrade={() => handleJoinMultiWayTrade(trade)}
                             onViewDetails={() => setSelectedMultiWayTrade(trade)}
-                            onDecline={() => handleDeclineMultiWayTrade(trade)}
+                            onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}
                             isLoading={multiWayTradeJoining}
                           />
                         </Box>

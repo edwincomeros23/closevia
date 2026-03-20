@@ -55,8 +55,9 @@ interface MultiWayTradeUIProps {
   participants: TradeParticipant[]
   onJoinTrade?: () => void
   onViewDetails?: () => void
-  onDecline?: () => void
+  onDecline?: (searchAgain?: boolean) => void
   isLoading?: boolean
+  isChain?: boolean // Added to distinguish between loop and chain
 }
 
 const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
@@ -65,6 +66,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
   onViewDetails,
   onDecline,
   isLoading = false,
+  isChain = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const { isOpen, onOpen, onClose } = useDisclosure()
@@ -113,11 +115,16 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
         <HStack justify="space-between" align="center">
           <VStack align="start" spacing={1} flex={1}>
             <Text fontSize="sm" fontWeight="bold" color={useColorModeValue('blue.900', 'blue.100')}>
-              Your "<strong>{validParticipants[0].product_title}</strong>" has found a trade loop
+              {isChain 
+                ? `Active Multi-Way Trade Match Found!` 
+                : `Your "${validParticipants[0].product_title}" has found a trade loop`}
             </Text>
-            <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.200')}>
-              {loopLength} participants ready to trade
-            </Text>
+            <HStack spacing={1}>
+              <Badge colorScheme="purple" fontSize="10px">NEW</Badge>
+              <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.200')}>
+                {loopLength} participants ready to trade
+              </Text>
+            </HStack>
           </VStack>
           <Icon
             as={FaChevronDown}
@@ -210,29 +217,46 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
           </Box>
 
           {/* Action Buttons */}
-          <HStack spacing={2} w="full">
+          <VStack spacing={2} w="full">
             <Button
               colorScheme="green"
               size="sm"
               onClick={onOpen}
               isLoading={isLoading}
-              loadingText="Joining..."
-              flex={1}
+              loadingText="Accepting..."
+              w="full"
               fontWeight="bold"
             >
-              Join Loop
+              {isChain ? 'Accept Multi-Way Match' : 'Join Loop'}
             </Button>
-            <Button
-              colorScheme="red"
-              variant="outline"
-              size="sm"
-              onClick={onDecline}
-              flex={1}
-              fontWeight="bold"
-            >
-              Decline
-            </Button>
-          </HStack>
+            
+            <HStack spacing={2} w="full">
+              <Button
+                colorScheme="red"
+                variant="outline"
+                size="sm"
+                onClick={() => onDecline?.(false)}
+                flex={1}
+                fontWeight="bold"
+              >
+                Decline
+              </Button>
+              {isChain && (
+                <Button
+                  colorScheme="brand"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDecline?.(true)}
+                  flex={1}
+                  fontSize="xs"
+                  fontWeight="bold"
+                  leftIcon={<Icon as={FaLightbulb} />}
+                >
+                  Find Next Match
+                </Button>
+              )}
+            </HStack>
+          </VStack>
 
           {/* Trust Indicators */}
           <HStack spacing={2} fontSize="2xs" color="gray.600" justify="center">

@@ -135,13 +135,15 @@ const Offers: React.FC = () => {
 
   const updateTrade = async (id: number, action: TradeAction) => {
     try {
-      await api.put(`/api/trades/${id}`, action)
+      const response = await api.put(`/api/trades/${id}`, action)
       toast({
         id: "offers-success", title: 'Success', description: 'Offer updated', status: 'success' })
       fetchAll()
+      return response.data
     } catch (e: any) {
       toast({
         id: "offers-error-2", title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
+      throw e
     }
   }
 
@@ -229,20 +231,35 @@ const Offers: React.FC = () => {
     setDeclineModalOpen(false)
 
     try {
-      await updateTrade(tradeToDecline.id, {
+      const result = await updateTrade(tradeToDecline.id, {
         action: 'convert_to_multiway'
       })
 
       setTradeToDecline(null)
       setDeclineFeedback('')
 
-      toast({
-        id: 'success-convert-multiway',
-        title: 'Converting to Multi-Way',
-        description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
-        status: 'success',
-        duration: 5000
-      })
+      if (result?.multiway?.match_found) {
+        toast({
+          id: 'success-convert-multiway-match',
+          title: 'Match Found!',
+          description: 'A 3-way trade match was found immediately! Redirecting to your multi-way dashboard...',
+          status: 'success',
+          duration: 5000
+        })
+        
+        // Redirect to dashboard multi-way tab
+        setTimeout(() => {
+          navigate('/dashboard?tab=2')
+        }, 2000)
+      } else {
+        toast({
+          id: 'success-convert-multiway',
+          title: 'Converting to Multi-Way',
+          description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
+          status: 'success',
+          duration: 5000
+        })
+      }
 
       // Refresh trades after conversion
       setTimeout(() => {

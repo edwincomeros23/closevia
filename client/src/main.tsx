@@ -4,11 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import '@fontsource/prata/400.css'
 import './index.css'
-import { registerSW } from 'virtual:pwa-register'
-
-// Register service worker for PWA support
-registerSW({ immediate: true })
-
 // Load and apply font size immediately before React renders
 // This ensures the font size is applied on page load without flashing
 try {
