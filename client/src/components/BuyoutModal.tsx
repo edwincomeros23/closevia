@@ -330,6 +330,79 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
 
               <Divider />
 
+              {/* Payment Method Selection */}
+              <FormControl isRequired>
+                <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
+                  Payment Method (Trader Decides)
+                </FormLabel>
+                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                  {/* COD Option */}
+                  <Card
+                    variant="outline"
+                    cursor="pointer"
+                    borderWidth={paymentMethod === 'cod' ? '2px' : '1px'}
+                    borderColor={paymentMethod === 'cod' ? selectedBorder : borderColor}
+                    bg={paymentMethod === 'cod' ? selectedBg : cardBg}
+                    onClick={() => setPaymentMethod('cod')}
+                    transition="all 0.2s"
+                    _hover={{
+                      borderColor: paymentMethod === 'cod' ? selectedBorder : 'brand.300',
+                      shadow: 'md',
+                      transform: 'translateY(-2px)',
+                    }}
+                  >
+                    <CardBody p={4}>
+                      <VStack spacing={3} align="center">
+                        <Box p={3} borderRadius="full" bg={paymentMethod === 'cod' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'cod' ? 'white' : 'gray.600'}>
+                          <Icon as={FaMoneyBillWave} boxSize={6} />
+                        </Box>
+                        <VStack spacing={1} align="center">
+                          <Text fontWeight="semibold" fontSize="sm">Cash on Delivery</Text>
+                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay when item arrives</Text>
+                        </VStack>
+                        {paymentMethod === 'cod' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
+                      </VStack>
+                    </CardBody>
+                  </Card>
+
+                  {/* Upfront Payment Option */}
+                  <Card
+                    variant="outline"
+                    cursor="pointer"
+                    borderWidth={paymentMethod === 'upfront' ? '2px' : '1px'}
+                    borderColor={paymentMethod === 'upfront' ? selectedBorder : borderColor}
+                    bg={paymentMethod === 'upfront' ? selectedBg : cardBg}
+                    onClick={() => setPaymentMethod('upfront')}
+                    transition="all 0.2s"
+                    _hover={{
+                      borderColor: paymentMethod === 'upfront' ? selectedBorder : 'brand.300',
+                      shadow: 'md',
+                      transform: 'translateY(-2px)',
+                    }}
+                  >
+                    <CardBody p={4}>
+                      <VStack spacing={3} align="center">
+                        <Box p={3} borderRadius="full" bg={paymentMethod === 'upfront' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'upfront' ? 'white' : 'gray.600'}>
+                          <Icon as={FaCheckCircle} boxSize={6} />
+                        </Box>
+                        <VStack spacing={1} align="center">
+                          <Text fontWeight="semibold" fontSize="sm">Upfront Payment</Text>
+                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay before shipment</Text>
+                        </VStack>
+                        {paymentMethod === 'upfront' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
+                      </VStack>
+                    </CardBody>
+                  </Card>
+                </Grid>
+
+                <Box mt={3} p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
+                  <Text fontSize="xs" color="blue.900">
+                    <strong>ℹ️ Note:</strong> The trader will choose which payment method to accept. Offering both options increases your chances of a deal.
+                  </Text>
+                </Box>
+              </FormControl>
+
+              <Divider />
               <HStack justify="flex-end" spacing={3}>
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>
                 <Button 
