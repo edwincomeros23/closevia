@@ -54,6 +54,9 @@ const TaskStepper: React.FC = () => {
   const [qrScanned, setQrScanned] = useState(false)
   const [photoCaptured, setPhotoCaptured] = useState(false)
   const [deliveryNotes, setDeliveryNotes] = useState('')
+  // Phase 3 - Task 15 & 16: Store QR and photo data for backend submission
+  const [scannedQRCode, setScannedQRCode] = useState('')
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState('')
 
   // Fetch delivery data from API
   const fetchDelivery = async () => {
@@ -135,7 +138,9 @@ const TaskStepper: React.FC = () => {
     return STATUS_PROGRESSION[currentIdx + 1]
   }
 
-  const handleQrScan = () => {
+  const handleQrScan = async () => {
+    // Simulate QR scanning - in production this would use a camera
+    const scannedCode = `DELIVERY-${delivery?.id}-${Date.now()}`
     setQrScanned(true)
     toast({
         id: "taskstepper-qr-scanned",
@@ -144,9 +149,15 @@ const TaskStepper: React.FC = () => {
       status: 'success',
       duration: 2000,
     })
+    // Store QR code for submission
+    setScannedQRCode(scannedCode)
   }
 
-  const handleCapturePhoto = () => {
+  const handleCapturePhoto = async () => {
+    // Simulate photo capture - in production this would open camera
+    // For now, we'll use a placeholder URL
+    const photoUrl = `https://delivery-photos.example.com/${delivery?.id}-${Date.now()}.jpg`
+    setCapturedPhotoUrl(photoUrl)
     setPhotoCaptured(true)
     toast({
         id: "taskstepper-photo-saved",
@@ -167,21 +178,34 @@ const TaskStepper: React.FC = () => {
       return
     }
 
-    // For the final delivery step, require QR scan or notes
-    if (nextStatus === 'delivered' && !qrScanned && !deliveryNotes) {
+    // For the final delivery step, require photo proof (Task 16)
+    if (nextStatus === 'delivered' && !photoCaptured && !capturedPhotoUrl) {
       toast({
-        id: "taskstepper-missing-confirmation",
-        title: 'Missing Confirmation',
-        description: 'Scan QR or add delivery notes',
+        id: "taskstepper-missing-photo",
+        title: 'Photo Required',
+        description: 'Please capture a photo proof to complete delivery',
         status: 'warning',
-        duration: 2000,
+        duration: 3000,
       })
       return
     }
 
     setUpdating(true)
     try {
-      await api.put(`/api/deliveries/${delivery.id}/status`, { status: nextStatus })
+      // Build update payload with QR and photo data
+      const payload: Record<string, any> = { status: nextStatus }
+
+      // Include QR code if scanned
+      if (qrScanned && scannedQRCode) {
+        payload.qr_code = scannedQRCode
+      }
+
+      // Include photo URL if captured (required for delivery step)
+      if (photoCaptured && capturedPhotoUrl) {
+        payload.photo_url = capturedPhotoUrl
+      }
+
+      await api.put(`/api/deliveries/${delivery.id}/status`, payload)
 
       toast({
         id: "taskstepper-toast-6",
@@ -196,6 +220,8 @@ const TaskStepper: React.FC = () => {
       // Reset verification state
       setQrScanned(false)
       setPhotoCaptured(false)
+      setScannedQRCode('')
+      setCapturedPhotoUrl('')
       setDeliveryNotes('')
 
       // Refresh delivery data

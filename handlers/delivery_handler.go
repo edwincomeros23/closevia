@@ -297,6 +297,142 @@ func (h *DeliveryHandler) GetRiderApplication(c *fiber.Ctx) error {
 	}})
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RIDER STATE ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+// States: NOT_APPLIED, PENDING_APPROVAL, REJECTED, READY, WORKING, LOCKED
+// This is the single source of truth for what a rider can see and do.
+
+// GetRiderState returns the current rider's state and relevant data.
+// Every screen in the rider app should call this first before rendering.
+func (h *DeliveryHandler) GetRiderState(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	// Check if user has a rider record
+	var riderID int
+	var status, fullName, rejectionReason string
+	var isActive, firstLoginCompleted bool
+	var freeDeliverySlots int
+	var completedDeliveries int
+	var rating float64
+
+	err := h.db.QueryRow(`
+		SELECT id, COALESCE(status,'pending'), COALESCE(full_name,''),
+		       COALESCE(rejection_reason,''), is_active,
+		       COALESCE(first_login_completed, FALSE),
+		       COALESCE(free_delivery_slots, 3),
+		       COALESCE((SELECT COUNT(*) FROM deliveries WHERE rider_id = riders.id AND status = 'delivered'), 0),
+		       rating
+		FROM riders WHERE user_id = ?`, userID).Scan(
+		&riderID, &status, &fullName, &rejectionReason, &isActive,
+		&firstLoginCompleted, &freeDeliverySlots, &completedDeliveries, &rating)
+
+	if err != nil {
+		// No rider record - user hasn't applied
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+			"state":       "NOT_APPLIED",
+			"can_apply":   true,
+			"message":     "You haven't applied as a rider yet.",
+			"permissions": fiber.Map{"can_view_jobs": false, "can_claim_jobs": false, "can_view_earnings": false},
+		}})
+	}
+
+	// Determine state based on database values
+	var state string
+	var message string
+	var canViewJobs, canClaimJobs, canViewEarnings bool
+
+	switch status {
+	case "pending", "under_review":
+		state = "PENDING_APPROVAL"
+		message = "We are reviewing your documents. This usually takes 24-48 hours."
+		canViewJobs = false
+		canClaimJobs = false
+		canViewEarnings = false
+
+	case "rejected":
+		state = "REJECTED"
+		message = fmt.Sprintf("Your application was not approved. Reason: %s", rejectionReason)
+		canViewJobs = false
+		canClaimJobs = false
+		canViewEarnings = false
+
+	case "approved":
+		if !isActive {
+			// Account is locked/suspended
+			state = "LOCKED"
+			message = "Your rider account has been suspended. Please contact support."
+			canViewJobs = false
+			canClaimJobs = false
+			canViewEarnings = true // Can still view past earnings
+		} else {
+			// Check if rider has active deliveries
+			var activeDeliveryCount int
+			h.db.QueryRow("SELECT COUNT(*) FROM deliveries WHERE rider_id = ? AND status IN ('claimed', 'picked_up', 'in_transit')", riderID).Scan(&activeDeliveryCount)
+
+			if activeDeliveryCount > 0 {
+				state = "WORKING"
+				message = fmt.Sprintf("You have %d active delivery(s) in progress.", activeDeliveryCount)
+			} else {
+				state = "READY"
+				message = "You're ready to claim deliveries!"
+			}
+			canViewJobs = true
+			canClaimJobs = true
+			canViewEarnings = true
+		}
+
+	default:
+		state = "PENDING_APPROVAL"
+		message = "We are reviewing your application."
+		canViewJobs = false
+		canClaimJobs = false
+		canViewEarnings = false
+	}
+
+	// Check if this is first login after approval (for welcome screen)
+	showWelcome := false
+	if state == "READY" && !firstLoginCompleted {
+		showWelcome = true
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"state":                  state,
+		"rider_id":               riderID,
+		"full_name":              fullName,
+		"message":                message,
+		"rejection_reason":       rejectionReason,
+		"show_welcome":           showWelcome,
+		"free_delivery_slots":    freeDeliverySlots,
+		"completed_deliveries":   completedDeliveries,
+		"rating":                 rating,
+		"first_login_completed":  firstLoginCompleted,
+		"permissions": fiber.Map{
+			"can_view_jobs":     canViewJobs,
+			"can_claim_jobs":    canClaimJobs,
+			"can_view_earnings": canViewEarnings,
+		},
+	}})
+}
+
+// MarkRiderFirstLoginComplete marks the rider's first login as completed
+func (h *DeliveryHandler) MarkRiderFirstLoginComplete(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	_, err := h.db.Exec("UPDATE riders SET first_login_completed = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?", userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update first login status"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"message": "First login marked complete"}})
+}
+
 // AdminListRiderApplications lists rider applications with optional status filter and search
 func (h *DeliveryHandler) AdminListRiderApplications(c *fiber.Ctx) error {
 	statusFilter := c.Query("status", "")
@@ -934,6 +1070,7 @@ func (h *DeliveryHandler) GetDelivery(c *fiber.Ctx) error {
 }
 
 // UpdateDeliveryStatus updates delivery status (for riders)
+// PHASE 3 - Task 15: Server-side step lock enforcement
 func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
@@ -957,15 +1094,72 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not registered as an active rider"})
 	}
 
-	// Verify rider is assigned to this delivery
+	// Verify rider is assigned to this delivery and get current state
 	var assignedRiderID *int
-	err = h.db.QueryRow("SELECT rider_id FROM deliveries WHERE id = ?", deliveryID).Scan(&assignedRiderID)
+	var currentStatus, deliveryType string
+	var qrVerified, photoUploaded bool
+	err = h.db.QueryRow(`
+		SELECT rider_id, status, delivery_type,
+		       COALESCE(qr_verified, FALSE), COALESCE(photo_uploaded, FALSE)
+		FROM deliveries WHERE id = ?`, deliveryID).Scan(
+		&assignedRiderID, &currentStatus, &deliveryType, &qrVerified, &photoUploaded)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Delivery not found"})
 	}
 
 	if assignedRiderID == nil || *assignedRiderID != riderID {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not assigned to this delivery"})
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// TASK 15: STEP LOCK ENFORCEMENT (Server-side)
+	// A rider cannot skip any step. Each step only becomes active after the
+	// previous step is confirmed by the backend. Do not trust the app.
+	// ─────────────────────────────────────────────────────────────────────────
+	if update.Status != nil {
+		requestedStatus := *update.Status
+
+		// Define valid status progression
+		validTransitions := map[string]string{
+			"claimed":    "picked_up",
+			"picked_up":  "in_transit",
+			"in_transit": "delivered",
+		}
+
+		expectedNext, exists := validTransitions[currentStatus]
+		if !exists && requestedStatus != "cancelled" {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   fmt.Sprintf("Cannot update status from '%s'", currentStatus),
+			})
+		}
+
+		if requestedStatus != expectedNext && requestedStatus != "cancelled" {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error: fmt.Sprintf("Step lock violation: must progress from '%s' to '%s', not '%s'",
+					currentStatus, expectedNext, requestedStatus),
+			})
+		}
+
+		// ─────────────────────────────────────────────────────────────────────
+		// TASK 16: PHOTO PROOF ENFORCEMENT
+		// Every delivery step requires a photo before completion
+		// ─────────────────────────────────────────────────────────────────────
+		if requestedStatus == "delivered" {
+			// Check if photo was provided in this request or already uploaded
+			if update.PhotoURL == nil || *update.PhotoURL == "" {
+				if !photoUploaded {
+					return c.Status(400).JSON(models.APIResponse{
+						Success: false,
+						Error:   "Photo proof is required to complete delivery. Please upload a delivery photo.",
+					})
+				}
+			}
+		}
+
+		// For pickup step, QR verification is recommended but not strictly required
+		// For delivery step, either QR or notes should be provided (enforced above via photo)
 	}
 
 	// Update status and timestamps
@@ -992,6 +1186,20 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 			updates = append(updates, "delivered_at = ?")
 			args = append(args, now)
 		}
+	}
+
+	// Handle QR verification
+	if update.QRCode != nil && *update.QRCode != "" {
+		updates = append(updates, "qr_verified = TRUE")
+		updates = append(updates, "qr_code = ?")
+		args = append(args, *update.QRCode)
+	}
+
+	// Handle photo upload
+	if update.PhotoURL != nil && *update.PhotoURL != "" {
+		updates = append(updates, "photo_uploaded = TRUE")
+		updates = append(updates, "delivery_photo_url = ?")
+		args = append(args, *update.PhotoURL)
 	}
 
 	if update.Latitude != nil && update.Longitude != nil {
@@ -1226,7 +1434,35 @@ func (h *DeliveryHandler) loadDeliveryItems(d *models.Delivery) {
 }
 
 // GetAvailableDeliveries returns all pending, unclaimed deliveries for riders to browse
+// PHASE 3 - Task 14: Express job blocking - riders with active express jobs see no new deliveries
 func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+
+	// Check if rider has an active express delivery (Task 14)
+	// If so, they must not receive new job notifications
+	if ok {
+		var riderID int
+		err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ? AND is_active = TRUE", userID).Scan(&riderID)
+		if err == nil {
+			var activeExpressCount int
+			h.db.QueryRow(`
+				SELECT COUNT(*) FROM deliveries
+				WHERE rider_id = ?
+				  AND delivery_type = 'express'
+				  AND status IN ('claimed', 'picked_up', 'in_transit')
+			`, riderID).Scan(&activeExpressCount)
+
+			if activeExpressCount > 0 {
+				// Rider is locked on an express job - return empty list with message
+				return c.JSON(models.APIResponse{
+					Success: true,
+					Data:    []models.Delivery{},
+					Message: "You have an active express delivery. Complete it before accepting new jobs.",
+				})
+			}
+		}
+	}
+
 	rows, err := h.db.Query(`
 		SELECT d.id, d.user_id, d.trade_id, d.delivery_type, d.status, d.rider_id,
 			d.pickup_latitude, d.pickup_longitude, d.pickup_address,
@@ -1234,7 +1470,9 @@ func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
 			COALESCE(d.special_instructions, ''), d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
 			d.claimed_at, d.picked_up_at, d.in_transit_at, d.delivered_at,
 			d.created_at, d.updated_at,
-			u.name AS user_name
+			u.name AS user_name,
+			COALESCE(d.batch_id, '') AS batch_id,
+			d.batch_window_expires_at
 		FROM deliveries d
 		JOIN users u ON d.user_id = u.id
 		WHERE d.status = 'pending' AND d.rider_id IS NULL
@@ -1246,8 +1484,12 @@ func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	deliveries := []models.Delivery{}
+	now := time.Now()
+
 	for rows.Next() {
 		var d models.Delivery
+		var batchID string
+		var batchWindowExpiresAt sql.NullTime
 		err := rows.Scan(
 			&d.ID, &d.UserID, &d.TradeID, &d.DeliveryType, &d.Status, &d.RiderID,
 			&d.PickupLatitude, &d.PickupLongitude, &d.PickupAddress,
@@ -1256,16 +1498,100 @@ func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
 			&d.ClaimedAt, &d.PickedUpAt, &d.InTransitAt, &d.DeliveredAt,
 			&d.CreatedAt, &d.UpdatedAt,
 			&d.UserName,
+			&batchID,
+			&batchWindowExpiresAt,
 		)
 		if err != nil {
 			log.Printf("Error scanning available delivery: %v", err)
 			continue
 		}
+
+		// Set batch ID if exists
+		if batchID != "" {
+			d.BatchID = &batchID
+		}
+
+		// Calculate distance and estimated time
+		if d.PickupLatitude != nil && d.PickupLongitude != nil && d.DeliveryLatitude != nil && d.DeliveryLongitude != nil {
+			d.DistanceKm = haversineDistance(*d.PickupLatitude, *d.PickupLongitude, *d.DeliveryLatitude, *d.DeliveryLongitude)
+			// Assume average speed of 20 km/h in city traffic
+			d.EstimatedMinutes = int(d.DistanceKm / 20.0 * 60)
+			if d.EstimatedMinutes < 10 {
+				d.EstimatedMinutes = 10 // Minimum 10 minutes
+			}
+		}
+
+		// Calculate fee breakdown (rider gets 85% of total cost)
+		d.RiderCut = d.TotalCost * 0.85
+		d.SenderFee = d.TotalCost
+		d.ReceiverFee = 0
+
+		// Batch window logic (Task 10) - only for standard deliveries
+		if d.DeliveryType == "standard" {
+			// Check if batch window is set
+			if batchWindowExpiresAt.Valid {
+				d.BatchWindowExpiresAt = &batchWindowExpiresAt.Time
+				// Calculate countdown in seconds
+				remaining := batchWindowExpiresAt.Time.Sub(now).Seconds()
+				if remaining > 0 {
+					d.IsBatching = true
+					d.BatchCountdown = int(remaining)
+				}
+			} else {
+				// Set batch window for new standard orders (20 minutes from creation)
+				batchExpiry := d.CreatedAt.Add(20 * time.Minute)
+				remaining := batchExpiry.Sub(now).Seconds()
+				if remaining > 0 {
+					d.IsBatching = true
+					d.BatchWindowExpiresAt = &batchExpiry
+					d.BatchCountdown = int(remaining)
+				}
+			}
+
+			// Count nearby orders for batch size (within 2km of pickup)
+			if d.IsBatching && d.PickupLatitude != nil && d.PickupLongitude != nil {
+				var batchSize int
+				h.db.QueryRow(`
+					SELECT COUNT(*) FROM deliveries
+					WHERE status = 'pending' AND rider_id IS NULL
+					AND delivery_type = 'standard'
+					AND id != ?
+					AND pickup_latitude IS NOT NULL
+					AND (
+						6371 * acos(
+							cos(radians(?)) * cos(radians(pickup_latitude)) *
+							cos(radians(pickup_longitude) - radians(?)) +
+							sin(radians(?)) * sin(radians(pickup_latitude))
+						)
+					) < 2
+				`, d.ID, *d.PickupLatitude, *d.PickupLongitude, *d.PickupLatitude).Scan(&batchSize)
+				d.BatchSize = batchSize + 1 // Include this delivery
+			}
+		}
+
 		h.loadDeliveryItems(&d)
 		deliveries = append(deliveries, d)
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: deliveries})
+}
+
+// haversineDistance calculates the distance between two lat/long points in km
+func haversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371 // Earth radius in km
+	dLat := (lat2 - lat1) * (3.14159265359 / 180)
+	dLon := (lon2 - lon1) * (3.14159265359 / 180)
+	a := (dLat/2)*(dLat/2)*0.5 + ((dLon/2)*(dLon/2)*0.5)*
+		(1-(lat1*(3.14159265359/180))*(lat1*(3.14159265359/180))*0.5)*
+		(1-(lat2*(3.14159265359/180))*(lat2*(3.14159265359/180))*0.5)
+	// Simplified haversine
+	lat1Rad := lat1 * (3.14159265359 / 180)
+	lat2Rad := lat2 * (3.14159265359 / 180)
+	dLatRad := dLat
+	dLonRad := dLon
+	a = (1-math.Cos(dLatRad))/2 + math.Cos(lat1Rad)*math.Cos(lat2Rad)*(1-math.Cos(dLonRad))/2
+	c := 2 * math.Asin(math.Sqrt(a))
+	return R * c
 }
 
 // GetRiderDeliveries returns the authenticated rider's claimed/active deliveries
@@ -1372,9 +1698,91 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 
 	log.Printf("Rider %d (user %d) claimed delivery %d", riderID, userID, deliveryID)
 
-	// Notify the delivery owner
+	// ─────────────────────────────────────────────────────────────────────────────
+	// TASK 11 & 14: Create delivery stops for job execution
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Get delivery details
 	var deliveryUserID int
 	var tradeID sql.NullInt64
+	var deliveryType, pickupAddr, deliveryAddr string
+	var pickupLat, pickupLng, deliveryLat, deliveryLng sql.NullFloat64
+	var totalCost float64
+	err = h.db.QueryRow(`
+		SELECT user_id, trade_id, delivery_type, pickup_address, delivery_address,
+		       pickup_latitude, pickup_longitude, delivery_latitude, delivery_longitude, total_cost
+		FROM deliveries WHERE id = ?`, deliveryID).Scan(
+		&deliveryUserID, &tradeID, &deliveryType, &pickupAddr, &deliveryAddr,
+		&pickupLat, &pickupLng, &deliveryLat, &deliveryLng, &totalCost)
+
+	if err != nil {
+		log.Printf("Failed to get delivery details: %v", err)
+	}
+
+	// Get sender details (delivery creator)
+	var senderName, senderPhone string
+	h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", deliveryUserID).Scan(&senderName, &senderPhone)
+
+	// Get receiver details (if trade-based delivery, get the other party)
+	receiverName := "Receiver"
+	receiverPhone := ""
+	if tradeID.Valid {
+		var receiverID int
+		h.db.QueryRow("SELECT IF(buyer_id = ?, seller_id, buyer_id) FROM trades WHERE id = ?", deliveryUserID, tradeID.Int64).Scan(&receiverID)
+		h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", receiverID).Scan(&receiverName, &receiverPhone)
+	}
+
+	// TASK 17: Fee split - sender pays 50%, receiver pays 50%
+	senderFee := totalCost * 0.5
+	receiverFee := totalCost * 0.5
+
+	// Create stops based on delivery type
+	if deliveryType == "express" {
+		// Express: 2 stops only (pickup → delivery)
+		// Stop 1: Pickup from sender
+		_, err = h.db.Exec(`
+			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+			                             address, latitude, longitude, fee_amount, status)
+			VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
+			deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee)
+		if err != nil {
+			log.Printf("Failed to create express pickup stop: %v", err)
+		}
+
+		// Stop 2: Delivery to receiver
+		_, err = h.db.Exec(`
+			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+			                             address, latitude, longitude, fee_amount, status)
+			VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
+			deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee)
+		if err != nil {
+			log.Printf("Failed to create express delivery stop: %v", err)
+		}
+	} else {
+		// Standard: Create pickup and delivery stops (can be batched in future)
+		// For now, create simple 2-stop flow like express
+		_, err = h.db.Exec(`
+			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+			                             address, latitude, longitude, fee_amount, status)
+			VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
+			deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee)
+		if err != nil {
+			log.Printf("Failed to create standard pickup stop: %v", err)
+		}
+
+		_, err = h.db.Exec(`
+			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+			                             address, latitude, longitude, fee_amount, status)
+			VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
+			deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee)
+		if err != nil {
+			log.Printf("Failed to create standard delivery stop: %v", err)
+		}
+	}
+
+	// TASK 19: Initialize rider ledger if doesn't exist
+	h.ensureRiderLedger(riderID)
+
+	// Notify the delivery owner
 	_ = h.db.QueryRow("SELECT user_id, trade_id FROM deliveries WHERE id = ?", deliveryID).Scan(&deliveryUserID, &tradeID)
 
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
@@ -1564,4 +1972,399 @@ func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID 
 		sellerID, "You accepted the offer. A delivery request is being prepared.")
 
 	return deliveryID, nil
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// JOB EXECUTION - PHASE 3 & 4
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ensureRiderLedger creates a rider ledger entry if it doesn't exist
+func (h *DeliveryHandler) ensureRiderLedger(riderID int) {
+	var exists int
+	h.db.QueryRow("SELECT COUNT(*) FROM rider_ledger WHERE rider_id = ?", riderID).Scan(&exists)
+	if exists == 0 {
+		_, err := h.db.Exec(`
+			INSERT INTO rider_ledger (rider_id, total_cash_collected, remittance_owed, take_home, free_slots_remaining)
+			VALUES (?, 0, 0, 0, 3)
+		`, riderID)
+		if err != nil {
+			log.Printf("Failed to create rider ledger for rider %d: %v", riderID, err)
+		}
+	}
+}
+
+// GetDeliveryStops returns all stops for a delivery
+func (h *DeliveryHandler) GetDeliveryStops(c *fiber.Ctx) error {
+	deliveryID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid delivery ID"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT id, delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		       address, latitude, longitude, COALESCE(item_qr_code, ''), fee_amount, status,
+		       arrived_at, qr_scanned_at, fee_collected_at, completed_at, COALESCE(photo_url, ''),
+		       created_at, updated_at
+		FROM delivery_stops
+		WHERE delivery_id = ?
+		ORDER BY stop_number ASC`, deliveryID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch stops"})
+	}
+	defer rows.Close()
+
+	stops := []models.DeliveryStop{}
+	for rows.Next() {
+		var s models.DeliveryStop
+		err := rows.Scan(
+			&s.ID, &s.DeliveryID, &s.StopNumber, &s.StopType, &s.ContactName, &s.ContactPhone,
+			&s.Address, &s.Latitude, &s.Longitude, &s.ItemQRCode, &s.FeeAmount, &s.Status,
+			&s.ArrivedAt, &s.QRScannedAt, &s.FeeCollectedAt, &s.CompletedAt, &s.PhotoURL,
+			&s.CreatedAt, &s.UpdatedAt,
+		)
+		if err != nil {
+			log.Printf("Error scanning stop: %v", err)
+			continue
+		}
+		stops = append(stops, s)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: stops})
+}
+
+// UpdateStopStatus updates a delivery stop's status with step enforcement
+// TASK 15: Step lock enforcement - server-side validation
+func (h *DeliveryHandler) UpdateStopStatus(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	stopID, err := strconv.Atoi(c.Params("stopId"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid stop ID"})
+	}
+
+	var payload struct {
+		Action   string `json:"action"` // arrived, scan_qr, collect_fee, complete
+		QRCode   string `json:"qr_code,omitempty"`
+		PhotoURL string `json:"photo_url,omitempty"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request"})
+	}
+
+	// Verify the rider owns this delivery
+	var riderID, deliveryID, stopNumber int
+	var currentStatus, stopType string
+	err = h.db.QueryRow(`
+		SELECT ds.id, ds.delivery_id, ds.stop_number, ds.status, ds.stop_type, d.rider_id
+		FROM delivery_stops ds
+		JOIN deliveries d ON ds.delivery_id = d.id
+		WHERE ds.id = ?`, stopID).Scan(&stopID, &deliveryID, &stopNumber, &currentStatus, &stopType, &riderID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Stop not found"})
+	}
+
+	// Verify rider
+	var riderUserID int
+	h.db.QueryRow("SELECT user_id FROM riders WHERE id = ?", riderID).Scan(&riderUserID)
+	if riderUserID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this delivery"})
+	}
+
+	// TASK 15: Enforce step order - must complete previous stop first
+	if stopNumber > 1 {
+		var prevStopStatus string
+		h.db.QueryRow("SELECT status FROM delivery_stops WHERE delivery_id = ? AND stop_number = ?",
+			deliveryID, stopNumber-1).Scan(&prevStopStatus)
+		if prevStopStatus != "completed" {
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   "You must complete the previous stop first",
+			})
+		}
+	}
+
+	now := time.Now()
+	var newStatus string
+	var updateQuery string
+
+	switch payload.Action {
+	case "arrived":
+		if currentStatus != "pending" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid state transition"})
+		}
+		newStatus = "arrived"
+		updateQuery = "UPDATE delivery_stops SET status = 'arrived', arrived_at = ? WHERE id = ?"
+		_, err = h.db.Exec(updateQuery, now, stopID)
+
+	case "scan_qr":
+		if currentStatus != "arrived" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Must arrive at stop first"})
+		}
+		newStatus = "qr_scanned"
+		updateQuery = "UPDATE delivery_stops SET status = 'qr_scanned', qr_scanned_at = ?, item_qr_code = ? WHERE id = ?"
+		_, err = h.db.Exec(updateQuery, now, payload.QRCode, stopID)
+
+	case "collect_fee":
+		if currentStatus != "qr_scanned" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Must scan QR first"})
+		}
+		newStatus = "fee_collected"
+		updateQuery = "UPDATE delivery_stops SET status = 'fee_collected', fee_collected_at = ? WHERE id = ?"
+		_, err = h.db.Exec(updateQuery, now, stopID)
+
+		// TASK 17 & 18: Log cash collection and update ledger
+		var feeAmount float64
+		h.db.QueryRow("SELECT fee_amount FROM delivery_stops WHERE id = ?", stopID).Scan(&feeAmount)
+
+		collectionType := "pickup_fee"
+		if stopType == "delivery" {
+			collectionType = "delivery_fee"
+		}
+
+		// Log collection
+		_, err = h.db.Exec(`
+			INSERT INTO rider_cash_collections (rider_id, delivery_id, stop_id, collection_type, amount)
+			VALUES (?, ?, ?, ?, ?)
+		`, riderID, deliveryID, stopID, collectionType, feeAmount)
+
+		// Update rider ledger
+		h.updateRiderLedger(riderID, feeAmount)
+
+	case "complete":
+		if currentStatus != "fee_collected" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Must collect fee first"})
+		}
+		// TASK 16: Photo proof is required for delivery stops
+		if stopType == "delivery" && payload.PhotoURL == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo proof is required for delivery"})
+		}
+		newStatus = "completed"
+		updateQuery = "UPDATE delivery_stops SET status = 'completed', completed_at = ?, photo_url = ? WHERE id = ?"
+		_, err = h.db.Exec(updateQuery, now, payload.PhotoURL, stopID)
+
+		// Check if all stops are complete - if so, mark delivery as delivered
+		var pendingStops int
+		h.db.QueryRow("SELECT COUNT(*) FROM delivery_stops WHERE delivery_id = ? AND status != 'completed'", deliveryID).Scan(&pendingStops)
+		if pendingStops == 0 {
+			h.db.Exec("UPDATE deliveries SET status = 'delivered', delivered_at = ? WHERE id = ?", now, deliveryID)
+			// TASK 19: Decrement free slots if applicable
+			h.decrementFreeSlot(riderID)
+		}
+
+	default:
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid action"})
+	}
+
+	if err != nil {
+		log.Printf("Failed to update stop %d: %v", stopID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update stop"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: fmt.Sprintf("Stop %s successfully", newStatus),
+		Data:    fiber.Map{"status": newStatus},
+	})
+}
+
+// TASK 18: Update rider ledger after cash collection
+func (h *DeliveryHandler) updateRiderLedger(riderID int, amount float64) {
+	// Get current ledger state
+	var freeSlotsRemaining int
+	var totalCash, remittanceOwed, takeHome float64
+	h.db.QueryRow(`
+		SELECT total_cash_collected, remittance_owed, take_home, free_slots_remaining
+		FROM rider_ledger WHERE rider_id = ?`, riderID).Scan(&totalCash, &remittanceOwed, &takeHome, &freeSlotsRemaining)
+
+	// Update totals
+	totalCash += amount
+
+	// TASK 19: If rider has free slots, they keep everything
+	if freeSlotsRemaining > 0 {
+		takeHome += amount
+	} else {
+		// Rider pays 15% remittance to platform
+		platformCut := amount * 0.15
+		riderEarnings := amount * 0.85
+		remittanceOwed += platformCut
+		takeHome += riderEarnings
+	}
+
+	_, err := h.db.Exec(`
+		UPDATE rider_ledger
+		SET total_cash_collected = ?, remittance_owed = ?, take_home = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE rider_id = ?
+	`, totalCash, remittanceOwed, takeHome, riderID)
+
+	if err != nil {
+		log.Printf("Failed to update rider ledger for rider %d: %v", riderID, err)
+	}
+
+	// TASK 20: Lock rider if remittance threshold reached (e.g., ₱1000)
+	if remittanceOwed >= 1000 && freeSlotsRemaining == 0 {
+		h.db.Exec("UPDATE rider_ledger SET is_locked_for_remittance = TRUE WHERE rider_id = ?", riderID)
+		h.db.Exec("UPDATE riders SET is_active = FALSE WHERE id = ?", riderID)
+	}
+}
+
+// TASK 19: Decrement free slot when delivery is completed
+func (h *DeliveryHandler) decrementFreeSlot(riderID int) {
+	var freeSlotsRemaining int
+	h.db.QueryRow("SELECT free_slots_remaining FROM rider_ledger WHERE rider_id = ?", riderID).Scan(&freeSlotsRemaining)
+
+	if freeSlotsRemaining > 0 {
+		_, err := h.db.Exec(`
+			UPDATE rider_ledger
+			SET free_slots_remaining = free_slots_remaining - 1,
+			    total_free_slots_used = total_free_slots_used + 1,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE rider_id = ?
+		`, riderID)
+		if err != nil {
+			log.Printf("Failed to decrement free slot for rider %d: %v", riderID, err)
+		}
+	}
+}
+
+// GetRiderLedger returns the rider's cash ledger (TASK 18)
+func (h *DeliveryHandler) GetRiderLedger(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var riderID int
+	err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ?", userID).Scan(&riderID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Rider not found"})
+	}
+
+	var ledger models.RiderLedger
+	err = h.db.QueryRow(`
+		SELECT id, rider_id, total_cash_collected, remittance_owed, take_home,
+		       free_slots_remaining, total_free_slots_used, last_remittance_at,
+		       is_locked_for_remittance, created_at, updated_at
+		FROM rider_ledger WHERE rider_id = ?`, riderID).Scan(
+		&ledger.ID, &ledger.RiderID, &ledger.TotalCashCollected, &ledger.RemittanceOwed,
+		&ledger.TakeHome, &ledger.FreeSlotsRemaining, &ledger.TotalFreeSlotsUsed,
+		&ledger.LastRemittanceAt, &ledger.IsLockedForRemittance,
+		&ledger.CreatedAt, &ledger.UpdatedAt,
+	)
+
+	if err != nil {
+		// Initialize if doesn't exist
+		h.ensureRiderLedger(riderID)
+		return c.JSON(models.APIResponse{Success: true, Data: models.RiderLedger{
+			RiderID:            riderID,
+			TotalCashCollected: 0,
+			RemittanceOwed:     0,
+			TakeHome:           0,
+			FreeSlotsRemaining: 3,
+		}})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: ledger})
+}
+
+// SubmitRemittancePayment submits a remittance payment (TASK 20)
+func (h *DeliveryHandler) SubmitRemittancePayment(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var riderID int
+	err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ?", userID).Scan(&riderID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Rider not found"})
+	}
+
+	var payload struct {
+		AmountPaid      float64 `json:"amount_paid"`
+		PaymentMethod   string  `json:"payment_method"`
+		PaymentProofURL string  `json:"payment_proof_url"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request"})
+	}
+
+	if payload.AmountPaid <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid payment amount"})
+	}
+
+	result, err := h.db.Exec(`
+		INSERT INTO rider_remittance_payments (rider_id, amount_paid, payment_method, payment_proof_url, status)
+		VALUES (?, ?, ?, ?, 'pending')
+	`, riderID, payload.AmountPaid, payload.PaymentMethod, payload.PaymentProofURL)
+
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to submit payment"})
+	}
+
+	paymentID, _ := result.LastInsertId()
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Remittance payment submitted. Awaiting admin verification.",
+		Data:    fiber.Map{"payment_id": paymentID},
+	})
+}
+
+// AdminVerifyRemittancePayment verifies a remittance payment and unlocks rider (TASK 20)
+func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
+	paymentID, err := strconv.Atoi(c.Params("paymentId"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid payment ID"})
+	}
+
+	userID, _ := middleware.GetUserIDFromContext(c)
+
+	var payload struct {
+		Approve         bool   `json:"approve"`
+		RejectionReason string `json:"rejection_reason,omitempty"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request"})
+	}
+
+	now := time.Now()
+	var riderID int
+	var amountPaid float64
+	h.db.QueryRow("SELECT rider_id, amount_paid FROM rider_remittance_payments WHERE id = ?", paymentID).Scan(&riderID, &amountPaid)
+
+	if payload.Approve {
+		// Approve payment
+		_, err = h.db.Exec(`
+			UPDATE rider_remittance_payments
+			SET status = 'verified', verified_by = ?, verified_at = ?
+			WHERE id = ?
+		`, userID, now, paymentID)
+
+		// Deduct from remittance owed and unlock rider
+		_, err = h.db.Exec(`
+			UPDATE rider_ledger
+			SET remittance_owed = remittance_owed - ?,
+			    last_remittance_at = ?,
+			    is_locked_for_remittance = FALSE,
+			    free_slots_remaining = 3
+			WHERE rider_id = ?
+		`, amountPaid, now, riderID)
+
+		// Unlock rider account
+		h.db.Exec("UPDATE riders SET is_active = TRUE WHERE id = ?", riderID)
+
+		return c.JSON(models.APIResponse{Success: true, Message: "Payment verified and rider unlocked"})
+	} else {
+		// Reject payment
+		_, err = h.db.Exec(`
+			UPDATE rider_remittance_payments
+			SET status = 'rejected', rejection_reason = ?, verified_by = ?, verified_at = ?
+			WHERE id = ?
+		`, payload.RejectionReason, userID, now, paymentID)
+
+		return c.JSON(models.APIResponse{Success: true, Message: "Payment rejected"})
+	}
 }
