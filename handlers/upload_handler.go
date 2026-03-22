@@ -65,6 +65,8 @@ func (h *UploadHandler) UploadImage(c *fiber.Ctx) error {
 		folder = "products"
 	case "profile":
 		folder = "profile-pictures"
+	case "delivery_proof":
+		folder = "delivery-proofs"
 	default:
 		folder = uploadType
 	}

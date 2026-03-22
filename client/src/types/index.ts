@@ -372,6 +372,18 @@ export interface Delivery {
   rider_latitude?: number
   rider_longitude?: number
   items?: DeliveryItem[]
+  // Batch window fields
+  batch_id?: string
+  batch_countdown?: number
+  batch_size?: number
+  is_batching?: boolean
+  batch_window_expires_at?: string
+  // Card display fields
+  distance_km?: number
+  estimated_minutes?: number
+  sender_fee?: number
+  receiver_fee?: number
+  rider_cut?: number
 }
 
 export interface DeliveryRequest {

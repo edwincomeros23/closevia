@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -13,22 +13,7 @@ import {
   Icon,
   SimpleGrid,
   useToast,
-  Tag,
-  TagLabel,
-  Progress,
   Divider,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  useDisclosure,
-  Tabs,
-  TabList,
-  Tab,
-  TabPanels,
-  TabPanel,
   Spinner,
   Center,
   Avatar,
@@ -42,113 +27,46 @@ import {
   AlertIcon,
   AlertTitle,
   AlertDescription,
-  Step,
-  StepIndicator,
-  StepStatus,
-  StepIcon,
-  StepNumber,
-  StepTitle,
-  StepDescription,
-  StepSeparator,
-  Stepper,
-  useSteps,
-  Textarea,
   useColorModeValue,
 } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaClock, FaBox, FaMotorcycle, FaCar, FaStar, FaPhone, FaIdBadge, FaCheckCircle, FaUpload, FaCamera, FaFileAlt } from 'react-icons/fa'
-import { InfoIcon, WarningIcon, CheckCircleIcon } from '@chakra-ui/icons'
+import {
+  FaMotorcycle,
+  FaCar,
+  FaStar,
+  FaPhone,
+  FaIdBadge,
+  FaCheckCircle,
+  FaCamera,
+  FaFileAlt,
+  FaLock,
+  FaClock,
+  FaTimesCircle,
+  FaRedo,
+  FaBicycle,
+  FaTruck,
+  FaWallet,
+} from 'react-icons/fa'
+import { CheckCircleIcon, WarningIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'
-import { Delivery } from '../types'
+import { useRiderState, RiderState } from '../hooks/useRiderState'
 
-interface DeliveryJob {
-  id: string
-  tradeId: string
-  itemType: string
-  deliveryType: 'standard' | 'express'
-  distance: string
-  distanceKm: number
-  fee: number
-  pickupWindow: string
-  status: 'pending' | 'claimed' | 'picked_up' | 'in_transit' | 'delivered'
-  sender: string
-  recipient: string
-  pickupLocation: string
-  dropoffLocation: string
-  itemCount: number
-  isFragile: boolean
-  claimedBy?: string
-}
-
-interface ClaimedBatch {
-  batchId: string
-  type: 'standard' | 'express'
-  jobs: DeliveryJob[]
-  totalEarnings: number
-  totalDistance: string
-  createdAt: string
-  riderName?: string
-  riderVehicle?: string
-  riderRating?: number
-}
-
-interface RiderProfile {
-  rider_id: number
-  name: string
-  vehicle_type: string
-  vehicle_plate: string
-  phone: string
-  rating: number
-  created_at: string
-  completed_deliveries: number
-  is_active: boolean
-}
-
-interface RiderApplicationData {
-  has_applied: boolean
-  rider_id?: number
-  status?: string
-  full_name?: string
-  contact_number?: string
-  vehicle_type?: string
-  vehicle_plate?: string
-  license_image_url?: string
-  selfie_image_url?: string
-  rejection_reason?: string
-  reviewed_at?: string
-  created_at?: string
-  is_active?: boolean
-  name?: string
-  phone?: string
-  rating?: number
-  completed_deliveries?: number
-}
-
-const mapDeliveryToJob = (d: Delivery): DeliveryJob => ({
-  id: String(d.id),
-  tradeId: d.trade_id ? String(d.trade_id) : '',
-  itemType: d.items?.[0]?.product_name || 'Item',
-  deliveryType: d.delivery_type as 'standard' | 'express',
-  distance: '~',
-  distanceKm: 0,
-  fee: d.total_cost,
-  pickupWindow: d.estimated_eta
-    ? new Date(d.estimated_eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : 'TBD',
-  status: d.status as DeliveryJob['status'],
-  sender: d.user_name || 'Unknown',
-  recipient: '',
-  pickupLocation: d.pickup_address,
-  dropoffLocation: d.delivery_address,
-  itemCount: d.item_count,
-  isFragile: d.is_fragile,
-})
-
-// ─── Application Form ───────────────────────────────────────────────
-const RiderApplicationForm: React.FC<{
+// ─────────────────────────────────────────────────────────────────────────────
+// APPLICATION FORM - Task 1
+// ─────────────────────────────────────────────────────────────────────────────
+interface ApplicationFormProps {
   onSubmitted: () => void
-  prefill?: RiderApplicationData
-  isResubmit?: boolean
-}> = ({ onSubmitted, prefill, isResubmit }) => {
+  prefill?: {
+    full_name?: string
+    contact_number?: string
+    vehicle_type?: string
+    vehicle_plate?: string
+    license_image_url?: string
+    selfie_image_url?: string
+  }
+  rejectionReason?: string
+}
+
+const RiderApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmitted, prefill, rejectionReason }) => {
   const toast = useToast()
   const licenseInputRef = useRef<HTMLInputElement>(null)
   const selfieInputRef = useRef<HTMLInputElement>(null)
@@ -168,6 +86,16 @@ const RiderApplicationForm: React.FC<{
   const [termsCheck, setTermsCheck] = useState(false)
 
   const handleImageUpload = async (file: File, type: 'license' | 'selfie') => {
+    // Validate file before upload
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Invalid file', description: 'Please upload an image file', status: 'error', duration: 3000 })
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Please upload an image under 10MB', status: 'error', duration: 3000 })
+      return
+    }
+
     setUploading(true)
     try {
       const formData = new FormData()
@@ -193,7 +121,16 @@ const RiderApplicationForm: React.FC<{
     }
   }
 
-  const canSubmit = fullName.trim() && contactNumber.trim() && vehicleType && licenseUrl && ageCheck && licenseCheck && termsCheck
+  // Validation: all required fields must be filled and checkboxes ticked
+  const isContactValid = contactNumber.replace(/\D/g, '').length === 11
+  const canSubmit =
+    fullName.trim().length >= 2 &&
+    isContactValid &&
+    vehicleType &&
+    licenseUrl && // License is required and must be uploaded
+    ageCheck &&
+    licenseCheck &&
+    termsCheck
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -208,7 +145,7 @@ const RiderApplicationForm: React.FC<{
         selfie_image_url: selfieUrl,
       })
       toast({
-        title: isResubmit ? 'Application Resubmitted' : 'Application Submitted',
+        title: rejectionReason ? 'Application Resubmitted' : 'Application Submitted',
         description: 'We will review your application and notify you.',
         status: 'success',
         duration: 4000,
@@ -234,19 +171,19 @@ const RiderApplicationForm: React.FC<{
         <VStack spacing={1}>
           <Icon as={FaMotorcycle} boxSize={10} color="brand.500" />
           <Heading size="lg" color="brand.600">
-            {isResubmit ? 'Resubmit Application' : 'Apply as a Rider'}
+            {rejectionReason ? 'Resubmit Application' : 'Apply as a Rider'}
           </Heading>
           <Text fontSize="sm" color="gray.500" textAlign="center">
             Fill out your details and upload your documents to get started
           </Text>
         </VStack>
 
-        {isResubmit && prefill?.rejection_reason && (
+        {rejectionReason && (
           <Alert status="error" borderRadius="md">
             <AlertIcon />
             <Box>
               <AlertTitle fontSize="sm">Previous application was not approved</AlertTitle>
-              <AlertDescription fontSize="xs">{prefill.rejection_reason}</AlertDescription>
+              <AlertDescription fontSize="xs">{rejectionReason}</AlertDescription>
             </Box>
           </Alert>
         )}
@@ -260,6 +197,7 @@ const RiderApplicationForm: React.FC<{
                   value={fullName}
                   onChange={e => setFullName(e.target.value)}
                   placeholder="Enter your full name"
+                  isInvalid={fullName.length > 0 && fullName.trim().length < 2}
                 />
               </FormControl>
 
@@ -274,7 +212,11 @@ const RiderApplicationForm: React.FC<{
                   placeholder="09XXXXXXXXX"
                   type="tel"
                   maxLength={11}
+                  isInvalid={contactNumber.length > 0 && !isContactValid}
                 />
+                {contactNumber.length > 0 && !isContactValid && (
+                  <Text fontSize="xs" color="red.500" mt={1}>Must be exactly 11 digits</Text>
+                )}
               </FormControl>
 
               <FormControl isRequired>
@@ -287,7 +229,7 @@ const RiderApplicationForm: React.FC<{
               </FormControl>
 
               <FormControl>
-                <FormLabel fontSize="sm">Plate Number</FormLabel>
+                <FormLabel fontSize="sm">Plate Number (if applicable)</FormLabel>
                 <Input
                   value={vehiclePlate}
                   onChange={e => setVehiclePlate(e.target.value)}
@@ -295,9 +237,9 @@ const RiderApplicationForm: React.FC<{
                 />
               </FormControl>
 
-              {/* License Upload */}
+              {/* License Upload - Required */}
               <FormControl isRequired>
-                <FormLabel fontSize="sm">Driver's License</FormLabel>
+                <FormLabel fontSize="sm">Driver's License Photo</FormLabel>
                 <input
                   type="file"
                   accept="image/*"
@@ -311,6 +253,9 @@ const RiderApplicationForm: React.FC<{
                 {licensePreview ? (
                   <Box position="relative" borderRadius="md" overflow="hidden" border="2px" borderColor="green.300">
                     <Image src={licensePreview} alt="License" maxH="180px" w="full" objectFit="cover" />
+                    <Badge position="absolute" top={2} left={2} colorScheme="green" fontSize="xs">
+                      <Icon as={FaCheckCircle} mr={1} /> Uploaded
+                    </Badge>
                     <Button
                       size="xs"
                       position="absolute"
@@ -330,6 +275,7 @@ const RiderApplicationForm: React.FC<{
                     variant="outline"
                     borderStyle="dashed"
                     borderWidth="2px"
+                    borderColor={licenseUrl ? 'green.300' : 'gray.300'}
                     onClick={() => licenseInputRef.current?.click()}
                     isLoading={uploading}
                     loadingText="Uploading..."
@@ -337,15 +283,16 @@ const RiderApplicationForm: React.FC<{
                     <VStack spacing={1}>
                       <Icon as={FaFileAlt} boxSize={6} color="gray.400" />
                       <Text fontSize="xs" color="gray.500">Upload Driver's License</Text>
+                      <Text fontSize="2xs" color="red.400">Required</Text>
                     </VStack>
                   </Button>
                 )}
               </FormControl>
 
-              {/* Selfie Upload */}
+              {/* Selfie Upload - Optional */}
               <FormControl>
                 <FormLabel fontSize="sm">Selfie (Optional)</FormLabel>
-                <Text fontSize="xs" color="gray.400" mb={2}>For identity matching</Text>
+                <Text fontSize="xs" color="gray.400" mb={2}>For identity verification</Text>
                 <input
                   type="file"
                   accept="image/*"
@@ -421,7 +368,7 @@ const RiderApplicationForm: React.FC<{
           isDisabled={!canSubmit}
           leftIcon={<Icon as={FaMotorcycle} />}
         >
-          {isResubmit ? 'Resubmit Application' : 'Submit Application'}
+          {rejectionReason ? 'Resubmit Application' : 'Submit Application'}
         </Button>
 
         <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
@@ -432,294 +379,386 @@ const RiderApplicationForm: React.FC<{
   )
 }
 
-// ─── Status Tracker ──────────────────────────────────────────────────
-const ApplicationStatusTracker: React.FC<{
-  application: RiderApplicationData
-  onResubmit: () => void
-}> = ({ application, onResubmit }) => {
-  const steps = [
-    { title: 'Submitted', description: 'Application received' },
-    { title: 'Under Review', description: 'Admin reviewing your documents' },
-    { title: 'Decision', description: 'Application result' },
-  ]
+// ─────────────────────────────────────────────────────────────────────────────
+// PENDING SCREEN - Task 3
+// ─────────────────────────────────────────────────────────────────────────────
+const PendingScreen: React.FC = () => {
+  return (
+    <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
+      <Center minH="80vh">
+        <VStack spacing={6} maxW="md" mx="auto" textAlign="center">
+          <Box
+            w="100px"
+            h="100px"
+            borderRadius="full"
+            bg="yellow.100"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Icon as={FaClock} boxSize={12} color="yellow.500" />
+          </Box>
 
-  let activeStep = 0
-  if (application.status === 'under_review') activeStep = 1
-  if (application.status === 'approved' || application.status === 'rejected') activeStep = 2
+          <VStack spacing={2}>
+            <Heading size="lg" color="gray.800">Application Under Review</Heading>
+            <Text fontSize="md" color="gray.600" maxW="sm">
+              We are reviewing your documents. This usually takes 24-48 hours.
+            </Text>
+          </VStack>
 
-  const { activeStep: stepIndex } = useSteps({ index: activeStep, count: steps.length })
+          <Card w="full" bg="yellow.50" border="1px" borderColor="yellow.200">
+            <CardBody>
+              <VStack spacing={3}>
+                <HStack spacing={2}>
+                  <Icon as={FaCheckCircle} color="green.500" />
+                  <Text fontSize="sm" color="gray.700">Application submitted</Text>
+                </HStack>
+                <HStack spacing={2}>
+                  <Spinner size="sm" color="yellow.500" />
+                  <Text fontSize="sm" color="gray.700">Documents under review</Text>
+                </HStack>
+                <HStack spacing={2} opacity={0.5}>
+                  <Icon as={FaCheckCircle} color="gray.400" />
+                  <Text fontSize="sm" color="gray.500">Verification complete</Text>
+                </HStack>
+              </VStack>
+            </CardBody>
+          </Card>
+
+          <Alert status="info" borderRadius="md">
+            <AlertIcon />
+            <Text fontSize="sm">You'll receive a notification once your application is processed.</Text>
+          </Alert>
+
+          <Text fontSize="xs" color="gray.400">
+            Please do not submit multiple applications. Contact support if you have urgent concerns.
+          </Text>
+        </VStack>
+      </Center>
+    </Box>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REJECTED SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+interface RejectedScreenProps {
+  rejectionReason: string
+  onReapply: () => void
+}
+
+const RejectedScreen: React.FC<RejectedScreenProps> = ({ rejectionReason, onReapply }) => {
+  return (
+    <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
+      <Center minH="80vh">
+        <VStack spacing={6} maxW="md" mx="auto" textAlign="center">
+          <Box
+            w="100px"
+            h="100px"
+            borderRadius="full"
+            bg="red.100"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Icon as={FaTimesCircle} boxSize={12} color="red.500" />
+          </Box>
+
+          <VStack spacing={2}>
+            <Heading size="lg" color="gray.800">Application Not Approved</Heading>
+            <Text fontSize="md" color="gray.600" maxW="sm">
+              Unfortunately, your rider application was not approved.
+            </Text>
+          </VStack>
+
+          <Card w="full" bg="red.50" border="1px" borderColor="red.200">
+            <CardBody>
+              <VStack spacing={2} align="start">
+                <Text fontWeight="bold" fontSize="sm" color="red.700">Reason:</Text>
+                <Text fontSize="sm" color="gray.700">{rejectionReason}</Text>
+              </VStack>
+            </CardBody>
+          </Card>
+
+          <Button
+            colorScheme="brand"
+            size="lg"
+            w="full"
+            onClick={onReapply}
+            leftIcon={<Icon as={FaRedo} />}
+          >
+            Reapply
+          </Button>
+
+          <Text fontSize="xs" color="gray.400">
+            Please address the issues mentioned above before reapplying.
+          </Text>
+        </VStack>
+      </Center>
+    </Box>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOCKED SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+const LockedScreen: React.FC = () => {
+  return (
+    <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
+      <Center minH="80vh">
+        <VStack spacing={6} maxW="md" mx="auto" textAlign="center">
+          <Box
+            w="100px"
+            h="100px"
+            borderRadius="full"
+            bg="gray.200"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Icon as={FaLock} boxSize={12} color="gray.500" />
+          </Box>
+
+          <VStack spacing={2}>
+            <Heading size="lg" color="gray.800">Account Suspended</Heading>
+            <Text fontSize="md" color="gray.600" maxW="sm">
+              Your rider account has been suspended. Please contact support for assistance.
+            </Text>
+          </VStack>
+
+          <Alert status="warning" borderRadius="md">
+            <AlertIcon />
+            <Text fontSize="sm">Contact support@clovia.com for more information.</Text>
+          </Alert>
+        </VStack>
+      </Center>
+    </Box>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WELCOME SCREEN - Task 5 (First Login)
+// ─────────────────────────────────────────────────────────────────────────────
+interface WelcomeScreenProps {
+  fullName: string
+  freeSlots: number
+  onContinue: () => void
+}
+
+const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ fullName, freeSlots, onContinue }) => {
+  const navigate = useNavigate()
+
+  const handleContinue = async () => {
+    await onContinue()
+    navigate('/rider-home')
+  }
 
   return (
     <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
-      <VStack spacing={6} maxW="md" mx="auto">
-        <VStack spacing={1}>
-          <Icon as={FaMotorcycle} boxSize={10} color="brand.500" />
-          <Heading size="lg" color="brand.600">Application Status</Heading>
+      <Center minH="80vh">
+        <VStack spacing={6} maxW="md" mx="auto" textAlign="center">
+          <Box
+            w="120px"
+            h="120px"
+            borderRadius="full"
+            bg="green.100"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            animation="pulse 2s infinite"
+          >
+            <Icon as={CheckCircleIcon} boxSize={16} color="green.500" />
+          </Box>
+
+          <VStack spacing={2}>
+            <Heading size="xl" color="brand.600">Welcome, {fullName}!</Heading>
+            <Text fontSize="lg" color="gray.700">
+              You are now a verified Clovia rider!
+            </Text>
+          </VStack>
+
+          <Card w="full" bg="green.50" border="2px" borderColor="green.300">
+            <CardBody>
+              <VStack spacing={3}>
+                <Icon as={FaTruck} boxSize={8} color="green.500" />
+                <Text fontWeight="bold" fontSize="lg" color="green.700">
+                  You have {freeSlots} free delivery slots!
+                </Text>
+                <Text fontSize="sm" color="gray.600">
+                  Start earning by claiming available deliveries in your area.
+                </Text>
+              </VStack>
+            </CardBody>
+          </Card>
+
+          <SimpleGrid columns={3} spacing={4} w="full">
+            <Card bg="white" p={3}>
+              <VStack spacing={1}>
+                <Icon as={FaTruck} color="brand.500" boxSize={5} />
+                <Text fontSize="xs" color="gray.600">Claim Jobs</Text>
+              </VStack>
+            </Card>
+            <Card bg="white" p={3}>
+              <VStack spacing={1}>
+                <Icon as={FaWallet} color="brand.500" boxSize={5} />
+                <Text fontSize="xs" color="gray.600">Earn Money</Text>
+              </VStack>
+            </Card>
+            <Card bg="white" p={3}>
+              <VStack spacing={1}>
+                <Icon as={FaStar} color="brand.500" boxSize={5} />
+                <Text fontSize="xs" color="gray.600">Build Rating</Text>
+              </VStack>
+            </Card>
+          </SimpleGrid>
+
+          <Button
+            colorScheme="brand"
+            size="lg"
+            w="full"
+            onClick={handleContinue}
+            leftIcon={<Icon as={FaMotorcycle} />}
+          >
+            Start Delivering
+          </Button>
+        </VStack>
+      </Center>
+    </Box>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RIDER DASHBOARD (Ready/Working states)
+// ─────────────────────────────────────────────────────────────────────────────
+interface RiderDashboardProps {
+  state: RiderState
+  fullName: string
+  rating: number
+  completedDeliveries: number
+}
+
+const RiderDashboard: React.FC<RiderDashboardProps> = ({ state, fullName, rating, completedDeliveries }) => {
+  const navigate = useNavigate()
+
+  const getVehicleIcon = (type?: string) => {
+    switch (type) {
+      case 'car': return FaCar
+      case 'bicycle': return FaBicycle
+      default: return FaMotorcycle
+    }
+  }
+
+  return (
+    <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
+      <VStack spacing={4} maxW="md" mx="auto">
+        {/* Header */}
+        <VStack spacing={1} w="full">
+          <Heading size="md" color="brand.500">Rider Dashboard</Heading>
+          <Text fontSize="sm" color="gray.600">
+            {state === 'WORKING' ? 'You have active deliveries' : 'Ready to claim deliveries'}
+          </Text>
         </VStack>
 
-        <Card w="full" bg="white">
-          <CardBody>
-            <Stepper index={stepIndex} orientation="vertical" gap={0} h="200px">
-              {steps.map((step, index) => (
-                <Step key={index}>
-                  <StepIndicator>
-                    <StepStatus
-                      complete={<StepIcon />}
-                      incomplete={<StepNumber />}
-                      active={<StepNumber />}
-                    />
-                  </StepIndicator>
-                  <Box flexShrink={0}>
-                    <StepTitle>{step.title}</StepTitle>
-                    <StepDescription>{step.description}</StepDescription>
-                  </Box>
-                  <StepSeparator />
-                </Step>
-              ))}
-            </Stepper>
+        {/* Profile Card */}
+        <Card bg="white" border="2px" borderColor="brand.200" w="full" shadow="sm">
+          <CardBody p={4}>
+            <VStack spacing={3} align="stretch">
+              <HStack spacing={4}>
+                <Avatar name={fullName} size="lg" bg="brand.500" color="white" />
+                <VStack align="start" spacing={1} flex={1}>
+                  <HStack>
+                    <Text fontWeight="bold" fontSize="md">{fullName}</Text>
+                    <Badge colorScheme="green" fontSize="2xs">Verified</Badge>
+                  </HStack>
+                  <HStack spacing={1}>
+                    <Icon as={FaStar} color="yellow.400" boxSize={3} />
+                    <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+                      {rating > 0 ? rating.toFixed(1) : 'No rating yet'}
+                    </Text>
+                  </HStack>
+                </VStack>
+              </HStack>
+
+              <Divider />
+
+              <SimpleGrid columns={2} spacing={3} fontSize="xs">
+                <HStack spacing={2}>
+                  <Icon as={FaCheckCircle} color="green.500" boxSize={4} />
+                  <VStack align="start" spacing={0}>
+                    <Text color="gray.500">Deliveries</Text>
+                    <Text fontWeight="semibold" color="gray.800">
+                      {completedDeliveries} completed
+                    </Text>
+                  </VStack>
+                </HStack>
+                <HStack spacing={2}>
+                  <Icon as={state === 'WORKING' ? FaTruck : FaCheckCircle} color={state === 'WORKING' ? 'orange.500' : 'green.500'} boxSize={4} />
+                  <VStack align="start" spacing={0}>
+                    <Text color="gray.500">Status</Text>
+                    <Text fontWeight="semibold" color="gray.800">
+                      {state === 'WORKING' ? 'On Delivery' : 'Available'}
+                    </Text>
+                  </VStack>
+                </HStack>
+              </SimpleGrid>
+            </VStack>
           </CardBody>
         </Card>
 
-        {application.status === 'pending' && (
-          <Alert status="info" borderRadius="md">
-            <AlertIcon />
-            <Box>
-              <AlertTitle fontSize="sm">Application Pending</AlertTitle>
-              <AlertDescription fontSize="xs">
-                Your application is waiting to be reviewed. We'll notify you when there's an update.
-              </AlertDescription>
-            </Box>
-          </Alert>
-        )}
+        {/* Quick Actions */}
+        <SimpleGrid columns={2} spacing={3} w="full">
+          <Button
+            h="80px"
+            colorScheme="brand"
+            onClick={() => navigate('/rider-home')}
+            flexDirection="column"
+          >
+            <Icon as={FaTruck} boxSize={6} mb={1} />
+            <Text fontSize="sm">Available Jobs</Text>
+          </Button>
+          <Button
+            h="80px"
+            colorScheme="brand"
+            variant="outline"
+            onClick={() => navigate('/remittance-ledger')}
+            flexDirection="column"
+          >
+            <Icon as={FaWallet} boxSize={6} mb={1} />
+            <Text fontSize="sm">Earnings</Text>
+          </Button>
+        </SimpleGrid>
 
-        {application.status === 'under_review' && (
+        <Button
+          size="sm"
+          variant="ghost"
+          colorScheme="brand"
+          onClick={() => navigate('/rider?apply=1')}
+          leftIcon={<Icon as={FaIdBadge} />}
+        >
+          Open Rider Application Form
+        </Button>
+
+        {state === 'WORKING' && (
           <Alert status="warning" borderRadius="md">
             <AlertIcon />
-            <Box>
-              <AlertTitle fontSize="sm">Under Review</AlertTitle>
-              <AlertDescription fontSize="xs">
-                An admin is currently reviewing your application and documents.
-              </AlertDescription>
-            </Box>
+            <Text fontSize="sm">You have active deliveries. Complete them to claim more jobs.</Text>
           </Alert>
         )}
-
-        {application.status === 'rejected' && (
-          <>
-            <Alert status="error" borderRadius="md">
-              <AlertIcon />
-              <Box>
-                <AlertTitle fontSize="sm">Application Not Approved</AlertTitle>
-                <AlertDescription fontSize="xs">
-                  {application.rejection_reason || 'Your application did not meet the requirements.'}
-                </AlertDescription>
-              </Box>
-            </Alert>
-            <Button colorScheme="brand" w="full" onClick={onResubmit} leftIcon={<Icon as={FaMotorcycle} />}>
-              Resubmit Application
-            </Button>
-          </>
-        )}
-
-        {/* Application Details */}
-        <Card w="full" bg="white">
-          <CardBody>
-            <Text fontWeight="bold" fontSize="sm" mb={3}>Your Application Details</Text>
-            <SimpleGrid columns={2} spacing={3} fontSize="sm">
-              <Box>
-                <Text color="gray.500" fontSize="xs">Full Name</Text>
-                <Text fontWeight="semibold">{application.full_name}</Text>
-              </Box>
-              <Box>
-                <Text color="gray.500" fontSize="xs">Contact</Text>
-                <Text fontWeight="semibold">{application.contact_number}</Text>
-              </Box>
-              <Box>
-                <Text color="gray.500" fontSize="xs">Vehicle</Text>
-                <Text fontWeight="semibold" textTransform="capitalize">{application.vehicle_type}</Text>
-              </Box>
-              <Box>
-                <Text color="gray.500" fontSize="xs">Plate</Text>
-                <Text fontWeight="semibold">{application.vehicle_plate || 'N/A'}</Text>
-              </Box>
-            </SimpleGrid>
-            {application.created_at && (
-              <Text fontSize="xs" color="gray.400" mt={3}>
-                Applied on {new Date(application.created_at).toLocaleDateString()}
-              </Text>
-            )}
-          </CardBody>
-        </Card>
-
-        <Button variant="ghost" size="sm" onClick={() => window.history.back()}>
-          Back to Home
-        </Button>
       </VStack>
     </Box>
   )
 }
 
-// ─── Main Component ──────────────────────────────────────────────────
-const RiderJobs: React.FC = () => {
-  const navigate = useNavigate()
-  const toast = useToast()
-  const { isOpen, onOpen, onClose } = useDisclosure()
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN RIDER PAGE - State Router
+// ─────────────────────────────────────────────────────────────────────────────
+const RiderPage: React.FC = () => {
+  const location = useLocation()
+  const { riderState, loading, refetch, markFirstLoginComplete } = useRiderState()
+  const [showApplicationForm, setShowApplicationForm] = useState(false)
+  const forceApply = new URLSearchParams(location.search).get('apply') === '1'
 
-  const [pendingJobs, setPendingJobs] = useState<DeliveryJob[]>([])
-  const [claimedBatches, setClaimedBatches] = useState<ClaimedBatch[]>([])
-  const [selectedJob, setSelectedJob] = useState<DeliveryJob | null>(null)
-  const [suggestedBatch, setSuggestedBatch] = useState<DeliveryJob[]>([])
-  const [loading, setLoading] = useState(true)
-  const [claiming, setClaiming] = useState(false)
-  const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null)
-
-  // Application state
-  const [appData, setAppData] = useState<RiderApplicationData | null>(null)
-  const [appView, setAppView] = useState<'loading' | 'form' | 'status' | 'resubmit' | 'dashboard'>('loading')
-
-  const checkApplicationStatus = async () => {
-    try {
-      const response = await api.get('/api/deliveries/rider-application')
-      const data: RiderApplicationData = response.data?.data
-      setAppData(data)
-
-      if (!data?.has_applied) {
-        setAppView('form')
-      } else if (data.status === 'approved' && data.is_active) {
-        setAppView('dashboard')
-        setRiderProfile({
-          rider_id: data.rider_id || 0,
-          name: data.name || data.full_name || '',
-          vehicle_type: data.vehicle_type || '',
-          vehicle_plate: data.vehicle_plate || '',
-          phone: data.phone || data.contact_number || '',
-          rating: data.rating || 0,
-          created_at: data.created_at || '',
-          completed_deliveries: data.completed_deliveries || 0,
-          is_active: true,
-        })
-      } else {
-        setAppView('status')
-      }
-    } catch {
-      setAppView('form')
-    }
-  }
-
-  const fetchAvailableDeliveries = async () => {
-    try {
-      const response = await api.get('/api/deliveries/available')
-      const deliveries: Delivery[] = response.data?.data || []
-      setPendingJobs(deliveries.map(mapDeliveryToJob))
-    } catch {
-      // ignore
-    }
-  }
-
-  const fetchClaimedDeliveries = async () => {
-    try {
-      const response = await api.get('/api/deliveries/my-jobs')
-      const deliveries: Delivery[] = response.data?.data || []
-      const batches: ClaimedBatch[] = deliveries
-        .filter(d => d.status !== 'delivered')
-        .map(d => ({
-          batchId: String(d.id),
-          type: d.delivery_type as 'standard' | 'express',
-          jobs: [mapDeliveryToJob(d)],
-          totalEarnings: d.total_cost,
-          totalDistance: '~',
-          createdAt: d.claimed_at || d.created_at,
-          riderName: d.rider_name,
-          riderVehicle: d.rider_vehicle,
-          riderRating: d.rider_rating,
-        }))
-      setClaimedBatches(batches)
-    } catch {
-      // ignore
-    }
-  }
-
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      await checkApplicationStatus()
-      await Promise.all([fetchAvailableDeliveries(), fetchClaimedDeliveries()])
-      setLoading(false)
-    }
-    loadData()
-
-    const interval = setInterval(() => {
-      if (appView === 'dashboard') {
-        fetchAvailableDeliveries()
-        fetchClaimedDeliveries()
-      }
-    }, 15000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const handleAcceptDelivery = (job: DeliveryJob) => {
-    if (claimedBatches.length > 0) {
-      const hasActiveBatch = claimedBatches.some(batch =>
-        batch.jobs.some(j => j.status !== 'delivered')
-      )
-      if (hasActiveBatch) {
-        toast({
-          id: "rider-active-batch-pending",
-          title: 'Active Batch Pending',
-          description: 'Complete your current batch before claiming a new one',
-          status: 'warning',
-          duration: 3000,
-          isClosable: true,
-        })
-        return
-      }
-    }
-
-    setSelectedJob(job)
-    if (job.deliveryType === 'express') {
-      setSuggestedBatch([job])
-    } else {
-      const nearbyStandardJobs = pendingJobs.filter(
-        j => j.deliveryType === 'standard' && j.status === 'pending'
-      )
-      setSuggestedBatch(nearbyStandardJobs.slice(0, 5))
-    }
-    onOpen()
-  }
-
-  const handleConfirmBatch = async () => {
-    if (!selectedJob || suggestedBatch.length === 0) return
-    setClaiming(true)
-    try {
-      for (const job of suggestedBatch) {
-        await api.post(`/api/deliveries/${job.id}/claim`)
-      }
-      toast({
-        id: "rider-toast-4",
-        title: selectedJob.deliveryType === 'express' ? 'Express Job Claimed!' : 'Batch Claimed!',
-        description: `${suggestedBatch.length} delivery(s) claimed successfully.`,
-        status: 'success',
-        duration: 3000,
-      })
-      await Promise.all([fetchAvailableDeliveries(), fetchClaimedDeliveries()])
-      navigate(`/task-stepper/${suggestedBatch[0].id}`)
-    } catch (error: any) {
-      toast({
-        id: "rider-error",
-        title: 'Error',
-        description: error?.response?.data?.error || 'Failed to claim delivery',
-        status: 'error',
-        duration: 3000,
-      })
-    } finally {
-      setClaiming(false)
-      onClose()
-    }
-  }
-
-  const getDeliveryColor = (type: 'standard' | 'express') =>
-    type === 'express' ? 'purple' : 'blue'
-
+  // Loading state
   if (loading) {
     return (
       <Center minH="100vh" bg="#FFFDF1">
@@ -731,391 +770,70 @@ const RiderJobs: React.FC = () => {
     )
   }
 
-  // Show application form
-  if (appView === 'form') {
-    return (
-      <RiderApplicationForm
-        onSubmitted={() => {
-          checkApplicationStatus()
-        }}
-      />
-    )
+  // Error or no state - show application form
+  if (!riderState) {
+    return <RiderApplicationForm onSubmitted={refetch} />
   }
 
-  // Show resubmit form (pre-filled after rejection)
-  if (appView === 'resubmit' && appData) {
-    return (
-      <RiderApplicationForm
-        onSubmitted={() => {
-          checkApplicationStatus()
-        }}
-        prefill={appData}
-        isResubmit
-      />
-    )
+  const { state, full_name, rejection_reason, show_welcome, free_delivery_slots, completed_deliveries, rating } = riderState
+
+  // State-based routing
+  switch (state) {
+    case 'NOT_APPLIED':
+      return <RiderApplicationForm onSubmitted={refetch} />
+
+    case 'PENDING_APPROVAL':
+      return <PendingScreen />
+
+    case 'REJECTED':
+      if (showApplicationForm) {
+        return (
+          <RiderApplicationForm
+            onSubmitted={() => {
+              setShowApplicationForm(false)
+              refetch()
+            }}
+            rejectionReason={rejection_reason}
+          />
+        )
+      }
+      return (
+        <RejectedScreen
+          rejectionReason={rejection_reason || 'No reason provided'}
+          onReapply={() => setShowApplicationForm(true)}
+        />
+      )
+
+    case 'LOCKED':
+      return <LockedScreen />
+
+    case 'READY':
+    case 'WORKING':
+      if (forceApply) {
+        return <RiderApplicationForm onSubmitted={refetch} />
+      }
+      // Show welcome screen on first login after approval
+      if (show_welcome) {
+        return (
+          <WelcomeScreen
+            fullName={full_name || 'Rider'}
+            freeSlots={free_delivery_slots}
+            onContinue={markFirstLoginComplete}
+          />
+        )
+      }
+      return (
+        <RiderDashboard
+          state={state}
+          fullName={full_name || 'Rider'}
+          rating={rating}
+          completedDeliveries={completed_deliveries}
+        />
+      )
+
+    default:
+      return <RiderApplicationForm onSubmitted={refetch} />
   }
-
-  // Show status tracker for pending/under_review/rejected
-  if (appView === 'status' && appData) {
-    return (
-      <ApplicationStatusTracker
-        application={appData}
-        onResubmit={() => setAppView('resubmit')}
-      />
-    )
-  }
-
-  // ─── Approved Rider Dashboard ────────────────────────────────────
-  return (
-    <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
-      <VStack spacing={4} maxW="md" mx="auto">
-        {/* Header */}
-        <VStack spacing={1} w="full">
-          <Heading size="md" color="brand.500">
-            Available Deliveries
-          </Heading>
-          <Text fontSize="sm" color="gray.600">
-            {pendingJobs.filter(j => j.status === 'pending').length} jobs nearby
-          </Text>
-        </VStack>
-
-        {/* Rider Profile Card */}
-        {riderProfile && (
-          <Card bg="white" border="2px" borderColor="brand.200" w="full" shadow="sm">
-            <CardBody p={4}>
-              <VStack spacing={3} align="stretch">
-                <HStack spacing={4}>
-                  <Avatar
-                    name={riderProfile.name}
-                    size="lg"
-                    bg="brand.500"
-                    color="white"
-                  />
-                  <VStack align="start" spacing={1} flex={1}>
-                    <HStack>
-                      <Text fontWeight="bold" fontSize="md">{riderProfile.name}</Text>
-                      <Badge colorScheme="green" fontSize="2xs">Verified Rider</Badge>
-                    </HStack>
-                    <HStack spacing={1}>
-                      <Icon as={FaStar} color="yellow.400" boxSize={3} />
-                      <Text fontSize="sm" fontWeight="semibold" color="gray.700">
-                        {riderProfile.rating > 0 ? riderProfile.rating.toFixed(1) : 'No rating yet'}
-                      </Text>
-                    </HStack>
-                  </VStack>
-                </HStack>
-
-                <Divider />
-
-                <SimpleGrid columns={2} spacing={3} fontSize="xs">
-                  <HStack spacing={2}>
-                    <Icon as={FaMotorcycle} color="brand.500" boxSize={4} />
-                    <VStack align="start" spacing={0}>
-                      <Text color="gray.500">Vehicle</Text>
-                      <Text fontWeight="semibold" color="gray.800">
-                        {riderProfile.vehicle_type.charAt(0).toUpperCase() + riderProfile.vehicle_type.slice(1)}
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <HStack spacing={2}>
-                    <Icon as={FaIdBadge} color="brand.500" boxSize={4} />
-                    <VStack align="start" spacing={0}>
-                      <Text color="gray.500">Plate</Text>
-                      <Text fontWeight="semibold" color="gray.800">
-                        {riderProfile.vehicle_plate || 'N/A'}
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <HStack spacing={2}>
-                    <Icon as={FaPhone} color="brand.500" boxSize={4} />
-                    <VStack align="start" spacing={0}>
-                      <Text color="gray.500">Phone</Text>
-                      <Text fontWeight="semibold" color="gray.800">
-                        {riderProfile.phone || 'N/A'}
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <HStack spacing={2}>
-                    <Icon as={FaCheckCircle} color="green.500" boxSize={4} />
-                    <VStack align="start" spacing={0}>
-                      <Text color="gray.500">Deliveries</Text>
-                      <Text fontWeight="semibold" color="gray.800">
-                        {riderProfile.completed_deliveries} completed
-                      </Text>
-                    </VStack>
-                  </HStack>
-                </SimpleGrid>
-
-                {riderProfile.created_at && (
-                  <Text fontSize="2xs" color="gray.400" textAlign="center">
-                    Rider since {new Date(riderProfile.created_at).toLocaleDateString()}
-                  </Text>
-                )}
-              </VStack>
-            </CardBody>
-          </Card>
-        )}
-
-        {/* Tabs: Pending vs Claimed */}
-        <Tabs variant="soft-rounded" colorScheme="brand" w="full">
-          <TabList>
-            <Tab fontSize="sm">
-              Pending ({pendingJobs.filter(j => j.status === 'pending').length})
-            </Tab>
-            <Tab fontSize="sm">
-              Claimed ({claimedBatches.length})
-            </Tab>
-          </TabList>
-
-          <TabPanels>
-            {/* Pending Jobs */}
-            <TabPanel px={0}>
-              <VStack spacing={3} align="stretch">
-                {pendingJobs
-                  .filter(job => job.status === 'pending')
-                  .map(job => (
-                    <Card key={job.id} bg="white" border="1px" borderColor="gray.200">
-                      <CardBody p={3}>
-                        <VStack spacing={2} align="stretch">
-                          <HStack justify="space-between" align="start">
-                            <VStack align="start" spacing={0} flex={1}>
-                              <HStack spacing={2}>
-                                <Badge fontSize="2xs" colorScheme={getDeliveryColor(job.deliveryType)}>
-                                  {job.deliveryType === 'express' ? 'Express' : 'Standard'}
-                                </Badge>
-                                {job.isFragile && (
-                                  <Badge fontSize="2xs" colorScheme="red">Fragile</Badge>
-                                )}
-                              </HStack>
-                              <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                                {job.itemType}
-                              </Text>
-                            </VStack>
-                            <Text fontWeight="bold" color="brand.600">P{job.fee}</Text>
-                          </HStack>
-
-                          <SimpleGrid columns={2} spacing={2} fontSize="xs">
-                            <HStack spacing={1}>
-                              <Icon as={FaMapMarkerAlt} color="red.500" boxSize={3} />
-                              <Text color="gray.600" noOfLines={1}>{job.pickupLocation}</Text>
-                            </HStack>
-                            <HStack spacing={1}>
-                              <Icon as={FaClock} color="blue.500" boxSize={3} />
-                              <Text color="gray.600">{job.pickupWindow}</Text>
-                            </HStack>
-                            <HStack spacing={1}>
-                              <Icon as={FaBox} color="gray.600" boxSize={3} />
-                              <Text color="gray.600">{job.itemCount} item(s)</Text>
-                            </HStack>
-                            <Text color="gray.600" fontSize="xs" noOfLines={1}>
-                              {job.sender}
-                            </Text>
-                          </SimpleGrid>
-
-                          <VStack spacing={1} align="stretch" fontSize="xs">
-                            <HStack>
-                              <Badge colorScheme="green" fontSize="2xs">FROM</Badge>
-                              <Text color="gray.600" noOfLines={1}>{job.pickupLocation}</Text>
-                            </HStack>
-                            <HStack>
-                              <Badge colorScheme="red" fontSize="2xs">TO</Badge>
-                              <Text color="gray.600" noOfLines={1}>{job.dropoffLocation}</Text>
-                            </HStack>
-                          </VStack>
-
-                          <Button
-                            size="sm"
-                            colorScheme="brand"
-                            w="full"
-                            onClick={() => handleAcceptDelivery(job)}
-                            isDisabled={claimedBatches.some(b =>
-                              b.jobs.some(j => j.status !== 'delivered')
-                            )}
-                          >
-                            Claim Delivery
-                          </Button>
-                        </VStack>
-                      </CardBody>
-                    </Card>
-                  ))}
-
-                {pendingJobs.filter(j => j.status === 'pending').length === 0 && (
-                  <Text textAlign="center" color="gray.500" py={6}>
-                    No pending deliveries nearby
-                  </Text>
-                )}
-              </VStack>
-            </TabPanel>
-
-            {/* Claimed Batches */}
-            <TabPanel px={0}>
-              <VStack spacing={3} align="stretch">
-                {claimedBatches.map(batch => {
-                  const allCompleted = batch.jobs.every(j => j.status === 'delivered')
-                  return (
-                    <Card key={batch.batchId} bg={allCompleted ? 'gray.50' : 'green.50'} border="2px" borderColor={allCompleted ? 'gray.200' : 'green.200'}>
-                      <CardBody p={3}>
-                        <VStack spacing={3} align="stretch">
-                          <HStack justify="space-between" align="start">
-                            <VStack align="start" spacing={0}>
-                              <Badge colorScheme={batch.type === 'express' ? 'purple' : 'blue'}>
-                                {batch.type === 'express' ? 'Express' : 'Standard'}
-                              </Badge>
-                              <Text fontWeight="bold" fontSize="sm">
-                                {batch.jobs.length} job(s)
-                              </Text>
-                            </VStack>
-                            <VStack align="end" spacing={0}>
-                              <Text fontWeight="bold" color="green.600">P{batch.totalEarnings}</Text>
-                            </VStack>
-                          </HStack>
-
-                          {batch.riderName && (
-                            <Card bg="white" border="1px" borderColor="gray.200">
-                              <CardBody p={2}>
-                                <HStack justify="space-between" fontSize="sm">
-                                  <VStack align="start" spacing={0}>
-                                    <Text fontWeight="bold" color="gray.800">{batch.riderName}</Text>
-                                    {batch.riderVehicle && (
-                                      <Text fontSize="xs" color="gray.600">{batch.riderVehicle}</Text>
-                                    )}
-                                  </VStack>
-                                  {batch.riderRating && (
-                                    <HStack spacing={1}>
-                                      <Icon as={FaStar} color="yellow.400" boxSize={3} />
-                                      <Text fontWeight="bold" fontSize="sm">{batch.riderRating}</Text>
-                                    </HStack>
-                                  )}
-                                </HStack>
-                              </CardBody>
-                            </Card>
-                          )}
-
-                          <Divider />
-
-                          <VStack spacing={1} align="stretch">
-                            {batch.jobs.map((job, idx) => (
-                              <HStack key={job.id} spacing={2} fontSize="xs" py={1}>
-                                <Badge colorScheme={job.status === 'delivered' ? 'green' : 'gray'} fontSize="2xs">
-                                  {idx + 1}
-                                </Badge>
-                                <Text color="gray.700" flex={1} noOfLines={1}>
-                                  {job.pickupLocation} → {job.dropoffLocation}
-                                </Text>
-                                <Badge colorScheme={job.status === 'delivered' ? 'green' : 'yellow'} fontSize="2xs">
-                                  {job.status === 'delivered' ? 'Done' : job.status.replace(/_/g, ' ')}
-                                </Badge>
-                              </HStack>
-                            ))}
-                          </VStack>
-
-                          <Button
-                            size="sm"
-                            colorScheme={allCompleted ? 'gray' : 'green'}
-                            variant="solid"
-                            w="full"
-                            onClick={() => navigate(`/task-stepper/${batch.batchId}`)}
-                          >
-                            {allCompleted ? 'Completed' : 'Continue Delivery'}
-                          </Button>
-                        </VStack>
-                      </CardBody>
-                    </Card>
-                  )
-                })}
-
-                {claimedBatches.length === 0 && (
-                  <Text textAlign="center" color="gray.500" py={6}>
-                    No claimed deliveries yet
-                  </Text>
-                )}
-              </VStack>
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-
-        {/* Navigation Buttons */}
-        <HStack spacing={2} w="full" mt={4}>
-          <Button flex={1} size="sm" colorScheme="brand" onClick={() => navigate('/rider-queue')}>
-            Batches
-          </Button>
-          <Button flex={1} size="sm" colorScheme="brand" onClick={() => navigate('/remittance-ledger')}>
-            Earnings
-          </Button>
-        </HStack>
-      </VStack>
-
-      {/* Batch Preview Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="sm" isCentered>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader fontSize="md">
-            {selectedJob?.deliveryType === 'express' ? 'Claim Express Job?' : 'Claim Batch?'}
-          </ModalHeader>
-          <ModalBody>
-            <VStack spacing={3} align="stretch">
-              <Card bg="gray.50">
-                <CardBody p={3}>
-                  <VStack spacing={2} align="stretch" fontSize="sm">
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Type:</Text>
-                      <Badge colorScheme={getDeliveryColor(selectedJob?.deliveryType || 'standard')}>
-                        {selectedJob?.deliveryType === 'express' ? 'Express (Single)' : `Standard (${suggestedBatch.length} jobs)`}
-                      </Badge>
-                    </HStack>
-                    <HStack justify="space-between">
-                      <Text color="gray.600">Total Earnings:</Text>
-                      <Text fontWeight="bold" color="brand.600">
-                        P{suggestedBatch.reduce((sum, j) => sum + j.fee, 0)}
-                      </Text>
-                    </HStack>
-                  </VStack>
-                </CardBody>
-              </Card>
-
-              {selectedJob?.deliveryType === 'standard' && suggestedBatch.length > 1 && (
-                <VStack spacing={1} align="stretch">
-                  <Text fontWeight="bold" fontSize="xs" color="gray.700">
-                    Jobs in batch (max 5):
-                  </Text>
-                  {suggestedBatch.map((job, idx) => (
-                    <HStack key={job.id} spacing={2} fontSize="2xs" py={1}>
-                      <Badge colorScheme="gray">{idx + 1}</Badge>
-                      <Text color="gray.600" flex={1} noOfLines={1}>
-                        {job.itemType} - {job.sender}
-                      </Text>
-                      <Text fontWeight="bold">P{job.fee}</Text>
-                    </HStack>
-                  ))}
-                </VStack>
-              )}
-
-              <HStack spacing={2} p={2} bg="orange.50" borderRadius="md">
-                <WarningIcon boxSize={4} color="orange.600" />
-                <Text fontSize="xs" color="orange.900">
-                  Cannot claim new batch until current one is completed
-                </Text>
-              </HStack>
-            </VStack>
-          </ModalBody>
-          <ModalFooter>
-            <HStack spacing={2} w="full">
-              <Button variant="outline" flex={1} onClick={onClose}>Cancel</Button>
-              <Button
-                colorScheme="brand"
-                flex={1}
-                onClick={handleConfirmBatch}
-                isLoading={claiming}
-                loadingText="Claiming..."
-              >
-                Confirm Claim
-              </Button>
-            </HStack>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-    </Box>
-  )
 }
 
-export default RiderJobs
+export default RiderPage

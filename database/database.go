@@ -486,6 +486,73 @@ func CreateTables() error {
 			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
+		` CREATE TABLE IF NOT EXISTS delivery_stops (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			delivery_id INT NOT NULL,
+			stop_number INT NOT NULL,
+			stop_type ENUM('pickup', 'delivery') NOT NULL,
+			contact_name VARCHAR(255) NOT NULL,
+			contact_phone VARCHAR(20) NOT NULL,
+			address TEXT NOT NULL,
+			latitude DECIMAL(10,8) NULL,
+			longitude DECIMAL(11,8) NULL,
+			item_qr_code VARCHAR(255) NULL,
+			fee_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+			status ENUM('pending', 'arrived', 'qr_scanned', 'fee_collected', 'completed') NOT NULL DEFAULT 'pending',
+			arrived_at TIMESTAMP NULL,
+			qr_scanned_at TIMESTAMP NULL,
+			fee_collected_at TIMESTAMP NULL,
+			completed_at TIMESTAMP NULL,
+			photo_url VARCHAR(512) NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
+			INDEX idx_delivery_stop (delivery_id, stop_number),
+			INDEX idx_stop_status (status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS rider_cash_collections (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			rider_id INT NOT NULL,
+			delivery_id INT NOT NULL,
+			stop_id INT NOT NULL,
+			collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
+			amount DECIMAL(10,2) NOT NULL,
+			collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
+			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
+			FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
+			INDEX idx_rider_collections (rider_id, collected_at),
+			INDEX idx_delivery_collections (delivery_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS rider_ledger (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			rider_id INT NOT NULL UNIQUE,
+			total_cash_collected DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+			remittance_owed DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+			take_home DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+			free_slots_remaining INT NOT NULL DEFAULT 3,
+			total_free_slots_used INT NOT NULL DEFAULT 0,
+			last_remittance_at TIMESTAMP NULL,
+			is_locked_for_remittance BOOLEAN DEFAULT FALSE,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS rider_remittance_payments (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			rider_id INT NOT NULL,
+			amount_paid DECIMAL(10,2) NOT NULL,
+			payment_method VARCHAR(100) NOT NULL,
+			payment_proof_url VARCHAR(512) NULL,
+			status ENUM('pending', 'verified', 'rejected') NOT NULL DEFAULT 'pending',
+			verified_by INT NULL,
+			verified_at TIMESTAMP NULL,
+			rejection_reason TEXT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
+			FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_rider_payments (rider_id, created_at)
+		)`,
 		`CREATE TABLE IF NOT EXISTS reviews (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			reviewer_id INT NOT NULL,
@@ -606,6 +673,7 @@ func CreateTables() error {
 	ensureProductColumns()
 	ensureTradeColumns()
 	ensureRiderColumns()
+	ensureDeliveryBatchColumns()
 
 	// Seed Mock Rider: Wynry Perian
 	mockRiderEmail := "wynry@clovia.com"
@@ -916,6 +984,8 @@ func ensureRiderColumns() {
 		{"rejection_reason", "TEXT NULL"},
 		{"reviewed_at", "TIMESTAMP NULL"},
 		{"reviewed_by", "INT NULL"},
+		{"first_login_completed", "BOOLEAN DEFAULT FALSE"},
+		{"free_delivery_slots", "INT DEFAULT 3"},
 	}
 
 	for _, col := range columns {
@@ -945,6 +1015,48 @@ func ensureRiderColumns() {
 
 	// Backfill existing active riders as approved
 	DB.Exec("UPDATE riders SET status = 'approved' WHERE is_active = TRUE AND status = 'pending'")
+}
+
+// ensureDeliveryBatchColumns adds batch window columns to the deliveries table
+// PHASE 3: Also adds step lock and photo enforcement columns
+func ensureDeliveryBatchColumns() {
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"batch_id", "VARCHAR(36) NULL"},
+		{"batch_window_expires_at", "TIMESTAMP NULL"},
+		// Phase 3 - Task 15 & 16: Step lock and photo enforcement columns
+		{"qr_verified", "BOOLEAN DEFAULT FALSE"},
+		{"qr_code", "VARCHAR(255) NULL"},
+		{"photo_uploaded", "BOOLEAN DEFAULT FALSE"},
+		{"delivery_photo_url", "VARCHAR(512) NULL"},
+	}
+
+	for _, col := range columns {
+		var count int
+		err := DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = 'deliveries'
+			AND COLUMN_NAME = ?
+		`, col.name).Scan(&count)
+
+		if err != nil {
+			log.Printf("Warning: failed to check delivery column %s: %v", col.name, err)
+			continue
+		}
+
+		if count == 0 {
+			query := fmt.Sprintf("ALTER TABLE deliveries ADD COLUMN %s %s", col.name, col.definition)
+			if _, err := DB.Exec(query); err != nil {
+				log.Printf("Warning: failed to add delivery column %s: %v", col.name, err)
+			} else {
+				log.Printf("Added missing delivery column: %s", col.name)
+			}
+		}
+	}
 }
 
 // contains checks if a string contains a substring

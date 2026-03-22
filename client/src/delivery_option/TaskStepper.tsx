@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -22,9 +22,11 @@ import {
   TabPanel,
   Spinner,
   Center,
+  Image,
+  IconButton,
 } from '@chakra-ui/react'
-import { CheckCircleIcon, WarningIcon } from '@chakra-ui/icons'
-import { FaMapMarkerAlt, FaQrcode, FaCamera, FaPhone, FaSync } from 'react-icons/fa'
+import { CheckCircleIcon, WarningIcon, CloseIcon } from '@chakra-ui/icons'
+import { FaMapMarkerAlt, FaQrcode, FaCamera, FaPhone, FaSync, FaRedo } from 'react-icons/fa'
 import { api } from '../services/api'
 import { Delivery } from '../types'
 
@@ -54,6 +56,13 @@ const TaskStepper: React.FC = () => {
   const [qrScanned, setQrScanned] = useState(false)
   const [photoCaptured, setPhotoCaptured] = useState(false)
   const [deliveryNotes, setDeliveryNotes] = useState('')
+  // Phase 3 - Task 15 & 16: Store QR and photo data for backend submission
+  const [scannedQRCode, setScannedQRCode] = useState('')
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState('')
+  // Task 16: Real camera capture states
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch delivery data from API
   const fetchDelivery = async () => {
@@ -135,7 +144,9 @@ const TaskStepper: React.FC = () => {
     return STATUS_PROGRESSION[currentIdx + 1]
   }
 
-  const handleQrScan = () => {
+  const handleQrScan = async () => {
+    // Simulate QR scanning - in production this would use a camera
+    const scannedCode = `DELIVERY-${delivery?.id}-${Date.now()}`
     setQrScanned(true)
     toast({
         id: "taskstepper-qr-scanned",
@@ -144,17 +155,104 @@ const TaskStepper: React.FC = () => {
       status: 'success',
       duration: 2000,
     })
+    // Store QR code for submission
+    setScannedQRCode(scannedCode)
   }
 
+  // Task 16: Open camera for photo capture
   const handleCapturePhoto = () => {
-    setPhotoCaptured(true)
-    toast({
-        id: "taskstepper-photo-saved",
-      title: 'Photo Saved',
-      description: 'Proof captured',
-      status: 'success',
-      duration: 2000,
-    })
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
+
+  // Task 16: Handle file selection from camera
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({
+        id: "taskstepper-invalid-file",
+        title: 'Invalid File',
+        description: 'Please capture an image file',
+        status: 'error',
+        duration: 3000,
+      })
+      return
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        id: "taskstepper-file-too-large",
+        title: 'File Too Large',
+        description: 'Photo must be smaller than 10MB',
+        status: 'error',
+        duration: 3000,
+      })
+      return
+    }
+
+    // Create preview
+    const previewUrl = URL.createObjectURL(file)
+    setPhotoPreview(previewUrl)
+
+    // Upload the photo
+    setUploadingPhoto(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      formData.append('type', 'delivery_proof')
+
+      const response = await api.post('/api/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+
+      const uploadedUrl = response.data?.data?.url
+      if (uploadedUrl) {
+        setCapturedPhotoUrl(uploadedUrl)
+        setPhotoCaptured(true)
+        toast({
+          id: "taskstepper-photo-uploaded",
+          title: 'Photo Uploaded',
+          description: 'Delivery proof captured successfully',
+          status: 'success',
+          duration: 2000,
+        })
+      } else {
+        throw new Error('No URL returned from upload')
+      }
+    } catch (error: any) {
+      console.error('Photo upload failed:', error)
+      // Clear preview on error
+      setPhotoPreview(null)
+      URL.revokeObjectURL(previewUrl)
+      toast({
+        id: "taskstepper-upload-failed",
+        title: 'Upload Failed',
+        description: error?.response?.data?.error || 'Failed to upload photo. Please try again.',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setUploadingPhoto(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  // Task 16: Remove captured photo
+  const handleRemovePhoto = () => {
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview)
+    }
+    setPhotoPreview(null)
+    setCapturedPhotoUrl('')
+    setPhotoCaptured(false)
   }
 
   const handleCompleteTask = async () => {
@@ -167,21 +265,34 @@ const TaskStepper: React.FC = () => {
       return
     }
 
-    // For the final delivery step, require QR scan or notes
-    if (nextStatus === 'delivered' && !qrScanned && !deliveryNotes) {
+    // For the final delivery step, require photo proof (Task 16)
+    if (nextStatus === 'delivered' && !photoCaptured && !capturedPhotoUrl) {
       toast({
-        id: "taskstepper-missing-confirmation",
-        title: 'Missing Confirmation',
-        description: 'Scan QR or add delivery notes',
+        id: "taskstepper-missing-photo",
+        title: 'Photo Required',
+        description: 'Please capture a photo proof to complete delivery',
         status: 'warning',
-        duration: 2000,
+        duration: 3000,
       })
       return
     }
 
     setUpdating(true)
     try {
-      await api.put(`/api/deliveries/${delivery.id}/status`, { status: nextStatus })
+      // Build update payload with QR and photo data
+      const payload: Record<string, any> = { status: nextStatus }
+
+      // Include QR code if scanned
+      if (qrScanned && scannedQRCode) {
+        payload.qr_code = scannedQRCode
+      }
+
+      // Include photo URL if captured (required for delivery step)
+      if (photoCaptured && capturedPhotoUrl) {
+        payload.photo_url = capturedPhotoUrl
+      }
+
+      await api.put(`/api/deliveries/${delivery.id}/status`, payload)
 
       toast({
         id: "taskstepper-toast-6",
@@ -196,7 +307,14 @@ const TaskStepper: React.FC = () => {
       // Reset verification state
       setQrScanned(false)
       setPhotoCaptured(false)
+      setScannedQRCode('')
+      setCapturedPhotoUrl('')
       setDeliveryNotes('')
+      // Clear photo preview
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview)
+        setPhotoPreview(null)
+      }
 
       // Refresh delivery data
       await fetchDelivery()
@@ -439,16 +557,101 @@ const TaskStepper: React.FC = () => {
 
                       <TabPanel>
                         <VStack spacing={3} align="stretch">
-                          <Button
-                            colorScheme={photoCaptured ? 'green' : 'brand'}
-                            leftIcon={<Icon as={FaCamera} />}
-                            onClick={handleCapturePhoto}
-                            w="full"
-                          >
-                            {photoCaptured ? 'Photo Saved' : 'Capture Photo'}
-                          </Button>
+                          {/* Hidden file input for camera capture */}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            ref={fileInputRef}
+                            onChange={handleFileChange}
+                            style={{ display: 'none' }}
+                          />
+
+                          {/* Photo preview or capture button */}
+                          {photoPreview ? (
+                            <Box position="relative">
+                              <Image
+                                src={photoPreview}
+                                alt="Delivery proof"
+                                borderRadius="md"
+                                maxH="200px"
+                                w="full"
+                                objectFit="cover"
+                                border="2px"
+                                borderColor={photoCaptured ? 'green.400' : 'gray.200'}
+                              />
+                              {uploadingPhoto && (
+                                <Center
+                                  position="absolute"
+                                  top={0}
+                                  left={0}
+                                  right={0}
+                                  bottom={0}
+                                  bg="blackAlpha.600"
+                                  borderRadius="md"
+                                >
+                                  <VStack>
+                                    <Spinner color="white" size="lg" />
+                                    <Text color="white" fontSize="sm">Uploading...</Text>
+                                  </VStack>
+                                </Center>
+                              )}
+                              {photoCaptured && (
+                                <Badge
+                                  position="absolute"
+                                  top={2}
+                                  left={2}
+                                  colorScheme="green"
+                                  fontSize="xs"
+                                >
+                                  <Icon as={CheckCircleIcon} mr={1} />
+                                  Uploaded
+                                </Badge>
+                              )}
+                              <IconButton
+                                aria-label="Remove photo"
+                                icon={<CloseIcon />}
+                                size="sm"
+                                colorScheme="red"
+                                position="absolute"
+                                top={2}
+                                right={2}
+                                onClick={handleRemovePhoto}
+                                isDisabled={uploadingPhoto}
+                              />
+                            </Box>
+                          ) : (
+                            <Button
+                              colorScheme="brand"
+                              leftIcon={<Icon as={FaCamera} />}
+                              onClick={handleCapturePhoto}
+                              w="full"
+                              size="lg"
+                              isLoading={uploadingPhoto}
+                              loadingText="Opening camera..."
+                            >
+                              Open Camera
+                            </Button>
+                          )}
+
+                          {/* Retake button when photo exists */}
+                          {photoPreview && !uploadingPhoto && (
+                            <Button
+                              colorScheme="brand"
+                              variant="outline"
+                              leftIcon={<Icon as={FaRedo} />}
+                              onClick={handleCapturePhoto}
+                              w="full"
+                              size="sm"
+                            >
+                              Retake Photo
+                            </Button>
+                          )}
+
                           <Text fontSize="xs" color="gray.600" textAlign="center">
-                            Take photo proof for records
+                            {photoCaptured
+                              ? 'Photo proof captured and saved'
+                              : 'Take a clear photo of the delivered items as proof'}
                           </Text>
                         </VStack>
                       </TabPanel>
