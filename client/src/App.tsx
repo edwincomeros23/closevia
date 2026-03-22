@@ -39,6 +39,7 @@ import { MobileNavProvider } from './contexts/MobileNavContext'
 import { NotificationProvider } from './contexts/NotificationContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import ToastNotification from './components/ToastNotification'
+import InstallAppPrompt from './components/InstallAppPrompt'
 
 // Theme applier component - loads and applies saved theme preference
 const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -323,6 +324,7 @@ function App() {
                     </ErrorBoundary>
                     <GlobalPopup />
                     <ToastNotification />
+                    <InstallAppPrompt />
                   </Router>
                 </RealtimeProvider>
               </NotificationProvider>
