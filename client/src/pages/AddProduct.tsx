@@ -34,8 +34,6 @@ import {
   ModalHeader,
   ModalBody,
   ModalCloseButton,
-  Checkbox,
-  useDisclosure,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
 
@@ -210,13 +208,6 @@ const AddProduct: React.FC = () => {
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
   
-  // Premium Upsell Modal for Non-Premium User
-  const { 
-    isOpen: isPremiumModalOpen, 
-    onOpen: onOpenPremiumModal, 
-    onClose: onClosePremiumModal 
-  } = useDisclosure()
-
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const pageBg = '#FFFDF1'
@@ -1332,11 +1323,24 @@ const AddProduct: React.FC = () => {
                     onClick={(e) => {
                       e.stopPropagation()
                       const current = formData.wanted_categories || []
-                      const next = isSelected 
+                      if (!isSelected && current.length >= 3) {
+                        toast({
+                          id: 'addproduct-wanted-categories-max',
+                          title: 'Maximum 3 categories',
+                          description: 'You can choose up to 3 desired categories only.',
+                          status: 'warning',
+                          duration: 2500,
+                          isClosable: true,
+                          position: 'top-right',
+                        })
+                        return
+                      }
+                      const next = isSelected
                         ? current.filter(v => v !== cat.value)
                         : [...current, cat.value]
                       handleField('wanted_categories', next)
                     }}
+                    isDisabled={!isSelected && (formData.wanted_categories?.length || 0) >= 3}
                     fontSize="9px"
                     h="24px"
                     rounded="full"
@@ -1347,163 +1351,45 @@ const AddProduct: React.FC = () => {
                 )
               })}
             </SimpleGrid>
+            <FormHelperText fontSize="10px">Choose up to 3 categories.</FormHelperText>
           </FormControl>
           
           <FormControl>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
-            <HStack spacing={3} align="flex-start">
-              <Box flex={1}>
-                <FormControl>
-                  <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Price</FormLabel>
-                  <Input
-                    placeholder="e.g. 500"
-                    type="number"
-                    value={formData.price ?? ''}
-                    onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
-                    size="sm"
-                    bg="white"
-                    h="32px"
-                    onClick={e => e.stopPropagation()}
-                  />
-                  <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
-                </FormControl>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+              <Box>
+                <FormLabel fontSize="xs" color="gray.600" mb={1}>Desired Price</FormLabel>
+                <Input
+                  placeholder="e.g. 500"
+                  type="number"
+                  value={formData.price ?? ''}
+                  onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
+                  size="sm"
+                  bg="white"
+                  h="36px"
+                  onClick={e => e.stopPropagation()}
+                />
+                <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
               </Box>
-              <Box flex={1}>
+
+              <Box>
+                <FormLabel fontSize="xs" color="gray.600" mb={1}>Preferred Item</FormLabel>
                 <Input
                   placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
                   value={formData.wants}
                   onChange={e => handleField('wants', e.target.value)}
                   size="sm"
                   bg="white"
-                  maxLength={50}
-                  h="32px"
+                  maxLength={80}
+                  h="36px"
                   onClick={e => e.stopPropagation()}
                 />
                 <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
               </Box>
-            </HStack>
+            </SimpleGrid>
           </FormControl>
         </VStack>
       </Box>
-      
-      {/* ──────── PREMIUM SELLING OPTIONS ──────── */}
-      <Box p={4} bg="purple.50" borderRadius="lg" border="1px dashed" borderColor="purple.200">
-        <HStack justify="space-between" mb={3}>
-          <HStack>
-            <Text fontSize="sm" fontWeight="bold" color="purple.700">
-              💎 Premium Selling Options
-            </Text>
-            {!user?.is_premium && (
-              <Badge colorScheme="purple" fontSize="9px">PRO</Badge>
-            )}
-          </HStack>
-          {!user?.is_premium && (
-            <Button 
-              size="xs" 
-              colorScheme="purple" 
-              variant="link" 
-              fontSize="10px"
-              onClick={onOpenPremiumModal}
-            >
-              Learn More
-            </Button>
-          )}
-        </HStack>
-        
-        <VStack spacing={3} align="stretch" cursor={!user?.is_premium ? "pointer" : "auto"} onClick={!user?.is_premium ? onOpenPremiumModal : undefined}>
-          <FormControl display="flex" alignItems="center">
-            <Checkbox 
-              isChecked={formData.allow_buying}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                if (!user?.is_premium) {
-                  onOpenPremiumModal()
-                  return
-                }
-                handleField('allow_buying', e.target.checked)
-              }}
-              isDisabled={!user?.is_premium}
-              colorScheme="purple"
-              mr={2}
-            />
-            <Box>
-              <FormLabel mb={0} fontSize="xs" fontWeight="bold" cursor={user?.is_premium ? "pointer" : "not-allowed"}>
-                Enable Direct Purchase (Buyout)
-              </FormLabel>
-              <Text fontSize="10px" color="gray.500">
-                Allow buyers to purchase this item directly with cash.
-              </Text>
-            </Box>
-          </FormControl>
-
-          {formData.allow_buying && user?.is_premium && (
-            <FormControl>
-              <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Buyout Price (₱)</FormLabel>
-              <Input
-                type="number"
-                placeholder="Enter amount"
-                value={formData.price || ''}
-                onChange={e => handleField('price', parseFloat(e.target.value) || 0)}
-                size="sm"
-                bg="white"
-                h="32px"
-              />
-              <FormHelperText fontSize="10px">The cash amount a buyer must pay to buy the item immediately.</FormHelperText>
-            </FormControl>
-          )}
-        </VStack>
-      </Box>
-
-      {/* Premium Upsell Modal */}
-      <Modal isOpen={isPremiumModalOpen} onClose={onClosePremiumModal} isCentered>
-        <ModalOverlay bg="blackAlpha.700" backdropFilter="blur(5px)" />
-        <ModalContent borderRadius="2xl" overflow="hidden">
-          <ModalHeader bg="purple.600" color="white" textAlign="center" py={6}>
-            <VStack spacing={2}>
-              <Text fontSize="4xl">💎</Text>
-              <Heading size="md">Premium Required</Heading>
-            </VStack>
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={8} px={6}>
-            <VStack spacing={6} align="stretch">
-              <VStack spacing={3} align="start">
-                <HStack spacing={3}>
-                  <Box color="purple.500" fontSize="xl">✅</Box>
-                  <Text fontWeight="medium">Enable Direct Purchase (Buyout)</Text>
-                </HStack>
-                <HStack spacing={3}>
-                  <Box color="purple.500" fontSize="xl">✅</Box>
-                  <Text fontWeight="medium">Unlimited Trade Offers</Text>
-                </HStack>
-                <HStack spacing={3}>
-                  <Box color="purple.500" fontSize="xl">✅</Box>
-                  <Text fontWeight="medium">Priority Listing in Feed</Text>
-                </HStack>
-                <HStack spacing={3}>
-                  <Box color="purple.500" fontSize="xl">✅</Box>
-                  <Text fontWeight="medium">Verified User Badge</Text>
-                </HStack>
-              </VStack>
-              
-              <Button 
-                colorScheme="purple" 
-                size="lg" 
-                h="56px"
-                fontSize="md"
-                onClick={() => {
-                  onClosePremiumModal()
-                  navigate('/premium')
-                }}
-              >
-                Upgrade to Premium
-              </Button>
-              <Button variant="ghost" onClick={onClosePremiumModal}>
-                Maybe Later
-              </Button>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
     </VStack>
   )
 

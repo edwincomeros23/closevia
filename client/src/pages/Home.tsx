@@ -51,7 +51,7 @@ import {
   CloseIcon,
 } from '@chakra-ui/icons'
 import { FaUserCircle, FaHandshake, FaHome, FaTag, FaMotorcycle, FaCrown } from 'react-icons/fa'
-import { FiShoppingBag } from 'react-icons/fi'
+import { FiShoppingBag, FiDownload } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -71,6 +71,7 @@ import ProductCard from '../components/ProductCard'
 import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
+import { canShowInstallPrompt, initializeInstallPrompt, isRunningStandalone, promptInstall } from '../serviceWorkerRegistration'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -101,6 +102,7 @@ const Home: React.FC = () => {
 
   // Rider status for profile dropdown
   const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
+  const [canInstallApp, setCanInstallApp] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -109,6 +111,28 @@ const Home: React.FC = () => {
       }).catch(() => {})
     }
   }, [user])
+
+  useEffect(() => {
+    if (isRunningStandalone()) {
+      setCanInstallApp(false)
+      return
+    }
+
+    const cleanup = initializeInstallPrompt((isAvailable) => {
+      setCanInstallApp(isAvailable && !isRunningStandalone())
+    })
+
+    setCanInstallApp(canShowInstallPrompt() && !isRunningStandalone())
+
+    return cleanup
+  }, [])
+
+  const handleInstallApp = useCallback(async () => {
+    const accepted = await promptInstall()
+    if (accepted || !canShowInstallPrompt()) {
+      setCanInstallApp(false)
+    }
+  }, [])
 
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
@@ -213,9 +237,10 @@ const Home: React.FC = () => {
     // Reset category and search state to defaults on mount
     setSelectedCategory('All')
     setSearchTerm('')
-    // Fetch the default "All" feed every time the Home page mounts
+    // Trigger a single initial fetch through the filters effect
     console.log('🔍 Fetching initial products with limit: 20')
-    searchProducts({ limit: 20, page: 1 })
+    setFilters(prev => ({ ...prev, keyword: '', category: '', page: 1, limit: 20 }))
+    setHasSearched(true)
 
     // Set flag so returning users bypass landing page
     localStorage.setItem('has_visited', 'true')
@@ -264,11 +289,11 @@ const Home: React.FC = () => {
       setFilters(prev => {
         // Only trigger refetch if there was a keyword before
         if (prev.keyword) {
+          setHasSearched(true)
           return { ...prev, keyword: '', page: 1 }
         }
         return prev
       })
-      setHasSearched(true)
       return
     }
     setFilters(prev => ({ ...prev, keyword: debouncedSearchTerm, page: 1 }))
@@ -861,18 +886,36 @@ const Home: React.FC = () => {
                         {riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider'}
                       </Button>
 
-                      {!(user as any).is_premium && (
+                      <Button
+                        as={RouterLink}
+                        to="/premium"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaCrown} color="purple.500" />}
+                        color="purple.600"
+                      >
+                        {(user as any).is_premium ? 'Premium' : 'Buy Premium'}
+                      </Button>
+
+                      {canInstallApp && (
                         <Button
-                          as={RouterLink}
-                          to="/premium"
                           size="sm"
                           w="full"
                           variant="ghost"
                           justifyContent="flex-start"
-                          leftIcon={<Icon as={FaCrown} color="purple.500" />}
-                          color="purple.600"
+                          leftIcon={<Icon as={FiDownload} />}
+                          onClick={handleInstallApp}
+                          whiteSpace="normal"
+                          h="auto"
+                          py={2}
+                          textAlign="left"
                         >
-                          Buy Premium
+                          <VStack align="start" spacing={0}>
+                            <Text fontSize="sm" fontWeight="medium">Install Clovia</Text>
+                            <Text fontSize="xs" color="gray.500">for a full-screen app experience.</Text>
+                          </VStack>
                         </Button>
                       )}
 

@@ -115,8 +115,8 @@ const Dashboard: React.FC = () => {
   const { invalidateDashboard, invalidateProducts, invalidateOffers } = useInvalidateDashboard()
 
   // Derived state from cached data
-  const tradedItems = useMemo(() =>
-    actualUserProducts.filter(p => p.status === 'traded' || p.status === 'sold'),
+  const inventoryProducts = useMemo(
+    () => actualUserProducts.filter(p => p.status !== 'traded' && p.status !== 'sold'),
     [actualUserProducts]
   )
 
@@ -147,7 +147,7 @@ const Dashboard: React.FC = () => {
   const toast = useToast()
 
   // Product filters
-  const [productFilter, setProductFilter] = useState<'all' | 'available' | 'sold' | 'traded' | 'locked'>('all')
+  const [productFilter, setProductFilter] = useState<'all' | 'available' | 'locked'>('all')
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all')
   const [productSearch, setProductSearch] = useState('')
   const [productSort, setProductSort] = useState<'newest' | 'oldest'>('newest')
@@ -324,8 +324,8 @@ const Dashboard: React.FC = () => {
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
-    const totalProducts = actualUserProducts.length
-    const activeProducts = actualUserProducts.length // All actualUserProducts are already filtered to available
+    const totalProducts = inventoryProducts.length
+    const activeProducts = inventoryProducts.filter(p => p.status === 'available').length
     const activeTrades = (ongoingTradesData || []).length
     const newOffers = (incoming || []).length // All incoming trades are already filtered to pending
     const completedTrades = (tradeHistory || []).length
@@ -336,13 +336,54 @@ const Dashboard: React.FC = () => {
       newOffers,
       completedTrades
     }
-  }, [actualUserProducts, incoming, ongoingTradesData, tradeHistory])
+  }, [inventoryProducts, incoming, ongoingTradesData, tradeHistory])
 
   // Get product title helper (needs to be defined before use)
   const getProductTitle = (productId: number, fallbackTitle?: string): string => {
     if (fallbackTitle) return fallbackTitle
     return productTitles.get(productId) || 'Unnamed Item'
   }
+
+  const getTradeReceivedTitle = useCallback((trade: Trade): string => {
+    if (trade.items && trade.items.length > 0) {
+      return getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)
+    }
+    if (trade.offered_cash_amount && trade.offered_cash_amount > 0) {
+      return `Cash ${formatPHP(trade.offered_cash_amount)}`
+    }
+    return 'N/A'
+  }, [getProductTitle])
+
+  const getTradePartnerInfo = useCallback((trade: Trade) => {
+    const isYouBuyer = trade.buyer_id === user?.id
+    return {
+      name: isYouBuyer ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous'),
+      role: isYouBuyer ? 'Seller' : 'Buyer',
+      direction: isYouBuyer ? 'You initiated this trade' : 'They initiated this trade',
+    }
+  }, [user?.id])
+
+  const getTradeWhere = useCallback((trade: Trade): string => {
+    if (trade.trade_option === 'delivery') {
+      return trade.delivery_address || 'Delivery location not set'
+    }
+    if (trade.trade_option === 'meetup') {
+      return trade.meetup_location || 'Meetup location not set'
+    }
+    return trade.meetup_location || trade.delivery_address || 'Location not set'
+  }, [])
+
+  const getTradeWhen = useCallback((trade: Trade) => {
+    const source = trade.completed_at || trade.updated_at || trade.created_at
+    const dt = new Date(source)
+    if (Number.isNaN(dt.getTime())) {
+      return { date: 'Date unavailable', time: '' }
+    }
+    return {
+      date: dt.toLocaleDateString(),
+      time: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }
+  }, [])
 
   // Unified search filter - applies to all content types
   const applyUnifiedSearch = useCallback((items: any[], searchTerm: string, type: 'product' | 'trade') => {
@@ -375,14 +416,14 @@ const Dashboard: React.FC = () => {
 
   // Filtered products - optimized with better memoization
   const filteredProducts = useMemo(() => {
-    let filtered = actualUserProducts
+    let filtered = inventoryProducts
 
     // Status filter - optimize by avoiding unnecessary filtering
     if (productFilter === 'all') {
       // Hide locked products by default (they are in active trades)
-      filtered = actualUserProducts.filter(p => p.status !== 'locked')
+      filtered = inventoryProducts.filter(p => p.status !== 'locked')
     } else {
-      filtered = actualUserProducts.filter(p => p.status === productFilter)
+      filtered = inventoryProducts.filter(p => p.status === productFilter)
     }
 
     // Category filter
@@ -397,7 +438,7 @@ const Dashboard: React.FC = () => {
     }
 
     return filtered
-  }, [actualUserProducts, productFilter, productCategoryFilter, unifiedSearch, productSearch, applyUnifiedSearch])
+  }, [inventoryProducts, productFilter, productCategoryFilter, unifiedSearch, productSearch, applyUnifiedSearch])
 
   // Debounced cache invalidation for notification counts
   const invalidateCountsDebounced = useCallback(() => {
@@ -2696,16 +2737,16 @@ const Dashboard: React.FC = () => {
                           onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
                       </Tooltip>
-                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
+                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`} hasArrow>
                         <IconButton
                           aria-label="Filter products"
                           icon={<FiFilter />}
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            const filters = ['all', 'available', 'sold', 'traded', 'locked']
+                            const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
                             const currentIndex = filters.indexOf(productFilter)
-                            setProductFilter(filters[(currentIndex + 1) % filters.length] as any)
+                            setProductFilter(filters[(currentIndex + 1) % filters.length])
                             setCurrentPage(1)
                           }}
                         />
@@ -2915,9 +2956,9 @@ const Dashboard: React.FC = () => {
                       <HStack spacing={1}>
                         <Icon as={FiShoppingBag} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Products</Text>
-                        {actualUserProducts.filter(p => p.status !== 'locked').length > 0 && (
+                        {inventoryProducts.filter(p => p.status !== 'locked').length > 0 && (
                           <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
-                            {actualUserProducts.filter(p => p.status !== 'locked').length}
+                            {inventoryProducts.filter(p => p.status !== 'locked').length}
                           </Badge>
                         )}
                       </HStack>
@@ -3960,13 +4001,14 @@ const Dashboard: React.FC = () => {
                             textTransform="uppercase"
                             display={{ base: 'none', md: 'flex' }}
                           >
-                            Product • Partner • Date • Action
+                            What • Who • Where • When • Action
                           </Box>
                           {paginatedTradeHistory.map((trade, idx) => {
-                            const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
-                            const tradingPartner = isIncoming
-                              ? (trade.buyer_name || 'Anonymous')
-                              : (trade.seller_name || 'Anonymous')
+                            const partner = getTradePartnerInfo(trade)
+                            const where = getTradeWhere(trade)
+                            const when = getTradeWhen(trade)
+                            const gaveTitle = getProductTitle(trade.target_product_id, trade.product_title)
+                            const receivedTitle = getTradeReceivedTitle(trade)
 
                             return (
                               <Flex
@@ -3994,22 +4036,23 @@ const Dashboard: React.FC = () => {
                                     size="100%"
                                   />
                                 </Box>
-                                <VStack align="start" spacing={0} flex={1} minW={0}>
+                                <VStack align="start" spacing={1} flex={1} minW={0}>
                                   <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-                                    {getProductTitle(trade.target_product_id, trade.product_title)}
+                                    {gaveTitle}
                                   </Text>
-                                  <HStack spacing={2} mt={1}>
-                                    <Text fontSize="xs" color="gray.600">{tradingPartner}</Text>
-                                    <Badge colorScheme={isIncoming ? 'green' : 'blue'} fontSize="2xs" px={1.5} py={0.5}>
-                                      {isIncoming ? 'Received' : 'Sent'}
-                                    </Badge>
+                                  <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                                    Received: {receivedTitle}
+                                  </Text>
+                                  <HStack spacing={2} flexWrap="wrap">
+                                    <Badge colorScheme="blue" fontSize="2xs" px={1.5}>WHO: {partner.name}</Badge>
+                                    <Badge colorScheme="purple" fontSize="2xs" px={1.5}>WHERE: {where}</Badge>
+                                    <Badge colorScheme="green" fontSize="2xs" px={1.5}>WHEN: {when.date}</Badge>
                                   </HStack>
                                 </VStack>
-                                {trade.completed_at && (
-                                  <Text fontSize="xs" color="gray.600" flexShrink={0}>
-                                    {new Date(trade.completed_at).toLocaleDateString()}
-                                  </Text>
-                                )}
+                                <VStack align="end" spacing={0} flexShrink={0}>
+                                  <Text fontSize="xs" color="gray.600">{when.date}</Text>
+                                  <Text fontSize="2xs" color="gray.500">{when.time || 'N/A'}</Text>
+                                </VStack>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -4050,19 +4093,19 @@ const Dashboard: React.FC = () => {
                             h="fit-content"
                           >
                             <Box w="60px" flexShrink={0}>Product</Box>
-                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>Your Item</Box>
+                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>WHAT: You Gave</Box>
                             <Box w="40px" display="flex" justifyContent="center" flexShrink={0}>↔</Box>
-                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>Received Item</Box>
-                            <Box w="120px" flexShrink={0}>Partner</Box>
-                            <Box w="100px" flexShrink={0}>Date</Box>
+                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>WHAT: You Received</Box>
+                            <Box w="120px" flexShrink={0}>WHO</Box>
+                            <Box w="140px" flexShrink={0}>WHERE</Box>
+                            <Box w="100px" flexShrink={0}>WHEN</Box>
                             <Box w="80px" flexShrink={0} textAlign="center">Action</Box>
                           </HStack>
                           {/* Trade Rows */}
                           {paginatedTradeHistory.map((trade, idx) => {
-                            const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
-                            const tradingPartner = isIncoming
-                              ? (trade.buyer_name || 'Anonymous')
-                              : (trade.seller_name || 'Anonymous')
+                            const partner = getTradePartnerInfo(trade)
+                            const where = getTradeWhere(trade)
+                            const when = getTradeWhen(trade)
 
                             return (
                               <HStack
@@ -4103,41 +4146,34 @@ const Dashboard: React.FC = () => {
 
                                 {/* Received Item Info */}
                                 <VStack align="start" spacing={0} flex={1.2} minW={{ base: '120px', md: '150px' }}>
-                                  {trade.items && trade.items.length > 0 ? (
-                                    <>
-                                      <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="semibold" color="gray.800" noOfLines={1}>
-                                        {getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)}
-                                      </Text>
-                                      <Badge colorScheme="green" fontSize="2xs" w="fit-content">
-                                        Received
-                                      </Badge>
-                                    </>
-                                  ) : (
-                                    <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.500">N/A</Text>
-                                  )}
+                                  <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="semibold" color="gray.800" noOfLines={1}>
+                                    {getTradeReceivedTitle(trade)}
+                                  </Text>
+                                  <Badge colorScheme="green" fontSize="2xs" w="fit-content">
+                                    Received
+                                  </Badge>
                                 </VStack>
 
                                 {/* Partner Name */}
                                 <VStack align="start" spacing={0} w={{ base: '100px', md: '140px' }} flexShrink={0}>
                                   <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="medium" color="gray.800" noOfLines={1}>
-                                    {tradingPartner}
+                                    {partner.name}
                                   </Text>
                                   <Badge colorScheme="gray" fontSize="2xs" w="fit-content">
-                                    {isIncoming ? 'Buyer' : 'Trader'}
+                                    {partner.role}
                                   </Badge>
                                 </VStack>
 
+                                {/* Location */}
+                                <Text fontSize="xs" color="gray.700" w={{ base: '120px', md: '160px' }} noOfLines={2} flexShrink={0}>
+                                  {where}
+                                </Text>
+
                                 {/* Date */}
                                 <VStack align="start" spacing={0} w={{ base: '90px', md: '110px' }} flexShrink={0}>
-                                  <Text fontSize={{ base: '2xs', md: 'xs' }} color="gray.600">
-                                    {trade.completed_at
-                                      ? new Date(trade.completed_at).toLocaleDateString()
-                                      : new Date(trade.updated_at).toLocaleDateString()}
-                                  </Text>
+                                  <Text fontSize={{ base: '2xs', md: 'xs' }} color="gray.600">{when.date}</Text>
                                   <Text fontSize="2xs" color="gray.500">
-                                    {trade.completed_at
-                                      ? new Date(trade.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                      : 'N/A'}
+                                    {when.time || 'N/A'}
                                   </Text>
                                 </VStack>
 
@@ -4163,10 +4199,9 @@ const Dashboard: React.FC = () => {
                         {/* Mobile Card View */}
                         <VStack spacing={4} align="stretch" display={{ base: 'flex', md: 'none' }}>
                           {paginatedTradeHistory.map((trade) => {
-                            const isIncoming = incoming.some(t => t.id === trade.id)
-                            const tradingPartner = isIncoming
-                              ? (trade.buyer_name || 'Anonymous')
-                              : (trade.seller_name || 'Anonymous')
+                            const partner = getTradePartnerInfo(trade)
+                            const where = getTradeWhere(trade)
+                            const when = getTradeWhen(trade)
 
                             return (
                               <Box
@@ -4190,28 +4225,32 @@ const Dashboard: React.FC = () => {
                                       />
                                     </Box>
                                     <VStack align="start" spacing={0} flex={1}>
-                                      <Text fontSize="xs" fontWeight="semibold" color="gray.600">
-                                        Trading with
-                                      </Text>
+                                      <Text fontSize="xs" fontWeight="semibold" color="gray.600">WHO</Text>
                                       <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={1}>
-                                        {tradingPartner}
+                                        {partner.name}
                                       </Text>
+                                      <Text fontSize="2xs" color="gray.500">{partner.direction}</Text>
                                     </VStack>
                                   </HStack>
 
-                                  {/* Date */}
-                                  <Text fontSize="xs" color="gray.500">
-                                    {trade.completed_at
-                                      ? new Date(trade.completed_at).toLocaleDateString()
-                                      : new Date(trade.updated_at).toLocaleDateString()}
-                                  </Text>
+                                  <SimpleGrid columns={2} spacing={2}>
+                                    <Box bg="gray.50" p={2} borderRadius="md">
+                                      <Text fontSize="2xs" color="gray.500" textTransform="uppercase">Where</Text>
+                                      <Text fontSize="xs" color="gray.700" noOfLines={2}>{where}</Text>
+                                    </Box>
+                                    <Box bg="gray.50" p={2} borderRadius="md">
+                                      <Text fontSize="2xs" color="gray.500" textTransform="uppercase">When</Text>
+                                      <Text fontSize="xs" color="gray.700">{when.date}</Text>
+                                      <Text fontSize="2xs" color="gray.500">{when.time || 'N/A'}</Text>
+                                    </Box>
+                                  </SimpleGrid>
 
                                   {/* Trade details */}
                                   <Box bg="gray.50" p={3} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
                                     <VStack align="stretch" spacing={2}>
                                       <VStack align="start" spacing={1}>
                                         <Text fontSize="xs" fontWeight="semibold" color="gray.600" textTransform="uppercase">
-                                          You Gave
+                                          What: You Gave
                                         </Text>
                                         <Text fontSize="sm" color="gray.800">
                                           {getProductTitle(trade.target_product_id, trade.product_title)}
@@ -4224,12 +4263,10 @@ const Dashboard: React.FC = () => {
 
                                       <VStack align="start" spacing={1}>
                                         <Text fontSize="xs" fontWeight="semibold" color="gray.600" textTransform="uppercase">
-                                          You Received
+                                          What: You Received
                                         </Text>
                                         <Text fontSize="sm" color="gray.800">
-                                          {trade.items && trade.items.length > 0
-                                            ? getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)
-                                            : 'N/A'}
+                                          {getTradeReceivedTitle(trade)}
                                         </Text>
                                       </VStack>
                                     </VStack>
