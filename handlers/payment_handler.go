@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -97,9 +98,20 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		fmt.Printf("🛒 Purchase detected (0 items offered). Added product price: %.2f\n", productPrice)
 	}
 
-	// 3. Delivery Fee
+	// 3. Delivery Fee (Express is a Premium feature)
 	deliveryFee := 0.0
-	if deliveryType.Valid {
+	if deliveryType.Valid && deliveryType.String != "" {
+		// Check premium status for express delivery
+		var isPremium bool
+		h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
+
+		if deliveryType.String == "express" && !isPremium {
+			return c.Status(403).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Express Delivery is a Premium feature. Please upgrade to use it.",
+			})
+		}
+
 		switch deliveryType.String {
 		case "express":
 			deliveryFee = 150.0
@@ -236,20 +248,38 @@ func (h *PaymentHandler) CreatePremiumInvoice(c *fiber.Ctx) error {
 	externalID := fmt.Sprintf("premium_%s_%d", productID, userID)
 	description := fmt.Sprintf("Clovia Premium Upgrade: %s", title)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/dashboard", frontendURL)
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -291,20 +321,38 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 	externalID := fmt.Sprintf("boost_%s_%d", productID, userID)
 	description := fmt.Sprintf("Clovia Product Boost: %s", title)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/products/%s", frontendURL, productID)
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -324,33 +372,94 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(int)
 
+	var payload struct {
+		Tier string `json:"tier"` // "plus" or "pro"
+		Plan string `json:"plan"` // "monthly" or "yearly"
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		payload.Tier = "plus"
+		payload.Plan = "monthly"
+	}
+	if payload.Tier == "" {
+		payload.Tier = "plus"
+	}
+	if payload.Plan == "" {
+		payload.Plan = "monthly"
+	}
+
 	var buyerName, buyerEmail string
 	err := h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
-	amount := 499.0 // Pricing for full premium account
+	// Check current premium status — allow Plus→Pro upgrades
+	var isPremium bool
+	var currentTier string
+	h.db.QueryRow("SELECT COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE id = ?", userID).Scan(&isPremium, &currentTier)
+	if isPremium && currentTier == "pro" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You already have Pro — the highest tier"})
+	}
+	if isPremium && currentTier == payload.Tier {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You are already a %s member", payload.Tier)})
+	}
+
+	// Pricing: Plus ₱79/mo or ₱699/yr, Pro ₱120/mo or ₱1,099/yr
+	amount := 79.0
+	description := "Clovia Plus Subscription (Monthly)"
+
+	if payload.Tier == "pro" {
+		if payload.Plan == "yearly" {
+			amount = 1099.0
+			description = "Clovia Pro Subscription (Yearly)"
+		} else {
+			amount = 120.0
+			description = "Clovia Pro Subscription (Monthly)"
+		}
+	} else {
+		if payload.Plan == "yearly" {
+			amount = 699.0
+			description = "Clovia Plus Subscription (Yearly)"
+		}
+	}
+
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	xenditClient := xendit.NewClient(apiKey)
 
-	externalID := fmt.Sprintf("user_premium_%d", userID)
-	description := "Clovia Premium Subscription (Lifetime)"
+	externalID := fmt.Sprintf("user_premium_%s_%d", payload.Tier, userID)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/premium", frontendURL)
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -370,14 +479,31 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	var payload map[string]interface{}
 	if err := c.BodyParser(&payload); err != nil {
+		log.Printf("❌ Webhook Error: Invalid payload: %v", err)
 		return c.Status(400).SendString("Invalid payload")
 	}
 
-	status, _ := payload["status"].(string)
-	externalID, _ := payload["external_id"].(string)
-	amount, _ := payload["amount"].(float64)
+	var status, externalID string
+	var amount float64
 
-	if status != "PAID" {
+	// Try top-level structure (Invoices)
+	if s, ok := payload["status"].(string); ok { status = s }
+	if e, ok := payload["external_id"].(string); ok { externalID = e }
+	if a, ok := payload["amount"].(float64); ok { amount = a }
+
+	// Try nested structure (Recurring/Subscriptions)
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		if s, ok := data["status"].(string); ok { status = s }
+		if e, ok := data["external_id"].(string); ok { externalID = e }
+		if a, ok := data["amount"].(float64); ok { amount = a }
+	}
+
+	status = strings.ToUpper(status)
+	log.Printf("🔔 Webhook Received: Status=%s, ExternalID=%s, Amount=%.2f", status, externalID, amount)
+
+	// Xendit uses "PAID" for invoices, but other methods might use "COMPLETED" or "SUCCEEDED"
+	if status != "PAID" && status != "COMPLETED" && status != "SUCCEEDED" {
+		log.Printf("⏭️  Webhook: Ignoring non-success status: %s", status)
 		return c.SendStatus(200)
 	}
 
@@ -441,13 +567,27 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 		}
 	} else if strings.HasPrefix(externalID, "user_premium_") {
 		var userID int
-		fmt.Sscanf(externalID, "user_premium_%d", &userID)
+		var tier string
+		if strings.Count(externalID, "_") >= 3 {
+			// user_premium_<tier>_<userID> e.g. user_premium_plus_123
+			parts := strings.Split(externalID, "_")
+			tier = parts[2]
+			fmt.Sscanf(parts[len(parts)-1], "%d", &userID)
+		} else {
+			// user_premium_<userID> (legacy support)
+			fmt.Sscanf(externalID, "user_premium_%d", &userID)
+			tier = "plus" // Default to plus for legacy
+		}
 
 		if userID > 0 {
 			// Update user status
-			_, err := h.db.Exec("UPDATE users SET is_premium = true WHERE id = ?", userID)
+			log.Printf("💎 Webhook: Granting %s premium to user %d (Amount: %.2f)", tier, userID, amount)
+			_, err := h.db.Exec("UPDATE users SET is_premium = true, premium_tier = ?, verified = true WHERE id = ?", tier, userID)
 			if err != nil {
+				log.Printf("❌ Webhook Error: User premium update failed for user %d: %v\n", userID, err)
 				fmt.Printf("Webhook Error: User premium update failed for user %d: %v\n", userID, err)
+			} else {
+				log.Printf("✅ Webhook SUCCESS: Updated user %d to premium tier %s\n", userID, tier)
 			}
 
 			// Record Earnings
@@ -455,6 +595,10 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
 				VALUES (?, ?, 'premium_upgrade', ?, ?)`,
 				userID, amount, userID, externalID)
+			if err != nil {
+				log.Printf("❌ Earnings Error (User %d): %v\n", userID, err)
+				fmt.Printf("Earnings Error (User %d): %v\n", userID, err)
+			}
 		}
 	}
 

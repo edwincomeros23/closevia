@@ -779,14 +779,16 @@ const Home: React.FC = () => {
                 <PopoverTrigger>
                   <Box
                     as="button"
-                    cursor="pointer"
+                    cursor={user.id ? "pointer" : "not-allowed"}
                     display={{ base: 'none', md: 'inline-flex' }}
                     alignItems="center"
                     justifyContent="center"
                     borderRadius="full"
-                    _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                    _hover={{ opacity: user.id ? 0.8 : 1, transform: user.id ? 'scale(1.05)' : 'scale(1)' }}
                     transition="all 0.2s"
-                    onClick={() => navigate(`/users/${user.slug || user.id}`)}
+                    onClick={() => user.id && navigate(`/users/${user.slug || user.id}`)}
+                    disabled={!user.id}
+                    opacity={user.id ? 1 : 0.5}
                   >
                     <VerifiedAvatar
                       size="sm"
@@ -835,7 +837,8 @@ const Home: React.FC = () => {
                         </Box>
                         <Button
                           as={RouterLink}
-                          to={`/users/${user.id}`}
+                          to={user.id ? `/users/${user.id}` : '#'}
+                          isDisabled={!user.id}
                           size="sm"
                           w="full"
                           colorScheme="brand"

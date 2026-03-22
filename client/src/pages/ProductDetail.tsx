@@ -1419,30 +1419,45 @@ const ProductDetail: React.FC = () => {
             </Heading>
             <Flex justify="space-between" align="stretch" gap={6} flexDir={{ base: 'column', lg: 'row' }}>
               <HStack spacing={4} flex={1}>
-                <RouterLink to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}>
+                {((sellerProfile as any)?.slug || product.seller_id) ? (
+                  <RouterLink to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}>
+                    <VerifiedAvatar
+                      size="lg"
+                      src={sellerProfile?.profile_picture}
+                      name={product.seller_name}
+                      bg="red.500"
+                      color="white"
+                      cursor="pointer"
+                      _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                      transition="all 0.2s"
+                      isVerified={sellerProfile?.verification_status === 'verified' || sellerProfile?.verified || false}
+                    />
+                  </RouterLink>
+                ) : (
                   <VerifiedAvatar
                     size="lg"
                     src={sellerProfile?.profile_picture}
                     name={product.seller_name}
                     bg="red.500"
                     color="white"
-                    cursor="pointer"
-                    _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
-                    transition="all 0.2s"
                     isVerified={sellerProfile?.verification_status === 'verified' || sellerProfile?.verified || false}
                   />
-                </RouterLink>
+                )}
                 <Box>
                   <HStack spacing={2} align="center" flexWrap="wrap">
-                    <Button
-                      as={RouterLink}
-                      to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}
-                      variant="link"
-                      color="brand.600"
-                      _hover={{ textDecoration: 'underline' }}
-                    >
-                      {product.seller_name}
-                    </Button>
+                    {((sellerProfile as any)?.slug || product.seller_id) ? (
+                      <Button
+                        as={RouterLink}
+                        to={`/users/${(sellerProfile as any)?.slug || product.seller_id}`}
+                        variant="link"
+                        color="brand.600"
+                        _hover={{ textDecoration: 'underline' }}
+                      >
+                        {product.seller_name}
+                      </Button>
+                    ) : (
+                      <Text color="brand.600" fontWeight="medium">{product.seller_name}</Text>
+                    )}
                     {(sellerProfile as any)?.verification_status === 'verified' && (
                       <Badge colorScheme="teal" borderRadius="full" px={2} py={0.5} fontSize="xs">
                         <HStack spacing={1}>

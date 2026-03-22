@@ -85,9 +85,9 @@ func (h *NotificationHandler) GetDashboardCounts(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch notification counts"})
 	}
 
-	// Pending offers are incoming trades with status=pending
+	// Pending offers are incoming trades with status=pending or pending_multiway
 	var pendingOffers int
-	if err := h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status = 'pending'", userID).Scan(&pendingOffers); err != nil {
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('pending', 'pending_multiway')", userID).Scan(&pendingOffers); err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch pending offers count"})
 	}
 

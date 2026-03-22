@@ -2,6 +2,7 @@ package main
 
 // hallo :3
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/handlers"
 	"github.com/xashathebest/clovia/middleware"
+	"github.com/xashathebest/clovia/models"
 	"github.com/xashathebest/clovia/services"
 )
 
@@ -187,6 +189,64 @@ func main() {
 		})
 	})
 
+	// Diagnostic endpoint for debugging GetProfile issues
+	app.Get("/api/diagnostic/profile/:userId", func(c *fiber.Ctx) error {
+		userID := c.Params("userId")
+
+		var user models.User
+		var schoolEmailVerifiedAt sql.NullTime
+		var lastLogin sql.NullTime
+		var slugNull sql.NullString
+
+		err := database.DB.QueryRow(`
+			SELECT id, slug, name, email, role, verified,
+			        COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') AS org_name,
+			        COALESCE(org_logo_url, '') AS org_logo_url,
+			        COALESCE(profile_picture, '') AS profile_picture,
+			        COALESCE(bio, '') AS bio,
+			        COALESCE(background_image, '') AS background_image,
+			        COALESCE(background_position, '') AS background_position,
+			        COALESCE(department, '') AS department,
+			        COALESCE(badges, '[]') AS badges,
+			        COALESCE(is_premium, FALSE) AS is_premium,
+			        COALESCE(verification_status, 'not_verified') AS verification_status,
+			        COALESCE(school_name, '') AS school_name,
+			        COALESCE(school_email, '') AS school_email,
+			        school_email_verified_at,
+			        COALESCE(verification_rejection_reason, '') AS verification_rejection_reason,
+			        COALESCE(email_notifications_enabled, TRUE) AS email_notifications_enabled,
+			        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
+			        COALESCE(language_preference, 'en') AS language_preference,
+			        created_at, updated_at, last_login
+			 FROM users WHERE id = ?`,
+			userID,
+		).Scan(
+			&user.ID, &slugNull, &user.Name, &user.Email, &user.Role, &user.Verified,
+			&user.IsOrganization, &user.OrgVerified, &user.OrgName,
+			&user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage,
+			&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
+			&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
+			&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
+			&user.LanguagePreference,
+			&user.CreatedAt, &user.UpdatedAt, &lastLogin,
+		)
+
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{
+				"success":    false,
+				"error":      err.Error(),
+				"userId":     userID,
+				"diagnostic": "Failed to fetch user profile - this is the error you would get",
+			})
+		}
+
+		return c.JSON(fiber.Map{
+			"success":    true,
+			"user":       user,
+			"diagnostic": "Profile query succeeded",
+		})
+	})
+
 	// API routes
 	api := app.Group("/api")
 
@@ -280,6 +340,7 @@ func main() {
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
 	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct) // Boost a listing
+	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
@@ -310,10 +371,19 @@ func main() {
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
+	trades.Get("/loops/notifications", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopNotifications)
+	trades.Post("/loops/notifications/clear", middleware.AuthMiddleware(), tradeHandler.ClearLoopNotifications)
+	trades.Post("/loops/notifications/:id/read", middleware.AuthMiddleware(), tradeHandler.MarkLoopNotificationRead)
 	trades.Get("/loops/:id", middleware.AuthMiddleware(), tradeHandler.GetTradeLoop)
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	
+	// Multi-way chain specific routes
+	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
+	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
+	trades.Post("/multiway/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineMultiwayChain)
+
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)

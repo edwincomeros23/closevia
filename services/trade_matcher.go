@@ -2,7 +2,9 @@ package services
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"strings"
 
 	"github.com/xashathebest/clovia/models"
 )
@@ -28,7 +30,7 @@ func NewTradeGraph(db *sql.DB) (*TradeGraph, error) {
 		Nodes: make(map[int]bool),
 	}
 
-	rows, err := db.Query("SELECT id, buyer_id, seller_id FROM trades WHERE status = 'pending'")
+	rows, err := db.Query("SELECT id, buyer_id, seller_id FROM trades WHERE status IN ('pending', 'pending_multiway')")
 	if err != nil {
 		return nil, err
 	}
@@ -96,4 +98,103 @@ func (g *TradeGraph) dfs(startNode, currentNode int, adj map[int][]TradeEdge, pa
 	}
 
 	(*visited)[currentNode] = false
+}
+
+// MultiwayMatch represents a potential 3rd party match for multiway trading
+type MultiwayMatch struct {
+	User3ID           int    `json:"user3_id"`
+	User3Name         string `json:"user3_name"`
+	User3ProductID    int    `json:"user3_product_id"`    // Product User 3 has (that User 2 wants)
+	User3ProductTitle string `json:"user3_product_title"`
+	User1ProductID    int    `json:"user1_product_id"`    // Product from User 1 that User 3 wants
+	User1ProductTitle string `json:"user1_product_title"`
+	MatchScore        int    `json:"match_score"`         // How good the match is (0-100)
+}
+
+// FindMultiwayMatch searches for a User 3 who:
+// - Has a product that User 2 wants (matching category/title)
+// - Wants something that User 1 has (offered items in the original trade)
+func FindMultiwayMatch(db *sql.DB, user1ID, user2ID, originalTradeID int, excludeUserIDs []int) ([]MultiwayMatch, error) {
+	log.Printf("FindMultiwayMatch: Searching for User3. User1=%d, User2=%d, TradeID=%d", user1ID, user2ID, originalTradeID)
+
+	// 1. Get what User 1 offered
+	rows1, err := db.Query(`
+		SELECT p.id, p.title, p.category
+		FROM trade_items ti
+		JOIN products p ON p.id = ti.product_id
+		WHERE ti.trade_id = ? AND ti.offered_by = 'buyer'
+	`, originalTradeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows1.Close()
+
+	type prod struct {
+		ID       int
+		Title    string
+		Category string
+	}
+	var u1Prods []prod
+	for rows1.Next() {
+		var p prod
+		if err := rows1.Scan(&p.ID, &p.Title, &p.Category); err == nil {
+			u1Prods = append(u1Prods, p)
+		}
+	}
+
+	if len(u1Prods) == 0 {
+		return nil, nil
+	}
+
+	// 2. Get User 2's target product details
+	var targetCat, targetTitle string
+	err = db.QueryRow(`
+		SELECT p.category, p.title 
+		FROM trades t 
+		JOIN products p ON p.id = t.target_product_id 
+		WHERE t.id = ?
+	`, originalTradeID).Scan(&targetCat, &targetTitle)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Build exclude list
+	excludeSet := map[int]bool{user1ID: true, user2ID: true}
+	for _, id := range excludeUserIDs {
+		excludeSet[id] = true
+	}
+
+	var matches []MultiwayMatch
+	for _, up := range u1Prods {
+		// Search for User 3:
+		// - Owns a product matching User 2's target category/title
+		// - Wants something matching User 1's product title/category
+		query := `
+			SELECT DISTINCT u.id, u.name, p.id, p.title
+			FROM products p
+			JOIN users u ON u.id = p.seller_id
+			WHERE p.status = 'available'
+			AND (p.category = ? OR p.title LIKE ?)
+			AND (p.wants LIKE ? OR p.wanted_categories LIKE ? OR p.desired_product LIKE ?)
+		`
+		searchRows, err := db.Query(query, targetCat, "%"+targetTitle+"%", "%"+up.Title+"%", "%"+up.Category+"%", "%"+up.Title+"%")
+		if err != nil {
+			continue
+		}
+
+		for searchRows.Next() {
+			var m MultiwayMatch
+			if err := searchRows.Scan(&m.User3ID, &m.User3Name, &m.User3ProductID, &m.User3ProductTitle); err == nil {
+				if excludeSet[m.User3ID] {
+					continue
+				}
+				m.User1ProductID = up.ID
+				m.User1ProductTitle = up.Title
+				matches = append(matches, m)
+			}
+		}
+		searchRows.Close()
+	}
+
+	return matches, nil
 }

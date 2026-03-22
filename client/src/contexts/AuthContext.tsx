@@ -8,7 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
   googleLogin: (firebaseToken: string, userData: any) => Promise<void>
-  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }) => Promise<{ requiresVerification: boolean; email: string; token?: string }>
+  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string; organization_type?: string }) => Promise<{ requiresVerification: boolean; email: string; token?: string }>
   logout: () => void
   updateProfile: (payload: { name?: string; email?: string; profile_picture?: string }) => Promise<void>
   refreshUser: () => Promise<void>
@@ -150,8 +150,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clearTimeout(timeoutId)
       console.log('AuthContext: User profile response received:', response.data)
 
-      const userData = normalizeUser(response.data.data as any)
+      const rawData = response.data.data
+      const userData = normalizeUser(rawData?.user || rawData)
       console.log('AuthContext: Setting user data:', userData)
+      console.log('AuthContext: User ID from response:', userData?.id, 'Type:', typeof userData?.id)
+      console.log('AuthContext: User object keys:', userData ? Object.keys(userData) : 'null')
       setUser(userData)
 
       // If token was passed, ensure it's set in state
@@ -173,8 +176,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setToken(null)
         setUser(null)
         delete api.defaults.headers.common['Authorization']
+      } else if (error.response?.status === 404) {
+        // User not found in database - clear auth
+        console.log('AuthContext: User not found (404), clearing authentication')
+        setToken(null)
+        setUser(null)
+        delete api.defaults.headers.common['Authorization']
       } else {
-        // For network errors, timeouts, or server issues:
+        // For network errors, timeouts, or server errors (5xx):
         // Keep the token AND user from cache so the user stays logged in
         console.log('AuthContext: Network/server error, keeping cached authentication')
       }
@@ -305,7 +314,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }
 
-  const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string }): Promise<{ requiresVerification: boolean; email: string; token?: string }> => {
+  const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string; organization_type?: string }): Promise<{ requiresVerification: boolean; email: string; token?: string }> => {
     try {
       const response = await api.post('/api/auth/register', payload)
       console.log('AuthContext: Register raw response:', JSON.stringify(response.data))

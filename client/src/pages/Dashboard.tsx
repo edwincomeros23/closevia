@@ -58,7 +58,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
-import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
+import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
@@ -203,6 +203,7 @@ const Dashboard: React.FC = () => {
   const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
+  const [showPremiumModal, setShowPremiumModal] = useState(false)
 
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
@@ -238,6 +239,20 @@ const Dashboard: React.FC = () => {
       prefetchDashboardData()
     }
   }, [user?.id, prefetchDashboardData])
+
+  useEffect(() => {
+    if (!loading && isAuthenticated && user && !user.is_premium) {
+      const hasShown = sessionStorage.getItem('clovia_premium_up_shown')
+      if (!hasShown) {
+        // Delay slightly for better UX after dashboard load
+        const timer = setTimeout(() => {
+          setShowPremiumModal(true)
+          sessionStorage.setItem('clovia_premium_up_shown', 'true')
+        }, 3000)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [isAuthenticated, user, loading])
 
   // Check if user is authenticated, redirect to login if not
   // Only redirect if not loading (to prevent race conditions after login)
@@ -280,8 +295,19 @@ const Dashboard: React.FC = () => {
       })
     }
 
+    // Handle tab parameter
+    const tabParam = searchParams.get('tab')
+    if (tabParam) {
+      const tabIndex = parseInt(tabParam, 10)
+      if (!isNaN(tabIndex)) {
+        setActiveTab(tabIndex)
+      }
+    }
+
     // Switch to the Offers tab (tab index 1)
-    setActiveTab(1)
+    if (tradeIdParam) {
+      setActiveTab(1)
+    }
 
     // Try to find the trade and open it
     const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
@@ -540,9 +566,17 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      await api.post(`/api/trades/loops/${trade.id}/accept`, {
-        user_id: user?.id,
-      })
+      const tradeIdString = String(trade.id)
+      
+      if (tradeIdString.startsWith('chain_')) {
+        const id = tradeIdString.replace('chain_', '')
+        await api.post(`/api/trades/multiway/${id}/accept`)
+      } else {
+        await api.post(`/api/trades/loops/${trade.id}/accept`, {
+          user_id: user?.id,
+        })
+      }
+      
       toast({
         id: 'success-joined-trade-loop',
         title: 'Success',
@@ -557,7 +591,7 @@ const Dashboard: React.FC = () => {
       toast({
         id: 'error-join-trade',
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to join trade',
+        description: error.response?.data?.error || error.response?.data?.message || 'Failed to join trade',
         status: 'error',
       })
     } finally {
@@ -565,11 +599,21 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleDeclineMultiWayTrade = async (trade: any) => {
+  const handleDeclineMultiWayTrade = async (trade: any, searchAgain: boolean = false) => {
     try {
-      await api.post(`/api/trades/loops/${trade.id}/decline`, {
-        reason: 'Not interested'
-      })
+      const tradeIdString = String(trade.id)
+      
+      if (tradeIdString.startsWith('chain_')) {
+        const id = tradeIdString.replace('chain_', '')
+        await api.post(`/api/trades/multiway/${id}/decline`, {
+          search_again: searchAgain
+        })
+      } else {
+        await api.post(`/api/trades/loops/${trade.id}/decline`, {
+          reason: 'Not interested'
+        })
+      }
+      
       toast({
         id: 'declined',
         title: 'Declined',
@@ -584,7 +628,7 @@ const Dashboard: React.FC = () => {
       toast({
         id: 'error-decline-trade',
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to decline trade',
+        description: error.response?.data?.error || error.response?.data?.message || 'Failed to decline trade',
         status: 'error',
       })
     }
@@ -746,21 +790,64 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleConvertToMultiWay = () => {
+  const handleConvertToMultiWay = async () => {
     if (!tradeToDecline) {
       setDeclineModalOpen(false)
       return
     }
 
+    setIsProcessing(true)
     setDeclineModalOpen(false)
-    toast({
-      title: 'Searching for multi-way trade',
-      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
-      status: 'info',
-      duration: 5000
-    })
 
-    navigate('/premium')
+    try {
+      await updateTrade(tradeToDecline.id, {
+        action: 'convert_to_multiway'
+      })
+
+      setTradeToDecline(null)
+      setDeclineFeedback('')
+
+      toast({
+        id: 'success-convert-multiway',
+        title: 'Converting to Multi-Way',
+        description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
+        status: 'success',
+        duration: 5000
+      })
+
+      // Refresh trades after conversion
+      setTimeout(() => {
+        setIsProcessing(false)
+        // Optionally refetch trades or let real-time update handle it
+      }, 1000)
+    } catch (error: any) {
+      setIsProcessing(false)
+
+      const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
+
+      // If error is premium-related, redirect to premium page
+      if (errorMsg.includes('premium') || error?.response?.status === 403) {
+        toast({
+          id: 'error-convert-multiway-premium',
+          title: 'Premium Feature',
+          description: 'Multi-way trading is a premium feature. Upgrade to enable it!',
+          status: 'warning',
+          duration: 5000
+        })
+
+        // Redirect to premium after showing message
+        setTimeout(() => {
+          navigate('/premium')
+        }, 1500)
+      } else {
+        toast({
+          id: 'error-convert-multiway',
+          title: 'Error',
+          description: errorMsg,
+          status: 'error'
+        })
+      }
+    }
   }
 
   const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'expired']
@@ -3746,58 +3833,19 @@ const Dashboard: React.FC = () => {
                         </Text>
                       </Box>
                     ) : (
-                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                        {/* Mock Trade Loop 1 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 1, user_name: 'John Doe', product_id: 1, product_title: 'PlayStation 5' },
-                              { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
-                              { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 2 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 4, user_name: 'Emma Wilson', product_id: 4, product_title: 'Galaxy S23' },
-                              { id: 5, user_name: 'Alex Chen', product_id: 5, product_title: 'iPad Air' },
-                              { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
-                              { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop-2", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 3 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 8, user_name: 'Chris Martin', product_id: 8, product_title: 'Nintendo Switch' },
-                              { id: 9, user_name: 'Jessica Brown', product_id: 9, product_title: 'Bicycle' },
-                              { id: 10, user_name: 'Robert Taylor', product_id: 10, product_title: 'Guitar' },
-                              { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
-                              { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop-3", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-                      </SimpleGrid>
+                      <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={8} textAlign="center" w="100%">
+                        <VStack spacing={4}>
+                          <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={2} />
+                          <VStack spacing={1}>
+                            <Text color="gray.600" fontSize="lg" fontWeight="semibold">
+                              No multi-way trades available
+                            </Text>
+                            <Text color="gray.500" fontSize="sm" maxW="400px">
+                              Multi-way trade opportunities will appear here once we find a trading loop that involves your products. Check back later!
+                            </Text>
+                          </VStack>
+                        </VStack>
+                      </Box>
                     )
                   ) : multiWayTradesViewMode === 'list' ? (
                     <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
@@ -3859,9 +3907,10 @@ const Dashboard: React.FC = () => {
                         <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                           <MultiWayTradeUI
                             participants={trade.participants || []}
+                            isChain={trade.is_chain}
                             onJoinTrade={() => handleJoinMultiWayTrade(trade)}
                             onViewDetails={() => setSelectedMultiWayTrade(trade)}
-                            onDecline={() => handleDeclineMultiWayTrade(trade)}
+                            onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}
                             isLoading={multiWayTradeJoining}
                           />
                         </Box>
@@ -4523,6 +4572,72 @@ const Dashboard: React.FC = () => {
         imageUrl={zoomImageUrl}
         altText={zoomAltText}
       />
+
+      {/* Premium Opportunity Modal */}
+      <Modal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} isCentered size="md">
+        <ModalOverlay backdropFilter="blur(8px)" />
+        <ModalContent borderRadius="2xl" overflow="hidden" boxShadow="2xl">
+          <ModalBody p={0}>
+            <Box position="relative">
+              <Box bg="purple.600" h="140px" display="flex" alignItems="center" justifyContent="center">
+                <Icon as={FaCrown} color="yellow.400" fontSize="60px" filter="drop-shadow(0 0 10px rgba(236, 201, 75, 0.4))" />
+              </Box>
+              <ModalCloseButton color="white" top={4} right={4} />
+              
+              <VStack spacing={6} p={8} textAlign="center">
+                <VStack spacing={2}>
+                  <Heading size="lg" fontWeight="extrabold">Level Up to Premium!</Heading>
+                  <Text color="gray.500" fontSize="md">
+                    Unlock exclusive features like unlimited trade offers, priority listing, and verified badge.
+                  </Text>
+                </VStack>
+
+                <SimpleGrid columns={2} spacing={3} w="full">
+                  {[
+                    'Unlimited Offers',
+                    'Priority Listing',
+                    'Can Sell (Buyout)',
+                    'Express Delivery',
+                    'Lower Fees',
+                    'Verified Badge'
+                  ].map((f, i) => (
+                    <HStack key={i} spacing={2}>
+                      <Icon as={CheckIcon} color="green.500" boxSize={3} />
+                      <Text fontSize="xs" fontWeight="bold" color="gray.600">{f}</Text>
+                    </HStack>
+                  ))}
+                </SimpleGrid>
+
+                <VStack spacing={3} w="full">
+                  <Button 
+                    colorScheme="purple" 
+                    w="full" 
+                    size="lg" 
+                    h="56px"
+                    fontSize="lg"
+                    borderRadius="xl"
+                    leftIcon={<FaCrown />}
+                    onClick={() => {
+                      setShowPremiumModal(false)
+                      navigate('/premium')
+                    }}
+                    _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                  >
+                    Take Me There
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    w="full"
+                    onClick={() => setShowPremiumModal(false)}
+                  >
+                    Maybe Later
+                  </Button>
+                </VStack>
+              </VStack>
+            </Box>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Box>
   )
 }

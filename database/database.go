@@ -75,10 +75,11 @@ func InitDatabase() error {
 		return fmt.Errorf("failed to open database: %v", openErr)
 	}
 
-	// Configure connection pool
-	DB.SetMaxOpenConns(25)
-	DB.SetMaxIdleConns(25)
-	DB.SetConnMaxLifetime(10 * time.Minute)
+	// Configure connection pool with better resilience
+	DB.SetMaxOpenConns(10)                 // Reduce from 25 to avoid connection spam
+	DB.SetMaxIdleConns(5)                  // Keep fewer idle connections
+	DB.SetConnMaxLifetime(5 * time.Minute) // Refresh connections more frequently
+	DB.SetConnMaxIdleTime(2 * time.Minute) // Close idle connections after 2 min
 
 	// Test the connection
 	if err := DB.Ping(); err != nil {
@@ -131,10 +132,17 @@ func CloseDatabase() {
 
 // CreateTables creates all necessary tables if they don't exist
 func CreateTables() error {
-	// First, check if language_preference exists in users table, if not add it
-	// This ensures existing databases are upgraded automatically
+	var err error
 	var exists int
-	err := DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
+
+	// Add premium_tier column to users table if missing
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'premium_tier'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing premium_tier column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing language_preference column to users table...")
 		DB.Exec("ALTER TABLE users ADD COLUMN language_preference VARCHAR(10) NULL DEFAULT 'en'")
@@ -208,6 +216,7 @@ func CreateTables() error {
 			school_id_image_path VARCHAR(512) NULL,
 			verification_rejection_reason TEXT NULL,
 			is_premium BOOLEAN DEFAULT FALSE,
+			premium_tier VARCHAR(20) DEFAULT 'free',
 			verified BOOLEAN DEFAULT FALSE,
 			last_login TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -562,6 +571,26 @@ func CreateTables() error {
 			INDEX idx_earnings_source (source_type, source_id),
 			INDEX idx_earnings_created (created_at)
 		)`,
+		`CREATE TABLE IF NOT EXISTS profile_views (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			target_user_id INT NOT NULL,
+			viewer_user_id INT NULL,
+			viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (viewer_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_target_user (target_user_id),
+			INDEX idx_viewed_at (viewed_at)
+		)`,
+		`CREATE TABLE IF NOT EXISTS product_views (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			product_id INT NOT NULL,
+			viewer_user_id INT NULL,
+			viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (viewer_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_product_id (product_id),
+			INDEX idx_viewed_at (viewed_at)
+		)`,
 	}
 
 	// Execute table creation queries
@@ -643,6 +672,10 @@ func ensureUserColumns() {
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"last_login", "TIMESTAMP NULL"},
+		{"email_otp_hash", "VARCHAR(255) NULL"},
+		{"email_otp_expires", "TIMESTAMP NULL"},
+		{"reset_password_otp_hash", "VARCHAR(255) NULL"},
+		{"reset_password_otp_expires", "TIMESTAMP NULL"},
 		{"password_reset_otp_hash", "VARCHAR(255) NULL"},
 		{"password_reset_otp_expires", "TIMESTAMP NULL"},
 	}
@@ -704,6 +737,7 @@ func ensureProductColumns() {
 		{"estimated_value_min", "DECIMAL(10,2) NULL"},
 		{"estimated_value_max", "DECIMAL(10,2) NULL"},
 		{"value", "DECIMAL(10,2) NULL"},
+		{"price_reasoning", "TEXT NULL"},
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 		{"boosted_at", "TIMESTAMP NULL"},
 	}
@@ -827,20 +861,45 @@ func ensureTradeColumns() {
 		}
 	}
 
-	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired
+	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired, pending_multiway, multiway_active
 	var tradeStatusType string
 	if err := DB.QueryRow(`
 		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME = 'status'
 	`).Scan(&tradeStatusType); err == nil {
-		if !contains(tradeStatusType, "'expired'") {
-			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired') DEFAULT 'pending'`); err != nil {
+		if !contains(tradeStatusType, "'pending_multiway'") || !contains(tradeStatusType, "'multiway_active'") {
+			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired','pending_multiway','multiway_active') DEFAULT 'pending'`); err != nil {
 				log.Printf("Warning: failed to update trades status enum: %v", err)
 			} else {
-				log.Println("Updated trades status enum to include 'expired'")
+				log.Println("Updated trades status enum to include 'pending_multiway' and 'multiway_active'")
 			}
 		}
 	}
+
+	// Ensure multiway_trades table exists for tracking multiway chain participants
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_trades (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		original_trade_id INT NOT NULL,
+		initiator_user_id INT NOT NULL COMMENT 'User 2 who converted to multiway',
+		user1_id INT NOT NULL COMMENT 'Original buyer (User 1)',
+		user2_id INT NOT NULL COMMENT 'User who converted to multiway (User 2)',
+		user3_id INT NULL COMMENT 'Matched third party (User 3)',
+		user3_trade_id INT NULL COMMENT 'Trade ID linking User 3',
+		status ENUM('searching','pending_user3','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching',
+		trade_option VARCHAR(20) NULL DEFAULT 'meetup',
+		meetup_location VARCHAR(500) NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (original_trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+		FOREIGN KEY (initiator_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user3_id) REFERENCES users(id) ON DELETE SET NULL,
+		INDEX idx_multiway_chain (chain_id),
+		INDEX idx_multiway_status (status),
+		INDEX idx_multiway_user3 (user3_id)
+	)`)
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow

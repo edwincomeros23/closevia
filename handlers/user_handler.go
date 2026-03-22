@@ -1,10 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
-	"log"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -197,7 +197,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	// Insert new user
 	result, err := h.db.Exec(
-		"INSERT INTO users (slug, name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?)",
+		"INSERT INTO users (slug, name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference, premium_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?, ?)",
 		slug,
 		user.Name,
 		user.Email,
@@ -211,6 +211,7 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		user.Bio,
 		"",
 		"en",
+		"free",
 	)
 	if err != nil {
 		// Log the actual error for debugging
@@ -225,9 +226,8 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 
 	// Generate and send OTP for email verification
 	otpCode, otpHash, otpExpiry, otpErr := generateOTP()
-	requiresVerification := false
+	requiresVerification := true
 	if otpErr == nil {
-		requiresVerification = true
 		h.db.Exec(
 			"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
 			otpHash, otpExpiry, userID,
@@ -242,23 +242,12 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 		fmt.Printf("⚠️ OTP generation failed: %v\n", otpErr)
 		// Fallback: If OTP generation fails, mark as verified for safety
 		h.db.Exec("UPDATE users SET verified = TRUE WHERE id = ?", userID)
-	}
-
-	// Auto-grant premium for WMSU students (@wmsu.edu.ph email)
-	isWmsuStudent := !user.IsOrganization && strings.HasSuffix(strings.ToLower(user.Email), "@wmsu.edu.ph")
-	if isWmsuStudent {
-		h.db.Exec("UPDATE users SET is_premium = TRUE WHERE id = ?", userID)
-	}
-
-	// Generate JWT token immediately so user is logged in right after registration
-	token, err := utils.GenerateJWT(int(userID), user.Email)
-	if err != nil {
-		token = ""
+		requiresVerification = false
 	}
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
-		Message: "User registered successfully",
+		Message: "User registered successfully. Please verify your email.",
 		Data: fiber.Map{
 			"user": models.User{
 				ID:                 int(userID),
@@ -274,10 +263,10 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				Bio:                user.Bio,
 				ProfilePicture:     "",
 				LanguagePreference: "en",
-				IsPremium:          isWmsuStudent,
+				IsPremium:          false,
+				PremiumTier:        "free",
 			},
 			"requires_verification": requiresVerification,
-			"token":                 token,
 		},
 	})
 }
@@ -338,10 +327,16 @@ func (h *UserHandler) VerifyEmail(c *fiber.Ctx) error {
 	}
 
 	// Mark verified and clear OTP
-	_, err = h.db.Exec(
-		"UPDATE users SET verified = true, email_otp_hash = NULL, email_otp_expires = NULL WHERE id = ?",
-		userID,
-	)
+	// Auto-grant premium for WMSU students (@wmsu.edu.ph email) after verification
+	isWmsuStudent := strings.HasSuffix(strings.ToLower(req.Email), "@wmsu.edu.ph")
+
+	query := "UPDATE users SET verified = true, email_otp_hash = NULL, email_otp_expires = NULL"
+	if isWmsuStudent {
+		query += ", is_premium = true, premium_tier = 'plus'"
+	}
+	query += " WHERE id = ?"
+
+	_, err = h.db.Exec(query, userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify email"})
 	}
@@ -429,6 +424,7 @@ func (h *UserHandler) ForgotPassword(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
 	}
+
 	if req.Email == "" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Email is required"})
 	}
@@ -475,14 +471,14 @@ func (h *UserHandler) ForgotPassword(c *fiber.Ctx) error {
 
 	go func() {
 		if err := services.SendPasswordResetEmail(req.Email, userName, otpCode); err != nil {
-			log.Printf("Failed to send password reset email to %s: %v", req.Email, err)
+			fmt.Printf("❌ Failed to send password reset email to %s: %v\n", req.Email, err)
 		}
 	}()
 
 	return c.JSON(models.APIResponse{Success: true, Message: "If an account with that email exists, a reset code has been sent."})
 }
 
-// ResetPassword verifies OTP and updates the user's password.
+// ResetPassword verified OTP and updates the user's password.
 // POST /api/auth/reset-password  { email, code, new_password }
 func (h *UserHandler) ResetPassword(c *fiber.Ctx) error {
 	var req struct {
@@ -493,6 +489,7 @@ func (h *UserHandler) ResetPassword(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
 	}
+
 	if req.Email == "" || req.Code == "" || req.NewPassword == "" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Email, code, and new password are required"})
 	}
@@ -539,7 +536,7 @@ func (h *UserHandler) ResetPassword(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update password"})
 	}
 
-	return c.JSON(models.APIResponse{Success: true, Message: "Password reset successfully. You can now log in with your new password."})
+	return c.JSON(models.APIResponse{Success: true, Message: "Password reset successful. You can now log in with your new password."})
 }
 
 // Login handles user authentication
@@ -555,14 +552,22 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 	// Find user by email
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, name, email, password_hash, role, verified FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
 		login.Email,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier)
 
 	if err != nil {
 		return c.Status(401).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Invalid credentials",
+		})
+	}
+
+	// Check if user is verified
+	if !user.Verified {
+		return c.Status(401).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Please verify your email address before logging in.",
 		})
 	}
 
@@ -626,9 +631,9 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	// Check if user exists
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, name, email, role, verified, profile_picture, language_preference FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
 		req.Email,
-	).Scan(&user.ID, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier)
 
 	if err == sql.ErrNoRows {
 		// Generate slug for the new user
@@ -647,9 +652,16 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 			counter++
 		}
 
+		premium_tier := "free"
+		is_premium := false
+		if strings.HasSuffix(strings.ToLower(req.Email), "@wmsu.edu.ph") {
+			premium_tier = "plus"
+			is_premium = true
+		}
+
 		// Create new user from Google info
 		result, err := h.db.Exec(
-			"INSERT INTO users (slug, name, email, role, verified, profile_picture, is_organization, org_verified, badges, language_preference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?)",
+			"INSERT INTO users (slug, name, email, role, verified, profile_picture, is_organization, org_verified, badges, language_preference, premium_tier, is_premium) VALUES (?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?, ?)",
 			slug,
 			req.DisplayName,
 			req.Email,
@@ -659,8 +671,11 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 			false,
 			false,
 			"en",
+			premium_tier,
+			is_premium,
 		)
 		if err != nil {
+			fmt.Printf("❌ Error creating Google user: %v\n", err)
 			return c.Status(500).JSON(models.APIResponse{
 				Success: false,
 				Error:   "Failed to create user",
@@ -676,6 +691,8 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 		user.ProfilePicture = req.PhotoURL
 		user.Role = "user"
 		user.LanguagePreference = "en"
+		user.PremiumTier = premium_tier
+		user.IsPremium = is_premium
 	} else if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
@@ -742,6 +759,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(email_notifications_enabled, TRUE) AS email_notifications_enabled,
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
+		        COALESCE(premium_tier, 'free') AS premium_tier,
 		        created_at, updated_at, last_login
 		 FROM users WHERE id = ?`,
 		userID,
@@ -752,7 +770,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
-		&user.LanguagePreference,
+		&user.LanguagePreference, &user.PremiumTier,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
 	)
 
@@ -769,25 +787,73 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	if err != nil {
 		fmt.Printf("❌ ERROR in GetProfile (ID: %v): %v\n", userID, err)
-		// Return a friendly fallback (200) so frontend does not produce a network 404.
-		// Frontend expects a user-like object; provide minimal public fields.
-		fallback := models.User{
-			ID:             userID,
-			Name:           "User",
-			Verified:       false,
-			IsOrganization: false,
-			CreatedAt:      time.Now(),
-			ProfilePicture: "",
+		// Return a proper error response so frontend can handle it correctly
+		// Check if it's a "no rows" error (user doesn't exist)
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "User not found",
+			})
 		}
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Data:    fallback,
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to fetch user profile: " + err.Error(),
 		})
+	}
+
+	// Profile Insights
+	var profileViews int
+	// Use a short timeout for profile_views queries to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err = h.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM profile_views WHERE target_user_id = ?", user.ID).Scan(&profileViews)
+	if err != nil {
+		// If profile_views query fails (table missing or timeout), just set to 0
+		fmt.Printf("⚠️ Profile views query failed: %v\n", err)
+		profileViews = 0
+	}
+
+	var viewHistory []fiber.Map
+	// Plus and Pro users can see who viewed their profile
+	if user.PremiumTier != "free" {
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel2()
+
+		rows, qErr := h.db.QueryContext(ctx2, `
+			SELECT DISTINCT u.id, u.name, COALESCE(u.profile_picture, '') as profile_picture, MAX(pv.viewed_at) as last_viewed
+			FROM profile_views pv
+			JOIN users u ON pv.viewer_user_id = u.id
+			WHERE pv.target_user_id = ?
+			GROUP BY u.id, u.name, u.profile_picture
+			ORDER BY last_viewed DESC
+			LIMIT 10`, user.ID)
+		if qErr == nil && rows != nil {
+			defer rows.Close()
+			for rows.Next() {
+				var vID int
+				var vName, vAvatar string
+				var lv time.Time
+				rows.Scan(&vID, &vName, &vAvatar, &lv)
+				viewHistory = append(viewHistory, fiber.Map{
+					"id":        vID,
+					"name":      vName,
+					"avatar":    vAvatar,
+					"viewed_at": lv,
+				})
+			}
+		} else if qErr != nil {
+			fmt.Printf("⚠️ View history query failed: %v\n", qErr)
+		}
 	}
 
 	return c.JSON(models.APIResponse{
 		Success: true,
-		Data:    user,
+		Data: fiber.Map{
+			"user":          user,
+			"profile_views": profileViews,
+			"view_history":  viewHistory,
+		},
 	})
 }
 
@@ -820,6 +886,30 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		})
 	}
 
+	// Handle email change logic: if email is updated, mark user as unverified and send new OTP
+	var newEmail string
+	var currentEmail string
+	var emailChanged bool
+
+	if updateData.Email != nil {
+		newEmail = strings.TrimSpace(strings.ToLower(*updateData.Email))
+		// Get current email to compare
+		err := h.db.QueryRow("SELECT email FROM users WHERE id = ?", userID).Scan(&currentEmail)
+		if err == nil && newEmail != "" && newEmail != currentEmail {
+			emailChanged = true
+
+			// Check if new email is already taken by another user
+			var exists int
+			h.db.QueryRow("SELECT COUNT(*) FROM users WHERE email = ? AND id != ?", newEmail, userID).Scan(&exists)
+			if exists > 0 {
+				return c.Status(400).JSON(models.APIResponse{
+					Success: false,
+					Error:   "This email is already registered to another account",
+				})
+			}
+		}
+	}
+
 	// Build update query dynamically
 	query := "UPDATE users SET updated_at = CURRENT_TIMESTAMP"
 	var args []interface{}
@@ -830,12 +920,18 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 	if updateData.Email != nil {
 		query += ", email = ?"
-		args = append(args, *updateData.Email)
+		args = append(args, newEmail)
+		if emailChanged {
+			query += ", verified = false"
+			// Revoke is_premium if it was from WMSU, they will get it back after verifying new WMSU email
+			query += ", is_premium = false"
+		}
 	}
+
+	// ... (rest of field updates)
 	if updateData.ProfilePicture != nil {
 		query += ", profile_picture = ?"
 		args = append(args, *updateData.ProfilePicture)
-		fmt.Printf("✅ UpdateProfile: Setting profile_picture to '%s' for user %d\n", *updateData.ProfilePicture, userID)
 	}
 
 	if updateData.Bio != nil {
@@ -844,7 +940,6 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	}
 
 	if updateData.BackgroundImage != nil {
-		// allow column name background_image or cover_photo depending on schema; try background_image first
 		query += ", background_image = ?"
 		args = append(args, *updateData.BackgroundImage)
 	}
@@ -857,7 +952,6 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if updateData.LanguagePreference != nil {
 		query += ", language_preference = ?"
 		args = append(args, *updateData.LanguagePreference)
-		fmt.Printf("✅ UpdateProfile: Setting language_preference to '%s' for user %d\n", *updateData.LanguagePreference, userID)
 	}
 
 	if updateData.EmailNotificationsEnabled != nil {
@@ -877,8 +971,6 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if err != nil {
 		// Handle missing columns: try to add any known columns then retry once
 		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
-			// Try adding profile_picture, background_image, background_position, bio, language_preference as needed
-			// Note: guard each ALTER with best-effort; ignore errors to let retry attempt proceed
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_image VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
@@ -895,6 +987,33 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 				Error:   "Failed to update profile",
 			})
 		}
+	}
+
+	// If email changed, trigger verification email
+	if emailChanged {
+		// Generate OTP
+		otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+		if otpErr == nil {
+			// Save OTP to DB
+			h.db.Exec("UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?", otpHash, otpExpiry, userID)
+
+			// Send Email
+			var userName string
+			_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&userName)
+
+			go func() {
+				err := services.SendOTPEmail(newEmail, userName, otpCode)
+				if err != nil {
+					fmt.Printf("Error sending verification email for profile update: %v\n", err)
+				}
+			}()
+		}
+
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Message: "Profile updated. Please verify your new email address. A verification code has been sent.",
+			Data:    fiber.Map{"requires_verification": true},
+		})
 	}
 
 	return c.JSON(models.APIResponse{
@@ -1079,9 +1198,9 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	var lastLogin sql.NullTime
 	err = h.db.QueryRow(
 		`SELECT id, slug, name, email, role, verified, COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') as org_name, COALESCE(org_logo_url, '') as org_logo_url,
-		        profile_picture, background_image, background_position, department, bio, COALESCE(badges, '[]') as badges,
-		        verification_status, school_name, school_email, school_email_verified_at, verification_rejection_reason,
-		        created_at, updated_at, last_login
+		        COALESCE(profile_picture, '') as profile_picture, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, COALESCE(department, '') as department, COALESCE(bio, '') as bio, COALESCE(badges, '[]') as badges,
+		        COALESCE(verification_status, 'not_verified') as verification_status, COALESCE(school_name, '') as school_name, COALESCE(school_email, '') as school_email, COALESCE(school_email_verified_at, NULL) as school_email_verified_at, COALESCE(verification_rejection_reason, '') as verification_rejection_reason,
+		        COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at, COALESCE(last_login, NULL) as last_login
 		   FROM users WHERE id = ?`,
 		userID,
 	).Scan(
@@ -1095,19 +1214,30 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	fmt.Printf("🔍 GetUserByID(%d) query result - error: %v\n", userID, err)
 	if err != nil {
 		fmt.Printf("❌ Database error for user %d: %v\n", userID, err)
-		// Return a friendly fallback (200) so frontend does not produce a network 404.
-		fallback := models.User{
-			ID:             userID,
-			Name:           "User",
-			Verified:       false,
-			IsOrganization: false,
-			CreatedAt:      time.Now(),
-			ProfilePicture: "",
+		// Return proper error response so we can debug the actual database issue
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{
+				Success: false,
+				Error:   "User not found",
+			})
 		}
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Data:    fallback,
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Database error: " + err.Error(),
 		})
+	}
+
+	// Log profile view (with timeout to prevent hanging)
+	viewerID, _ := middleware.GetUserIDFromContext(c)
+	if viewerID > 0 && viewerID != userID { // Don't log self-views or anonymous views without ID
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		h.db.ExecContext(ctx, "INSERT INTO profile_views (target_user_id, viewer_user_id) VALUES (?, ?)", userID, viewerID)
+		cancel()
+	} else if viewerID == 0 {
+		// Optional: log anonymous views with NULL viewer_user_id
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		h.db.ExecContext(ctx, "INSERT INTO profile_views (target_user_id, viewer_user_id) VALUES (?, NULL)", userID)
+		cancel()
 	}
 
 	// Convert sql.NullString to regular strings AFTER error check
