@@ -524,6 +524,20 @@ type Delivery struct {
 	RiderLongitude *float64 `json:"rider_longitude,omitempty"`
 	// Items included in this delivery
 	Items []DeliveryItem `json:"items,omitempty"`
+	// Stops for job execution (pickup and delivery stops)
+	Stops []DeliveryStop `json:"stops,omitempty"`
+	// Batch window fields (for standard deliveries)
+	BatchID              *string    `json:"batch_id,omitempty"`
+	BatchWindowExpiresAt *time.Time `json:"batch_window_expires_at,omitempty"`
+	IsBatching           bool       `json:"is_batching,omitempty"`
+	BatchCountdown       int        `json:"batch_countdown,omitempty"` // seconds remaining
+	BatchSize            int        `json:"batch_size,omitempty"`
+	// Card display fields (calculated)
+	DistanceKm       float64 `json:"distance_km,omitempty"`
+	EstimatedMinutes int     `json:"estimated_minutes,omitempty"`
+	SenderFee        float64 `json:"sender_fee,omitempty"`
+	ReceiverFee      float64 `json:"receiver_fee,omitempty"`
+	RiderCut         float64 `json:"rider_cut,omitempty"`
 }
 
 // DeliveryItem represents an item in a delivery
@@ -534,6 +548,69 @@ type DeliveryItem struct {
 	ProductName string    `json:"product_name,omitempty"`
 	IsFragile   bool      `json:"is_fragile"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// DeliveryStop represents a pickup or delivery stop in a multi-stop job
+type DeliveryStop struct {
+	ID             int        `json:"id"`
+	DeliveryID     int        `json:"delivery_id"`
+	StopNumber     int        `json:"stop_number"`
+	StopType       string     `json:"stop_type"` // pickup or delivery
+	ContactName    string     `json:"contact_name"`
+	ContactPhone   string     `json:"contact_phone"`
+	Address        string     `json:"address"`
+	Latitude       *float64   `json:"latitude,omitempty"`
+	Longitude      *float64   `json:"longitude,omitempty"`
+	ItemQRCode     string     `json:"item_qr_code,omitempty"`
+	FeeAmount      float64    `json:"fee_amount"`
+	Status         string     `json:"status"` // pending, arrived, qr_scanned, fee_collected, completed
+	ArrivedAt      *time.Time `json:"arrived_at,omitempty"`
+	QRScannedAt    *time.Time `json:"qr_scanned_at,omitempty"`
+	FeeCollectedAt *time.Time `json:"fee_collected_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	PhotoURL       string     `json:"photo_url,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+// RiderCashCollection represents a cash collection event at a stop
+type RiderCashCollection struct {
+	ID             int       `json:"id"`
+	RiderID        int       `json:"rider_id"`
+	DeliveryID     int       `json:"delivery_id"`
+	StopID         int       `json:"stop_id"`
+	CollectionType string    `json:"collection_type"` // pickup_fee or delivery_fee
+	Amount         float64   `json:"amount"`
+	CollectedAt    time.Time `json:"collected_at"`
+}
+
+// RiderLedger represents the rider's cash tracking
+type RiderLedger struct {
+	ID                    int        `json:"id"`
+	RiderID               int        `json:"rider_id"`
+	TotalCashCollected    float64    `json:"total_cash_collected"`
+	RemittanceOwed        float64    `json:"remittance_owed"`
+	TakeHome              float64    `json:"take_home"`
+	FreeSlotsRemaining    int        `json:"free_slots_remaining"`
+	TotalFreeSlotsUsed    int        `json:"total_free_slots_used"`
+	LastRemittanceAt      *time.Time `json:"last_remittance_at,omitempty"`
+	IsLockedForRemittance bool       `json:"is_locked_for_remittance"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+}
+
+// RiderRemittancePayment represents a remittance payment submission
+type RiderRemittancePayment struct {
+	ID              int        `json:"id"`
+	RiderID         int        `json:"rider_id"`
+	AmountPaid      float64    `json:"amount_paid"`
+	PaymentMethod   string     `json:"payment_method"`
+	PaymentProofURL string     `json:"payment_proof_url,omitempty"`
+	Status          string     `json:"status"` // pending, verified, rejected
+	VerifiedBy      *int       `json:"verified_by,omitempty"`
+	VerifiedAt      *time.Time `json:"verified_at,omitempty"`
+	RejectionReason string     `json:"rejection_reason,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 // DeliveryRequest represents a request to create a delivery
@@ -557,6 +634,9 @@ type DeliveryUpdate struct {
 	Latitude     *float64   `json:"latitude,omitempty"`
 	Longitude    *float64   `json:"longitude,omitempty"`
 	EstimatedETA *time.Time `json:"estimated_eta,omitempty"`
+	// Phase 3 enforcement fields
+	QRCode   *string `json:"qr_code,omitempty"`   // QR code scanned for verification
+	PhotoURL *string `json:"photo_url,omitempty"` // Photo proof URL (required for delivery step)
 }
 
 // JWTClaims represents JWT token claims
