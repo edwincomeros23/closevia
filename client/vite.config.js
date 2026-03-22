@@ -1,8 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 // https://vite.dev/config/
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+        react(),
+        VitePWA({
+            registerType: 'autoUpdate',
+            injectRegister: false,
+            workbox: {
+                maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+            },
+            devOptions: {
+                enabled: false,
+            },
+        }),
+    ],
     define: {
         // Fix for: Uncaught ReferenceError: __HMR_CONFIG_NAME__ is not defined
         __HMR_CONFIG_NAME__: JSON.stringify('vite'),
