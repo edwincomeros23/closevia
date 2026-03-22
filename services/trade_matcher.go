@@ -2,9 +2,7 @@ package services
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
-	"strings"
 
 	"github.com/xashathebest/clovia/models"
 )
@@ -104,11 +102,11 @@ func (g *TradeGraph) dfs(startNode, currentNode int, adj map[int][]TradeEdge, pa
 type MultiwayMatch struct {
 	User3ID           int    `json:"user3_id"`
 	User3Name         string `json:"user3_name"`
-	User3ProductID    int    `json:"user3_product_id"`    // Product User 3 has (that User 2 wants)
+	User3ProductID    int    `json:"user3_product_id"` // Product User 3 has (that User 2 wants)
 	User3ProductTitle string `json:"user3_product_title"`
-	User1ProductID    int    `json:"user1_product_id"`    // Product from User 1 that User 3 wants
+	User1ProductID    int    `json:"user1_product_id"` // Product from User 1 that User 3 wants
 	User1ProductTitle string `json:"user1_product_title"`
-	MatchScore        int    `json:"match_score"`         // How good the match is (0-100)
+	MatchScore        int    `json:"match_score"` // How good the match is (0-100)
 }
 
 // FindMultiwayMatch searches for a User 3 who:
