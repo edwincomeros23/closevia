@@ -476,6 +476,36 @@ func CreateTables() error {
 			UNIQUE KEY uniq_loop_user (loop_id, user_id),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS trade_rejection_signals (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			rejector_user_id INT NOT NULL,
+			rejected_user_id INT NOT NULL,
+			target_product_id INT NULL,
+			target_category VARCHAR(255) NULL,
+			reason TEXT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (rejector_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (rejected_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_trade_rejector (rejector_user_id, created_at),
+			INDEX idx_trade_rejected (rejected_user_id, created_at)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_cache (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			loop_id VARCHAR(255) NOT NULL,
+			loop_type VARCHAR(20) NOT NULL DEFAULT 'graph',
+			loop_length INT NOT NULL DEFAULT 0,
+			score INT NOT NULL DEFAULT 0,
+			payload_json LONGTEXT NOT NULL,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_trade_loop_cache_user_loop (user_id, loop_id),
+			INDEX idx_trade_loop_cache_expiry (user_id, expires_at),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS delivery_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			delivery_id INT NOT NULL,

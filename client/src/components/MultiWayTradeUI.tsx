@@ -58,6 +58,9 @@ interface MultiWayTradeUIProps {
   onDecline?: (searchAgain?: boolean) => void
   isLoading?: boolean
   isChain?: boolean // Added to distinguish between loop and chain
+  yourGive?: string
+  yourGet?: string
+  chainLabel?: string
 }
 
 const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
@@ -67,6 +70,9 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
   onDecline,
   isLoading = false,
   isChain = false,
+  yourGive,
+  yourGet,
+  chainLabel,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const { isOpen, onOpen, onClose } = useDisclosure()
@@ -119,6 +125,15 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                 ? `Active Multi-Way Trade Match Found!` 
                 : `Your "${validParticipants[0].product_title}" has found a trade loop`}
             </Text>
+            <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
+              You give: {yourGive || 'Item in your trade offer'}
+            </Text>
+            <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
+              You get: {yourGet || 'Matched item from the loop'}
+            </Text>
+            <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.300')} noOfLines={1}>
+              Chain: {chainLabel || 'Participants connected in a closed loop'}
+            </Text>
             <HStack spacing={1}>
               <Badge colorScheme="purple" fontSize="10px">NEW</Badge>
               <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.200')}>
@@ -154,6 +169,9 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             >
               <Icon as={FaCheckCircle} boxSize={3} />
               {loopLength}-Way Loop Ready
+            </Badge>
+            <Badge colorScheme="blue" variant="subtle" fontSize="xs">
+              Waiting for all participants to confirm
             </Badge>
           </HStack>
 
@@ -292,10 +310,22 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                 borderLeftColor="blue.400"
               >
                 <Text fontSize="xs" fontWeight="bold" color="blue.800" mb={2}>
-                  Your Item:
+                  You give:
                 </Text>
                 <Text fontSize="sm" fontWeight="semibold" color={useColorModeValue('gray.800', 'gray.100')}>
-                  {validParticipants[0].product_title}
+                  {yourGive || validParticipants[0].product_title}
+                </Text>
+                <Text fontSize="xs" fontWeight="bold" color="blue.800" mt={3} mb={2}>
+                  You get:
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color={useColorModeValue('gray.800', 'gray.100')}>
+                  {yourGet || 'Matched item from this loop'}
+                </Text>
+                <Text fontSize="xs" fontWeight="bold" color="blue.800" mt={3} mb={2}>
+                  Chain:
+                </Text>
+                <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')}>
+                  {chainLabel || 'Participants connected in a closed loop'}
                 </Text>
               </Box>
 
@@ -338,7 +368,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                 borderLeftColor="green.400"
               >
                 <Text fontSize="xs" color={useColorModeValue('green.700', 'green.200')}>
-                  <strong>By joining,</strong> you agree to complete this trade once all participants have joined. You can cancel anytime before the trade executes.
+                  <strong>By joining,</strong> your confirmation is recorded and the loop executes only after all participants confirm. You can cancel anytime before execution.
                 </Text>
               </Box>
             </VStack>

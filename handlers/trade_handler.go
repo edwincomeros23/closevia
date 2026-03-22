@@ -226,6 +226,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// After creating a trade, check for loops
 	go h.CheckForTradeLoops()
+	go h.rebuildTradeLoopCacheForUsers([]int{userID, sellerID})
 
 	return c.Status(201).JSON(models.APIResponse{Success: true, Message: "Trade created", Data: trade})
 }
@@ -253,6 +254,290 @@ func (h *TradeHandler) CheckForTradeLoops() {
 	} else {
 		log.Println("No trade loops found.")
 	}
+}
+
+func (h *TradeHandler) recordTradeRejectionSignal(tradeID, rejectorUserID, rejectedUserID int, reason string) {
+	var targetProductID int
+	if err := h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID); err != nil {
+		log.Printf("recordTradeRejectionSignal: failed to get target product for trade %d: %v", tradeID, err)
+		return
+	}
+
+	var category sql.NullString
+	_ = h.db.QueryRow("SELECT category FROM products WHERE id = ?", targetProductID).Scan(&category)
+
+	_, err := h.db.Exec(`
+		INSERT INTO trade_rejection_signals
+		(trade_id, rejector_user_id, rejected_user_id, target_product_id, target_category, reason)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, tradeID, rejectorUserID, rejectedUserID, targetProductID, category.String, reason)
+	if err != nil {
+		log.Printf("recordTradeRejectionSignal: failed to insert signal: %v", err)
+	}
+}
+
+func (h *TradeHandler) hasRecentRejectionSignal(rejectorUserID, rejectedUserID int) bool {
+	var count int
+	err := h.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM trade_rejection_signals
+		WHERE rejector_user_id = ?
+		  AND rejected_user_id = ?
+		  AND created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
+	`, rejectorUserID, rejectedUserID).Scan(&count)
+	if err != nil {
+		return false
+	}
+	return count > 0
+}
+
+func (h *TradeHandler) getCachedLoopsForUser(userID int) ([]map[string]interface{}, error) {
+	rows, err := h.db.Query(`
+		SELECT payload_json
+		FROM trade_loop_cache
+		WHERE user_id = ? AND expires_at > NOW()
+		ORDER BY score DESC, updated_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var loops []map[string]interface{}
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			continue
+		}
+		var loop map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &loop); err == nil {
+			loops = append(loops, loop)
+		}
+	}
+
+	return loops, nil
+}
+
+func (h *TradeHandler) saveLoopCacheForUser(userID int, loops []map[string]interface{}) error {
+	if _, err := h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id = ?", userID); err != nil {
+		return err
+	}
+
+	for idx, loop := range loops {
+		loopID := fmt.Sprintf("cached_%d_%d", userID, idx)
+		if v, ok := loop["id"]; ok {
+			loopID = fmt.Sprintf("%v", v)
+		}
+
+		loopType := "graph"
+		if v, ok := loop["loop_type"]; ok {
+			loopType = fmt.Sprintf("%v", v)
+		}
+
+		loopLength := 0
+		if v, ok := loop["loop_length"].(int); ok {
+			loopLength = v
+		}
+
+		score := 50
+		if v, ok := loop["score"].(int); ok {
+			score = v
+		}
+
+		payloadBytes, err := json.Marshal(loop)
+		if err != nil {
+			continue
+		}
+
+		_, _ = h.db.Exec(`
+			INSERT INTO trade_loop_cache
+			(user_id, loop_id, loop_type, loop_length, score, payload_json, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+		`, userID, loopID, loopType, loopLength, score, string(payloadBytes))
+	}
+
+	return nil
+}
+
+func (h *TradeHandler) buildUserLoopSuggestions(userID int) ([]map[string]interface{}, error) {
+	graph, err := services.NewTradeGraph(h.db)
+	if err != nil {
+		return nil, err
+	}
+
+	allLoops := graph.FindTradeLoops()
+	userLoops := []map[string]interface{}{}
+
+	for _, loopEdges := range allLoops {
+		involvesUser := false
+		participants := []map[string]interface{}{}
+		edges := []map[string]interface{}{}
+
+		for _, edge := range loopEdges {
+			if edge.FromUser == userID || edge.ToUser == userID {
+				involvesUser = true
+			}
+
+			var fromUserName, toUserName, productTitle string
+			_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.FromUser).Scan(&fromUserName)
+			_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.ToUser).Scan(&toUserName)
+			_ = h.db.QueryRow("SELECT p.title FROM trades t JOIN products p ON p.id = t.target_product_id WHERE t.id = ?", edge.TradeID).Scan(&productTitle)
+
+			edges = append(edges, map[string]interface{}{
+				"from_user":      edge.FromUser,
+				"from_user_name": fromUserName,
+				"to_user":        edge.ToUser,
+				"to_user_name":   toUserName,
+				"trade_id":       edge.TradeID,
+				"product_title":  productTitle,
+			})
+
+			participants = append(participants, map[string]interface{}{
+				"id":            edge.FromUser,
+				"user_name":     fromUserName,
+				"product_title": productTitle,
+			})
+		}
+
+		if involvesUser {
+			userLoops = append(userLoops, map[string]interface{}{
+				"id":           loopEdges[0].TradeID,
+				"loop_type":    "graph",
+				"loop_length":  len(loopEdges),
+				"score":        70,
+				"participants": participants,
+				"edges":        edges,
+			})
+		}
+	}
+
+	// Add auto 3-way candidates from existing manual trades using preference matching.
+	rows, err := h.db.Query(`
+		SELECT id, buyer_id, seller_id
+		FROM trades
+		WHERE status IN ('pending', 'pending_multiway')
+		  AND (buyer_id = ? OR seller_id = ?)
+		ORDER BY updated_at DESC
+		LIMIT 12
+	`, userID, userID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var tradeID, buyerID, sellerID int
+			if err := rows.Scan(&tradeID, &buyerID, &sellerID); err != nil {
+				continue
+			}
+
+			matches, err := services.FindMultiwayMatch(h.db, buyerID, sellerID, tradeID, []int{})
+			if err != nil || len(matches) == 0 {
+				continue
+			}
+
+			for _, m := range matches {
+				if h.hasRecentRejectionSignal(m.User3ID, sellerID) {
+					continue
+				}
+
+				var buyerName, sellerName, user3Name, targetTitle string
+				_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", buyerID).Scan(&buyerName)
+				_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", sellerID).Scan(&sellerName)
+				_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", m.User3ID).Scan(&user3Name)
+				_ = h.db.QueryRow("SELECT p.title FROM trades t JOIN products p ON p.id = t.target_product_id WHERE t.id = ?", tradeID).Scan(&targetTitle)
+
+				userLoops = append(userLoops, map[string]interface{}{
+					"id":          fmt.Sprintf("auto_%d_%d", tradeID, m.User3ID),
+					"loop_type":   "auto_multiway",
+					"loop_length": 3,
+					"score":       85,
+					"trade_id":    tradeID,
+					"summary": fmt.Sprintf(
+						"Trade Loop Found: You give %s, you get %s. Chain: %s → %s → %s → %s",
+						targetTitle,
+						m.User3ProductTitle,
+						buyerName,
+						sellerName,
+						user3Name,
+						buyerName,
+					),
+					"participants": []map[string]interface{}{
+						{"id": buyerID, "user_name": buyerName, "product_title": m.User1ProductTitle},
+						{"id": sellerID, "user_name": sellerName, "product_title": targetTitle},
+						{"id": m.User3ID, "user_name": user3Name, "product_title": m.User3ProductTitle},
+					},
+				})
+				break
+			}
+		}
+	}
+
+	return userLoops, nil
+}
+
+func (h *TradeHandler) rebuildTradeLoopCacheForUsers(userIDs []int) {
+	seen := map[int]bool{}
+	for _, userID := range userIDs {
+		if userID <= 0 || seen[userID] {
+			continue
+		}
+		seen[userID] = true
+
+		loops, err := h.buildUserLoopSuggestions(userID)
+		if err != nil {
+			log.Printf("rebuildTradeLoopCacheForUsers: failed for user %d: %v", userID, err)
+			continue
+		}
+		if err := h.saveLoopCacheForUser(userID, loops); err != nil {
+			log.Printf("rebuildTradeLoopCacheForUsers: failed to save cache for user %d: %v", userID, err)
+		}
+	}
+}
+
+func (h *TradeHandler) notifyAlternativeLoopsIfAny(userID int, productTitle string) {
+	loops, err := h.getCachedLoopsForUser(userID)
+	if err != nil || len(loops) == 0 {
+		return
+	}
+
+	msg := "We found alternative trade loops for your item"
+	if strings.TrimSpace(productTitle) != "" {
+		msg = fmt.Sprintf("We found alternative trade loops for your item: %s", productTitle)
+	}
+
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", userID, msg)
+	publishNotification(userID, msg)
+}
+
+func mapKeysToSlice(m map[int]bool) []int {
+	out := make([]int, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// RebuildAllLoopCaches refreshes hybrid loop suggestions for premium users.
+// Intended to be called by a background ticker/cron.
+func (h *TradeHandler) RebuildAllLoopCaches() {
+	rows, err := h.db.Query("SELECT id FROM users WHERE is_premium = TRUE")
+	if err != nil {
+		log.Printf("RebuildAllLoopCaches: failed to load premium users: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	userIDs := []int{}
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			userIDs = append(userIDs, id)
+		}
+	}
+
+	if len(userIDs) == 0 {
+		return
+	}
+
+	h.rebuildTradeLoopCacheForUsers(userIDs)
 }
 
 // GetTrades lists trades for the current user (as buyer or seller)
@@ -566,6 +851,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
 		}
 
+		rejectedUserID := buyerID
+		if userID == buyerID {
+			rejectedUserID = sellerID
+		}
+
 		// Unlock products
 		if err := h.setProductStatusForTrade(tx, tradeID, "available"); err != nil {
 			_ = tx.Rollback()
@@ -593,6 +883,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Your trade offer was declined: "+productTitle)
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "You declined a trade offer: "+productTitle)
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'declined', ?)", tradeID, userID, currentStatus, payload.Message)
+
+		// Record rejection signal so hybrid matching can avoid poor fits and suggest better loops.
+		go h.recordTradeRejectionSignal(tradeID, userID, rejectedUserID, payload.Message)
+		go h.rebuildTradeLoopCacheForUsers([]int{buyerID, sellerID})
+		go h.notifyAlternativeLoopsIfAny(rejectedUserID, productTitle)
 	case "counter":
 		tx, err := h.db.Begin()
 		if err != nil {
@@ -2018,6 +2313,11 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		})
 	}
 
+	// Fast path: serve cached loop suggestions when available.
+	if cached, err := h.getCachedLoopsForUser(userID); err == nil && len(cached) > 0 {
+		return c.JSON(models.APIResponse{Success: true, Data: cached})
+	}
+
 	// 2. Fetch all active trade loops using the service
 	graph, err := services.NewTradeGraph(h.db)
 	if err != nil {
@@ -2080,12 +2380,12 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 
 	// 5. Also fetch matches from multiway_trades table where user is participant (user3)
 	rows, err := h.db.Query(`
-		SELECT m.id, m.trade_id, m.user3_id, m.user3_product_id, m.status,
+		SELECT m.id, m.original_trade_id, m.user3_id, m.user3_product_id, m.status,
 			   t.buyer_id as user1_id, t.seller_id as user2_id, t.target_product_id as user2_product_id,
 			   u1.name as user1_name, u2.name as user2_name, u3.name as user3_name,
 			   p1.title as user3_wanted_product_title, p2.title as user2_product_title, p3.title as user3_product_title
 		FROM multiway_trades m
-		JOIN trades t ON m.trade_id = t.id
+		JOIN trades t ON m.original_trade_id = t.id
 		JOIN users u1 ON t.buyer_id = u1.id
 		JOIN users u2 ON t.seller_id = u2.id
 		JOIN users u3 ON m.user3_id = u3.id
@@ -2106,8 +2406,8 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 				// Map this multiway_trade to the "loop" format the frontend expects
 				userLoops = append(userLoops, map[string]interface{}{
 					"id":          fmt.Sprintf("chain_%d", mID),
-					"is_chain":   true,
-					"status":     mStatus,
+					"is_chain":    true,
+					"status":      mStatus,
 					"loop_length": 3,
 					"participants": []map[string]interface{}{
 						{"id": u1ID, "user_name": u1Name, "product_title": u3WantedTitle}, // User 1 gives product that User 3 wants
@@ -2118,6 +2418,8 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			}
 		}
 	}
+
+	_ = h.saveLoopCacheForUser(userID, userLoops)
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -2319,8 +2621,19 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 
 	if acceptedCount >= len(participantIDs) {
 		// All accepted! Execute.
+		go h.rebuildTradeLoopCacheForUsers(mapKeysToSlice(participantIDs))
 		return h.ExecuteTradeLoop(c)
 	}
+
+	for pid := range participantIDs {
+		if pid == userID {
+			continue
+		}
+		msg := "A participant accepted the trade loop. Waiting for all confirmations."
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", pid, msg)
+		publishNotification(pid, msg)
+	}
+	go h.rebuildTradeLoopCacheForUsers(mapKeysToSlice(participantIDs))
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -2349,6 +2662,7 @@ func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to record decline"})
 	}
+	go h.rebuildTradeLoopCacheForUsers([]int{userID})
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop declined"})
 }
@@ -2397,6 +2711,16 @@ func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	if err := tx.Commit(); err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit transaction"})
 	}
+
+	participantIDs := map[int]bool{}
+	for _, tid := range tradeIDs {
+		var bID, sID int
+		if err := h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tid).Scan(&bID, &sID); err == nil {
+			participantIDs[bID] = true
+			participantIDs[sID] = true
+		}
+	}
+	go h.rebuildTradeLoopCacheForUsers(mapKeysToSlice(participantIDs))
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -2555,6 +2879,7 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", user2ID, msg)
 	publishNotification(user1ID, msg)
 	publishNotification(user2ID, msg)
+	go h.rebuildTradeLoopCacheForUsers([]int{user1ID, user2ID, userID})
 
 	return c.JSON(models.APIResponse{Success: true, Message: "You have accepted the multi-way trade opportunity!"})
 }
@@ -2566,7 +2891,7 @@ func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 	chainID := c.Params("id")
-	
+
 	var payload struct {
 		Action string `json:"action"` // "decline" or "search_again"
 	}
@@ -2603,7 +2928,7 @@ func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 					INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, status)
 					VALUES (?, ?, ?, ?, ?, ?, 'pending_user3')
 				`, newChainID, tradeID, u2ID, u1ID, u2ID, match.User3ID)
-				
+
 				// Notify the NEW User 3
 				notifMsg := fmt.Sprintf("Someone wants your %s and has something you like! Check your multi-way opportunities.", match.User3ProductTitle)
 				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", match.User3ID, notifMsg)
@@ -2615,14 +2940,16 @@ func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 				msg := "Your trade offer was declined."
 				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u1ID, msg)
 				publishNotification(u1ID, msg)
-				
+
 				// User 2 sees multiway declined
 				msg2 := "Multi-way matching failed. No more available partners found. Product is available again."
 				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u2ID, msg2)
 				publishNotification(u2ID, msg2)
 			}
+			go h.rebuildTradeLoopCacheForUsers([]int{u1ID, u2ID, userID})
 		}
 	}
+	go h.rebuildTradeLoopCacheForUsers([]int{userID})
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Opportunity declined"})
 }

@@ -588,6 +588,47 @@ const Dashboard: React.FC = () => {
     return undefined
   }
 
+  const getMultiWayTradeSummary = useCallback((trade: any) => {
+    const participants = Array.isArray(trade?.participants) ? trade.participants : []
+    const edges = Array.isArray(trade?.edges) ? trade.edges : []
+    const summaryText = typeof trade?.summary === 'string' ? trade.summary : ''
+    const currentUserID = Number(user?.id || 0)
+
+    const giveGetMatch = summaryText.match(/You give\s+(.*?),\s*you get\s+(.*?)(?:\.|$)/i)
+    const summaryGive = giveGetMatch?.[1]?.trim()
+    const summaryGet = giveGetMatch?.[2]?.trim()
+    const summaryChain = summaryText.match(/Chain:\s*(.*)$/i)?.[1]?.trim()
+
+    const participantIndex = participants.findIndex((p: any) => Number(p?.id) === currentUserID)
+    const yourParticipant = participantIndex >= 0 ? participants[participantIndex] : null
+    const nextParticipant = participantIndex >= 0 && participants.length > 0
+      ? participants[(participantIndex + 1) % participants.length]
+      : null
+
+    const yourIncomingEdge = edges.find((e: any) => Number(e?.from_user) === currentUserID)
+    const yourOutgoingEdge = edges.find((e: any) => Number(e?.to_user) === currentUserID)
+
+    const yourGive =
+      summaryGive ||
+      yourOutgoingEdge?.product_title ||
+      yourParticipant?.product_title ||
+      'Your listed item'
+
+    const yourGet =
+      summaryGet ||
+      yourIncomingEdge?.product_title ||
+      nextParticipant?.product_title ||
+      'Matched item from the loop'
+
+    const chainLabel = summaryChain || (
+      participants.length > 1
+        ? `${participants.map((p: any) => p?.user_name || `User ${p?.id}`).join(' -> ')} -> ${participants[0]?.user_name || `User ${participants[0]?.id}`}`
+        : 'Waiting for participant chain details'
+    )
+
+    return { yourGive, yourGet, chainLabel }
+  }, [user?.id])
+
   const fetchMultiWayTrades = async () => {
     try {
       setMultiWayTradesLoading(true)
@@ -3902,7 +3943,7 @@ const Dashboard: React.FC = () => {
                         textTransform="uppercase"
                         display={{ base: 'none', md: 'flex' }}
                       >
-                        Trade Loop • Participants • Action
+                        What • Chain • Participants • Action
                       </Box>
                       {multiWayTrades.map((trade, idx) => (
                         <Flex
@@ -3916,14 +3957,28 @@ const Dashboard: React.FC = () => {
                           minW={0}
                           flexWrap="wrap"
                         >
+                          {(() => {
+                            const summary = getMultiWayTradeSummary(trade)
+                            return (
                           <VStack align="start" spacing={0} flex={1} minW={0}>
                             <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }}>
                               Trade Loop #{trade.id}
+                            </Text>
+                            <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                              You give: {summary.yourGive}
+                            </Text>
+                            <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                              You get: {summary.yourGet}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                              Chain: {summary.chainLabel}
                             </Text>
                             <Text fontSize="xs" color="gray.600">
                               {trade.participants?.length || 0} participants
                             </Text>
                           </VStack>
+                            )
+                          })()}
                           <HStack spacing={2} flexShrink={0}>
                             <Badge colorScheme="purple" variant="subtle" fontSize="2xs" px={2} py={1}>
                               {trade.participants?.length || 0} in loop
@@ -3944,18 +3999,24 @@ const Dashboard: React.FC = () => {
                     </Box>
                   ) : (
                     <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                      {multiWayTrades.map((trade) => (
-                        <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={trade.participants || []}
-                            isChain={trade.is_chain}
-                            onJoinTrade={() => handleJoinMultiWayTrade(trade)}
-                            onViewDetails={() => setSelectedMultiWayTrade(trade)}
-                            onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}
-                            isLoading={multiWayTradeJoining}
-                          />
-                        </Box>
-                      ))}
+                      {multiWayTrades.map((trade) => {
+                        const summary = getMultiWayTradeSummary(trade)
+                        return (
+                          <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                            <MultiWayTradeUI
+                              participants={trade.participants || []}
+                              isChain={trade.is_chain}
+                              yourGive={summary.yourGive}
+                              yourGet={summary.yourGet}
+                              chainLabel={summary.chainLabel}
+                              onJoinTrade={() => handleJoinMultiWayTrade(trade)}
+                              onViewDetails={() => setSelectedMultiWayTrade(trade)}
+                              onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}
+                              isLoading={multiWayTradeJoining}
+                            />
+                          </Box>
+                        )
+                      })}
                     </SimpleGrid>
                   )}
                 </TabPanel>
