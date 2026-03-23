@@ -270,20 +270,15 @@ const Offers: React.FC = () => {
 
       const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
 
-      // If error is premium-related, redirect to premium page
+      // Soft upsell for non-premium users creating loops.
       if (errorMsg.includes('premium') || error?.response?.status === 403) {
         toast({
           id: 'error-convert-multiway-premium',
-          title: 'Premium Feature',
-          description: 'Multi-way trading is a premium feature. Upgrade to enable it!',
+          title: 'Start a Multi-way Loop with Premium',
+          description: 'You can still join invited loops for free. Upgrade only if you want to initiate your own loop.',
           status: 'warning',
           duration: 5000
         })
-
-        // Redirect to premium after showing message
-        setTimeout(() => {
-          navigate('/premium')
-        }, 1500)
       } else {
         toast({
           id: 'error-convert-multiway',

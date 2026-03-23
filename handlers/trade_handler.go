@@ -2306,120 +2306,143 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify premium status"})
 	}
 
-	if !isPremium {
-		return c.Status(403).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Multi-way trading loops is a premium feature",
-		})
-	}
-
-	// Fast path: serve cached loop suggestions when available.
-	if cached, err := h.getCachedLoopsForUser(userID); err == nil && len(cached) > 0 {
-		return c.JSON(models.APIResponse{Success: true, Data: cached})
-	}
-
-	// 2. Fetch all active trade loops using the service
-	graph, err := services.NewTradeGraph(h.db)
-	if err != nil {
-		log.Printf("Error fetching trades for graph: %v", err)
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade graph"})
-	}
-
-	// 3. Find loops
-	allLoops := graph.FindTradeLoops()
-
-	// 4. Transform loops and filter to only those involving the current user
 	userLoops := []map[string]interface{}{}
-	for _, loopEdges := range allLoops {
-		involvesUser := false
-		// 4. Transform loops and filter to only those involving the current user
-		participants := []map[string]interface{}{}
-		var edges []map[string]interface{}
-		for _, edge := range loopEdges {
-			if edge.FromUser == userID {
-				involvesUser = true
-			}
 
-			// Get additional details for the edge
-			var fromUserName, toUserName, productTitle string
-			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.FromUser).Scan(&fromUserName)
-			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.ToUser).Scan(&toUserName)
-
-			// Get target product from trade
-			var targetProductID int
-			h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", edge.TradeID).Scan(&targetProductID)
-			h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetProductID).Scan(&productTitle)
-
-			edgeData := map[string]interface{}{
-				"from_user":      edge.FromUser,
-				"from_user_name": fromUserName,
-				"to_user":        edge.ToUser,
-				"to_user_name":   toUserName,
-				"trade_id":       edge.TradeID,
-				"product_title":  productTitle,
-			}
-			edges = append(edges, edgeData)
-
-			// Add to participants list for UI
-			participants = append(participants, map[string]interface{}{
-				"id":            edge.FromUser,
-				"user_name":     fromUserName,
-				"product_title": productTitle,
-			})
+	// Premium users can discover and initiate loop suggestions.
+	if isPremium {
+		graph, err := services.NewTradeGraph(h.db)
+		if err != nil {
+			log.Printf("Error fetching trades for graph: %v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade graph"})
 		}
 
-		if involvesUser {
-			userLoops = append(userLoops, map[string]interface{}{
-				"id":           loopEdges[0].TradeID, // Use first trade ID as loop identifier
-				"edges":        edges,
-				"loop_length":  len(loopEdges),
-				"participants": participants,
-			})
+		allLoops := graph.FindTradeLoops()
+		for _, loopEdges := range allLoops {
+			involvesUser := false
+			participants := []map[string]interface{}{}
+			var edges []map[string]interface{}
+			loopTradeParts := []string{"loop"}
+
+			for _, edge := range loopEdges {
+				loopTradeParts = append(loopTradeParts, strconv.Itoa(edge.TradeID))
+				if edge.FromUser == userID || edge.ToUser == userID {
+					involvesUser = true
+				}
+
+				var fromUserName, toUserName, productTitle string
+				h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.FromUser).Scan(&fromUserName)
+				h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.ToUser).Scan(&toUserName)
+
+				var targetProductID int
+				h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", edge.TradeID).Scan(&targetProductID)
+				h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetProductID).Scan(&productTitle)
+
+				edges = append(edges, map[string]interface{}{
+					"from_user":      edge.FromUser,
+					"from_user_name": fromUserName,
+					"to_user":        edge.ToUser,
+					"to_user_name":   toUserName,
+					"trade_id":       edge.TradeID,
+					"product_title":  productTitle,
+				})
+
+				participants = append(participants, map[string]interface{}{
+					"id":            edge.FromUser,
+					"user_name":     fromUserName,
+					"product_title": productTitle,
+					"status":        "pending",
+				})
+			}
+
+			if involvesUser {
+				loopID := strings.Join(loopTradeParts, "_")
+				userLoops = append(userLoops, map[string]interface{}{
+					"id":                loopID,
+					"loop_id":           loopID,
+					"loop_type":         "detected_loop",
+					"initiator_view":    true,
+					"can_join":          true,
+					"can_create":        true,
+					"edges":             edges,
+					"loop_length":       len(loopEdges),
+					"participants":      participants,
+					"status":            "pending",
+					"initiator_user_id": userID,
+				})
+			}
 		}
 	}
 
 	// 5. Also fetch matches from multiway_trades table where user is participant (user3)
 	rows, err := h.db.Query(`
-		SELECT m.id, m.original_trade_id, m.user3_id, m.user3_product_id, m.status,
-			   t.buyer_id as user1_id, t.seller_id as user2_id, t.target_product_id as user2_product_id,
-			   u1.name as user1_name, u2.name as user2_name, u3.name as user3_name,
-			   p1.title as user3_wanted_product_title, p2.title as user2_product_title, p3.title as user3_product_title
+		SELECT m.chain_id, m.original_trade_id, m.user3_id, m.user3_product_id, m.status, m.initiator_user_id,
+		       DATE_FORMAT(DATE_ADD(m.created_at, INTERVAL 48 HOUR), '%Y-%m-%d %H:%i:%s') as expires_at,
+		       t.buyer_id as user1_id, t.seller_id as user2_id, t.target_product_id as user2_product_id,
+		       u1.name as user1_name, u2.name as user2_name, u3.name as user3_name, ui.name as initiator_name,
+		       p1.title as user3_wanted_product_title, p2.title as user2_product_title, p3.title as user3_product_title
 		FROM multiway_trades m
 		JOIN trades t ON m.original_trade_id = t.id
 		JOIN users u1 ON t.buyer_id = u1.id
 		JOIN users u2 ON t.seller_id = u2.id
 		JOIN users u3 ON m.user3_id = u3.id
+		JOIN users ui ON m.initiator_user_id = ui.id
 		JOIN products p2 ON t.target_product_id = p2.id
 		JOIN products p3 ON m.user3_product_id = p3.id
 		JOIN trade_items ti ON t.id = ti.trade_id
 		JOIN products p1 ON ti.product_id = p1.id
-		WHERE (m.user3_id = ? OR t.buyer_id = ? OR t.seller_id = ?) AND m.status IN ('pending', 'active')
+		WHERE (m.user3_id = ? OR t.buyer_id = ? OR t.seller_id = ?) AND m.status IN ('pending_user3', 'user3_accepted', 'active')
 	`, userID, userID, userID)
 
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
-			var mID, tradeID, u3ID, u3PID, u1ID, u2ID, u2PID int
-			var mStatus, u1Name, u2Name, u3Name, u3WantedTitle, u2Title, u3Title string
-			err = rows.Scan(&mID, &tradeID, &u3ID, &u3PID, &mStatus, &u1ID, &u2ID, &u2PID, &u1Name, &u2Name, &u3Name, &u3WantedTitle, &u2Title, &u3Title)
+			var chainID, mStatus, expiresAt, u1Name, u2Name, u3Name, initiatorName, u3WantedTitle, u2Title, u3Title string
+			var tradeID, u3ID, u3PID, initiatorUserID, u1ID, u2ID, u2PID int
+			err = rows.Scan(&chainID, &tradeID, &u3ID, &u3PID, &mStatus, &initiatorUserID, &expiresAt, &u1ID, &u2ID, &u2PID, &u1Name, &u2Name, &u3Name, &initiatorName, &u3WantedTitle, &u2Title, &u3Title)
 			if err == nil {
-				// Map this multiway_trade to the "loop" format the frontend expects
+				user3Status := "pending"
+				if mStatus == "user3_accepted" || mStatus == "active" {
+					user3Status = "joined"
+				} else if mStatus == "user3_declined" {
+					user3Status = "declined"
+				}
+
+				baseParticipantStatus := "pending"
+				if user3Status == "joined" {
+					baseParticipantStatus = "joined"
+				}
+
+				isInitiatorView := userID == initiatorUserID
+				canJoin := userID == u3ID && mStatus == "pending_user3"
+				canDecline := userID == u3ID && mStatus == "pending_user3"
+
 				userLoops = append(userLoops, map[string]interface{}{
-					"id":          fmt.Sprintf("chain_%d", mID),
-					"is_chain":    true,
-					"status":      mStatus,
-					"loop_length": 3,
+					"id":                chainID,
+					"loop_id":           chainID,
+					"chain_id":          chainID,
+					"is_chain":          true,
+					"loop_type":         "invited_chain",
+					"status":            mStatus,
+					"loop_length":       3,
+					"initiator_user_id": initiatorUserID,
+					"initiator_name":    initiatorName,
+					"initiator_view":    isInitiatorView,
+					"can_join":          canJoin,
+					"can_decline":       canDecline,
+					"expires_at":        expiresAt,
 					"participants": []map[string]interface{}{
-						{"id": u1ID, "user_name": u1Name, "product_title": u3WantedTitle}, // User 1 gives product that User 3 wants
-						{"id": u2ID, "user_name": u2Name, "product_title": u2Title},       // User 2 gives product that User 1 wants
-						{"id": u3ID, "user_name": u3Name, "product_title": u3Title},       // User 3 gives product that User 2 wants
+						{"id": u1ID, "user_name": u1Name, "product_title": u3WantedTitle, "status": baseParticipantStatus},
+						{"id": u2ID, "user_name": u2Name, "product_title": u2Title, "status": baseParticipantStatus},
+						{"id": u3ID, "user_name": u3Name, "product_title": u3Title, "status": user3Status},
 					},
 				})
 			}
 		}
 	}
 
-	_ = h.saveLoopCacheForUser(userID, userLoops)
+	if isPremium {
+		_ = h.saveLoopCacheForUser(userID, userLoops)
+	}
 
 	return c.JSON(models.APIResponse{
 		Success: true,
@@ -2434,13 +2457,20 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 	}
 
 	loopID := c.Params("id") // Format: loop_tradeid1_tradeid2_tradeid3
+	log.Printf("[GetTradeLoop] userID=%d raw loopID=%q", userID, loopID)
 
 	// Handle new multiway chain format (chain_ID)
 	if strings.HasPrefix(loopID, "chain_") {
-		chainID, _ := strconv.Atoi(strings.Replace(loopID, "chain_", "", 1))
 		var mID, tID, u3ID, u3PID int
 		var status string
-		err := h.db.QueryRow("SELECT id, trade_id, user3_id, user3_product_id, status FROM multiway_trades WHERE id = ?", chainID).Scan(&mID, &tID, &u3ID, &u3PID, &status)
+		err := h.db.QueryRow("SELECT id, original_trade_id, user3_id, user3_product_id, status FROM multiway_trades WHERE chain_id = ?", loopID).Scan(&mID, &tID, &u3ID, &u3PID, &status)
+		if err != nil {
+			// Backward compatibility for legacy chain_123 numeric IDs
+			chainID, convErr := strconv.Atoi(strings.Replace(loopID, "chain_", "", 1))
+			if convErr == nil {
+				err = h.db.QueryRow("SELECT id, original_trade_id, user3_id, user3_product_id, status FROM multiway_trades WHERE id = ?", chainID).Scan(&mID, &tID, &u3ID, &u3PID, &status)
+			}
+		}
 		if err != nil {
 			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Multi-way chain not found"})
 		}
@@ -2482,6 +2512,108 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 			{"from_user": u2ID, "to_user": u3ID, "from_user_name": u2Name, "to_user_name": u3Name, "product_title": u3Title},
 			{"from_user": u3ID, "to_user": u1ID, "from_user_name": u3Name, "to_user_name": u1Name, "product_title": u1Title},
 		}
+
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: fiber.Map{
+				"loop_id":      loopID,
+				"is_chain":     true,
+				"participants": participantsDetails,
+				"edges":        edges,
+				"status":       status,
+			},
+		})
+	}
+
+	// Backward-compatible support for cached auto suggestions: auto_{tradeID}_{user3ID}
+	// This allows clients to view loop details before the chain row is materialized.
+	if strings.HasPrefix(loopID, "auto_") {
+		parts := strings.Split(loopID, "_")
+		if len(parts) != 3 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID format"})
+		}
+
+		tradeID, err := strconv.Atoi(parts[1])
+		if err != nil || tradeID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID: bad trade reference"})
+		}
+
+		u3ID, err := strconv.Atoi(parts[2])
+		if err != nil || u3ID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID: bad participant reference"})
+		}
+
+		log.Printf("[GetTradeLoop] auto invite detected: tradeID=%d user3ID=%d", tradeID, u3ID)
+
+		// Fetch original trade (U1 -> U2)
+		var u1ID, u2ID, u2PID int
+		err = h.db.QueryRow("SELECT buyer_id, seller_id, target_product_id, status FROM trades WHERE id = ?", tradeID).
+			Scan(&u1ID, &u2ID, &u2PID, new(string))
+		if err != nil {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Original trade not found"})
+		}
+
+		// Find the specific User3 match (so we know what product User3 is offering)
+		matches, err := services.FindMultiwayMatch(h.db, u1ID, u2ID, tradeID, []int{})
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate loop participants"})
+		}
+
+		var selected *services.MultiwayMatch
+		for i := range matches {
+			if matches[i].User3ID == u3ID {
+				selected = &matches[i]
+				break
+			}
+		}
+		if selected == nil {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Multi-way chain not found"})
+		}
+
+		u3PID := selected.User3ProductID
+
+		// Fetch names
+		var u1Name, u2Name, u3Name string
+		_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", u1ID).Scan(&u1Name)
+		_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", u2ID).Scan(&u2Name)
+		_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", u3ID).Scan(&u3Name)
+
+		// Fetch U3's wanted product (which is U1's offered product)
+		var u3WantedPID int
+		_ = h.db.QueryRow(`
+			SELECT ti.product_id
+			FROM trade_items ti
+			WHERE ti.trade_id = ? AND ti.offered_by = 'buyer'
+			LIMIT 1
+		`, tradeID).Scan(&u3WantedPID)
+
+		// Fetch product titles
+		var u1Title, u2Title, u3Title string
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", u3WantedPID).Scan(&u1Title)
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", u2PID).Scan(&u2Title)
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", u3PID).Scan(&u3Title)
+
+		// Check if user is participant
+		if userID != u1ID && userID != u2ID && userID != u3ID {
+			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this multi-way trade"})
+		}
+
+		participantsDetails := []map[string]interface{}{
+			{"user_id": u1ID, "user_name": u1Name, "product_id": u3WantedPID, "product_title": u1Title, "position": 0},
+			{"user_id": u2ID, "user_name": u2Name, "product_id": u2PID, "product_title": u2Title, "position": 1},
+			{"user_id": u3ID, "user_name": u3Name, "product_id": u3PID, "product_title": u3Title, "position": 2},
+		}
+
+		edges := []map[string]interface{}{
+			{"from_user": u1ID, "to_user": u2ID, "from_user_name": u1Name, "to_user_name": u2Name, "product_title": u2Title},
+			{"from_user": u2ID, "to_user": u3ID, "from_user_name": u2Name, "to_user_name": u3Name, "product_title": u3Title},
+			{"from_user": u3ID, "to_user": u1ID, "from_user_name": u3Name, "to_user_name": u1Name, "product_title": u1Title},
+		}
+
+		// If the chain row already exists, prefer its status.
+		status := "pending_user3"
+		chainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, u1ID, u2ID, u3ID)
+		_ = h.db.QueryRow("SELECT status FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&status)
 
 		return c.JSON(models.APIResponse{
 			Success: true,
@@ -2568,12 +2700,136 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 
 // AcceptTradeLoop
 func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
+	loopID := c.Params("id") // Format: loop_tradeid1_tradeid2_tradeid3
+	log.Printf("[AcceptTradeLoop] raw loopID=%q", loopID)
+
+	// Backward-compatible support for cached auto suggestions: auto_{tradeID}_{user3ID}
+	// IMPORTANT: parse this upfront so later loop_id guards never treat `auto_*` as invalid.
+	isAutoInvite := strings.HasPrefix(loopID, "auto_")
+	var autoTradeID int
+	var autoSuggestedUser3ID int
+
+	if isAutoInvite {
+		parts := strings.Split(loopID, "_")
+		if len(parts) != 3 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID format"})
+		}
+
+		tradeID, err := strconv.Atoi(parts[1])
+		if err != nil || tradeID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID: bad trade reference"})
+		}
+		suggestedUser3ID, err := strconv.Atoi(parts[2])
+		if err != nil || suggestedUser3ID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID: bad participant reference"})
+		}
+
+		autoTradeID = tradeID
+		autoSuggestedUser3ID = suggestedUser3ID
+	}
+
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
-	loopID := c.Params("id") // Format: loop_tradeid1_tradeid2_tradeid3
+	if isAutoInvite {
+		log.Printf("[AcceptTradeLoop:auto] initiatorUserID=%d tradeID=%d suggestedUser3ID=%d", userID, autoTradeID, autoSuggestedUser3ID)
+
+		var buyerID, sellerID int
+		var tradeStatus string
+		tradeQuery := "SELECT buyer_id, seller_id, status FROM trades WHERE id = ?"
+		log.Printf("[AcceptTradeLoop:auto] query=%s args=[%d]", tradeQuery, autoTradeID)
+		err := h.db.QueryRow(tradeQuery, autoTradeID).Scan(&buyerID, &sellerID, &tradeStatus)
+		if err != nil {
+			log.Printf("[AcceptTradeLoop:auto] trades lookup failed tradeID=%d err=%v", autoTradeID, err)
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Loop no longer exists. Please refresh your dashboard."})
+		}
+		log.Printf("[AcceptTradeLoop:auto] trades row: buyerID=%d sellerID=%d status=%s", buyerID, sellerID, tradeStatus)
+
+		if userID != buyerID && userID != sellerID {
+			log.Printf("[AcceptTradeLoop:auto] unauthorized: initiatorUserID=%d buyerID=%d sellerID=%d", userID, buyerID, sellerID)
+			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not allowed to join this loop."})
+		}
+
+		if tradeStatus != "pending" && tradeStatus != "pending_multiway" {
+			log.Printf("[AcceptTradeLoop:auto] invalid trade status: %s", tradeStatus)
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop is no longer active."})
+		}
+
+		matches, err := services.FindMultiwayMatch(h.db, buyerID, sellerID, autoTradeID, []int{})
+		if err != nil {
+			log.Printf("[AcceptTradeLoop:auto] FindMultiwayMatch failed err=%v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate loop participants"})
+		}
+
+		var selected *services.MultiwayMatch
+		for i := range matches {
+			if matches[i].User3ID == autoSuggestedUser3ID {
+				selected = &matches[i]
+				break
+			}
+		}
+
+		if selected == nil {
+			log.Printf("[AcceptTradeLoop:auto] no matching User3 found user3ID=%d tradeID=%d buyerID=%d sellerID=%d", autoSuggestedUser3ID, autoTradeID, buyerID, sellerID)
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "This loop invite is no longer available. Please refresh and try another match."})
+		}
+
+		chainID := fmt.Sprintf("chain_%d_%d_%d_%d", autoTradeID, buyerID, sellerID, selected.User3ID)
+		log.Printf("[AcceptTradeLoop:auto] computed chainID=%s (user3_product_id=%d)", chainID, selected.User3ProductID)
+
+		// Move original trade into multi-way matching state.
+		updateQuery := "UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?"
+		log.Printf("[AcceptTradeLoop:auto] query=%s args=[%d]", updateQuery, autoTradeID)
+		if res, err := h.db.Exec(updateQuery, autoTradeID); err != nil {
+			log.Printf("[AcceptTradeLoop:auto] update trades failed err=%v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to activate multi-way loop"})
+		} else {
+			ra, _ := res.RowsAffected()
+			log.Printf("[AcceptTradeLoop:auto] update trades rows_affected=%d", ra)
+		}
+
+		var existing int
+		countQuery := "SELECT COUNT(*) FROM multiway_trades WHERE chain_id = ?"
+		log.Printf("[AcceptTradeLoop:auto] query=%s args=[%s]", countQuery, chainID)
+		if err := h.db.QueryRow(countQuery, chainID).Scan(&existing); err != nil {
+			log.Printf("[AcceptTradeLoop:auto] count multiway_trades failed err=%v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate multi-way invitation"})
+		}
+		log.Printf("[AcceptTradeLoop:auto] existing multiway_trades for chain_id=%s => %d", chainID, existing)
+
+		if existing == 0 {
+			insertQuery := `
+				INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, status)
+				VALUES (?, ?, ?, ?, ?, ?, 'pending_user3')
+			`
+			log.Printf("[AcceptTradeLoop:auto] query=%s args=[chain_id=%s original_trade_id=%d initiator_user_id=%d user1_id=%d user2_id=%d user3_id=%d]",
+				strings.TrimSpace(insertQuery), chainID, autoTradeID, userID, buyerID, sellerID, selected.User3ID)
+
+			if _, err := h.db.Exec(insertQuery, chainID, autoTradeID, userID, buyerID, sellerID, selected.User3ID); err != nil {
+				log.Printf("[AcceptTradeLoop:auto] insert multiway_trades failed err=%v", err)
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create loop invitation"})
+			}
+
+			notifMsg := fmt.Sprintf("Someone wants your %s and has something you like! Check your multi-way opportunities.", selected.User3ProductTitle)
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", selected.User3ID, notifMsg)
+			publishNotification(selected.User3ID, notifMsg)
+			publishToUser(selected.User3ID, sseEvent{Type: "multiway_opportunity", Data: fiber.Map{"chain_id": chainID}})
+		}
+
+		go h.rebuildTradeLoopCacheForUsers([]int{buyerID, sellerID, selected.User3ID})
+
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Message: "Loop invite sent. Waiting for participant to hop in.",
+			Data: fiber.Map{
+				"loop_id":  chainID,
+				"chain_id": chainID,
+				"status":   "pending_user3",
+			},
+		})
+	}
 
 	// 1. Verify loop exists and user is part of it
 	parts := strings.Split(loopID, "_")
@@ -2653,6 +2909,7 @@ func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
 	}
 
 	loopID := c.Params("id")
+	log.Printf("[DeclineTradeLoop] userID=%d raw loopID=%q", userID, loopID)
 
 	_, err := h.db.Exec(`
 		INSERT INTO trade_loop_agreements (loop_id, user_id, status)

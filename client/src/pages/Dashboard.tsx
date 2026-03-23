@@ -266,7 +266,7 @@ const Dashboard: React.FC = () => {
 
   // Fetch multi-way trades when tab is selected
   useEffect(() => {
-    if (user && activeTab === 2 && user.is_premium) {
+    if (user && activeTab === 2) {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
@@ -637,9 +637,10 @@ const Dashboard: React.FC = () => {
         params: { user_id: user?.id }
       })
       setMultiWayTrades(response.data?.data || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch multi-way trades:', error)
-      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: 'Failed to load multi-way trades', status: 'error' })
+      const msg = error?.response?.data?.error || 'Failed to load multi-way trades'
+      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: msg, status: 'error' })
       setMultiWayTrades([])
     } finally {
       setMultiWayTradesLoading(false)
@@ -649,13 +650,23 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      const tradeIdString = String(trade.id)
+      const tradeIdString = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+      console.log('[Dashboard] Hop In clicked', {
+        tradeIdString,
+        tradeChainId: trade?.chain_id,
+        tradeLoopId: trade?.loop_id,
+        tradeId: trade?.id,
+        userId: user?.id,
+      })
       
+      if (!tradeIdString) {
+        throw new Error('Invalid loop ID. Please refresh and try again.')
+      }
+
       if (tradeIdString.startsWith('chain_')) {
-        const id = tradeIdString.replace('chain_', '')
-        await api.post(`/api/trades/multiway/${id}/accept`)
+        await api.post(`/api/trades/multiway/${tradeIdString}/accept`)
       } else {
-        await api.post(`/api/trades/loops/${trade.id}/accept`, {
+        await api.post(`/api/trades/loops/${tradeIdString}/accept`, {
           user_id: user?.id,
         })
       }
@@ -684,15 +695,26 @@ const Dashboard: React.FC = () => {
 
   const handleDeclineMultiWayTrade = async (trade: any, searchAgain: boolean = false) => {
     try {
-      const tradeIdString = String(trade.id)
+      const tradeIdString = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+      console.log('[Dashboard] Decline clicked', {
+        tradeIdString,
+        tradeChainId: trade?.chain_id,
+        tradeLoopId: trade?.loop_id,
+        tradeId: trade?.id,
+        searchAgain,
+        userId: user?.id,
+      })
+
+      if (!tradeIdString) {
+        throw new Error('Invalid loop ID. Please refresh and try again.')
+      }
       
       if (tradeIdString.startsWith('chain_')) {
-        const id = tradeIdString.replace('chain_', '')
-        await api.post(`/api/trades/multiway/${id}/decline`, {
+        await api.post(`/api/trades/multiway/${tradeIdString}/decline`, {
           search_again: searchAgain
         })
       } else {
-        await api.post(`/api/trades/loops/${trade.id}/decline`, {
+        await api.post(`/api/trades/loops/${tradeIdString}/decline`, {
           reason: 'Not interested'
         })
       }
@@ -908,20 +930,15 @@ const Dashboard: React.FC = () => {
 
       const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
 
-      // If error is premium-related, redirect to premium page
+      // Soft upsell for non-premium users creating loops.
       if (errorMsg.includes('premium') || error?.response?.status === 403) {
         toast({
           id: 'error-convert-multiway-premium',
-          title: 'Premium Feature',
-          description: 'Multi-way trading is a premium feature. Upgrade to enable it!',
+          title: 'Start a Multi-way Loop with Premium',
+          description: 'You can still join invited loops for free. Upgrade only if you want to initiate your own loop.',
           status: 'warning',
           duration: 5000
         })
-
-        // Redirect to premium after showing message
-        setTimeout(() => {
-          navigate('/premium')
-        }, 1500)
       } else {
         toast({
           id: 'error-convert-multiway',
@@ -3072,9 +3089,11 @@ const Dashboard: React.FC = () => {
                         <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
-                        <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
-                          PRO
-                        </Badge>
+                        {user?.is_premium && (
+                          <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
+                            PRO
+                          </Badge>
+                        )}
                       </HStack>
                     </Tab>
                     <Tab
@@ -3930,6 +3949,59 @@ const Dashboard: React.FC = () => {
 
                 {/* Multi-Way Trades Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
+                  {(() => {
+                    const invitedTrades = (multiWayTrades || []).filter((t: any) => t?.can_join && String(t?.status || '').toLowerCase() === 'pending_user3')
+                    if (!user?.is_premium || invitedTrades.length > 0) {
+                      return (
+                        <VStack align="stretch" spacing={3} mb={4}>
+                          {invitedTrades.map((trade: any) => (
+                            <Box
+                              key={`invite-${trade?.chain_id || trade?.id}`}
+                              p={4}
+                              bg="teal.50"
+                              border="1px solid"
+                              borderColor="teal.200"
+                              borderRadius="lg"
+                            >
+                              <HStack justify="space-between" align="start" spacing={4}>
+                                <VStack align="start" spacing={1} flex={1} minW={0}>
+                                  <Text fontSize="sm" fontWeight="bold" color="teal.800">
+                                    You've been invited to a Multi-way Loop!
+                                  </Text>
+                                  <Text fontSize="xs" color="teal.700" noOfLines={2}>
+                                    Initiated by {trade?.initiator_name || 'a premium user'} • You give: {getMultiWayTradeSummary(trade).yourGive} • You get: {getMultiWayTradeSummary(trade).yourGet}
+                                  </Text>
+                                </VStack>
+                                <Button
+                                  size="sm"
+                                  colorScheme="teal"
+                                  onClick={() => handleJoinMultiWayTrade(trade)}
+                                  isLoading={multiWayTradeJoining}
+                                  loadingText="Joining..."
+                                >
+                                  Hop In
+                                </Button>
+                              </HStack>
+                            </Box>
+                          ))}
+                          {!user?.is_premium && (
+                            <Box p={3} bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="lg">
+                              <HStack justify="space-between" align="center" spacing={3}>
+                                <Text fontSize="xs" color="purple.800">
+                                  Start a Multi-way Loop with Premium. You can still hop in to invited loops for free.
+                                </Text>
+                                <Button size="xs" colorScheme="purple" variant="outline" onClick={() => navigate('/premium')}>
+                                  Learn More
+                                </Button>
+                              </HStack>
+                            </Box>
+                          )}
+                        </VStack>
+                      )
+                    }
+                    return null
+                  })()}
+
                   {multiWayTradesLoading ? (
                     <Center py={12}>
                       <Spinner size="lg" color="brand.500" />
@@ -4040,6 +4112,12 @@ const Dashboard: React.FC = () => {
                               yourGive={summary.yourGive}
                               yourGet={summary.yourGet}
                               chainLabel={summary.chainLabel}
+                              viewMode={(trade?.initiator_view || trade?.initiator_user_id === user?.id) ? 'initiator' : 'participant'}
+                              initiatorName={trade?.initiator_name}
+                              canJoin={Boolean(trade?.can_join ?? true)}
+                              canDecline={Boolean(trade?.can_decline ?? true)}
+                              loopStatus={trade?.status}
+                              expiryLabel={trade?.expires_at ? new Date(trade.expires_at).toLocaleString() : undefined}
                               onJoinTrade={() => handleJoinMultiWayTrade(trade)}
                               onViewDetails={() => setSelectedMultiWayTrade(trade)}
                               onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}

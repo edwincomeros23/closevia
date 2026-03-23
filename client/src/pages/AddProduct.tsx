@@ -734,12 +734,6 @@ const AddProduct: React.FC = () => {
           <Text fontSize="sm" color="gray.600" fontWeight="semibold">📸 Upload Media</Text>
           <Text fontSize="xs" color="gray.500">Min 1 photo. AI analyzes automatically.</Text>
         </VStack>
-        {isGenerating && (
-          <Badge colorScheme="purple" px={3} py={1.5} borderRadius="md" display="flex" alignItems="center" gap={2} whiteSpace="nowrap">
-            <Spinner size="xs" />
-            <Text fontSize="xs">Analyzing...</Text>
-          </Badge>
-        )}
         {!isGenerating && aiDone && (
           <Badge colorScheme="green" px={3} py={1.5} borderRadius="md" fontSize="xs" whiteSpace="nowrap">
             ✓ Auto-filled
@@ -1162,21 +1156,6 @@ const AddProduct: React.FC = () => {
               <Text fontSize="xs" fontWeight="bold" color="gray.700">Edit Details</Text>
               <Text fontSize="lg" color="gray.500" cursor="pointer">▲</Text>
             </HStack>
-
-            {/* AI Analyzing Indicator */}
-            {isGenerating && !aiDone && (
-              <Alert
-                status="info"
-                fontSize="xs"
-                borderRadius="md"
-                bg="blue.50"
-                borderColor="blue.200"
-                borderWidth="1px"
-              >
-                <Spinner size="xs" mr={2} color="blue.500" />
-                <Text color="blue.700">AI is analyzing your photos...</Text>
-              </Alert>
-            )}
 
             {/* Product Name */}
             <FormControl isRequired>
@@ -1714,11 +1693,9 @@ const AddProduct: React.FC = () => {
                 hasArrow
               >
                 <Button
-                  rightIcon={isGenerating ? <Spinner size="sm" /> : <ArrowForwardIcon />}
+                  rightIcon={<ArrowForwardIcon />}
                   onClick={handleNextClick}
                   isDisabled={!canProceed()}
-                  isLoading={isGenerating && currentStep === 1}
-                  loadingText={isGenerating ? 'Analyzing...' : 'Next'}
                   colorScheme="brand"
                   size={{ base: "sm", sm: "md" }}
                   fontSize={{ base: "xs", sm: "sm" }}
