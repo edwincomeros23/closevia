@@ -237,38 +237,27 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         let res
         // If the current authenticated user's ID matches the requested route ID.
         // Or if the requested route is the user's slug, check against currentUser as well.
+        console.log('🔍 UserProfile: Checking if own profile - id:', id, 'currentUser.id:', currentUser?.id, 'currentUser.slug:', currentUser?.slug)
         if (currentUser && (id === String(currentUser.id) || id === currentUser.slug)) {
+          console.log('✅ UserProfile: Own profile detected, fetching from /api/users/profile')
           res = await api.get('/api/users/profile')
         } else {
           // Fetch public user info
-          res = await api.get(`/api/users/${id}`).catch(err => {
-            // If user not found, use fallback data
-            if (err.response?.status === 404) {
-              return {
-                data: {
-                  id, // Can be string or number but fallback assumes string id/slug
-                  name: 'User',
-                  created_at: new Date().toISOString(),
-                  rating: 4.8,
-                  positive_feedback: 98,
-                  response_time_minutes: 30,
-                  total_reviews: 42,
-                  bio: 'This user prefers to keep an air of mystery about them.',
-                  department: 'Unknown',
-                  verified: false,
-                  is_organization: false,
-                },
-              }
-            }
-            throw err
-          })
+          console.log('🔍 UserProfile: Public profile, fetching from /api/users/' + id)
+          res = await api.get(`/api/users/${id}`)
         }
 
-        const apiUser = (res.data?.data || res.data) as Partial<PublicUser>
+        console.log('🔍 Full API response:', res.data)
+        console.log('🔍 res.data.data:', res.data?.data)
+        console.log('🔍 res.data.data.user:', res.data?.data?.user)
+
+        const apiUser = (res.data?.data?.user || res.data?.user || res.data) as Partial<PublicUser>
+        console.log('🔍 Extracted apiUser:', apiUser)
 
 
         // Log the API response to debug profile picture and name
         console.log('🔍 API User Response:', {
+          id: apiUser.id,
           name: apiUser.name,
           profile_picture: (apiUser as any).profile_picture,
           org_logo_url: (apiUser as any).org_logo_url,
@@ -298,10 +287,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           activity_status: (apiUser as any).activity_status || 'inactive',
         })
 
-        // Fetch user's products to infer stats and successful trades
-        // Ensure we pass the actual resolved numeric ID if available, or just pass the slug/id string and let the backend handle it.
-        const page1 = await getUserProducts(apiUser.id || id as any, 1)
-        setProducts(page1.data || [])
+        // Only fetch products if we have a valid ID
+        if (apiUser.id) {
+          const page1 = await getUserProducts(apiUser.id as any, 1)
+          setProducts(page1.data || [])
+        } else {
+          console.warn('⚠️ UserProfile: apiUser.id is missing, skipping product fetch')
+          setProducts([])
+        }
       } catch (e: any) {
         setError(e?.message || 'Failed to load user')
       } finally {
@@ -1128,7 +1121,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         fontSize="xs"
                         cursor="default"
                       >
-                        <Icon as={FaFileAlt} mr={1} />Documents Submitted
+                        Documents Verified
                       </Badge>
                     </Tooltip>
                   )}
@@ -1927,19 +1920,19 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 </FormControl>
 
 
-                <FormControl isRequired>
-                  <FormLabel>Your Review</FormLabel>
-                  <Textarea
-                    value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
-                    placeholder="Share details about your experience with this trader..."
-                    rows={5}
-                    maxLength={500}
-                  />
-                  <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
-                    {reviewComment.length}/500 characters
-                  </Text>
-                </FormControl>
+                  <FormControl isRequired>
+                    <FormLabel>Your Review</FormLabel>
+                    <Textarea
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Share details about your experience with this trader..."
+                      rows={5}
+                      maxLength={500}
+                    />
+                    <Text fontSize="xs" color="gray.500" mt={1} textAlign="right">
+                      {reviewComment.length}/500 characters
+                    </Text>
+                  </FormControl>
 
 
                 <HStack justify="flex-end" spacing={3}>

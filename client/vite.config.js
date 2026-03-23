@@ -7,60 +7,43 @@ export default defineConfig({
         react(),
         VitePWA({
             registerType: 'autoUpdate',
-            manifest: {
-                name: 'Clovia - Trading Marketplace',
-                short_name: 'Clovia',
-                description: 'A trading marketplace for buying and selling items',
-                theme_color: '#000000',
-                background_color: '#ffffff',
-                display: 'standalone',
-                start_url: '/',
-                icons: [
-                    {
-                        src: '/icon-192.png',
-                        sizes: '192x192',
-                        type: 'image/png',
-                        purpose: 'any'
-                    },
-                    {
-                        src: '/icon-512.png',
-                        sizes: '512x512',
-                        type: 'image/png',
-                        purpose: 'any'
-                    },
-                    {
-                        src: '/icon-192-maskable.png',
-                        sizes: '192x192',
-                        type: 'image/png',
-                        purpose: 'maskable'
-                    },
-                    {
-                        src: '/icon-512-maskable.png',
-                        sizes: '512x512',
-                        type: 'image/png',
-                        purpose: 'maskable'
-                    }
-                ]
-            },
+            injectRegister: false,
+            manifest: false,
             workbox: {
-                globPatterns: ['**/*.{js,css,html,ico,png,webp,woff,woff2,ttf,eot}'],
-                globIgnores: ['**/*.svg', '**/Group*.svg'],
-                maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10 MB
+                maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
                 runtimeCaching: [
                     {
-                        urlPattern: /^https:\/\/api\..*/i,
+                        urlPattern: ({ request }) => request.destination === 'document',
                         handler: 'NetworkFirst',
                         options: {
-                            cacheName: 'api-cache',
+                            cacheName: 'pages-cache',
+                            networkTimeoutSeconds: 5,
+                        },
+                    },
+                    {
+                        urlPattern: ({ request }) => ['script', 'style', 'worker'].includes(request.destination),
+                        handler: 'StaleWhileRevalidate',
+                        options: {
+                            cacheName: 'assets-cache',
+                        },
+                    },
+                    {
+                        urlPattern: ({ request }) => request.destination === 'image',
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'images-cache',
                             expiration: {
-                                maxEntries: 50,
-                                maxAgeSeconds: 60 * 60 * 24 * 7 // 7 days
-                            }
-                        }
-                    }
-                ]
-            }
-        })
+                                maxEntries: 100,
+                                maxAgeSeconds: 60 * 60 * 24 * 30,
+                            },
+                        },
+                    },
+                ],
+            },
+            devOptions: {
+                enabled: false,
+            },
+        }),
     ],
     define: {
         // Fix for: Uncaught ReferenceError: __HMR_CONFIG_NAME__ is not defined

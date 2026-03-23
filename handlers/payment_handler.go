@@ -377,7 +377,6 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 		Plan string `json:"plan"` // "monthly" or "yearly"
 	}
 	if err := c.BodyParser(&payload); err != nil {
-		// Default to plus/monthly if parsing fails
 		payload.Tier = "plus"
 		payload.Plan = "monthly"
 	}
@@ -394,22 +393,33 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
-	amount := 79.0 // Default for Plus Monthly
-	description := "Plus Subscription (Monthly)"
+	// Check current premium status — allow Plus→Pro upgrades
+	var isPremium bool
+	var currentTier string
+	h.db.QueryRow("SELECT COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE id = ?", userID).Scan(&isPremium, &currentTier)
+	if isPremium && currentTier == "pro" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You already have Pro — the highest tier"})
+	}
+	if isPremium && currentTier == payload.Tier {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You are already a %s member", payload.Tier)})
+	}
+
+	// Pricing: Plus ₱79/mo or ₱699/yr, Pro ₱120/mo or ₱1,099/yr
+	amount := 79.0
+	description := "Clovia Plus Subscription (Monthly)"
 
 	if payload.Tier == "pro" {
 		if payload.Plan == "yearly" {
 			amount = 1099.0
-			description = "Pro Subscription (Yearly)"
+			description = "Clovia Pro Subscription (Yearly)"
 		} else {
 			amount = 120.0
-			description = "Pro Subscription (Monthly)"
+			description = "Clovia Pro Subscription (Monthly)"
 		}
 	} else {
-		// Default to Plus
 		if payload.Plan == "yearly" {
 			amount = 699.0
-			description = "Plus Subscription (Yearly)"
+			description = "Clovia Plus Subscription (Yearly)"
 		}
 	}
 
@@ -473,14 +483,27 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 		return c.Status(400).SendString("Invalid payload")
 	}
 
-	status, _ := payload["status"].(string)
-	externalID, _ := payload["external_id"].(string)
-	amount, _ := payload["amount"].(float64)
+	var status, externalID string
+	var amount float64
 
+	// Try top-level structure (Invoices)
+	if s, ok := payload["status"].(string); ok { status = s }
+	if e, ok := payload["external_id"].(string); ok { externalID = e }
+	if a, ok := payload["amount"].(float64); ok { amount = a }
+
+	// Try nested structure (Recurring/Subscriptions)
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		if s, ok := data["status"].(string); ok { status = s }
+		if e, ok := data["external_id"].(string); ok { externalID = e }
+		if a, ok := data["amount"].(float64); ok { amount = a }
+	}
+
+	status = strings.ToUpper(status)
 	log.Printf("🔔 Webhook Received: Status=%s, ExternalID=%s, Amount=%.2f", status, externalID, amount)
 
-	if status != "PAID" {
-		log.Printf("⏭️  Webhook: Ignoring non-PAID status: %s", status)
+	// Xendit uses "PAID" for invoices, but other methods might use "COMPLETED" or "SUCCEEDED"
+	if status != "PAID" && status != "COMPLETED" && status != "SUCCEEDED" {
+		log.Printf("⏭️  Webhook: Ignoring non-success status: %s", status)
 		return c.SendStatus(200)
 	}
 
@@ -546,10 +569,10 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 		var userID int
 		var tier string
 		if strings.Count(externalID, "_") >= 3 {
-			// user_premium_<tier>_<userID>
+			// user_premium_<tier>_<userID> e.g. user_premium_plus_123
 			parts := strings.Split(externalID, "_")
 			tier = parts[2]
-			fmt.Sscanf(parts[3], "%d", &userID)
+			fmt.Sscanf(parts[len(parts)-1], "%d", &userID)
 		} else {
 			// user_premium_<userID> (legacy support)
 			fmt.Sscanf(externalID, "user_premium_%d", &userID)

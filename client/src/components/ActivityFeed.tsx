@@ -21,20 +21,36 @@ const ActivityFeed = () => {
     const [activities, setActivities] = useState<Activity[]>([]);
 
     useEffect(() => {
+        let intervalId: ReturnType<typeof setInterval> | null = null;
+        let isMounted = true;
+        let inFlight = false;
+
         const fetchActivities = async (lat?: number, lng?: number) => {
+            if (inFlight) return;
+            inFlight = true;
             try {
                 const params: Record<string, string> = {};
                 if (lat !== undefined && lng !== undefined) {
                     params.lat = lat.toFixed(6);
                     params.lng = lng.toFixed(6);
                 }
-                const res = await api.get('/api/activities', { params });
-                if (res.data?.success && res.data?.data) {
+                const res = await api.get('/api/activities', {
+                    params,
+                    timeout: 15000,
+                });
+                if (isMounted && res.data?.success && res.data?.data) {
                     setActivities(res.data.data);
                 }
             } catch (err) {
                 console.error('Failed to fetch activities', err);
+            } finally {
+                inFlight = false;
             }
+        };
+
+        const startPolling = (lat?: number, lng?: number) => {
+            fetchActivities(lat, lng);
+            intervalId = setInterval(() => fetchActivities(lat, lng), 30000);
         };
 
         // Try to get user location once; fall back to no-location fetch
@@ -42,23 +58,22 @@ const ActivityFeed = () => {
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
                     const { latitude, longitude } = pos.coords;
-                    fetchActivities(latitude, longitude);
-                    const interval = setInterval(() => fetchActivities(latitude, longitude), 15000);
-                    return () => clearInterval(interval);
+                    startPolling(latitude, longitude);
                 },
                 () => {
                     // Permission denied or unavailable — fetch without coordinates
-                    fetchActivities();
-                    const interval = setInterval(() => fetchActivities(), 15000);
-                    return () => clearInterval(interval);
+                    startPolling();
                 },
                 { timeout: 4000, maximumAge: 60000 }
             );
         } else {
-            fetchActivities();
-            const interval = setInterval(() => fetchActivities(), 15000);
-            return () => clearInterval(interval);
+            startPolling();
         }
+
+        return () => {
+            isMounted = false;
+            if (intervalId) clearInterval(intervalId);
+        };
     }, []);
 
     if (activities.length === 0) return null;

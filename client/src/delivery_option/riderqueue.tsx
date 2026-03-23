@@ -11,19 +11,17 @@ import {
   CardBody,
   Badge,
   Icon,
-  SimpleGrid,
   Spinner,
   Center,
   useToast,
-  Tooltip,
-  Progress,
-  Tag,
-  TagLabel,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaClock, FaBox, FaWifi } from 'react-icons/fa'
-import { InfoIcon, WarningIcon } from '@chakra-ui/icons'
+import { FaBox, FaWifi, FaMotorcycle, FaLock } from 'react-icons/fa'
+import { WarningIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'
 import { Delivery } from '../types'
+import { useRiderState } from '../hooks/useRiderState'
 
 const RiderQueue: React.FC = () => {
   const navigate = useNavigate()
@@ -32,6 +30,9 @@ const RiderQueue: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [deliveries, setDeliveries] = useState<Delivery[]>([])
   const [claiming, setClaiming] = useState<number | null>(null)
+
+  // Use rider state to check permissions
+  const { riderState, loading: stateLoading } = useRiderState()
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -58,12 +59,28 @@ const RiderQueue: React.FC = () => {
   }
 
   useEffect(() => {
-    fetchAvailableDeliveries()
-    const interval = setInterval(fetchAvailableDeliveries, 15000)
-    return () => clearInterval(interval)
-  }, [])
+    // Only fetch deliveries if rider has permission
+    if (riderState?.permissions?.can_view_jobs) {
+      fetchAvailableDeliveries()
+      const interval = setInterval(fetchAvailableDeliveries, 15000)
+      return () => clearInterval(interval)
+    } else {
+      setLoading(false)
+    }
+  }, [riderState?.permissions?.can_view_jobs])
 
   const handleClaimDelivery = async (deliveryId: number) => {
+    // Double-check claim permission
+    if (!riderState?.permissions?.can_claim_jobs) {
+      toast({
+        title: 'Cannot Claim',
+        description: 'Your account is not authorized to claim deliveries.',
+        status: 'error',
+        duration: 3000,
+      })
+      return
+    }
+
     setClaiming(deliveryId)
     try {
       await api.post(`/api/deliveries/${deliveryId}/claim`)
@@ -89,6 +106,74 @@ const RiderQueue: React.FC = () => {
     }
   }
 
+  // Loading state for rider state check
+  if (stateLoading) {
+    return (
+      <Center minH="100vh" bg="#FFFDF1">
+        <VStack spacing={3}>
+          <Spinner size="lg" color="brand.500" />
+          <Text color="gray.500">Checking rider status...</Text>
+        </VStack>
+      </Center>
+    )
+  }
+
+  // ─── NAVIGATION BLOCKING ───────────────────────────────────────────────
+  // Block access if rider is not in READY or WORKING state
+  const canAccessJobs = riderState?.permissions?.can_view_jobs
+
+  if (!canAccessJobs) {
+    return (
+      <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
+        <Center minH="80vh">
+          <VStack spacing={6} maxW="md" mx="auto" textAlign="center">
+            <Box
+              w="100px"
+              h="100px"
+              borderRadius="full"
+              bg="red.100"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Icon as={FaLock} boxSize={12} color="red.500" />
+            </Box>
+
+            <VStack spacing={2}>
+              <Heading size="lg" color="gray.800">Access Restricted</Heading>
+              <Text fontSize="md" color="gray.600" maxW="sm">
+                {riderState?.state === 'NOT_APPLIED'
+                  ? 'You need to apply as a rider to access this page.'
+                  : riderState?.state === 'PENDING_APPROVAL'
+                  ? 'Your application is still under review.'
+                  : riderState?.state === 'REJECTED'
+                  ? 'Your application was not approved. Please reapply.'
+                  : riderState?.state === 'LOCKED'
+                  ? 'Your account has been suspended.'
+                  : 'You are not authorized to view available deliveries.'}
+              </Text>
+            </VStack>
+
+            <Alert status="info" borderRadius="md">
+              <AlertIcon />
+              <Text fontSize="sm">{riderState?.message || 'Please complete your rider application first.'}</Text>
+            </Alert>
+
+            <Button
+              colorScheme="brand"
+              size="lg"
+              onClick={() => navigate('/rider')}
+              leftIcon={<Icon as={FaMotorcycle} />}
+            >
+              {riderState?.state === 'NOT_APPLIED' ? 'Apply as Rider' : 'Go to Rider Page'}
+            </Button>
+          </VStack>
+        </Center>
+      </Box>
+    )
+  }
+
+  // ─── AUTHORIZED VIEW ───────────────────────────────────────────────────
   return (
     <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
       <VStack spacing={6} align="stretch" maxW="md" mx="auto">
@@ -193,7 +278,7 @@ const RiderQueue: React.FC = () => {
                       colorScheme="brand"
                       size="md"
                       onClick={() => handleClaimDelivery(d.id)}
-                      isDisabled={!isOnline || claiming !== null}
+                      isDisabled={!isOnline || claiming !== null || !riderState?.permissions?.can_claim_jobs}
                       isLoading={claiming === d.id}
                       loadingText="Claiming..."
                     >
@@ -228,7 +313,7 @@ const RiderQueue: React.FC = () => {
             colorScheme="brand"
             onClick={() => navigate('/rider')}
           >
-            My Jobs
+            Dashboard
           </Button>
           <Button
             flex={1}
@@ -236,8 +321,9 @@ const RiderQueue: React.FC = () => {
             variant="outline"
             colorScheme="brand"
             onClick={() => navigate('/remittance-ledger')}
+            isDisabled={!riderState?.permissions?.can_view_earnings}
           >
-            Remittance
+            Earnings
           </Button>
         </HStack>
       </VStack>

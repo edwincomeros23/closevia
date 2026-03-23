@@ -35,6 +35,8 @@ import {
   acceptMultiWayTrade,
   declineMultiWayTrade,
   executeMultiWayTrade,
+  cancelTradeLoop,
+  reinviteTradeLoop,
 } from '../services/tradeService'
 
 interface MultiWayTradeModalProps {
@@ -42,6 +44,7 @@ interface MultiWayTradeModalProps {
   onClose: () => void
   multiWayTrade: MultiWayTrade
   onTradeCompleted?: () => void
+  canManage?: boolean
 }
 
 const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
@@ -49,9 +52,10 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   onClose,
   multiWayTrade,
   onTradeCompleted,
+  canManage = false,
 }) => {
   const [loading, setLoading] = useState(false)
-  const [selectedAction, setSelectedAction] = useState<'accept' | 'decline' | 'execute' | null>(null)
+  const [selectedAction, setSelectedAction] = useState<'accept' | 'decline' | 'execute' | 'cancel' | 'reinvite' | null>(null)
   const toast = useToast()
 
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -128,6 +132,58 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
         id: "multiwaytrademodal-error-3",
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to execute trade',
+        status: 'error',
+      })
+    } finally {
+      setLoading(false)
+      setSelectedAction(null)
+    }
+  }
+
+  const handleCancelLoop = async () => {
+    try {
+      setLoading(true)
+      setSelectedAction('cancel')
+      await cancelTradeLoop(multiWayTrade.loop_id)
+      toast({
+        id: "multiwaytrademodal-cancel-success",
+        title: 'Loop cancelled',
+        description: 'This multi-way loop has been cancelled.',
+        status: 'info',
+      })
+      onTradeCompleted?.()
+      onClose()
+    } catch (error: any) {
+      toast({
+        id: "multiwaytrademodal-cancel-error",
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to cancel loop',
+        status: 'error',
+      })
+    } finally {
+      setLoading(false)
+      setSelectedAction(null)
+    }
+  }
+
+  const handleReinviteLoop = async () => {
+    try {
+      setLoading(true)
+      setSelectedAction('reinvite')
+      await reinviteTradeLoop(multiWayTrade.loop_id)
+      toast({
+        id: "multiwaytrademodal-reinvite-success",
+        title: 'Loop reinvited',
+        description: 'Participants can hop in again.',
+        status: 'success',
+      })
+      onTradeCompleted?.()
+      onClose()
+    } catch (error: any) {
+      toast({
+        id: "multiwaytrademodal-reinvite-error",
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to reinvite loop',
         status: 'error',
       })
     } finally {
@@ -349,6 +405,31 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               >
                 Execute Trade
               </Button>
+            )}
+
+            {canManage && (
+              <>
+                <Button
+                  flex={1}
+                  colorScheme="gray"
+                  variant="outline"
+                  isDisabled={loading}
+                  isLoading={selectedAction === 'cancel' && loading}
+                  onClick={handleCancelLoop}
+                >
+                  Cancel Loop
+                </Button>
+                <Button
+                  flex={1}
+                  colorScheme="purple"
+                  variant="outline"
+                  isDisabled={loading}
+                  isLoading={selectedAction === 'reinvite' && loading}
+                  onClick={handleReinviteLoop}
+                >
+                  Reinvite
+                </Button>
+              </>
             )}
           </Stack>
         </ModalFooter>
