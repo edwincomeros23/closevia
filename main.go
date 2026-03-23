@@ -306,6 +306,10 @@ func main() {
 	users.Post("/verification/resend-school-email-code", middleware.AuthMiddleware(), verificationHandler.ResendSchoolEmailCode)
 	users.Post("/verification/upload-id", middleware.AuthMiddleware(), verificationHandler.UploadSchoolID)
 	users.Get("/verification/status", middleware.AuthMiddleware(), verificationHandler.GetVerificationStatus)
+	users.Post("/verification/phone/start", middleware.AuthMiddleware(), verificationHandler.StartPhoneVerification)
+	users.Post("/verification/phone/verify", middleware.AuthMiddleware(), verificationHandler.VerifyPhoneCode)
+	users.Post("/verification/phone/resend", middleware.AuthMiddleware(), verificationHandler.ResendPhoneCode)
+	users.Get("/verification/phone/status", middleware.AuthMiddleware(), verificationHandler.GetPhoneVerificationStatus)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
 	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
@@ -444,6 +448,9 @@ func main() {
 	admin.Get("/verifications/:id/image", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminGetIDImage)
 	admin.Post("/verifications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminApproveVerification)
 	admin.Post("/verifications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminRejectVerification)
+	admin.Get("/phone-verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListPhoneVerifications)
+	admin.Post("/users/:id/verify-phone", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminVerifyPhone)
+	admin.Post("/users/:id/unverify-phone", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminUnverifyPhone)
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)

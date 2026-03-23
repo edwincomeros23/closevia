@@ -3,6 +3,8 @@ export interface User {
   slug?: string // Unique URL identifier
   name: string
   email: string
+  phone?: string
+  phone_verified?: boolean
   role: string
   verified: boolean
   profile_picture?: string
@@ -32,6 +34,7 @@ export interface User {
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
   school_name?: string
   school_email?: string
+  password_changed_at?: string
   last_login?: string
   activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }

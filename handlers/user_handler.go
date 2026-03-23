@@ -202,11 +202,20 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// Insert new user
+	cleanPhone := strings.TrimSpace(user.Phone)
+	if cleanPhone != "" {
+		phoneRegex := regexp.MustCompile(`^\d{10,15}$`)
+		if !phoneRegex.MatchString(cleanPhone) {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Phone number must be 10 to 15 digits"})
+		}
+	}
+
 	result, err := h.db.Exec(
-		"INSERT INTO users (slug, name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference, premium_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?, ?)",
+		"INSERT INTO users (slug, name, email, phone, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference, premium_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?, ?)",
 		slug,
 		user.Name,
 		user.Email,
+		nullableString(&cleanPhone),
 		hashedPassword,
 		user.Role,
 		user.IsOrganization,
@@ -260,6 +269,8 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				Slug:               slug,
 				Name:               user.Name,
 				Email:              user.Email,
+				Phone:              cleanPhone,
+				PhoneVerified:      false,
 				Verified:           !requiresVerification,
 				IsOrganization:     user.IsOrganization,
 				OrgVerified:        false,
@@ -743,11 +754,14 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	var user models.User
 	var schoolEmailVerifiedAt sql.NullTime
+	var passwordChangedAt sql.NullTime
 	var lastLogin sql.NullTime
 
 	var slugNull sql.NullString
 	err := h.db.QueryRow(
 		`SELECT id, slug, name, email, role, verified, 
+		        COALESCE(phone, '') AS phone,
+		        COALESCE(phone_verified, FALSE) AS phone_verified,
 		        COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') AS org_name,
 		        COALESCE(org_handle, '') AS org_handle,
 		        COALESCE(org_logo_url, '') AS org_logo_url,
@@ -772,11 +786,12 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
 		        COALESCE(premium_tier, 'free') AS premium_tier,
-		        created_at, updated_at, last_login
+		        created_at, updated_at, password_changed_at, last_login
 		 FROM users WHERE id = ?`,
 		userID,
 	).Scan(
 		&user.ID, &slugNull, &user.Name, &user.Email, &user.Role, &user.Verified,
+		&user.Phone, &user.PhoneVerified,
 		&user.IsOrganization, &user.OrgVerified, &user.OrgName,
 		&user.OrgHandle, &user.OrgLogoURL, &user.OrgCoverURL, &user.OrgCategory,
 		&user.OrgWebsite, &user.OrgLocation, &user.OrgContactEmail,
@@ -785,11 +800,14 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.LanguagePreference, &user.PremiumTier,
-		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
+		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &lastLogin,
 	)
 
 	if schoolEmailVerifiedAt.Valid {
 		user.SchoolEmailVerifiedAt = &schoolEmailVerifiedAt.Time
+	}
+	if passwordChangedAt.Valid {
+		user.PasswordChangedAt = &passwordChangedAt.Time
 	}
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
@@ -884,6 +902,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	var updateData struct {
 		Name                      *string `json:"name"`
 		Email                     *string `json:"email"`
+		Phone                     *string `json:"phone"`
 		ProfilePicture            *string `json:"profile_picture"`
 		Bio                       *string `json:"bio"`
 		BackgroundImage           *string `json:"background_image"`
@@ -924,6 +943,27 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		}
 	}
 
+	var normalizedPhone string
+	var phoneChanged bool
+	if updateData.Phone != nil {
+		normalizedPhone = strings.TrimSpace(*updateData.Phone)
+		if normalizedPhone != "" {
+			phoneRegex := regexp.MustCompile(`^\d{10,15}$`)
+			if !phoneRegex.MatchString(normalizedPhone) {
+				return c.Status(400).JSON(models.APIResponse{
+					Success: false,
+					Error:   "Phone number must be 10 to 15 digits",
+				})
+			}
+		}
+
+		var currentPhone sql.NullString
+		err := h.db.QueryRow("SELECT phone FROM users WHERE id = ?", userID).Scan(&currentPhone)
+		if err == nil {
+			phoneChanged = normalizedPhone != strings.TrimSpace(currentPhone.String)
+		}
+	}
+
 	// Build update query dynamically
 	query := "UPDATE users SET updated_at = CURRENT_TIMESTAMP"
 	var args []interface{}
@@ -939,6 +979,14 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 			query += ", verified = false"
 			// Revoke is_premium if it was from WMSU, they will get it back after verifying new WMSU email
 			query += ", is_premium = false"
+		}
+	}
+
+	if updateData.Phone != nil {
+		query += ", phone = ?"
+		args = append(args, normalizedPhone)
+		if phoneChanged {
+			query += ", phone_verified = false"
 		}
 	}
 
@@ -985,6 +1033,8 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if err != nil {
 		// Handle missing columns: try to add any known columns then retry once
 		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20) NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_image VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
@@ -1179,7 +1229,7 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	}
 
 	// Update DB
-	_, err = h.db.Exec("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", hashed, userID)
+	_, err = h.db.Exec("UPDATE users SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", hashed, userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update password"})
 	}

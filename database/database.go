@@ -147,6 +147,36 @@ func CreateTables() error {
 		log.Println("Adding missing language_preference column to users table...")
 		DB.Exec("ALTER TABLE users ADD COLUMN language_preference VARCHAR(10) NULL DEFAULT 'en'")
 	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone VARCHAR(20) NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_verified'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_verified column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_verified BOOLEAN DEFAULT FALSE")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_otp_hash'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_otp_hash column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_otp_hash VARCHAR(255) NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_otp_expires'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_otp_expires column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_otp_expires TIMESTAMP NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing password_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP NULL")
+	}
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews' AND COLUMN_NAME = 'reply'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing reply columns to reviews table...")
@@ -194,7 +224,12 @@ func CreateTables() error {
 			slug VARCHAR(255) NULL UNIQUE,
 			name VARCHAR(255) NOT NULL,
 			email VARCHAR(255) UNIQUE NOT NULL,
+			phone VARCHAR(20) NULL,
+			phone_verified BOOLEAN DEFAULT FALSE,
+			phone_otp_hash VARCHAR(255) NULL,
+			phone_otp_expires TIMESTAMP NULL,
 			password_hash VARCHAR(255) NOT NULL,
+			password_changed_at TIMESTAMP NULL,
 			role VARCHAR(10) NOT NULL DEFAULT 'user',
 			is_organization TINYINT(1) NOT NULL DEFAULT 0,
 			org_verified TINYINT(1) NOT NULL DEFAULT 0,
@@ -796,6 +831,11 @@ func ensureUserColumns() {
 		{"verification_rejection_reason", "TEXT NULL"},
 		{"school_email_otp_hash", "VARCHAR(255) NULL"},
 		{"school_email_otp_expires", "TIMESTAMP NULL"},
+		{"phone", "VARCHAR(20) NULL"},
+		{"phone_verified", "BOOLEAN DEFAULT FALSE"},
+		{"phone_otp_hash", "VARCHAR(255) NULL"},
+		{"phone_otp_expires", "TIMESTAMP NULL"},
+		{"password_changed_at", "TIMESTAMP NULL"},
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"last_login", "TIMESTAMP NULL"},

@@ -28,6 +28,7 @@ import {
   AlertDescription,
   Skeleton,
   Tooltip,
+  Switch,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -81,6 +82,11 @@ import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type
 
 const CONDITION_OPTIONS = ['New', 'Like New', 'Good', 'Used', 'For Parts']
 const MAX_DAILY_AI_REQUESTS = 100
+const QA_MOCK_LOCATION = {
+  label: 'QA Mock Location (Work Network)',
+  latitude: 14.5995,
+  longitude: 120.9842,
+}
 
 // ── Daily Budget Helpers ──────────────────────────────────────────────────
 
@@ -204,6 +210,7 @@ const AddProduct: React.FC = () => {
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [useMockLocation, setUseMockLocation] = useState(false)
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
@@ -214,7 +221,23 @@ const AddProduct: React.FC = () => {
 
   // ── Location ──────────────────────────────────────────────────────────────
 
+  const applyMockLocation = useCallback(() => {
+    setFormData(prev => ({
+      ...prev,
+      location: QA_MOCK_LOCATION.label,
+      latitude: QA_MOCK_LOCATION.latitude,
+      longitude: QA_MOCK_LOCATION.longitude,
+    }))
+    setLocationText(QA_MOCK_LOCATION.label)
+    setLocationDetected(true)
+    setIsGettingLocation(false)
+  }, [])
+
   const detectLocation = useCallback(() => {
+    if (useMockLocation) {
+      applyMockLocation()
+      return
+    }
     if (!navigator.geolocation) return
     setIsGettingLocation(true)
     navigator.geolocation.getCurrentPosition(
@@ -249,7 +272,26 @@ const AddProduct: React.FC = () => {
         setIsGettingLocation(false)
       }
     )
-  }, [])
+  }, [applyMockLocation, useMockLocation])
+
+  const handleMockLocationToggle = useCallback((enabled: boolean) => {
+    setUseMockLocation(enabled)
+
+    if (enabled) {
+      applyMockLocation()
+      return
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      location: '',
+      latitude: undefined,
+      longitude: undefined,
+    }))
+    setLocationText('')
+    setLocationDetected(false)
+    detectLocation()
+  }, [applyMockLocation, detectLocation])
 
   useEffect(() => {
     detectLocation()
@@ -1247,6 +1289,16 @@ const AddProduct: React.FC = () => {
 
       {/* ──────── LOCATION BAR (Simple, subtle) ──────── */}
       <Box bg="gray.100" p={2} borderRadius="md">
+        <HStack justify="space-between" mb={2}>
+          <Text fontSize="xs" color="gray.700" fontWeight="semibold">Use QA Mock Location</Text>
+          <Switch
+            size="sm"
+            colorScheme="orange"
+            isChecked={useMockLocation}
+            onChange={(e) => handleMockLocationToggle(e.target.checked)}
+          />
+        </HStack>
+
         {isGettingLocation ? (
           <HStack spacing={2}>
             <Spinner size="sm" color="blue.600" />
@@ -1265,6 +1317,7 @@ const AddProduct: React.FC = () => {
               py={1}
               onClick={detectLocation}
               isLoading={isGettingLocation}
+              isDisabled={useMockLocation}
               _hover={{ bg: "gray.200" }}
             >
               Wrong Location?
@@ -1273,7 +1326,13 @@ const AddProduct: React.FC = () => {
         ) : (
           <HStack spacing={2}>
             <Text fontSize="xs" color="red.600">⚠️ Location access needed</Text>
-            <Button size="xs" onClick={detectLocation} isLoading={isGettingLocation} fontSize="9px">
+            <Button
+              size="xs"
+              onClick={detectLocation}
+              isLoading={isGettingLocation}
+              isDisabled={useMockLocation}
+              fontSize="9px"
+            >
               Enable
             </Button>
           </HStack>

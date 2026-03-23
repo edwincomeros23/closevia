@@ -99,6 +99,8 @@ type User struct {
 	Slug                        string     `json:"slug,omitempty"` // Unique URL identifier
 	Name                        string     `json:"name" validate:"required,min=2,max=255"`
 	Email                       string     `json:"email" validate:"required,email"`
+	Phone                       string     `json:"phone,omitempty"`
+	PhoneVerified               bool       `json:"phone_verified,omitempty"`
 	PasswordHash                string     `json:"-" validate:"required"`
 	Role                        string     `json:"role" validate:"oneof=user admin"`
 	Verified                    bool       `json:"verified"`
@@ -133,6 +135,7 @@ type User struct {
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
 	EmailNotificationsEnabled   bool       `json:"email_notifications_enabled"`
 	PushNotificationsEnabled    bool       `json:"push_notifications_enabled"`
+	PasswordChangedAt           *time.Time `json:"password_changed_at,omitempty"`
 	LastLogin                   *time.Time `json:"last_login,omitempty"`
 	ActivityStatus              string     `json:"activity_status,omitempty"`
 }
@@ -147,6 +150,7 @@ type UserLogin struct {
 type UserRegister struct {
 	Name           string  `json:"name" validate:"required,min=2,max=255"`
 	Email          string  `json:"email" validate:"required,email"`
+	Phone          string  `json:"phone"`
 	Password       string  `json:"password" validate:"required,min=6"`
 	Role           string  `json:"role" validate:"omitempty,oneof=user admin"`
 	IsOrganization bool    `json:"is_organization"`

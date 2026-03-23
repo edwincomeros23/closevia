@@ -8,9 +8,9 @@ interface AuthContextType {
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
   googleLogin: (firebaseToken: string, userData: any) => Promise<void>
-  register: (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string; organization_type?: string }) => Promise<{ requiresVerification: boolean; email: string; token?: string }>
+  register: (payload: { name: string; email: string; phone?: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string; organization_type?: string }) => Promise<{ requiresVerification: boolean; email: string; token?: string }>
   logout: () => void
-  updateProfile: (payload: { name?: string; email?: string; profile_picture?: string }) => Promise<void>
+  updateProfile: (payload: { name?: string; email?: string; profile_picture?: string; phone?: string; phone_verified?: boolean }) => Promise<void>
   refreshUser: () => Promise<void>
   restoreAuthentication: () => Promise<void>
   loading: boolean
@@ -279,13 +279,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }
 
-  const updateProfile = async (payload: { name?: string; email?: string; profile_picture?: string }) => {
+  const updateProfile = async (payload: { name?: string; email?: string; profile_picture?: string; phone?: string; phone_verified?: boolean }) => {
     try {
       // Only call backend for fields the server accepts (name/email)
       const serverPayload: any = {}
       if (payload.name !== undefined) serverPayload.name = payload.name
       if (payload.email !== undefined) serverPayload.email = payload.email
       if (payload.profile_picture !== undefined) serverPayload.profile_picture = payload.profile_picture
+      if (payload.phone !== undefined) serverPayload.phone = payload.phone
+      if (payload.phone_verified !== undefined) serverPayload.phone_verified = payload.phone_verified
 
       if (Object.keys(serverPayload).length > 0) {
         await api.put('/api/users/profile', serverPayload)
@@ -296,6 +298,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const updated = prev ? { ...(prev as any) } as User : {} as User
         if (payload.name !== undefined) updated.name = payload.name as string
         if (payload.email !== undefined) updated.email = payload.email as string
+        if (payload.phone !== undefined) updated.phone = payload.phone as string
+        if (payload.phone_verified !== undefined) (updated as any).phone_verified = payload.phone_verified as boolean
         if (payload.profile_picture !== undefined) {
           // Normalize stored profile picture URL if backend returned a relative path
           let pic = payload.profile_picture as string
@@ -314,7 +318,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }
 
-  const register = async (payload: { name: string; email: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string; organization_type?: string }): Promise<{ requiresVerification: boolean; email: string; token?: string }> => {
+  const register = async (payload: { name: string; email: string; phone?: string; password: string; is_organization?: boolean; org_name?: string; department?: string; org_logo_url?: string; bio?: string; organization_type?: string }): Promise<{ requiresVerification: boolean; email: string; token?: string }> => {
     try {
       const response = await api.post('/api/auth/register', payload)
       console.log('AuthContext: Register raw response:', JSON.stringify(response.data))
