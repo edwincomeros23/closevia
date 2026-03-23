@@ -587,6 +587,12 @@ const AdminDashboard: React.FC = () => {
   const [reportsTotalPages, setReportsTotalPages] = useState(1);
   const [reportsStatusFilter, setReportsStatusFilter] = useState('');
 
+  // Multi-way matcher debug state
+  const [loopDebugTradeID, setLoopDebugTradeID] = useState('');
+  const [loopDebugCompareTradeID, setLoopDebugCompareTradeID] = useState('');
+  const [loopDebugLoading, setLoopDebugLoading] = useState(false);
+  const [loopDebugResult, setLoopDebugResult] = useState<any | null>(null);
+
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'product' | 'campaign'; id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -852,6 +858,67 @@ const AdminDashboard: React.FC = () => {
       });
     }
   }, [reportsPage, reportsStatusFilter, fetchAdminReports, toast]);
+
+  const handleRunLoopDebug = useCallback(async () => {
+    const tradeID = Number(loopDebugTradeID);
+    if (!Number.isFinite(tradeID) || tradeID <= 0) {
+      toast({
+        id: 'loop-debug-invalid-trade-id',
+        title: 'Invalid trade ID',
+        description: 'Enter a valid primary trade ID.',
+        status: 'warning',
+        duration: 2500,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const compareID = loopDebugCompareTradeID.trim() ? Number(loopDebugCompareTradeID) : 0;
+    if (loopDebugCompareTradeID.trim() && (!Number.isFinite(compareID) || compareID <= 0)) {
+      toast({
+        id: 'loop-debug-invalid-compare-id',
+        title: 'Invalid compare trade ID',
+        description: 'Enter a valid comparison trade ID or leave it blank.',
+        status: 'warning',
+        duration: 2500,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      setLoopDebugLoading(true);
+      const params = new URLSearchParams({ trade_id: String(tradeID) });
+      if (compareID > 0) {
+        params.append('compare_trade_id', String(compareID));
+      }
+      const response = await api.get(`/api/trades/loops/debug/match?${params.toString()}`);
+      if (response.data?.success) {
+        setLoopDebugResult(response.data.data || null);
+      } else {
+        setLoopDebugResult(null);
+        toast({
+          id: 'loop-debug-no-data',
+          title: 'No debug data returned',
+          status: 'warning',
+          duration: 2500,
+          isClosable: true,
+        });
+      }
+    } catch (err: any) {
+      setLoopDebugResult(null);
+      toast({
+        id: 'loop-debug-request-failed',
+        title: 'Failed to run matcher debug',
+        description: err?.response?.data?.error || err.message || 'Request failed',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setLoopDebugLoading(false);
+    }
+  }, [loopDebugTradeID, loopDebugCompareTradeID, toast]);
 
   // â"€â"€ Fetch users for admin list â"€â"€
   const fetchAdminUsers = useCallback(
@@ -2307,6 +2374,103 @@ const AdminDashboard: React.FC = () => {
 
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
       </Card>
+
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader>
+          <HStack>
+            <Icon as={FiServer} color="brand.500" boxSize={5} />
+            <Heading size="sm" color={textColor}>Multi-way Match Debug</Heading>
+          </HStack>
+          <Text fontSize="xs" color={mutedTextColor} mt={1}>Explain why a trade did or did not produce a loop suggestion.</Text>
+        </CardHeader>
+        <CardBody>
+          <VStack align="stretch" spacing={4}>
+            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+              <Input
+                placeholder="Primary trade ID"
+                value={loopDebugTradeID}
+                onChange={(e) => setLoopDebugTradeID(e.target.value)}
+                bg={tableBg}
+              />
+              <Input
+                placeholder="Compare trade ID (optional)"
+                value={loopDebugCompareTradeID}
+                onChange={(e) => setLoopDebugCompareTradeID(e.target.value)}
+                bg={tableBg}
+              />
+              <Button colorScheme="brand" onClick={handleRunLoopDebug} isLoading={loopDebugLoading}>
+                Run Debug
+              </Button>
+            </SimpleGrid>
+
+            {!loopDebugResult ? (
+              <Text fontSize="sm" color={mutedTextColor}>Run the debug query to see scoring details, threshold failures, and recommended loop state.</Text>
+            ) : (
+              <VStack align="stretch" spacing={4}>
+                {[{ key: 'primary', label: 'Primary Trade' }, { key: 'comparison', label: 'Comparison Trade' }].map((section) => {
+                  const entry = loopDebugResult?.[section.key];
+                  if (!entry) return null;
+
+                  const candidates = entry?.debug?.candidates || [];
+                  return (
+                    <Box key={section.key} border="1px solid" borderColor={borderColor} borderRadius="lg" p={4} bg={tableBg}>
+                      <HStack justify="space-between" align="start" mb={2}>
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="700" color={textColor}>{section.label}</Text>
+                          <Text fontSize="xs" color={mutedTextColor}>
+                            Trade #{entry.trade_id} • status: {entry.trade_status}
+                          </Text>
+                        </VStack>
+                        <Badge colorScheme={entry.recommended_loop_status === 'no_match' ? 'gray' : entry.recommended_loop_status === 'pending_initiator_upgrade' ? 'orange' : 'green'}>
+                          {entry.recommended_loop_status}
+                        </Badge>
+                      </HStack>
+
+                      <Text fontSize="sm" color={mutedTextColor} mb={2}>
+                        Matches: {entry.match_count} • Threshold: {entry?.debug?.threshold ?? '-'}
+                      </Text>
+                      {entry?.debug?.no_match_reason ? (
+                        <Alert status="warning" borderRadius="md" mb={3}>
+                          <AlertIcon />
+                          <Text fontSize="sm">{entry.debug.no_match_reason}</Text>
+                        </Alert>
+                      ) : null}
+
+                      {candidates.length === 0 ? (
+                        <Text fontSize="sm" color={mutedTextColor}>No candidates evaluated.</Text>
+                      ) : (
+                        <VStack align="stretch" spacing={2}>
+                          {candidates.slice(0, 6).map((cand: any, idx: number) => (
+                            <Box key={`${section.key}-${idx}`} border="1px solid" borderColor={borderColor} borderRadius="md" p={3} bg={cardBg}>
+                              <HStack justify="space-between" mb={1}>
+                                <Text fontSize="sm" fontWeight="600" color={textColor}>
+                                  User #{cand.user3_id}: {cand.user3_product_title}
+                                </Text>
+                                <Badge colorScheme={cand.passed_threshold ? 'green' : 'red'}>
+                                  Score {cand.score}
+                                </Badge>
+                              </HStack>
+                              <Text fontSize="xs" color={mutedTextColor}>Offered item: {cand.offered_title}</Text>
+                              <Text fontSize="xs" color={mutedTextColor} mt={1}>{(cand.reasons || []).join(' | ')}</Text>
+                            </Box>
+                          ))}
+                        </VStack>
+                      )}
+                    </Box>
+                  );
+                })}
+                {loopDebugResult?.comparison_error ? (
+                  <Alert status="warning" borderRadius="md">
+                    <AlertIcon />
+                    <Text fontSize="sm">Comparison error: {loopDebugResult.comparison_error}</Text>
+                  </Alert>
+                ) : null}
+              </VStack>
+            )}
+          </VStack>
+        </CardBody>
+      </Card>
+
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
         <CardHeader><Heading size="sm" color={textColor}>Revenue Breakdown (Last 4 Weeks)</Heading></CardHeader>
         <CardBody>

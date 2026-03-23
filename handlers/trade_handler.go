@@ -226,6 +226,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// After creating a trade, check for loops
 	go h.CheckForTradeLoops()
+	go h.autoTriggerMultiwayForTrade(tradeID, sellerID, "trade_created")
 	go h.rebuildTradeLoopCacheForUsers([]int{userID, sellerID})
 
 	return c.Status(201).JSON(models.APIResponse{Success: true, Message: "Trade created", Data: trade})
@@ -253,6 +254,169 @@ func (h *TradeHandler) CheckForTradeLoops() {
 		}
 	} else {
 		log.Println("No trade loops found.")
+	}
+}
+
+func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiatorUserID int, triggerSource string) (bool, string, string, services.MultiwayDebugInfo, error) {
+	debug := services.MultiwayDebugInfo{}
+
+	var buyerID, sellerID int
+	var tradeStatus string
+	err := h.db.QueryRow("SELECT buyer_id, seller_id, status FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &tradeStatus)
+	if err != nil {
+		return false, "", "Trade not found", debug, err
+	}
+	if tradeStatus != "pending" && tradeStatus != "pending_multiway" {
+		return false, "", "Trade is not eligible for multi-way matching", debug, nil
+	}
+
+	matches, dbg, err := services.FindMultiwayMatchDetailed(h.db, buyerID, sellerID, tradeID, []int{})
+	debug = dbg
+	if err != nil {
+		return false, "", "Failed to run multi-way matcher", debug, err
+	}
+	if len(matches) == 0 {
+		if debug.NoMatchReason != "" {
+			return false, "", debug.NoMatchReason, debug, nil
+		}
+		return false, "", "No available User 3 found in the same category within your price range", debug, nil
+	}
+
+	best := matches[0]
+	chainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, buyerID, sellerID, best.User3ID)
+
+	var existingStatus string
+	err = h.db.QueryRow("SELECT status FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&existingStatus)
+	if err == nil {
+		return false, existingStatus, "Loop suggestion already exists", debug, nil
+	}
+	if err != sql.ErrNoRows {
+		return false, "", "Failed to verify existing loop suggestion", debug, err
+	}
+
+	var initiatorIsPremium bool
+	if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", initiatorUserID).Scan(&initiatorIsPremium); err != nil {
+		return false, "", "Failed to verify initiator subscription", debug, err
+	}
+
+	loopStatus := "pending_user3"
+	if !initiatorIsPremium {
+		loopStatus = "pending_initiator_upgrade"
+	}
+
+	// Calculate expires_at: 7 days from now for free users, NULL for premium
+	var expiresAt *time.Time
+	if !initiatorIsPremium {
+		expiresTime := time.Now().AddDate(0, 0, 7)
+		expiresAt = &expiresTime
+	}
+
+	_, err = h.db.Exec(`
+		INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, status, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, chainID, tradeID, initiatorUserID, buyerID, sellerID, best.User3ID, best.User3ProductID, loopStatus, expiresAt)
+	if err != nil {
+		return false, "", "Failed to create loop suggestion", debug, err
+	}
+
+	if initiatorIsPremium {
+		_, _ = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
+
+		// Get details for notification
+		var initiatorName, targetProductTitle, user3ProductTitle string
+		_ = h.db.QueryRow(`
+			SELECT u.name, tp.title, u3p.title
+			FROM users u
+			JOIN products tp ON tp.id = ?
+			JOIN products u3p ON u3p.id = ?
+			WHERE u.id = ?
+		`, best.User3ProductID, best.User1ProductID, initiatorUserID).Scan(&initiatorName, &targetProductTitle, &user3ProductTitle)
+
+		// Notify User 3 with specific details
+		user3Msg := fmt.Sprintf("%s invited you to a loop to trade your %s for their %s", initiatorName, targetProductTitle, best.User1ProductTitle)
+		if user3ProductTitle != "" {
+			user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, targetProductTitle, user3ProductTitle)
+		}
+		h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", best.User3ID, user3Msg)
+		publishNotification(best.User3ID, user3Msg)
+
+		// Notify User 1 and User 2
+		msgToOthers := "A 3-way loop was found for your trade. Open Multi-way tab to review it."
+		for _, uid := range []int{buyerID, sellerID} {
+			if uid != best.User3ID {
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", uid, msgToOthers)
+				publishNotification(uid, msgToOthers)
+			}
+		}
+
+		publishToUser(best.User3ID, sseEvent{Type: "multiway_opportunity", Data: fiber.Map{"chain_id": chainID, "source": triggerSource}})
+		go h.rebuildTradeLoopCacheForUsers([]int{buyerID, sellerID, best.User3ID})
+		return true, loopStatus, "Multi-way loop found and invites sent", debug, nil
+	}
+
+	upgradeMsg := "A 3-way loop was found for your trade — upgrade to Pro to start it."
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", initiatorUserID, upgradeMsg)
+	publishNotification(initiatorUserID, upgradeMsg)
+	go h.rebuildTradeLoopCacheForUsers([]int{buyerID, sellerID})
+
+	return true, loopStatus, "Loop found. Upgrade required to initiate invites.", debug, nil
+}
+
+func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, initiatorUserID int, source string) {
+	created, _, msg, _, err := h.evaluateAndCreateMultiwaySuggestion(tradeID, initiatorUserID, source)
+	if err != nil {
+		log.Printf("autoTriggerMultiwayForTrade: trade=%d source=%s err=%v", tradeID, source, err)
+		return
+	}
+	if created {
+		log.Printf("autoTriggerMultiwayForTrade: trade=%d source=%s created suggestion (%s)", tradeID, source, msg)
+	}
+}
+
+func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int, userID int) {
+	// Get the new product's category and price for filtering
+	var productCategory string
+	var productPrice float64
+	if err := h.db.QueryRow(`
+		SELECT COALESCE(category, ''), COALESCE(price, 0) 
+		FROM products 
+		WHERE id = ?
+	`, productID).Scan(&productCategory, &productPrice); err != nil {
+		log.Printf("autoTriggerMultiwayForNewAvailableProduct: failed to get product details: %v", err)
+		return
+	}
+
+	// Build price range (±30%)
+	minPrice := productPrice * 0.7
+	maxPrice := productPrice * 1.3
+
+	// Pre-filter pending trades by category match or price range, then take first 50
+	query := `
+		SELECT DISTINCT t.id, t.seller_id
+		FROM trades t
+		JOIN products p ON p.id = t.target_product_id
+		WHERE t.status = 'pending'
+		AND (
+			p.category = ? 
+			OR (p.price IS NOT NULL AND p.price >= ? AND p.price <= ?)
+		)
+		ORDER BY t.updated_at DESC
+		LIMIT 50
+	`
+	rows, err := h.db.Query(query, productCategory, minPrice, maxPrice)
+	if err != nil {
+		log.Printf("autoTriggerMultiwayForNewAvailableProduct: query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tradeID, sellerID int
+		if err := rows.Scan(&tradeID, &sellerID); err != nil {
+			continue
+		}
+		// Natural initiator for auto flow is the target owner (seller/User 2).
+		h.autoTriggerMultiwayForTrade(tradeID, sellerID, "new_available_item")
 	}
 }
 
@@ -1251,69 +1415,51 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		publishToUser(notifyID3, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
 
 	case "convert_to_multiway":
-		// 1. Check if user is premium
-		var isPremium bool
-		err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
-		if err != nil {
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify premium status"})
+		created, loopStatus, reason, debugInfo, suggestErr := h.evaluateAndCreateMultiwaySuggestion(tradeID, userID, "manual_convert")
+		if suggestErr != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: reason})
 		}
-		if !isPremium {
-			return c.Status(403).JSON(models.APIResponse{
-				Success: false,
-				Error:   "Multi-way trading is a premium feature. Upgrade to Premium to enable multiway trades.",
+
+		if !created {
+			return c.JSON(models.APIResponse{
+				Success: true,
+				Message: "No strong multi-way match yet. We will keep checking automatically.",
+				Data: fiber.Map{
+					"trade_id":          tradeID,
+					"matched":           false,
+					"no_match_reason":   reason,
+					"matcher_threshold": debugInfo.Threshold,
+					"debug":             debugInfo,
+				},
 			})
 		}
 
-		// 2. Mark trade as pending_multiway
-		_, err = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
-		if err != nil {
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to convert to multiway"})
+		responseStatus := loopStatus
+		if loopStatus == "pending_user3" {
+			responseStatus = "pending_multiway"
+			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
+			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
 		}
 
-		// 3. Active Search for User 3
-		matches, err := services.FindMultiwayMatch(h.db, buyerID, sellerID, tradeID, []int{})
-		if err != nil {
-			log.Printf("Error searching for multiway match: %v", err)
-		}
-
-		var multiwayData interface{}
-		if len(matches) > 0 {
-			match := matches[0] // Take the first best match
-			log.Printf("Found multiway match: User3=%d, Product3=%d", match.User3ID, match.User3ProductID)
-
-			// Create multiway chain record
-			chainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, buyerID, sellerID, match.User3ID)
-			_, err = h.db.Exec(`
-				INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, status)
-				VALUES (?, ?, ?, ?, ?, ?, 'pending_user3')
-			`, chainID, tradeID, userID, buyerID, sellerID, match.User3ID)
-
-			if err == nil {
-				// Notify User 3 about matching opportunity
-				notifMsg := fmt.Sprintf("Someone wants your %s and has something you like! Check your multi-way opportunities.", match.User3ProductTitle)
-				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", match.User3ID, notifMsg)
-				publishNotification(match.User3ID, notifMsg)
-				publishToUser(match.User3ID, sseEvent{Type: "multiway_opportunity", Data: fiber.Map{"chain_id": chainID}})
-
-				multiwayData = fiber.Map{
-					"match_found": true,
-					"user3_name":  match.User3Name,
-					"chain_id":    chainID,
-				}
-			}
-		}
-
-		// Notify User 1 and User 2
-		publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
-		publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
+		var createdChainID string
+		_ = h.db.QueryRow(`
+			SELECT chain_id
+			FROM multiway_trades
+			WHERE original_trade_id = ? AND initiator_user_id = ?
+			ORDER BY id DESC
+			LIMIT 1
+		`, tradeID, userID).Scan(&createdChainID)
 
 		return c.JSON(models.APIResponse{
 			Success: true,
-			Message: "Offer converted to multi-way! We're searching for matching trade loops...",
+			Message: reason,
 			Data: fiber.Map{
-				"trade_id": tradeID,
-				"status":   "pending_multiway",
-				"multiway": multiwayData,
+				"trade_id":   tradeID,
+				"status":     responseStatus,
+				"matched":    true,
+				"loop_state": loopStatus,
+				"chain_id":   createdChainID,
+				"debug":      debugInfo,
 			},
 		})
 
@@ -1323,6 +1469,13 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade"})
+	}
+
+	var latestStatus string
+	if statusErr := h.db.QueryRow("SELECT status FROM trades WHERE id = ?", tradeID).Scan(&latestStatus); statusErr == nil {
+		if latestStatus == "pending" && currentStatus != "pending" {
+			go h.autoTriggerMultiwayForTrade(tradeID, sellerID, "trade_pending_status_update")
+		}
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade updated"})
@@ -2308,69 +2461,76 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 
 	userLoops := []map[string]interface{}{}
 
-	// Premium users can discover and initiate loop suggestions.
-	if isPremium {
-		graph, err := services.NewTradeGraph(h.db)
-		if err != nil {
-			log.Printf("Error fetching trades for graph: %v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade graph"})
-		}
+	// Discover loop suggestions for all users.
+	// - Pro: sees Loop Manager (can_create=true)
+	// - Free: sees Hop In (can_create=false) + upsell nudge
+	graph, err := services.NewTradeGraph(h.db)
+	if err != nil {
+		log.Printf("Error fetching trades for graph: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade graph"})
+	}
 
-		allLoops := graph.FindTradeLoops()
-		for _, loopEdges := range allLoops {
-			involvesUser := false
-			participants := []map[string]interface{}{}
-			var edges []map[string]interface{}
-			loopTradeParts := []string{"loop"}
+	allLoops := graph.FindTradeLoops()
+	expiresAt := time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
+	for _, loopEdges := range allLoops {
+		involvesUser := false
+		participants := []map[string]interface{}{}
+		var edges []map[string]interface{}
+		loopTradeParts := []string{"loop"}
 
-			for _, edge := range loopEdges {
-				loopTradeParts = append(loopTradeParts, strconv.Itoa(edge.TradeID))
-				if edge.FromUser == userID || edge.ToUser == userID {
-					involvesUser = true
-				}
-
-				var fromUserName, toUserName, productTitle string
-				h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.FromUser).Scan(&fromUserName)
-				h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.ToUser).Scan(&toUserName)
-
-				var targetProductID int
-				h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", edge.TradeID).Scan(&targetProductID)
-				h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetProductID).Scan(&productTitle)
-
-				edges = append(edges, map[string]interface{}{
-					"from_user":      edge.FromUser,
-					"from_user_name": fromUserName,
-					"to_user":        edge.ToUser,
-					"to_user_name":   toUserName,
-					"trade_id":       edge.TradeID,
-					"product_title":  productTitle,
-				})
-
-				participants = append(participants, map[string]interface{}{
-					"id":            edge.FromUser,
-					"user_name":     fromUserName,
-					"product_title": productTitle,
-					"status":        "pending",
-				})
+		for _, edge := range loopEdges {
+			loopTradeParts = append(loopTradeParts, strconv.Itoa(edge.TradeID))
+			if edge.FromUser == userID || edge.ToUser == userID {
+				involvesUser = true
 			}
 
-			if involvesUser {
-				loopID := strings.Join(loopTradeParts, "_")
-				userLoops = append(userLoops, map[string]interface{}{
-					"id":                loopID,
-					"loop_id":           loopID,
-					"loop_type":         "detected_loop",
-					"initiator_view":    true,
-					"can_join":          true,
-					"can_create":        true,
-					"edges":             edges,
-					"loop_length":       len(loopEdges),
-					"participants":      participants,
-					"status":            "pending",
-					"initiator_user_id": userID,
-				})
-			}
+			var fromUserName, toUserName, productTitle string
+			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.FromUser).Scan(&fromUserName)
+			h.db.QueryRow("SELECT name FROM users WHERE id = ?", edge.ToUser).Scan(&toUserName)
+
+			var targetProductID int
+			h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", edge.TradeID).Scan(&targetProductID)
+			h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetProductID).Scan(&productTitle)
+
+			edges = append(edges, map[string]interface{}{
+				"from_user":      edge.FromUser,
+				"from_user_name": fromUserName,
+				"to_user":        edge.ToUser,
+				"to_user_name":   toUserName,
+				"trade_id":       edge.TradeID,
+				"product_title":  productTitle,
+			})
+
+			participants = append(participants, map[string]interface{}{
+				"id":            edge.FromUser,
+				"user_name":     fromUserName,
+				"product_title": productTitle,
+				"status":        "pending",
+			})
 		}
+
+		if !involvesUser {
+			continue
+		}
+
+		loopID := strings.Join(loopTradeParts, "_")
+		userLoops = append(userLoops, map[string]interface{}{
+			"id":                loopID,
+			"loop_id":           loopID,
+			"loop_type":         "detected_loop",
+			"initiator_view":    isPremium,
+			"can_join":          true,
+			"can_decline":       true,
+			"can_create":        isPremium,
+			"edges":             edges,
+			"loop_length":       len(loopEdges),
+			"participants":      participants,
+			"status":            "pending",
+			"initiator_user_id": userID,
+			"expires_at":        expiresAt,
+			"pro_nudge":         !isPremium,
+			"pro_nudge_text":    "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
+		})
 	}
 
 	// 5. Also fetch matches from multiway_trades table where user is participant (user3)
@@ -2390,7 +2550,7 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		JOIN products p3 ON m.user3_product_id = p3.id
 		JOIN trade_items ti ON t.id = ti.trade_id
 		JOIN products p1 ON ti.product_id = p1.id
-		WHERE (m.user3_id = ? OR t.buyer_id = ? OR t.seller_id = ?) AND m.status IN ('pending_user3', 'user3_accepted', 'active')
+		WHERE (m.user3_id = ? OR t.buyer_id = ? OR t.seller_id = ?) AND m.status IN ('pending_user3', 'pending_initiator_upgrade', 'user3_accepted', 'active')
 	`, userID, userID, userID)
 
 	if err == nil {
@@ -2400,11 +2560,17 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			var tradeID, u3ID, u3PID, initiatorUserID, u1ID, u2ID, u2PID int
 			err = rows.Scan(&chainID, &tradeID, &u3ID, &u3PID, &mStatus, &initiatorUserID, &expiresAt, &u1ID, &u2ID, &u2PID, &u1Name, &u2Name, &u3Name, &initiatorName, &u3WantedTitle, &u2Title, &u3Title)
 			if err == nil {
+				if mStatus == "pending_initiator_upgrade" && userID != initiatorUserID {
+					continue
+				}
+
 				user3Status := "pending"
 				if mStatus == "user3_accepted" || mStatus == "active" {
 					user3Status = "joined"
 				} else if mStatus == "user3_declined" {
 					user3Status = "declined"
+				} else if mStatus == "pending_initiator_upgrade" {
+					user3Status = "waiting_initiator_upgrade"
 				}
 
 				baseParticipantStatus := "pending"
@@ -2637,6 +2803,25 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 	var edges []map[string]interface{}
 	var participantsDetails []map[string]interface{}
 	involvesUser := false
+	allTradesActive := true
+
+	// Use loop agreements to represent participant confirmation status.
+	agreementStatusByUser := map[int]string{}
+	rowsAgreements, err := h.db.Query(`
+		SELECT user_id, status
+		FROM trade_loop_agreements
+		WHERE loop_id = ?
+	`, loopID)
+	if err == nil {
+		defer rowsAgreements.Close()
+		var uid int
+		var st string
+		for rowsAgreements.Next() {
+			if scanErr := rowsAgreements.Scan(&uid, &st); scanErr == nil {
+				agreementStatusByUser[uid] = st
+			}
+		}
+	}
 
 	for i := 1; i < len(parts); i++ {
 		tradeIDStr := parts[i]
@@ -2646,8 +2831,8 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 		}
 
 		var buyerID, sellerID, targetProductID int
-		var status string
-		err = h.db.QueryRow("SELECT buyer_id, seller_id, target_product_id, status FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &targetProductID, &status)
+		var tradeStatus string
+		err = h.db.QueryRow("SELECT buyer_id, seller_id, target_product_id, status FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &targetProductID, &tradeStatus)
 		if err != nil {
 			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 		}
@@ -2662,12 +2847,17 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 		}
 
 		participantsDetails = append(participantsDetails, map[string]interface{}{
-			"user_id":          buyerID,
-			"user_name":        fromUserName,
-			"product_id":       targetProductID,
-			"product_title":    productTitle,
-			"trade_id":         tradeID,
-			"trade_status":     status,
+			"user_id":       buyerID,
+			"user_name":     fromUserName,
+			"product_id":    targetProductID,
+			"product_title": productTitle,
+			"trade_id":      tradeID,
+			"trade_status": func() string {
+				if s, ok := agreementStatusByUser[buyerID]; ok {
+					return s
+				}
+				return "pending"
+			}(),
 			"position_in_loop": i - 1,
 		})
 
@@ -2678,8 +2868,12 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 			"to_user_name":   toUserName,
 			"trade_id":       tradeID,
 			"product_title":  productTitle,
-			"status":         status,
+			"status":         tradeStatus,
 		})
+
+		if tradeStatus != "active" {
+			allTradesActive = false
+		}
 	}
 
 	if !involvesUser {
@@ -2693,7 +2887,12 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 			"loop_id":      loopID,
 			"edges":        edges,
 			"participants": participantsDetails,
-			"status":       "active",
+			"status": func() string {
+				if allTradesActive {
+					return "completed"
+				}
+				return "active"
+			}(),
 		},
 	})
 }
@@ -2733,8 +2932,22 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
+	// Determine subscription tier for access + quota enforcement.
+	var isPremium bool
+	if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify subscription tier"})
+	}
+
 	if isAutoInvite {
 		log.Printf("[AcceptTradeLoop:auto] initiatorUserID=%d tradeID=%d suggestedUser3ID=%d", userID, autoTradeID, autoSuggestedUser3ID)
+
+		// Free users cannot manually initiate loops (auto_*).
+		if !isPremium {
+			return c.Status(403).JSON(models.APIResponse{
+				Success: false,
+				Error:   "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
+			})
+		}
 
 		var buyerID, sellerID int
 		var tradeStatus string
@@ -2861,6 +3074,49 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this loop"})
 	}
 
+	// If the loop has been cancelled, prevent further participation changes.
+	var cancelledBy int
+	if err := h.db.QueryRow("SELECT cancelled_by FROM trade_loop_cancellations WHERE loop_id = ? LIMIT 1", loopID).Scan(&cancelledBy); err == nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop has been cancelled."})
+	} else if err != sql.ErrNoRows {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify loop cancellation state"})
+	}
+
+	// Free tier: enforce monthly quota for auto-match loop participations.
+	// Pro users have unlimited participation.
+	if !isPremium {
+		// If already accepted this loop, don't burn quota again.
+		var existingStatus string
+		_ = h.db.QueryRow("SELECT status FROM trade_loop_agreements WHERE loop_id = ? AND user_id = ?", loopID, userID).Scan(&existingStatus)
+		if existingStatus != "accepted" {
+			period := time.Now().Format("2006-01")
+			limit := 2
+
+			_, _ = h.db.Exec(`
+				INSERT INTO loop_quota_usage (user_id, period, used, limit)
+				VALUES (?, ?, 0, ?)
+				ON DUPLICATE KEY UPDATE limit = limit
+			`, userID, period, limit)
+
+			res, qErr := h.db.Exec(`
+				UPDATE loop_quota_usage
+				SET used = used + 1
+				WHERE user_id = ? AND period = ? AND used < limit
+			`, userID, period)
+			if qErr != nil {
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to enforce loop quota"})
+			}
+
+			ra, _ := res.RowsAffected()
+			if ra == 0 {
+				return c.Status(403).JSON(models.APIResponse{
+					Success: false,
+					Error:   "You've used your free loop matches this month — upgrade to Pro for unlimited.",
+				})
+			}
+		}
+	}
+
 	// 2. Record acceptance
 	_, err := h.db.Exec(`
 		INSERT INTO trade_loop_agreements (loop_id, user_id, status)
@@ -2911,6 +3167,14 @@ func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
 	loopID := c.Params("id")
 	log.Printf("[DeclineTradeLoop] userID=%d raw loopID=%q", userID, loopID)
 
+	// Prevent declining/collaborating on cancelled loops.
+	var cancelledBy int
+	if err := h.db.QueryRow("SELECT cancelled_by FROM trade_loop_cancellations WHERE loop_id = ? LIMIT 1", loopID).Scan(&cancelledBy); err == nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop has been cancelled."})
+	} else if err != sql.ErrNoRows {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify loop cancellation state"})
+	}
+
 	_, err := h.db.Exec(`
 		INSERT INTO trade_loop_agreements (loop_id, user_id, status)
 		VALUES (?, ?, 'declined')
@@ -2924,10 +3188,251 @@ func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop declined"})
 }
 
+// GetLoopQuota returns the current free-tier monthly loop hop usage.
+// Free users have unlimited hops for their first 30 days; after that, 5 per month.
+func (h *TradeHandler) GetLoopQuota(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var isPremium bool
+	var createdAt time.Time
+	if err := h.db.QueryRow("SELECT is_premium, created_at FROM users WHERE id = ?", userID).Scan(&isPremium, &createdAt); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify subscription tier"})
+	}
+
+	period := time.Now().Format("2006-01")
+	if isPremium {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: fiber.Map{
+				"unlimited": true,
+				"period":    period,
+				"used":      0,
+				"limit":     0,
+			},
+		})
+	}
+
+	// Check if user is within 30 days of signup (unlimited trial period)
+	daysSinceSignup := int(time.Since(createdAt).Hours() / 24)
+	if daysSinceSignup <= 30 {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: fiber.Map{
+				"unlimited": true,
+				"trial":     true,
+				"period":    period,
+				"used":      0,
+				"limit":     0,
+			},
+		})
+	}
+
+	limit := 5
+	used := 0
+	err := h.db.QueryRow("SELECT used FROM loop_quota_usage WHERE user_id = ? AND period = ?", userID, period).Scan(&used)
+	if err != nil && err != sql.ErrNoRows {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch loop quota"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"unlimited": false,
+			"period":    period,
+			"used":      used,
+			"limit":     limit,
+		},
+	})
+}
+
+// CancelTradeLoop stops a detected loop from executing further.
+// Pro only.
+func (h *TradeHandler) CancelTradeLoop(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var isPremium bool
+	if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify subscription tier"})
+	}
+	if !isPremium {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Pro members only"})
+	}
+
+	loopID := c.Params("id") // format: chain_tradeID_buyerID_sellerID_user3ID
+
+	// Get multiway_trades record and participants
+	var user2ID, user3ID sql.NullInt64
+	var canceller string
+	if err := h.db.QueryRow(`
+		SELECT user2_id, COALESCE(user3_id, 0)
+		FROM multiway_trades
+		WHERE chain_id = ?
+	`, loopID).Scan(&user2ID, &user3ID); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Loop not found"})
+	}
+
+	// Get canceller name for notification
+	_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&canceller)
+	if canceller == "" {
+		canceller = "The loop initiator"
+	}
+
+	// Update multiway_trades with cancellation info
+	_, err := h.db.Exec(`
+		UPDATE multiway_trades
+		SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP, cancelled_by = ?
+		WHERE chain_id = ?
+	`, userID, loopID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel loop"})
+	}
+
+	// Notify participants
+	cancelMsg := fmt.Sprintf("%s cancelled the loop", canceller)
+	participantIDs := []int{}
+	if user2ID.Valid {
+		participantIDs = append(participantIDs, int(user2ID.Int64))
+		h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", user2ID.Int64, cancelMsg)
+		publishNotification(int(user2ID.Int64), cancelMsg)
+	}
+	if user3ID.Valid && user3ID.Int64 > 0 {
+		participantIDs = append(participantIDs, int(user3ID.Int64))
+		h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", user3ID.Int64, cancelMsg)
+		publishNotification(int(user3ID.Int64), cancelMsg)
+	}
+
+	// Refund quota for free-tier participants who were using a quota slot
+	period := time.Now().Format("2006-01")
+	for _, participantID := range participantIDs {
+		var isPremiumParticipant bool
+		if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", participantID).Scan(&isPremiumParticipant); err == nil && !isPremiumParticipant {
+			// Refund 1 quota slot
+			_, _ = h.db.Exec(`
+				UPDATE loop_quota_usage
+				SET used = GREATEST(0, used - 1)
+				WHERE user_id = ? AND period = ?
+			`, participantID, period)
+		}
+	}
+
+	// Add to cancellations table for tracking
+	_, _ = h.db.Exec(`
+		INSERT INTO trade_loop_cancellations (loop_id, cancelled_by)
+		VALUES (?, ?)
+		ON DUPLICATE KEY UPDATE cancelled_by = VALUES(cancelled_by)
+	`, loopID, userID)
+
+	// Rebuild cache for all participants
+	go h.rebuildTradeLoopCacheForUsers(participantIDs)
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Loop cancelled and participants notified"})
+}
+
+// ReinviteTradeLoop re-enables a cancelled detected loop by clearing agreements and the cancellation record.
+// Pro only.
+func (h *TradeHandler) ReinviteTradeLoop(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var isPremium bool
+	if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify subscription tier"})
+	}
+	if !isPremium {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Pro members only"})
+	}
+
+	loopID := c.Params("id")
+
+	_, err := h.db.Exec("DELETE FROM trade_loop_cancellations WHERE loop_id = ?", loopID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to reinvite loop"})
+	}
+	_, err = h.db.Exec("DELETE FROM trade_loop_agreements WHERE loop_id = ?", loopID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to reset loop agreements"})
+	}
+
+	// Best-effort cache rebuild for participants.
+	parts := strings.Split(loopID, "_")
+	if len(parts) >= 3 && parts[0] == "loop" {
+		participantIDs := map[int]bool{}
+		for i := 1; i < len(parts); i++ {
+			tid, _ := strconv.Atoi(parts[i])
+			var bID, sID int
+			if err := h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tid).Scan(&bID, &sID); err == nil {
+				participantIDs[bID] = true
+				participantIDs[sID] = true
+			}
+		}
+		go h.rebuildTradeLoopCacheForUsers(mapKeysToSlice(participantIDs))
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Loop reinvited"})
+}
+
+// CleanupExpiredPendingInitiatorUpgrades removes pending_initiator_upgrade records that have expired (7 days old)
+// and notifies initiators to upgrade or their matches will be lost.
+func (h *TradeHandler) CleanupExpiredPendingInitiatorUpgrades() {
+	rows, err := h.db.Query(`
+		SELECT id, chain_id, initiator_user_id
+		FROM multiway_trades
+		WHERE status = 'pending_initiator_upgrade'
+		AND expires_at IS NOT NULL
+		AND expires_at <= NOW()
+	`)
+	if err != nil {
+		log.Printf("CleanupExpiredPendingInitiatorUpgrades: query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var loopID string
+		var initiatorID int
+		var recordID int
+		if err := rows.Scan(&recordID, &loopID, &initiatorID); err != nil {
+			continue
+		}
+
+		// Update status to expired
+		_, err := h.db.Exec(`
+			UPDATE multiway_trades
+			SET status = 'cancelled'
+			WHERE id = ?
+		`, recordID)
+		if err != nil {
+			continue
+		}
+
+		// Notify initiator
+		msg := "Your loop match expired. Upgrade to Pro to get matched again with similar traders."
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", initiatorID, msg)
+		publishNotification(initiatorID, msg)
+		log.Printf("CleanupExpiredPendingInitiatorUpgrades: expired and notified loop %s (initiator %d)", loopID, initiatorID)
+	}
+}
+
 // ExecuteTradeLoop
 func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	loopID := c.Params("id")
 	parts := strings.Split(loopID, "_")
+
+	// Prevent executing cancelled loops.
+	var cancelledBy int
+	if err := h.db.QueryRow("SELECT cancelled_by FROM trade_loop_cancellations WHERE loop_id = ? LIMIT 1", loopID).Scan(&cancelledBy); err == nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop has been cancelled."})
+	} else if err != sql.ErrNoRows {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify loop cancellation state"})
+	}
 
 	// Start transaction
 	tx, err := h.db.Begin()
@@ -3059,6 +3564,104 @@ func (h *TradeHandler) ClearLoopNotifications(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true})
 }
 
+// DebugMultiwayMatch explains why a trade did or did not qualify for a multi-way suggestion.
+// Admin-only route used by the dashboard debug panel.
+func (h *TradeHandler) DebugMultiwayMatch(c *fiber.Ctx) error {
+	tradeID, err := strconv.Atoi(c.Query("trade_id", "0"))
+	if err != nil || tradeID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "trade_id is required and must be a positive integer"})
+	}
+
+	compareTradeID := 0
+	compareRaw := strings.TrimSpace(c.Query("compare_trade_id", ""))
+	if compareRaw != "" {
+		compareTradeID, err = strconv.Atoi(compareRaw)
+		if err != nil || compareTradeID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "compare_trade_id must be a positive integer when provided"})
+		}
+	}
+
+	overrideInitiatorUserID := 0
+	initiatorRaw := strings.TrimSpace(c.Query("initiator_user_id", ""))
+	if initiatorRaw != "" {
+		overrideInitiatorUserID, err = strconv.Atoi(initiatorRaw)
+		if err != nil || overrideInitiatorUserID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "initiator_user_id must be a positive integer when provided"})
+		}
+	}
+
+	analyze := func(id int) (fiber.Map, error) {
+		var buyerID, sellerID int
+		var status string
+		err := h.db.QueryRow("SELECT buyer_id, seller_id, status FROM trades WHERE id = ?", id).Scan(&buyerID, &sellerID, &status)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return nil, fmt.Errorf("trade %d not found", id)
+			}
+			return nil, fmt.Errorf("failed to load trade %d", id)
+		}
+
+		initiatorUserID := sellerID
+		if overrideInitiatorUserID > 0 {
+			initiatorUserID = overrideInitiatorUserID
+		}
+
+		var initiatorIsPremium bool
+		if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", initiatorUserID).Scan(&initiatorIsPremium); err != nil {
+			return nil, fmt.Errorf("failed to load initiator subscription for trade %d", id)
+		}
+
+		matches, debugInfo, err := services.FindMultiwayMatchDetailed(h.db, buyerID, sellerID, id, []int{})
+		if err != nil {
+			return nil, fmt.Errorf("matcher failed for trade %d", id)
+		}
+
+		recommendedLoopStatus := "no_match"
+		if len(matches) > 0 {
+			recommendedLoopStatus = "pending_user3"
+			if !initiatorIsPremium {
+				recommendedLoopStatus = "pending_initiator_upgrade"
+			}
+		}
+
+		result := fiber.Map{
+			"trade_id":                id,
+			"trade_status":            status,
+			"buyer_id":                buyerID,
+			"seller_id":               sellerID,
+			"initiator_user_id":       initiatorUserID,
+			"initiator_is_premium":    initiatorIsPremium,
+			"recommended_loop_status": recommendedLoopStatus,
+			"match_count":             len(matches),
+			"top_match":               nil,
+			"debug":                   debugInfo,
+		}
+
+		if len(matches) > 0 {
+			result["top_match"] = matches[0]
+		}
+
+		return result, nil
+	}
+
+	primary, err := analyze(tradeID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: err.Error()})
+	}
+
+	data := fiber.Map{"primary": primary}
+	if compareTradeID > 0 {
+		comparison, cmpErr := analyze(compareTradeID)
+		if cmpErr != nil {
+			data["comparison_error"] = cmpErr.Error()
+		} else {
+			data["comparison"] = comparison
+		}
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: data})
+}
+
 // GetMultiwayOpportunities returns multi-way chains where the user is User 3
 func (h *TradeHandler) GetMultiwayOpportunities(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -3113,22 +3716,74 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	}
 	chainID := c.Params("id")
 
-	// Verify user is User 3 for this chain
+	// Determine subscription tier for quota enforcement.
+	var isPremium bool
+	if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify subscription tier"})
+	}
+
+	// Start transaction to keep quota + acceptance consistent.
+	tx, err := h.db.Begin()
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
+	}
+	defer tx.Rollback()
+
+	// Verify user is User 3 for this chain (lock the row).
 	var user1ID, user2ID int
-	err := h.db.QueryRow("SELECT user1_id, user2_id FROM multiway_trades WHERE chain_id = ? AND user3_id = ? AND status = 'pending_user3'", chainID, userID).Scan(&user1ID, &user2ID)
+	err = tx.QueryRow(`
+		SELECT user1_id, user2_id
+		FROM multiway_trades
+		WHERE chain_id = ? AND user3_id = ? AND status = 'pending_user3'
+		FOR UPDATE
+	`, chainID, userID).Scan(&user1ID, &user2ID)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Opportunity not found or already processed"})
 	}
 
+	// Free tier: enforce monthly quota for auto-match loop hops.
+	if !isPremium {
+		period := time.Now().Format("2006-01")
+		limit := 2
+
+		_, _ = tx.Exec(`
+			INSERT INTO loop_quota_usage (user_id, period, used, limit)
+			VALUES (?, ?, 0, ?)
+			ON DUPLICATE KEY UPDATE limit = limit
+		`, userID, period, limit)
+
+		res, qErr := tx.Exec(`
+			UPDATE loop_quota_usage
+			SET used = used + 1
+			WHERE user_id = ? AND period = ? AND used < limit
+		`, userID, period)
+		if qErr != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to enforce loop quota"})
+		}
+
+		ra, _ := res.RowsAffected()
+		if ra == 0 {
+			return c.Status(403).JSON(models.APIResponse{
+				Success: false,
+				Error:   "You've used your free loop matches this month — upgrade to Pro for unlimited.",
+			})
+		}
+	}
+
 	// In a real implementation we would create a 3-way agreement or a special multiway trade record.
 	// For now, let's mark it as accepted and notify participants.
-	_, err = h.db.Exec("UPDATE multiway_trades SET status = 'user3_accepted' WHERE chain_id = ?", chainID)
+	_, err = tx.Exec("UPDATE multiway_trades SET status = 'user3_accepted' WHERE chain_id = ?", chainID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to accept multi-way chain"})
 	}
 
 	// Update original trade status to multiway_active
-	_, _ = h.db.Exec("UPDATE trades SET status = 'multiway_active' WHERE id = (SELECT original_trade_id FROM multiway_trades WHERE chain_id = ?)", chainID)
+	_, _ = tx.Exec("UPDATE trades SET status = 'multiway_active' WHERE id = (SELECT original_trade_id FROM multiway_trades WHERE chain_id = ?)", chainID)
+
+	// Commit DB changes before side effects (notifications/cache rebuild).
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit transaction"})
+	}
 
 	// Notify User 1 and User 2
 	msg := "Good news! A third participant has accepted the multiway trade. Proceed to dashboard to finalize."

@@ -274,8 +274,8 @@ const Offers: React.FC = () => {
       if (errorMsg.includes('premium') || error?.response?.status === 403) {
         toast({
           id: 'error-convert-multiway-premium',
-          title: 'Start a Multi-way Loop with Premium',
-          description: 'You can still join invited loops for free. Upgrade only if you want to initiate your own loop.',
+          title: 'Pro members can initiate',
+          description: "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
           status: 'warning',
           duration: 5000
         })

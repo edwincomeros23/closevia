@@ -66,6 +66,10 @@ interface MultiWayTradeUIProps {
   initiatorName?: string
   canJoin?: boolean
   canDecline?: boolean
+  canCreate?: boolean
+  loopType?: string
+  proNudgeText?: string
+  onStartLoop?: () => void
   loopStatus?: string
   expiryLabel?: string
 }
@@ -84,6 +88,10 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
   initiatorName,
   canJoin = true,
   canDecline = true,
+  canCreate = false,
+  loopType,
+  proNudgeText,
+  onStartLoop,
   loopStatus,
   expiryLabel,
 }) => {
@@ -289,6 +297,26 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             >
               {viewMode === 'initiator' ? 'View Loop Details' : 'Hop In'}
             </Button>
+
+            {viewMode === 'participant' && loopType === 'detected_loop' && !canCreate && (
+              <Tooltip label={proNudgeText || "Pro members can initiate. Upgrade to unlock."} placement="top" hasArrow>
+                <Button
+                  size="sm"
+                  colorScheme="purple"
+                  variant="outline"
+                  onClick={() => onStartLoop?.()}
+                  w="full"
+                  fontWeight="bold"
+                >
+                  <HStack spacing={2}>
+                    <span>Start a Loop</span>
+                    <Badge colorScheme="purple" fontSize="10px">
+                      Pro
+                    </Badge>
+                  </HStack>
+                </Button>
+              </Tooltip>
+            )}
             
             {(canDecline || isChain) && (
               <HStack spacing={2} w="full">

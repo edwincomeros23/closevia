@@ -74,6 +74,8 @@ import { SuggestedTradesModal } from '../components/SuggestedTradesModal'
 import TradeModal from '../components/TradeModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 import MultiWayTradeUI from '../components/MultiWayTradeUI'
+import MultiWayTradeModal from '../components/MultiWayTradeModal'
+import { fetchMultiWayTrade, fetchLoopQuota } from '../services/tradeService'
 import {
   useDashboardProducts,
   useDashboardOrders,
@@ -205,6 +207,9 @@ const Dashboard: React.FC = () => {
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
   const [showPremiumModal, setShowPremiumModal] = useState(false)
+  const [multiWayManagerOpen, setMultiWayManagerOpen] = useState(false)
+  const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
+  const [loopQuota, setLoopQuota] = useState<null | { unlimited: boolean; period: string; used: number; limit: number }>(null)
 
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
@@ -637,6 +642,15 @@ const Dashboard: React.FC = () => {
         params: { user_id: user?.id }
       })
       setMultiWayTrades(response.data?.data || [])
+
+      // Free tier monthly quota indicator (used for upsells + disabling where needed).
+      try {
+        const quota = await fetchLoopQuota()
+        setLoopQuota(quota)
+      } catch (quotaErr) {
+        // Non-fatal: multi-way loops can still render without quota info.
+        console.error('Failed to fetch loop quota:', quotaErr)
+      }
     } catch (error: any) {
       console.error('Failed to fetch multi-way trades:', error)
       const msg = error?.response?.data?.error || 'Failed to load multi-way trades'
@@ -934,8 +948,8 @@ const Dashboard: React.FC = () => {
       if (errorMsg.includes('premium') || error?.response?.status === 403) {
         toast({
           id: 'error-convert-multiway-premium',
-          title: 'Start a Multi-way Loop with Premium',
-          description: 'You can still join invited loops for free. Upgrade only if you want to initiate your own loop.',
+          title: 'Pro members can initiate',
+          description: "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
           status: 'warning',
           duration: 5000
         })
@@ -3949,58 +3963,30 @@ const Dashboard: React.FC = () => {
 
                 {/* Multi-Way Trades Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
-                  {(() => {
-                    const invitedTrades = (multiWayTrades || []).filter((t: any) => t?.can_join && String(t?.status || '').toLowerCase() === 'pending_user3')
-                    if (!user?.is_premium || invitedTrades.length > 0) {
-                      return (
-                        <VStack align="stretch" spacing={3} mb={4}>
-                          {invitedTrades.map((trade: any) => (
-                            <Box
-                              key={`invite-${trade?.chain_id || trade?.id}`}
-                              p={4}
-                              bg="teal.50"
-                              border="1px solid"
-                              borderColor="teal.200"
-                              borderRadius="lg"
-                            >
-                              <HStack justify="space-between" align="start" spacing={4}>
-                                <VStack align="start" spacing={1} flex={1} minW={0}>
-                                  <Text fontSize="sm" fontWeight="bold" color="teal.800">
-                                    You've been invited to a Multi-way Loop!
-                                  </Text>
-                                  <Text fontSize="xs" color="teal.700" noOfLines={2}>
-                                    Initiated by {trade?.initiator_name || 'a premium user'} • You give: {getMultiWayTradeSummary(trade).yourGive} • You get: {getMultiWayTradeSummary(trade).yourGet}
-                                  </Text>
-                                </VStack>
-                                <Button
-                                  size="sm"
-                                  colorScheme="teal"
-                                  onClick={() => handleJoinMultiWayTrade(trade)}
-                                  isLoading={multiWayTradeJoining}
-                                  loadingText="Joining..."
-                                >
-                                  Hop In
-                                </Button>
-                              </HStack>
-                            </Box>
-                          ))}
-                          {!user?.is_premium && (
-                            <Box p={3} bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="lg">
-                              <HStack justify="space-between" align="center" spacing={3}>
-                                <Text fontSize="xs" color="purple.800">
-                                  Start a Multi-way Loop with Premium. You can still hop in to invited loops for free.
-                                </Text>
-                                <Button size="xs" colorScheme="purple" variant="outline" onClick={() => navigate('/premium')}>
-                                  Learn More
-                                </Button>
-                              </HStack>
-                            </Box>
-                          )}
-                        </VStack>
-                      )
-                    }
-                    return null
-                  })()}
+                  {!user?.is_premium && loopQuota && !loopQuota.unlimited && (
+                    <VStack align="stretch" spacing={2} mb={4}>
+                      <Box p={3} bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="lg">
+                        <Text fontSize="sm" color="purple.800" fontWeight="bold">
+                          {loopQuota.used} of {loopQuota.limit} free loop hops used this month
+                        </Text>
+                      </Box>
+                      {loopQuota.used >= loopQuota.limit && (
+                        <Box p={3} bg="red.50" border="1px solid" borderColor="red.200" borderRadius="lg">
+                          <Text fontSize="xs" color="red.700">
+                            You've used your free loop matches this month — upgrade to Pro for unlimited.
+                          </Text>
+                        </Box>
+                      )}
+                    </VStack>
+                  )}
+
+                  {!user?.is_premium && (multiWayTrades || []).some((t: any) => t?.loop_type === 'detected_loop' && t?.pro_nudge) && (
+                    <Box p={3} bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="lg" mb={4}>
+                      <Text fontSize="xs" color="yellow.800" fontWeight="bold">
+                        You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.
+                      </Text>
+                    </Box>
+                  )}
 
                   {multiWayTradesLoading ? (
                     <Center py={12}>
@@ -4086,16 +4072,75 @@ const Dashboard: React.FC = () => {
                             <Badge colorScheme="purple" variant="subtle" fontSize="2xs" px={2} py={1}>
                               {trade.participants?.length || 0} in loop
                             </Badge>
-                            <Button
-                              size="sm"
-                              colorScheme="purple"
-                              variant="outline"
-                              fontSize={{ base: 'xs', md: 'sm' }}
-                              px={{ base: 2, md: 3 }}
-                              onClick={() => setSelectedMultiWayTrade(trade)}
-                            >
-                              View
-                            </Button>
+                            {trade?.initiator_view ? (
+                              <Button
+                                size="sm"
+                                colorScheme="purple"
+                                variant="outline"
+                                fontSize={{ base: 'xs', md: 'sm' }}
+                                px={{ base: 2, md: 3 }}
+                                onClick={() => {
+                                  if (trade?.loop_type !== 'detected_loop') return
+                                  if (!user?.is_premium) {
+                                    setShowPremiumModal(true)
+                                    return
+                                  }
+                                  void (async () => {
+                                    try {
+                                      setMultiWayManagerLoading(true)
+                                      const loopId = String(trade?.loop_id || trade?.id || '')
+                                      const details = await fetchMultiWayTrade(loopId)
+                                      setSelectedMultiWayTrade(details)
+                                      setMultiWayManagerOpen(true)
+                                    } catch (e) {
+                                      console.error('Failed to load loop details:', e)
+                                      toast({
+                                        id: 'error-load-loop-details',
+                                        title: 'Error',
+                                        description: 'Failed to load trade loop details.',
+                                        status: 'error',
+                                      })
+                                    } finally {
+                                      setMultiWayManagerLoading(false)
+                                    }
+                                  })()
+                                }}
+                              >
+                                View
+                              </Button>
+                            ) : (
+                              <HStack spacing={2}>
+                                <Button
+                                  size="sm"
+                                  colorScheme="green"
+                                  onClick={() => handleJoinMultiWayTrade(trade)}
+                                  isLoading={multiWayTradeJoining}
+                                  loadingText="Joining..."
+                                  isDisabled={!trade?.can_join}
+                                >
+                                  Hop In
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  colorScheme="red"
+                                  variant="outline"
+                                  onClick={() => handleDeclineMultiWayTrade(trade, false)}
+                                  isDisabled={!trade?.can_decline}
+                                >
+                                  Decline
+                                </Button>
+                                {trade?.loop_type === 'detected_loop' && !trade?.can_create && !user?.is_premium && (
+                                  <Button
+                                    size="sm"
+                                    colorScheme="purple"
+                                    variant="outline"
+                                    onClick={() => setShowPremiumModal(true)}
+                                  >
+                                    Start a Loop <Badge ml={2} colorScheme="purple" fontSize="10px">Pro</Badge>
+                                  </Button>
+                                )}
+                              </HStack>
+                            )}
                           </HStack>
                         </Flex>
                       ))}
@@ -4112,15 +4157,43 @@ const Dashboard: React.FC = () => {
                               yourGive={summary.yourGive}
                               yourGet={summary.yourGet}
                               chainLabel={summary.chainLabel}
-                              viewMode={(trade?.initiator_view || trade?.initiator_user_id === user?.id) ? 'initiator' : 'participant'}
+                              viewMode={trade?.initiator_view ? 'initiator' : 'participant'}
                               initiatorName={trade?.initiator_name}
                               canJoin={Boolean(trade?.can_join ?? true)}
                               canDecline={Boolean(trade?.can_decline ?? true)}
+                              canCreate={Boolean(trade?.can_create ?? false)}
+                              loopType={trade?.loop_type}
+                              proNudgeText={trade?.pro_nudge_text}
                               loopStatus={trade?.status}
                               expiryLabel={trade?.expires_at ? new Date(trade.expires_at).toLocaleString() : undefined}
                               onJoinTrade={() => handleJoinMultiWayTrade(trade)}
-                              onViewDetails={() => setSelectedMultiWayTrade(trade)}
+                              onViewDetails={() => {
+                                void (async () => {
+                                  try {
+                                    if (trade?.loop_type !== 'detected_loop') return
+                                    setMultiWayManagerLoading(true)
+                                    const loopId = String(trade?.loop_id || trade?.id || '')
+                                    const details = await fetchMultiWayTrade(loopId)
+                                    setSelectedMultiWayTrade(details)
+                                    setMultiWayManagerOpen(true)
+                                  } catch (e) {
+                                    console.error('Failed to load loop details:', e)
+                                    toast({
+                                      id: 'error-load-loop-details',
+                                      title: 'Error',
+                                      description: 'Failed to load trade loop details.',
+                                      status: 'error',
+                                    })
+                                  } finally {
+                                    setMultiWayManagerLoading(false)
+                                  }
+                                })()
+                              }}
                               onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}
+                              onStartLoop={() => {
+                                // Soft upsell touchpoint: free users can’t manually initiate.
+                                setShowPremiumModal(true)
+                              }}
                               isLoading={multiWayTradeJoining}
                             />
                           </Box>
@@ -4547,6 +4620,22 @@ const Dashboard: React.FC = () => {
             onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
             onTradeUpdate={setSelectedTrade}
           />
+
+          {/* Multi-way Loop Manager (Pro) */}
+          {selectedMultiWayTrade && (
+            <MultiWayTradeModal
+              isOpen={multiWayManagerOpen}
+              onClose={() => {
+                setMultiWayManagerOpen(false)
+                setSelectedMultiWayTrade(null)
+              }}
+              multiWayTrade={selectedMultiWayTrade}
+              canManage={Boolean(user?.is_premium) && !selectedMultiWayTrade?.is_chain}
+              onTradeCompleted={() => {
+                void fetchMultiWayTrades()
+              }}
+            />
+          )}
 
           <TradeCompletionModal
             trade={selectedTrade}

@@ -512,6 +512,23 @@ func CreateTables() error {
 			INDEX idx_trade_loop_cache_expiry (user_id, expires_at),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS loop_quota_usage (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			period VARCHAR(7) NOT NULL COMMENT 'YYYY-MM',
+			used INT NOT NULL DEFAULT 0,
+			` + "`limit`" + ` INT NOT NULL DEFAULT 5,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_loop_quota_usage_user_period (user_id, period),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_cancellations (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id VARCHAR(255) NOT NULL UNIQUE,
+			cancelled_by INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE IF NOT EXISTS delivery_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			delivery_id INT NOT NULL,
@@ -996,7 +1013,10 @@ func ensureTradeColumns() {
 		user2_id INT NOT NULL COMMENT 'User who converted to multiway (User 2)',
 		user3_id INT NULL COMMENT 'Matched third party (User 3)',
 		user3_trade_id INT NULL COMMENT 'Trade ID linking User 3',
-		status ENUM('searching','pending_user3','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching',
+		status ENUM('searching','pending_user3','pending_initiator_upgrade','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching',
+		expires_at TIMESTAMP NULL COMMENT 'Expiry for pending_initiator_upgrade records (7 days)',
+		cancelled_at TIMESTAMP NULL,
+		cancelled_by INT NULL,
 		trade_option VARCHAR(20) NULL DEFAULT 'meetup',
 		meetup_location VARCHAR(500) NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1006,10 +1026,50 @@ func ensureTradeColumns() {
 		FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (user3_id) REFERENCES users(id) ON DELETE SET NULL,
+		FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL,
 		INDEX idx_multiway_chain (chain_id),
 		INDEX idx_multiway_status (status),
-		INDEX idx_multiway_user3 (user3_id)
+		INDEX idx_multiway_user3 (user3_id),
+		INDEX idx_multiway_expires (expires_at)
 	)`)
+
+	// Ensure multiway_trades status enum includes pending_initiator_upgrade on existing databases.
+	var multiwayStatusType string
+	if err := DB.QueryRow(`
+		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'status'
+	`).Scan(&multiwayStatusType); err == nil {
+		if !contains(multiwayStatusType, "'pending_initiator_upgrade'") {
+			if _, err := DB.Exec(`
+				ALTER TABLE multiway_trades
+				MODIFY COLUMN status ENUM('searching','pending_user3','pending_initiator_upgrade','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching'
+			`); err != nil {
+				log.Printf("Warning: failed to update multiway_trades status enum: %v", err)
+			} else {
+				log.Println("Updated multiway_trades status enum to include 'pending_initiator_upgrade'")
+			}
+		}
+	}
+
+	// Ensure expires_at column exists on multiway_trades for 7-day TTL
+	var expiresExists int
+	if err := DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'expires_at'
+	`).Scan(&expiresExists); err == nil && expiresExists == 0 {
+		if _, err := DB.Exec(`
+			ALTER TABLE multiway_trades
+			ADD COLUMN expires_at TIMESTAMP NULL COMMENT 'Expiry for pending_initiator_upgrade records (7 days)',
+			ADD COLUMN cancelled_at TIMESTAMP NULL,
+			ADD COLUMN cancelled_by INT NULL,
+			ADD FOREIGN KEY fk_cancelled_by (cancelled_by) REFERENCES users(id) ON DELETE SET NULL,
+			ADD INDEX idx_multiway_expires (expires_at)
+		`); err != nil {
+			log.Printf("Warning: failed to add expires_at/cancelled columns to multiway_trades: %v", err)
+		} else {
+			log.Println("Added expires_at and cancellation columns to multiway_trades")
+		}
+	}
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow

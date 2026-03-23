@@ -384,6 +384,7 @@ func main() {
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
+	trades.Get("/loops/debug/match", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.DebugMultiwayMatch)
 	trades.Get("/loops/notifications", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopNotifications)
 	trades.Post("/loops/notifications/clear", middleware.AuthMiddleware(), tradeHandler.ClearLoopNotifications)
 	trades.Post("/loops/notifications/:id/read", middleware.AuthMiddleware(), tradeHandler.MarkLoopNotificationRead)
@@ -391,6 +392,9 @@ func main() {
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
+	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
+	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
