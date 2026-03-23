@@ -23,20 +23,28 @@ const ActivityFeed = () => {
     useEffect(() => {
         let intervalId: ReturnType<typeof setInterval> | null = null;
         let isMounted = true;
+        let inFlight = false;
 
         const fetchActivities = async (lat?: number, lng?: number) => {
+            if (inFlight) return;
+            inFlight = true;
             try {
                 const params: Record<string, string> = {};
                 if (lat !== undefined && lng !== undefined) {
                     params.lat = lat.toFixed(6);
                     params.lng = lng.toFixed(6);
                 }
-                const res = await api.get('/api/activities', { params });
+                const res = await api.get('/api/activities', {
+                    params,
+                    timeout: 15000,
+                });
                 if (isMounted && res.data?.success && res.data?.data) {
                     setActivities(res.data.data);
                 }
             } catch (err) {
                 console.error('Failed to fetch activities', err);
+            } finally {
+                inFlight = false;
             }
         };
 

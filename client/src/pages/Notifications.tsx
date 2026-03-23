@@ -9,8 +9,6 @@ import {
   Heading,
   Text,
   Badge,
-  Spinner,
-  Center,
   Alert,
   AlertIcon,
   Card,
@@ -22,6 +20,8 @@ import {
   Flex,
   Image as ChakraImage,
   IconButton,
+  Skeleton,
+  SkeletonText,
 } from '@chakra-ui/react'
 import { ChevronLeftIcon, ChevronRightIcon, AddIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -48,7 +48,8 @@ const Notifications: React.FC = () => {
   const { products } = useProducts()
   const { refreshCounts } = useRealtime()
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [query, setQuery] = useState('')
@@ -65,20 +66,44 @@ const Notifications: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      fetchNotifications()
+      const endpoint = user?.role === 'admin' ? '/api/notifications?type=report' : '/api/notifications'
+      const cacheKey = `clovia_notifications_cache_${user?.role || 'user'}`
+
+      try {
+        const cached = localStorage.getItem(cacheKey)
+        if (cached) {
+          const parsed = JSON.parse(cached)
+          if (Array.isArray(parsed)) {
+            setNotifications(parsed)
+          }
+        }
+      } catch {
+        // ignore cache parsing errors
+      }
+
+      fetchNotifications(endpoint, cacheKey)
+    } else {
+      setInitialLoading(false)
     }
   }, [user])
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (endpointArg?: string, cacheKeyArg?: string) => {
+    const endpoint = endpointArg || (user?.role === 'admin' ? '/api/notifications?type=report' : '/api/notifications')
+    const cacheKey = cacheKeyArg || `clovia_notifications_cache_${user?.role || 'user'}`
+
     try {
-      setLoading(true)
-      setCurrentPage(1)
+      if (notifications.length === 0) {
+        setLoading(true)
+      }
       setError('')
-      // Admin only sees report notifications
-      const endpoint = user?.role === 'admin' ? '/api/notifications?type=report' : '/api/notifications'
       const response = await api.get(endpoint)
       const list: Notification[] = Array.isArray(response.data?.data) ? response.data.data : []
       setNotifications(list)
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(list))
+      } catch {
+        // ignore cache write errors
+      }
     } catch (error: any) {
       setError(error.message || 'Failed to fetch notifications')
       toast({
@@ -91,6 +116,7 @@ const Notifications: React.FC = () => {
       })
     } finally {
       setLoading(false)
+      setInitialLoading(false)
     }
   }
 
@@ -180,11 +206,47 @@ const Notifications: React.FC = () => {
     }
   }
 
-  if (loading) {
+  if (loading && initialLoading && notifications.length === 0) {
     return (
-      <Center h="50vh">
-        <Spinner size="xl" color="brand.500" />
-      </Center>
+      <Box minH="100vh" bg={pageBg} py={8}>
+        <Container maxW="container.md" py={0}>
+          <VStack spacing={6} align="stretch">
+            <Flex align="center" justify="space-between" flexWrap="wrap">
+              <VStack align="start" spacing={1} minW={0}>
+                <Skeleton height="28px" width="180px" />
+                <Skeleton height="16px" width="120px" />
+              </VStack>
+              <HStack spacing={3} mt={{ base: 3, md: 0 }}>
+                <Skeleton height="32px" width={{ base: '140px', md: '240px' }} />
+              </HStack>
+            </Flex>
+
+            <VStack spacing={4} align="stretch">
+              {[1, 2, 3].map((n) => (
+                <Card key={n} bg={bgColor} border="1px" borderColor={borderColor} shadow="sm">
+                  <CardHeader pb={2}>
+                    <HStack justify="space-between" align="start">
+                      <HStack spacing={3} align="start" flex={1}>
+                        <Skeleton height="32px" width="32px" borderRadius="md" />
+                        <VStack align="start" spacing={2} flex={1}>
+                          <Skeleton height="16px" width="120px" />
+                          <Skeleton height="14px" width="70px" />
+                        </VStack>
+                      </HStack>
+                      <Skeleton height="14px" width="84px" />
+                    </HStack>
+                  </CardHeader>
+                  <CardBody pt={0}>
+                    <SkeletonText noOfLines={2} spacing="2" mb={4} />
+                    <Skeleton height="30px" width="110px" borderRadius="md" />
+                  </CardBody>
+                </Card>
+              ))}
+            </VStack>
+          </VStack>
+        </Container>
+        <FloatingTab />
+      </Box>
     )
   }
 

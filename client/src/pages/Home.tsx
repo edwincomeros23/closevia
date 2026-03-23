@@ -45,13 +45,14 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   AddIcon,
+  BellIcon,
   HamburgerIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
   CloseIcon,
 } from '@chakra-ui/icons'
 import { FaUserCircle, FaHandshake, FaHome, FaTag, FaMotorcycle, FaCrown } from 'react-icons/fa'
-import { FiShoppingBag, FiDownload } from 'react-icons/fi'
+import { FiShoppingBag } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -71,7 +72,7 @@ import ProductCard from '../components/ProductCard'
 import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
-import { canShowInstallPrompt, initializeInstallPrompt, isRunningStandalone, promptInstall } from '../serviceWorkerRegistration'
+import InstallAppPrompt from '../components/InstallAppPrompt'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -102,7 +103,6 @@ const Home: React.FC = () => {
 
   // Rider status for profile dropdown
   const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
-  const [canInstallApp, setCanInstallApp] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -111,28 +111,6 @@ const Home: React.FC = () => {
       }).catch(() => {})
     }
   }, [user])
-
-  useEffect(() => {
-    if (isRunningStandalone()) {
-      setCanInstallApp(false)
-      return
-    }
-
-    const cleanup = initializeInstallPrompt((isAvailable) => {
-      setCanInstallApp(isAvailable && !isRunningStandalone())
-    })
-
-    setCanInstallApp(canShowInstallPrompt() && !isRunningStandalone())
-
-    return cleanup
-  }, [])
-
-  const handleInstallApp = useCallback(async () => {
-    const accepted = await promptInstall()
-    if (accepted || !canShowInstallPrompt()) {
-      setCanInstallApp(false)
-    }
-  }, [])
 
   // Search state management
   const [searchTerm, setSearchTerm] = useState('')
@@ -619,6 +597,7 @@ const Home: React.FC = () => {
                 onBuyoutClick={handleBuyoutClick}
                 onBuyClick={handleBuyClick}
                 onViewOffers={handleViewOffers}
+                showPriceOverlay
               />
             </Box>
           ) : (
@@ -766,6 +745,37 @@ const Home: React.FC = () => {
               display={{ base: 'inline-flex', md: 'none' }}
             />
 
+            {/* Mobile notifications button beside hamburger */}
+            {user && (
+              <Box position="relative" display={{ base: 'inline-flex', md: 'none' }}>
+                <IconButton
+                  aria-label="Notifications"
+                  icon={<BellIcon />}
+                  size={{ base: 'md', md: 'lg' }}
+                  variant="ghost"
+                  onClick={() => navigate('/notifications')}
+                />
+                {offerCount > 0 && (
+                  <Badge
+                    position="absolute"
+                    top="-1"
+                    right="-1"
+                    colorScheme="red"
+                    borderRadius="full"
+                    minW="18px"
+                    h="18px"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    fontSize="xs"
+                    px={1}
+                  >
+                    {offerCount > 99 ? '99+' : offerCount}
+                  </Badge>
+                )}
+              </Box>
+            )}
+
             {/* Mobile hamburger to open nav drawer (after filters icon) */}
             <IconButton
               aria-label="Open navigation"
@@ -899,25 +909,19 @@ const Home: React.FC = () => {
                         {(user as any).is_premium ? 'Premium' : 'Buy Premium'}
                       </Button>
 
-                      {canInstallApp && (
-                        <Button
-                          size="sm"
-                          w="full"
-                          variant="ghost"
-                          justifyContent="flex-start"
-                          leftIcon={<Icon as={FiDownload} />}
-                          onClick={handleInstallApp}
-                          whiteSpace="normal"
-                          h="auto"
-                          py={2}
-                          textAlign="left"
-                        >
-                          <VStack align="start" spacing={0}>
-                            <Text fontSize="sm" fontWeight="medium">Install Clovia</Text>
-                            <Text fontSize="xs" color="gray.500">for a full-screen app experience.</Text>
-                          </VStack>
-                        </Button>
-                      )}
+                      <Button
+                        as={RouterLink}
+                        to={user.is_organization && (user as any).org_handle ? `/org/${(user as any).org_handle}` : '/organizations/new'}
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaHome} />}
+                      >
+                        {user.is_organization && (user as any).org_handle ? 'Organization Page' : 'Create Organization'}
+                      </Button>
+
+                      <InstallAppPrompt variant="profile-menu" />
 
                       <Divider />
                       <Button

@@ -6,6 +6,7 @@ import { useNotification } from '../contexts/NotificationContext'
 import { api } from '../services/api'
 import { Product, TradeCreate, TradeOption } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
+import { reverseGeocodeToAddress, formatCoordinates } from '../utils/locationUtils'
 
 interface TradeModalProps {
   isOpen: boolean
@@ -30,6 +31,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [detectingLocation, setDetectingLocation] = useState(false)
   // Delivery location state
   const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [detectedLocationLabel, setDetectedLocationLabel] = useState('')
+  const [profileLocationLabel, setProfileLocationLabel] = useState('')
   const [manualAddress, setManualAddress] = useState('')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -63,6 +66,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setTradeOption(null)
     setHasPendingOfferOnTarget(false)
     setDetectedCoords(null)
+    setDetectedLocationLabel('')
+    setProfileLocationLabel('')
     setManualAddress('')
     setDetectingLocation(false)
     // Auto-set delivery option if user has location
@@ -98,6 +103,22 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   }, [isOpen, user, targetProductId])
 
   useEffect(() => {
+    if (!isOpen || !user?.latitude || !user?.longitude) return
+
+    let cancelled = false
+    ;(async () => {
+      const address = await reverseGeocodeToAddress(user.latitude as number, user.longitude as number)
+      if (!cancelled) {
+        setProfileLocationLabel(address)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, user?.latitude, user?.longitude])
+
+  useEffect(() => {
     if (!isOpen) return
     console.log('Selected offer IDs:', selectedOfferIds)
     console.log('Selected products:', selectedProducts)
@@ -109,8 +130,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
   // Resolved delivery address for payload submission
   const resolvedDeliveryAddress = (): string | undefined => {
-    if (user?.latitude && user?.longitude) return `${user.latitude}, ${user.longitude}`
-    if (detectedCoords) return `${detectedCoords.lat.toFixed(6)}, ${detectedCoords.lng.toFixed(6)}`
+    if (detectedLocationLabel.trim()) return detectedLocationLabel.trim()
+    if (detectedCoords) return formatCoordinates(detectedCoords.lat, detectedCoords.lng)
+    if (profileLocationLabel.trim()) return profileLocationLabel.trim()
+    if (user?.latitude && user?.longitude) return formatCoordinates(user.latitude, user.longitude)
     if (manualAddress.trim()) return manualAddress.trim()
     return undefined
   }
@@ -127,11 +150,15 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     }
     setDetectingLocation(true)
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setDetectedCoords({ lat: position.coords.latitude, lng: position.coords.longitude })
+      async (position) => {
+        const lat = position.coords.latitude
+        const lng = position.coords.longitude
+        setDetectedCoords({ lat, lng })
+        const address = await reverseGeocodeToAddress(lat, lng)
+        setDetectedLocationLabel(address)
         setDetectingLocation(false)
         toast({
-        id: "trademodal-location-detected", title: 'Location detected!', status: 'success', duration: 2000 })
+        id: "trademodal-location-detected", title: 'Location detected!', description: address, status: 'success', duration: 2500 })
       },
       (error) => {
         setDetectingLocation(false)
@@ -143,7 +170,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
         toast({
         id: "trademodal-location-error", title: 'Location error', description: messages[error.code] || 'Could not detect location.', status: 'warning', duration: 4000 })
       },
-      { timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 }
     )
   }
 
@@ -374,18 +401,32 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                   <Box mt={4}>
                     <FormControl>
                       <FormLabel fontSize="sm">Delivery Location</FormLabel>
-                      {user?.latitude && user?.longitude ? (
-                        <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
-                          <Text fontSize="sm" color="blue.900" fontWeight="medium">📍 {user.latitude.toFixed(4)}, {user.longitude.toFixed(4)}</Text>
-                          <Text fontSize="xs" color="blue.700" mt={1}>Your predefined delivery location from your profile</Text>
-                        </Box>
-                      ) : detectedCoords ? (
+                      {detectedCoords ? (
                         <Box p={3} bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" borderLeftWidth="4px" borderLeftColor="green.500">
                           <HStack justify="space-between">
-                            <Text fontSize="sm" color="green.900" fontWeight="medium">📍 {detectedCoords.lat.toFixed(4)}, {detectedCoords.lng.toFixed(4)}</Text>
-                            <Button size="xs" variant="ghost" colorScheme="red" onClick={() => setDetectedCoords(null)}>Clear</Button>
+                            <Text fontSize="sm" color="green.900" fontWeight="medium">
+                              📍 {detectedLocationLabel || formatCoordinates(detectedCoords.lat, detectedCoords.lng)}
+                            </Text>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={() => {
+                                setDetectedCoords(null)
+                                setDetectedLocationLabel('')
+                              }}
+                            >
+                              Clear
+                            </Button>
                           </HStack>
                           <Text fontSize="xs" color="green.700" mt={1}>Location detected from your device</Text>
+                        </Box>
+                      ) : user?.latitude && user?.longitude ? (
+                        <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
+                          <Text fontSize="sm" color="blue.900" fontWeight="medium">
+                            📍 {profileLocationLabel || formatCoordinates(user.latitude, user.longitude)}
+                          </Text>
+                          <Text fontSize="xs" color="blue.700" mt={1}>Current location saved in your profile</Text>
                         </Box>
                       ) : (
                         <>
@@ -428,6 +469,21 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                             />
                           </VStack>
                         </>
+                      )}
+
+                      {(detectedCoords || (user?.latitude && user?.longitude)) && (
+                        <Button
+                          leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
+                          size="sm"
+                          colorScheme="brand"
+                          variant="outline"
+                          onClick={handleDetectLocation}
+                          isLoading={detectingLocation}
+                          loadingText="Detecting..."
+                          mt={3}
+                        >
+                          Detect My Location
+                        </Button>
                       )}
                     </FormControl>
                   </Box>
@@ -543,10 +599,12 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                   {tradeOption === 'delivery' && (
                     <Text fontSize="xs" color="blue.600" mt={2}>
                       📍 Location: {
-                        user?.latitude && user?.longitude
-                          ? `${user.latitude.toFixed(4)}, ${user.longitude.toFixed(4)}`
+                        detectedLocationLabel
+                          ? detectedLocationLabel
                           : detectedCoords
-                            ? `Detected: ${detectedCoords.lat.toFixed(4)}, ${detectedCoords.lng.toFixed(4)}`
+                            ? formatCoordinates(detectedCoords.lat, detectedCoords.lng)
+                            : user?.latitude && user?.longitude
+                              ? (profileLocationLabel || formatCoordinates(user.latitude, user.longitude))
                             : manualAddress.trim()
                               ? manualAddress.trim()
                               : 'Location not set'

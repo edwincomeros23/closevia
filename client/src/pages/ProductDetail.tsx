@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -38,6 +38,7 @@ import {
   ButtonGroup,
   Select,
   Textarea,
+  Skeleton,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -945,6 +946,12 @@ const ProductDetail: React.FC = () => {
     }
   }
 
+  const formatPrice = (value: unknown): string => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) return ''
+    return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  }
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%" pb={{ base: 20, lg: 6 }}>
       <Container maxW="container.xl" py={8}>
@@ -965,6 +972,10 @@ const ProductDetail: React.FC = () => {
                   productTitle={product.title}
                   productStatus={product.status}
                   isPremium={product.premium}
+                  wishlistCount={wishlistCount}
+                  condition={product.condition}
+                  category={product.category}
+                  listedDate={new Date(product.created_at).toLocaleDateString()}
                   isOwner={user?.id === product.seller_id}
                   onSetCover={handleSetCover}
                   isSettingCover={isSettingCover}
@@ -989,25 +1000,33 @@ const ProductDetail: React.FC = () => {
                   <Box>
                     {/* Title and price on same horizontal axis */}
                     <Flex justify="space-between" align="flex-start" gap={3} flexWrap="wrap">
-                      <Heading size="lg" color="gray.800" mb={0} flex={1} minW={0} wordBreak="break-word">
+                      <Heading
+                        color="gray.800"
+                        mb={0}
+                        flex={1}
+                        minW={0}
+                        wordBreak="break-word"
+                        fontSize={{ base: 'lg', md: '2xl' }}
+                        lineHeight={{ base: '1.35', md: '1.3' }}
+                      >
                         {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
                       </Heading>
                       <VStack spacing={0} align="flex-end" flexShrink={0}>
                         <Text
-                          fontSize={{ base: 'xl', md: '2xl' }}
+                          fontSize={{ base: 'lg', md: '2xl' }}
                           fontWeight="extrabold"
                           color="gray.800"
                           whiteSpace="nowrap"
                         >
                           {product.price && product.price > 0
-                            ? `₱${product.price.toLocaleString()}`
+                            ? `₱${formatPrice(product.price)}`
                             : product.estimated_value_min && product.estimated_value_max
-                              ? `₱${(product.estimated_value_min).toLocaleString()} – ₱${(product.estimated_value_max).toLocaleString()}`
+                              ? `₱${formatPrice(product.estimated_value_min)} – ₱${formatPrice(product.estimated_value_max)}`
                               : 'Price Unavailable'}
                         </Text>
                         {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
                           <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">
-                            AI Est. ₱{(product.estimated_value_min).toLocaleString()} – ₱{(product.estimated_value_max).toLocaleString()}
+                            AI Est. ₱{formatPrice(product.estimated_value_min)} – ₱{formatPrice(product.estimated_value_max)}
                           </Text>
                         )}
                         {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
@@ -1015,23 +1034,10 @@ const ProductDetail: React.FC = () => {
                         )}
                       </VStack>
                     </Flex>
-                    {/* Wants, Popularity, and metadata (condition/category) on same line */}
-                    <Flex gap={2.5} mt={2} flexWrap="wrap" align="center">
+                    {/* Bidding label kept in details while primary metadata moved to image overlay */}
+                    {product.bidding_type && product.bidding_type !== 'none' && (
                       <Badge
-                        colorScheme="pink"
-                        variant="subtle"
-                        borderRadius="full"
-                        px={3}
-                        py={1}
-                        fontSize="xs"
-                        fontWeight="600"
-                      >
-                        <HStack spacing={1}>
-                          <FiHeart />
-                          <Text as="span">{wishlistCount} Wants</Text>
-                        </HStack>
-                      </Badge>
-                      <Badge
+                        mt={2}
                         colorScheme="gray"
                         variant="subtle"
                         borderRadius="full"
@@ -1040,56 +1046,9 @@ const ProductDetail: React.FC = () => {
                         fontSize="xs"
                         fontWeight="600"
                       >
-                        <HStack spacing={1}>
-                          <FiTrendingUp />
-                          <Text as="span">Popularity</Text>
-                        </HStack>
+                        {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
                       </Badge>
-                      <Divider orientation="vertical" h="16px" borderColor="gray.300" />
-                      {product.condition && (
-                        <Badge colorScheme="blue" variant="subtle" borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">
-                          {product.condition}
-                        </Badge>
-                      )}
-                      {product.category && (
-                        <Badge colorScheme="purple" variant="subtle" borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">
-                          {product.category}
-                        </Badge>
-                      )}
-                      {product.bidding_type && product.bidding_type !== 'none' && (
-                        <Badge
-                          colorScheme="gray"
-                          variant="subtle"
-                          borderRadius="full"
-                          px={3}
-                          py={1}
-                          fontSize="xs"
-                          fontWeight="600"
-                        >
-                          {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
-                        </Badge>
-                      )}
-                      <Badge
-                        colorScheme="gray"
-                        variant="subtle"
-                        borderRadius="full"
-                        px={3}
-                        py={1}
-                        fontSize="xs"
-                        fontWeight="600"
-                      >
-                        <HStack spacing={1}>
-                          <FiCalendar />
-                          <Text as="span">Listed {new Date(product.created_at).toLocaleDateString()}</Text>
-                        </HStack>
-                      </Badge>
-                    </Flex>
-                    {product.suggested_value != null && product.suggested_value > 0 && (
-                      <Text mt={1} fontSize="xs" color="gray.500">
-                        Trade points: {product.suggested_value}
-                      </Text>
                     )}
-
                     {/* Action row: Love, Share, Flag on left; Price Feedback on far right (under price) */}
                     <Flex justify="space-between" align="center" mt={4} flexWrap="wrap" gap={2}>
                       <HStack spacing={1}>
@@ -1264,13 +1223,16 @@ const ProductDetail: React.FC = () => {
                             <Button
                               flex={1}
                               size="lg"
-                              borderRadius="8px"
-                              colorScheme={hasPendingOfferOnProduct ? "gray" : "green"}
+                              borderRadius="12px"
+                              bg={hasPendingOfferOnProduct ? 'gray.300' : 'brand.500'}
+                              color="white"
+                              _hover={hasPendingOfferOnProduct ? { bg: 'gray.300' } : { bg: 'brand.600', transform: 'translateY(-1px)' }}
                               _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.15s"
+                              boxShadow={hasPendingOfferOnProduct ? 'none' : 'sm'}
+                              transition="all 0.18s ease"
                               onClick={openTrade}
                               isDisabled={hasPendingOfferOnProduct}
-                              opacity={hasPendingOfferOnProduct ? 0.6 : 1}
+                              opacity={hasPendingOfferOnProduct ? 0.7 : 1}
                             >
                               {hasPendingOfferOnProduct ? "Pending Offer Sent" : "Trade"}
                             </Button>
@@ -1279,13 +1241,19 @@ const ProductDetail: React.FC = () => {
                             <Button
                               flex={1}
                               size="lg"
-                              borderRadius="8px"
+                              borderRadius="12px"
+                              variant="outline"
                               colorScheme="orange"
+                              borderWidth="2px"
+                              bg="white"
+                              borderColor="orange.300"
+                              color="orange.600"
+                              _hover={{ bg: 'orange.50', borderColor: 'orange.500', transform: 'translateY(-1px)' }}
                               _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.15s"
+                              transition="all 0.18s ease"
                               onClick={openBuyout}
                               isDisabled={hasPendingOfferOnProduct}
-                              opacity={hasPendingOfferOnProduct ? 0.6 : 1}
+                              opacity={hasPendingOfferOnProduct ? 0.7 : 1}
                             >
                               Buyout
                             </Button>
@@ -1297,15 +1265,16 @@ const ProductDetail: React.FC = () => {
                               w={{ base: "40px", md: "48px" }}
                               h={{ base: "40px", md: "48px" }}
                               minW={{ base: "40px", md: "48px" }}
-                              borderRadius="8px"
+                              borderRadius="12px"
                               variant="outline"
-                              borderColor="gray.200"
-                              color="gray.700"
+                              colorScheme="brand"
+                              borderColor="brand.200"
+                              color="brand.600"
                               bg="white"
                               onClick={handleViewOffers}
-                              _hover={{ bg: 'gray.50', borderColor: 'gray.300' }}
+                              _hover={{ bg: 'brand.50', borderColor: 'brand.400', transform: 'translateY(-1px)' }}
                               _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.15s"
+                              transition="all 0.18s ease"
                             />
                           </Tooltip>
                         </HStack>
@@ -1607,9 +1576,11 @@ const ProductDetail: React.FC = () => {
                         objectFit="cover"
                         fallbackSrc="/images/placeholder.jpg"
                       />
-                      <Badge position="absolute" top={2} right={2} colorScheme={p.status === 'available' ? 'teal' : p.status === 'sold' ? 'red' : 'orange'} fontSize="xs">
-                        {p.status}
-                      </Badge>
+                      {p.status !== 'available' && (
+                        <Badge position="absolute" top={2} right={2} colorScheme={p.status === 'sold' ? 'red' : 'orange'} fontSize="xs">
+                          {p.status}
+                        </Badge>
+                      )}
                     </Box>
                     <Box p={3}>
                       <HStack justify="space-between" mb={2}>
@@ -1661,9 +1632,25 @@ const ProductDetail: React.FC = () => {
 
             <ModalBody pb={6}>
               {loadingOffers ? (
-                <Center py={8}>
-                  <Spinner color="brand.500" />
-                </Center>
+                <VStack spacing={3} align="stretch" py={2}>
+                  {[0, 1, 2].map((idx) => (
+                    <Box key={idx} p={4} borderWidth="2px" borderColor="gray.200" rounded="lg" bg="white">
+                      <HStack justify="space-between" mb={3}>
+                        <HStack spacing={2}>
+                          <Skeleton h="16px" w="16px" borderRadius="full" />
+                          <Skeleton h="14px" w="140px" />
+                        </HStack>
+                        <Skeleton h="18px" w="72px" borderRadius="md" />
+                      </HStack>
+                      <Skeleton h="12px" w="120px" mb={3} />
+                      <HStack spacing={2} flexWrap="wrap">
+                        <Skeleton h="20px" w="80px" borderRadius="md" />
+                        <Skeleton h="20px" w="96px" borderRadius="md" />
+                        <Skeleton h="20px" w="72px" borderRadius="md" />
+                      </HStack>
+                    </Box>
+                  ))}
+                </VStack>
               ) : (() => {
                 const isBlind = product?.bidding_type === 'blind'
                 const showAll = !isBlind || isOwner

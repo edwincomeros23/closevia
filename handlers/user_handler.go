@@ -68,6 +68,12 @@ func derefString(p *string) string {
 	return *p
 }
 
+func normalizeOrgHandle(handle string) string {
+	h := strings.TrimSpace(strings.ToLower(handle))
+	h = strings.TrimPrefix(h, "@")
+	return h
+}
+
 // generateUserSlug creates a URL-friendly slug from name and appends a short UUID
 func generateUserSlug(name string) string {
 	slug := strings.ToLower(name)
@@ -743,7 +749,13 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	err := h.db.QueryRow(
 		`SELECT id, slug, name, email, role, verified, 
 		        COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') AS org_name,
+		        COALESCE(org_handle, '') AS org_handle,
 		        COALESCE(org_logo_url, '') AS org_logo_url,
+		        COALESCE(org_cover_url, '') AS org_cover_url,
+		        COALESCE(org_category, '') AS org_category,
+		        COALESCE(org_website, '') AS org_website,
+		        COALESCE(org_location, '') AS org_location,
+		        COALESCE(org_contact_email, '') AS org_contact_email,
 		        COALESCE(profile_picture, '') AS profile_picture,
 		        COALESCE(bio, '') AS bio,
 		        COALESCE(background_image, '') AS background_image,
@@ -766,7 +778,9 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	).Scan(
 		&user.ID, &slugNull, &user.Name, &user.Email, &user.Role, &user.Verified,
 		&user.IsOrganization, &user.OrgVerified, &user.OrgName,
-		&user.OrgLogoURL, &user.ProfilePicture, &user.Bio, &user.BackgroundImage,
+		&user.OrgHandle, &user.OrgLogoURL, &user.OrgCoverURL, &user.OrgCategory,
+		&user.OrgWebsite, &user.OrgLocation, &user.OrgContactEmail,
+		&user.ProfilePicture, &user.Bio, &user.BackgroundImage,
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
@@ -1173,6 +1187,165 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Password changed successfully"})
 }
 
+// CreateOrganization creates or updates the authenticated user's organization profile.
+func (h *UserHandler) CreateOrganization(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var req struct {
+		OrgName         string `json:"org_name"`
+		OrgHandle       string `json:"org_handle"`
+		OrgLogoURL      string `json:"org_logo_url"`
+		OrgCoverURL     string `json:"org_cover_url"`
+		Bio             string `json:"bio"`
+		OrgCategory     string `json:"org_category"`
+		OrgWebsite      string `json:"org_website"`
+		OrgLocation     string `json:"org_location"`
+		OrgContactEmail string `json:"org_contact_email"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	req.OrgName = strings.TrimSpace(req.OrgName)
+	req.OrgCategory = strings.TrimSpace(req.OrgCategory)
+	req.OrgHandle = normalizeOrgHandle(req.OrgHandle)
+	req.OrgWebsite = strings.TrimSpace(req.OrgWebsite)
+	req.OrgLocation = strings.TrimSpace(req.OrgLocation)
+	req.OrgContactEmail = strings.TrimSpace(strings.ToLower(req.OrgContactEmail))
+
+	if req.OrgName == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization name is required"})
+	}
+	if req.OrgCategory == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization category is required"})
+	}
+	if req.OrgHandle == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization handle is required"})
+	}
+	handleRegex := regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])?$`)
+	if !handleRegex.MatchString(req.OrgHandle) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Handle must use lowercase letters, numbers, and hyphens only"})
+	}
+	if req.OrgContactEmail != "" {
+		emailRegex := regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+		if !emailRegex.MatchString(req.OrgContactEmail) {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Contact email is invalid"})
+		}
+	}
+
+	var existing int
+	err := h.db.QueryRow(
+		"SELECT COUNT(*) FROM users WHERE org_handle = ? AND id != ?",
+		req.OrgHandle, userID,
+	).Scan(&existing)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate organization handle"})
+	}
+	if existing > 0 {
+		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "Organization handle is already taken"})
+	}
+
+	query := `
+		UPDATE users
+		SET is_organization = TRUE,
+		    org_name = ?,
+		    org_handle = ?,
+		    org_logo_url = ?,
+		    org_cover_url = ?,
+		    bio = ?,
+		    org_category = ?,
+		    org_website = ?,
+		    org_location = ?,
+		    org_contact_email = ?,
+		    updated_at = CURRENT_TIMESTAMP`
+	args := []interface{}{req.OrgName, req.OrgHandle, req.OrgLogoURL, req.OrgCoverURL, req.Bio, req.OrgCategory, req.OrgWebsite, req.OrgLocation, req.OrgContactEmail}
+
+	if strings.TrimSpace(req.OrgCoverURL) != "" {
+		query += ", background_image = ?"
+		args = append(args, req.OrgCoverURL)
+	}
+
+	query += " WHERE id = ?"
+	args = append(args, userID)
+
+	if _, err := h.db.Exec(query, args...); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create organization"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Organization profile saved successfully",
+		Data: fiber.Map{
+			"org_name":   req.OrgName,
+			"org_handle": req.OrgHandle,
+		},
+	})
+}
+
+// GetOrganizationByHandle returns a public organization profile by handle.
+func (h *UserHandler) GetOrganizationByHandle(c *fiber.Ctx) error {
+	handle := normalizeOrgHandle(c.Params("handle"))
+	if handle == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization handle is required"})
+	}
+
+	var org models.User
+	var slugNull sql.NullString
+	err := h.db.QueryRow(`
+		SELECT id,
+		       COALESCE(slug, '') as slug,
+		       COALESCE(name, '') as name,
+		       COALESCE(org_name, '') as org_name,
+		       COALESCE(org_handle, '') as org_handle,
+		       COALESCE(org_logo_url, '') as org_logo_url,
+		       COALESCE(org_cover_url, '') as org_cover_url,
+		       COALESCE(bio, '') as bio,
+		       COALESCE(org_category, '') as org_category,
+		       COALESCE(org_website, '') as org_website,
+		       COALESCE(org_location, '') as org_location,
+		       COALESCE(org_contact_email, '') as org_contact_email,
+		       COALESCE(verified, FALSE) as verified,
+		       COALESCE(org_verified, FALSE) as org_verified,
+		       created_at,
+		       updated_at
+		FROM users
+		WHERE is_organization = TRUE AND org_handle = ?
+		LIMIT 1
+	`, handle).Scan(
+		&org.ID,
+		&slugNull,
+		&org.Name,
+		&org.OrgName,
+		&org.OrgHandle,
+		&org.OrgLogoURL,
+		&org.OrgCoverURL,
+		&org.Bio,
+		&org.OrgCategory,
+		&org.OrgWebsite,
+		&org.OrgLocation,
+		&org.OrgContactEmail,
+		&org.Verified,
+		&org.OrgVerified,
+		&org.CreatedAt,
+		&org.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
+		}
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch organization"})
+	}
+	if slugNull.Valid {
+		org.Slug = slugNull.String
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: org})
+}
+
 // GetUserByID gets a user by ID or slug (public info only)
 func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	identifier := c.Params("id")
@@ -1197,7 +1370,8 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 	var emailVerifiedAt sql.NullTime
 	var lastLogin sql.NullTime
 	err = h.db.QueryRow(
-		`SELECT id, slug, name, email, role, verified, COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') as org_name, COALESCE(org_logo_url, '') as org_logo_url,
+		`SELECT id, slug, name, email, role, verified, COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') as org_name, COALESCE(org_handle, '') as org_handle, COALESCE(org_logo_url, '') as org_logo_url,
+		        COALESCE(org_cover_url, '') as org_cover_url, COALESCE(org_category, '') as org_category, COALESCE(org_website, '') as org_website, COALESCE(org_location, '') as org_location, COALESCE(org_contact_email, '') as org_contact_email,
 		        COALESCE(profile_picture, '') as profile_picture, COALESCE(background_image, '') as background_image, COALESCE(background_position, '') as background_position, COALESCE(department, '') as department, COALESCE(bio, '') as bio, COALESCE(badges, '[]') as badges,
 		        COALESCE(verification_status, 'not_verified') as verification_status, COALESCE(school_name, '') as school_name, COALESCE(school_email, '') as school_email, COALESCE(school_email_verified_at, NULL) as school_email_verified_at, COALESCE(verification_rejection_reason, '') as verification_rejection_reason,
 		        COALESCE(created_at, NOW()) as created_at, COALESCE(updated_at, NOW()) as updated_at, COALESCE(last_login, NULL) as last_login
@@ -1205,7 +1379,8 @@ func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
 		userID,
 	).Scan(
 		&user.ID, &slugNull, &user.Name, &user.Email, &user.Role, &user.Verified,
-		&user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgLogoURL,
+		&user.IsOrganization, &user.OrgVerified, &user.OrgName, &user.OrgHandle, &user.OrgLogoURL,
+		&user.OrgCoverURL, &user.OrgCategory, &user.OrgWebsite, &user.OrgLocation, &user.OrgContactEmail,
 		&profilePicture, &backgroundImage, &backgroundPosition, &department, &bio, &user.Badges,
 		&verificationStatus, &schoolName, &schoolEmail, &emailVerifiedAt, &rejectionReason,
 		&user.CreatedAt, &user.UpdatedAt, &lastLogin,

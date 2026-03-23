@@ -312,6 +312,8 @@ func main() {
 	users.Delete("/saved-products/:id", middleware.AuthMiddleware(), userHandler.UnsaveProduct)
 	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
+	users.Post("/organization", middleware.AuthMiddleware(), userHandler.CreateOrganization)
+	users.Get("/organizations/:handle", userHandler.GetOrganizationByHandle)
 
 	// Review routes (must be BEFORE dynamic ":id" route)
 	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview)

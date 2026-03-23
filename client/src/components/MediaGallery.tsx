@@ -32,6 +32,10 @@ interface MediaGalleryProps {
   productTitle: string
   productStatus: 'available' | 'sold' | 'traded' | 'locked'
   isPremium: boolean
+  wishlistCount?: number
+  condition?: string
+  category?: string
+  listedDate?: string
   isOwner: boolean
   onSetCover?: (imageIndex: number) => void
   isSettingCover?: boolean
@@ -43,6 +47,10 @@ const MediaGallery: React.FC<MediaGalleryProps> = ({
   productTitle,
   productStatus,
   isPremium,
+  wishlistCount,
+  condition,
+  category,
+  listedDate,
   isOwner,
   onSetCover,
   isSettingCover,
@@ -158,27 +166,54 @@ const MediaGallery: React.FC<MediaGalleryProps> = ({
           </Box>
         </Box>
 
-        {/* Status / Premium Badges */}
-        <HStack position="absolute" top={3} left={3} spacing={2} zIndex={1}>
+        {/* Top overlay chips */}
+        <HStack
+          position="absolute"
+          top={{ base: 2, md: 3 }}
+          left={{ base: 2, md: 3 }}
+          right={{ base: 2, md: 3 }}
+          spacing={{ base: 1.5, md: 2 }}
+          zIndex={1}
+          flexWrap="wrap"
+          align="flex-start"
+          p={0}
+        >
           {isPremium && (
-            <Badge colorScheme="orange" px={2} py={1} fontSize="sm">
+            <Badge colorScheme="orange" variant="subtle" px={{ base: 2, md: 2.5 }} py={{ base: 0.5, md: 1 }} fontSize={{ base: '2xs', md: 'xs' }} borderRadius="full" fontWeight="700">
               Premium
             </Badge>
           )}
-          <Badge
-            colorScheme={
-              productStatus === 'available'
-                ? 'teal'
-                : productStatus === 'locked'
-                  ? 'orange'
-                  : 'red'
-            }
-            px={2}
-            py={1}
-            fontSize="sm"
-          >
-            {productStatus}
-          </Badge>
+          {typeof wishlistCount === 'number' && (
+            <Badge colorScheme="brand" variant="subtle" px={{ base: 2, md: 2.5 }} py={{ base: 0.5, md: 1 }} fontSize={{ base: '2xs', md: 'xs' }} borderRadius="full" fontWeight="600">
+              {wishlistCount} Saved
+            </Badge>
+          )}
+          {condition && (
+            <Badge colorScheme="blue" variant="subtle" px={{ base: 2, md: 2.5 }} py={{ base: 0.5, md: 1 }} fontSize={{ base: '2xs', md: 'xs' }} borderRadius="full" fontWeight="600">
+              {condition}
+            </Badge>
+          )}
+          {category && (
+            <Badge colorScheme="purple" variant="subtle" px={{ base: 2, md: 2.5 }} py={{ base: 0.5, md: 1 }} fontSize={{ base: '2xs', md: 'xs' }} borderRadius="full" fontWeight="600">
+              {category}
+            </Badge>
+          )}
+          {listedDate && (
+            <Badge colorScheme="gray" variant="subtle" px={{ base: 2, md: 2.5 }} py={{ base: 0.5, md: 1 }} fontSize={{ base: '2xs', md: 'xs' }} borderRadius="full" fontWeight="600">
+              Listed {listedDate}
+            </Badge>
+          )}
+          {productStatus !== 'available' && (
+            <Badge
+              colorScheme={productStatus === 'locked' ? 'orange' : 'red'}
+              px={{ base: 2, md: 2.5 }}
+              py={{ base: 0.5, md: 1 }}
+              fontSize={{ base: '2xs', md: 'xs' }}
+              borderRadius="full"
+            >
+              {productStatus}
+            </Badge>
+          )}
         </HStack>
 
         {/* Set as Cover */}

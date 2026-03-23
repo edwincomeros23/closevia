@@ -9,7 +9,15 @@ export interface User {
   is_organization?: boolean
   org_verified?: boolean
   org_name?: string
+  org_handle?: string
   org_logo_url?: string
+  org_cover_url?: string
+  org_category?: string
+  org_website?: string
+  org_location?: string
+  org_contact_email?: string
+  background_image?: string
+  background_position?: string
   department?: string
   bio?: string
   badges?: number[]

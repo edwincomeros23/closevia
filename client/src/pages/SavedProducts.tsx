@@ -11,8 +11,6 @@ import {
   Image,
   Badge,
   Flex,
-  Spinner,
-  Center,
   Alert,
   AlertIcon,
   SimpleGrid,
@@ -23,6 +21,7 @@ import {
   CardBody,
   CardHeader,
   Divider,
+  Skeleton,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -209,12 +208,33 @@ const SavedProducts: React.FC = () => {
     return (
       <Box bg="#FFFDF1" minH="100vh" w="100%">
         <Container maxW="container.xl" py={8}>
-          <Center h="50vh">
-            <VStack spacing={4}>
-              <Spinner size="xl" color="brand.500" />
-              <Text color="gray.600">Loading your saved products...</Text>
-            </VStack>
-          </Center>
+          <VStack spacing={6} align="stretch">
+            <Flex justify="space-between" align="center">
+              <VStack align="start" spacing={2}>
+                <Skeleton height="28px" width="180px" />
+                <Skeleton height="16px" width="120px" />
+              </VStack>
+              <Skeleton height="36px" width="92px" borderRadius="md" />
+            </Flex>
+
+            <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={6}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <Card key={n}>
+                  <CardHeader pb={2}>
+                    <Skeleton height="180px" borderRadius="md" />
+                  </CardHeader>
+                  <CardBody pt={2}>
+                    <VStack align="stretch" spacing={3}>
+                      <Skeleton height="20px" width="80%" />
+                      <Skeleton height="14px" width="55%" />
+                      <Skeleton height="14px" width="40%" />
+                      <Skeleton height="34px" width="100%" borderRadius="md" />
+                    </VStack>
+                  </CardBody>
+                </Card>
+              ))}
+            </SimpleGrid>
+          </VStack>
         </Container>
       </Box>
     )

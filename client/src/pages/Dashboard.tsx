@@ -50,6 +50,7 @@ import {
   useColorModeValue,
   useBreakpointValue,
   Checkbox,
+  Skeleton,
 } from '@chakra-ui/react'
 import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon, SearchIcon, ViewIcon, StarIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -2536,9 +2537,39 @@ const Dashboard: React.FC = () => {
 
   if (loading || initialLoading) {
     return (
-      <Center h="50vh">
-        <Spinner size="xl" color="brand.500" />
-      </Center>
+      <Box bg="#FFFDF1" minH="100vh" w="100%">
+        <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 3, md: 6 }}>
+          <VStack spacing={{ base: 3, md: 6 }} align="stretch">
+            <Box>
+              <Skeleton height="28px" width="220px" mb={2} />
+              <Skeleton height="16px" width="280px" />
+            </Box>
+
+            <HStack spacing={3}>
+              <Skeleton height="42px" flex={1} borderRadius="md" />
+              <Skeleton height="42px" width="96px" borderRadius="md" />
+            </HStack>
+
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
+              {[1, 2, 3, 4].map((n) => (
+                <Card key={n} bg={cardBg} border="1px" borderColor={borderColor} borderRadius="xl">
+                  <CardBody>
+                    <Skeleton height="18px" width="70%" mb={3} />
+                    <Skeleton height="24px" width="50%" mb={2} />
+                    <Skeleton height="14px" width="60%" />
+                  </CardBody>
+                </Card>
+              ))}
+            </SimpleGrid>
+
+            <SimpleGrid columns={{ base: 1, sm: 2, xl: 3 }} spacing={{ base: 3, md: 4 }}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <ProductCardSkeleton key={n} />
+              ))}
+            </SimpleGrid>
+          </VStack>
+        </Container>
+      </Box>
     )
   }
 

@@ -27,7 +27,7 @@ const GlobalPopup: React.FC = () => {
   useEffect(() => {
     const fetchActiveCampaignParams = async () => {
       try {
-        const response = await api.get('/api/campaigns/active');
+        const response = await api.get('/api/campaigns/active', { timeout: 15000 });
         if (response.data?.success && response.data.data?.length > 0) {
           const campaigns: Campaign[] = response.data.data;
 
