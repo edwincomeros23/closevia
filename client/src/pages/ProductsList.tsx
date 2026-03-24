@@ -8,11 +8,11 @@ import {
   Grid,
   Heading,
   Text,
-  Spinner,
   Center,
   Image,
   Badge,
   Button,
+  Skeleton,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -152,9 +152,37 @@ const ProductsList: React.FC = () => {
           </HStack>
 
           {loading && (
-            <Center h="40vh">
-              <Spinner size="xl" color="brand.500" />
-            </Center>
+            <Grid
+              templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)', xl: 'repeat(5, 1fr)' }}
+              gap={{ base: 3, md: 4 }}
+              alignItems="start"
+            >
+              {Array.from({ length: 10 }).map((_, idx) => (
+                <Box
+                  key={idx}
+                  bg="white"
+                  rounded="lg"
+                  shadow="sm"
+                  borderWidth="1px"
+                  borderColor="gray.100"
+                  overflow="hidden"
+                  w="full"
+                >
+                  <Skeleton w="full" pt="100%" />
+                  <Box p={4}>
+                    <VStack align="stretch" spacing={3}>
+                      <Skeleton h="18px" w="85%" />
+                      <Skeleton h="14px" w="100%" />
+                      <Skeleton h="14px" w="70%" />
+                      <HStack justify="space-between" pt={2}>
+                        <Skeleton h="18px" w="95px" borderRadius="full" />
+                        <Skeleton h="20px" w="70px" borderRadius="md" />
+                      </HStack>
+                    </VStack>
+                  </Box>
+                </Box>
+              ))}
+            </Grid>
           )}
 
           {!loading && error && (

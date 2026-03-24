@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -94,15 +94,14 @@ func main() {
 		ExposeHeaders:    "Content-Length, Content-Type, Authorization",
 	}))
 
-	// Serve static files (uploads directory)
-	app.Get("/uploads/*", func(c *fiber.Ctx) error {
-		return c.SendFile(filepath.Join("./uploads", c.Params("*")))
-	})
-
 	// Explicit OPTIONS handler for preflight requests
 	app.Options("/*", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusNoContent)
 	})
+
+	// Serve static files (uploads directory)
+	app.Static("/uploads", "./uploads")
+	app.Static("/uploads/products", "./uploads/products")
 
 	// Add after middleware setup
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -273,6 +272,16 @@ func main() {
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
 
+	// Hybrid matcher background refresh (MVP cron-like task).
+	go func() {
+		tradeHandler.RebuildAllLoopCaches()
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			tradeHandler.RebuildAllLoopCaches()
+		}
+	}()
+
 	// Public Activity route
 	api.Get("/activities", activityHandler.GetRecentActivity)
 
@@ -297,12 +306,18 @@ func main() {
 	users.Post("/verification/resend-school-email-code", middleware.AuthMiddleware(), verificationHandler.ResendSchoolEmailCode)
 	users.Post("/verification/upload-id", middleware.AuthMiddleware(), verificationHandler.UploadSchoolID)
 	users.Get("/verification/status", middleware.AuthMiddleware(), verificationHandler.GetVerificationStatus)
+	users.Post("/verification/phone/start", middleware.AuthMiddleware(), verificationHandler.StartPhoneVerification)
+	users.Post("/verification/phone/verify", middleware.AuthMiddleware(), verificationHandler.VerifyPhoneCode)
+	users.Post("/verification/phone/resend", middleware.AuthMiddleware(), verificationHandler.ResendPhoneCode)
+	users.Get("/verification/phone/status", middleware.AuthMiddleware(), verificationHandler.GetPhoneVerificationStatus)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
 	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
 	users.Delete("/saved-products/:id", middleware.AuthMiddleware(), userHandler.UnsaveProduct)
 	users.Get("/saved-products/:id", middleware.AuthMiddleware(), userHandler.CheckSavedProduct)
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
+	users.Post("/organization", middleware.AuthMiddleware(), userHandler.CreateOrganization)
+	users.Get("/organizations/:handle", userHandler.GetOrganizationByHandle)
 
 	// Review routes (must be BEFORE dynamic ":id" route)
 	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview)
@@ -373,6 +388,7 @@ func main() {
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
+	trades.Get("/loops/debug/match", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.DebugMultiwayMatch)
 	trades.Get("/loops/notifications", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopNotifications)
 	trades.Post("/loops/notifications/clear", middleware.AuthMiddleware(), tradeHandler.ClearLoopNotifications)
 	trades.Post("/loops/notifications/:id/read", middleware.AuthMiddleware(), tradeHandler.MarkLoopNotificationRead)
@@ -380,6 +396,9 @@ func main() {
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
+	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
+	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
@@ -429,10 +448,11 @@ func main() {
 	admin.Get("/verifications/:id/image", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminGetIDImage)
 	admin.Post("/verifications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminApproveVerification)
 	admin.Post("/verifications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminRejectVerification)
+	admin.Get("/phone-verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListPhoneVerifications)
+	admin.Post("/users/:id/verify-phone", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminVerifyPhone)
+	admin.Post("/users/:id/unverify-phone", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminUnverifyPhone)
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
-	admin.Put("/products/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.SuspendProductAdmin)
-	admin.Put("/products/:id/unsuspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.UnsuspendProductAdmin)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)
 	// Admin reports management
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
@@ -467,10 +487,16 @@ func main() {
 	deliveries.Get("/rider-status", middleware.AuthMiddleware(), deliveryHandler.CheckRiderStatus)
 	deliveries.Post("/apply-rider", middleware.AuthMiddleware(), deliveryHandler.ApplyAsRider)
 	deliveries.Get("/rider-application", middleware.AuthMiddleware(), deliveryHandler.GetRiderApplication)
+	deliveries.Get("/rider-state", middleware.AuthMiddleware(), deliveryHandler.GetRiderState)
+	deliveries.Post("/rider-first-login-complete", middleware.AuthMiddleware(), deliveryHandler.MarkRiderFirstLoginComplete)
+	deliveries.Get("/rider-ledger", middleware.AuthMiddleware(), deliveryHandler.GetRiderLedger)
+	deliveries.Post("/remittance-payment", middleware.AuthMiddleware(), deliveryHandler.SubmitRemittancePayment)
 	deliveries.Get("/:id", middleware.AuthMiddleware(), deliveryHandler.GetDelivery)
 	deliveries.Put("/:id/status", middleware.AuthMiddleware(), deliveryHandler.UpdateDeliveryStatus)
 	deliveries.Post("/:id/assign", middleware.AuthMiddleware(), deliveryHandler.AssignRider)
 	deliveries.Post("/:id/claim", middleware.AuthMiddleware(), deliveryHandler.ClaimDelivery)
+	deliveries.Get("/:id/stops", middleware.AuthMiddleware(), deliveryHandler.GetDeliveryStops)
+	deliveries.Post("/stops/:stopId/update", middleware.AuthMiddleware(), deliveryHandler.UpdateStopStatus)
 
 	// Generic image upload route (used by TradeCompletionModal, etc.)
 	api.Post("/upload", middleware.AuthMiddleware(), uploadHandler.UploadImage)

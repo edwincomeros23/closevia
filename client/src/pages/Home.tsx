@@ -45,6 +45,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   AddIcon,
+  BellIcon,
   HamburgerIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -71,6 +72,7 @@ import ProductCard from '../components/ProductCard'
 import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
+import InstallAppPrompt from '../components/InstallAppPrompt'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -213,9 +215,10 @@ const Home: React.FC = () => {
     // Reset category and search state to defaults on mount
     setSelectedCategory('All')
     setSearchTerm('')
-    // Fetch the default "All" feed every time the Home page mounts
+    // Trigger a single initial fetch through the filters effect
     console.log('🔍 Fetching initial products with limit: 20')
-    searchProducts({ limit: 20, page: 1 })
+    setFilters(prev => ({ ...prev, keyword: '', category: '', page: 1, limit: 20 }))
+    setHasSearched(true)
 
     // Set flag so returning users bypass landing page
     localStorage.setItem('has_visited', 'true')
@@ -264,11 +267,11 @@ const Home: React.FC = () => {
       setFilters(prev => {
         // Only trigger refetch if there was a keyword before
         if (prev.keyword) {
+          setHasSearched(true)
           return { ...prev, keyword: '', page: 1 }
         }
         return prev
       })
-      setHasSearched(true)
       return
     }
     setFilters(prev => ({ ...prev, keyword: debouncedSearchTerm, page: 1 }))
@@ -594,6 +597,7 @@ const Home: React.FC = () => {
                 onBuyoutClick={handleBuyoutClick}
                 onBuyClick={handleBuyClick}
                 onViewOffers={handleViewOffers}
+                showPriceOverlay
               />
             </Box>
           ) : (
@@ -741,6 +745,37 @@ const Home: React.FC = () => {
               display={{ base: 'inline-flex', md: 'none' }}
             />
 
+            {/* Mobile notifications button beside hamburger */}
+            {user && (
+              <Box position="relative" display={{ base: 'inline-flex', md: 'none' }}>
+                <IconButton
+                  aria-label="Notifications"
+                  icon={<BellIcon />}
+                  size={{ base: 'md', md: 'lg' }}
+                  variant="ghost"
+                  onClick={() => navigate('/notifications')}
+                />
+                {offerCount > 0 && (
+                  <Badge
+                    position="absolute"
+                    top="-1"
+                    right="-1"
+                    colorScheme="red"
+                    borderRadius="full"
+                    minW="18px"
+                    h="18px"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    fontSize="xs"
+                    px={1}
+                  >
+                    {offerCount > 99 ? '99+' : offerCount}
+                  </Badge>
+                )}
+              </Box>
+            )}
+
             {/* Mobile hamburger to open nav drawer (after filters icon) */}
             <IconButton
               aria-label="Open navigation"
@@ -861,20 +896,32 @@ const Home: React.FC = () => {
                         {riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider'}
                       </Button>
 
-                      {!(user as any).is_premium && (
-                        <Button
-                          as={RouterLink}
-                          to="/premium"
-                          size="sm"
-                          w="full"
-                          variant="ghost"
-                          justifyContent="flex-start"
-                          leftIcon={<Icon as={FaCrown} color="purple.500" />}
-                          color="purple.600"
-                        >
-                          Buy Premium
-                        </Button>
-                      )}
+                      <Button
+                        as={RouterLink}
+                        to="/premium"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaCrown} color="purple.500" />}
+                        color="purple.600"
+                      >
+                        {(user as any).is_premium ? 'Premium' : 'Buy Premium'}
+                      </Button>
+
+                      <Button
+                        as={RouterLink}
+                        to={user.is_organization && (user as any).org_handle ? `/org/${(user as any).org_handle}` : '/organizations/new'}
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaHome} />}
+                      >
+                        {user.is_organization && (user as any).org_handle ? 'Organization Page' : 'Create Organization'}
+                      </Button>
+
+                      <InstallAppPrompt variant="profile-menu" />
 
                       <Divider />
                       <Button

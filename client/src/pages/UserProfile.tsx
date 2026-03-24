@@ -302,7 +302,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       }
     }
     run()
-  }, [id, getUserProducts])
+  }, [id, currentUser?.id, currentUser?.slug])
 
   // Fetch which products are saved by current user
   useEffect(() => {

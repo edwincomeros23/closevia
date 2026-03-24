@@ -1,8 +1,16 @@
 import React from 'react'
-import { Box, Button, HStack, Text } from '@chakra-ui/react'
+import { Box, Button, HStack, Text, VStack } from '@chakra-ui/react'
 import { canShowInstallPrompt, initializeInstallPrompt, isRunningStandalone, promptInstall } from '../serviceWorkerRegistration'
 
-const InstallAppPrompt: React.FC = () => {
+interface InstallAppPromptProps {
+  variant?: 'floating' | 'mobile-menu' | 'profile-menu'
+  onInstalled?: () => void
+}
+
+const InstallAppPrompt: React.FC<InstallAppPromptProps> = ({
+  variant = 'floating',
+  onInstalled,
+}) => {
   const [visible, setVisible] = React.useState(false)
   const [installing, setInstalling] = React.useState(false)
 
@@ -27,6 +35,7 @@ const InstallAppPrompt: React.FC = () => {
       const accepted = await promptInstall()
       if (accepted) {
         setVisible(false)
+        onInstalled?.()
       }
     } finally {
       setInstalling(false)
@@ -35,6 +44,46 @@ const InstallAppPrompt: React.FC = () => {
 
   if (!visible) {
     return null
+  }
+
+  if (variant === 'mobile-menu') {
+    return (
+      <Button
+        colorScheme="teal"
+        variant="ghost"
+        justifyContent="flex-start"
+        onClick={handleInstall}
+        isLoading={installing}
+        loadingText="Installing"
+        minH="48px"
+        w="full"
+      >
+        Install App
+      </Button>
+    )
+  }
+
+  if (variant === 'profile-menu') {
+    return (
+      <Button
+        size="sm"
+        w="full"
+        variant="ghost"
+        justifyContent="flex-start"
+        onClick={handleInstall}
+        isLoading={installing}
+        loadingText="Installing"
+        whiteSpace="normal"
+        h="auto"
+        py={2}
+        textAlign="left"
+      >
+        <VStack align="start" spacing={0}>
+          <Text fontSize="sm" fontWeight="medium">Install Clovia</Text>
+          <Text fontSize="xs" color="gray.500">for a full-screen app experience.</Text>
+        </VStack>
+      </Button>
+    )
   }
 
   return (

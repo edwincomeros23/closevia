@@ -38,10 +38,6 @@ const Register: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [isOrganization, setIsOrganization] = useState(false)
-  const [orgName, setOrgName] = useState('')
-  const [orgLogoUrl, setOrgLogoUrl] = useState('')
-  const [organizationType, setOrganizationType] = useState<'business' | 'school_organization' | 'marketplace_partner'>('school_organization')
   const [department, setDepartment] = useState('')
   const [bio, setBio] = useState('')
   const [error, setError] = useState('')
@@ -56,28 +52,22 @@ const Register: React.FC = () => {
     const errors: Record<string, string> = {}
     const isWmsuEmail = email && email.toLowerCase().endsWith('@wmsu.edu.ph')
 
-    if (!isOrganization) {
-      if (!firstName) errors.firstName = 'First name is required'
-      if (!lastName) errors.lastName = 'Last name is required'
-      if (!email) errors.email = 'Email is required'
-      else if (!email.includes('@')) errors.email = 'Please enter a valid email address'
-      
-      // Department required ONLY for WMSU emails
-      if (isWmsuEmail && !department) {
-        errors.department = 'Department/College is required for WMSU students'
-      }
-      
-      // Phone number validation: max 11 digits, numeric only
-      if (phoneNumber && !/^\d+$/.test(phoneNumber)) {
-        errors.phone = 'Phone number must contain only digits'
-      }
-      if (phoneNumber && phoneNumber.length > 11) {
-        errors.phone = 'Phone number must be 11 digits or less'
-      }
-    } else {
-      if (!orgName) errors.orgName = 'Organization name is required'
-      if (!email) errors.email = 'Email is required'
-      else if (!email.includes('@')) errors.email = 'Please enter a valid email address'
+    if (!firstName) errors.firstName = 'First name is required'
+    if (!lastName) errors.lastName = 'Last name is required'
+    if (!email) errors.email = 'Email is required'
+    else if (!email.includes('@')) errors.email = 'Please enter a valid email address'
+
+    // Department required ONLY for WMSU emails
+    if (isWmsuEmail && !department) {
+      errors.department = 'Department/College is required for WMSU students'
+    }
+
+    // Phone number validation: 10 to 15 digits, numeric only
+    if (phoneNumber && !/^\d+$/.test(phoneNumber)) {
+      errors.phone = 'Phone number must contain only digits'
+    }
+    if (phoneNumber && (phoneNumber.length < 10 || phoneNumber.length > 15)) {
+      errors.phone = 'Phone number must be 10 to 15 digits'
     }
 
     if (!password) {
@@ -113,11 +103,9 @@ const Register: React.FC = () => {
     }
 
     // Combine name fields for backend
-    const fullName = !isOrganization
-      ? (middleInitial
-        ? `${firstName} ${middleInitial} ${lastName}`.trim()
-        : `${firstName} ${lastName}`.trim())
-      : orgName
+    const fullName = middleInitial
+      ? `${firstName} ${middleInitial} ${lastName}`.trim()
+      : `${firstName} ${lastName}`.trim()
 
     try {
       setLoading(true)
@@ -125,12 +113,9 @@ const Register: React.FC = () => {
       const result = await register({
         name: fullName,
         email,
+        phone: phoneNumber || undefined,
         password,
-        is_organization: isOrganization,
-        org_name: isOrganization ? orgName : undefined,
-        org_logo_url: isOrganization ? orgLogoUrl : undefined,
-        organization_type: isOrganization ? organizationType : undefined,
-        department: !isOrganization ? department : undefined,
+        department: department || undefined,
         bio: bio || undefined,
       })
 
@@ -287,65 +272,7 @@ const Register: React.FC = () => {
                     </Alert>
                   )}
 
-                  {/* Account Type Selector - Segmented Control */}
-                  <FormControl>
-                    <FormLabel fontSize="13px" fontWeight="600" mb="12px" color="#333">Account Type</FormLabel>
-                    <HStack
-                      spacing={2}
-                      bg="#F0F0F0"
-                      borderRadius="12px"
-                      p={1.5}
-                      w="full"
-                      transition="all 0.2s"
-                    >
-                      <Button
-                        flex={1}
-                        variant={isOrganization ? 'ghost' : 'solid'}
-                        bg={isOrganization ? 'transparent' : '#2D876D'}
-                        color={isOrganization ? '#666' : 'white'}
-                        size="sm"
-                        onClick={() => {
-                          setIsOrganization(false)
-                          setFieldErrors({})
-                        }}
-                        borderRadius="10px"
-                        fontWeight="600"
-                        fontSize="14px"
-                        height="40px"
-                        transition="all 0.3s"
-                        _hover={{
-                          bg: isOrganization ? '#F5F5F5' : '#25704d',
-                        }}
-                      >
-                        Individual
-                      </Button>
-                      <Button
-                        flex={1}
-                        variant={isOrganization ? 'solid' : 'ghost'}
-                        bg={isOrganization ? '#2D876D' : 'transparent'}
-                        color={isOrganization ? 'white' : '#666'}
-                        size="sm"
-                        onClick={() => {
-                          setIsOrganization(true)
-                          setFieldErrors({})
-                        }}
-                        borderRadius="10px"
-                        fontWeight="600"
-                        fontSize="14px"
-                        height="40px"
-                        transition="all 0.3s"
-                        _hover={{
-                          bg: isOrganization ? '#25704d' : '#F5F5F5',
-                        }}
-                      >
-                        Organization
-                      </Button>
-                    </HStack>
-                  </FormControl>
-
-                  {/* INDIVIDUAL ACCOUNT FIELDS */}
-                  {!isOrganization && (
-                    <>
+                  {/* Account Fields */}
                       {/* Name Fields */}
                       <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} w="full">
                         <FormControl isRequired isInvalid={!!fieldErrors.firstName}>
@@ -433,12 +360,12 @@ const Register: React.FC = () => {
                         </FormControl>
                       </SimpleGrid>
 
-                      {/* Phone Number - Max 11 digits */}
+                      {/* Phone Number - 10 to 15 digits */}
                       <FormControl isInvalid={!!fieldErrors.phone}>
                         <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">
                           Phone Number
                           <Text as="span" fontSize="11px" color="gray.500" ml={2} fontWeight="400">
-                            ({phoneNumber.length}/11 digits)
+                            ({phoneNumber.length}/15 digits)
                           </Text>
                         </FormLabel>
                         <Input
@@ -446,12 +373,12 @@ const Register: React.FC = () => {
                           inputMode="numeric"
                           value={phoneNumber}
                           onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 11)
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 15)
                             setPhoneNumber(value)
                             if (fieldErrors.phone) setFieldErrors({ ...fieldErrors, phone: '' })
                           }}
-                          placeholder="09XX-XXX-XXXX (11 digits)"
-                          maxLength={11}
+                          placeholder="e.g. 09171234567"
+                          maxLength={15}
                           size="lg"
                           bg={fieldErrors.phone ? '#FFF5F5' : '#F5F5F5'}
                           borderColor={fieldErrors.phone ? '#ef5350' : '#E0E0E0'}
@@ -566,153 +493,7 @@ const Register: React.FC = () => {
                           transition="all 0.2s"
                         />
                       </FormControl>
-                    </>
-                  )}
 
-                  {/* ORGANIZATION ACCOUNT FIELDS */}
-                  {isOrganization && (
-                    <>
-                      {/* Organization Type */}
-                      <FormControl>
-                        <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Organization Type</FormLabel>
-                        <HStack spacing={2}>
-                          <Button
-                            size="sm"
-                            variant={organizationType === 'school_organization' ? 'solid' : 'outline'}
-                            colorScheme="purple"
-                            onClick={() => setOrganizationType('school_organization')}
-                          >
-                            School Organization
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={organizationType === 'business' ? 'solid' : 'outline'}
-                            colorScheme="purple"
-                            onClick={() => setOrganizationType('business')}
-                          >
-                            Business
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={organizationType === 'marketplace_partner' ? 'solid' : 'outline'}
-                            colorScheme="purple"
-                            onClick={() => setOrganizationType('marketplace_partner')}
-                          >
-                            Marketplace Partner
-                          </Button>
-                        </HStack>
-                      </FormControl>
-
-                      {/* Organization Name */}
-                      <FormControl isRequired isInvalid={!!fieldErrors.orgName}>
-                        <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Organization Name</FormLabel>
-                        <Input
-                          value={orgName}
-                          onChange={(e) => {
-                            setOrgName(e.target.value)
-                            if (fieldErrors.orgName) setFieldErrors({ ...fieldErrors, orgName: '' })
-                          }}
-                          placeholder="e.g., CCS Student Council"
-                          size="lg"
-                          bg="#F5F5F5"
-                          borderColor={fieldErrors.orgName ? '#ef5350' : '#E0E0E0'}
-                          borderWidth="1px"
-                          height="44px"
-                          fontSize="14px"
-                          _focus={{
-                            borderColor: fieldErrors.orgName ? '#ef5350' : '#2D876D',
-                            boxShadow: fieldErrors.orgName ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
-                            bg: 'white',
-                          }}
-                          _hover={{
-                            borderColor: '#E8E8E8',
-                          }}
-                          transition="all 0.2s"
-                        />
-                        {fieldErrors.orgName && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.orgName}</FormErrorMessage>}
-                      </FormControl>
-
-                      {/* Organization Logo URL */}
-                      <FormControl>
-                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">Logo URL (Optional)</FormLabel>
-                        <Input
-                          value={orgLogoUrl}
-                          onChange={(e) => setOrgLogoUrl(e.target.value)}
-                          placeholder="https://..."
-                          size="lg"
-                          bg="#F5F5F5"
-                          borderColor="#E0E0E0"
-                          borderWidth="1px"
-                          height="44px"
-                          fontSize="14px"
-                          _focus={{
-                            borderColor: '#2D876D',
-                            boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
-                            bg: 'white',
-                          }}
-                          _hover={{
-                            borderColor: '#E8E8E8',
-                          }}
-                          transition="all 0.2s"
-                        />
-                      </FormControl>
-
-                      {/* Organization Email */}
-                      <FormControl isRequired isInvalid={!!fieldErrors.email}>
-                        <FormLabel fontSize="13px" fontWeight="600" color="#333" mb="8px">Email</FormLabel>
-                        <Input
-                          type="email"
-                          value={email}
-                          onChange={(e) => {
-                            setEmail(e.target.value)
-                            if (fieldErrors.email) setFieldErrors({ ...fieldErrors, email: '' })
-                          }}
-                          placeholder="contact@organization.com"
-                          size="lg"
-                          bg="#F5F5F5"
-                          borderColor={fieldErrors.email ? '#ef5350' : '#E0E0E0'}
-                          borderWidth="1px"
-                          height="44px"
-                          fontSize="14px"
-                          _focus={{
-                            borderColor: fieldErrors.email ? '#ef5350' : '#2D876D',
-                            boxShadow: fieldErrors.email ? '0 0 0 3px rgba(239, 83, 80, 0.1)' : '0 0 0 3px rgba(45, 135, 109, 0.1)',
-                            bg: 'white',
-                          }}
-                          _hover={{
-                            borderColor: '#E8E8E8',
-                          }}
-                          transition="all 0.2s"
-                        />
-                        {fieldErrors.email && <FormErrorMessage fontSize="xs" mt={1}>{fieldErrors.email}</FormErrorMessage>}
-                      </FormControl>
-
-                      {/* Organization Bio/Description */}
-                      <FormControl>
-                        <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">About (Optional)</FormLabel>
-                        <Input
-                          value={bio}
-                          onChange={(e) => setBio(e.target.value)}
-                          placeholder="Describe your organization"
-                          size="lg"
-                          bg="#F5F5F5"
-                          borderColor="#E0E0E0"
-                          borderWidth="1px"
-                          height="44px"
-                          fontSize="14px"
-                          _focus={{
-                            borderColor: '#2D876D',
-                            boxShadow: '0 0 0 3px rgba(45, 135, 109, 0.1)',
-                            bg: 'white',
-                          }}
-                          _hover={{
-                            borderColor: '#E8E8E8',
-                          }}
-                          transition="all 0.2s"
-                        />
-                      </FormControl>
-                    </>
-                  )}
 
                   {/* Password Field */}
                   <FormControl isRequired isInvalid={!!fieldErrors.password}>

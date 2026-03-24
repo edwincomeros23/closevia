@@ -6,6 +6,7 @@ import { useNotification } from '../contexts/NotificationContext'
 import { api } from '../services/api'
 import { Product, TradeCreate, TradeOption } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
+import { reverseGeocodeToAddress, formatCoordinates } from '../utils/locationUtils'
 
 interface BuyoutModalProps {
   isOpen: boolean
@@ -29,6 +30,9 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
   const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
   const [detectingLocation, setDetectingLocation] = useState(false)
+  const [detectedCoords, setDetectedCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [detectedLocationLabel, setDetectedLocationLabel] = useState('')
+  const [profileLocationLabel, setProfileLocationLabel] = useState('')
   
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -63,12 +67,39 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     setTradeOption(null)
     setPaymentMethod(null)
     setHasPendingOfferOnTarget(false)
+    setDetectedCoords(null)
+    setDetectedLocationLabel('')
+    setProfileLocationLabel('')
 
     // Auto-set delivery option if user has location
     if (user?.latitude && user?.longitude) {
       setTradeOption('delivery')
     }
   }, [isOpen, targetProduct])
+
+  useEffect(() => {
+    if (!isOpen || !user?.latitude || !user?.longitude) return
+
+    let cancelled = false
+    ;(async () => {
+      const address = await reverseGeocodeToAddress(user.latitude as number, user.longitude as number)
+      if (!cancelled) {
+        setProfileLocationLabel(address)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, user?.latitude, user?.longitude])
+
+  const resolvedDeliveryAddress = (): string | undefined => {
+    if (detectedLocationLabel.trim()) return detectedLocationLabel.trim()
+    if (detectedCoords) return formatCoordinates(detectedCoords.lat, detectedCoords.lng)
+    if (profileLocationLabel.trim()) return profileLocationLabel.trim()
+    if (user?.latitude && user?.longitude) return formatCoordinates(user.latitude, user.longitude)
+    return undefined
+  }
 
   // Check for pending offers separately
   useEffect(() => {
@@ -105,7 +136,13 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     
     if (!paymentMethod) {
       toast({
-        id: "buyoutmodal-select-payment-method", title: 'Select payment method', description: 'Please choose COD or Upfront Payment.', status: 'warning' })
+        id: "buyoutmodal-select-payment-method", title: 'Select payment method', description: 'Please choose your preferred payment method.', status: 'warning' })
+      return
+    }
+
+    if (tradeOption === 'delivery' && !resolvedDeliveryAddress()) {
+      toast({
+        id: "buyoutmodal-delivery-location-required", title: 'Delivery location required', description: 'Please detect your current location before sending a delivery buyout.', status: 'warning' })
       return
     }
     
@@ -124,10 +161,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     
     try {
       setSubmittingTrade(true)
-      // Use user's coordinates for delivery if available
-      const deliveryAddress = user?.latitude && user?.longitude 
-        ? `${user.latitude}, ${user.longitude}`
-        : undefined
+      const deliveryAddress = resolvedDeliveryAddress()
       
       const payload: TradeCreate = {
         target_product_id: targetProductId,
@@ -136,6 +170,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
         offered_cash_amount: Number(cashAmount),
         trade_option: tradeOption,
         delivery_address: tradeOption === 'delivery' ? deliveryAddress : undefined,
+        payment_method: paymentMethod,
       }
       
       console.log('Submitting buyout payload:', payload)
@@ -153,6 +188,46 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     } finally {
       setSubmittingTrade(false)
     }
+  }
+
+  const handleDetectLocation = async () => {
+    if (!navigator.geolocation) {
+      toast({
+        id: "buyoutmodal-geolocation-not-supported", title: 'Geolocation not supported', status: 'error', duration: 3000 })
+      return
+    }
+
+    if (tradeOption !== 'delivery') {
+      setTradeOption('delivery')
+    }
+
+    setDetectingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords
+        const address = await reverseGeocodeToAddress(latitude, longitude)
+        setDetectedCoords({ lat: latitude, lng: longitude })
+        setDetectedLocationLabel(address)
+
+        try {
+          await api.put('/api/users/profile', { latitude, longitude })
+          if (refreshUser) await refreshUser()
+          toast({
+            id: "buyoutmodal-location-saved", title: 'Location saved!', description: address, status: 'success', duration: 3000 })
+        } catch {
+          toast({
+            id: "buyoutmodal-failed-to-save-location", title: 'Detected location only for this offer', description: address, status: 'warning', duration: 3500 })
+        }
+
+        setDetectingLocation(false)
+      },
+      () => {
+        toast({
+          id: "buyoutmodal-location-access-denied", title: 'Location access denied', status: 'warning', duration: 4000 })
+        setDetectingLocation(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
   }
 
   return (
@@ -278,49 +353,39 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                   <Box mt={4}>
                     <FormControl>
                       <FormLabel fontSize="sm">Delivery Location</FormLabel>
-                      {user?.latitude && user?.longitude ? (
+                      {detectedCoords ? (
+                        <Box p={3} bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" borderLeftWidth="4px" borderLeftColor="green.500">
+                          <HStack justify="space-between" align="start">
+                            <VStack spacing={1} align="start">
+                              <Text fontSize="sm" color="green.900" fontWeight="medium">
+                                📍 {detectedLocationLabel || formatCoordinates(detectedCoords.lat, detectedCoords.lng)}
+                              </Text>
+                              <Text fontSize="xs" color="green.700">Location detected from your device</Text>
+                            </VStack>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={() => {
+                                setDetectedCoords(null)
+                                setDetectedLocationLabel('')
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          </HStack>
+                        </Box>
+                      ) : user?.latitude && user?.longitude ? (
                         <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
                           <Text fontSize="sm" color="blue.900" fontWeight="medium">
-                            📍 {user.latitude.toFixed(4)}, {user.longitude.toFixed(4)}
+                            📍 {profileLocationLabel || formatCoordinates(user.latitude, user.longitude)}
                           </Text>
+                          <Text fontSize="xs" color="blue.700" mt={1}>Current location saved in your profile</Text>
                         </Box>
                       ) : (
                         <Box p={3} bg="yellow.50" borderWidth="1px" borderColor="yellow.200" rounded="md" borderLeftWidth="4px" borderLeftColor="yellow.500">
                           <Text fontSize="sm" color="yellow.900" fontWeight="medium">⚠️ Location not set</Text>
-                          <Button
-                            size="sm" colorScheme="blue" mt={2} isLoading={detectingLocation} loadingText="Detecting..."
-                            onClick={async () => {
-                              if (!navigator.geolocation) {
-                                toast({
-        id: "buyoutmodal-geolocation-not-supported", title: 'Geolocation not supported', status: 'error', duration: 3000 })
-                                return
-                              }
-                              setDetectingLocation(true)
-                              navigator.geolocation.getCurrentPosition(
-                                async (position) => {
-                                  const { latitude, longitude } = position.coords
-                                  try {
-                                    await api.put('/api/users/profile', { latitude, longitude })
-                                    if (refreshUser) await refreshUser()
-                                    toast({
-        id: "buyoutmodal-location-saved", title: 'Location saved!', status: 'success', duration: 3000 })
-                                  } catch {
-                                    toast({
-        id: "buyoutmodal-failed-to-save-location", title: 'Failed to save location', status: 'error', duration: 3000 })
-                                  }
-                                  setDetectingLocation(false)
-                                },
-                                () => {
-                                  toast({
-        id: "buyoutmodal-location-access-denied", title: 'Location access denied', status: 'warning', duration: 4000 })
-                                  setDetectingLocation(false)
-                                },
-                                { enableHighAccuracy: true, timeout: 10000 }
-                              )
-                            }}
-                          >
-                            📍 Detect My Location
-                          </Button>
+                          <Text fontSize="xs" color="yellow.700" mt={1}>Detect your location to use delivery</Text>
                         </Box>
                       )}
                     </FormControl>
@@ -333,8 +398,11 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
               {/* Payment Method Selection */}
               <FormControl isRequired>
                 <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Payment Method (Trader Decides)
+                  Preferred Payment Method
                 </FormLabel>
+                <Text fontSize="xs" color="gray.600" mb={3}>
+                  Choose how you prefer to pay for this buyout.
+                </Text>
                 <Grid templateColumns="repeat(2, 1fr)" gap={4}>
                   {/* COD Option */}
                   <Card
@@ -397,9 +465,23 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
 
                 <Box mt={3} p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
                   <Text fontSize="xs" color="blue.900">
-                    <strong>ℹ️ Note:</strong> The trader will choose which payment method to accept. Offering both options increases your chances of a deal.
+                    This payment preference is included in your offer. The trader can accept or request a different setup in chat.
                   </Text>
                 </Box>
+
+                <Button
+                  size="sm"
+                  colorScheme="blue"
+                  mt={3}
+                  isLoading={detectingLocation}
+                  loadingText="Detecting..."
+                  onClick={handleDetectLocation}
+                >
+                  📍 Detect My Location
+                </Button>
+                <Text fontSize="xs" color="gray.600" mt={1}>
+                  For delivery offers, this sets your current barangay-level location.
+                </Text>
               </FormControl>
 
               <Divider />
@@ -409,7 +491,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                   colorScheme="green" 
                   isLoading={submittingTrade} 
                   onClick={() => setShowConfirmModal(true)} 
-                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption}
+                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption || !paymentMethod || (tradeOption === 'delivery' && !resolvedDeliveryAddress())}
                   leftIcon={<FaMoneyBillWave />}
                 >
                   Confirm Buyout

@@ -46,6 +46,22 @@ func generateSchoolEmailOTP() (string, string, time.Time, error) {
 	return code, hash, expiry, nil
 }
 
+func generatePhoneOTP() (string, string, time.Time, error) {
+	return generateSchoolEmailOTP()
+}
+
+func isValidPhone(phone string) bool {
+	if phone == "" {
+		return false
+	}
+	for _, ch := range phone {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return len(phone) >= 10 && len(phone) <= 15
+}
+
 // StartVerification sets school + email and sends a verification code to the school email.
 // User must call VerifySchoolEmail with the code before uploading ID.
 func (h *VerificationHandler) StartVerification(c *fiber.Ctx) error {
@@ -334,6 +350,201 @@ func (h *VerificationHandler) GetVerificationStatus(c *fiber.Ctx) error {
 	})
 }
 
+// StartPhoneVerification sends a 6-digit OTP to the user's phone via dev fallback.
+// POST /api/users/verification/phone/start { phone? }
+func (h *VerificationHandler) StartPhoneVerification(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var req struct {
+		Phone string `json:"phone"`
+	}
+	_ = c.BodyParser(&req)
+	req.Phone = strings.TrimSpace(req.Phone)
+
+	var currentPhone sql.NullString
+	var currentExpires sql.NullTime
+	err := h.db.QueryRow(`SELECT phone, phone_otp_expires FROM users WHERE id = ?`, userID).Scan(&currentPhone, &currentExpires)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load phone state"})
+	}
+
+	phoneToUse := req.Phone
+	if phoneToUse == "" {
+		phoneToUse = strings.TrimSpace(currentPhone.String)
+	}
+
+	if !isValidPhone(phoneToUse) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Phone number must be 10 to 15 digits"})
+	}
+
+	// Cooldown: block resend if previous OTP was sent less than 60 seconds ago
+	if currentExpires.Valid {
+		secondsUntilExpiry := time.Until(currentExpires.Time).Seconds()
+		if secondsUntilExpiry > float64(9*60) {
+			return c.Status(429).JSON(models.APIResponse{Success: false, Error: "Please wait 60 seconds before requesting a new code"})
+		}
+	}
+
+	otpCode, otpHash, otpExpiry, otpErr := generatePhoneOTP()
+	if otpErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate verification code"})
+	}
+
+	_, err = h.db.Exec(`
+		UPDATE users
+		SET phone = ?, phone_verified = FALSE,
+		    phone_otp_hash = ?, phone_otp_expires = ?,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`,
+		phoneToUse, otpHash, otpExpiry, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start phone verification"})
+	}
+
+	// SMS provider not configured yet; keep secure code check server-side and expose code in DEV fallback.
+	msg := "Verification code sent to your phone number. Enter the 6-digit code to verify."
+	if os.Getenv("SMS_PROVIDER") == "" {
+		msg += fmt.Sprintf(" (DEV CODE: %s)", otpCode)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: msg, Data: fiber.Map{"phone": phoneToUse}})
+}
+
+// VerifyPhoneCode verifies OTP and marks phone as verified.
+// POST /api/users/verification/phone/verify { code }
+func (h *VerificationHandler) VerifyPhoneCode(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	req.Code = strings.TrimSpace(req.Code)
+	if req.Code == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Verification code is required"})
+	}
+
+	var storedHash string
+	var expires time.Time
+	var phone sql.NullString
+	var alreadyVerified bool
+	err := h.db.QueryRow(`
+		SELECT COALESCE(phone_otp_hash,''), COALESCE(phone_otp_expires, NOW()), phone, COALESCE(phone_verified, FALSE)
+		FROM users WHERE id = ?`, userID,
+	).Scan(&storedHash, &expires, &phone, &alreadyVerified)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load verification state"})
+	}
+
+	if alreadyVerified {
+		return c.JSON(models.APIResponse{Success: true, Message: "Phone number is already verified"})
+	}
+	if !phone.Valid || strings.TrimSpace(phone.String) == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please add your phone number first"})
+	}
+	if storedHash == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No verification code found. Please request a new one."})
+	}
+	if time.Now().After(expires) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Verification code has expired. Please request a new one."})
+	}
+	if !utils.CheckPasswordHash(req.Code, storedHash) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid verification code"})
+	}
+
+	_, err = h.db.Exec(`
+		UPDATE users
+		SET phone_verified = TRUE,
+		    phone_otp_hash = NULL,
+		    phone_otp_expires = NULL,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify phone"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Phone number verified successfully"})
+}
+
+// ResendPhoneCode resends OTP for existing phone verification flow.
+// POST /api/users/verification/phone/resend
+func (h *VerificationHandler) ResendPhoneCode(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var phone sql.NullString
+	var currentExpires sql.NullTime
+	err := h.db.QueryRow(`SELECT phone, phone_otp_expires FROM users WHERE id = ?`, userID).Scan(&phone, &currentExpires)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load phone state"})
+	}
+	if !phone.Valid || !isValidPhone(strings.TrimSpace(phone.String)) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Please add a valid phone number first"})
+	}
+
+	// Cooldown: block resend if previous OTP was sent less than 60 seconds ago
+	if currentExpires.Valid {
+		secondsUntilExpiry := time.Until(currentExpires.Time).Seconds()
+		if secondsUntilExpiry > float64(9*60) {
+			return c.Status(429).JSON(models.APIResponse{Success: false, Error: "Please wait 60 seconds before requesting a new code"})
+		}
+	}
+
+	otpCode, otpHash, otpExpiry, otpErr := generatePhoneOTP()
+	if otpErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate verification code"})
+	}
+
+	_, err = h.db.Exec(`
+		UPDATE users
+		SET phone_otp_hash = ?, phone_otp_expires = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, otpHash, otpExpiry, userID,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update verification code"})
+	}
+
+	msg := "Verification code resent to your phone number."
+	if os.Getenv("SMS_PROVIDER") == "" {
+		msg += fmt.Sprintf(" (DEV CODE: %s)", otpCode)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: msg})
+}
+
+// GetPhoneVerificationStatus returns phone verification details for current user.
+// GET /api/users/verification/phone/status
+func (h *VerificationHandler) GetPhoneVerificationStatus(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var phone sql.NullString
+	var phoneVerified bool
+	err := h.db.QueryRow(`SELECT COALESCE(phone,''), COALESCE(phone_verified,FALSE) FROM users WHERE id = ?`, userID).Scan(&phone, &phoneVerified)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load phone verification status"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"phone":          strings.TrimSpace(phone.String),
+		"phone_verified": phoneVerified,
+	}})
+}
+
 // Admin: list pending/recent verifications
 func (h *VerificationHandler) AdminListVerifications(c *fiber.Ctx) error {
 	// Admin auth is enforced by router middleware
@@ -462,3 +673,87 @@ func (h *VerificationHandler) AdminRejectVerification(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "Verification rejected"})
 }
 
+// AdminListPhoneVerifications returns users with phone data for support tooling.
+func (h *VerificationHandler) AdminListPhoneVerifications(c *fiber.Ctx) error {
+	rows, err := h.db.Query(`
+		SELECT id, name, email, COALESCE(phone,''), COALESCE(phone_verified, FALSE), updated_at
+		FROM users
+		WHERE COALESCE(phone,'') <> ''
+		ORDER BY updated_at DESC
+		LIMIT 200`)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load phone verifications"})
+	}
+	defer rows.Close()
+
+	type item struct {
+		ID            int       `json:"id"`
+		Name          string    `json:"name"`
+		Email         string    `json:"email"`
+		Phone         string    `json:"phone"`
+		PhoneVerified bool      `json:"phone_verified"`
+		UpdatedAt     time.Time `json:"updated_at"`
+	}
+
+	items := make([]item, 0)
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.ID, &it.Name, &it.Email, &it.Phone, &it.PhoneVerified, &it.UpdatedAt); err != nil {
+			continue
+		}
+		items = append(items, it)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: items})
+}
+
+// AdminVerifyPhone manually marks a user phone as verified (support fallback).
+func (h *VerificationHandler) AdminVerifyPhone(c *fiber.Ctx) error {
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil || userID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid user ID"})
+	}
+
+	var phone sql.NullString
+	err = h.db.QueryRow(`SELECT phone FROM users WHERE id = ?`, userID).Scan(&phone)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
+	}
+	if !phone.Valid || !isValidPhone(strings.TrimSpace(phone.String)) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "User has no valid phone number"})
+	}
+
+	_, err = h.db.Exec(`
+		UPDATE users
+		SET phone_verified = TRUE,
+		    phone_otp_hash = NULL,
+		    phone_otp_expires = NULL,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to mark phone as verified"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Phone marked as verified"})
+}
+
+// AdminUnverifyPhone clears verification if support needs to revoke it.
+func (h *VerificationHandler) AdminUnverifyPhone(c *fiber.Ctx) error {
+	userID, err := strconv.Atoi(c.Params("id"))
+	if err != nil || userID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid user ID"})
+	}
+
+	_, err = h.db.Exec(`
+		UPDATE users
+		SET phone_verified = FALSE,
+		    phone_otp_hash = NULL,
+		    phone_otp_expires = NULL,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to clear phone verification"})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Phone verification cleared"})
+}

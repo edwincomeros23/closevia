@@ -30,15 +30,9 @@ import {
   Tab,
   TabPanel,
   Progress,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
   Input,
   InputGroup,
   InputLeftElement,
-  FormLabel as Label,
   FormControl,
   FormLabel,
   Grid,
@@ -111,12 +105,6 @@ interface DeliveryState {
   assignedRider?: {
     name: string
     phone: string
-  }
-  expandedSections: {
-    options: boolean
-    payment: boolean
-    details: boolean
-    completion: boolean
   }
 }
 
@@ -274,7 +262,6 @@ interface DeliveryTabProps {
   trade: Trade | null
   isUserSeller: boolean
   isUserBuyer: boolean
-  toggleSection: (section: keyof DeliveryState['expandedSections']) => void
   setIsReviewModalOpen: (open: boolean) => void
   handleConfirmPayment: () => Promise<void>
   handleConfirmDelivery: () => Promise<void>
@@ -292,7 +279,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   trade,
   isUserSeller,
   isUserBuyer,
-  toggleSection,
   handleConfirmPayment,
   handleConfirmDelivery,
   saveDeliveryState,
@@ -303,543 +289,264 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
   const deliveryCompleted = linkedDelivery?.status === 'delivered'
   const totalCost = (requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee
+  const deliveryStatus = linkedDelivery?.status || 'pending'
+  const deliveryStatusColor =
+    deliveryCompleted ? 'green'
+      : deliveryStatus === 'in_transit' ? 'orange'
+        : deliveryStatus === 'picked_up' ? 'purple'
+          : deliveryStatus === 'claimed' ? 'blue'
+            : 'gray'
+
+  const timelineSteps = [
+    {
+      id: 'setup',
+      title: 'Setup',
+      detail: `${deliveryOptions[deliveryState.deliveryType].time} • P${deliveryOptions[deliveryState.deliveryType].fee} fee`,
+      complete: Boolean(deliveryState.deliveryType),
+      current: !deliveryState.paymentConfirmed,
+    },
+    {
+      id: 'payment',
+      title: 'Payment',
+      detail: `${paymentMethods[deliveryState.paymentMethod].label} • ${deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}`,
+      complete: deliveryState.paymentConfirmed,
+      current: deliveryState.paymentConfirmed && !linkedDelivery,
+    },
+    {
+      id: 'tracking',
+      title: 'Delivery Tracking',
+      detail: deliveryStatus.replace(/_/g, ' ').toUpperCase(),
+      complete: deliveryCompleted,
+      current: !!linkedDelivery && !deliveryCompleted,
+    },
+    {
+      id: 'completion',
+      title: 'Completion',
+      detail: bothConfirmed ? 'Both parties confirmed' : 'Waiting for final confirmations',
+      complete: bothConfirmed,
+      current: (deliveryCompleted || deliveryState.paymentConfirmed) && !bothConfirmed,
+    },
+  ]
 
   return (
     <VStack spacing={4} align="stretch">
-      {/* Delivery Progress Indicator */}
-      <Box
-        p={4}
-        bg={useColorModeValue('blue.50', 'blue.900')}
-        borderRadius="lg"
-        borderLeftWidth="4px"
-        borderLeftColor="blue.500"
-      >
-        <HStack spacing={3} mb={2}>
-          <Icon as={FaTruck} color="blue.500" boxSize={5} />
-          <Text fontWeight="semibold" color={useColorModeValue('blue.700', 'blue.200')}>
-            Trade Progress
-          </Text>
-        </HStack>
-        <Progress
-          value={
-            deliveryCompleted ? 100 : deliveryState.paymentConfirmed ? 50 : deliveryState.deliveryType ? 25 : 0
-          }
-          size="sm"
-          colorScheme="blue"
-          borderRadius="full"
-        />
-        <Text fontSize="xs" color={useColorModeValue('blue.600', 'blue.300')} mt={2}>
-          {deliveryCompleted
-            ? '✓ Delivery Complete - Ready for Review'
-            : linkedDelivery && linkedDelivery.status === 'in_transit'
-              ? '🚚 Rider is on the way'
-              : linkedDelivery && linkedDelivery.status === 'picked_up'
-                ? '📦 Items picked up by rider'
-                : deliveryState.paymentConfirmed
-                  ? 'Payment Confirmed - Awaiting Rider'
-                  : 'Setup in Progress'}
-        </Text>
-      </Box>
-
-      {/* DELIVERY SETUP - Combined Options, Payment & Instructions */}
-      <Accordion allowToggle>
-        <AccordionItem
-          border="2px"
-          borderColor={deliveryState.expandedSections.options ? 'blue.400' : 'gray.200'}
-          borderRadius="lg"
-          bg={deliveryState.expandedSections.options ? 'blue.50' : 'white'}
-          overflow="hidden"
-        >
-          <AccordionButton
-            onClick={() => toggleSection('options')}
-            _hover={{ bg: deliveryState.expandedSections.options ? 'blue.100' : 'gray.50' }}
-            py={4}
-          >
-            <HStack spacing={3} flex={1}>
-              <Icon as={FiTruck} boxSize={5} color="blue.500" />
-              <VStack align="start" spacing={0}>
-                <Text fontWeight="semibold">Delivery Setup</Text>
-                <Text fontSize="xs" color="gray.500">
-                  {deliveryOptions[deliveryState.deliveryType].time} •
-                  ₱{deliveryOptions[deliveryState.deliveryType].fee} fee •
-                  {deliveryState.paymentConfirmed ? ' ✓ Paid' : ' Payment Pending'}
-                </Text>
-              </VStack>
+      {/* Always-visible delivery tracking first for glanceability */}
+      <Card border="2px" borderColor={deliveryCompleted ? 'green.400' : 'blue.400'} borderRadius="lg">
+        <CardBody>
+          <VStack spacing={4} align="stretch">
+            <HStack spacing={3}>
+              <Icon as={FiTruck} boxSize={5} color={deliveryCompleted ? 'green.500' : 'blue.500'} />
+              <Text fontWeight="bold" fontSize="md">Delivery Tracking</Text>
+              <Badge colorScheme={deliveryStatusColor} fontSize="xs" ml="auto">
+                {deliveryStatus.replace(/_/g, ' ').toUpperCase()}
+              </Badge>
             </HStack>
-            <Badge
-              colorScheme={deliveryState.paymentConfirmed ? 'green' : 'yellow'}
-              variant="subtle"
-              fontSize="xs"
-              mr={2}
-            >
-              {deliveryState.paymentConfirmed ? 'Paid' : 'Pending'}
-            </Badge>
-            <AccordionIcon />
-          </AccordionButton>
 
-          <AccordionPanel pb={4} pt={4}>
-            <VStack spacing={3} align="stretch">
-              <Text fontSize="sm" color="gray.600">
-                Select your preferred delivery speed and cost:
-              </Text>
+            <Progress
+              value={deliveryCompleted ? 100 : deliveryState.paymentConfirmed ? 50 : deliveryState.deliveryType ? 25 : 0}
+              size="sm"
+              colorScheme="blue"
+              borderRadius="full"
+            />
 
-              <Grid templateColumns="repeat(3, 1fr)" gap={3}>
-                {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
-                  <Card
-                    key={`delivery-${type}`}
-                    cursor="pointer"
-                    borderWidth="2px"
-                    borderColor={
-                      deliveryState.deliveryType === type ? 'blue.400' : 'gray.200'
-                    }
-                    bg={deliveryState.deliveryType === type ? 'blue.50' : 'white'}
-                    onClick={() => {
-                      const newState = type as DeliveryState['deliveryType']
-                      setDeliveryState(prev => ({
-                        ...prev,
-                        deliveryType: newState,
-                      }))
-                      saveDeliveryState({ deliveryType: newState })
-                    }}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: 'blue.300',
-                      shadow: 'md',
-                    }}
-                  >
-                    <CardBody p={4} textAlign="center">
-                      <Text fontSize="2xl" mb={2}>
-                        {option.icon}
-                      </Text>
-                      <Text fontSize="xs" fontWeight="bold" mb={1} color="gray.700">
-                        {type.charAt(0).toUpperCase() + type.slice(1)}
-                      </Text>
-                      <Text fontSize="xs" color="gray.600" mb={2}>
-                        {option.time}
-                      </Text>
-                      <Badge colorScheme="blue" fontSize="xs">
-                        ₱{option.fee}
-                      </Badge>
-                      {deliveryState.deliveryType === type && (
-                        <Icon as={FiCheck} color="blue.500" boxSize={5} mt={2} />
-                      )}
-                    </CardBody>
-                  </Card>
-                ))}
-              </Grid>
-
-              {trade?.status === 'active' && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  colorScheme="blue"
-                  leftIcon={<FiClock />}
-                  w="full"
-                >
-                  Track Delivery
-                </Button>
-              )}
+            <VStack align="stretch" spacing={0}>
+              {timelineSteps.map((step, idx) => {
+                const indicatorBg = step.complete ? 'green.500' : step.current ? 'blue.500' : 'gray.300'
+                const lineColor = step.complete ? 'green.300' : 'gray.200'
+                const isLast = idx === timelineSteps.length - 1
+                return (
+                  <HStack key={step.id} align="stretch" spacing={3} py={2}>
+                    <VStack spacing={0} minW="14px">
+                      <Box w="12px" h="12px" mt={1} borderRadius="full" bg={indicatorBg} />
+                      {!isLast && <Box w="2px" flex={1} bg={lineColor} mt={1} />}
+                    </VStack>
+                    <VStack align="start" spacing={0} flex={1}>
+                      <Text fontSize="sm" fontWeight={step.current ? 'bold' : 'semibold'}>{step.title}</Text>
+                      <Text fontSize="xs" color="gray.600">{step.detail}</Text>
+                    </VStack>
+                  </HStack>
+                )
+              })}
             </VStack>
-          </AccordionPanel>
-        </AccordionItem>
 
-        {/* 2. PAYMENT METHOD */}
-        <AccordionItem
-          border="2px"
-          borderColor={deliveryState.expandedSections.payment ? 'green.400' : 'gray.200'}
-          borderRadius="lg"
-          bg={deliveryState.expandedSections.payment ? 'green.50' : 'white'}
-          overflow="hidden"
-          mt={3}
-        >
-          <AccordionButton
-            onClick={() => toggleSection('payment')}
-            _hover={{ bg: deliveryState.expandedSections.payment ? 'green.100' : 'gray.50' }}
-            py={4}
-          >
-            <HStack spacing={3} flex={1}>
-              <Icon as={FiDollarSign} boxSize={5} color="green.500" />
-              <VStack align="start" spacing={0}>
-                <Text fontWeight="semibold">Payment Method</Text>
-                <Text fontSize="xs" color="gray.500">
-                  {paymentMethods[deliveryState.paymentMethod].label} •
-                  {deliveryState.paymentConfirmed ? ' ✓ Confirmed' : ' Pending'}
-                </Text>
-              </VStack>
+            <HStack spacing={2} flexWrap="wrap">
+              <Badge colorScheme="blue" variant="subtle">Setup: {deliveryState.deliveryType}</Badge>
+              <Badge colorScheme={deliveryState.paymentConfirmed ? 'green' : 'yellow'} variant="subtle">
+                Payment: {deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}
+              </Badge>
+              <Badge colorScheme="purple" variant="subtle">
+                Method: {paymentMethods[deliveryState.paymentMethod].label}
+              </Badge>
+              <Badge colorScheme="brand" variant="subtle">Total: P{totalCost.toFixed(2)}</Badge>
             </HStack>
-            <Badge
-              colorScheme={deliveryState.paymentConfirmed ? 'green' : 'yellow'}
-              variant="subtle"
-              fontSize="xs"
-            >
-              {deliveryState.paymentConfirmed ? 'Paid' : 'Pending'}
-            </Badge>
-            <AccordionIcon />
-          </AccordionButton>
 
-          <AccordionPanel pb={4} pt={4}>
-            <VStack spacing={4} align="stretch">
-              <Text fontSize="sm" color="gray.600">
-                Choose your payment method:
-              </Text>
-
-              <VStack spacing={2} align="stretch">
-                {Object.entries(paymentMethods).map(([method, details]: [string, any]) => {
-                  const isLocked = false // Online/Xendit is now fully unlocked
-
-                  return (
-                    <Card
-                      key={`payment-${method}`}
-                      cursor={isLocked || deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
-                      borderWidth="2px"
-                      borderColor={
-                        deliveryState.paymentMethod === method ? 'green.400' : isLocked ? 'gray.300' : 'gray.200'
-                      }
-                      bg={
-                        deliveryState.paymentMethod === method
-                          ? `${details.color}.50`
-                          : isLocked ? 'gray.100' : 'white'
-                      }
-                      opacity={isLocked ? 0.5 : (deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1)}
-                      onClick={() => {
-                        // Disable locked options
-                        if (isLocked) return
-                        // Disable changing payment method if already confirmed
-                        if (deliveryState.paymentConfirmed) return
-
-                        const newMethod = method as DeliveryState['paymentMethod']
-                        setDeliveryState(prev => ({
-                          ...prev,
-                          paymentMethod: newMethod,
-                        }))
-                        saveDeliveryState({ paymentMethod: newMethod })
-                      }}
-                      transition="all 0.2s"
-                      _hover={isLocked || deliveryState.paymentConfirmed ? {} : {
-                        borderColor: `${details.color}.300`,
-                        shadow: 'md',
-                      }}
-                    >
-                      <CardBody>
-                        <HStack spacing={3} justify="space-between">
-                          <HStack spacing={3}>
-                            <Text fontSize="xl">{details.icon}</Text>
-                            <VStack spacing={0} align="start">
-                              <Text fontWeight="medium" fontSize="sm">
-                                {details.label}
-                              </Text>
-                              {isLocked && (
-                                <Text fontSize="xs" color="gray.500" fontWeight="semibold">
-                                  🔒 Coming Soon
-                                </Text>
-                              )}
-                              {deliveryState.paymentConfirmed && deliveryState.paymentMethod === method && (
-                                <Text fontSize="xs" color="green.600" fontWeight="semibold">
-                                  ✓ Secured
-                                </Text>
-                              )}
-                            </VStack>
-                          </HStack>
-                          {deliveryState.paymentMethod === method && (
-                            <Icon
-                              as={FiCheck}
-                              color={`${details.color}.500`}
-                              boxSize={5}
-                            />
-                          )}
-                        </HStack>
-                      </CardBody>
-                    </Card>
-                  )
-                })}
-              </VStack>
-
-              <Box p={4} bg="gray.50" borderRadius="md" mt={3}>
-                <HStack justify="space-between" mb={2}>
-                  <Text fontSize="sm" fontWeight="semibold">
-                    Payment Amount:
-                  </Text>
-                  <Text fontSize="lg" fontWeight="bold" color="brand.500">
-                    ₱{totalCost.toFixed(2)}
-                  </Text>
-                </HStack>
-                <HStack justify="space-between" mb={3} fontSize="xs" color="gray.600">
-                  <Text>Product + Delivery Fee:</Text>
-                  <Text>
-                    ₱{(requestedProduct?.price || 0).toFixed(2)} + ₱
-                    {deliveryOptions[deliveryState.deliveryType].fee}
-                  </Text>
-                </HStack>
-              </Box>
-
-              <Button
-                colorScheme="green"
-                size="md"
-                onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
-                isLoading={confirmingPayment}
-                loadingText="Confirming..."
-                leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
-                w="full"
-                mt={3}
-              >
-                {deliveryState.paymentConfirmed
-                  ? ` ${paymentMethods[deliveryState.paymentMethod].label} Secured`
-                  : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
-              </Button>
-
-              <Divider />
-
-              {/* --- Delivery Instructions --- */}
-              <Box>
-                <HStack spacing={2} mb={2}>
-                  <Icon as={FiMapPin} boxSize={4} color="purple.500" />
-                  <Text fontWeight="semibold" fontSize="sm">Delivery Instructions</Text>
-                </HStack>
-                <Box p={3} bg="blue.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400" mb={3}>
-                  <Text fontSize="sm" color="blue.700">
-                    ℹ️ Sender and receiver addresses are auto-detected from your locations
-                  </Text>
-                </Box>
-                <Box>
-                  <Label fontWeight="semibold" mb={2}>
-                    Delivery Instructions (Optional)
-                  </Label>
-                  <Textarea
-                    value={deliveryState.deliveryInstructions}
-                    onChange={(e) => setDeliveryState(prev => ({
-                      ...prev,
-                      deliveryInstructions: e.target.value,
-                    }))}
-                    onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
-                    placeholder="e.g., Landmark: Red gate, Leave with guard, Do not leave in rain..."
-                    size="sm"
-                    rows={3}
-                    bg="white"
-                    borderWidth="1px"
-                  />
-                  <Text fontSize="xs" color="gray.500" mt={1}>
-                    {deliveryState.deliveryInstructions.length}/200 characters
-                  </Text>
-                </Box>
-              </Box>
-            </VStack>
-          </AccordionPanel>
-        </AccordionItem>
-
-        {/* 4. DELIVERY TRACKING STATUS */}
-        {linkedDelivery && (
-          <Card border="2px" borderColor={deliveryCompleted ? 'green.400' : 'blue.400'} borderRadius="lg" mt={3}>
-            <CardBody>
-              <VStack spacing={3} align="stretch">
-                <HStack spacing={3}>
-                  <Icon as={FiTruck} boxSize={5} color={deliveryCompleted ? 'green.500' : 'blue.500'} />
-                  <Text fontWeight="semibold">Delivery Tracking</Text>
-                  <Badge
-                    colorScheme={
-                      deliveryCompleted ? 'green'
-                      : linkedDelivery.status === 'in_transit' ? 'orange'
-                      : linkedDelivery.status === 'picked_up' ? 'purple'
-                      : 'gray'
-                    }
-                    fontSize="xs"
-                    ml="auto"
-                  >
-                    {(linkedDelivery.status || 'pending').replace(/_/g, ' ').toUpperCase()}
-                  </Badge>
-                </HStack>
-
-                {/* Status Steps */}
-                <HStack spacing={1} justify="space-between">
-                  {['pending', 'claimed', 'picked_up', 'in_transit', 'delivered'].map((step, i) => {
-                    const steps = ['pending', 'claimed', 'picked_up', 'in_transit', 'delivered']
-                    const currentIdx = steps.indexOf(linkedDelivery.status || 'pending')
-                    const isComplete = i <= currentIdx
-                    const isCurrent = i === currentIdx
-                    return (
-                      <Box key={step} flex={1}>
-                        <Box
-                          h="4px"
-                          bg={isComplete ? 'blue.500' : 'gray.200'}
-                          borderRadius="full"
-                          transition="all 0.3s"
-                        />
-                        <Text
-                          fontSize="2xs"
-                          color={isCurrent ? 'blue.600' : isComplete ? 'green.600' : 'gray.400'}
-                          fontWeight={isCurrent ? 'bold' : 'normal'}
-                          textAlign="center"
-                          mt={1}
-                        >
-                          {step.replace(/_/g, ' ')}
-                        </Text>
-                      </Box>
-                    )
-                  })}
-                </HStack>
-
-                {/* Rider Details */}
-                {linkedDelivery.rider_name && (
-                  <Card variant="outline" borderColor="blue.300" bg="blue.50">
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="stretch">
-                        <HStack spacing={3}>
-                          <Avatar
-                            name={linkedDelivery.rider_name}
-                            size="md"
-                            bg="blue.500"
-                            color="white"
-                          />
-                          <VStack align="start" spacing={0} flex={1}>
-                            <Text fontWeight="semibold" fontSize="sm">{linkedDelivery.rider_name}</Text>
-                            <Text fontSize="xs" color="gray.600">Assigned Rider</Text>
-                            {linkedDelivery.rider_rating && (
-                              <HStack spacing={1} mt={0.5}>
-                                <Icon as={FaStar} color="yellow.400" boxSize={3} />
-                                <Text fontSize="xs" color="gray.600">{linkedDelivery.rider_rating.toFixed(1)}</Text>
-                              </HStack>
-                            )}
-                          </VStack>
-                        </HStack>
-                        {linkedDelivery.rider_vehicle && (
-                          <HStack spacing={2} pl={1}>
-                            <Icon as={FiTruck} color="blue.500" boxSize={4} />
-                            <Text fontSize="xs" color="gray.700">{linkedDelivery.rider_vehicle}</Text>
-                          </HStack>
-                        )}
-                        {linkedDelivery.picked_up_at && (
-                          <HStack spacing={2} pl={1}>
-                            <Icon as={FiPackage} color="green.500" boxSize={4} />
-                            <Text fontSize="xs" color="gray.700">
-                              Picked up: {new Date(linkedDelivery.picked_up_at).toLocaleString()}
-                            </Text>
-                          </HStack>
-                        )}
-                        {linkedDelivery.delivered_at && (
-                          <HStack spacing={2} pl={1}>
-                            <Icon as={FiCheck} color="green.500" boxSize={4} />
-                            <Text fontSize="xs" color="gray.700">
-                              Delivered: {new Date(linkedDelivery.delivered_at).toLocaleString()}
-                            </Text>
-                          </HStack>
-                        )}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                )}
-
-                {!linkedDelivery.rider_name && (linkedDelivery.status || 'pending') === 'pending' && (
-                  <Box p={3} bg="yellow.50" borderRadius="md" borderWidth="1px" borderColor="yellow.200">
-                    <Text fontSize="sm" color="yellow.700">
-                      Waiting for a rider to be assigned...
-                    </Text>
-                  </Box>
-                )}
-
-                {deliveryCompleted && (
-                  <Box p={2} bg="green.50" borderRadius="md">
-                    <Text fontSize="sm" color="green.700" fontWeight="medium">
-                      Delivery completed! You can now review and complete the trade.
-                    </Text>
-                  </Box>
-                )}
-              </VStack>
-            </CardBody>
-          </Card>
-        )}
-
-        {/* 5. TRADE COMPLETION */}
-        <AccordionItem
-          border="2px"
-          borderColor={deliveryState.expandedSections.completion ? 'green.400' : 'gray.200'}
-          borderRadius="lg"
-          bg={bothConfirmed ? 'green.50' : deliveryState.expandedSections.completion ? 'green.50' : 'white'}
-          overflow="hidden"
-          mt={3}
-          isDisabled={!deliveryState.paymentConfirmed && !deliveryCompleted}
-        >
-          <AccordionButton
-            onClick={() => toggleSection('completion')}
-            _hover={{ bg: deliveryState.expandedSections.completion ? 'green.100' : 'gray.50' }}
-            py={4}
-            opacity={(deliveryState.paymentConfirmed || deliveryCompleted) ? 1 : 0.5}
-          >
-            <HStack spacing={3} flex={1}>
-              <Icon as={FiCheck} boxSize={5} color={bothConfirmed ? 'green.500' : 'green.400'} />
-              <VStack align="start" spacing={0}>
-                <Text fontWeight="semibold">Trade Completion</Text>
-                <Text fontSize="xs" color="gray.500">
-                  {bothConfirmed ? '✓ Both parties confirmed'
-                    : deliveryCompleted ? '✓ Delivery complete - Review now!'
-                    : linkedDelivery ? 'Waiting for delivery to complete'
-                    : 'Awaiting confirmation'}
-                </Text>
-              </VStack>
-            </HStack>
-            <AccordionIcon />
-          </AccordionButton>
-
-          <AccordionPanel pb={4} pt={4}>
-            <VStack spacing={5} align="stretch">
-              {!deliveryState.paymentConfirmed ? (
-                <Box p={3} bg="yellow.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="yellow.400">
-                  <Text fontSize="sm" color="yellow.700">
-                    ⏳ Complete payment to finalize delivery
-                  </Text>
-                </Box>
-              ) : null}
-              {/* Transaction Summary */}
-              <Card bg="gray.50" variant="outline">
-                <CardBody>
+            {linkedDelivery?.rider_name ? (
+              <Card variant="outline" borderColor="blue.300" bg="blue.50">
+                <CardBody p={4}>
                   <VStack spacing={3} align="stretch">
-                    <Text fontWeight="semibold" fontSize="sm">
-                      Transaction Summary
-                    </Text>
-                    <HStack justify="space-between" fontSize="sm">
-                      <Text color="gray.600">Product:</Text>
-                      <Text fontWeight="medium">{requestedProduct?.title}</Text>
+                    <HStack spacing={3}>
+                      <Avatar name={linkedDelivery.rider_name} size="md" bg="blue.500" color="white" />
+                      <VStack align="start" spacing={0} flex={1}>
+                        <Text fontWeight="semibold" fontSize="sm">{linkedDelivery.rider_name}</Text>
+                        <Text fontSize="xs" color="gray.600">Assigned Rider</Text>
+                      </VStack>
+                      {linkedDelivery.rider_rating && (
+                        <HStack spacing={1}>
+                          <Icon as={FaStar} color="yellow.400" boxSize={3} />
+                          <Text fontSize="xs" color="gray.600">{linkedDelivery.rider_rating.toFixed(1)}</Text>
+                        </HStack>
+                      )}
                     </HStack>
-                    <HStack justify="space-between" fontSize="sm">
-                      <Text color="gray.600">Delivery Fee:</Text>
-                      <Text>₱{deliveryOptions[deliveryState.deliveryType].fee}</Text>
-                    </HStack>
-                    <HStack justify="space-between" fontSize="sm">
-                      <Text color="gray.600">Payment Method:</Text>
-                      <Badge colorScheme="blue" fontSize="xs">
-                        {paymentMethods[deliveryState.paymentMethod].label}
-                      </Badge>
-                    </HStack>
-                    <Divider />
-                    <HStack justify="space-between" fontWeight="bold" fontSize="md">
-                      <Text>Total:</Text>
-                      <Text color="brand.500">₱{totalCost.toFixed(2)}</Text>
-                    </HStack>
+                    {linkedDelivery.rider_vehicle && (
+                      <HStack spacing={2}>
+                        <Icon as={FiTruck} color="blue.500" boxSize={4} />
+                        <Text fontSize="xs" color="gray.700">{linkedDelivery.rider_vehicle}</Text>
+                      </HStack>
+                    )}
                   </VStack>
                 </CardBody>
               </Card>
+            ) : (
+              <Box p={3} bg="yellow.50" borderRadius="md" borderWidth="1px" borderColor="yellow.200">
+                <Text fontSize="sm" color="yellow.700">Waiting for a rider to be assigned...</Text>
+              </Box>
+            )}
+          </VStack>
+        </CardBody>
+      </Card>
 
-              {/* Confirm Button - Hidden, goes directly to review */}
+      <Card variant="outline" borderColor="blue.200">
+        <CardBody>
+          <VStack spacing={3} align="stretch">
+            <Text fontWeight="semibold" fontSize="sm">Setup</Text>
+            <Grid templateColumns="repeat(3, 1fr)" gap={3}>
+              {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
+                <Card
+                  key={`delivery-${type}`}
+                  cursor="pointer"
+                  borderWidth="2px"
+                  borderColor={deliveryState.deliveryType === type ? 'blue.400' : 'gray.200'}
+                  bg={deliveryState.deliveryType === type ? 'blue.50' : 'white'}
+                  onClick={() => {
+                    const newState = type as DeliveryState['deliveryType']
+                    setDeliveryState(prev => ({ ...prev, deliveryType: newState }))
+                    saveDeliveryState({ deliveryType: newState })
+                  }}
+                  transition="all 0.2s"
+                  _hover={{ borderColor: 'blue.300', shadow: 'md' }}
+                >
+                  <CardBody p={3} textAlign="center">
+                    <Text fontSize="xl" mb={1}>{option.icon}</Text>
+                    <Text fontSize="xs" fontWeight="bold">{type.charAt(0).toUpperCase() + type.slice(1)}</Text>
+                    <Text fontSize="2xs" color="gray.600">{option.time}</Text>
+                    <Badge colorScheme="blue" fontSize="2xs" mt={1}>P{option.fee}</Badge>
+                  </CardBody>
+                </Card>
+              ))}
+            </Grid>
 
-              {deliveryCompleted || (!linkedDelivery && ((deliveryState.paymentConfirmed && deliveryState.deliveryInstructions) || bothConfirmed)) ? (
-                <VStack spacing={4}>
+            <Box>
+              <FormLabel fontWeight="semibold" mb={2} fontSize="sm">Delivery Instructions</FormLabel>
+              <Textarea
+                value={deliveryState.deliveryInstructions}
+                onChange={(e) => setDeliveryState(prev => ({ ...prev, deliveryInstructions: e.target.value }))}
+                onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
+                placeholder="e.g., Landmark: Red gate, Leave with guard, Do not leave in rain..."
+                size="sm"
+                rows={3}
+                bg="white"
+                borderWidth="1px"
+              />
+              <Text fontSize="xs" color="gray.500" mt={1}>{deliveryState.deliveryInstructions.length}/200 characters</Text>
+            </Box>
+          </VStack>
+        </CardBody>
+      </Card>
 
-                  <Button
-                    colorScheme="green"
-                    size="lg"
-                    onClick={() => setIsReviewModalOpen(true)}
-                    leftIcon={<FaStar />}
-                    w="full"
-                    transition="all 0.2s"
-                    _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                  >
-                    Review & Complete Trade
-                  </Button>
-                </VStack>
-              ) : null}
+      <Card variant="outline" borderColor="green.200">
+        <CardBody>
+          <VStack spacing={3} align="stretch">
+            <Text fontWeight="semibold" fontSize="sm">Payment</Text>
+            <VStack spacing={2} align="stretch">
+              {Object.entries(paymentMethods).map(([method, details]: [string, any]) => (
+                <Card
+                  key={`payment-${method}`}
+                  cursor={deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
+                  borderWidth="2px"
+                  borderColor={deliveryState.paymentMethod === method ? 'green.400' : 'gray.200'}
+                  bg={deliveryState.paymentMethod === method ? `${details.color}.50` : 'white'}
+                  opacity={deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1}
+                  onClick={() => {
+                    if (deliveryState.paymentConfirmed) return
+                    const newMethod = method as DeliveryState['paymentMethod']
+                    setDeliveryState(prev => ({ ...prev, paymentMethod: newMethod }))
+                    saveDeliveryState({ paymentMethod: newMethod })
+                  }}
+                >
+                  <CardBody p={3}>
+                    <HStack justify="space-between">
+                      <HStack spacing={3}>
+                        <Text fontSize="lg">{details.icon}</Text>
+                        <Text fontWeight="medium" fontSize="sm">{details.label}</Text>
+                      </HStack>
+                      {deliveryState.paymentMethod === method && <Icon as={FiCheck} color={`${details.color}.500`} boxSize={4} />}
+                    </HStack>
+                  </CardBody>
+                </Card>
+              ))}
             </VStack>
-          </AccordionPanel>
-        </AccordionItem>
-      </Accordion>
+
+            <Button
+              colorScheme="green"
+              size="md"
+              onClick={handleConfirmPayment}
+              isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
+              isLoading={confirmingPayment}
+              loadingText="Confirming..."
+              leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
+              w="full"
+            >
+              {deliveryState.paymentConfirmed
+                ? `${paymentMethods[deliveryState.paymentMethod].label} Secured`
+                : `Confirm ${paymentMethods[deliveryState.paymentMethod].label} Payment`}
+            </Button>
+          </VStack>
+        </CardBody>
+      </Card>
+
+      <Card borderWidth="2px" borderColor={bothConfirmed ? 'green.400' : 'gray.200'} bg={bothConfirmed ? 'green.50' : 'white'}>
+        <CardBody>
+          <VStack spacing={4} align="stretch">
+            <Text fontWeight="semibold" fontSize="sm">Completion</Text>
+
+            {!deliveryState.paymentConfirmed && (
+              <Box p={3} bg="yellow.50" borderRadius="md" borderLeftWidth="4px" borderLeftColor="yellow.400">
+                <Text fontSize="sm" color="yellow.700">Complete payment to continue.</Text>
+              </Box>
+            )}
+
+            {deliveryCompleted && ((isUserBuyer && !deliveryState.buyerConfirmedReceipt) || (isUserSeller && !deliveryState.sellerConfirmedDelivery)) && (
+              <Button colorScheme="blue" onClick={handleConfirmDelivery} leftIcon={<FiCheck />}>
+                {isUserBuyer ? 'Confirm Receipt' : 'Confirm Hand-off'}
+              </Button>
+            )}
+
+            {(deliveryCompleted || (!linkedDelivery && ((deliveryState.paymentConfirmed && deliveryState.deliveryInstructions) || bothConfirmed))) && (
+              <Button
+                colorScheme="green"
+                size="lg"
+                onClick={() => setIsReviewModalOpen(true)}
+                leftIcon={<FaStar />}
+                w="full"
+                transition="all 0.2s"
+                _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+              >
+                Review & Complete Trade
+              </Button>
+            )}
+          </VStack>
+        </CardBody>
+      </Card>
     </VStack>
   )
 }
@@ -1225,6 +932,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [offeredProducts, setOfferedProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
+  const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [confirmingMeetup, setConfirmingMeetup] = useState(false)
   const [confirmingPayment, setConfirmingPayment] = useState(false)
   const [buyerMeetupConfirmed, setBuyerMeetupConfirmed] = useState(false)
@@ -1237,12 +945,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     buyerConfirmedReceipt: false,
     sellerConfirmedDelivery: false,
     deliveryInstructions: '',
-    expandedSections: {
-      options: true,
-      payment: false,
-      details: false,
-      completion: false,
-    },
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1548,13 +1250,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
   const confirmMeetup = async () => {
-    if (!trade || !selectedLocation || confirmingMeetup) return
+    if (!trade || !selectedLocation || !selectedTime || confirmingMeetup) return
 
     try {
       setConfirmingMeetup(true)
       await api.put(`/api/trades/${trade.id}`, {
         action: 'confirm_meetup',
         meetup_location: selectedLocation,
+        meetup_time: selectedTime,
       })
 
       // Update local state based on current user role
@@ -1600,16 +1303,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     upfront: { label: 'Prepayment (GCash/Maya)', icon: '📱', color: 'orange' },
     online: { label: 'Online Payment (Clovia)', icon: '💳', color: 'blue' },
     wallet: { label: 'Clovia Wallet', icon: '💼', color: 'purple' },
-  }
-
-  const toggleSection = (section: keyof typeof deliveryState.expandedSections) => {
-    setDeliveryState(prev => ({
-      ...prev,
-      expandedSections: {
-        ...prev.expandedSections,
-        [section]: !prev.expandedSections[section],
-      },
-    }))
   }
 
   const handleConfirmPayment = async () => {
@@ -2206,7 +1899,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       trade={trade}
                       isUserSeller={isUserSeller ?? false}
                       isUserBuyer={isUserBuyer ?? false}
-                      toggleSection={toggleSection}
                       handleConfirmPayment={handleConfirmPayment}
                       handleConfirmDelivery={handleConfirmDelivery}
                       saveDeliveryState={saveDeliveryState}
@@ -2425,6 +2117,65 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </VStack>
                       </Box>
 
+                      {/* Meetup Time Selection */}
+                      <Box>
+                        <Text fontWeight="semibold" mb={1} fontSize="md">
+                          Choose a Time
+                        </Text>
+                        <Text fontSize="sm" color="gray.600" mb={4}>
+                          Select a time that works for both of you.
+                        </Text>
+
+                        {/* Time Picker */}
+                        <VStack spacing={3} align="stretch">
+                          {/* Time Input */}
+                          <FormControl>
+                            <FormLabel fontSize="sm" fontWeight="medium" mb={2}>
+                              Time (24-hour format)
+                            </FormLabel>
+                            <InputGroup>
+                              <InputLeftElement pointerEvents="none">
+                                <Icon as={FiClock} color="gray.400" />
+                              </InputLeftElement>
+                              <Input
+                                type="time"
+                                value={selectedTime || ''}
+                                onChange={(e) => setSelectedTime(e.target.value)}
+                                placeholder="e.g., 14:30"
+                                bg="white"
+                                borderWidth="1px"
+                                borderColor={borderColor}
+                                _focus={{
+                                  borderColor: 'brand.500',
+                                  boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)',
+                                }}
+                              />
+                            </InputGroup>
+                          </FormControl>
+
+                          {/* Quick time suggestions */}
+                          <Box>
+                            <Text fontSize="xs" color="gray.600" mb={2}>
+                              Or choose a suggested time:
+                            </Text>
+                            <HStack spacing={2} flexWrap="wrap">
+                              {['09:00', '12:00', '14:00', '16:00', '18:00'].map(time => (
+                                <Button
+                                  key={time}
+                                  size="sm"
+                                  variant={selectedTime === time ? 'solid' : 'outline'}
+                                  colorScheme={selectedTime === time ? 'brand' : 'gray'}
+                                  onClick={() => setSelectedTime(time)}
+                                  fontWeight="medium"
+                                >
+                                  {time}
+                                </Button>
+                              ))}
+                            </HStack>
+                          </Box>
+                        </VStack>
+                      </Box>
+
                       <Divider />
 
                       {/* Confirmation Status */}
@@ -2432,6 +2183,31 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <Text fontWeight="semibold" mb={4} fontSize="md">
                           Confirmation Status
                         </Text>
+                        
+                        {/* Selected Details Preview */}
+                        {selectedLocation && selectedTime && (
+                          <Card variant="outline" mb={4} borderColor="brand.200" bg="brand.50">
+                            <CardBody>
+                              <VStack align="start" spacing={2}>
+                                <HStack spacing={2}>
+                                  <Icon as={FaMapMarkerAlt} color="brand.500" boxSize={4} />
+                                  <Text fontSize="sm" fontWeight="medium">
+                                    <Text as="span" color="gray.600">Location: </Text>
+                                    {selectedLocation}
+                                  </Text>
+                                </HStack>
+                                <HStack spacing={2}>
+                                  <Icon as={FiClock} color="brand.500" boxSize={4} />
+                                  <Text fontSize="sm" fontWeight="medium">
+                                    <Text as="span" color="gray.600">Time: </Text>
+                                    {selectedTime}
+                                  </Text>
+                                </HStack>
+                              </VStack>
+                            </CardBody>
+                          </Card>
+                        )}
+
                         <HStack spacing={6} justify="center" align="center">
                           <VStack spacing={2}>
                             <Avatar
@@ -2485,7 +2261,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                       {/* Confirm Button */}
                       {
-                        selectedLocation && (
+                        selectedLocation && selectedTime && (
                           <Button
                             colorScheme="green"
                             size="lg"
@@ -2504,7 +2280,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               ? 'You Confirmed ✓'
                               : isUserSeller && sellerMeetupConfirmed
                                 ? 'You Confirmed ✓'
-                                : 'Confirm Meetup Location'}
+                                : 'Confirm Meetup Location & Time'}
                           </Button>
                         )
                       }

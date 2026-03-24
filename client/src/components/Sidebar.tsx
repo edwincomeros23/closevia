@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useCallback, useEffect, useState } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -29,9 +29,11 @@ import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
 import { FaHome, FaPlus, FaStar, FaMotorcycle, FaCrown } from 'react-icons/fa'
-import { FiGrid, FiHeart, FiLogOut, FiUser, FiBell, FiSettings } from 'react-icons/fi'
+import { FiGrid, FiHeart, FiLogOut, FiBell, FiSettings, FiUser } from 'react-icons/fi'
 import { getImageUrl } from '../utils/imageUtils'
 import VerifiedAvatar from './VerifiedAvatar'
+import InstallAppPrompt from './InstallAppPrompt'
+import { api } from '../services/api'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -45,6 +47,33 @@ const Sidebar: React.FC = () => {
   const { isOpen, onOpen, onClose } = useMobileNav()
   const { notificationCount } = useRealtime()
   const { user, logout } = useAuth()
+  const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    const fetchRiderStatus = async () => {
+      if (!user) {
+        setRiderStatus(null)
+        return
+      }
+      try {
+        const res = await api.get('/api/deliveries/rider-status')
+        if (mounted && res.data?.success) {
+          setRiderStatus(res.data.data)
+        }
+      } catch {
+        if (mounted) {
+          setRiderStatus(null)
+        }
+      }
+    }
+
+    fetchRiderStatus()
+    return () => {
+      mounted = false
+    }
+  }, [user])
 
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleLogoClick = useCallback(() => {
@@ -56,10 +85,6 @@ const Sidebar: React.FC = () => {
     navigate('/company')
     onClose()
   }, [navigate, onClose])
-
-  const handleProfileClick = useCallback(() => {
-    onClose()
-  }, [onClose])
 
   const handleLogout = useCallback(async () => {
     onClose()
@@ -80,7 +105,6 @@ const Sidebar: React.FC = () => {
           { icon: FiGrid, label: 'Dashboard', path: '/dashboard' },
           { icon: FaPlus, label: 'Add Product', path: '/add-product' },
           { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-          { icon: FaCrown, label: 'Premium', path: '/premium' },
         )
       }
       items.push(
@@ -97,11 +121,26 @@ const Sidebar: React.FC = () => {
       if (user?.role === 'admin') {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
       } else {
-        items.push({ icon: FiHeart, label: 'Saved', path: '/saved-products' })
+        items.push(
+          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
+          {
+            icon: FiGrid,
+            label: user?.is_organization && (user as any)?.org_handle ? 'Organization Page' : 'Create Organization',
+            path: user?.is_organization && (user as any)?.org_handle ? `/org/${(user as any).org_handle}` : '/organizations/new'
+          }
+        )
       }
       items.push(
-        { icon: FaMotorcycle, label: 'Rider', path: '/rider' },
-        { icon: FaCrown, label: (user?.is_premium ? 'Premium' : 'Buy Premium'), path: '/premium' },
+        {
+          icon: FaMotorcycle,
+          label: riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider',
+          path: '/rider'
+        },
+        {
+          icon: FaCrown,
+          label: (user as any)?.is_premium ? 'Premium' : 'Apply as Premium',
+          path: '/premium'
+        },
         { icon: FiBell, label: 'Notifications', path: '/notifications' },
         { icon: FiSettings, label: 'Settings', path: '/settings' },
       )
@@ -111,7 +150,7 @@ const Sidebar: React.FC = () => {
       { icon: FaHome, label: 'Home', path: '/home' },
       { icon: FiUser, label: 'Login', path: '/login' },
     ]
-  }, [user])
+  }, [user, riderStatus])
 
   return (
     <>
@@ -165,19 +204,6 @@ const Sidebar: React.FC = () => {
                       <Box fontSize="xs" color="gray.500" noOfLines={1}>{user.email}</Box>
                     </Box>
                   </Box>
-                  <Button
-                    as={RouterLink}
-                    to={user.id ? `/users/${(user as any).slug || user.id}` : '#'}
-                    isDisabled={!user.id}
-                    size="sm"
-                    w="full"
-                    colorScheme="brand"
-                    variant="outline"
-                    onClick={handleProfileClick}
-                    title={!user.id ? 'User ID not available' : 'View Profile'}
-                  >
-                    View Profile
-                  </Button>
                 </Box>
               )}
 
@@ -245,6 +271,8 @@ const Sidebar: React.FC = () => {
                     </Button>
                   )
                 })}
+
+                <InstallAppPrompt variant="mobile-menu" onInstalled={onClose} />
               </VStack>
             </VStack>
           </DrawerBody>
@@ -352,25 +380,9 @@ const Sidebar: React.FC = () => {
             })}
           </VStack>
 
-          {/* Profile and Settings at the bottom - only when logged in */}
+          {/* Settings at the bottom - only when logged in */}
           {user && (
             <VStack spacing={3} mb={4}>
-              <Tooltip label="My Profile" placement="right" hasArrow>
-                <IconButton
-                  as={RouterLink}
-                  to={user.id ? `/users/${(user as any).slug || user.id}` : '#'}
-                  isDisabled={!user.id}
-                  aria-label="My Profile"
-                  icon={<FiUser />}
-                  variant="ghost"
-                  size="lg"
-                  color={location.pathname.startsWith('/users/') ? activeIconColor : iconColor}
-                  bg={location.pathname.startsWith('/users/') ? 'brand.50' : 'transparent'}
-                  _hover={{ bg: location.pathname.startsWith('/users/') ? 'brand.100' : 'gray.100' }}
-                  borderRadius="xl"
-                  transition="all 0.2s"
-                />
-              </Tooltip>
               <Tooltip label="Settings" placement="right" hasArrow>
                 <IconButton
                   as={RouterLink}

@@ -83,6 +83,29 @@ func generateSlug(title string) string {
 	return fmt.Sprintf("%s-%s", slug, shortUUID)
 }
 
+// parseWantedCategories handles JSON arrays, quoted JSON strings, and CSV fallbacks.
+func parseWantedCategories(raw string) models.StringArray {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return models.StringArray{}
+	}
+
+	var parsed []string
+	if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+		return models.StringArray(parsed)
+	}
+
+	parts := strings.Split(raw, ",")
+	fallback := make([]string, 0, len(parts))
+	for _, part := range parts {
+		clean := strings.TrimSpace(strings.Trim(part, `"`))
+		if clean != "" {
+			fallback = append(fallback, clean)
+		}
+	}
+	return models.StringArray(fallback)
+}
+
 // CreateProduct creates a new product
 func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -387,6 +410,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	var slugNull sql.NullString
 	var createdVideoURL sql.NullString
 	var wantsNull sql.NullString
+	var wantedCategoriesRaw sql.NullString
 	err = h.db.QueryRow(
 		"SELECT id, slug, title, description, price, image_urls, video_url, seller_id, premium, status, allow_buying, barter_only, location, `condition`, suggested_value, category, estimated_value_min, estimated_value_max, `value`, wants, wanted_categories, created_at, updated_at FROM products WHERE id = ?",
 		productID,
@@ -395,11 +419,14 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		&createdProduct.AllowBuying, &createdProduct.BarterOnly, &createdProduct.Location,
 		&createdProduct.Condition, &createdProduct.SuggestedValue, &createdProduct.Category,
 		&createdProduct.EstimatedValueMin, &createdProduct.EstimatedValueMax, &createdProduct.Value,
-		&wantsNull, &createdProduct.WantedCategories,
+		&wantsNull, &wantedCategoriesRaw,
 		&createdProduct.CreatedAt, &createdProduct.UpdatedAt)
 
 	if wantsNull.Valid {
 		createdProduct.Wants = wantsNull.String
+	}
+	if wantedCategoriesRaw.Valid {
+		createdProduct.WantedCategories = parseWantedCategories(wantedCategoriesRaw.String)
 	}
 
 	if slugNull.Valid {
@@ -480,6 +507,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Trigger smart notifications in background (new similar item + popularity alerts)
 	services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
+	go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID), userID)
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
@@ -683,17 +711,21 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		var boostedAtNull sql.NullTime
 		var wantsNull sql.NullString
+		var wantedCategoriesRaw sql.NullString
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&conditionNull, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&wantsNull, &product.WantedCategories,
+			&wantsNull, &wantedCategoriesRaw,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 
 		if wantsNull.Valid {
 			product.Wants = wantsNull.String
+		}
+		if wantedCategoriesRaw.Valid {
+			product.WantedCategories = parseWantedCategories(wantedCategoriesRaw.String)
 		}
 		if slugNull.Valid {
 			product.Slug = slugNull.String
@@ -1215,26 +1247,6 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 	})
 }
 
-// SuspendProductAdmin suspends a product by setting its status to suspended.
-func (h *ProductHandler) SuspendProductAdmin(c *fiber.Ctx) error {
-	id := c.Params("id")
-	_, err := h.db.Exec("UPDATE products SET status = 'suspended' WHERE id = ?", id)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to suspend product"})
-	}
-	return c.JSON(models.APIResponse{Success: true, Message: "Product suspended successfully"})
-}
-
-// UnsuspendProductAdmin unsuspends a product by setting its status to available.
-func (h *ProductHandler) UnsuspendProductAdmin(c *fiber.Ctx) error {
-	id := c.Params("id")
-	_, err := h.db.Exec("UPDATE products SET status = 'available' WHERE id = ?", id)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to unsuspend product"})
-	}
-	return c.JSON(models.APIResponse{Success: true, Message: "Product unsuspended successfully"})
-}
-
 // GetProduct gets a single product by ID or slug
 func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	idOrSlug := c.Params("id")
@@ -1245,49 +1257,53 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	var priceNull sql.NullFloat64
 	var imageURLsJSON sql.NullString
 	var videoURLNull sql.NullString
+	var sellerNameNull sql.NullString
+	var sellerProfilePictureNull sql.NullString
+	var priceReasoningNull sql.NullString
 	var err error
 
 	var wantsNull sql.NullString
+	var wantedCategoriesRaw sql.NullString
 	productID, parseErr := strconv.Atoi(idOrSlug)
 	if parseErr == nil {
 		// It's a numeric ID
-		err = h.db.QueryRow(
-			"SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, COALESCE(p.price, 0), COALESCE(p.image_urls, '[]'), COALESCE(p.video_url, '') as video_url, p.seller_id, " +
-			"p.premium, p.status, p.allow_buying, p.barter_only, COALESCE(p.location, '') as location, COALESCE(p.`condition`, '') as `condition`, " +
-			"COALESCE(p.suggested_value, 0) as suggested_value, COALESCE(p.category, 'General') as category, COALESCE(p.estimated_value_min, 0), COALESCE(p.estimated_value_max, 0), COALESCE(p.`value`, 0), COALESCE(p.wants, '') as wants, COALESCE(p.wanted_categories, '[]') as wanted_categories, " +
-			"COALESCE(p.price_reasoning, '') as price_reasoning, p.created_at, p.updated_at, " +
-			"COALESCE(u.name, 'User') as seller_name, COALESCE(u.profile_picture, '') as seller_profile_picture, " +
-			"(SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count " +
-			"FROM products p " +
-			"LEFT JOIN users u ON p.seller_id = u.id " +
-			"WHERE p.id = ?",
-			productID).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+		err = h.db.QueryRow(`
+			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
+			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.`+"`value`"+`, p.wants, p.wanted_categories, 
+			       p.price_reasoning, p.created_at, p.updated_at,
+			       u.name as seller_name, u.profile_picture as seller_profile_picture,
+			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
+			FROM products p
+			LEFT JOIN users u ON p.seller_id = u.id
+			WHERE p.id = ?
+		`, productID).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSON, &videoURLNull, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&wantsNull, &product.WantedCategories, &product.PriceReasoning,
+			&wantsNull, &wantedCategoriesRaw, &priceReasoningNull,
 			&product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
+			&sellerNameNull, &sellerProfilePictureNull, &product.WantCount)
 	} else {
-		err = h.db.QueryRow(
-			"SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, COALESCE(p.price, 0), COALESCE(p.image_urls, '[]'), COALESCE(p.video_url, '') as video_url, p.seller_id, " +
-			"p.premium, p.status, p.allow_buying, p.barter_only, COALESCE(p.location, '') as location, COALESCE(p.`condition`, '') as `condition`, " +
-			"COALESCE(p.suggested_value, 0) as suggested_value, COALESCE(p.category, 'General') as category, COALESCE(p.estimated_value_min, 0), COALESCE(p.estimated_value_max, 0), COALESCE(p.`value`, 0), COALESCE(p.wants, '') as wants, COALESCE(p.wanted_categories, '[]') as wanted_categories, " +
-			"COALESCE(p.price_reasoning, '') as price_reasoning, p.created_at, p.updated_at, " +
-			"COALESCE(u.name, 'User') as seller_name, COALESCE(u.profile_picture, '') as seller_profile_picture, " +
-			"(SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count " +
-			"FROM products p " +
-			"LEFT JOIN users u ON p.seller_id = u.id " +
-			"WHERE p.slug = ?",
-			idOrSlug).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
+		err = h.db.QueryRow(`
+			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
+			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
+			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.`+"`value`"+`, p.wants, p.wanted_categories, 
+			       p.price_reasoning, p.created_at, p.updated_at,
+			       u.name as seller_name, u.profile_picture as seller_profile_picture,
+			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
+			FROM products p
+			LEFT JOIN users u ON p.seller_id = u.id
+			WHERE p.slug = ?
+		`, idOrSlug).Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSON, &videoURLNull, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&wantsNull, &product.WantedCategories, &product.PriceReasoning,
+			&wantsNull, &wantedCategoriesRaw, &priceReasoningNull,
 			&product.CreatedAt, &product.UpdatedAt,
-			&product.SellerName, &product.SellerProfilePicture, &product.WantCount)
+			&sellerNameNull, &sellerProfilePictureNull, &product.WantCount)
 	}
 
 	if err == nil {
@@ -1326,6 +1342,12 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	if wantsNull.Valid {
 		product.Wants = wantsNull.String
 	}
+	if wantedCategoriesRaw.Valid {
+		product.WantedCategories = parseWantedCategories(wantedCategoriesRaw.String)
+	}
+	if priceReasoningNull.Valid {
+		product.PriceReasoning = priceReasoningNull.String
+	}
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -1334,10 +1356,10 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 				Error:   "Product not found",
 			})
 		}
-		log.Printf("❌ GetProduct error for id/slug=%s: %v", idOrSlug, err)
+		log.Printf("GetProduct failed for '%s': %v", idOrSlug, err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Failed to get product: " + err.Error(),
+			Error:   "Failed to get product",
 		})
 	}
 
@@ -1350,6 +1372,12 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 	}
 	if videoURLNull.Valid {
 		product.VideoURL = videoURLNull.String
+	}
+	if sellerNameNull.Valid {
+		product.SellerName = sellerNameNull.String
+	}
+	if sellerProfilePictureNull.Valid {
+		product.SellerProfilePicture = sellerProfilePictureNull.String
 	}
 
 	// Parse image URLs JSON if present
@@ -1639,17 +1667,11 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 	}
 	offset := (page - 1) * limit
 
-	// Optional filters for admin
+	// Optional status filter for admin (e.g., ?status=available)
 	status := c.Query("status", "")
-	search := c.Query("search", "")
 
 	whereClause := "WHERE 1=1"
 	var args []interface{}
-
-	if search != "" {
-		whereClause += " AND p.title LIKE ?"
-		args = append(args, "%"+search+"%")
-	}
 
 	if status != "" {
 		whereClause += " AND p.status = ?"
@@ -1667,8 +1689,8 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 	}
 
 	query := `
-		SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, p.price, COALESCE(p.image_urls, '[]'), p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, COALESCE(u.name, 'User') as seller_name, COALESCE(u.profile_picture, '') as seller_profile_picture
+		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.created_at, p.updated_at, u.name as seller_name, u.profile_picture as seller_profile_picture
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
 		` + whereClause + `
@@ -2593,17 +2615,25 @@ func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
 		var latNull, lonNull, sLatNull, sLonNull sql.NullFloat64
 		var boostedAtNull sql.NullTime
 		var offerCount int
+		var wantsNull sql.NullString
+		var wantedCategoriesRaw sql.NullString
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Location,
 			&conditionNull, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
-			&product.Wants, &product.WantedCategories,
+			&wantsNull, &wantedCategoriesRaw,
 			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 		if err != nil {
 			log.Printf("[SmartSearch] Row scan error: %v", err)
 			continue
+		}
+		if wantsNull.Valid {
+			product.Wants = wantsNull.String
+		}
+		if wantedCategoriesRaw.Valid {
+			product.WantedCategories = parseWantedCategories(wantedCategoriesRaw.String)
 		}
 		if slugNull.Valid {
 			product.Slug = slugNull.String

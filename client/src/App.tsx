@@ -24,6 +24,8 @@ import Trades from './pages/Trades'
 import Offers from './pages/Offers'
 import Profile from './pages/Profile'
 import UserProfile from './pages/UserProfile'
+import CreateOrganization from './pages/CreateOrganization'
+import OrganizationProfile from './pages/OrganizationProfile'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
@@ -40,7 +42,6 @@ import { MobileNavProvider } from './contexts/MobileNavContext'
 import { NotificationProvider } from './contexts/NotificationContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import ToastNotification from './components/ToastNotification'
-import InstallAppPrompt from './components/InstallAppPrompt'
 
 // Theme applier component - loads and applies saved theme preference
 const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -67,6 +68,7 @@ const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 }
 // Lazy load delivery option components with error handling
 const RiderQueue = lazy(() => import('./delivery_option/riderqueue').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Queue</Text></Box> })))
+const RiderHome = lazy(() => import('./delivery_option/RiderHome').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Home</Text></Box> })))
 const BatchPreview = lazy(() => import('./delivery_option/BatchPreview').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Preview</Text></Box> })))
 const BatchStatus = lazy(() => import('./delivery_option/BatchStatus').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Status</Text></Box> })))
 const RemittanceLedger = lazy(() => import('./delivery_option/RemittanceLedger').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Remittance Ledger</Text></Box> })))
@@ -161,6 +163,11 @@ const AppContent: React.FC = () => {
         <Route path="/rider-queue" element={
           <PageTransition>
             <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderQueue /></Suspense>
+          </PageTransition>
+        } />
+        <Route path="/rider-home" element={
+          <PageTransition>
+            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderHome /></Suspense>
           </PageTransition>
         } />
         <Route path="/batch-preview/:batchId" element={
@@ -270,6 +277,16 @@ const AppContent: React.FC = () => {
                     <UserProfile />
                   </PageTransition>
                 } />
+                <Route path="/organizations/new" element={
+                  <PageTransition>
+                    <ProtectedRoute><CreateOrganization /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/org/:handle" element={
+                  <PageTransition>
+                    <OrganizationProfile />
+                  </PageTransition>
+                } />
                 <Route path="/settings" element={
                   <PageTransition>
                     <ProtectedRoute><Settings /></ProtectedRoute>
@@ -330,7 +347,6 @@ function App() {
                     </ErrorBoundary>
                     <GlobalPopup />
                     <ToastNotification />
-                    <InstallAppPrompt />
                   </Router>
                 </RealtimeProvider>
               </NotificationProvider>

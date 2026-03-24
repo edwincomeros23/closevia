@@ -3,13 +3,23 @@ export interface User {
   slug?: string // Unique URL identifier
   name: string
   email: string
+  phone?: string
+  phone_verified?: boolean
   role: string
   verified: boolean
   profile_picture?: string
   is_organization?: boolean
   org_verified?: boolean
   org_name?: string
+  org_handle?: string
   org_logo_url?: string
+  org_cover_url?: string
+  org_category?: string
+  org_website?: string
+  org_location?: string
+  org_contact_email?: string
+  background_image?: string
+  background_position?: string
   department?: string
   bio?: string
   badges?: number[]
@@ -24,6 +34,7 @@ export interface User {
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
   school_name?: string
   school_email?: string
+  password_changed_at?: string
   last_login?: string
   activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
@@ -372,6 +383,18 @@ export interface Delivery {
   rider_latitude?: number
   rider_longitude?: number
   items?: DeliveryItem[]
+  // Batch window fields
+  batch_id?: string
+  batch_countdown?: number
+  batch_size?: number
+  is_batching?: boolean
+  batch_window_expires_at?: string
+  // Card display fields
+  distance_km?: number
+  estimated_minutes?: number
+  sender_fee?: number
+  receiver_fee?: number
+  rider_cut?: number
 }
 
 export interface DeliveryRequest {
