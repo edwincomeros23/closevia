@@ -1152,6 +1152,7 @@ const Dashboard: React.FC = () => {
 
   const handleBoostProductClick = async (product: Product) => {
     try {
+      setBoosting(true)
       showPopup({
         type: 'loading',
         title: 'Boosting Listing...',
@@ -1160,7 +1161,7 @@ const Dashboard: React.FC = () => {
         confirmColorScheme: 'blue'
       })
 
-      const response = await api.post(`/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/${product.id}/boost`)
 
       if (response.data?.success) {
         showPopup({

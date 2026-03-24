@@ -1295,9 +1295,35 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 	offset := (page - 1) * limit
 
+	search := c.Query("search", "")
+	role := c.Query("role", "")
+	verified := c.Query("verified", "")
+
+	baseQuery := " FROM users WHERE 1=1"
+	var args []interface{}
+
+	if search != "" {
+		baseQuery += " AND (name LIKE ? OR email LIKE ?)"
+		likeSearch := "%" + search + "%"
+		args = append(args, likeSearch, likeSearch)
+	}
+
+	if role != "" {
+		baseQuery += " AND role = ?"
+		args = append(args, role)
+	}
+
+	if verified != "" {
+		if verified == "true" {
+			baseQuery += " AND verified = true"
+		} else if verified == "false" {
+			baseQuery += " AND verified = false"
+		}
+	}
+
 	// Get total count
 	var total int
-	err := h.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&total)
+	err := h.db.QueryRow("SELECT COUNT(*)"+baseQuery, args...).Scan(&total)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
@@ -1306,10 +1332,10 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	}
 
 	// Get users
-	rows, err := h.db.Query(
-		"SELECT id, name, email, role, verified, profile_picture, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
-		limit, offset,
-	)
+	query := "SELECT id, name, email, role, verified, profile_picture, created_at" + baseQuery + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,

@@ -114,19 +114,30 @@ const ProductCard: React.FC<ProductCardProps> = ({
         />
 
         {/* Premium / type badge */}
-        {product.premium && (
-          <Badge
-            position="absolute"
-            top={2}
-            right={2}
-            colorScheme="yellow"
-            variant="solid"
-            borderRadius="full"
-            px={2}
-          >
-            <StarIcon mr={0} />
-          </Badge>
-        )}
+        <Flex position="absolute" top={2} right={2} gap={1} direction="column" align="flex-end">
+          {product.premium && (
+            <Badge
+              colorScheme="yellow"
+              variant="solid"
+              borderRadius="full"
+              px={2}
+            >
+              <StarIcon mr={0} />
+            </Badge>
+          )}
+          {product.boosted_at && (
+            <Badge
+              colorScheme="blue"
+              variant="solid"
+              borderRadius="full"
+              px={2}
+              fontSize="xs"
+              boxShadow="md"
+            >
+              ✨ Boosted
+            </Badge>
+          )}
+        </Flex>
 
         {/* Trade Match score badge */}
         {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (

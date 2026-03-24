@@ -198,7 +198,13 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 	}
 
 	// Revenue by Source
-	revenueBySource := make(map[string]float64)
+	revenueBySource := map[string]float64{
+		"trade_fee":             0,
+		"premium_subscription": 0,
+		"riders_remittance":     0,
+		"advertisers_revenue":   0,
+		"google_ads":            0,
+	}
 	sourceRows, err := h.db.Query(`SELECT source_type, SUM(amount) FROM earnings GROUP BY source_type`)
 	if err == nil {
 		defer sourceRows.Close()

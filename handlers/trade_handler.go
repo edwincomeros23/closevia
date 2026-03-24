@@ -748,6 +748,23 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 		}
 
+		// Fetch existing location and confirmation statuses to validate they match if one party already selected
+		var existingLoc sql.NullString
+		var bConf, sConf bool
+		err = h.db.QueryRow("SELECT meetup_location, buyer_meetup_confirmed, seller_meetup_confirmed FROM trades WHERE id = ?", tradeID).Scan(&existingLoc, &bConf, &sConf)
+		
+		if err == nil && existingLoc.Valid && existingLoc.String != "" {
+			// If the other party has already confirmed a location, this party MUST match that location
+			if (updateColumn == "buyer_meetup_confirmed" && sConf) || (updateColumn == "seller_meetup_confirmed" && bConf) {
+				if existingLoc.String != payload.MeetupLocation {
+					return c.Status(400).JSON(models.APIResponse{
+						Success: false, 
+						Error: fmt.Sprintf("The other party selected '%s'. Please select the same location to proceed.", existingLoc.String),
+					})
+				}
+			}
+		}
+
 		// Update the trade with meetup location and confirmation
 		_, err = h.db.Exec("UPDATE trades SET meetup_location=?, "+updateColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.MeetupLocation, tradeID)
 		if err != nil {

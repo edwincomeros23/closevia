@@ -121,7 +121,7 @@ import { User, Product, PaginatedResponse, APIResponse } from '../types';
 // â"€â"€â"€ PDF / DOCX imports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, TableLayoutType, TextRun, HeadingLevel, AlignmentType, WidthType, ShadingType } from 'docx';
+import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -288,113 +288,32 @@ function exportToPDF(stats: AdminStats) {
   doc.save(`clovia-report-${now.toISOString().slice(0, 10)}.pdf`);
 }
 
-async function exportToDOCX(stats: AdminStats) {
+async function exportToExcel(stats: AdminStats) {
   const now = new Date();
-  const rows = buildReportRows(stats);
+  
+  // Create workbook
+  const wb = XLSX.utils.book_new();
 
-  const makeCell = (text: string, bold = false, shade?: string) =>
-    new TableCell({
-      shading: shade
-        ? { type: ShadingType.CLEAR, color: 'auto', fill: shade }
-        : { type: ShadingType.CLEAR, color: 'auto', fill: 'FFFFFF' },
-      width: { size: 50, type: WidthType.PERCENTAGE },
-      margins: { top: 80, bottom: 80, left: 140, right: 140 },
-      children: [
-        new Paragraph({
-          children: [new TextRun({ text, bold, size: 20 })],
-        }),
-      ],
-    });
+  // Core Metrics sheet
+  const coreData = buildReportRows(stats).map(row => ({
+    Metric: row[0],
+    Value: row[1]
+  }));
+  const wsCore = XLSX.utils.json_to_sheet(coreData);
+  XLSX.utils.book_append_sheet(wb, wsCore, 'Core Metrics');
 
-  const tableRows = [
-    new TableRow({
-      tableHeader: true,
-      children: [
-        makeCell('Metric', true, '3182CE'),
-        makeCell('Value', true, '3182CE'),
-      ],
-    }),
-    ...rows.map((row, i) =>
-      new TableRow({
-        children: [
-          makeCell(row[0], true, i % 2 === 0 ? 'EBF4FF' : 'FFFFFF'),
-          makeCell(row[1], false, i % 2 === 0 ? 'EBF4FF' : 'FFFFFF'),
-        ],
-      })
-    ),
-  ];
+  // Revenue Breakdown sheet
+  if (stats.revenue_breakdown && stats.revenue_breakdown.length > 0) {
+    const revenueData = stats.revenue_breakdown.map(r => ({
+      Period: r.period,
+      'Revenue (PHP)': r.amount
+    }));
+    const wsRev = XLSX.utils.json_to_sheet(revenueData);
+    XLSX.utils.book_append_sheet(wb, wsRev, 'Revenue Breakdown');
+  }
 
-  const revenueRows =
-    stats.revenue_breakdown && stats.revenue_breakdown.length > 0
-      ? [
-        new TableRow({
-          tableHeader: true,
-          children: [makeCell('Period', true, '38B2AC'), makeCell('Revenue (PHP)', true, '38B2AC')],
-        }),
-        ...stats.revenue_breakdown.map((r, i) =>
-          new TableRow({
-            children: [
-              makeCell(r.period, true, i % 2 === 0 ? 'F0FFFE' : 'FFFFFF'),
-              makeCell(formatCurrency(r.amount), false, i % 2 === 0 ? 'F0FFFE' : 'FFFFFF'),
-            ],
-          })
-        ),
-      ]
-      : [];
-
-  const doc = new Document({
-    sections: [
-      {
-        properties: {},
-        children: [
-          new Paragraph({
-            text: 'Clovia Admin â€" Site Usage Report',
-            heading: HeadingLevel.HEADING_1,
-            alignment: AlignmentType.CENTER,
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: `Generated: ${now.toLocaleString('en-PH')}`, size: 18, color: '555555' }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: `Data as of: ${stats.last_updated ?? now.toLocaleString('en-PH')}`, size: 18, color: '555555' }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-          new Paragraph({ text: '' }),
-          new Paragraph({
-            text: 'Core Metrics',
-            heading: HeadingLevel.HEADING_2,
-          }),
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            layout: TableLayoutType.FIXED,
-            rows: tableRows,
-          }),
-          ...(revenueRows.length > 0
-            ? [
-              new Paragraph({ text: '' }),
-              new Paragraph({ text: 'Revenue Breakdown (Last 4 Weeks)', heading: HeadingLevel.HEADING_2 }),
-              new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, layout: TableLayoutType.FIXED, rows: revenueRows }),
-            ]
-            : []),
-          new Paragraph({ text: '' }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: 'Clovia Admin Report  â€¢  Confidential', size: 16, color: '999999', italics: true }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-        ],
-      },
-    ],
-  });
-
-  const blob = await Packer.toBlob(doc);
-  saveAs(blob, `clovia-report-${now.toISOString().slice(0, 10)}.docx`);
+  // Generate Excel file
+  XLSX.writeFile(wb, `clovia-report-${now.toISOString().slice(0, 10)}.xlsx`);
 }
 
 // â"€â"€â"€ Calendar Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -574,11 +493,16 @@ const AdminDashboard: React.FC = () => {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersPage, setUsersPage] = useState(1);
   const [usersTotalPages, setUsersTotalPages] = useState(1);
+  const [usersSearch, setUsersSearch] = useState('');
+  const [usersRoleFilter, setUsersRoleFilter] = useState('');
+  const [usersIsVerifiedFilter, setUsersIsVerifiedFilter] = useState('');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsPage, setProductsPage] = useState(1);
   const [productsTotalPages, setProductsTotalPages] = useState(1);
+  const [productsSearch, setProductsSearch] = useState('');
+  const [productsStatusFilter, setProductsStatusFilter] = useState('');
 
   // Reports state
   const [reports, setReports] = useState<any[]>([]);
@@ -788,14 +712,14 @@ const AdminDashboard: React.FC = () => {
     }
   }, [stats, toast]);
 
-  const handleExportDOCX = useCallback(async () => {
+  const handleExportExcel = useCallback(async () => {
     if (!stats) return;
     setExportLoading(true);
     try {
-      await exportToDOCX(stats);
-      toast({ id: 'docx-exported-successfully', title: 'DOCX exported successfully', status: 'success', duration: 3000, isClosable: true });
+      await exportToExcel(stats);
+      toast({ id: 'excel-exported-successfully', title: 'Excel exported successfully', status: 'success', duration: 3000, isClosable: true });
     } catch (e) {
-      toast({ id: 'docx-export-failed', title: 'DOCX export failed', status: 'error', duration: 3000, isClosable: true });
+      toast({ id: 'excel-export-failed', title: 'Excel export failed', status: 'error', duration: 3000, isClosable: true });
     } finally {
       setExportLoading(false);
     }
@@ -855,10 +779,15 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ Fetch users for admin list â"€â"€
   const fetchAdminUsers = useCallback(
-    async (page = 1) => {
+    async (page = 1, search = usersSearch, role = usersRoleFilter, verified = usersIsVerifiedFilter) => {
       try {
         setUsersLoading(true);
-        const response = await api.get<APIResponse<PaginatedResponse<User>>>(`/api/admin/users?page=${page}&limit=10`);
+        const params = new URLSearchParams({ page: String(page), limit: '10' });
+        if (search) params.append('search', search);
+        if (role) params.append('role', role);
+        if (verified) params.append('verified', verified);
+
+        const response = await api.get<APIResponse<PaginatedResponse<User>>>(`/api/admin/users?${params.toString()}`);
         if (response.data.success && response.data.data) {
           const data = response.data.data as PaginatedResponse<User>;
           setUsers(data.data || []);
@@ -881,15 +810,19 @@ const AdminDashboard: React.FC = () => {
         setUsersLoading(false);
       }
     },
-    [toast],
+    [toast, usersSearch, usersRoleFilter, usersIsVerifiedFilter],
   );
 
   // â"€â"€ Fetch products for admin list â"€â"€
   const fetchAdminProducts = useCallback(
-    async (page = 1) => {
+    async (page = 1, search = productsSearch, status = productsStatusFilter) => {
       try {
         setProductsLoading(true);
-        const response = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?page=${page}&limit=10`);
+        const params = new URLSearchParams({ page: String(page), limit: '10' });
+        if (search) params.append('search', search);
+        if (status) params.append('status', status);
+
+        const response = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?${params.toString()}`);
         if (response.data.success && response.data.data) {
           const data = response.data.data as PaginatedResponse<Product>;
           setProducts(data.data || []);
@@ -912,7 +845,7 @@ const AdminDashboard: React.FC = () => {
         setProductsLoading(false);
       }
     },
-    [toast],
+    [toast, productsSearch, productsStatusFilter],
   );
 
   // â"€â"€ Suspend handler â"€â"€
@@ -2150,9 +2083,22 @@ const AdminDashboard: React.FC = () => {
     <VStack spacing={8} align="stretch">
       {/* Users */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
+        <CardHeader pb={0}>
           <Heading size="sm" color={textColor}>Users</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
+          <HStack mt={4} mb={2} spacing={3} wrap="wrap">
+            <Input size="sm" placeholder="Search users by name, email..." value={usersSearch} onChange={(e) => setUsersSearch(e.target.value)} maxW="300px" />
+            <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => setUsersRoleFilter(e.target.value)}>
+              <option value="admin">Admin</option>
+              <option value="user">User</option>
+              <option value="suspended">Suspended</option>
+            </Select>
+            <Select size="sm" w="150px" placeholder="All Verifications" value={usersIsVerifiedFilter} onChange={(e) => setUsersIsVerifiedFilter(e.target.value)}>
+              <option value="true">Verified Only</option>
+              <option value="false">Unverified Only</option>
+            </Select>
+            <Button size="sm" onClick={() => fetchAdminUsers(1)}>Search</Button>
+          </HStack>
         </CardHeader>
         <CardBody px={0} pb={2}>
           {usersLoading ? <Center py={6}><Spinner color="brand.500" /></Center> : users.length === 0 ? <Text fontSize="sm" color={mutedTextColor} px={4}>No users found.</Text> : (
@@ -2196,9 +2142,19 @@ const AdminDashboard: React.FC = () => {
 
       {/* Items */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
+        <CardHeader pb={0}>
           <Heading size="sm" color={textColor}>Items</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
+          <HStack mt={4} mb={2} spacing={3} wrap="wrap">
+            <Input size="sm" placeholder="Search items by title..." value={productsSearch} onChange={(e) => setProductsSearch(e.target.value)} maxW="300px" />
+            <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => setProductsStatusFilter(e.target.value)}>
+              <option value="available">Available</option>
+              <option value="reserved">Reserved</option>
+              <option value="traded">Traded</option>
+              <option value="suspended">Suspended</option>
+            </Select>
+            <Button size="sm" onClick={() => fetchAdminProducts(1)}>Search</Button>
+          </HStack>
         </CardHeader>
         <CardBody px={0} pb={2}>
           {productsLoading ? <Center py={6}><Spinner color="brand.500" /></Center> : products.length === 0 ? <Text fontSize="sm" color={mutedTextColor} px={4}>No items found.</Text> : (
@@ -2210,7 +2166,7 @@ const AdminDashboard: React.FC = () => {
                     <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Trader</Th>
                     <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
                     <Th isNumeric color={mutedTextColor} w="88px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
-                    <Th textAlign="right" color={mutedTextColor} w="44px" px={1}></Th>
+                    <Th textAlign="right" color={mutedTextColor} w="80px" px={1}></Th>
                   </Tr></Thead>
                   <Tbody>
                     {products.map(product => (
@@ -2219,7 +2175,16 @@ const AdminDashboard: React.FC = () => {
                         <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
                         <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : 'gray'}>{product.status}</Tag></Td>
                         <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : 'â€"'}</Text></Td>
-                        <Td textAlign="right"><Tooltip label="Delete item" hasArrow><IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} /></Tooltip></Td>
+                        <Td textAlign="right">
+                          <HStack spacing={1} justify="flex-end">
+                            <Tooltip label="View Details" hasArrow>
+                              <IconButton as="a" href={`/product/${product.id}`} target="_blank" aria-label="View Details" size="sm" colorScheme="blue" variant="ghost" icon={<FiEye />} />
+                            </Tooltip>
+                            <Tooltip label="Delete item" hasArrow>
+                              <IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} />
+                            </Tooltip>
+                          </HStack>
+                        </Td>
                       </Tr>
                     ))}
                   </Tbody>
@@ -2395,7 +2360,7 @@ const AdminDashboard: React.FC = () => {
                   <MenuButton as={Button} leftIcon={<FiPrinter />} rightIcon={<FiChevronDown />} size="sm" colorScheme="brand" isLoading={exportLoading} loadingText="Exporting…">Export</MenuButton>
                   <MenuList shadow="lg" borderRadius="lg">
                     <MenuItem icon={<FiFileText />} onClick={handleExportPDF}>Export as PDF</MenuItem>
-                    <MenuItem icon={<FiFileText />} onClick={handleExportDOCX}>Export as DOCX</MenuItem>
+                    <MenuItem icon={<FiFileText />} onClick={handleExportExcel}>Export as Excel</MenuItem>
                   </MenuList>
                 </Menu>
               </HStack>

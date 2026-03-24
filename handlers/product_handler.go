@@ -1619,11 +1619,17 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 	}
 	offset := (page - 1) * limit
 
-	// Optional status filter for admin (e.g., ?status=available)
+	// Optional filters for admin
 	status := c.Query("status", "")
+	search := c.Query("search", "")
 
 	whereClause := "WHERE 1=1"
 	var args []interface{}
+
+	if search != "" {
+		whereClause += " AND p.title LIKE ?"
+		args = append(args, "%"+search+"%")
+	}
 
 	if status != "" {
 		whereClause += " AND p.status = ?"
