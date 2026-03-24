@@ -1,4 +1,5 @@
 // PostProductForTrade allows a member to post a product for trade in the organization
+package handlers
 func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
