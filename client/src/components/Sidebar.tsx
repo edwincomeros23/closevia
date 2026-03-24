@@ -125,12 +125,13 @@ const Sidebar: React.FC = () => {
           { icon: FiHeart, label: 'Saved', path: '/saved-products' },
           {
             icon: FiGrid,
-            label: user?.is_organization && (user as any)?.org_handle ? 'Organization Page' : 'Create Organization',
-            path: user?.is_organization && (user as any)?.org_handle ? `/org/${(user as any).org_handle}` : '/organizations/new'
+            label: 'Organizations',
+            path: '/organizations'
           }
         )
       }
       items.push(
+        { icon: FiGrid, label: 'Organizations', path: '/organizations' },
         {
           icon: FaMotorcycle,
           label: riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider',

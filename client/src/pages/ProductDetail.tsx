@@ -37,6 +37,7 @@ import {
   Select,
   Textarea,
   Skeleton,
+  useColorModeValue,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -53,6 +54,7 @@ import {
   FiTrendingUp,
   FiTrendingDown,
   FiFlag,
+  FiAlertTriangle,
   FiStar,
 } from 'react-icons/fi'
 import { FaHandshake } from 'react-icons/fa'
@@ -993,57 +995,141 @@ const ProductDetail: React.FC = () => {
   const isUnavailable = product.status === 'traded' || product.status === 'sold' || product.status === 'locked'
   const canTradeOrPurchase = !isOwner && product.status === 'available'
 
-  const totalVotes = votes.under + votes.over
-  let priceFeedbackLabel = 'No community price feedback yet'
-  let priceFeedbackColor: string = 'gray.500'
-
-  if (totalVotes > 0) {
-    if (votes.under > votes.over) {
-      priceFeedbackLabel = 'Community thinks this is underpriced'
-      priceFeedbackColor = 'green.500'
-    } else if (votes.over > votes.under) {
-      priceFeedbackLabel = 'Community thinks this is overpriced'
-      priceFeedbackColor = 'orange.500'
-    } else {
-      priceFeedbackLabel = 'Community thinks this price is fair'
-      priceFeedbackColor = 'blue.500'
-    }
-  }
-
   const formatPrice = (value: unknown): string => {
     const num = Number(value)
     if (!Number.isFinite(num)) return ''
     return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   }
 
+  const listedPrice = Number(product.price)
+  const hasListedPrice = Number.isFinite(listedPrice) && listedPrice > 0
+  const fairMin = Number(product.estimated_value_min)
+  const fairMax = Number(product.estimated_value_max)
+  const hasFairRange = Number.isFinite(fairMin) && Number.isFinite(fairMax) && fairMin > 0 && fairMax > fairMin
+
+  const belowEstimateThreshold = 0.85
+  const isSignificantlyBelowEstimate = hasListedPrice && hasFairRange && listedPrice < fairMin * belowEstimateThreshold
+  const isOverpricedEstimate = hasListedPrice && hasFairRange && listedPrice > fairMax
+  const isPricedRightEstimate = hasListedPrice && hasFairRange && listedPrice >= fairMin && listedPrice <= fairMax
+
+  let scaleMin = 0
+  let scaleMax = 100
+  let fairStart = 0
+  let fairWidth = 0
+  let listedPosition = 0
+
+  if (hasFairRange) {
+    const spread = Math.max(fairMax - fairMin, fairMax * 0.18)
+    scaleMin = Math.max(0, fairMin - spread)
+    scaleMax = fairMax + spread
+    const denominator = Math.max(scaleMax - scaleMin, 1)
+    fairStart = ((fairMin - scaleMin) / denominator) * 100
+    fairWidth = ((fairMax - fairMin) / denominator) * 100
+    listedPosition = hasListedPrice ? ((listedPrice - scaleMin) / denominator) * 100 : fairStart + fairWidth / 2
+    listedPosition = Math.min(100, Math.max(0, listedPosition))
+  }
+
+  let estimateGapNote = 'AI estimate is not available for this listing yet.'
+  if (hasListedPrice && hasFairRange) {
+    if (listedPrice < fairMin) {
+      estimateGapNote = `Listed at ₱${formatPrice(listedPrice)} - significantly below the estimated fair range. Verify item condition.`
+    } else if (listedPrice > fairMax) {
+      estimateGapNote = `Listed at ₱${formatPrice(listedPrice)} - above the estimated fair range. Compare against similar listings.`
+    } else {
+      estimateGapNote = `Listed at ₱${formatPrice(listedPrice)} - within the estimated fair range.`
+    }
+  }
+
+  const detailBg = useColorModeValue('white', 'gray.900')
+  const detailText = useColorModeValue('gray.800', 'gray.100')
+  const detailMuted = useColorModeValue('gray.600', 'gray.400')
+  const detailBorder = useColorModeValue('gray.200', 'gray.700')
+  const detailSurface = useColorModeValue('gray.50', 'gray.800')
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%" pb={{ base: 20, lg: 6 }}>
       <Container maxW="container.xl" py={8}>
         <VStack spacing={8} align="stretch">
-          <Box bg="white" rounded="lg" shadow="sm" overflow="hidden">
-            {/* Product Header */}
-            <Box textAlign="center">
-            </Box>
-
-            {/* Product Content */}
-
+          <Box bg="white" rounded="lg" overflow="hidden">
             <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6}>
               {/* Product Media Gallery */}
               <VStack spacing={3} align="stretch" p={{ base: 2, md: 4 }}>
-                <MediaGallery
-                  imageUrls={product.image_urls}
-                  videoUrl={product.video_url}
-                  productTitle={product.title}
-                  productStatus={product.status}
-                  isPremium={product.premium}
-                  wishlistCount={wishlistCount}
-                  condition={product.condition}
-                  category={product.category}
-                  listedDate={new Date(product.created_at).toLocaleDateString()}
-                  isOwner={user?.id === product.seller_id}
-                  onSetCover={handleSetCover}
-                  isSettingCover={isSettingCover}
-                />
+                <Box position="relative">
+                  <MediaGallery
+                    imageUrls={product.image_urls}
+                    videoUrl={product.video_url}
+                    productTitle={product.title}
+                    productStatus={product.status}
+                    isPremium={product.premium}
+                    wishlistCount={wishlistCount}
+                    condition={product.condition}
+                    category={product.category}
+                    listedDate={new Date(product.created_at).toLocaleDateString()}
+                    isOwner={user?.id === product.seller_id}
+                    onSetCover={handleSetCover}
+                    isSettingCover={isSettingCover}
+                  />
+
+                  {!isOwner && (
+                    <Box
+                      position="absolute"
+                      top={{ base: 'auto', md: 2 }}
+                      bottom={{ base: 2, md: 'auto' }}
+                      right={{ base: 1.5, md: 2 }}
+                      zIndex={2}
+                      bg="blackAlpha.600"
+                      color="white"
+                      border="1px solid"
+                      borderColor="whiteAlpha.300"
+                      borderRadius={{ base: '8px', md: '10px' }}
+                      px={{ base: 1.5, md: 2 }}
+                      py={{ base: 1, md: 1.5 }}
+                      boxShadow="0 4px 14px rgba(0, 0, 0, 0.35)"
+                      backdropFilter="blur(6px)"
+                      maxW={{ base: '170px', md: 'none' }}
+                    >
+                      <VStack spacing={1} align="end">
+                        <Text fontSize="2xs" fontWeight="700" color="white" lineHeight="1" textAlign="right">
+                          Is this price accurate?
+                        </Text>
+                        <HStack spacing={1} flexWrap="wrap" justify="flex-end">
+                          <Button
+                            leftIcon={<FiTrendingUp />}
+                            borderRadius="full"
+                            size="xs"
+                            h={{ base: '21px', md: '24px' }}
+                            px={{ base: 1.5, md: 2 }}
+                            fontSize="2xs"
+                            variant={userVote === 'under' ? 'solid' : 'outline'}
+                            colorScheme={userVote === 'under' ? 'green' : 'gray'}
+                            borderColor="whiteAlpha.500"
+                            color={userVote === 'under' ? 'white' : 'white'}
+                            onClick={() => handleVote('under')}
+                            isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
+                          >
+                            Too low
+                          </Button>
+                          <Button
+                            leftIcon={<FiTrendingDown />}
+                            borderRadius="full"
+                            size="xs"
+                            h={{ base: '21px', md: '24px' }}
+                            px={{ base: 1.5, md: 2 }}
+                            fontSize="2xs"
+                            variant={userVote === 'over' ? 'solid' : 'outline'}
+                            colorScheme={userVote === 'over' ? 'orange' : 'gray'}
+                            borderColor="whiteAlpha.500"
+                            color={userVote === 'over' ? 'white' : 'white'}
+                            onClick={() => handleVote('over')}
+                            isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
+                          >
+                            Too high
+                          </Button>
+                        </HStack>
+                      </VStack>
+                    </Box>
+                  )}
+                </Box>
                 {product.id && user && <ProximityBadge type="product" targetId={product.id} />}
               </VStack>
 
@@ -1052,205 +1138,248 @@ const ProductDetail: React.FC = () => {
                 p={{ base: 3, md: 4, lg: 6 }}
                 display="flex"
                 flexDirection="column"
-                bg="white"
+                bg={detailBg}
                 borderRadius="8px"
                 borderWidth="1px"
-                borderColor="gray.100"
+                borderColor={detailBorder}
+                maxW="560px"
+                w="100%"
+                mx="auto"
+                sx={{
+                  '--pd-bg': detailBg,
+                  '--pd-text': detailText,
+                  '--pd-muted': detailMuted,
+                  '--pd-border': detailBorder,
+                  '--pd-surface': detailSurface,
+                }}
               >
                 <VStack spacing={6} align="stretch" flex={1}>
                   {/* Counterfeit Warning */}
                   {product && <CounterfeitWarning productId={product.id} />}
 
                   <Box>
-                    {/* Title and price on same horizontal axis */}
-                    <Flex justify="space-between" align="flex-start" gap={3} flexWrap="wrap">
-                      <Heading
-                        color="gray.800"
-                        mb={0}
-                        flex={1}
-                        minW={0}
-                        wordBreak="break-word"
-                        fontSize={{ base: 'lg', md: '2xl' }}
-                        lineHeight={{ base: '1.35', md: '1.3' }}
-                      >
-                        {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
-                      </Heading>
-                      <VStack spacing={0} align="flex-end" flexShrink={0}>
-                        <Text
-                          fontSize={{ base: 'lg', md: '2xl' }}
-                          fontWeight="extrabold"
-                          color="gray.800"
-                          whiteSpace="nowrap"
-                        >
-                          {product.price && product.price > 0
-                            ? `₱${formatPrice(product.price)}`
-                            : product.estimated_value_min && product.estimated_value_max
-                              ? `₱${formatPrice(product.estimated_value_min)} – ₱${formatPrice(product.estimated_value_max)}`
-                              : 'Price Unavailable'}
-                        </Text>
-                        {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
-                          <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">
-                            AI Est. ₱{formatPrice(product.estimated_value_min)} – ₱{formatPrice(product.estimated_value_max)}
-                          </Text>
-                        )}
-                        {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
-                          <Text fontSize="xs" color="gray.400" whiteSpace="nowrap">AI Estimated</Text>
-                        )}
-                      </VStack>
-                    </Flex>
-                    {/* Bidding label kept in details while primary metadata moved to image overlay */}
-                    {product.bidding_type && product.bidding_type !== 'none' && (
-                      <Badge
-                        mt={2}
-                        colorScheme="gray"
-                        variant="subtle"
-                        borderRadius="full"
-                        px={3}
-                        py={1}
-                        fontSize="xs"
-                        fontWeight="600"
-                      >
-                        {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
-                      </Badge>
-                    )}
-                    {/* Action row: Love, Share, Flag on left; Price Feedback on far right (under price) */}
-                    <Flex justify="space-between" align="center" mt={4} flexWrap="wrap" gap={2}>
-                      <HStack spacing={1}>
-                        <Tooltip label={isSaved ? "Remove from saved" : "Save to watchlist"}>
-                          <IconButton
-                            aria-label={isSaved ? "Remove from saved" : "Save"}
-                            icon={<FiHeart />}
-                            size="sm"
-                            variant={isSaved ? "solid" : "outline"}
-                            colorScheme="red"
-                            borderRadius="8px"
-                            isLoading={isSaving}
-                            onClick={handleSaveToggle}
-                            _hover={isSaved ? { bg: 'red.600' } : { bg: 'red.50', borderColor: 'red.400' }}
-                            _active={{ transform: 'scale(0.98)' }}
-                            transition="all 0.15s"
-                          />
-                        </Tooltip>
-                        <Tooltip label="Share">
-                          <IconButton
-                            aria-label="Share"
-                            icon={<FiShare2 />}
-                            size="sm"
-                            variant="outline"
-                            colorScheme="blue"
-                            borderRadius="8px"
-                            borderColor="blue.300"
-                            color="blue.500"
-                            onClick={handleShare}
-                            _hover={{ bg: 'blue.50', borderColor: 'blue.400' }}
-                            _active={{ transform: 'scale(0.98)' }}
-                            transition="all 0.15s"
-                          />
-                        </Tooltip>
-                        {!isOwner && (
-                          <Tooltip label="Report">
-                            <IconButton
-                              aria-label="Report"
-                              icon={<FiFlag />}
-                              size="sm"
-                              variant="solid"
-                              colorScheme="red"
-                              borderRadius="8px"
-                              bg="red.600"
-                              color="white"
-                              onClick={() => {
-                                if (!user) {
-                                  toast({
-                                    id: 'auth-required-report-flag',
-                                    title: 'Authentication required',
-                                    description: 'Please log in to report this product',
-                                    status: 'warning',
-                                    duration: 3000,
-                                    isClosable: true,
-                                  })
-                                  navigate('/login')
-                                  return
-                                }
-                                setIsReportOpen(true)
-                              }}
-                              _hover={{ bg: 'red.700' }}
-                              _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.15s"
-                            />
-                          </Tooltip>
-                        )}
-                      </HStack>
-                      <VStack align="flex-end" spacing={0}>
-                        <ButtonGroup
-                          isAttached
-                          size="sm"
-                          borderRadius="8px"
-                          overflow="hidden"
-                          borderWidth="1px"
-                          borderColor="gray.200"
-                          bg="white"
-                        >
-                          <Tooltip label={`Underpriced (${votes.under})`}>
-                            <IconButton
-                              aria-label="Underpriced"
-                              icon={<FiTrendingDown />}
-                              variant={userVote === 'under' ? 'solid' : 'ghost'}
-                              colorScheme={userVote === 'under' ? 'green' : 'gray'}
-                              borderRadius={0}
-                              borderRightWidth="1px"
-                              borderRightColor="gray.200"
-                              onClick={() => handleVote('under')}
-                              isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
-                              _hover={{ bg: userVote === 'under' ? undefined : 'gray.50' }}
-                              _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.15s"
-                            />
-                          </Tooltip>
-                          <Tooltip label={`Overpriced (${votes.over})`}>
-                            <IconButton
-                              aria-label="Overpriced"
-                              icon={<FiTrendingUp />}
-                              variant={userVote === 'over' ? 'solid' : 'ghost'}
-                              colorScheme={userVote === 'over' ? 'orange' : 'gray'}
-                              borderRadius={0}
-                              onClick={() => handleVote('over')}
-                              isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
-                              _hover={{ bg: userVote === 'over' ? undefined : 'gray.50' }}
-                              _active={{ transform: 'scale(0.98)' }}
-                              transition="all 0.15s"
-                            />
-                          </Tooltip>
-                        </ButtonGroup>
-                        <Text fontSize="xs" color={priceFeedbackColor} mt={1} fontWeight="medium">
-                          {priceFeedbackLabel}
-                        </Text>
-                      </VStack>
-                    </Flex>
+                    <VStack spacing={4} align="stretch">
+                      {/* Section 1: Header */}
+                      <Box>
+                        <Flex justify="space-between" align="flex-start" gap={3}>
+                          <VStack align="start" spacing={2} flex={1} minW={0}>
+                            <Heading
+                              mb={0}
+                              color="var(--pd-text)"
+                              fontSize={{ base: 'xl', md: '2xl' }}
+                              lineHeight="1.25"
+                              wordBreak="break-word"
+                            >
+                              {product.title.charAt(0).toUpperCase() + product.title.slice(1)}
+                            </Heading>
+                            {isSignificantlyBelowEstimate && (
+                              <Badge
+                                colorScheme="orange"
+                                variant="subtle"
+                                borderRadius="full"
+                                px={3}
+                                py={1}
+                                fontSize="xs"
+                              >
+                                Priced below AI estimate
+                              </Badge>
+                            )}
+                            {!isSignificantlyBelowEstimate && isOverpricedEstimate && (
+                              <Badge
+                                colorScheme="red"
+                                variant="subtle"
+                                borderRadius="full"
+                                px={3}
+                                py={1}
+                                fontSize="xs"
+                              >
+                                Overpriced vs AI estimate
+                              </Badge>
+                            )}
+                            {!isSignificantlyBelowEstimate && !isOverpricedEstimate && isPricedRightEstimate && (
+                              <Badge
+                                colorScheme="green"
+                                variant="subtle"
+                                borderRadius="full"
+                                px={3}
+                                py={1}
+                                fontSize="xs"
+                              >
+                                Priced right for AI estimate
+                              </Badge>
+                            )}
+                            {product.bidding_type && product.bidding_type !== 'none' && (
+                              <Badge
+                                colorScheme="gray"
+                                variant="subtle"
+                                borderRadius="full"
+                                px={3}
+                                py={1}
+                                fontSize="xs"
+                              >
+                                {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
+                              </Badge>
+                            )}
+                          </VStack>
 
-                    {/* Consolidated seller + dates block for better UX (responsive) */}
-                    <Flex
-                      w="full"
-                      justify="space-between"
-                      align="center"
-                      flexDir={{ base: 'column', md: 'row' }}
-                    >
-                    </Flex>
+                          <VStack spacing={1} align="end" flexShrink={0}>
+                            <Text
+                              color="var(--pd-text)"
+                              fontSize={{ base: '2xl', md: '3xl' }}
+                              lineHeight="1"
+                              fontWeight="800"
+                              whiteSpace="nowrap"
+                            >
+                              {hasListedPrice
+                                ? `₱${formatPrice(listedPrice)}`
+                                : hasFairRange
+                                  ? `₱${formatPrice(fairMin)} - ₱${formatPrice(fairMax)}`
+                                  : 'Price Unavailable'}
+                            </Text>
+
+                            <HStack spacing={1} justify="flex-end" flexWrap="wrap" maxW={{ base: '130px', md: '156px' }}>
+                              <Tooltip label={isSaved ? 'Saved' : 'Save'} hasArrow>
+                                <IconButton
+                                  onClick={handleSaveToggle}
+                                  isLoading={isSaving}
+                                  aria-label={isSaved ? 'Saved' : 'Save'}
+                                  icon={<FiHeart />}
+                                  variant="outline"
+                                  bg="transparent"
+                                  borderColor="var(--pd-border)"
+                                  color={isSaved ? 'red.500' : 'var(--pd-text)'}
+                                  h={{ base: '30px', md: '34px' }}
+                                  w={{ base: '30px', md: '34px' }}
+                                  minW={{ base: '30px', md: '34px' }}
+                                  borderRadius="7px"
+                                  _hover={{ bg: 'var(--pd-surface)' }}
+                                />
+                              </Tooltip>
+
+                              <Tooltip label="Share" hasArrow>
+                                <IconButton
+                                  onClick={handleShare}
+                                  aria-label="Share"
+                                  icon={<FiShare2 />}
+                                  variant="outline"
+                                  bg="transparent"
+                                  borderColor="var(--pd-border)"
+                                  color="var(--pd-text)"
+                                  h={{ base: '30px', md: '34px' }}
+                                  w={{ base: '30px', md: '34px' }}
+                                  minW={{ base: '30px', md: '34px' }}
+                                  borderRadius="7px"
+                                  _hover={{ bg: 'var(--pd-surface)' }}
+                                />
+                              </Tooltip>
+
+                              {!isOwner && (
+                                <Tooltip label="Report" hasArrow>
+                                  <IconButton
+                                    onClick={() => {
+                                      if (!user) {
+                                        toast({
+                                          id: 'auth-required-report-flag',
+                                          title: 'Authentication required',
+                                          description: 'Please log in to report this product',
+                                          status: 'warning',
+                                          duration: 3000,
+                                          isClosable: true,
+                                        })
+                                        navigate('/login')
+                                        return
+                                      }
+                                      setIsReportOpen(true)
+                                    }}
+                                    aria-label="Report"
+                                    icon={<FiAlertTriangle />}
+                                    variant="outline"
+                                    bg="transparent"
+                                    borderColor="red.300"
+                                    color="red.600"
+                                    h={{ base: '30px', md: '34px' }}
+                                    w={{ base: '30px', md: '34px' }}
+                                    minW={{ base: '30px', md: '34px' }}
+                                    borderRadius="7px"
+                                    _hover={{ bg: 'red.50' }}
+                                  />
+                                </Tooltip>
+                              )}
+                            </HStack>
+                          </VStack>
+                        </Flex>
+                      </Box>
+
+                      <Divider borderColor="var(--pd-border)" />
+
+                      {/* Section 2: AI estimate bar */}
+                      <Box>
+                        <VStack align="stretch" spacing={2}>
+                          <Text fontSize="sm" fontWeight="600" color="var(--pd-text)">
+                            AI Estimate
+                          </Text>
+                          {hasFairRange ? (
+                            <>
+                              <Box
+                                position="relative"
+                                h="12px"
+                                borderRadius="full"
+                                bg="var(--pd-surface)"
+                                borderWidth="1px"
+                                borderColor="var(--pd-border)"
+                              >
+                                <Box
+                                  position="absolute"
+                                  left={`${fairStart}%`}
+                                  w={`${fairWidth}%`}
+                                  top={0}
+                                  bottom={0}
+                                  bg="green.500"
+                                  borderRadius="full"
+                                />
+                                <Box
+                                  position="absolute"
+                                  top="-5px"
+                                  left={`calc(${listedPosition}% - 4px)`}
+                                  w="8px"
+                                  h="22px"
+                                  borderRadius="full"
+                                  bg={isSignificantlyBelowEstimate ? 'orange.500' : 'blue.500'}
+                                />
+                              </Box>
+                              <Text fontSize="xs" color="green.600" fontWeight="600">
+                                Fair range: ₱{formatPrice(fairMin)} - ₱{formatPrice(fairMax)}
+                              </Text>
+                            </>
+                          ) : (
+                            <Text fontSize="sm" color="var(--pd-muted)">
+                              AI fair-value range is not available yet.
+                            </Text>
+                          )}
+                          <Text fontSize="sm" color="var(--pd-muted)">
+                            {estimateGapNote}
+                          </Text>
+                        </VStack>
+                      </Box>
+
+                    </VStack>
+
                   </Box>
 
-                  <Divider borderColor="gray.200" />
+                  <Divider borderColor={detailBorder} />
 
                   <Box
                     p={4}
                     borderRadius="8px"
-                    bg="gray.50"
+                    bg={detailSurface}
                     borderWidth="1px"
-                    borderColor="gray.100"
+                    borderColor={detailBorder}
                   >
-                    <Heading size="sm" mb={3} color="gray.800" fontWeight="600">
+                    <Heading size="sm" mb={3} color={detailText} fontWeight="600">
                       Description
                     </Heading>
                     <Text
-                      color="gray.700"
+                      color={detailMuted}
                       lineHeight="tall"
                       fontSize="sm"
                       whiteSpace="pre-line"
@@ -1264,9 +1393,9 @@ const ProductDetail: React.FC = () => {
                         mt={2}
                         size="xs"
                         variant="ghost"
-                        color="gray.600"
+                        color={detailMuted}
                         fontWeight="500"
-                        _hover={{ bg: 'gray.100' }}
+                        _hover={{ bg: detailBg }}
                         onClick={() => setIsDescriptionExpanded(prev => !prev)}
                       >
                         {isDescriptionExpanded ? 'Show less' : 'Show more'}
@@ -1274,26 +1403,10 @@ const ProductDetail: React.FC = () => {
                     )}
                   </Box>
 
-
-
-                  <Box>
-                    <VStack spacing={2} align="stretch">
-                      <Flex justify="space-between">
-                      </Flex>
-                      {/* <Flex justify="space-between">
-                      <Text color="gray.600">Listed:</Text>
-                      <Text>{new Date(product.created_at).toLocaleDateString()}</Text>
-                    </Flex>
-                    <Flex justify="space-between">
-                      <Text color="gray.600">Last Updated:</Text>
-                      <Text>{new Date(product.updated_at).toLocaleDateString()}</Text>
-                    </Flex> */}
-                    </VStack>
-                  </Box>
                 </VStack>
 
                 {/* Action Buttons: full-width primary + compact Offers icon square */}
-                <VStack spacing={{ base: 3, md: 4 }} mt={{ base: 6, md: 8 }} pt={{ base: 4, md: 6 }}>
+                <VStack spacing={{ base: 3, md: 4 }} mt={{ base: 2, md: 3 }} pt={0}>
                   {!isOwner && product.status === 'available' && (
                     <VStack spacing={{ base: 2, md: 3 }} w="full">
                         <HStack w="full" spacing={2} align="stretch">

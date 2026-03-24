@@ -1701,11 +1701,6 @@ const AddProduct: React.FC = () => {
                     >
                       {step.icon} {step.title}
                     </Text>
-                    {currentStep === step.number && (
-                      <Badge colorScheme="brand" fontSize="10px">
-                        {Math.round((step.number / TOTAL_STEPS) * 100)}%
-                      </Badge>
-                    )}
                   </HStack>
                   {idx < stepLabels.length - 1 && (
                     <Text color="gray.400" fontWeight="bold">→</Text>

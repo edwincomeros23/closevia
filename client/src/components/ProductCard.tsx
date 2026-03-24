@@ -219,21 +219,31 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Trade Match score badge */}
         {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (
-          <Badge
-            position="absolute"
-            top={2}
-            left={2}
-            variant="solid"
-            borderRadius="full"
-            px={2}
-            py={0.5}
-            fontSize="10px"
-            fontWeight="bold"
-            bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
-            color="white"
+          <Tooltip
+            hasArrow
+            placement="top-start"
+            label={
+              product.tradeMatchBreakdown
+                ? `${product.tradeMatchBreakdown.isSuperCheap ? 'Warning: super cheap vs AI estimate | ' : ''}Value ${product.tradeMatchBreakdown.value} | Category ${product.tradeMatchBreakdown.category} | Demand ${product.tradeMatchBreakdown.demand} | Distance ${product.tradeMatchBreakdown.distance}${product.tradeMatchBreakdown.valueNote ? ` | ${product.tradeMatchBreakdown.valueNote}` : ''}`
+                : 'Trade match score'
+            }
           >
-            {product.tradeMatchScore}% Match
-          </Badge>
+            <Badge
+              position="absolute"
+              top={2}
+              left={2}
+              variant="solid"
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="10px"
+              fontWeight="bold"
+              bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
+              color="white"
+            >
+              {product.tradeMatchScore}% Match
+            </Badge>
+          </Tooltip>
         )}
 
         {/* Status badge (e.g. sold) */}
