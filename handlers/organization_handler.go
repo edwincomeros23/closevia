@@ -1,5 +1,28 @@
 // PostProductForTrade allows a member to post a product for trade in the organization
+
 package handlers
+
+// ...existing code...
+import (
+	"database/sql"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/xashathebest/clovia/database"
+	"github.com/xashathebest/clovia/middleware"
+	"github.com/xashathebest/clovia/models"
+)
+
+// PostProductForTrade allows a member to post a product for trade in the organization
+func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
 	slug := c.Params("slug")
 	var payload struct {
 		ProductID int `json:"product_id"`
@@ -60,19 +83,19 @@ func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
 	defer rows.Close()
 	// Group by product
 	type Member struct {
-		ID int `json:"id"`
-		Name string `json:"name"`
+		ID             int    `json:"id"`
+		Name           string `json:"name"`
 		ProfilePicture string `json:"profile_picture"`
 	}
 	type ProductGroup struct {
-		ProductID int `json:"product_id"`
-		Title string `json:"title"`
-		Description string `json:"description"`
-		Price float64 `json:"price"`
-		ImageURLs string `json:"image_urls"`
-		Status string `json:"status"`
-		Category string `json:"category"`
-		Members []Member `json:"members"`
+		ProductID   int      `json:"product_id"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Price       float64  `json:"price"`
+		ImageURLs   string   `json:"image_urls"`
+		Status      string   `json:"status"`
+		Category    string   `json:"category"`
+		Members     []Member `json:"members"`
 	}
 	groups := map[int]*ProductGroup{}
 	for rows.Next() {
@@ -100,22 +123,6 @@ func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
 	}
 	return c.JSON(models.APIResponse{Success: true, Data: out})
 }
-package handlers
-
-import (
-	"database/sql"
-	"fmt"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
-
-	"github.com/gofiber/fiber/v2"
-
-	"github.com/xashathebest/clovia/database"
-	"github.com/xashathebest/clovia/middleware"
-	"github.com/xashathebest/clovia/models"
-)
 
 type OrganizationHandler struct {
 	db *sql.DB
