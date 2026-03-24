@@ -217,7 +217,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </Box>
         </Box>
 
-        {/* Trade Match score badge */}
+        {/* Trade Ready score badge */}
         {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (
           <Tooltip
             hasArrow
@@ -225,7 +225,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             label={
               product.tradeMatchBreakdown
                 ? `${product.tradeMatchBreakdown.isSuperCheap ? 'Warning: super cheap vs AI estimate | ' : ''}Value ${product.tradeMatchBreakdown.value} | Category ${product.tradeMatchBreakdown.category} | Demand ${product.tradeMatchBreakdown.demand} | Distance ${product.tradeMatchBreakdown.distance}${product.tradeMatchBreakdown.valueNote ? ` | ${product.tradeMatchBreakdown.valueNote}` : ''}`
-                : 'Trade match score'
+                : 'Trade ready score'
             }
           >
             <Badge
@@ -241,7 +241,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
               color="white"
             >
-              {product.tradeMatchScore}% Match
+              {product.tradeMatchScore}% Ready
             </Badge>
           </Tooltip>
         )}
