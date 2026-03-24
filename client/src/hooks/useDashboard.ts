@@ -48,8 +48,11 @@ export const useDashboardProducts = (userId: number | undefined) => {
       }
     },
     enabled: !!userId,
-    // Products data reduced to 1 minute to avoid stale dashboard
-    staleTime: 1000 * 60, // 1 minute
+    // Reduced staleTime to 10 seconds so new products show quickly
+    staleTime: 1000 * 10, // 10 seconds
+    // Always refetch when component mounts or window focuses
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
   })
 }

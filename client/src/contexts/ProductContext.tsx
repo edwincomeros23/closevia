@@ -507,6 +507,11 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         },
       })
       const newProduct = response.data.data
+
+      // Clear caches to ensure fresh data everywhere
+      cacheRef.current = null
+      localStorage.removeItem('clovia_home_products')
+
       safeSetProducts([newProduct, ...(products || [])])
       return newProduct
     } catch (error: any) {

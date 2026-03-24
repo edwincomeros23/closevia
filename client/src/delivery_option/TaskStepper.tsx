@@ -24,14 +24,21 @@ import {
   Center,
   Image,
   IconButton,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react'
 import { CheckCircleIcon, WarningIcon, CloseIcon } from '@chakra-ui/icons'
-import { FaMapMarkerAlt, FaQrcode, FaCamera, FaPhone, FaSync, FaRedo } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaQrcode, FaCamera, FaPhone, FaSync, FaRedo, FaMoneyBillWave } from 'react-icons/fa'
 import { api } from '../services/api'
-import { Delivery } from '../types'
+import { Delivery, DeliveryStop } from '../types'
 
 // The status progression for a delivery
 const STATUS_PROGRESSION: Array<Delivery['status']> = ['claimed', 'picked_up', 'in_transit', 'delivered']
+
+// Task 17: Format peso amount
+const formatPeso = (amount: number): string => {
+  return `₱${amount.toFixed(2)}`
+}
 
 interface Task {
   id: string
@@ -43,6 +50,11 @@ interface Task {
   itemCount: number
   notes: string
   timestamp?: string
+  // Task 17: Fee amount for this stop
+  feeAmount?: number
+  stopId?: number
+  stopStatus?: DeliveryStop['status']
+  feeCollected?: boolean
 }
 
 const TaskStepper: React.FC = () => {
@@ -51,6 +63,7 @@ const TaskStepper: React.FC = () => {
   const toast = useToast()
 
   const [delivery, setDelivery] = useState<Delivery | null>(null)
+  const [stops, setStops] = useState<DeliveryStop[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [qrScanned, setQrScanned] = useState(false)
@@ -63,13 +76,28 @@ const TaskStepper: React.FC = () => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Task 17: Fee collection states
+  const [feeCollected, setFeeCollected] = useState(false)
+  const [collectingFee, setCollectingFee] = useState(false)
 
-  // Fetch delivery data from API
+  // Fetch delivery data and stops from API
   const fetchDelivery = async () => {
     if (!batchId) return
     try {
       const response = await api.get(`/api/deliveries/${batchId}`)
-      setDelivery(response.data?.data || null)
+      const deliveryData = response.data?.data || null
+      setDelivery(deliveryData)
+
+      // Fetch stops for this delivery
+      if (deliveryData) {
+        try {
+          const stopsResponse = await api.get(`/api/deliveries/${batchId}/stops`)
+          setStops(stopsResponse.data?.data || [])
+        } catch (stopsErr) {
+          console.log('No stops found, using legacy flow')
+          setStops([])
+        }
+      }
     } catch (error) {
       console.error('Failed to fetch delivery:', error)
       toast({
@@ -88,10 +116,35 @@ const TaskStepper: React.FC = () => {
     fetchDelivery()
   }, [batchId])
 
-  // Build task steps from the delivery data
+  // Build task steps from the delivery data and stops
   const buildTasks = (): Task[] => {
     if (!delivery) return []
 
+    // If we have stops from API, use them (Task 17)
+    if (stops.length > 0) {
+      return stops.map(stop => ({
+        id: stop.stop_type === 'pickup' ? 'pickup' : 'deliver',
+        type: stop.stop_type,
+        status: stop.status === 'completed' ? 'completed'
+          : stop.status !== 'pending' ? 'in-progress'
+          : 'pending',
+        recipientName: stop.contact_name || (stop.stop_type === 'pickup' ? 'Seller' : 'Buyer'),
+        address: stop.address,
+        contact: stop.contact_phone || '',
+        itemCount: delivery.item_count,
+        notes: delivery.special_instructions || '',
+        timestamp: stop.completed_at
+          ? new Date(stop.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : '',
+        // Task 17: Fee data
+        feeAmount: stop.fee_amount,
+        stopId: stop.id,
+        stopStatus: stop.status,
+        feeCollected: stop.status === 'fee_collected' || stop.status === 'completed',
+      }))
+    }
+
+    // Fallback to legacy task building (without stops)
     const tasks: Task[] = [
       {
         id: 'pickup',
@@ -253,6 +306,97 @@ const TaskStepper: React.FC = () => {
     setPhotoPreview(null)
     setCapturedPhotoUrl('')
     setPhotoCaptured(false)
+  }
+
+  // Task 17: Collect fee at current stop
+  const handleCollectFee = async (stopId: number, feeAmount: number) => {
+    if (!delivery) return
+    setCollectingFee(true)
+
+    try {
+      await api.post(`/api/deliveries/${delivery.id}/stops/${stopId}/action`, {
+        action: 'collect_fee'
+      })
+
+      setFeeCollected(true)
+      toast({
+        id: "taskstepper-fee-collected",
+        title: 'Fee Collected',
+        description: `${formatPeso(feeAmount)} collected successfully`,
+        status: 'success',
+        duration: 2000,
+      })
+
+      // Refresh delivery and stops data
+      await fetchDelivery()
+    } catch (error: any) {
+      console.error('Fee collection failed:', error)
+      toast({
+        id: "taskstepper-fee-error",
+        title: 'Collection Failed',
+        description: error?.response?.data?.error || 'Failed to record fee collection',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setCollectingFee(false)
+    }
+  }
+
+  // Task 17: Complete stop with photo (for delivery stops)
+  const handleCompleteStop = async (stopId: number, requirePhoto: boolean) => {
+    if (!delivery) return
+
+    // For delivery stops, require photo proof
+    if (requirePhoto && !photoCaptured && !capturedPhotoUrl) {
+      toast({
+        id: "taskstepper-missing-photo",
+        title: 'Photo Required',
+        description: 'Please capture a photo proof to complete delivery',
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
+    setUpdating(true)
+    try {
+      await api.post(`/api/deliveries/${delivery.id}/stops/${stopId}/action`, {
+        action: 'complete',
+        photo_url: capturedPhotoUrl || undefined
+      })
+
+      toast({
+        id: "taskstepper-stop-completed",
+        title: 'Stop Completed',
+        description: 'Moving to next step',
+        status: 'success',
+        duration: 2000,
+      })
+
+      // Reset states
+      setPhotoCaptured(false)
+      setCapturedPhotoUrl('')
+      setFeeCollected(false)
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview)
+        setPhotoPreview(null)
+      }
+
+      // Refresh data
+      await fetchDelivery()
+    } catch (error: any) {
+      console.error('Complete stop failed:', error)
+      toast({
+        id: "taskstepper-complete-error",
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to complete stop',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setUpdating(false)
+    }
   }
 
   const handleCompleteTask = async () => {
@@ -436,9 +580,17 @@ const TaskStepper: React.FC = () => {
                     </Box>
 
                     <VStack align="start" spacing={0} flex={1}>
-                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                        {task.type === 'pickup' ? 'Pickup' : 'Delivery'}
-                      </Text>
+                      <HStack>
+                        <Text fontWeight="bold" fontSize="sm" color="gray.800">
+                          {task.type === 'pickup' ? 'Pickup' : 'Delivery'}
+                        </Text>
+                        {/* Task 17: Show fee amount in timeline */}
+                        {task.feeAmount !== undefined && task.feeAmount > 0 && (
+                          <Badge colorScheme={task.feeCollected ? 'green' : 'orange'} fontSize="xs">
+                            {formatPeso(task.feeAmount)}
+                          </Badge>
+                        )}
+                      </HStack>
                       <Text fontSize="xs" color="gray.600" noOfLines={1}>
                         {task.address}
                       </Text>
@@ -475,6 +627,32 @@ const TaskStepper: React.FC = () => {
                     </Text>
                   </VStack>
                 </HStack>
+
+                {/* Task 17: PROMINENT FEE DISPLAY */}
+                {currentTask.feeAmount !== undefined && currentTask.feeAmount > 0 && (
+                  <Alert
+                    status={currentTask.feeCollected ? 'success' : 'warning'}
+                    variant="solid"
+                    borderRadius="md"
+                    flexDirection="column"
+                    alignItems="center"
+                    justifyContent="center"
+                    textAlign="center"
+                    py={4}
+                  >
+                    <Icon as={FaMoneyBillWave} boxSize={8} mb={2} />
+                    <Text fontWeight="bold" fontSize="2xl">
+                      {formatPeso(currentTask.feeAmount)}
+                    </Text>
+                    <Text fontSize="sm" mt={1}>
+                      {currentTask.feeCollected
+                        ? 'Fee Collected ✓'
+                        : currentTask.type === 'pickup'
+                          ? 'Collect from SENDER'
+                          : 'Collect from RECEIVER'}
+                    </Text>
+                  </Alert>
+                )}
 
                 <Divider />
 
@@ -527,6 +705,27 @@ const TaskStepper: React.FC = () => {
                     Map
                   </Button>
                 </HStack>
+
+                {/* Task 17: FEE COLLECTION BUTTON - must collect before completing */}
+                {currentTask.stopId && currentTask.feeAmount !== undefined && currentTask.feeAmount > 0 && !currentTask.feeCollected && (
+                  <>
+                    <Divider />
+                    <Button
+                      w="full"
+                      size="lg"
+                      colorScheme="orange"
+                      leftIcon={<Icon as={FaMoneyBillWave} />}
+                      onClick={() => handleCollectFee(currentTask.stopId!, currentTask.feeAmount!)}
+                      isLoading={collectingFee}
+                      loadingText="Recording..."
+                    >
+                      Collect {formatPeso(currentTask.feeAmount)} Cash
+                    </Button>
+                    <Text fontSize="xs" color="gray.500" textAlign="center">
+                      Tap after receiving cash payment from {currentTask.type === 'pickup' ? 'sender' : 'receiver'}
+                    </Text>
+                  </>
+                )}
 
                 <Divider />
 
@@ -674,17 +873,51 @@ const TaskStepper: React.FC = () => {
                 <Divider />
 
                 {/* Complete Button */}
-                <Button
-                  w="full"
-                  colorScheme="green"
-                  size="lg"
-                  onClick={handleCompleteTask}
-                  isLoading={updating}
-                  loadingText="Updating..."
-                  isDisabled={currentTask.type === 'delivery' && getNextStatus() === 'delivered' && !qrScanned && !deliveryNotes}
-                >
-                  {getButtonLabel()}
-                </Button>
+                {currentTask.stopId ? (
+                  // Task 17: Stop-based completion with fee enforcement
+                  <>
+                    <Button
+                      w="full"
+                      colorScheme="green"
+                      size="lg"
+                      onClick={() => handleCompleteStop(currentTask.stopId!, currentTask.type === 'delivery')}
+                      isLoading={updating}
+                      loadingText="Completing..."
+                      isDisabled={
+                        // Must collect fee first (if fee exists)
+                        (currentTask.feeAmount !== undefined && currentTask.feeAmount > 0 && !currentTask.feeCollected) ||
+                        // For delivery stops, must have photo
+                        (currentTask.type === 'delivery' && !photoCaptured && !capturedPhotoUrl)
+                      }
+                    >
+                      {currentTask.type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery'}
+                    </Button>
+                    {/* Show why button is disabled */}
+                    {currentTask.feeAmount !== undefined && currentTask.feeAmount > 0 && !currentTask.feeCollected && (
+                      <Text fontSize="xs" color="orange.600" textAlign="center">
+                        ⚠️ Collect {formatPeso(currentTask.feeAmount)} fee first
+                      </Text>
+                    )}
+                    {currentTask.type === 'delivery' && currentTask.feeCollected && !photoCaptured && !capturedPhotoUrl && (
+                      <Text fontSize="xs" color="orange.600" textAlign="center">
+                        ⚠️ Take photo proof to complete
+                      </Text>
+                    )}
+                  </>
+                ) : (
+                  // Legacy flow without stops
+                  <Button
+                    w="full"
+                    colorScheme="green"
+                    size="lg"
+                    onClick={handleCompleteTask}
+                    isLoading={updating}
+                    loadingText="Updating..."
+                    isDisabled={currentTask.type === 'delivery' && getNextStatus() === 'delivered' && !qrScanned && !deliveryNotes}
+                  >
+                    {getButtonLabel()}
+                  </Button>
+                )}
               </VStack>
             </CardBody>
           </Card>

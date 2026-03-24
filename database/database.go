@@ -334,6 +334,7 @@ func CreateTables() error {
 			buyer_feedback TEXT NULL,
 			seller_feedback TEXT NULL,
 			meetup_location VARCHAR(500) NULL,
+			meetup_time TIMESTAMP NULL,
 			buyer_meetup_confirmed BOOLEAN DEFAULT FALSE,
 			seller_meetup_confirmed BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -941,6 +942,10 @@ func ensureTradeColumns() {
 	}{
 		{"trade_option", "VARCHAR(20) NULL DEFAULT 'meetup'"},
 		{"delivery_address", "TEXT NULL"},
+		{"meetup_location", "VARCHAR(500) NULL"},
+		{"meetup_time", "TIMESTAMP NULL"},
+		{"buyer_meetup_confirmed", "BOOLEAN DEFAULT FALSE"},
+		{"seller_meetup_confirmed", "BOOLEAN DEFAULT FALSE"},
 		{"buyer_rating", "INT NULL"},
 		{"seller_rating", "INT NULL"},
 		{"buyer_feedback", "TEXT NULL"},
@@ -1133,6 +1138,12 @@ func ensureDeliveryBatchColumns() {
 		{"qr_code", "VARCHAR(255) NULL"},
 		{"photo_uploaded", "BOOLEAN DEFAULT FALSE"},
 		{"delivery_photo_url", "VARCHAR(512) NULL"},
+		// Phase 4 - Task 17: Fee split columns
+		{"sender_fee", "DECIMAL(10,2) DEFAULT 0.00"},
+		{"receiver_fee", "DECIMAL(10,2) DEFAULT 0.00"},
+		{"distance_km", "DECIMAL(10,2) DEFAULT 0.00"},
+		{"estimated_minutes", "INT DEFAULT 0"},
+		{"rider_cut", "DECIMAL(10,2) DEFAULT 0.00"},
 	}
 
 	for _, col := range columns {

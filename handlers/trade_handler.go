@@ -1006,8 +1006,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "You accepted a trade offer: "+productTitle)
 
 		// Auto-create delivery record for delivery trades
+		log.Printf("[Trade Accept] tradeOption=%s for trade %d", tradeOption, tradeID)
 		if tradeOption == "delivery" {
-			go h.createDeliveryForTrade(tradeID, buyerID, sellerID)
+			log.Printf("[Trade Accept] Creating delivery for trade %d (buyer=%d, seller=%d)", tradeID, buyerID, sellerID)
+			// Run synchronously to ensure delivery is created before response
+			h.createDeliveryForTrade(tradeID, buyerID, sellerID)
 		}
 	case "decline":
 		tx, err := h.db.Begin()
@@ -1211,7 +1214,65 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		}
 
 		// Update the trade with meetup location, time, and confirmation
-		_, err = h.db.Exec("UPDATE trades SET meetup_location=?, meetup_time=?, "+updateColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.MeetupLocation, payload.MeetupTime, tradeID)
+		// Parse meetup_time string to proper timestamp format
+		var meetupTimeForDB interface{}
+		if payload.MeetupTime != "" {
+			// Try to parse various common datetime and time formats
+			timeFormats := []string{
+				// Full datetime formats
+				"2006-01-02T15:04:05Z07:00", // RFC3339 (ISO 8601)
+				"2006-01-02T15:04:05Z",      // RFC3339 (UTC)
+				"2006-01-02T15:04:05",       // without timezone
+				"2006-01-02 15:04:05",       // MySQL datetime format
+				"2006-01-02 15:04",          // without seconds
+				"01/02/2006 15:04",          // US format
+				"02/01/2006 15:04",          // UK format
+				// Time-only formats (will use today's date)
+				"3:04 PM",                   // 12-hour format with AM/PM
+				"15:04",                     // 24-hour format
+				"3:04PM",                    // 12-hour format without space
+			}
+
+			var parsedTime time.Time
+			var parseErr error
+
+			// First try full datetime formats
+			for _, format := range timeFormats[:7] {
+				parsedTime, parseErr = time.Parse(format, payload.MeetupTime)
+				if parseErr == nil {
+					break
+				}
+			}
+
+			// If that fails, try time-only formats (combine with today's date)
+			if parseErr != nil {
+				now := time.Now()
+				todayStr := now.Format("2006-01-02")
+
+				for _, timeFormat := range timeFormats[7:] {
+					timeOnly, timeErr := time.Parse(timeFormat, payload.MeetupTime)
+					if timeErr == nil {
+						// Combine today's date with parsed time
+						combinedStr := todayStr + " " + timeOnly.Format("15:04:05")
+						parsedTime, parseErr = time.Parse("2006-01-02 15:04:05", combinedStr)
+						break
+					}
+				}
+			}
+
+			if parseErr != nil {
+				log.Printf("Failed to parse meetup time '%s': %v", payload.MeetupTime, parseErr)
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Invalid meetup time format. Please use formats like '10:00 AM' or '14:30'. Received: '%s'", payload.MeetupTime)})
+			}
+
+			// Convert to MySQL format
+			meetupTimeForDB = parsedTime.Format("2006-01-02 15:04:05")
+			log.Printf("Parsed meetup time '%s' to '%s'", payload.MeetupTime, meetupTimeForDB)
+		} else {
+			meetupTimeForDB = nil
+		}
+
+		_, err = h.db.Exec("UPDATE trades SET meetup_location=?, meetup_time=?, "+updateColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.MeetupLocation, meetupTimeForDB, tradeID)
 		if err != nil {
 			log.Printf("Failed to update meetup confirmation for trade %d: %v", tradeID, err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup"})
@@ -1640,9 +1701,9 @@ func (h *TradeHandler) markProductUnavailable(tx *sql.Tx, productID int) error {
 }
 
 // createDeliveryForTrade auto-creates a delivery record linked to a trade when a delivery trade is accepted.
-// Runs as a goroutine so it does not block the trade acceptance response.
+// Now runs synchronously to ensure delivery is created before trade acceptance response.
 func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
-	log.Printf("Creating delivery record for trade %d", tradeID)
+	log.Printf("[CreateDelivery] Starting for trade %d (buyer=%d, seller=%d)", tradeID, buyerID, sellerID)
 
 	// Get trade delivery info
 	var deliveryAddress sql.NullString
@@ -1651,9 +1712,10 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 		"SELECT delivery_address, delivery_type FROM trades WHERE id = ?", tradeID,
 	).Scan(&deliveryAddress, &deliveryType)
 	if err != nil {
-		log.Printf("Failed to get trade delivery info for trade %d: %v", tradeID, err)
+		log.Printf("[CreateDelivery] ERROR: Failed to get trade delivery info for trade %d: %v", tradeID, err)
 		return
 	}
+	log.Printf("[CreateDelivery] Trade %d: deliveryAddress=%v, deliveryType=%v", tradeID, deliveryAddress, deliveryType)
 
 	// Get trade items (products being traded)
 	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
@@ -1713,6 +1775,8 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 	}
 
 	// Insert delivery record
+	log.Printf("[CreateDelivery] Inserting delivery: seller=%d, trade=%d, type=%s, pickup=%s, delivery=%s, items=%d, cost=%.2f",
+		sellerID, tradeID, delType, pickupAddr, delAddr, len(productIDs), totalCost)
 	result, err := h.db.Exec(`
 		INSERT INTO deliveries (
 			user_id, trade_id, delivery_type, status,
@@ -1726,13 +1790,13 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 		len(productIDs), totalCost,
 	)
 	if err != nil {
-		log.Printf("Failed to create delivery for trade %d: %v", tradeID, err)
+		log.Printf("[CreateDelivery] ERROR: Failed to insert delivery for trade %d: %v", tradeID, err)
 		return
 	}
 
 	deliveryID64, _ := result.LastInsertId()
 	deliveryID := int(deliveryID64)
-	log.Printf("Created delivery %d for trade %d", deliveryID, tradeID)
+	log.Printf("[CreateDelivery] SUCCESS: Created delivery %d for trade %d", deliveryID, tradeID)
 
 	// Insert delivery items for each product
 	for _, pid := range productIDs {
@@ -1745,6 +1809,41 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 		if err != nil {
 			log.Printf("Warning: failed to insert delivery item for product %d: %v", pid, err)
 		}
+	}
+
+	// TASK 17: Create delivery stops with fee split
+	// Calculate fee split: sender pays half, receiver pays half
+	senderFee := totalCost * 0.5
+	receiverFee := totalCost * 0.5
+	log.Printf("[CreateDelivery] Creating stops with fees: sender=%.2f, receiver=%.2f", senderFee, receiverFee)
+
+	// Get contact info
+	var senderName, senderPhone, receiverName, receiverPhone string
+	_ = h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", sellerID).Scan(&senderName, &senderPhone)
+	_ = h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", buyerID).Scan(&receiverName, &receiverPhone)
+
+	// Stop 1: Pickup from sender
+	_, err = h.db.Exec(`
+		INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		                             address, latitude, longitude, fee_amount, status)
+		VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
+		deliveryID, senderName, senderPhone, pickupAddr, sellerLat, sellerLon, senderFee)
+	if err != nil {
+		log.Printf("[CreateDelivery] WARNING: Failed to create pickup stop: %v", err)
+	} else {
+		log.Printf("[CreateDelivery] Created pickup stop with fee %.2f", senderFee)
+	}
+
+	// Stop 2: Delivery to receiver
+	_, err = h.db.Exec(`
+		INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		                             address, latitude, longitude, fee_amount, status)
+		VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
+		deliveryID, receiverName, receiverPhone, delAddr, buyerLat, buyerLon, receiverFee)
+	if err != nil {
+		log.Printf("[CreateDelivery] WARNING: Failed to create delivery stop: %v", err)
+	} else {
+		log.Printf("[CreateDelivery] Created delivery stop with fee %.2f", receiverFee)
 	}
 
 	// Notify both parties

@@ -711,7 +711,17 @@ const AddProduct: React.FC = () => {
       if (uploadedVideo) fd.append('video', uploadedVideo)
 
       await createProduct(fd)
-      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
+
+      // Clear all product caches to ensure fresh data on dashboard
+      // 1. Invalidate React Query cache with specific user key
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products', user?.id] })
+      // 2. Also invalidate the general dashboard products key (broader match)
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
+      // 3. Clear ProductContext localStorage cache
+      localStorage.removeItem('clovia_home_products')
+      // 4. Force refetch to ensure data is fresh when navigating
+      await queryClient.refetchQueries({ queryKey: ['dashboard', 'products', user?.id] })
+
       toast({
         id: "addproduct-product-posted", title: 'Product posted! 🎉', status: 'success', duration: 3000 })
       navigate('/dashboard')

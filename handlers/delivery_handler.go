@@ -400,16 +400,16 @@ func (h *DeliveryHandler) GetRiderState(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
-		"state":                  state,
-		"rider_id":               riderID,
-		"full_name":              fullName,
-		"message":                message,
-		"rejection_reason":       rejectionReason,
-		"show_welcome":           showWelcome,
-		"free_delivery_slots":    freeDeliverySlots,
-		"completed_deliveries":   completedDeliveries,
-		"rating":                 rating,
-		"first_login_completed":  firstLoginCompleted,
+		"state":                 state,
+		"rider_id":              riderID,
+		"full_name":             fullName,
+		"message":               message,
+		"rejection_reason":      rejectionReason,
+		"show_welcome":          showWelcome,
+		"free_delivery_slots":   freeDeliverySlots,
+		"completed_deliveries":  completedDeliveries,
+		"rating":                rating,
+		"first_login_completed": firstLoginCompleted,
 		"permissions": fiber.Map{
 			"can_view_jobs":     canViewJobs,
 			"can_claim_jobs":    canClaimJobs,
@@ -1717,90 +1717,101 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 	log.Printf("Rider %d (user %d) claimed delivery %d", riderID, userID, deliveryID)
 
 	// ─────────────────────────────────────────────────────────────────────────────
-	// TASK 11 & 14: Create delivery stops for job execution
+	// TASK 11 & 14: Create delivery stops for job execution (if not already created)
 	// ─────────────────────────────────────────────────────────────────────────────
-	// Get delivery details
-	var deliveryUserID int
-	var tradeID sql.NullInt64
-	var deliveryType, pickupAddr, deliveryAddr string
-	var pickupLat, pickupLng, deliveryLat, deliveryLng sql.NullFloat64
-	var totalCost float64
-	err = h.db.QueryRow(`
-		SELECT user_id, trade_id, delivery_type, pickup_address, delivery_address,
-		       pickup_latitude, pickup_longitude, delivery_latitude, delivery_longitude, total_cost
-		FROM deliveries WHERE id = ?`, deliveryID).Scan(
-		&deliveryUserID, &tradeID, &deliveryType, &pickupAddr, &deliveryAddr,
-		&pickupLat, &pickupLng, &deliveryLat, &deliveryLng, &totalCost)
+	// Check if stops already exist
+	var existingStops int
+	h.db.QueryRow("SELECT COUNT(*) FROM delivery_stops WHERE delivery_id = ?", deliveryID).Scan(&existingStops)
 
-	if err != nil {
-		log.Printf("Failed to get delivery details: %v", err)
-	}
+	if existingStops == 0 {
+		log.Printf("No stops found for delivery %d, creating them now", deliveryID)
+		// Get delivery details
+		var deliveryUserID int
+		var tradeID sql.NullInt64
+		var deliveryType, pickupAddr, deliveryAddr string
+		var pickupLat, pickupLng, deliveryLat, deliveryLng sql.NullFloat64
+		var totalCost float64
+		err = h.db.QueryRow(`
+			SELECT user_id, trade_id, delivery_type, pickup_address, delivery_address,
+			       pickup_latitude, pickup_longitude, delivery_latitude, delivery_longitude, total_cost
+			FROM deliveries WHERE id = ?`, deliveryID).Scan(
+			&deliveryUserID, &tradeID, &deliveryType, &pickupAddr, &deliveryAddr,
+			&pickupLat, &pickupLng, &deliveryLat, &deliveryLng, &totalCost)
 
-	// Get sender details (delivery creator)
-	var senderName, senderPhone string
-	h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", deliveryUserID).Scan(&senderName, &senderPhone)
-
-	// Get receiver details (if trade-based delivery, get the other party)
-	receiverName := "Receiver"
-	receiverPhone := ""
-	if tradeID.Valid {
-		var receiverID int
-		h.db.QueryRow("SELECT IF(buyer_id = ?, seller_id, buyer_id) FROM trades WHERE id = ?", deliveryUserID, tradeID.Int64).Scan(&receiverID)
-		h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", receiverID).Scan(&receiverName, &receiverPhone)
-	}
-
-	// TASK 17: Fee split - sender pays 50%, receiver pays 50%
-	senderFee := totalCost * 0.5
-	receiverFee := totalCost * 0.5
-
-	// Create stops based on delivery type
-	if deliveryType == "express" {
-		// Express: 2 stops only (pickup → delivery)
-		// Stop 1: Pickup from sender
-		_, err = h.db.Exec(`
-			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
-			                             address, latitude, longitude, fee_amount, status)
-			VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee)
 		if err != nil {
-			log.Printf("Failed to create express pickup stop: %v", err)
-		}
+			log.Printf("Failed to get delivery details: %v", err)
+		} else {
+			// Get sender details (delivery creator)
+			var senderName, senderPhone string
+			h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", deliveryUserID).Scan(&senderName, &senderPhone)
 
-		// Stop 2: Delivery to receiver
-		_, err = h.db.Exec(`
-			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
-			                             address, latitude, longitude, fee_amount, status)
-			VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee)
-		if err != nil {
-			log.Printf("Failed to create express delivery stop: %v", err)
+			// Get receiver details (if trade-based delivery, get the other party)
+			receiverName := "Receiver"
+			receiverPhone := ""
+			if tradeID.Valid {
+				var receiverID int
+				h.db.QueryRow("SELECT IF(buyer_id = ?, seller_id, buyer_id) FROM trades WHERE id = ?", deliveryUserID, tradeID.Int64).Scan(&receiverID)
+				h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", receiverID).Scan(&receiverName, &receiverPhone)
+			}
+
+			// TASK 17: Fee split - sender pays 50%, receiver pays 50%
+			senderFee := totalCost * 0.5
+			receiverFee := totalCost * 0.5
+
+			// Create stops based on delivery type
+			if deliveryType == "express" {
+				// Express: 2 stops only (pickup → delivery)
+				// Stop 1: Pickup from sender
+				_, err = h.db.Exec(`
+					INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+					                             address, latitude, longitude, fee_amount, status)
+					VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
+					deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee)
+				if err != nil {
+					log.Printf("Failed to create express pickup stop: %v", err)
+				}
+
+				// Stop 2: Delivery to receiver
+				_, err = h.db.Exec(`
+					INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+					                             address, latitude, longitude, fee_amount, status)
+					VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
+					deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee)
+				if err != nil {
+					log.Printf("Failed to create express delivery stop: %v", err)
+				}
+			} else {
+				// Standard: Create pickup and delivery stops (can be batched in future)
+				// For now, create simple 2-stop flow like express
+				_, err = h.db.Exec(`
+					INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+					                             address, latitude, longitude, fee_amount, status)
+					VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
+					deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee)
+				if err != nil {
+					log.Printf("Failed to create standard pickup stop: %v", err)
+				}
+
+				_, err = h.db.Exec(`
+					INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+					                             address, latitude, longitude, fee_amount, status)
+					VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
+					deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee)
+				if err != nil {
+					log.Printf("Failed to create standard delivery stop: %v", err)
+				}
+			}
 		}
 	} else {
-		// Standard: Create pickup and delivery stops (can be batched in future)
-		// For now, create simple 2-stop flow like express
-		_, err = h.db.Exec(`
-			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
-			                             address, latitude, longitude, fee_amount, status)
-			VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee)
-		if err != nil {
-			log.Printf("Failed to create standard pickup stop: %v", err)
-		}
-
-		_, err = h.db.Exec(`
-			INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
-			                             address, latitude, longitude, fee_amount, status)
-			VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee)
-		if err != nil {
-			log.Printf("Failed to create standard delivery stop: %v", err)
-		}
+		log.Printf("Delivery %d already has %d stops, skipping creation", deliveryID, existingStops)
 	}
 
 	// TASK 19: Initialize rider ledger if doesn't exist
 	h.ensureRiderLedger(riderID)
 
 	// Notify the delivery owner
+	var deliveryUserID int
+	var tradeID sql.NullInt64
 	_ = h.db.QueryRow("SELECT user_id, trade_id FROM deliveries WHERE id = ?", deliveryID).Scan(&deliveryUserID, &tradeID)
 
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",

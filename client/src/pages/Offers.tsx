@@ -8,9 +8,11 @@ import { Trade, TradeAction } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
 import OfferDetailsModal from '../components/OfferDetailsModal'
 import TradeCompletionModal from '../components/TradeCompletionModal'
+import { useInvalidateDashboard } from '../hooks/useDashboard'
 
 const Offers: React.FC = () => {
   const navigate = useNavigate()
+  const { invalidateOffers, invalidateDashboard } = useInvalidateDashboard()
   const [incoming, setIncoming] = useState<Trade[]>([])
   const [outgoing, setOutgoing] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
@@ -136,6 +138,11 @@ const Offers: React.FC = () => {
   const updateTrade = async (id: number, action: TradeAction) => {
     try {
       const response = await api.put(`/api/trades/${id}`, action)
+
+      // Invalidate dashboard cache so changes show immediately in dashboard
+      invalidateOffers()
+      invalidateDashboard()
+
       toast({
         id: "offers-success", title: 'Success', description: 'Offer updated', status: 'success' })
       fetchAll()

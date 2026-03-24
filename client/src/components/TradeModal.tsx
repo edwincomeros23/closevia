@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner } from '@chakra-ui/react'
 import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaLocationArrow } from 'react-icons/fa'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { api } from '../services/api'
 import { Product, TradeCreate, TradeOption } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
 import { reverseGeocodeToAddress, formatCoordinates } from '../utils/locationUtils'
+import { useInvalidateDashboard, DASHBOARD_QUERY_KEYS } from '../hooks/useDashboard'
 
 interface TradeModalProps {
   isOpen: boolean
@@ -18,6 +20,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const { user, refreshUser } = useAuth()
   const toast = useToast()
   const { showNotification } = useNotification()
+  const queryClient = useQueryClient()
+  const { invalidateOffers, invalidateDashboard } = useInvalidateDashboard()
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const [targetProduct, setTargetProduct] = useState<Product | null>(null)
   const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([])
@@ -216,6 +220,12 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       }
       console.log('Submitting trade payload:', payload)
       await api.post('/api/trades', payload)
+
+      // Invalidate dashboard cache so sent offers show immediately
+      invalidateOffers()
+      invalidateDashboard()
+      await queryClient.refetchQueries({ queryKey: DASHBOARD_QUERY_KEYS.sentOffers })
+
       showNotification('Trade Offer Sent', 'success')
       setSelectedOfferIds([])
       setTradeMessage('')
