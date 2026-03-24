@@ -44,6 +44,11 @@ import {
   InputGroup,
   InputLeftElement,
   InputRightElement,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  MenuDivider,
   ScaleFade,
   Fade,
   Tooltip,
@@ -60,7 +65,7 @@ import { Product, Order, Trade, TradeAction } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
 import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
-import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
+import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
@@ -122,6 +127,7 @@ const Dashboard: React.FC = () => {
     () => actualUserProducts.filter(p => p.status !== 'traded' && p.status !== 'sold'),
     [actualUserProducts]
   )
+  const hasListedProducts = actualUserProducts.length > 0
 
   // Buyout offers - filter from receivedOffers where items are empty and cash is present
   const buyoutOffers = useMemo(() => {
@@ -160,6 +166,7 @@ const Dashboard: React.FC = () => {
   // Unified search - searches across all content
   const [unifiedSearch, setUnifiedSearch] = useState('')
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
+  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false)
   // notifications state (handled on /notifications page)
   // dev helper: when true, show multiple pages for testing even if there are no notifications
   const DEV_SHOW_PAGES_ALWAYS = true
@@ -175,7 +182,7 @@ const Dashboard: React.FC = () => {
   const ongoingLoading = false
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
-  const [offersSubTab, setOffersSubTab] = useState(0) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing
+  const [offersSubTab, setOffersSubTab] = useState(2) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing, 4: Archive
   const [offersPage, setOffersPage] = useState(1)
   const [offersSearch, setOffersSearch] = useState('')
   const [offersStatusFilter, setOffersStatusFilter] = useState<string>('all')
@@ -219,6 +226,7 @@ const Dashboard: React.FC = () => {
   const defaultOffersViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
   const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
+  const [multiWayChainFilter, setMultiWayChainFilter] = useState<'all' | '3' | '4plus'>('all')
   const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
 
   // Color mode values
@@ -239,6 +247,16 @@ const Dashboard: React.FC = () => {
       setProductViewMode(defaultProductViewMode)
     }
   }, [defaultProductViewMode])
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsHeaderScrolled(window.scrollY > 6)
+    }
+
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   useEffect(() => {
     if (user && user?.id) {
@@ -634,6 +652,19 @@ const Dashboard: React.FC = () => {
 
     return { yourGive, yourGet, chainLabel }
   }, [user?.id])
+
+  const filteredMultiWayTrades = useMemo(() => {
+    const getChainSize = (trade: any) => {
+      const participants = Array.isArray(trade?.participants) ? trade.participants.length : 0
+      if (participants > 0) return participants
+      const edges = Array.isArray(trade?.edges) ? trade.edges.length : 0
+      return edges
+    }
+
+    if (multiWayChainFilter === 'all') return multiWayTrades
+    if (multiWayChainFilter === '3') return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 3)
+    return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) >= 4)
+  }, [multiWayTrades, multiWayChainFilter])
 
   const fetchMultiWayTrades = async () => {
     try {
@@ -2609,18 +2640,104 @@ const Dashboard: React.FC = () => {
     return null
   }
 
+  const dashboardSubtitleByTab: Record<number, string> = {
+    0: 'Manage your listings and keep them trade-ready.',
+    1: 'Review your offers and respond quickly to pending actions.',
+    2: 'Track multi-way matches and loop opportunities for your listings.',
+    3: 'Review your completed and archived trade history.',
+  }
+  const activeSubtitle = dashboardSubtitleByTab[activeTab] || 'Manage your products, trades, and offers.'
+
+  const handleMobileToggleView = () => {
+    if (activeTab === 0) {
+      setProductViewMode(m => m === 'grid' ? 'list' : 'grid')
+      return
+    }
+    if (activeTab === 1) {
+      setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')
+      return
+    }
+    if (activeTab === 2) {
+      setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')
+      return
+    }
+    setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')
+  }
+
+  const handleMobileCycleFilter = () => {
+    if (activeTab === 0) {
+      const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
+      const currentIndex = filters.indexOf(productFilter)
+      setProductFilter(filters[(currentIndex + 1) % filters.length])
+      setCurrentPage(1)
+      return
+    }
+    if (activeTab === 1) {
+      const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+      const currentIndex = statuses.indexOf(offersStatusFilter)
+      setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+      setOffersPage(1)
+      return
+    }
+    if (activeTab === 2) {
+      const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
+      const currentIndex = filters.indexOf(multiWayChainFilter)
+      setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+      return
+    }
+  }
+
+  const handleMobileSetSort = (mode: 'newest' | 'oldest') => {
+    if (activeTab === 0) {
+      setProductSort(mode)
+      setCurrentPage(1)
+      return
+    }
+    if (activeTab === 1 || activeTab === 2) {
+      setOffersSort(mode)
+      return
+    }
+    setTradeHistorySort(mode)
+    setTradeHistoryPage(1)
+  }
+
+  const activeViewMode = activeTab === 0
+    ? productViewMode
+    : activeTab === 1
+      ? offersViewMode
+      : activeTab === 2
+        ? multiWayTradesViewMode
+        : tradeHistoryViewMode
+
+  const activeSortMode = activeTab === 0
+    ? productSort
+    : activeTab === 1 || activeTab === 2
+      ? offersSort
+      : tradeHistorySort
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 3, md: 6 }}>
         <VStack spacing={{ base: 3, md: 6 }} align="stretch">
           {/* Sticky header: search bar + view toggle stay visible when scrolling long product lists */}
-          <Box position="sticky" top={0} zIndex={20} bg="#FFFDF1" py={2} mt={-2} mb={-2}>
+          <Box
+            position="sticky"
+            top={0}
+            zIndex={20}
+            bg="#FFFDF1"
+            py={2}
+            mt={-2}
+            mb={-2}
+            boxShadow={isHeaderScrolled ? 'sm' : 'none'}
+            transition="box-shadow 0.2s ease"
+          >
             <VStack spacing={{ base: 2, md: 4 }} align="stretch">
               <Flex
                 align="center"
                 justify="space-between"
                 gap={{ base: 2, md: 4 }}
-                flexWrap={{ base: 'wrap', md: 'nowrap' }}
+                flexWrap="nowrap"
+                display={{ base: 'flex', md: 'flex' }}
               >
                 {/* Left: Welcome Message */}
                 <Box minW="fit-content" display={{ base: 'none', md: 'block' }}>
@@ -2628,14 +2745,14 @@ const Dashboard: React.FC = () => {
                     Welcome, <Box as="span" textTransform="capitalize">{user?.name}</Box>!
                   </Heading>
                   <Text color="gray.600" fontSize="sm">
-                    Manage your products, trades, and offers
+                    {activeSubtitle}
                   </Text>
                 </Box>
 
                 {/* Center: Unified Search Bar */}
                 <InputGroup
-                  flex={{ base: '1', md: '1 1 350px' }}
-                  maxW={{ base: '100%', md: '800px' }}
+                  flex={{ base: '1 1 auto', sm: '0 0 64%', md: '1 1 350px' }}
+                  maxW={{ base: '65%', sm: '70%', md: '800px' }}
                   position="relative"
                 >
                   <InputLeftElement pointerEvents="none">
@@ -2662,7 +2779,7 @@ const Dashboard: React.FC = () => {
                       borderColor: 'brand.400',
                       boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)'
                     }}
-                    size="md"
+                    size={{ base: 'sm', md: 'md' }}
                   />
                   {unifiedSearch && (
                     <InputRightElement>
@@ -2826,10 +2943,38 @@ const Dashboard: React.FC = () => {
              </HStack>
              */}
 
-                {/* Filter/Sort Controls - All Screens */}
-                <HStack spacing={1} flexShrink={0}>
+                {/* Filter/Sort Controls - Desktop */}
+                <HStack
+                  spacing={{ base: 2, md: 1 }}
+                  flexShrink={0}
+                  display={{ base: 'none', md: 'flex' }}
+                  sx={{
+                    '& .chakra-icon-button': {
+                      minW: { base: '36px', md: '32px' },
+                      h: { base: '36px', md: '32px' },
+                      fontSize: { base: '22px', md: '16px' },
+                      bg: { base: 'teal.50', md: 'transparent' },
+                      borderWidth: { base: '1px', md: '0px' },
+                      borderColor: { base: 'teal.200', md: 'transparent' },
+                      color: { base: 'teal.700', md: 'inherit' },
+                      _hover: { bg: { base: 'teal.100', md: 'transparent' } },
+                    },
+                  }}
+                >
                   {activeTab === 0 && (
                     <>
+                      <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={productViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={productViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
                       <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={productViewMode === 'grid' ? 'List view' : 'Grid view'}
@@ -2837,8 +2982,27 @@ const Dashboard: React.FC = () => {
                           size="sm"
                           variant={productViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
+                      </Tooltip>
+
+                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          isDisabled={!hasListedProducts}
+                          onClick={() => {
+                            const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
+                            const currentIndex = filters.indexOf(productFilter)
+                            setProductFilter(filters[(currentIndex + 1) % filters.length])
+                            setCurrentPage(1)
+                          }}
+                        >
+                          Filter
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`} hasArrow>
                         <IconButton
@@ -2846,6 +3010,8 @@ const Dashboard: React.FC = () => {
                           icon={<FiFilter />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
+                          isDisabled={!hasListedProducts}
                           onClick={() => {
                             const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
                             const currentIndex = filters.indexOf(productFilter)
@@ -2854,12 +3020,28 @@ const Dashboard: React.FC = () => {
                           }}
                         />
                       </Tooltip>
+
+                      <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
+                            setCurrentPage(1)
+                          }}
+                        >
+                          Sort
+                        </Button>
+                      </Tooltip>
                       <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
                           aria-label="Sort products"
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
                             setCurrentPage(1)
@@ -2872,21 +3054,54 @@ const Dashboard: React.FC = () => {
                   {activeTab === 1 && (
                     <>
                       <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={offersViewMode === 'grid' ? 'List view' : 'Grid view'}
                           icon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
                           size="sm"
                           variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
+                      </Tooltip>
+
+                      <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="orange"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+                            const currentIndex = statuses.indexOf(offersStatusFilter)
+                            setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+                            setOffersPage(1)
+                          }}
+                        >
+                          Filter
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
                         <IconButton
                           aria-label="Filter offers"
                           icon={<FiFilter />}
                           size="sm"
-                          variant="ghost"
+                          variant="outline"
+                          colorScheme="orange"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
                             const currentIndex = statuses.indexOf(offersStatusFilter)
@@ -2895,12 +3110,27 @@ const Dashboard: React.FC = () => {
                           }}
                         />
                       </Tooltip>
+
+                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                          }}
+                        >
+                          Sort
+                        </Button>
+                      </Tooltip>
                       <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
                           aria-label="Sort offers"
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
                           }}
@@ -2912,14 +3142,77 @@ const Dashboard: React.FC = () => {
                   {activeTab === 2 && (
                     <>
                       <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={multiWayTradesViewMode === 'grid' ? 'List view' : 'Grid view'}
                           icon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
                           size="sm"
                           variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
+                      </Tooltip>
+                      <Tooltip
+                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`}
+                        hasArrow
+                      >
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="purple"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
+                            const currentIndex = filters.indexOf(multiWayChainFilter)
+                            setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+                          }}
+                        >
+                          Filter
+                        </Button>
+                      </Tooltip>
+                      <Tooltip
+                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`}
+                        hasArrow
+                      >
+                        <IconButton
+                          aria-label="Filter multi-way trades"
+                          icon={<FiFilter />}
+                          size="sm"
+                          variant="outline"
+                          colorScheme="purple"
+                          display={{ base: 'inline-flex', md: 'none' }}
+                          onClick={() => {
+                            const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
+                            const currentIndex = filters.indexOf(multiWayChainFilter)
+                            setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                          }}
+                        >
+                          Sort
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
@@ -2927,6 +3220,7 @@ const Dashboard: React.FC = () => {
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
                           }}
@@ -2938,14 +3232,64 @@ const Dashboard: React.FC = () => {
                   {activeTab === 3 && (
                     <>
                       <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={tradeHistoryViewMode === 'grid' ? 'List view' : 'Grid view'}
                           icon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
                           size="sm"
                           variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
+                      </Tooltip>
+                      <Tooltip label="History filters coming soon" hasArrow>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="gray"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          isDisabled
+                        >
+                          Filter
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label="History filters coming soon" hasArrow>
+                        <IconButton
+                          aria-label="Filter trade history"
+                          icon={<FiFilter />}
+                          size="sm"
+                          variant="outline"
+                          colorScheme="gray"
+                          display={{ base: 'inline-flex', md: 'none' }}
+                          isDisabled
+                        />
+                      </Tooltip>
+                      <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
+                            setTradeHistoryPage(1)
+                          }}
+                        >
+                          Sort
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
@@ -2953,6 +3297,7 @@ const Dashboard: React.FC = () => {
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
                             setTradeHistoryPage(1)
@@ -2963,17 +3308,90 @@ const Dashboard: React.FC = () => {
                   )}
                 </HStack>
 
-                {/* Notifications & Profile - Mobile Only */}
-                <HStack spacing={2} flexShrink={0} display={{ base: 'flex', md: 'none' }}>
+                {/* Notifications - Desktop */}
+                <HStack spacing={2} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
                   <Box position="relative">
                     <IconButton
                       aria-label="Notifications"
                       icon={<BellIcon />}
-                      size="md"
-                      bg="#319795"
-                      color="white"
-                      _hover={{ bg: '#2A8280' }}
-                      _active={{ bg: '#267E7C' }}
+                      size="sm"
+                      variant="outline"
+                      colorScheme={unreadNotifications > 0 ? 'orange' : 'gray'}
+                      onClick={() => navigate('/notifications')}
+                    />
+                    {unreadNotifications > 0 && (
+                      <Badge
+                        position="absolute"
+                        top="-6px"
+                        right="-6px"
+                        bg="red.500"
+                        color="white"
+                        borderRadius="full"
+                        fontSize="2xs"
+                        minW="16px"
+                        h="16px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        fontWeight="bold"
+                      >
+                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                      </Badge>
+                    )}
+                  </Box>
+                </HStack>
+
+                {/* Mobile controls: Search stays left; Controls + Bell + Avatar on the right */}
+                <HStack spacing={2} flexShrink={0} display={{ base: 'flex', md: 'none' }}>
+                  <Menu placement="bottom-end" closeOnSelect>
+                    <MenuButton
+                      as={IconButton}
+                      aria-label="Open controls"
+                      icon={<Icon as={FiSliders} boxSize={5.5} />}
+                      size="sm"
+                      variant="outline"
+                      color="#3D9E8C"
+                      borderColor="#3D9E8C"
+                      _hover={{ bg: 'teal.50' }}
+                      _active={{ bg: 'teal.100' }}
+                    />
+                    <MenuList bg="white" borderRadius="md" boxShadow="md" minW="220px">
+                      <MenuItem icon={<Icon as={activeViewMode === 'grid' ? FiGrid : FiList} />} onClick={handleMobileToggleView}>
+                        {activeViewMode === 'grid' ? 'Grid view' : 'List view'} <Text as="span" ml={2}>✓</Text>
+                      </MenuItem>
+                      <MenuItem
+                        icon={<Icon as={FiFilter} />}
+                        onClick={handleMobileCycleFilter}
+                        isDisabled={activeTab === 3 || (activeTab === 0 && !hasListedProducts)}
+                      >
+                        {activeTab === 0
+                          ? `Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`
+                          : activeTab === 1
+                            ? `Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`
+                            : activeTab === 2
+                              ? `Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`
+                              : 'Filter: Coming soon'}
+                      </MenuItem>
+                      <MenuDivider />
+                      <MenuItem icon={<Icon as={FiArrowDown} />} onClick={() => handleMobileSetSort('newest')}>
+                        Newest {activeSortMode === 'newest' ? '✓' : ''}
+                      </MenuItem>
+                      <MenuItem icon={<Icon as={FiArrowDown} />} onClick={() => handleMobileSetSort('oldest')}>
+                        Latest {activeSortMode === 'oldest' ? '✓' : ''}
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+
+                  <Box position="relative">
+                    <IconButton
+                      aria-label="Notifications"
+                      icon={<BellIcon />}
+                      size="sm"
+                      variant="outline"
+                      color="#3D9E8C"
+                      borderColor="#3D9E8C"
+                      _hover={{ bg: 'teal.50' }}
+                      _active={{ bg: 'teal.100' }}
                       onClick={() => navigate('/notifications')}
                     />
                     {unreadNotifications > 0 && (
@@ -2996,19 +3414,27 @@ const Dashboard: React.FC = () => {
                       </Badge>
                     )}
                   </Box>
-                  <VerifiedAvatar
-                    name={user?.name || 'User'}
-                    src={user?.profile_picture || undefined}
-                    size="md"
-                    bg="brand.500"
-                    color="white"
+                  <Box
+                    border="2px solid"
+                    borderColor="#3D9E8C"
+                    borderRadius="full"
+                    p="1px"
                     cursor="pointer"
-                    onClick={() => navigate('/UserProfile')}
-                    _hover={{ opacity: 0.8 }}
-                    isVerified={user?.verified || (user as any)?.verification_status === 'verified' || false}
-                  />
+                    onClick={() => navigate(`/users/${(user as any)?.slug || user?.id}`)}
+                  >
+                    <VerifiedAvatar
+                      name={user?.name || 'User'}
+                      src={user?.profile_picture || undefined}
+                      size="sm"
+                      bg="brand.500"
+                      color="white"
+                      _hover={{ opacity: 0.8 }}
+                      isVerified={user?.verified || (user as any)?.verification_status === 'verified' || false}
+                    />
+                  </Box>
                 </HStack>
               </Flex>
+
             </VStack>
           </Box>
 
@@ -3079,6 +3505,11 @@ const Dashboard: React.FC = () => {
                       <HStack spacing={1}>
                         <Icon as={FiMessageCircle} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Offers</Text>
+                        {unreadOffers > 0 && (
+                          <Badge colorScheme="red" borderRadius="full" fontSize="2xs">
+                            {unreadOffers > 99 ? '99+' : unreadOffers}
+                          </Badge>
+                        )}
                         {(sentOffers.length + receivedOffers.length + ongoingTrades.length) > 0 && (
                           <Badge
                             colorScheme="orange"
@@ -3147,24 +3578,28 @@ const Dashboard: React.FC = () => {
                             Searching: "{unifiedSearch}"
                           </Badge>
                         )}
-                        {/* Category Filter Dropdown */}
-                        <Select
-                          size="sm"
-                          value={productCategoryFilter}
-                          onChange={e => { setProductCategoryFilter(e.target.value); setCurrentPage(1) }}
-                          maxW="160px"
-                          borderRadius="md"
-                          fontSize="sm"
-                        >
-                          <option value="all">All Categories</option>
-                          {PRODUCT_CATEGORIES.map(cat => (
-                            <option key={cat.value} value={cat.value}>{cat.label}</option>
-                          ))}
-                        </Select>
-                        {productCategoryFilter !== 'all' && (
-                          <Badge colorScheme="green" variant="subtle" fontSize="sm" px={2} py={1} cursor="pointer" onClick={() => setProductCategoryFilter('all')}>
-                            Category: {productCategoryFilter} ✕
-                          </Badge>
+                        {hasListedProducts && (
+                          <>
+                            {/* Category Filter Dropdown */}
+                            <Select
+                              size="sm"
+                              value={productCategoryFilter}
+                              onChange={e => { setProductCategoryFilter(e.target.value); setCurrentPage(1) }}
+                              maxW="160px"
+                              borderRadius="md"
+                              fontSize="sm"
+                            >
+                              <option value="all">All Categories</option>
+                              {PRODUCT_CATEGORIES.map(cat => (
+                                <option key={cat.value} value={cat.value}>{cat.label}</option>
+                              ))}
+                            </Select>
+                            {productCategoryFilter !== 'all' && (
+                              <Badge colorScheme="green" variant="subtle" fontSize="sm" px={2} py={1} cursor="pointer" onClick={() => setProductCategoryFilter('all')}>
+                                Category: {productCategoryFilter} ✕
+                              </Badge>
+                            )}
+                          </>
                         )}
                       </HStack>
                     </HStack>
@@ -3355,45 +3790,96 @@ const Dashboard: React.FC = () => {
                           }
                         }}
                       >
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Buyout Offers</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Buyout</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="orange.200"
+                          bg="orange.50"
+                          _selected={{ bg: 'orange.100', borderColor: 'orange.400', color: 'orange.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FaMoneyBillWave} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Buyout Offers</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Buyout</Box>
+                          </HStack>
                           {offersStats.buyout > 0 && (
                             <Badge ml={2} colorScheme="orange" borderRadius="full" fontSize="xs">
                               {offersStats.buyout}
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="yellow.200"
+                          bg="yellow.50"
+                          _selected={{ bg: 'yellow.100', borderColor: 'yellow.400', color: 'yellow.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FiSend} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
+                          </HStack>
                           {offersStats.sentPending > 0 && (
                             <Badge ml={2} colorScheme="yellow" borderRadius="full" fontSize="xs">
                               {offersStats.sentPending}
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="blue.200"
+                          bg="blue.50"
+                          _selected={{ bg: 'blue.100', borderColor: 'blue.400', color: 'blue.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FiInbox} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
+                          </HStack>
                           {offersStats.receivedPending > 0 && (
                             <Badge ml={2} colorScheme="blue" borderRadius="full" fontSize="xs">
                               {offersStats.receivedPending}
                             </Badge>
                           )}
+                          {offersStats.receivedPending > 0 && (
+                            <Badge ml={2} colorScheme="red" variant="solid" fontSize="2xs">Action</Badge>
+                          )}
                         </Tab>
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="green.200"
+                          bg="green.50"
+                          _selected={{ bg: 'green.100', borderColor: 'green.400', color: 'green.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FaClock} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
+                          </HStack>
                           {offersStats.ongoing > 0 && (
                             <Badge ml={2} colorScheme="green" borderRadius="full" fontSize="xs">
                               {offersStats.ongoing}
                             </Badge>
                           )}
+                          {offersStats.ongoing > 0 && (
+                            <Badge ml={2} colorScheme="red" variant="solid" fontSize="2xs">Action</Badge>
+                          )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Archive</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Archive</Box>
+                        <Tab
+                          fontSize={{ base: '10px', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="gray.200"
+                          bg="gray.50"
+                          _selected={{ bg: 'gray.100', borderColor: 'gray.400', color: 'gray.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FiArchive} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Archive</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Archive</Box>
+                          </HStack>
                           {archivedTradesData.length > 0 && (
                             <Badge ml={2} colorScheme="red" borderRadius="full" fontSize="xs">
                               {archivedTradesData.length}
@@ -3963,6 +4449,19 @@ const Dashboard: React.FC = () => {
 
                 {/* Multi-Way Trades Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
+                  <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg" mb={4}>
+                    <VStack align="start" spacing={1}>
+                      <Text fontSize="xs" color="blue.800">
+                        Tip: Make sure your listings have desired items filled in to appear in multi-way matches.
+                      </Text>
+                      {!user?.is_premium && (
+                        <Text fontSize="xs" color="blue.900" fontWeight="semibold">
+                          You're viewing matches found for your listings. Initiating a multi-way search requires Premium.
+                        </Text>
+                      )}
+                    </VStack>
+                  </Box>
+
                   {!user?.is_premium && loopQuota && !loopQuota.unlimited && (
                     <VStack align="stretch" spacing={2} mb={4}>
                       <Box p={3} bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="lg">
@@ -3992,15 +4491,19 @@ const Dashboard: React.FC = () => {
                     <Center py={12}>
                       <Spinner size="lg" color="brand.500" />
                     </Center>
-                  ) : multiWayTrades.length === 0 ? (
+                  ) : filteredMultiWayTrades.length === 0 ? (
                     multiWayTradesViewMode === 'list' ? (
                       <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={6} textAlign="center">
                         <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
                         <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                          No multi-way trades available
+                          {multiWayChainFilter === 'all' ? 'No multi-way trades available' : 'No matches for this chain filter'}
                         </Text>
                         <Text color="gray.500" fontSize="sm">
-                          Multi-way trade opportunities will appear here. Check back soon!
+                          {multiWayChainFilter === 'all'
+                            ? (user?.is_premium
+                              ? 'Multi-way trade opportunities will appear here. Check back soon!'
+                              : 'This space shows matches found for your listings. Upgrade to Premium to initiate multi-way searches.')
+                            : 'Try changing the chain-size filter to see more matches.'}
                         </Text>
                       </Box>
                     ) : (
@@ -4009,10 +4512,14 @@ const Dashboard: React.FC = () => {
                           <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={2} />
                           <VStack spacing={1}>
                             <Text color="gray.600" fontSize="lg" fontWeight="semibold">
-                              No multi-way trades available
+                              {multiWayChainFilter === 'all' ? 'No multi-way trades available' : 'No matches for this chain filter'}
                             </Text>
                             <Text color="gray.500" fontSize="sm" maxW="400px">
-                              Multi-way trade opportunities will appear here once we find a trading loop that involves your products. Check back later!
+                              {multiWayChainFilter === 'all'
+                                ? (user?.is_premium
+                                  ? 'Multi-way trade opportunities will appear here once we find a trading loop that involves your products. Check back later!'
+                                  : 'You can view detected matches here. Upgrade to Premium to initiate and run loop searches.')
+                                : 'No loops currently match the selected chain size. Try All Chains.'}
                             </Text>
                           </VStack>
                         </VStack>
@@ -4034,13 +4541,13 @@ const Dashboard: React.FC = () => {
                       >
                         What • Chain • Participants • Action
                       </Box>
-                      {multiWayTrades.map((trade, idx) => (
+                      {filteredMultiWayTrades.map((trade, idx) => (
                         <Flex
                           key={trade.id}
                           align="center"
                           gap={{ base: 2, md: 4 }}
                           p={3}
-                          borderBottom={idx < multiWayTrades.length - 1 ? '1px' : 'none'}
+                          borderBottom={idx < filteredMultiWayTrades.length - 1 ? '1px' : 'none'}
                           borderColor={borderColor}
                           _hover={{ bg: 'gray.50' }}
                           minW={0}
@@ -4147,7 +4654,7 @@ const Dashboard: React.FC = () => {
                     </Box>
                   ) : (
                     <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                      {multiWayTrades.map((trade) => {
+                      {filteredMultiWayTrades.map((trade) => {
                         const summary = getMultiWayTradeSummary(trade)
                         return (
                           <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
