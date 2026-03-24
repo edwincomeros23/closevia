@@ -186,12 +186,17 @@ const Sidebar: React.FC = () => {
               {/* User Profile Card - Only when logged in */}
               {user && (
                 <Box
+                  as={RouterLink}
+                  to="/profile"
+                  onClick={onClose}
                   bg={useColorModeValue('brand.50', 'gray.700')}
                   p={4}
                   mb={4}
                   borderRadius="lg"
                   mx={4}
                   mt={4}
+                  _hover={{ opacity: 0.85, textDecoration: 'none' }}
+                  display="block"
                 >
                   <Box display="flex" alignItems="center" gap={3} mb={3}>
                     <VerifiedAvatar
