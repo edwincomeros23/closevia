@@ -1191,12 +1191,15 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This action is only available for meetup trades"})
 		}
 
-		// Validate meetup location is provided
+		// Validate meetup location and time are provided
 		if payload.MeetupLocation == "" {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup location is required"})
 		}
+		if payload.MeetupTime == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup time is required"})
+		}
 
-		// Update meetup location and confirmation status
+		// Update meetup location, time, and confirmation status
 		var updateColumn string
 		switch userID {
 		case buyerID:
@@ -1207,8 +1210,8 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 		}
 
-		// Update the trade with meetup location and confirmation
-		_, err = h.db.Exec("UPDATE trades SET meetup_location=?, "+updateColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.MeetupLocation, tradeID)
+		// Update the trade with meetup location, time, and confirmation
+		_, err = h.db.Exec("UPDATE trades SET meetup_location=?, meetup_time=?, "+updateColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.MeetupLocation, payload.MeetupTime, tradeID)
 		if err != nil {
 			log.Printf("Failed to update meetup confirmation for trade %d: %v", tradeID, err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup"})
@@ -1225,7 +1228,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			confirmerName = "seller"
 		}
 
-		notifMsg := fmt.Sprintf("The %s has confirmed the meetup location: %s", confirmerName, payload.MeetupLocation)
+		notifMsg := fmt.Sprintf("The %s has confirmed the meetup: %s at %s", confirmerName, payload.MeetupLocation, payload.MeetupTime)
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, notifMsg)
 
 		// Check if both parties have confirmed meetup
@@ -1249,7 +1252,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_confirmed": true}})
 		}
 
-		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_confirmed', ?)", tradeID, userID, currentStatus, "Meetup location confirmed: "+payload.MeetupLocation)
+		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_confirmed', ?)", tradeID, userID, currentStatus, "Meetup confirmed: "+payload.MeetupLocation+" at "+payload.MeetupTime)
 	case "update_delivery_state":
 		// Handle delivery state updates (payment confirmation, proof of delivery, confirmations)
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")

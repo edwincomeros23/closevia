@@ -11,8 +11,6 @@ import {
   Image,
   Badge,
   Flex,
-  Spinner,
-  Center,
   Alert,
   AlertIcon,
   Divider,
@@ -684,6 +682,18 @@ const ProductDetail: React.FC = () => {
   }
 
   const handleShare = () => {
+    if (!user) {
+      toast({
+        id: 'auth-required-share',
+        title: 'Authentication required',
+        description: 'Please log in to share this product',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      navigate('/login')
+      return
+    }
     onShareOpen()
   }
 
@@ -905,9 +915,63 @@ const ProductDetail: React.FC = () => {
   if (loading) {
     return (
       <Box bg="#FFFDF1" minH="100vh" w="100%">
-        <Center h="50vh">
-          <Spinner size="xl" color="brand.500" />
-        </Center>
+        <Container maxW="container.xl" py={8}>
+          <Grid templateColumns={{ base: '1fr', lg: '1fr 1fr' }} gap={8}>
+            {/* Left side - Image skeleton */}
+            <VStack spacing={4} align="stretch">
+              <Skeleton height="400px" borderRadius="lg" />
+              <HStack spacing={2}>
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} height="80px" flex="1" borderRadius="md" />
+                ))}
+              </HStack>
+            </VStack>
+
+            {/* Right side - Details skeleton */}
+            <VStack spacing={6} align="stretch">
+              {/* Title */}
+              <VStack spacing={3} align="stretch">
+                <Skeleton height="32px" width="100%" />
+                <Skeleton height="24px" width="60%" />
+              </VStack>
+
+              {/* Category badges */}
+              <HStack spacing={2}>
+                <Skeleton height="24px" width="80px" borderRadius="full" />
+                <Skeleton height="24px" width="100px" borderRadius="full" />
+              </HStack>
+
+              {/* Price section */}
+              <VStack spacing={2} align="stretch" borderY="1px" borderColor="gray.200" py={4}>
+                <Skeleton height="28px" width="40%" />
+                <Skeleton height="20px" width="30%" />
+              </VStack>
+
+              {/* Seller info */}
+              <HStack spacing={3} p={4} bg="gray.50" borderRadius="lg">
+                <Skeleton height="50px" width="50px" borderRadius="full" />
+                <VStack spacing={2} align="start" flex="1">
+                  <Skeleton height="18px" width="40%" />
+                  <Skeleton height="16px" width="60%" />
+                </VStack>
+              </HStack>
+
+              {/* Action buttons */}
+              <VStack spacing={3} align="stretch">
+                <Skeleton height="44px" borderRadius="md" />
+                <Skeleton height="44px" borderRadius="md" />
+              </VStack>
+
+              {/* Description skeleton */}
+              <VStack spacing={2} align="stretch" pt={4}>
+                <Skeleton height="20px" width="30%" />
+                <Skeleton height="16px" width="100%" />
+                <Skeleton height="16px" width="100%" />
+                <Skeleton height="16px" width="80%" />
+              </VStack>
+            </VStack>
+          </Grid>
+        </Container>
       </Box>
     )
   }
@@ -1094,7 +1158,21 @@ const ProductDetail: React.FC = () => {
                               borderRadius="8px"
                               bg="red.600"
                               color="white"
-                              onClick={() => setIsReportOpen(true)}
+                              onClick={() => {
+                                if (!user) {
+                                  toast({
+                                    id: 'auth-required-report-flag',
+                                    title: 'Authentication required',
+                                    description: 'Please log in to report this product',
+                                    status: 'warning',
+                                    duration: 3000,
+                                    isClosable: true,
+                                  })
+                                  navigate('/login')
+                                  return
+                                }
+                                setIsReportOpen(true)
+                              }}
                               _hover={{ bg: 'red.700' }}
                               _active={{ transform: 'scale(0.98)' }}
                               transition="all 0.15s"

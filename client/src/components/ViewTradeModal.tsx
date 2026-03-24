@@ -917,6 +917,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [offeredProducts, setOfferedProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
+  const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [confirmingMeetup, setConfirmingMeetup] = useState(false)
   const [confirmingPayment, setConfirmingPayment] = useState(false)
   const [buyerMeetupConfirmed, setBuyerMeetupConfirmed] = useState(false)
@@ -1198,13 +1199,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
   const confirmMeetup = async () => {
-    if (!trade || !selectedLocation || confirmingMeetup) return
+    if (!trade || !selectedLocation || !selectedTime || confirmingMeetup) return
 
     try {
       setConfirmingMeetup(true)
       await api.put(`/api/trades/${trade.id}`, {
         action: 'confirm_meetup',
         meetup_location: selectedLocation,
+        meetup_time: selectedTime,
       })
 
       // Update local state based on current user role
@@ -1998,6 +2000,65 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </VStack>
                       </Box>
 
+                      {/* Meetup Time Selection */}
+                      <Box>
+                        <Text fontWeight="semibold" mb={1} fontSize="md">
+                          Choose a Time
+                        </Text>
+                        <Text fontSize="sm" color="gray.600" mb={4}>
+                          Select a time that works for both of you.
+                        </Text>
+
+                        {/* Time Picker */}
+                        <VStack spacing={3} align="stretch">
+                          {/* Time Input */}
+                          <FormControl>
+                            <FormLabel fontSize="sm" fontWeight="medium" mb={2}>
+                              Time (24-hour format)
+                            </FormLabel>
+                            <InputGroup>
+                              <InputLeftElement pointerEvents="none">
+                                <Icon as={FiClock} color="gray.400" />
+                              </InputLeftElement>
+                              <Input
+                                type="time"
+                                value={selectedTime || ''}
+                                onChange={(e) => setSelectedTime(e.target.value)}
+                                placeholder="e.g., 14:30"
+                                bg="white"
+                                borderWidth="1px"
+                                borderColor={borderColor}
+                                _focus={{
+                                  borderColor: 'brand.500',
+                                  boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)',
+                                }}
+                              />
+                            </InputGroup>
+                          </FormControl>
+
+                          {/* Quick time suggestions */}
+                          <Box>
+                            <Text fontSize="xs" color="gray.600" mb={2}>
+                              Or choose a suggested time:
+                            </Text>
+                            <HStack spacing={2} flexWrap="wrap">
+                              {['09:00', '12:00', '14:00', '16:00', '18:00'].map(time => (
+                                <Button
+                                  key={time}
+                                  size="sm"
+                                  variant={selectedTime === time ? 'solid' : 'outline'}
+                                  colorScheme={selectedTime === time ? 'brand' : 'gray'}
+                                  onClick={() => setSelectedTime(time)}
+                                  fontWeight="medium"
+                                >
+                                  {time}
+                                </Button>
+                              ))}
+                            </HStack>
+                          </Box>
+                        </VStack>
+                      </Box>
+
                       <Divider />
 
                       {/* Confirmation Status */}
@@ -2005,6 +2066,31 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <Text fontWeight="semibold" mb={4} fontSize="md">
                           Confirmation Status
                         </Text>
+                        
+                        {/* Selected Details Preview */}
+                        {selectedLocation && selectedTime && (
+                          <Card variant="outline" mb={4} borderColor="brand.200" bg="brand.50">
+                            <CardBody>
+                              <VStack align="start" spacing={2}>
+                                <HStack spacing={2}>
+                                  <Icon as={FaMapMarkerAlt} color="brand.500" boxSize={4} />
+                                  <Text fontSize="sm" fontWeight="medium">
+                                    <Text as="span" color="gray.600">Location: </Text>
+                                    {selectedLocation}
+                                  </Text>
+                                </HStack>
+                                <HStack spacing={2}>
+                                  <Icon as={FiClock} color="brand.500" boxSize={4} />
+                                  <Text fontSize="sm" fontWeight="medium">
+                                    <Text as="span" color="gray.600">Time: </Text>
+                                    {selectedTime}
+                                  </Text>
+                                </HStack>
+                              </VStack>
+                            </CardBody>
+                          </Card>
+                        )}
+
                         <HStack spacing={6} justify="center" align="center">
                           <VStack spacing={2}>
                             <Avatar
@@ -2058,7 +2144,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                       {/* Confirm Button */}
                       {
-                        selectedLocation && (
+                        selectedLocation && selectedTime && (
                           <Button
                             colorScheme="green"
                             size="lg"
@@ -2077,7 +2163,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               ? 'You Confirmed ✓'
                               : isUserSeller && sellerMeetupConfirmed
                                 ? 'You Confirmed ✓'
-                                : 'Confirm Meetup Location'}
+                                : 'Confirm Meetup Location & Time'}
                           </Button>
                         )
                       }

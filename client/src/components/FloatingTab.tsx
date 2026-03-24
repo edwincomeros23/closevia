@@ -36,9 +36,10 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
       <Box
         position="fixed"
         bottom="env(safe-area-inset-bottom, 16px)"
+        mb={12}
         left="50%"
         transform="translateX(-50%)"
-        display={{ base: 'block', sm: 'none' }}
+        display={{ base: 'block', md: 'none' }}
         zIndex={200}
         boxShadow="0 4px 20px rgba(0,0,0,0.15)"
         borderRadius="full"
@@ -65,7 +66,16 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
               flexDirection="column"
               gap={1}
               borderRadius="none"
-              _hover={{ bg: 'gray.50' }}
+              transition="all 0.2s ease"
+              _hover={{
+                bg: 'brand.600',
+                transform: 'translateY(-1px)',
+                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.24)',
+              }}
+              _active={{
+                bg: 'brand.700',
+                transform: 'translateY(0)',
+              }}
             >
               <Icon as={FiShoppingBag} boxSize={6} color="white" />
             </Button>
@@ -97,8 +107,16 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
             bg="brand.500"
             px={4}
             color="white"
-            _hover={{ bg: 'brand.600' }}
-            _active={{ bg: 'brand.700' }}
+            transition="all 0.2s ease"
+            _hover={{
+              bg: 'brand.600',
+              transform: 'translateY(-1px)',
+              boxShadow: '0 8px 20px rgba(49, 151, 149, 0.35)',
+            }}
+            _active={{
+              bg: 'brand.700',
+              transform: 'translateY(0)',
+            }}
             position="relative"
             boxShadow="0 4px 12px rgba(49, 151, 149, 0.3)"
           >
@@ -118,7 +136,16 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
               gap={1}
               px={4}
               borderRadius="none"
-              _hover={{ bg: 'gray.50' }}
+              transition="all 0.2s ease"
+              _hover={{
+                bg: 'brand.600',
+                transform: 'translateY(-1px)',
+                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.24)',
+              }}
+              _active={{
+                bg: 'brand.700',
+                transform: 'translateY(0)',
+              }}
             >
               <Icon as={AddIcon} boxSize={6} color="white" />
             </Button>
@@ -143,8 +170,16 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
           borderRadius="full"
           zIndex={200}
           boxShadow="lg"
-          display={{ base: 'none', sm: 'flex' }}
-          _hover={{ transform: 'scale(1.05)' }}
+          display={{ base: 'none', md: 'flex' }}
+          transition="all 0.2s ease"
+          _hover={{
+            transform: 'translateY(-2px) scale(1.05)',
+            boxShadow: '0 14px 24px rgba(0, 0, 0, 0.2)',
+            bgGradient: 'linear(to-br, brand.600, teal.500)',
+          }}
+          _active={{
+            transform: 'translateY(0) scale(1.01)',
+          }}
         />
       )}
     </>

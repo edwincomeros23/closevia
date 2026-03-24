@@ -359,6 +359,7 @@ type TradeAction struct {
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
 	MeetupLocation           string   `json:"meetup_location,omitempty"`
+	MeetupTime               string   `json:"meetup_time,omitempty"`
 	RequestedOption          string   `json:"requested_option,omitempty"`
 	DeliveryAddress          string   `json:"delivery_address,omitempty"`
 }

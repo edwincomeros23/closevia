@@ -7,7 +7,7 @@ import {
   HStack,
   Image,
   Link,
-  Spinner,
+  Skeleton,
   Text,
   VStack,
 } from '@chakra-ui/react'
@@ -42,9 +42,34 @@ const OrganizationProfile: React.FC = () => {
 
   if (loading) {
     return (
-      <Box minH="60vh" display="grid" placeItems="center">
-        <Spinner size="lg" color="teal.500" />
-      </Box>
+      <Container maxW="5xl" py={{ base: 6, md: 10 }}>
+        <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="2xl" overflow="hidden">
+          <Skeleton h={{ base: '150px', md: '220px' }} />
+
+          <Box px={{ base: 4, md: 8 }} pb={{ base: 6, md: 8 }} mt="-48px" position="relative">
+            <Skeleton w={{ base: '86px', md: '110px' }} h={{ base: '86px', md: '110px' }} borderRadius="full" mb={4} />
+
+            <VStack align="start" spacing={3}>
+              <Skeleton h="30px" w="260px" />
+              <Skeleton h="18px" w="160px" />
+              <Skeleton h="18px" w="140px" />
+              <Skeleton h="16px" w="100%" />
+              <Skeleton h="16px" w="85%" />
+
+              <HStack spacing={6} pt={2} flexWrap="wrap">
+                <Skeleton h="14px" w="180px" />
+                <Skeleton h="14px" w="220px" />
+                <Skeleton h="14px" w="120px" />
+              </HStack>
+
+              <HStack pt={3} spacing={3}>
+                <Skeleton h="40px" w="160px" borderRadius="md" />
+                <Skeleton h="40px" w="170px" borderRadius="md" />
+              </HStack>
+            </VStack>
+          </Box>
+        </Box>
+      </Container>
     )
   }
 
