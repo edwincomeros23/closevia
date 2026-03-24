@@ -1539,9 +1539,10 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	}
 
 	if verified != "" {
-		if verified == "true" {
+		switch verified {
+		case "true":
 			baseQuery += " AND verified = true"
-		} else if verified == "false" {
+		case "false":
 			baseQuery += " AND verified = false"
 		}
 	}

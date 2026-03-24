@@ -507,7 +507,7 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	// Trigger smart notifications in background (new similar item + popularity alerts)
 	services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
-	go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID), userID)
+	go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID))
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,

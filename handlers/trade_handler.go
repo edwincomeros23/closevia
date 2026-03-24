@@ -335,7 +335,7 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 		// Notify User 3 with specific details
 		user3Msg := fmt.Sprintf("%s invited you to a loop to trade your %s for their %s", initiatorName, targetProductTitle, best.User1ProductTitle)
 		if user3ProductTitle != "" {
-			user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, targetProductTitle, user3ProductTitle)
+			user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, targetProductTitle, user3ProductTitle, best.User1ProductTitle)
 		}
 		h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", best.User3ID, user3Msg)
 		publishNotification(best.User3ID, user3Msg)
@@ -373,7 +373,7 @@ func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, initiatorUserID 
 	}
 }
 
-func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int, userID int) {
+func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) {
 	// Get the new product's category and price for filtering
 	var productCategory string
 	var productPrice float64
@@ -2568,11 +2568,12 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 				}
 
 				user3Status := "pending"
-				if mStatus == "user3_accepted" || mStatus == "active" {
+				switch mStatus {
+				case "user3_accepted", "active":
 					user3Status = "joined"
-				} else if mStatus == "user3_declined" {
+				case "user3_declined":
 					user3Status = "declined"
-				} else if mStatus == "pending_initiator_upgrade" {
+				case "pending_initiator_upgrade":
 					user3Status = "waiting_initiator_upgrade"
 				}
 
