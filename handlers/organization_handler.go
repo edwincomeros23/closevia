@@ -1,10 +1,5 @@
 // PostProductForTrade allows a member to post a product for trade in the organization
 package handlers
-func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
-	userID, ok := middleware.GetUserIDFromContext(c)
-	if !ok {
-		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
-	}
 	slug := c.Params("slug")
 	var payload struct {
 		ProductID int `json:"product_id"`
