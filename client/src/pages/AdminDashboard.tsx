@@ -466,6 +466,7 @@ const UsageCalendar: React.FC<CalendarProps> = ({
 
 // â"€â"€â"€ Main Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const AdminDashboard: React.FC = () => {
+  type SectionId = 'overview' | 'moderation' | 'management' | 'system';
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -522,27 +523,6 @@ const AdminDashboard: React.FC = () => {
   const [editingCampaign, setEditingCampaign] = useState<Partial<Campaign> | null>(null);
   const [campaignFormLoading, setCampaignFormLoading] = useState(false);
 
-  // ID/COR verifications (admin review)
-  type VerificationItem = {
-    id: number;
-    name: string;
-    email: string;
-    verification_status: string;
-    school_name: string;
-    school_email: string;
-    school_email_verified_at?: string;
-    verification_rejection_reason?: string;
-    document_type?: string;
-    has_id_image: boolean;
-  };
-  const [verifications, setVerifications] = useState<VerificationItem[]>([]);
-  const [verificationsLoading, setVerificationsLoading] = useState(false);
-  const [rejectTarget, setRejectTarget] = useState<VerificationItem | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectLoading, setRejectLoading] = useState(false);
-  const [idImageModal, setIdImageModal] = useState<{ userId: number; name: string } | null>(null);
-  const [idImageUrl, setIdImageUrl] = useState<string | null>(null);
-
   // Rider application verification state
   type RiderAppItem = {
     id: number;
@@ -589,6 +569,15 @@ const AdminDashboard: React.FC = () => {
   const headerBg = useColorModeValue('brand.50', 'brand.900');
   const sidebarBg = useColorModeValue('white', 'gray.800');
   const topBarBg = useColorModeValue('white', 'gray.800');
+  const mainBg = useColorModeValue('gray.50', 'gray.900');
+  const isMobile = useBreakpointValue({ base: true, lg: false });
+
+  const sidebarNav: { id: SectionId; label: string; icon: any; description: string; badge?: number | string }[] = [
+    { id: 'overview', label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
+    { id: 'moderation', label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & riders', badge: (reports.filter((r: any) => r.status === 'pending').length + riderApplications.filter(r => r.status === 'pending').length) || undefined },
+    { id: 'management', label: 'Management', icon: FiGrid, description: 'Users, items & campaigns' },
+    { id: 'system', label: 'System', icon: FiSettings, description: 'Metrics & calendar' },
+  ];
 
   // â"€â"€ Connection check â"€â"€
   const checkConnection = useCallback(async () => {
@@ -810,7 +799,7 @@ const AdminDashboard: React.FC = () => {
         setUsersLoading(false);
       }
     },
-    [toast, usersSearch, usersRoleFilter, usersIsVerifiedFilter],
+    [toast],
   );
 
   // â"€â"€ Fetch products for admin list â"€â"€
@@ -845,7 +834,7 @@ const AdminDashboard: React.FC = () => {
         setProductsLoading(false);
       }
     },
-    [toast, productsSearch, productsStatusFilter],
+    [toast],
   );
 
   // â"€â"€ Suspend handler â"€â"€
@@ -977,35 +966,12 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast, fetchAdminCampaigns]);
 
-  // â"€â"€ Fetch ID/COR verifications (pending & rejected) â"€â"€
-  const fetchAdminVerifications = useCallback(async () => {
-    try {
-      setVerificationsLoading(true);
-      const response = await api.get<APIResponse<VerificationItem[]>>('/api/admin/verifications');
-      if (response.data?.success && Array.isArray(response.data.data)) {
-        setVerifications(response.data.data);
-      } else {
-        setVerifications([]);
-      }
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-failed-to-load-verifications",
-        title: 'Failed to load verifications',
-        description: err?.response?.data?.error || err.message || 'Unable to fetch verifications',
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      });
-      setVerifications([]);
-    } finally {
-      setVerificationsLoading(false);
-    }
-  }, [toast]);
+
 
   // ── Fetch rider applications ──
-  const fetchRiderApplications = useCallback(async () => {
+  const fetchRiderApplications = useCallback(async (silent = false) => {
     try {
-      setRiderAppsLoading(true);
+      if (!silent) setRiderAppsLoading(true);
       const params = new URLSearchParams();
       if (riderStatusFilter) params.set('status', riderStatusFilter);
       if (riderSearchQuery) params.set('search', riderSearchQuery);
@@ -1025,8 +991,8 @@ const AdminDashboard: React.FC = () => {
   const handleApproveRider = useCallback(async (riderId: number) => {
     try {
       await api.post(`/api/admin/rider-applications/${riderId}/approve`);
+      setRiderApplications(prev => prev.map(r => r.id === riderId ? { ...r, status: 'approved' } : r));
       toast({ title: 'Rider approved', status: 'success', duration: 3000 });
-      fetchRiderApplications();
     } catch (err: any) {
       toast({ title: 'Failed to approve', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
     }
@@ -1035,8 +1001,8 @@ const AdminDashboard: React.FC = () => {
   const handleMarkRiderUnderReview = useCallback(async (riderId: number) => {
     try {
       await api.post(`/api/admin/rider-applications/${riderId}/review`);
+      setRiderApplications(prev => prev.map(r => r.id === riderId ? { ...r, status: 'under_review' } : r));
       toast({ title: 'Marked as under review', status: 'info', duration: 3000 });
-      fetchRiderApplications();
     } catch (err: any) {
       toast({ title: 'Failed', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
     }
@@ -1047,10 +1013,10 @@ const AdminDashboard: React.FC = () => {
     setRejectRiderLoading(true);
     try {
       await api.post(`/api/admin/rider-applications/${rejectRiderTarget.id}/reject`, { reason: rejectRiderReason.trim() });
+      setRiderApplications(prev => prev.map(r => r.id === rejectRiderTarget.id ? { ...r, status: 'rejected', rejection_reason: rejectRiderReason.trim() } : r));
       toast({ title: 'Rider application rejected', status: 'info', duration: 3000 });
       setRejectRiderTarget(null);
       setRejectRiderReason('');
-      fetchRiderApplications();
     } catch (err: any) {
       toast({ title: 'Failed to reject', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
     } finally {
@@ -1058,81 +1024,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [rejectRiderTarget, rejectRiderReason, fetchRiderApplications, toast]);
 
-  // ── View ID image (fetch as blob and show in modal) ──
-  const handleViewIdImage = useCallback(async (userId: number, name: string) => {
-    setIdImageModal({ userId, name });
-    setIdImageUrl(null);
-    try {
-      const response = await api.get(`/api/admin/verifications/${userId}/image`, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      setIdImageUrl(url);
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-could-not-load-image",
-        title: 'Could not load image',
-        description: err?.response?.data?.error || 'Image not found or access denied',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      setIdImageModal(null);
-    }
-  }, [toast]);
 
-  const closeIdImageModal = useCallback(() => {
-    if (idImageUrl) URL.revokeObjectURL(idImageUrl);
-    setIdImageUrl(null);
-    setIdImageModal(null);
-  }, [idImageUrl]);
-
-  // â"€â"€ Approve verification â"€â"€
-  const handleApproveVerification = useCallback(async (userId: number) => {
-    try {
-      await api.post(`/api/admin/verifications/${userId}/approve`);
-      toast({
-        id: "admindashboard-user-verified", title: 'User verified', description: 'Verification approved.', status: 'success', duration: 3000, isClosable: true });
-      fetchAdminVerifications();
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-approve-failed",
-        title: 'Approve failed',
-        description: err?.response?.data?.error || 'Could not approve',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  }, [toast, fetchAdminVerifications]);
-
-  // â"€â"€ Reject verification (open modal to enter reason) â"€â"€
-  const openRejectModal = useCallback((item: VerificationItem) => {
-    setRejectTarget(item);
-    setRejectReason('');
-  }, []);
-
-  const handleConfirmReject = useCallback(async () => {
-    if (!rejectTarget) return;
-    try {
-      setRejectLoading(true);
-      await api.post(`/api/admin/verifications/${rejectTarget.id}/reject`, { reason: rejectReason || 'Not specified' });
-      toast({
-        id: "admindashboard-verification-declined", title: 'Verification declined', description: 'User has been notified.', status: 'success', duration: 3000, isClosable: true });
-      setRejectTarget(null);
-      setRejectReason('');
-      fetchAdminVerifications();
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-reject-failed",
-        title: 'Reject failed',
-        description: err?.response?.data?.error || 'Could not reject',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setRejectLoading(false);
-    }
-  }, [rejectTarget, rejectReason, toast, fetchAdminVerifications]);
 
   // â"€â"€ Delete handlers â"€â"€
   const askDeleteUser = useCallback((user: User) => {
@@ -1202,21 +1094,27 @@ const AdminDashboard: React.FC = () => {
   }, [deleteTarget, toast, closeDeleteDialog]);
 
   useEffect(() => {
-    // Run all fetches in parallel instead of sequentially
+    // Initial data fetch - only once on mount
     Promise.allSettled([
       fetchAdminStats(),
       fetchAdminUsers(1),
       fetchAdminProducts(1),
       fetchAdminReports(1),
-      fetchAdminVerifications(),
       fetchAdminCampaigns(),
       fetchRiderApplications(),
     ]);
-    // Check connection in background, don't block rendering
+
+    // Connection check doesn't need to be in the mount effect but we'll keep it there for simplicity
     checkConnection();
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
-  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports, fetchAdminVerifications, fetchAdminCampaigns, fetchRiderApplications]);
+    // Empty dependency array prevents re-runs when filter functions change
+  }, []);
+
+  // Separate effect for rider filter changes - doesn't trigger full dashboard refresh
+  useEffect(() => {
+    fetchRiderApplications();
+  }, [riderStatusFilter, riderSearchQuery, fetchRiderApplications]);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -1226,7 +1124,7 @@ const AdminDashboard: React.FC = () => {
 
 
   // â"€â"€ Sidebar / SPA state â"€â"€
-  type SectionId = 'overview' | 'moderation' | 'management' | 'system';
+
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const { isOpen: isSidebarOpen, onOpen: openSidebar, onClose: closeSidebar } = useDisclosure();
 
@@ -1267,15 +1165,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [moderationTarget, fetchAdminReports, reportsPage, reportsStatusFilter, toast]);
 
-  // â"€â"€ Sidebar nav config â"€â"€
-  const sidebarNav = [
-    { id: 'overview' as SectionId, label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
-    { id: 'moderation' as SectionId, label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & verifications', badge: (reports.filter((r: any) => r.status === 'pending').length + verifications.filter(v => v.verification_status === 'pending').length + riderApplications.filter(r => r.status === 'pending').length) || undefined },
-    { id: 'management' as SectionId, label: 'Management', icon: FiGrid, description: 'Users, items & campaigns' },
-    { id: 'system' as SectionId, label: 'System', icon: FiSettings, description: 'Metrics & calendar' },
-  ];
 
-  const isMobile = useBreakpointValue({ base: true, lg: false });
 
   if (loading) {
     return (
@@ -1432,8 +1322,8 @@ const AdminDashboard: React.FC = () => {
         <SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} spacing={4}>
           <MetricCard icon={FiUsers} color="indigo" label="Total Users" value={stats!.total_users} />
           <MetricCard icon={FiStar} color="violet" label="Premium Users" value={stats!.premium_users} />
-          <MetricCard icon={FiShield} color="brand" label="Verified Users" value={stats!.verified_users} />
           <MetricCard icon={FiUsers} color="orange" label="New Today" value={stats!.new_users_today} />
+          <MetricCard icon={FiBarChart2} color="brand" label="Activity" value={stats!.recent_activity?.length ?? 0} />
         </SimpleGrid>
       </Box>
 
@@ -1824,60 +1714,6 @@ const AdminDashboard: React.FC = () => {
         </CardBody>
       </Card>
 
-      {/* ID Verifications */}
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
-          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-            <HStack>
-              <Icon as={FiShield} color="brand.500" boxSize={5} />
-              <Heading size="sm" color={textColor}>ID / COR Verifications</Heading>
-              {verifications.filter(v => v.verification_status === 'pending').length > 0 && (
-                <Badge colorScheme="orange" borderRadius="full" px={2}>{verifications.filter(v => v.verification_status === 'pending').length} pending</Badge>
-              )}
-            </HStack>
-            <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminVerifications} isLoading={verificationsLoading}>Refresh</Button>
-          </Flex>
-        </CardHeader>
-        <CardBody overflowX="auto" px={0}>
-          {verificationsLoading ? (
-            <Center py={8}><Spinner color="teal.500" /></Center>
-          ) : verifications.length === 0 ? (
-            <Center py={8}><VStack spacing={2}><Icon as={FiShield} boxSize={10} color="gray.300" /><Text color="#64748b">No pending verifications</Text></VStack></Center>
-          ) : (
-            <ChakraTable variant="simple" size="sm">
-              <Thead bg={headerBg}>
-                <Tr>
-                  <Th color={mutedTextColor}>User</Th><Th color={mutedTextColor}>School</Th><Th color={mutedTextColor}>School Email</Th>
-                  <Th color={mutedTextColor}>Doc</Th><Th color={mutedTextColor}>Status</Th><Th color={mutedTextColor}>Actions</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {verifications.map(item => (
-                  <Tr key={item.id} _hover={{ bg: hoverBg }}>
-                    <Td><VStack align="start" spacing={0}><Text fontWeight="600" fontSize="sm">{item.name || `User #${item.id}`}</Text><Text fontSize="xs" color={mutedTextColor}>{item.email}</Text></VStack></Td>
-                    <Td fontSize="sm">{item.school_name || '-'}</Td>
-                    <Td fontSize="sm">{item.school_email || '-'}</Td>
-                    <Td><Tag size="sm" colorScheme="blue" textTransform="uppercase">{item.document_type || 'id'}</Tag></Td>
-                    <Td><Badge colorScheme={item.verification_status === 'pending' ? 'orange' : 'red'} borderRadius="full" px={2}>{item.verification_status === 'pending' ? 'Pending' : 'Rejected'}</Badge></Td>
-                    <Td>
-                      <HStack spacing={2}>
-                        {item.has_id_image && <Tooltip label="View ID/COR" hasArrow><IconButton aria-label="View ID" size="sm" variant="outline" icon={<FiEye />} onClick={() => handleViewIdImage(item.id, item.name)} /></Tooltip>}
-                        {item.verification_status === 'pending' && (
-                          <>
-                            <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveVerification(item.id)}>Verify</Button>
-                            <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => openRejectModal(item)}>Decline</Button>
-                          </>
-                        )}
-                      </HStack>
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </ChakraTable>
-          )}
-        </CardBody>
-      </Card>
-
       {/* Rider Applications */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
         <CardHeader>
@@ -1897,7 +1733,7 @@ const AdminDashboard: React.FC = () => {
                 <option value="rejected">Rejected</option>
               </Select>
               <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
-              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchRiderApplications} isLoading={riderAppsLoading}>Refresh</Button>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchRiderApplications()} isLoading={riderAppsLoading}>Refresh</Button>
             </HStack>
           </Flex>
         </CardHeader>
@@ -2029,20 +1865,14 @@ const AdminDashboard: React.FC = () => {
 
                 {selectedRiderApp.license_image_url && (
                   <Box>
-                    <Text fontSize="sm" fontWeight="bold" mb={2}>Driver's License</Text>
                     <Image src={selectedRiderApp.license_image_url} alt="License" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                   </Box>
                 )}
 
                 {selectedRiderApp.selfie_image_url && (
                   <Box>
-                    <Text fontSize="sm" fontWeight="bold" mb={2}>Selfie</Text>
                     <Image src={selectedRiderApp.selfie_image_url} alt="Selfie" maxH="200px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                   </Box>
-                )}
-
-                {!selectedRiderApp.license_image_url && !selectedRiderApp.selfie_image_url && (
-                  <Text color="gray.400" fontSize="sm" textAlign="center">No documents uploaded</Text>
                 )}
               </VStack>
             )}
@@ -2059,7 +1889,7 @@ const AdminDashboard: React.FC = () => {
           <ModalBody>
             <Text fontSize="sm" mb={3}>Applicant: <strong>{rejectRiderTarget?.full_name || rejectRiderTarget?.name}</strong> ({rejectRiderTarget?.email})</Text>
             <Textarea
-              placeholder="Reason for rejection (e.g., Invalid license, unclear documents)"
+              placeholder="Reason for rejection"
               value={rejectRiderReason}
               onChange={e => setRejectRiderReason(e.target.value)}
               rows={3}
@@ -2088,12 +1918,12 @@ const AdminDashboard: React.FC = () => {
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
             <Input size="sm" placeholder="Search users by name, email..." value={usersSearch} onChange={(e) => setUsersSearch(e.target.value)} maxW="300px" />
-            <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => setUsersRoleFilter(e.target.value)}>
+            <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => { setUsersRoleFilter(e.target.value); fetchAdminUsers(1, usersSearch, e.target.value); }}>
               <option value="admin">Admin</option>
               <option value="user">User</option>
               <option value="suspended">Suspended</option>
             </Select>
-            <Select size="sm" w="150px" placeholder="All Verifications" value={usersIsVerifiedFilter} onChange={(e) => setUsersIsVerifiedFilter(e.target.value)}>
+            <Select size="sm" w="150px" placeholder="All Verifications" value={usersIsVerifiedFilter} onChange={(e) => { setUsersIsVerifiedFilter(e.target.value); fetchAdminUsers(1, usersSearch, usersRoleFilter, e.target.value); }}>
               <option value="true">Verified Only</option>
               <option value="false">Unverified Only</option>
             </Select>
@@ -2147,7 +1977,7 @@ const AdminDashboard: React.FC = () => {
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
             <Input size="sm" placeholder="Search items by title..." value={productsSearch} onChange={(e) => setProductsSearch(e.target.value)} maxW="300px" />
-            <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => setProductsStatusFilter(e.target.value)}>
+            <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => { setProductsStatusFilter(e.target.value); fetchAdminProducts(1, productsSearch, e.target.value); }}>
               <option value="available">Available</option>
               <option value="reserved">Reserved</option>
               <option value="traded">Traded</option>
@@ -2169,24 +1999,45 @@ const AdminDashboard: React.FC = () => {
                     <Th textAlign="right" color={mutedTextColor} w="80px" px={1}></Th>
                   </Tr></Thead>
                   <Tbody>
-                    {products.map(product => (
-                      <Tr key={product.id} _hover={{ bg: hoverBg }}>
-                        <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
-                        <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
-                        <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : 'gray'}>{product.status}</Tag></Td>
-                        <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : 'â€"'}</Text></Td>
-                        <Td textAlign="right">
-                          <HStack spacing={1} justify="flex-end">
-                            <Tooltip label="View Details" hasArrow>
-                              <IconButton as="a" href={`/product/${product.id}`} target="_blank" aria-label="View Details" size="sm" colorScheme="blue" variant="ghost" icon={<FiEye />} />
-                            </Tooltip>
-                            <Tooltip label="Delete item" hasArrow>
-                              <IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} />
-                            </Tooltip>
-                          </HStack>
-                        </Td>
-                      </Tr>
-                    ))}
+                    {products.map(product => {
+                      const isSuspended = product.status === 'suspended';
+                      return (
+                        <Tr key={product.id} _hover={{ bg: hoverBg }}>
+                          <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
+                          <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
+                          <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'}>{product.status}</Tag></Td>
+                          <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : '—'}</Text></Td>
+                          <Td textAlign="right">
+                            <HStack spacing={1} justify="flex-end">
+                              <Tooltip label="View Details" hasArrow>
+                                <IconButton as="a" href={`/product/${product.id}`} target="_blank" aria-label="View Details" size="sm" colorScheme="blue" variant="ghost" icon={<FiEye />} />
+                              </Tooltip>
+                              <Tooltip label={isSuspended ? "Unsuspend listing" : "Suspend listing"} hasArrow>
+                                <IconButton
+                                  aria-label="Toggle suspend"
+                                  size="sm"
+                                  colorScheme={isSuspended ? "green" : "orange"}
+                                  variant="ghost"
+                                  icon={isSuspended ? <FiCheckCircle /> : <FiXCircle />}
+                                  onClick={async () => {
+                                    try {
+                                      await api.put(`/api/admin/products/${product.id}/${isSuspended ? 'unsuspend' : 'suspend'}`);
+                                      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, status: isSuspended ? 'available' : 'suspended' } : p));
+                                      toast({ title: isSuspended ? 'Listing Unsuspended' : 'Listing Suspended', status: 'success', duration: 2000 });
+                                    } catch (err: any) {
+                                      toast({ title: 'Failed to update status', status: 'error' });
+                                    }
+                                  }}
+                                />
+                              </Tooltip>
+                              <Tooltip label="Delete item" hasArrow>
+                                <IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} />
+                              </Tooltip>
+                            </HStack>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
                   </Tbody>
                 </ChakraTable>
               </Box>
@@ -2297,7 +2148,7 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')} display="flex">
+      <Box minH="100vh" bg={mainBg} display="flex">
 
         {/* â"€â"€ Desktop Sidebar â"€â"€ */}
         {!isMobile && (
@@ -2436,31 +2287,7 @@ const AdminDashboard: React.FC = () => {
           </AlertDialogOverlay>
         </AlertDialog>
 
-        {/* â"€â"€ ID Image Modal â"€â"€ */}
-        <Modal isOpen={!!idImageModal} onClose={closeIdImageModal} size="xl">
-          <ModalOverlay />
-          <ModalContent borderRadius="xl">
-            <ModalHeader>ID / COR â€" {idImageModal?.name}</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody pb={4}>
-              {idImageUrl ? <Box as="img" src={idImageUrl} alt="Submitted ID" maxH="70vh" mx="auto" borderRadius="md" /> : <Center py={8}><Spinner size="lg" color="brand.500" /></Center>}
-            </ModalBody>
-          </ModalContent>
-        </Modal>
 
-        {/* â"€â"€ Reject Verification Modal â"€â"€ */}
-        <Modal isOpen={!!rejectTarget} onClose={() => { setRejectTarget(null); setRejectReason(''); }}>
-          <ModalOverlay />
-          <ModalContent borderRadius="xl">
-            <ModalHeader>Decline Verification</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody>
-              <Text fontSize="sm" color="#64748b" mb={3}>User: <strong>{rejectTarget?.name}</strong> ({rejectTarget?.email})</Text>
-              <Textarea placeholder="e.g. Document does not appear to be a valid school ID or COR" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} />
-            </ModalBody>
-            <Box px={6} pb={4} pt={2}><HStack justify="flex-end" spacing={3}><Button variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(''); }}>Cancel</Button><Button colorScheme="red" onClick={handleConfirmReject} isLoading={rejectLoading}>Decline</Button></HStack></Box>
-          </ModalContent>
-        </Modal>
 
         {/* â"€â"€ Campaign Create/Edit Modal â"€â"€ */}
         <Modal isOpen={isCampaignModalOpen} onClose={() => { closeCampaignModal(); setEditingCampaign(null); }} size="lg">

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -93,14 +94,15 @@ func main() {
 		ExposeHeaders:    "Content-Length, Content-Type, Authorization",
 	}))
 
+	// Serve static files (uploads directory)
+	app.Get("/uploads/*", func(c *fiber.Ctx) error {
+		return c.SendFile(filepath.Join("./uploads", c.Params("*")))
+	})
+
 	// Explicit OPTIONS handler for preflight requests
 	app.Options("/*", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusNoContent)
 	})
-
-	// Serve static files (uploads directory)
-	app.Static("/uploads", "./uploads")
-	app.Static("/uploads/products", "./uploads/products")
 
 	// Add after middleware setup
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -323,12 +325,12 @@ func main() {
 
 	// Product routes
 	products := api.Group("/products")
-	products.Get("/", productHandler.GetProducts)                      // Public route
-	products.Get("", productHandler.GetProducts)                       // Support no trailing slash
-	products.Get("/user/:id", productHandler.GetUserProducts)          // Public route
-	products.Get("/user/:id/listings", productHandler.GetUserProducts) // alias for listings
+	products.Get("/", productHandler.GetProducts)                         // Public route
+	products.Get("", productHandler.GetProducts)                          // Support no trailing slash
+	products.Get("/user/:id", productHandler.GetUserProducts)             // Public route
+	products.Get("/user/:id/listings", productHandler.GetUserProducts)    // alias for listings
 	products.Get("/search-suggestions", productHandler.SearchSuggestions) // Smart search autocomplete
-	products.Get("/smart-search", productHandler.SmartSearch)            // AI-powered search
+	products.Get("/smart-search", productHandler.SmartSearch)             // AI-powered search
 	// Specific routes must come before generic :id route
 	products.Post("/generate-details", productHandler.GenerateProductDetailsWithAI)
 	products.Post("/check-image-quality", productHandler.CheckImageQuality)                           // Fast image quality check
@@ -339,7 +341,7 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
-	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct) // Boost a listing
+	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
 	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
@@ -378,7 +380,7 @@ func main() {
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
-	
+
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
 	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
@@ -429,6 +431,8 @@ func main() {
 	admin.Post("/verifications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminRejectVerification)
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
+	admin.Put("/products/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.SuspendProductAdmin)
+	admin.Put("/products/:id/unsuspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.UnsuspendProductAdmin)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)
 	// Admin reports management
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)

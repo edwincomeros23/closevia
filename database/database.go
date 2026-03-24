@@ -563,7 +563,7 @@ func CreateTables() error {
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			user_id INT NOT NULL,
 			amount DECIMAL(10,2) NOT NULL,
-			source_type ENUM('trade_escrow', 'premium_upgrade', 'delivery_fee', 'product_boost') NOT NULL,
+			source_type ENUM('trade_escrow', 'premium_upgrade', 'delivery_fee', 'product_boost', 'riders_remittance', 'advertisers_revenue', 'google_ads') NOT NULL,
 			source_id INT NOT NULL,
 			external_id VARCHAR(255) NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

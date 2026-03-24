@@ -40,7 +40,7 @@ export interface Product {
   seller_name?: string
   seller_profile_picture?: string
   premium: boolean
-  status: 'available' | 'sold' | 'traded' | 'locked'
+  status: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
   allow_buying: boolean
   barter_only: boolean
   location?: string
@@ -102,7 +102,7 @@ export interface ProductUpdate {
   price?: number
   image_urls?: string[]
   premium?: boolean
-  status?: 'available' | 'sold' | 'traded' | 'locked'
+  status?: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
   allow_buying?: boolean
   barter_only?: boolean
   location?: string
