@@ -1,3 +1,109 @@
+// PostProductForTrade allows a member to post a product for trade in the organization
+func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	slug := c.Params("slug")
+	var payload struct {
+		ProductID int `json:"product_id"`
+	}
+	if err := c.BodyParser(&payload); err != nil || payload.ProductID == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product_id"})
+	}
+	// Get org ID
+	var orgID int
+	err := h.db.QueryRow("SELECT id FROM organizations WHERE slug = ?", slug).Scan(&orgID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
+	}
+	// Check membership
+	var status string
+	err = h.db.QueryRow("SELECT status FROM organization_memberships WHERE organization_id = ? AND user_id = ?", orgID, userID).Scan(&status)
+	if err != nil || status != "approved" {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not a member of this organization"})
+	}
+	// Check product ownership
+	var ownerID int
+	err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", payload.ProductID).Scan(&ownerID)
+	if err != nil || ownerID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You do not own this product"})
+	}
+	// Insert or update trade post
+	_, err = h.db.Exec(`INSERT INTO organization_trade_posts (organization_id, user_id, product_id, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())
+		ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+		orgID, userID, payload.ProductID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to post product for trade"})
+	}
+	return c.JSON(models.APIResponse{Success: true})
+}
+
+// GetTradeFeed returns products posted for trade in the org, grouped by product
+func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	// Get org ID
+	var orgID int
+	err := h.db.QueryRow("SELECT id FROM organizations WHERE slug = ?", slug).Scan(&orgID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
+	}
+	// Query all trade posts for this org
+	rows, err := h.db.Query(`
+		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.status, p.category, p.seller_id,
+			   u.id, u.name, u.profile_picture
+		FROM organization_trade_posts otp
+		JOIN products p ON otp.product_id = p.id
+		JOIN users u ON otp.user_id = u.id
+		WHERE otp.organization_id = ?
+		ORDER BY p.id, otp.created_at DESC
+	`, orgID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch trade feed"})
+	}
+	defer rows.Close()
+	// Group by product
+	type Member struct {
+		ID int `json:"id"`
+		Name string `json:"name"`
+		ProfilePicture string `json:"profile_picture"`
+	}
+	type ProductGroup struct {
+		ProductID int `json:"product_id"`
+		Title string `json:"title"`
+		Description string `json:"description"`
+		Price float64 `json:"price"`
+		ImageURLs string `json:"image_urls"`
+		Status string `json:"status"`
+		Category string `json:"category"`
+		Members []Member `json:"members"`
+	}
+	groups := map[int]*ProductGroup{}
+	for rows.Next() {
+		var pid int
+		var title, desc, imageURLs, status, category string
+		var price float64
+		var sellerID, userID int
+		var userName, userPic string
+		if err := rows.Scan(&pid, &title, &desc, &price, &imageURLs, &status, &category, &sellerID, &userID, &userName, &userPic); err != nil {
+			continue
+		}
+		g, ok := groups[pid]
+		if !ok {
+			g = &ProductGroup{
+				ProductID: pid, Title: title, Description: desc, Price: price, ImageURLs: imageURLs, Status: status, Category: category, Members: []Member{},
+			}
+			groups[pid] = g
+		}
+		g.Members = append(g.Members, Member{ID: userID, Name: userName, ProfilePicture: userPic})
+	}
+	// Convert to slice
+	out := []ProductGroup{}
+	for _, g := range groups {
+		out = append(out, *g)
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: out})
+}
 package handlers
 
 import (
