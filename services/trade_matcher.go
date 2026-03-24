@@ -2,9 +2,7 @@ package services
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
-	"strings"
 
 	"github.com/xashathebest/clovia/models"
 )
