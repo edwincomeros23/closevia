@@ -61,6 +61,15 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
+// Component to update map center - must be defined outside the main component
+const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap()
+  useEffect(() => {
+    map.setView([lat, lng], 16, { animate: true })
+  }, [lat, lng, map])
+  return null
+}
+
 import { Trade, Product, TradeOption, Delivery } from '../types'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -126,6 +135,8 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
   const inactiveBg = useColorModeValue('gray.300', 'gray.600')
   const textColor = useColorModeValue('gray.800', 'gray.100')
   const descriptionColor = useColorModeValue('gray.600', 'gray.400')
+  const activeRingColor = useColorModeValue('brand.50', 'brand.950')
+  const lineInactiveColor = useColorModeValue('gray.200', 'gray.700')
 
   const getTradeProgressStage = (): TradeProgressStage => {
     if (trade?.status === 'completed') return 'completed'
@@ -200,7 +211,7 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
                 alignItems="center"
                 justifyContent="center"
                 transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                boxShadow={status === 'active' ? `0 0 0 3px ${useColorModeValue('brand.50', 'brand.950')}` : 'none'}
+                boxShadow={status === 'active' ? `0 0 0 3px ${activeRingColor}` : 'none'}
                 flexShrink={0}
               >
                 <Icon as={step.icon} boxSize="4" />
@@ -229,7 +240,7 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
             if (index === PROGRESS_STEPS.length - 1) return null
 
             const status = getStepStatus(index)
-            const lineColor = status === 'completed' ? completedBg : useColorModeValue('gray.200', 'gray.700')
+            const lineColor = status === 'completed' ? completedBg : lineInactiveColor
 
             return (
               <Box
@@ -246,7 +257,7 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
       </HStack>
 
       {/* Current Stage Description */}
-      <Text fontSize="sm" color={textColor} fontWeight="medium" textAlign="center" mt={1}>
+      <Text fontSize="sm" color={descriptionColor} fontWeight="medium" textAlign="center" mt={1}>
         {PROGRESS_STEPS[currentStepIndex]?.description}
       </Text>
     </VStack>
@@ -765,7 +776,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
       {/* Review Form - Only show if current user hasn't completed */}
       {!userHasCompleted && (
-        <Card borderWidth="2px" borderColor="blue.200" bg={useColorModeValue('blue.50', 'blue.900')}>
+        <Card borderWidth="2px" borderColor="blue.200" bg={meetupInfoBg}>
           <CardBody>
             <VStack spacing={5} align="stretch">
               <Text fontWeight="semibold" fontSize="md">
@@ -951,6 +962,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const locationTextColor = useColorModeValue('gray.800', 'gray.100')
+  const partnerTextColor = useColorModeValue('gray.700', 'gray.200')
+  const partnerBg = useColorModeValue('orange.50', 'orange.900')
+  const nearestBg = useColorModeValue('blue.50', 'blue.950')
+  const partnerIconBg = useColorModeValue('orange.100', 'orange.800')
+  const defaultIconBg = useColorModeValue('gray.100', 'gray.700')
+  const meetupInfoBg = useColorModeValue('blue.50', 'blue.900')
+  const meetupInfoTextColor = useColorModeValue('blue.700', 'blue.200')
 
   const isUserBuyer = !!(trade && user && trade.buyer_id === user.id)
   const isUserSeller = !!(trade && user && trade.seller_id === user.id)
@@ -995,15 +1014,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
     return nearest;
   }, [user?.latitude, user?.longitude])
-
-  // Component to update map center
-  const MapUpdater = ({ lat, lng }: { lat: number, lng: number }) => {
-    const map = useMap()
-    useEffect(() => {
-      map.setView([lat, lng], 16, { animate: true })
-    }, [lat, lng, map])
-    return null
-  }
 
   // Save delivery state to backend
   const saveDeliveryState = async (updates: Partial<DeliveryState>) => {
@@ -1912,12 +1922,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       {!(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
                         <Box
                           p={3}
-                          bg={useColorModeValue('blue.50', 'blue.900')}
+                          bg={meetupInfoBg}
                           borderLeft="4px"
                           borderColor="brand.500"
                           borderRadius="md"
                         >
-                          <Text fontSize="sm" color={useColorModeValue('blue.700', 'blue.200')} fontWeight="medium">
+                          <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
                             Current Stage: Waiting for both parties to confirm location
                           </Text>
                         </Box>
@@ -1995,7 +2005,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             const isSelected = selectedLocation === location.name
                             const isPartner = location.isPartner
                             const isNearest = location.name === nearestLocationName // Dynamic nearest
-                            const textColor = useColorModeValue('gray.800', 'gray.100')
+                            // textColor is hoisted below as locationTextColor
 
                             // Check if location selection should be locked
                             const isOtherPartyConfirmed = (isUserBuyer && trade.seller_meetup_confirmed) || (isUserSeller && trade.buyer_meetup_confirmed)
@@ -2011,7 +2021,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 opacity={isLocked && !isSelected ? 0.5 : 1}
                                 borderWidth={isPartner ? '2px' : isSelected ? '2px' : '1px'}
                                 borderColor={isPartner ? 'orange.400' : isSelected ? 'brand.500' : isNearest ? 'blue.300' : borderColor}
-                                bg={isSelected ? 'brand.50' : isPartner ? useColorModeValue('orange.50', 'orange.900') : isNearest ? useColorModeValue('blue.50', 'blue.950') : 'white'}
+                                bg={isSelected ? 'brand.50' : isPartner ? partnerBg : isNearest ? nearestBg : 'white'}
                                 onClick={() => {
                                   if (!isLocked) {
                                     setSelectedLocation(location.name)
@@ -2039,7 +2049,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     <HStack spacing={3} flex={1}>
                                       <Box
                                         p={2}
-                                        bg={isPartner ? useColorModeValue('orange.100', 'orange.800') : useColorModeValue('gray.100', 'gray.700')}
+                                        bg={isPartner ? partnerIconBg : defaultIconBg}
                                         borderRadius="md"
                                         display="flex"
                                         alignItems="center"
@@ -2055,7 +2065,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                                       <VStack align="start" spacing={1} flex={1}>
                                         <HStack spacing={2} flexWrap="wrap">
-                                          <Text fontWeight="semibold" fontSize="sm" color={textColor}>
+                                          <Text fontWeight="semibold" fontSize="sm" color={locationTextColor}>
                                             {location.name}
                                           </Text>
                                           {isPartner && (
@@ -2217,7 +2227,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               color="white"
                             />
                             <VStack spacing={1}>
-                              <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
+                              <Text fontSize="xs" fontWeight="semibold" color={partnerTextColor}>
                                 Buyer
                               </Text>
                               <Badge
@@ -2242,7 +2252,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               color="white"
                             />
                             <VStack spacing={1}>
-                              <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('gray.700', 'gray.200')}>
+                              <Text fontSize="xs" fontWeight="semibold" color={partnerTextColor}>
                                 Trader
                               </Text>
                               <Badge
