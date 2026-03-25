@@ -588,6 +588,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const meetupInfoBg = useColorModeValue('blue.50', 'blue.900')
 
   useEffect(() => {
     if (trade) {
