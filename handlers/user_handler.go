@@ -1600,6 +1600,83 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	})
 }
 
+// SearchUsersPublic returns public user matches for search/autocomplete.
+func (h *UserHandler) SearchUsersPublic(c *fiber.Ctx) error {
+	q := strings.TrimSpace(c.Query("q", ""))
+	if q == "" {
+		return c.JSON(models.APIResponse{Success: true, Data: []fiber.Map{}})
+	}
+
+	limit, _ := strconv.Atoi(c.Query("limit", "8"))
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 20 {
+		limit = 20
+	}
+
+	pattern := "%" + q + "%"
+	rows, err := h.db.Query(`
+		SELECT id,
+		       COALESCE(slug, ''),
+		       COALESCE(name, ''),
+		       COALESCE(profile_picture, ''),
+		       COALESCE(verified, FALSE),
+		       COALESCE(is_organization, FALSE),
+		       COALESCE(org_name, ''),
+		       COALESCE(org_handle, '')
+		FROM users
+		WHERE role <> 'suspended'
+		  AND (name LIKE ? OR slug LIKE ? OR org_name LIKE ? OR org_handle LIKE ? OR email LIKE ?)
+		ORDER BY
+		  CASE
+		    WHEN name LIKE ? THEN 0
+		    WHEN org_name LIKE ? THEN 1
+		    WHEN org_handle LIKE ? THEN 2
+		    WHEN slug LIKE ? THEN 3
+		    ELSE 4
+		  END,
+		  verified DESC,
+		  created_at DESC
+		LIMIT ?
+	`, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to search users"})
+	}
+	defer rows.Close()
+
+	users := make([]fiber.Map, 0, limit)
+	for rows.Next() {
+		var (
+			id             int
+			slug           string
+			name           string
+			profilePicture string
+			verified       bool
+			isOrganization bool
+			orgName        string
+			orgHandle      string
+		)
+
+		if err := rows.Scan(&id, &slug, &name, &profilePicture, &verified, &isOrganization, &orgName, &orgHandle); err != nil {
+			continue
+		}
+
+		users = append(users, fiber.Map{
+			"id":              id,
+			"slug":            slug,
+			"name":            name,
+			"profile_picture": profilePicture,
+			"verified":        verified,
+			"is_organization": isOrganization,
+			"org_name":        orgName,
+			"org_handle":      orgHandle,
+		})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: users})
+}
+
 // DeleteUser permanently deletes a user (admin only).
 // This uses ON DELETE CASCADE/SET NULL constraints to clean up related records.
 func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {

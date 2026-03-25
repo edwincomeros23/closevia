@@ -151,6 +151,16 @@ export interface SearchSuggestions {
   categories: string[]
   tags: string[]
   brands: string[]
+  users?: Array<{
+    id: number
+    slug?: string
+    name: string
+    profile_picture?: string
+    verified?: boolean
+    is_organization?: boolean
+    org_name?: string
+    org_handle?: string
+  }>
 }
 
 export interface PaginatedResponse<T> {
