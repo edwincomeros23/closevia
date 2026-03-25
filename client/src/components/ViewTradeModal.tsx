@@ -1354,9 +1354,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const paymentMethods = {
     cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
-    upfront: { label: 'Prepayment (GCash/Maya)', icon: '📱', color: 'orange' },
-    online: { label: 'Online Payment (Clovia)', icon: '💳', color: 'blue' },
-    wallet: { label: 'Clovia Wallet', icon: '💼', color: 'purple' },
+    online: { label: 'Online Payment', icon: '💳', color: 'blue' },
   }
 
   const handleConfirmPayment = async () => {
