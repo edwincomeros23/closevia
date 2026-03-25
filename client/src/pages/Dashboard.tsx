@@ -145,6 +145,7 @@ const Dashboard: React.FC = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [boosting, setBoosting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [tradedCurrentPage, setTradedCurrentPage] = useState(1)
   const itemsPerPage = 12
