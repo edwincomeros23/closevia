@@ -38,7 +38,7 @@ import {
   Grid,
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
-import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle } from 'react-icons/fa'
 import {
   FiMapPin,
   FiPhone,
@@ -949,6 +949,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [confirmingPayment, setConfirmingPayment] = useState(false)
   const [buyerMeetupConfirmed, setBuyerMeetupConfirmed] = useState(false)
   const [sellerMeetupConfirmed, setSellerMeetupConfirmed] = useState(false)
+  // Track each party's meetup selections
+  const [buyerMeetupLocation, setBuyerMeetupLocation] = useState<string | null>(null)
+  const [buyerMeetupTime, setBuyerMeetupTime] = useState<string | null>(null)
+  const [sellerMeetupLocation, setSellerMeetupLocation] = useState<string | null>(null)
+  const [sellerMeetupTime, setSellerMeetupTime] = useState<string | null>(null)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [deliveryState, setDeliveryState] = useState<DeliveryState>({
     deliveryType: 'standard',
@@ -1229,9 +1234,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       setBuyerMeetupConfirmed(!!(tradeData?.buyer_meetup_confirmed || tradeData?.meetup_confirmed_by_buyer))
       setSellerMeetupConfirmed(!!(tradeData?.seller_meetup_confirmed || tradeData?.meetup_confirmed_by_seller))
 
-      // Also set selected location if it exists
+      // Set each party's meetup selections
+      setBuyerMeetupLocation(tradeData?.buyer_meetup_location || null)
+      setBuyerMeetupTime(tradeData?.buyer_meetup_time || null)
+      setSellerMeetupLocation(tradeData?.seller_meetup_location || null)
+      setSellerMeetupTime(tradeData?.seller_meetup_time || null)
+
+      // Also set selected location/time if it exists (for display)
       if (tradeData?.meetup_location) {
         setSelectedLocation(tradeData.meetup_location)
+      }
+      if (tradeData?.meetup_time) {
+        setSelectedTime(tradeData.meetup_time)
       }
     } catch (error) {
       console.error('Failed to fetch meetup status:', error)
@@ -1274,16 +1288,45 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       // Update local state based on current user role
       if (isUserBuyer) {
         setBuyerMeetupConfirmed(true)
+        setBuyerMeetupLocation(selectedLocation)
+        setBuyerMeetupTime(selectedTime)
       } else if (isUserSeller) {
         setSellerMeetupConfirmed(true)
+        setSellerMeetupLocation(selectedLocation)
+        setSellerMeetupTime(selectedTime)
       }
 
-      toast({
-        id: "viewtrademodal-meetup-location-confirmed",
-        title: 'Meetup location confirmed',
-        description: 'Waiting for the other party to confirm...',
-        status: 'success',
-      })
+      // Check if selections match the other party
+      const otherPartyLocation = isUserBuyer ? sellerMeetupLocation : buyerMeetupLocation
+      const otherPartyTime = isUserBuyer ? sellerMeetupTime : buyerMeetupTime
+      const otherPartyConfirmed = isUserBuyer ? sellerMeetupConfirmed : buyerMeetupConfirmed
+
+      if (otherPartyConfirmed && otherPartyLocation && otherPartyTime) {
+        if (selectedLocation === otherPartyLocation && selectedTime === otherPartyTime) {
+          toast({
+            id: "viewtrademodal-meetup-agreed",
+            title: 'Meetup Agreed!',
+            description: 'Both parties have agreed on the same location and time. The trade can now proceed!',
+            status: 'success',
+            duration: 5000,
+          })
+        } else {
+          toast({
+            id: "viewtrademodal-meetup-mismatch",
+            title: 'Selection Mismatch',
+            description: 'Your selection differs from the other party. Please coordinate to agree on the same location and time.',
+            status: 'warning',
+            duration: 5000,
+          })
+        }
+      } else {
+        toast({
+          id: "viewtrademodal-meetup-location-confirmed",
+          title: 'Meetup selection submitted',
+          description: 'Waiting for the other party to select their preferred location and time...',
+          status: 'info',
+        })
+      }
 
       // Refresh trade data to get updated status
       await fetchMeetupStatus()
@@ -1571,6 +1614,61 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                     {/* Trade Progress Indicator */}
                     <TradeProgressIndicator trade={trade} />
+
+                    {/* Caution Warning */}
+                    {trade.trade_option === 'meetup' ? (
+                      <Box
+                        p={4}
+                        bg="orange.50"
+                        borderRadius="md"
+                        borderWidth="1px"
+                        borderColor="orange.200"
+                      >
+                        <HStack spacing={3} align="start">
+                          <Icon as={FaExclamationTriangle} color="orange.500" boxSize={5} mt={0.5} />
+                          <VStack align="start" spacing={1}>
+                            <Text fontWeight="semibold" fontSize="sm" color="orange.700">
+                              Meetup Policy Reminder
+                            </Text>
+                            <Text fontSize="xs" color="orange.600">
+                              • Arriving late or not showing up (no-show) may result in strikes on your account.
+                            </Text>
+                            <Text fontSize="xs" color="orange.600">
+                              • Multiple violations can lead to account suspension or permanent ban.
+                            </Text>
+                            <Text fontSize="xs" color="orange.600">
+                              • Always communicate with your trading partner if you have delays.
+                            </Text>
+                          </VStack>
+                        </HStack>
+                      </Box>
+                    ) : (
+                      <Box
+                        p={4}
+                        bg="orange.50"
+                        borderRadius="md"
+                        borderWidth="1px"
+                        borderColor="orange.200"
+                      >
+                        <HStack spacing={3} align="start">
+                          <Icon as={FaExclamationTriangle} color="orange.500" boxSize={5} mt={0.5} />
+                          <VStack align="start" spacing={1}>
+                            <Text fontWeight="semibold" fontSize="sm" color="orange.700">
+                              Delivery Policy Reminder
+                            </Text>
+                            <Text fontSize="xs" color="orange.600">
+                              • Sending wrong items or failing to deliver (no-show) may result in strikes.
+                            </Text>
+                            <Text fontSize="xs" color="orange.600">
+                              • Multiple violations can lead to account suspension or permanent ban.
+                            </Text>
+                            <Text fontSize="xs" color="orange.600">
+                              • Ensure items match the trade description before sending.
+                            </Text>
+                          </VStack>
+                        </HStack>
+                      </Box>
+                    )}
 
                     <Divider />
 
@@ -2189,112 +2287,244 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                       <Divider />
 
-                      {/* Confirmation Status */}
-                      <Box>
-                        <Text fontWeight="semibold" mb={4} fontSize="md">
-                          Confirmation Status
-                        </Text>
-                        
-                        {/* Selected Details Preview */}
-                        {selectedLocation && selectedTime && (
-                          <Card variant="outline" mb={4} borderColor="brand.200" bg="brand.50">
-                            <CardBody>
-                              <VStack align="start" spacing={2}>
-                                <HStack spacing={2}>
-                                  <Icon as={FaMapMarkerAlt} color="brand.500" boxSize={4} />
-                                  <Text fontSize="sm" fontWeight="medium">
-                                    <Text as="span" color="gray.600">Location: </Text>
-                                    {selectedLocation}
+                      {/* Agreement Status - Simplified UI */}
+                      <Box
+                        p={4}
+                        bg={meetupInfoBg}
+                        borderRadius="lg"
+                        borderWidth="1px"
+                        borderColor="blue.200"
+                      >
+                        <VStack spacing={4} align="stretch">
+                          {/* Header */}
+                          <HStack justify="center" spacing={2}>
+                            <Icon as={FaHandshake} color="blue.500" boxSize={5} />
+                            <Text fontWeight="bold" fontSize="md" color="blue.700">
+                              Meetup Agreement
+                            </Text>
+                          </HStack>
+
+                          {/* Simple Status Display */}
+                          {!buyerMeetupConfirmed && !sellerMeetupConfirmed ? (
+                            // Neither has submitted
+                            <Box textAlign="center" py={2}>
+                              <Text fontSize="sm" color="gray.600">
+                                Select a location and time above, then click submit.
+                              </Text>
+                              <Text fontSize="xs" color="gray.500" mt={1}>
+                                Both you and {tradingPartner} must agree on the same place and time.
+                              </Text>
+                            </Box>
+                          ) : buyerMeetupConfirmed && sellerMeetupConfirmed ? (
+                            // Both submitted - check if they match
+                            buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime ? (
+                              // MATCH - Success!
+                              <Box
+                                p={4}
+                                bg="green.100"
+                                borderRadius="md"
+                                borderWidth="2px"
+                                borderColor="green.400"
+                                textAlign="center"
+                              >
+                                <Icon as={FaCheckCircle} color="green.500" boxSize={8} mb={2} />
+                                <Text fontWeight="bold" color="green.700" fontSize="md">
+                                  You Both Agreed!
+                                </Text>
+                                <Text fontSize="sm" color="green.600" mt={1}>
+                                  {buyerMeetupLocation}
+                                </Text>
+                                <Text fontSize="sm" color="green.600">
+                                  {buyerMeetupTime}
+                                </Text>
+                                <Text fontSize="xs" color="green.500" mt={2}>
+                                  The trade is now active. See you there!
+                                </Text>
+                              </Box>
+                            ) : (
+                              // NO MATCH - Need to coordinate
+                              <VStack spacing={3}>
+                                <Box
+                                  p={3}
+                                  bg="orange.100"
+                                  borderRadius="md"
+                                  borderWidth="2px"
+                                  borderColor="orange.400"
+                                  textAlign="center"
+                                  w="full"
+                                >
+                                  <Icon as={FaExclamationTriangle} color="orange.500" boxSize={6} mb={2} />
+                                  <Text fontWeight="bold" color="orange.700" fontSize="sm">
+                                    Different Selections
                                   </Text>
-                                </HStack>
-                                <HStack spacing={2}>
-                                  <Icon as={FiClock} color="brand.500" boxSize={4} />
-                                  <Text fontSize="sm" fontWeight="medium">
-                                    <Text as="span" color="gray.600">Time: </Text>
-                                    {selectedTime}
+                                  <Text fontSize="xs" color="orange.600" mt={1}>
+                                    You and {tradingPartner} picked different options.
                                   </Text>
-                                </HStack>
+                                </Box>
+
+                                {/* Show both selections side by side */}
+                                <SimpleGrid columns={2} spacing={3} w="full">
+                                  <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
+                                      {isUserBuyer ? 'You picked:' : `${trade.buyer_name} picked:`}
+                                    </Text>
+                                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                      {buyerMeetupLocation}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.500">
+                                      {buyerMeetupTime}
+                                    </Text>
+                                  </Box>
+                                  <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
+                                      {isUserSeller ? 'You picked:' : `${trade.seller_name} picked:`}
+                                    </Text>
+                                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                      {sellerMeetupLocation}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.500">
+                                      {sellerMeetupTime}
+                                    </Text>
+                                  </Box>
+                                </SimpleGrid>
+
+                                <Text fontSize="xs" color="gray.600" textAlign="center">
+                                  Chat with {tradingPartner} and agree on one option, then both resubmit.
+                                </Text>
                               </VStack>
-                            </CardBody>
-                          </Card>
-                        )}
+                            )
+                          ) : (
+                            // One submitted, waiting for the other
+                            <VStack spacing={3}>
+                              <HStack justify="center" spacing={4} py={2}>
+                                {/* Your status */}
+                                <VStack spacing={1}>
+                                  <Box
+                                    w={10}
+                                    h={10}
+                                    borderRadius="full"
+                                    bg={(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? 'green.500' : 'gray.300'}
+                                    display="flex"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                  >
+                                    {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
+                                      <Icon as={FaCheckCircle} color="white" boxSize={5} />
+                                    ) : (
+                                      <Icon as={FiClock} color="white" boxSize={5} />
+                                    )}
+                                  </Box>
+                                  <Text fontSize="xs" fontWeight="medium" color="gray.600">You</Text>
+                                </VStack>
 
-                        <HStack spacing={6} justify="center" align="center">
-                          <VStack spacing={2}>
-                            <Avatar
-                              name={trade.buyer_name || 'Buyer'}
-                              size="md"
-                              bg="blue.500"
-                              color="white"
-                            />
-                            <VStack spacing={1}>
-                              <Text fontSize="xs" fontWeight="semibold" color={partnerTextColor}>
-                                Buyer
-                              </Text>
-                              <Badge
-                                colorScheme={buyerMeetupConfirmed ? 'green' : 'gray'}
-                                variant="subtle"
-                                fontSize="xs"
-                                px={2}
-                                py={1}
-                              >
-                                {buyerMeetupConfirmed ? '✓ Confirmed' : 'Pending'}
-                              </Badge>
+                                {/* Connection line */}
+                                <Box w="40px" h="2px" bg="gray.300" />
+
+                                {/* Partner status */}
+                                <VStack spacing={1}>
+                                  <Box
+                                    w={10}
+                                    h={10}
+                                    borderRadius="full"
+                                    bg={(isUserBuyer && sellerMeetupConfirmed) || (isUserSeller && buyerMeetupConfirmed) ? 'green.500' : 'gray.300'}
+                                    display="flex"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                  >
+                                    {(isUserBuyer && sellerMeetupConfirmed) || (isUserSeller && buyerMeetupConfirmed) ? (
+                                      <Icon as={FaCheckCircle} color="white" boxSize={5} />
+                                    ) : (
+                                      <Icon as={FiClock} color="white" boxSize={5} />
+                                    )}
+                                  </Box>
+                                  <Text fontSize="xs" fontWeight="medium" color="gray.600">{tradingPartner.split(' ')[0]}</Text>
+                                </VStack>
+                              </HStack>
+
+                              {/* Status message */}
+                              {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
+                                <Box textAlign="center">
+                                  <Text fontSize="sm" color="green.600" fontWeight="medium">
+                                    You submitted: {isUserBuyer ? buyerMeetupLocation : sellerMeetupLocation} at {isUserBuyer ? buyerMeetupTime : sellerMeetupTime}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500" mt={1}>
+                                    Waiting for {tradingPartner} to submit their choice...
+                                  </Text>
+                                </Box>
+                              ) : (
+                                <Box textAlign="center">
+                                  <Text fontSize="sm" color="blue.600" fontWeight="medium">
+                                    {tradingPartner} already submitted their choice
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500" mt={1}>
+                                    Select the same location and time to agree!
+                                  </Text>
+                                </Box>
+                              )}
                             </VStack>
-                          </VStack>
-
-                          <Box h="12" w="0.5px" bg={borderColor} />
-
-                          <VStack spacing={2}>
-                            <Avatar
-                              name={trade.seller_name || 'Trader'}
-                              size="md"
-                              bg="green.500"
-                              color="white"
-                            />
-                            <VStack spacing={1}>
-                              <Text fontSize="xs" fontWeight="semibold" color={partnerTextColor}>
-                                Trader
-                              </Text>
-                              <Badge
-                                colorScheme={sellerMeetupConfirmed ? 'green' : 'gray'}
-                                variant="subtle"
-                                fontSize="xs"
-                                px={2}
-                                py={1}
-                              >
-                                {sellerMeetupConfirmed ? '✓ Confirmed' : 'Pending'}
-                              </Badge>
-                            </VStack>
-                          </VStack>
-                        </HStack>
+                          )}
+                        </VStack>
                       </Box>
 
-                      {/* Confirm Button */}
-                      {
-                        selectedLocation && selectedTime && (
-                          <Button
-                            colorScheme="green"
-                            size="lg"
-                            onClick={confirmMeetup}
-                            isLoading={confirmingMeetup}
-                            leftIcon={<FaCheckCircle />}
-                            isDisabled={Boolean(
-                              (isUserBuyer && buyerMeetupConfirmed) ||
-                              (isUserSeller && sellerMeetupConfirmed)
-                            )}
-                            w="full"
-                            transition="all 0.2s"
-                            _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                          >
-                            {isUserBuyer && buyerMeetupConfirmed
-                              ? 'You Confirmed ✓'
-                              : isUserSeller && sellerMeetupConfirmed
-                                ? 'You Confirmed ✓'
-                                : 'Confirm Meetup Location & Time'}
-                          </Button>
-                        )
-                      }
+                      {/* Submit Button */}
+                      {selectedLocation && selectedTime && (
+                        <Button
+                          colorScheme={
+                            (isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed)
+                              ? 'gray'
+                              : 'green'
+                          }
+                          size="lg"
+                          onClick={confirmMeetup}
+                          isLoading={confirmingMeetup}
+                          leftIcon={<FaCheckCircle />}
+                          isDisabled={Boolean(
+                            (isUserBuyer && buyerMeetupConfirmed) ||
+                            (isUserSeller && sellerMeetupConfirmed)
+                          )}
+                          w="full"
+                          transition="all 0.2s"
+                          _hover={
+                            !((isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed))
+                              ? { transform: 'translateY(-2px)', shadow: 'lg' }
+                              : {}
+                          }
+                        >
+                          {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed)
+                            ? 'Submitted ✓'
+                            : `Submit: ${selectedLocation} at ${selectedTime}`}
+                        </Button>
+                      )}
+
+                      {/* Change Selection Button - Only show when mismatch */}
+                      {buyerMeetupConfirmed && sellerMeetupConfirmed &&
+                       !(buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime) && (
+                        <Button
+                          colorScheme="orange"
+                          variant="outline"
+                          size="md"
+                          onClick={async () => {
+                            // Clear local state to allow resubmission
+                            if (isUserBuyer) {
+                              setBuyerMeetupConfirmed(false)
+                            } else {
+                              setSellerMeetupConfirmed(false)
+                            }
+                            // Also clear on backend
+                            try {
+                              await api.put(`/api/trades/${trade.id}`, {
+                                action: 'reset_meetup_selection',
+                              })
+                            } catch (e) {
+                              console.log('Reset not supported, using local reset')
+                            }
+                          }}
+                          leftIcon={<Icon as={FaExclamationTriangle} />}
+                          w="full"
+                        >
+                          Change My Selection
+                        </Button>
+                      )}
                     </VStack >
                   )}
                 </TabPanel >

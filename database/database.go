@@ -1063,6 +1063,11 @@ func ensureTradeColumns() {
 		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
 		{"option_change_requested", "VARCHAR(20) NULL DEFAULT NULL"},
 		{"net_amount", "DECIMAL(10,2) DEFAULT 0.00"},
+		{"meetup_time", "VARCHAR(50) NULL"},
+		{"buyer_meetup_location", "VARCHAR(500) NULL"},
+		{"buyer_meetup_time", "VARCHAR(50) NULL"},
+		{"seller_meetup_location", "VARCHAR(500) NULL"},
+		{"seller_meetup_time", "VARCHAR(50) NULL"},
 	}
 
 	for _, col := range columns {

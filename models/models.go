@@ -324,8 +324,13 @@ type Trade struct {
 	SellerProofURL string `json:"seller_proof_url,omitempty"`
 	// Meetup-related fields
 	MeetupLocation        string `json:"meetup_location,omitempty"`
+	MeetupTime            string `json:"meetup_time,omitempty"`
 	BuyerMeetupConfirmed  bool   `json:"buyer_meetup_confirmed"`
 	SellerMeetupConfirmed bool   `json:"seller_meetup_confirmed"`
+	BuyerMeetupLocation   string `json:"buyer_meetup_location,omitempty"`
+	BuyerMeetupTime       string `json:"buyer_meetup_time,omitempty"`
+	SellerMeetupLocation  string `json:"seller_meetup_location,omitempty"`
+	SellerMeetupTime      string `json:"seller_meetup_time,omitempty"`
 	BuyerName             string `json:"buyer_name,omitempty"`
 	SellerName            string `json:"seller_name,omitempty"`
 	ProductTitle          string `json:"product_title,omitempty"`
