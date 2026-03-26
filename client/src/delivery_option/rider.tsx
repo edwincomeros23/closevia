@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -34,7 +34,6 @@ import {
   FaCar,
   FaStar,
   FaPhone,
-  FaIdBadge,
   FaCheckCircle,
   FaCamera,
   FaFileAlt,
@@ -152,9 +151,10 @@ const RiderApplicationForm: React.FC<ApplicationFormProps> = ({ onSubmitted, pre
       })
       onSubmitted()
     } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Could not submit application'
       toast({
         title: 'Submission Failed',
-        description: err?.response?.data?.error || 'Could not submit application',
+        description: msg,
         status: 'error',
         duration: 4000,
       })
@@ -728,15 +728,6 @@ const RiderDashboard: React.FC<RiderDashboardProps> = ({ state, fullName, rating
           </Button>
         </SimpleGrid>
 
-        <Button
-          size="sm"
-          variant="ghost"
-          colorScheme="brand"
-          onClick={() => navigate('/rider?apply=1')}
-          leftIcon={<Icon as={FaIdBadge} />}
-        >
-          Open Rider Application Form
-        </Button>
 
         {state === 'WORKING' && (
           <Alert status="warning" borderRadius="md">
@@ -753,10 +744,8 @@ const RiderDashboard: React.FC<RiderDashboardProps> = ({ state, fullName, rating
 // MAIN RIDER PAGE - State Router
 // ─────────────────────────────────────────────────────────────────────────────
 const RiderPage: React.FC = () => {
-  const location = useLocation()
   const { riderState, loading, refetch, markFirstLoginComplete } = useRiderState()
   const [showApplicationForm, setShowApplicationForm] = useState(false)
-  const forceApply = new URLSearchParams(location.search).get('apply') === '1'
 
   // Loading state
   if (loading) {
@@ -809,9 +798,6 @@ const RiderPage: React.FC = () => {
 
     case 'READY':
     case 'WORKING':
-      if (forceApply) {
-        return <RiderApplicationForm onSubmitted={refetch} />
-      }
       // Show welcome screen on first login after approval
       if (show_welcome) {
         return (

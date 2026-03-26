@@ -159,7 +159,7 @@ export interface PaginatedResponse<T> {
 }
 
 export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
-export type TradeOption = 'meetup' | 'delivery'
+export type TradeOption = 'delivery' // Only delivery is supported now
 
 export interface TradeItem {
   id: number
@@ -199,9 +199,10 @@ export interface Trade {
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
   // Delivery state fields
-  delivery_type?: 'standard' | 'express' | 'meetup'
+  delivery_type?: 'standard' | 'express' // Removed meetup - only delivery options
   payment_method?: 'gcash' | 'cod' | 'wallet' | 'online' // online includes GCash/PayMaya via Xendit
   payment_confirmed?: boolean
+  delivery_instructions?: string
   proof_of_delivery?: string | null // Base64 encoded image
   buyer_confirmed_receipt?: boolean
   seller_confirmed_delivery?: boolean

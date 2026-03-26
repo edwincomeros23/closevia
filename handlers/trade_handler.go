@@ -335,7 +335,7 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 		// Notify User 3 with specific details
 		user3Msg := fmt.Sprintf("%s invited you to a loop to trade your %s for their %s", initiatorName, targetProductTitle, best.User1ProductTitle)
 		if user3ProductTitle != "" {
-			user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, targetProductTitle, user3ProductTitle)
+			user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, initiatorName, targetProductTitle, user3ProductTitle)
 		}
 		h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", best.User3ID, user3Msg)
 		publishNotification(best.User3ID, user3Msg)
@@ -373,7 +373,7 @@ func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, initiatorUserID 
 	}
 }
 
-func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int, userID int) {
+func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) {
 	// Get the new product's category and price for filtering
 	var productCategory string
 	var productPrice float64
@@ -755,20 +755,22 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 			COALESCE(t.delivery_type, '') as delivery_type,
 			COALESCE(t.payment_method, '') as payment_method,
 			COALESCE(t.payment_confirmed, FALSE) as payment_confirmed,
+			COALESCE(t.delivery_instructions, '') as delivery_instructions,
 			t.proof_of_delivery,
 			COALESCE(t.buyer_confirmed_receipt, FALSE) as buyer_confirmed_receipt,
 			COALESCE(t.seller_confirmed_delivery, FALSE) as seller_confirmed_delivery
 		FROM trades t LIMIT 1`
 	testDeliveryRow := h.db.QueryRow(deliveryStateQuery)
-	var testDeliveryType, testPaymentMethod string
+	var testDeliveryType, testPaymentMethod, testDeliveryInstructions string
 	var testPaymentConfirmed, testBuyerConfirmed, testSellerConfirmed bool
 	var testProofOfDelivery sql.NullString
-	if err := testDeliveryRow.Scan(&testDeliveryType, &testPaymentMethod, &testPaymentConfirmed, &testProofOfDelivery, &testBuyerConfirmed, &testSellerConfirmed); err == nil {
+	if err := testDeliveryRow.Scan(&testDeliveryType, &testPaymentMethod, &testPaymentConfirmed, &testDeliveryInstructions, &testProofOfDelivery, &testBuyerConfirmed, &testSellerConfirmed); err == nil {
 		// Delivery state columns exist, include them in query
 		query += `,
 			COALESCE(t.delivery_type, '') as delivery_type,
 			COALESCE(t.payment_method, '') as payment_method,
 			COALESCE(t.payment_confirmed, FALSE) as payment_confirmed,
+			COALESCE(t.delivery_instructions, '') as delivery_instructions,
 			t.proof_of_delivery,
 			COALESCE(t.buyer_confirmed_receipt, FALSE) as buyer_confirmed_receipt,
 			COALESCE(t.seller_confirmed_delivery, FALSE) as seller_confirmed_delivery`
@@ -779,6 +781,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 			'' as delivery_type,
 			'' as payment_method,
 			FALSE as payment_confirmed,
+			'' as delivery_instructions,
 			NULL as proof_of_delivery,
 			FALSE as buyer_confirmed_receipt,
 			FALSE as seller_confirmed_delivery`
@@ -806,13 +809,13 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 
 	for rows.Next() {
 		var tr models.Trade
-		var deliveryType, paymentMethod string
+		var deliveryType, paymentMethod, deliveryInstructions string
 		var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
 		var proofOfDelivery sql.NullString
 		var pimg, pimgs sql.NullString
 		var offeredCashNull sql.NullFloat64
 
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
 			// Set offered cash if valid
 			if offeredCashNull.Valid {
 				val := offeredCashNull.Float64
@@ -823,6 +826,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 			tr.DeliveryType = deliveryType
 			tr.PaymentMethod = paymentMethod
 			tr.PaymentConfirmed = paymentConfirmed
+			tr.DeliveryInstructions = deliveryInstructions
 			if proofOfDelivery.Valid {
 				tr.ProofOfDelivery = proofOfDelivery.String
 			}
@@ -1267,13 +1271,14 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		// Check which fields to update based on payload
 		type DeliveryStatePayload struct {
-			Action                  string `json:"action"`
-			DeliveryType            string `json:"delivery_type,omitempty"`
-			PaymentMethod           string `json:"payment_method,omitempty"`
-			PaymentConfirmed        *bool  `json:"payment_confirmed,omitempty"`
-			ProofOfDelivery         string `json:"proof_of_delivery,omitempty"`
-			BuyerConfirmedReceipt   *bool  `json:"buyer_confirmed_receipt,omitempty"`
-			SellerConfirmedDelivery *bool  `json:"seller_confirmed_delivery,omitempty"`
+			Action                  string  `json:"action"`
+			DeliveryType            string  `json:"delivery_type,omitempty"`
+			PaymentMethod           string  `json:"payment_method,omitempty"`
+			PaymentConfirmed        *bool   `json:"payment_confirmed,omitempty"`
+			DeliveryInstructions    *string `json:"delivery_instructions,omitempty"`
+			ProofOfDelivery         string  `json:"proof_of_delivery,omitempty"`
+			BuyerConfirmedReceipt   *bool   `json:"buyer_confirmed_receipt,omitempty"`
+			SellerConfirmedDelivery *bool   `json:"seller_confirmed_delivery,omitempty"`
 		}
 
 		var deliveryPayload DeliveryStatePayload
@@ -1300,6 +1305,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		if deliveryPayload.PaymentConfirmed != nil {
 			updateFields = append(updateFields, "payment_confirmed = ?")
 			updateArgs = append(updateArgs, *deliveryPayload.PaymentConfirmed)
+		}
+		if deliveryPayload.DeliveryInstructions != nil {
+			updateFields = append(updateFields, "delivery_instructions = ?")
+			updateArgs = append(updateArgs, *deliveryPayload.DeliveryInstructions)
 		}
 		if deliveryPayload.ProofOfDelivery != "" {
 			updateFields = append(updateFields, "proof_of_delivery = ?")
@@ -1829,6 +1838,41 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 		query += `, '' as trade_option, '' as delivery_address`
 	}
 
+	// Check if delivery state columns exist (delivery progress + instructions)
+	deliveryStateQuery := `
+		SELECT
+			COALESCE(t.delivery_type, '') as delivery_type,
+			COALESCE(t.payment_method, '') as payment_method,
+			COALESCE(t.payment_confirmed, FALSE) as payment_confirmed,
+			COALESCE(t.delivery_instructions, '') as delivery_instructions,
+			t.proof_of_delivery,
+			COALESCE(t.buyer_confirmed_receipt, FALSE) as buyer_confirmed_receipt,
+			COALESCE(t.seller_confirmed_delivery, FALSE) as seller_confirmed_delivery
+		FROM trades t LIMIT 1`
+	testDeliveryRow := h.db.QueryRow(deliveryStateQuery)
+	var testDeliveryType, testPaymentMethod, testDeliveryInstructions string
+	var testPaymentConfirmed, testBuyerConfirmed, testSellerConfirmed bool
+	var testProofOfDelivery sql.NullString
+	if err := testDeliveryRow.Scan(&testDeliveryType, &testPaymentMethod, &testPaymentConfirmed, &testDeliveryInstructions, &testProofOfDelivery, &testBuyerConfirmed, &testSellerConfirmed); err == nil {
+		query += `,
+			COALESCE(t.delivery_type, '') as delivery_type,
+			COALESCE(t.payment_method, '') as payment_method,
+			COALESCE(t.payment_confirmed, FALSE) as payment_confirmed,
+			COALESCE(t.delivery_instructions, '') as delivery_instructions,
+			t.proof_of_delivery,
+			COALESCE(t.buyer_confirmed_receipt, FALSE) as buyer_confirmed_receipt,
+			COALESCE(t.seller_confirmed_delivery, FALSE) as seller_confirmed_delivery`
+	} else {
+		query += `,
+			'' as delivery_type,
+			'' as payment_method,
+			FALSE as payment_confirmed,
+			'' as delivery_instructions,
+			NULL as proof_of_delivery,
+			FALSE as buyer_confirmed_receipt,
+			FALSE as seller_confirmed_delivery`
+	}
+
 	query += `,
           COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
@@ -1838,7 +1882,19 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
         JOIN products p ON p.id = t.target_product_id
         WHERE t.id = ?`
 
-	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+	var deliveryType, paymentMethod, deliveryInstructions string
+	var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
+	var proofOfDelivery sql.NullString
+	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+	tr.DeliveryType = deliveryType
+	tr.PaymentMethod = paymentMethod
+	tr.PaymentConfirmed = paymentConfirmed
+	tr.DeliveryInstructions = deliveryInstructions
+	if proofOfDelivery.Valid {
+		tr.ProofOfDelivery = proofOfDelivery.String
+	}
+	tr.BuyerConfirmedReceipt = buyerConfirmedReceipt
+	tr.SellerConfirmedDelivery = sellerConfirmedDelivery
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 	}
@@ -2568,11 +2624,12 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 				}
 
 				user3Status := "pending"
-				if mStatus == "user3_accepted" || mStatus == "active" {
+				switch mStatus {
+				case "user3_accepted", "active":
 					user3Status = "joined"
-				} else if mStatus == "user3_declined" {
+				case "user3_declined":
 					user3Status = "declined"
-				} else if mStatus == "pending_initiator_upgrade" {
+				case "pending_initiator_upgrade":
 					user3Status = "waiting_initiator_upgrade"
 				}
 

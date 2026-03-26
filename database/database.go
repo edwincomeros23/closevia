@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -46,8 +47,13 @@ func InitDatabase() error {
 		return fmt.Errorf("DB_PASSWORD environment variable is not set (required for hosted database)")
 	}
 
-	var dsn string
+	// Fail fast on network / DB stalls so the API doesn't hang for 15s+.
+	const connectTimeout = "5s"
+	const readTimeout = "15s"
+	const writeTimeout = "15s"
+	commonParams := fmt.Sprintf("timeout=%s&readTimeout=%s&writeTimeout=%s", connectTimeout, readTimeout, writeTimeout)
 
+	var dsn string
 	if isHostedDatabase {
 		// Create TLS config for hosted database
 		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
@@ -59,13 +65,11 @@ func InitDatabase() error {
 			return fmt.Errorf("failed to register TLS config: %v", err)
 		}
 
-		// Create DSN with TLS enabled for hosted database
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
-			dbUser, dbPassword, dbHost, dbPort, dbName)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom&%s",
+			dbUser, dbPassword, dbHost, dbPort, dbName, commonParams)
 	} else {
-		// Create DSN without TLS for local database (XAMPP)
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
-			dbUser, dbPassword, dbHost, dbPort, dbName)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&%s",
+			dbUser, dbPassword, dbHost, dbPort, dbName, commonParams)
 	}
 
 	// Open database connection
@@ -76,13 +80,15 @@ func InitDatabase() error {
 	}
 
 	// Configure connection pool with better resilience
-	DB.SetMaxOpenConns(10)                 // Reduce from 25 to avoid connection spam
-	DB.SetMaxIdleConns(5)                  // Keep fewer idle connections
-	DB.SetConnMaxLifetime(5 * time.Minute) // Refresh connections more frequently
-	DB.SetConnMaxIdleTime(2 * time.Minute) // Close idle connections after 2 min
+	DB.SetMaxOpenConns(10)
+	DB.SetMaxIdleConns(5)
+	DB.SetConnMaxLifetime(5 * time.Minute)
+	DB.SetConnMaxIdleTime(2 * time.Minute)
 
-	// Test the connection
-	if err := DB.Ping(); err != nil {
+	// Test the connection (with timeout to avoid long startup hangs)
+	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := DB.PingContext(pingCtx); err != nil {
 		return fmt.Errorf("failed to ping database: %v", err)
 	}
 
@@ -952,6 +958,9 @@ func ensureTradeColumns() {
 		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
 		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
 		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
+		{"xendit_invoice_id", "VARCHAR(255) NULL"},
+		{"xendit_external_id", "VARCHAR(255) NULL"},
+		{"delivery_instructions", "TEXT NULL"},
 		{"proof_of_delivery", "LONGTEXT NULL"},
 		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
 		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
