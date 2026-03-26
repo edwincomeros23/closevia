@@ -773,74 +773,7 @@ const SettingsPage: React.FC = () => {
     }
   }
 
-  const handleUploadSchoolID = async (file: File | null) => {
-    if (!file) return
 
-    // Basic client-side validation for ID/COR upload
-    if (!file.type.startsWith('image/')) {
-      toast({
-        id: "settings-invalid-file-type",
-        title: 'Invalid file type',
-        description: 'Please upload a clear image of your school ID or COR.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        id: "settings-file-too-large",
-        title: 'File too large',
-        description: 'Please upload an image smaller than 5MB.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-    if (!schoolName || !schoolEmail) {
-      toast({
-        id: "settings-email-verification-required",
-        title: 'Email verification required',
-        description: 'Please verify your school email before uploading your ID.',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-    setIdUploadLoading(true)
-    try {
-      const form = new FormData()
-      form.append('id_image', file)
-      form.append('document_type', documentType)
-      await api.post('/api/users/verification/upload-id', form)
-      toast({
-        id: "settings-id-submitted",
-        title: 'ID submitted',
-        description: 'Your school ID has been submitted for review.',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
-      await refreshUser()
-      setVerificationStatus('pending')
-      setVerificationReason(null)
-    } catch (err: any) {
-      const message = err?.response?.data?.error || err?.message || 'Failed to upload school ID'
-      toast({
-        id: "settings-upload-error",
-        title: 'Upload error',
-        description: message,
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      })
-    } finally {
-      setIdUploadLoading(false)
-    }
-  }
 
   // Handle logout — clear tokens/cookies and notify backend if possible
   const handleLogout = async () => {

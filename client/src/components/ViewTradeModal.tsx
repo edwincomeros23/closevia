@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Modal,
   ModalOverlay,
@@ -38,7 +38,7 @@ import {
   Grid,
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
-import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore } from 'react-icons/fa'
 import {
   FiMapPin,
   FiPhone,
@@ -49,6 +49,18 @@ import {
   FiClock,
   FiPackage,
 } from 'react-icons/fi'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+
+// Fix generic leaflet icon
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
 import { Trade, Product, TradeOption, Delivery } from '../types'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -76,6 +88,9 @@ interface MeetupLocation {
   name: string
   address: string
   type: 'cafe' | 'mall' | 'public' | 'other'
+  lat?: number
+  lng?: number
+  isPartner?: boolean
 }
 
 interface DeliveryState {
@@ -943,16 +958,52 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     ? trade?.seller_name || `User #${trade?.seller_id}`
     : trade?.buyer_name || `User #${trade?.buyer_id}`
 
-  // Suggested meetup locations (specifically for Zamboanga City)
   const suggestedLocations: MeetupLocation[] = [
-    { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public' },
-    { name: 'SM Mindpro', address: 'La Purisima St, Zamboanga City', type: 'mall' },
-    { name: 'KCC de Zamboanga', address: 'Gov. Camins Ave, Zamboanga City', type: 'mall' },
-    { name: 'Meet n Eat', address: 'Gov. Camins Ave, Zamboanga City', type: 'cafe' },
-    { name: 'Amethyst Eatery', address: 'Zamboanga City', type: 'cafe' },
-    { name: 'Paseo del Mar', address: 'Valderosa St, Zamboanga City', type: 'public' },
-    { name: 'Local coffee shops', address: 'Various locations in Zamboanga', type: 'cafe' },
+    { name: 'Meet n Eat', address: 'Gov. Camins Ave, Zamboanga City', type: 'cafe', lat: 6.9150, lng: 122.0630, isPartner: true },
+    { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public', lat: 6.9214, lng: 122.0790 },
+    { name: 'SM Mindpro', address: 'La Purisima St, Zamboanga City', type: 'mall', lat: 6.9080, lng: 122.0745 },
+    { name: 'KCC de Zamboanga', address: 'Gov. Camins Ave, Zamboanga City', type: 'mall', lat: 6.9142, lng: 122.0620 },
+    { name: 'Amethyst Eatery', address: 'Zamboanga City', type: 'cafe', lat: 6.9125, lng: 122.0720, isPartner: true },
+    { name: 'Paseo del Mar', address: 'Valderosa St, Zamboanga City', type: 'public', lat: 6.9030, lng: 122.0780 },
+    { name: 'Local coffee shops', address: 'Various locations in Zamboanga', type: 'cafe', isPartner: true },
   ]
+
+  // Helper compute distance in km using Haversine
+  const getDistance = (lat1?: number, lon1?: number, lat2?: number, lon2?: number) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  // Find nearest location based on user coordinates
+  const nearestLocationName = useMemo(() => {
+    if (!user?.latitude || !user?.longitude) return 'WMSU'; // Fallback
+    let nearest = '';
+    let minDistance = Infinity;
+    for (const loc of suggestedLocations) {
+      const dist = getDistance(user.latitude, user.longitude, loc.lat, loc.lng);
+      if (dist < minDistance) {
+        minDistance = dist;
+        nearest = loc.name;
+      }
+    }
+    return nearest;
+  }, [user?.latitude, user?.longitude])
+
+  // Component to update map center
+  const MapUpdater = ({ lat, lng }: { lat: number, lng: number }) => {
+    const map = useMap()
+    useEffect(() => {
+      map.setView([lat, lng], 16, { animate: true })
+    }, [lat, lng, map])
+    return null
+  }
 
   // Save delivery state to backend
   const saveDeliveryState = async (updates: Partial<DeliveryState>) => {
@@ -1899,26 +1950,87 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Text>
 
                         {/* Locations Grid */}
-                        <VStack spacing={3} align="stretch">
+                        <Box h="250px" mb={4} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
+                          <MapContainer 
+                            center={[6.9214, 122.0790]} 
+                            zoom={14} 
+                            style={{ height: '100%', width: '100%' }}
+                            // @ts-ignore
+                            attributionControl={false}
+                          >
+                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            {selectedLocation && suggestedLocations.find(l => l.name === selectedLocation)?.lat && (
+                              <MapUpdater 
+                                lat={suggestedLocations.find(l => l.name === selectedLocation)!.lat!} 
+                                lng={suggestedLocations.find(l => l.name === selectedLocation)!.lng!} 
+                              />
+                            )}
+                            {suggestedLocations.filter(loc => loc.lat && loc.lng).map((loc, idx) => (
+                              <Marker 
+                                key={idx} 
+                                position={[loc.lat!, loc.lng!]}
+                                eventHandlers={{ click: () => setSelectedLocation(loc.name) }}
+                              >
+                                <Popup>
+                                  <b>{loc.name}</b><br/>{loc.address}
+                                </Popup>
+                              </Marker>
+                            ))}
+                          </MapContainer>
+                        </Box>
+
+                        <VStack spacing={3} align="stretch" maxH="400px" overflowY="auto" pr={2} css={{
+                          '&::-webkit-scrollbar': {
+                            width: '4px',
+                          },
+                          '&::-webkit-scrollbar-track': {
+                            width: '6px',
+                          },
+                          '&::-webkit-scrollbar-thumb': {
+                            background: 'brand.500',
+                            borderRadius: '24px',
+                          },
+                        }}>
                           {suggestedLocations.map((location, index) => {
                             const isSelected = selectedLocation === location.name
-                            const isNearest = index === 0
+                            const isPartner = location.isPartner
+                            const isNearest = location.name === nearestLocationName // Dynamic nearest
                             const textColor = useColorModeValue('gray.800', 'gray.100')
+
+                            // Check if location selection should be locked
+                            const isOtherPartyConfirmed = (isUserBuyer && trade.seller_meetup_confirmed) || (isUserSeller && trade.buyer_meetup_confirmed)
+                            // We can only change selection if neither has confirmed, or if WE are the only one who confirmed (we can change our mind? Actually if we confirmed, we shouldn't change unless we unconfirm).
+                            // Wait, if the other party confirmed, the selection is locked to their choice.
+                            const isLocked = isOtherPartyConfirmed && trade.meetup_location !== undefined
 
                             return (
                               <Card
                                 key={`location-${location.name}`}
                                 variant="outline"
-                                cursor="pointer"
-                                borderWidth={isSelected ? '2px' : '1px'}
-                                borderColor={isSelected ? 'brand.500' : isNearest ? 'orange.300' : borderColor}
-                                bg={isSelected ? 'brand.50' : isNearest ? useColorModeValue('orange.50', 'orange.950') : 'white'}
-                                onClick={() => setSelectedLocation(location.name)}
+                                cursor={isLocked ? (isSelected ? "default" : "not-allowed") : "pointer"}
+                                opacity={isLocked && !isSelected ? 0.5 : 1}
+                                borderWidth={isPartner ? '2px' : isSelected ? '2px' : '1px'}
+                                borderColor={isPartner ? 'orange.400' : isSelected ? 'brand.500' : isNearest ? 'blue.300' : borderColor}
+                                bg={isSelected ? 'brand.50' : isPartner ? useColorModeValue('orange.50', 'orange.900') : isNearest ? useColorModeValue('blue.50', 'blue.950') : 'white'}
+                                onClick={() => {
+                                  if (!isLocked) {
+                                    setSelectedLocation(location.name)
+                                  } else if (!isSelected) {
+                                    toast({
+                                      id: "location-locked",
+                                      title: 'Location Locked',
+                                      description: `The other party has already selected ${trade.meetup_location}. You must accept this location or message them to change it.`,
+                                      status: 'warning',
+                                      duration: 3000,
+                                      isClosable: true,
+                                    })
+                                  }
+                                }}
                                 transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
                                 _hover={{
-                                  borderColor: isSelected ? 'brand.600' : 'brand.400',
-                                  shadow: 'md',
-                                  transform: 'translateY(-2px)',
+                                  borderColor: isLocked ? undefined : (isPartner ? 'orange.500' : isSelected ? 'brand.600' : 'brand.400'),
+                                  shadow: isLocked ? undefined : 'md',
+                                  transform: isLocked ? undefined : 'translateY(-2px)',
                                 }}
                               >
                                 <CardBody>
@@ -1927,7 +2039,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     <HStack spacing={3} flex={1}>
                                       <Box
                                         p={2}
-                                        bg={useColorModeValue('gray.100', 'gray.700')}
+                                        bg={isPartner ? useColorModeValue('orange.100', 'orange.800') : useColorModeValue('gray.100', 'gray.700')}
                                         borderRadius="md"
                                         display="flex"
                                         alignItems="center"
@@ -1935,19 +2047,24 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         flexShrink={0}
                                       >
                                         <Icon
-                                          as={FaMapMarkerAlt}
-                                          color={isSelected ? 'brand.500' : isNearest ? 'orange.500' : 'gray.500'}
-                                          boxSize={5}
+                                          as={isPartner ? FaStore : FaMapMarkerAlt}
+                                          color={isPartner ? 'orange.500' : isSelected ? 'brand.500' : isNearest ? 'blue.500' : 'gray.500'}
+                                          boxSize={isPartner ? 6 : 5}
                                         />
                                       </Box>
 
                                       <VStack align="start" spacing={1} flex={1}>
-                                        <HStack spacing={2}>
+                                        <HStack spacing={2} flexWrap="wrap">
                                           <Text fontWeight="semibold" fontSize="sm" color={textColor}>
                                             {location.name}
                                           </Text>
-                                          {isNearest && (
+                                          {isPartner && (
                                             <Badge colorScheme="orange" fontSize="2xs" px={1.5} py={0.5}>
+                                              🌟 Partnered Shop
+                                            </Badge>
+                                          )}
+                                          {isNearest && !isPartner && (
+                                            <Badge colorScheme="blue" fontSize="2xs" px={1.5} py={0.5}>
                                               Nearest
                                             </Badge>
                                           )}

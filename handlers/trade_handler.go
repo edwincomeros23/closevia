@@ -373,7 +373,7 @@ func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, initiatorUserID 
 	}
 }
 
-func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int, userID int) {
+func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) {
 	// Get the new product's category and price for filtering
 	var productCategory string
 	var productPrice float64
@@ -2568,11 +2568,12 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 				}
 
 				user3Status := "pending"
-				if mStatus == "user3_accepted" || mStatus == "active" {
+				switch mStatus {
+				case "user3_accepted", "active":
 					user3Status = "joined"
-				} else if mStatus == "user3_declined" {
+				case "user3_declined":
 					user3Status = "declined"
-				} else if mStatus == "pending_initiator_upgrade" {
+				case "pending_initiator_upgrade":
 					user3Status = "waiting_initiator_upgrade"
 				}
 

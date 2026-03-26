@@ -145,6 +145,7 @@ const Dashboard: React.FC = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [boosting, setBoosting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [tradedCurrentPage, setTradedCurrentPage] = useState(1)
   const itemsPerPage = 12
@@ -1297,6 +1298,7 @@ const Dashboard: React.FC = () => {
 
   const handleBoostProductClick = async (product: Product) => {
     try {
+      setBoosting(true)
       showPopup({
         type: 'loading',
         title: 'Boosting Listing...',
@@ -1305,7 +1307,7 @@ const Dashboard: React.FC = () => {
         confirmColorScheme: 'blue'
       })
 
-      const response = await api.post(`/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/${product.id}/boost`)
 
       if (response.data?.success) {
         showPopup({
