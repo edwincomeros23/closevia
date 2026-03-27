@@ -960,13 +960,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               <Flex align="center" justify="space-between" mb={1}>
                 <VStack align="start" spacing={0.5}>
                   <HStack spacing={1.5} align="baseline">
-                    <Heading size="lg" color="gray.800" textTransform="capitalize">{user.name}</Heading>
-                    {(user.verification_status === 'verified' || user.verified) && (
-                      <HStack spacing={1} ml={1}>
-                        <Icon as={FiCheckCircle} color="teal.500" boxSize={4} />
-                        <Text fontSize="sm" color="teal.600" fontWeight="medium">Verified</Text>
-                      </HStack>
-                    )}
+                    <Heading size="lg" color="gray.800" textTransform="capitalize" display="flex" alignItems="center">
+                      {user.name}
+                      {(user.verification_status === 'verified' || user.verified) && (
+                        <Icon as={FiCheckCircle} color="teal.500" boxSize={4} ml={2} title="Verified" />
+                      )}
+                    </Heading>
                   </HStack>
                   {/* Organization Type tag */}
                   {user.is_organization && user.organization_type && (
@@ -1046,50 +1045,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
               {/* Verification Depth sub-badges (organization only) */}
               {user.is_organization && (user.verification_status === 'verified' || user.verified || user.org_verified) && (
-                <HStack spacing={2} mb={3} flexWrap="wrap">
-                  {(user.verification_status === 'verified' || user.org_verified) && (
-                    <Tooltip
-                      label={
-                        user.organization_type === 'school_organization'
-                          ? 'This organization has been verified as a school organization'
-                          : 'This business has been verified by Clovia'
-                      }
-                      hasArrow
-                    >
-                      <Badge
-                        colorScheme="teal"
-                        borderRadius="full"
-                        px={3}
-                        py={1}
-                        fontSize="xs"
-                        cursor="default"
-                        display="flex"
-                        alignItems="center"
-                        gap={1}
-                      >
-                        {user.organization_type === 'school_organization' ? (
-                          <><Icon as={FaGraduationCap} mr={1} />School Verified</>
-                        ) : (
-                          <><Icon as={FaBuilding} mr={1} />Business Verified</>
-                        )}
-                      </Badge>
-                    </Tooltip>
-                  )}
-                  {user.document_type && (
-                    <Tooltip label="Documents have been submitted and reviewed" hasArrow>
-                      <Badge
-                        colorScheme="blue"
-                        borderRadius="full"
-                        px={3}
-                        py={1}
-                        fontSize="xs"
-                        cursor="default"
-                      >
-                        Documents Verified
-                      </Badge>
-                    </Tooltip>
-                  )}
-                </HStack>
+                {/* Organization verification badges removed for redundancy. TrustScoreCard and check icon now serve as the only verification indicators. */}
               )}
 
               {/* Activity & Transparency (organization only) */}
@@ -1175,18 +1131,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <Text color="gray.500" fontSize="xs">Items for Sale</Text>
                   <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
                 </Box>
-                {/* Department field: hide if unknown, show CTA if owner */}
-                {(user.department && user.department !== 'Unknown') ? (
-                  <Box lineHeight="1.4">
-                    <Text color="gray.500" fontSize="xs">Department</Text>
-                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department}</Text>
-                  </Box>
-                ) : currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) ? (
-                  <Box lineHeight="1.4">
-                    <Text color="gray.500" fontSize="xs">Department</Text>
-                    <Button variant="link" size="sm" colorScheme="brand" onClick={openEdit}>Add your department</Button>
-                  </Box>
-                ) : null}
+                {/* Department field removed as per request */}
                 <Box lineHeight="1.4">
                   <Text color="gray.500" fontSize="xs">Total Listings</Text>
                   <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
@@ -1476,16 +1421,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       )}
                     </Box>
 
-                    {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && (
-                      <Button
-                        colorScheme="brand"
-                        size="sm"
-                        onClick={() => handleOpenReviewModal()}
-                        leftIcon={<Icon as={FiStar} />}
-                      >
-                        Leave a Review
-                      </Button>
-                    )}
                   </HStack>
                 </Box>
 
@@ -1502,17 +1437,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <Center p={10}>
                     <VStack>
                       <Text color="gray.500">No completed trades yet.</Text>
-                      {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && (
-                        <Button
-                          colorScheme="brand"
-                          variant="outline"
-                          size="sm"
-                          mt={2}
-                          onClick={() => handleOpenReviewModal()}
-                        >
-                          Be the first to trade
-                        </Button>
-                      )}
                     </VStack>
                   </Center>
                 ) : (

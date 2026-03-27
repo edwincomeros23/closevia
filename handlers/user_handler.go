@@ -142,9 +142,38 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// Check if user already exists
-	var existingUser models.User
-	err := h.db.QueryRow("SELECT id FROM users WHERE email = ?", user.Email).Scan(&existingUser.ID)
+	var existingUser struct {
+		ID       int
+		Verified bool
+	}
+	err := h.db.QueryRow("SELECT id, verified FROM users WHERE email = ?", user.Email).Scan(&existingUser.ID, &existingUser.Verified)
 	if err == nil {
+		if !existingUser.Verified {
+			// User exists but not verified: resend OTP and return requires_verification
+			otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+			if otpErr == nil {
+				h.db.Exec(
+					"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
+					otpHash, otpExpiry, existingUser.ID,
+				)
+				go func() {
+					_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", existingUser.ID).Scan(&user.Name)
+					err := services.SendOTPEmail(user.Email, user.Name, otpCode)
+					if err != nil {
+						fmt.Printf("❌ Failed to send OTP email: %v\n", err)
+					}
+				}()
+			}
+			return c.Status(200).JSON(models.APIResponse{
+				Success: true,
+				Message: "Account already exists but is not verified. Verification code resent.",
+				Data: fiber.Map{
+					"requires_verification": true,
+					"email":                 user.Email,
+				},
+			})
+		}
+		// User exists and is verified
 		return c.Status(409).JSON(models.APIResponse{
 			Success: false,
 			Error:   "User with this email already exists",
@@ -204,9 +233,16 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 	// Insert new user
 	cleanPhone := strings.TrimSpace(user.Phone)
 	if cleanPhone != "" {
-		phoneRegex := regexp.MustCompile(`^\d{10,15}$`)
+		// Only allow PH numbers: must be 11 digits, start with '09' or '9', and store as +63XXXXXXXXXX
+		phoneRegex := regexp.MustCompile(`^(09|9)\d{9}$`)
 		if !phoneRegex.MatchString(cleanPhone) {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Phone number must be 10 to 15 digits"})
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Phone number must be 11 digits and start with 09 (PH mobile only)"})
+		}
+		// Normalize to +63XXXXXXXXXX
+		if strings.HasPrefix(cleanPhone, "0") {
+			cleanPhone = "+63" + cleanPhone[1:]
+		} else if strings.HasPrefix(cleanPhone, "9") {
+			cleanPhone = "+63" + cleanPhone
 		}
 	}
 
