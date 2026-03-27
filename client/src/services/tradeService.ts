@@ -122,6 +122,48 @@ export const executeMultiWayTrade = async (loopId: string): Promise<void> => {
 }
 
 /**
+ * Fetch the free-tier monthly loop quota for the current user.
+ */
+export const fetchLoopQuota = async (): Promise<{
+  unlimited: boolean
+  period: string
+  used: number
+  limit: number
+}> => {
+  try {
+    const response = await api.get(`/api/trades/loops/quota`)
+    return response.data?.data as any
+  } catch (error) {
+    console.error('Failed to fetch loop quota:', error)
+    throw error
+  }
+}
+
+/**
+ * Pro-only: cancel a detected loop.
+ */
+export const cancelTradeLoop = async (loopId: string): Promise<void> => {
+  try {
+    await api.post(`/api/trades/loops/${loopId}/cancel`)
+  } catch (error) {
+    console.error(`Failed to cancel trade loop ${loopId}:`, error)
+    throw error
+  }
+}
+
+/**
+ * Pro-only: reinvite a cancelled detected loop (resets agreements).
+ */
+export const reinviteTradeLoop = async (loopId: string): Promise<void> => {
+  try {
+    await api.post(`/api/trades/loops/${loopId}/reinvite`)
+  } catch (error) {
+    console.error(`Failed to reinvite trade loop ${loopId}:`, error)
+    throw error
+  }
+}
+
+/**
  * Create a new trade proposal
  */
 export const createTrade = async (tradeData: any): Promise<Trade> => {

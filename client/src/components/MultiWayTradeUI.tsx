@@ -49,14 +49,29 @@ interface TradeParticipant {
   product_image?: string
   wants_product_id?: number
   wants_user_id?: number
+  status?: 'pending' | 'joined' | 'declined' | string
 }
 
 interface MultiWayTradeUIProps {
   participants: TradeParticipant[]
   onJoinTrade?: () => void
   onViewDetails?: () => void
-  onDecline?: () => void
+  onDecline?: (searchAgain?: boolean) => void
   isLoading?: boolean
+  isChain?: boolean // Added to distinguish between loop and chain
+  yourGive?: string
+  yourGet?: string
+  chainLabel?: string
+  viewMode?: 'initiator' | 'participant'
+  initiatorName?: string
+  canJoin?: boolean
+  canDecline?: boolean
+  canCreate?: boolean
+  loopType?: string
+  proNudgeText?: string
+  onStartLoop?: () => void
+  loopStatus?: string
+  expiryLabel?: string
 }
 
 const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
@@ -65,6 +80,20 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
   onViewDetails,
   onDecline,
   isLoading = false,
+  isChain = false,
+  yourGive,
+  yourGet,
+  chainLabel,
+  viewMode = 'participant',
+  initiatorName,
+  canJoin = true,
+  canDecline = true,
+  canCreate = false,
+  loopType,
+  proNudgeText,
+  onStartLoop,
+  loopStatus,
+  expiryLabel,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const { isOpen, onOpen, onClose } = useDisclosure()
@@ -90,6 +119,13 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
   const loopLength = validParticipants.length
   const isComplete = loopLength >= 3
 
+  const participantTitle = viewMode === 'initiator' ? 'Initiator View' : 'Participant View'
+  const statusColor = (status?: string) => {
+    if (status === 'joined') return 'green'
+    if (status === 'declined') return 'red'
+    return 'yellow'
+  }
+
   // Get participant's avatar or fallback
   const getAvatarColor = (index: number) => {
     const colors = ['blue', 'green', 'purple', 'orange', 'pink']
@@ -113,11 +149,43 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
         <HStack justify="space-between" align="center">
           <VStack align="start" spacing={1} flex={1}>
             <Text fontSize="sm" fontWeight="bold" color={useColorModeValue('blue.900', 'blue.100')}>
-              Your "<strong>{validParticipants[0].product_title}</strong>" has found a trade loop
+              {viewMode === 'initiator'
+                ? 'Loop Status Tracker'
+                : "You've been invited to a Multi-way Loop!"}
             </Text>
-            <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.200')}>
-              {loopLength} participants ready to trade
+            <Badge colorScheme={viewMode === 'initiator' ? 'purple' : 'teal'} variant="subtle" fontSize="10px">
+              {participantTitle}
+            </Badge>
+            {initiatorName && viewMode === 'participant' && (
+              <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
+                Initiated by: {initiatorName}
+              </Text>
+            )}
+            <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
+              You give: {yourGive || 'Item in your trade offer'}
             </Text>
+            <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
+              You get: {yourGet || 'Matched item from the loop'}
+            </Text>
+            <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.300')} noOfLines={1}>
+              Chain: {chainLabel || 'Participants connected in a closed loop'}
+            </Text>
+            <HStack spacing={1}>
+              <Badge colorScheme="purple" fontSize="10px">NEW</Badge>
+              <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.200')}>
+                {loopLength} participants ready to trade
+              </Text>
+              {loopStatus && (
+                <Badge colorScheme={loopStatus === 'active' || loopStatus === 'user3_accepted' ? 'green' : 'yellow'} fontSize="10px">
+                  {loopStatus}
+                </Badge>
+              )}
+            </HStack>
+            {expiryLabel && (
+              <Text fontSize="10px" color={useColorModeValue('blue.700', 'blue.300')}>
+                Expires: {expiryLabel}
+              </Text>
+            )}
           </VStack>
           <Icon
             as={FaChevronDown}
@@ -135,7 +203,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
           {/* Status Badge */}
           <HStack spacing={2}>
             <Badge
-              colorScheme="green"
+              colorScheme={viewMode === 'initiator' ? 'purple' : 'teal'}
               px={3}
               py={1}
               borderRadius="full"
@@ -146,7 +214,10 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
               gap={1}
             >
               <Icon as={FaCheckCircle} boxSize={3} />
-              {loopLength}-Way Loop Ready
+              {viewMode === 'initiator' ? `${loopLength}-Way Loop Tracker` : `${loopLength}-Way Invite`}
+            </Badge>
+            <Badge colorScheme="blue" variant="subtle" fontSize="xs">
+              {viewMode === 'initiator' ? 'Track participant confirmations' : 'Hop in to complete the chain'}
             </Badge>
           </HStack>
 
@@ -201,6 +272,9 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                         <Text fontSize="2xs" color="gray.600" textAlign="center" noOfLines={2} mt={1}>
                           {participant.product_title}
                         </Text>
+                        <Badge mt={1} colorScheme={statusColor(participant.status)} fontSize="9px" textTransform="capitalize">
+                          {participant.status || 'pending'}
+                        </Badge>
                       </CardBody>
                     </Card>
                   </VStack>
@@ -210,29 +284,71 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
           </Box>
 
           {/* Action Buttons */}
-          <HStack spacing={2} w="full">
+          <VStack spacing={2} w="full">
             <Button
-              colorScheme="green"
+              colorScheme={viewMode === 'initiator' ? 'purple' : 'green'}
               size="sm"
               onClick={onOpen}
               isLoading={isLoading}
-              loadingText="Joining..."
-              flex={1}
+              loadingText={viewMode === 'initiator' ? 'Opening...' : 'Joining...'}
+              w="full"
               fontWeight="bold"
+              isDisabled={!canJoin}
             >
-              Join Loop
+              {viewMode === 'initiator' ? 'View Loop Details' : 'Hop In'}
             </Button>
-            <Button
-              colorScheme="red"
-              variant="outline"
-              size="sm"
-              onClick={onDecline}
-              flex={1}
-              fontWeight="bold"
-            >
-              Decline
-            </Button>
-          </HStack>
+
+            {viewMode === 'participant' && loopType === 'detected_loop' && !canCreate && (
+              <Tooltip label={proNudgeText || "Pro members can initiate. Upgrade to unlock."} placement="top" hasArrow>
+                <Button
+                  size="sm"
+                  colorScheme="purple"
+                  variant="outline"
+                  onClick={() => onStartLoop?.()}
+                  w="full"
+                  fontWeight="bold"
+                >
+                  <HStack spacing={2}>
+                    <span>Start a Loop</span>
+                    <Badge colorScheme="purple" fontSize="10px">
+                      Pro
+                    </Badge>
+                  </HStack>
+                </Button>
+              </Tooltip>
+            )}
+            
+            {(canDecline || isChain) && (
+              <HStack spacing={2} w="full">
+                {canDecline && (
+                  <Button
+                    colorScheme="red"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onDecline?.(false)}
+                    flex={1}
+                    fontWeight="bold"
+                  >
+                    Decline
+                  </Button>
+                )}
+                {isChain && canDecline && (
+                  <Button
+                    colorScheme="brand"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDecline?.(true)}
+                    flex={1}
+                    fontSize="xs"
+                    fontWeight="bold"
+                    leftIcon={<Icon as={FaLightbulb} />}
+                  >
+                    Find Next Match
+                  </Button>
+                )}
+              </HStack>
+            )}
+          </VStack>
 
           {/* Trust Indicators */}
           <HStack spacing={2} fontSize="2xs" color="gray.600" justify="center">
@@ -249,10 +365,12 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
           <ModalHeader>
             <VStack align="start" spacing={1}>
               <Heading size="md" color={useColorModeValue('gray.800', 'gray.100')}>
-                Join Trade Loop
+                {viewMode === 'initiator' ? 'Loop Status Tracker' : 'Join Trade Loop'}
               </Heading>
               <Text fontSize="sm" color="gray.600">
-                You're about to join a {loopLength}-way trade loop
+                {viewMode === 'initiator'
+                  ? `Track your ${loopLength}-way loop participants`
+                  : `You're about to join a ${loopLength}-way trade loop`}
               </Text>
             </VStack>
           </ModalHeader>
@@ -268,10 +386,22 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                 borderLeftColor="blue.400"
               >
                 <Text fontSize="xs" fontWeight="bold" color="blue.800" mb={2}>
-                  Your Item:
+                  You give:
                 </Text>
                 <Text fontSize="sm" fontWeight="semibold" color={useColorModeValue('gray.800', 'gray.100')}>
-                  {validParticipants[0].product_title}
+                  {yourGive || validParticipants[0].product_title}
+                </Text>
+                <Text fontSize="xs" fontWeight="bold" color="blue.800" mt={3} mb={2}>
+                  You get:
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color={useColorModeValue('gray.800', 'gray.100')}>
+                  {yourGet || 'Matched item from this loop'}
+                </Text>
+                <Text fontSize="xs" fontWeight="bold" color="blue.800" mt={3} mb={2}>
+                  Chain:
+                </Text>
+                <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')}>
+                  {chainLabel || 'Participants connected in a closed loop'}
                 </Text>
               </Box>
 
@@ -314,7 +444,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                 borderLeftColor="green.400"
               >
                 <Text fontSize="xs" color={useColorModeValue('green.700', 'green.200')}>
-                  <strong>By joining,</strong> you agree to complete this trade once all participants have joined. You can cancel anytime before the trade executes.
+                  <strong>By joining,</strong> your confirmation is recorded and the loop executes only after all participants confirm. You can cancel anytime before execution.
                 </Text>
               </Box>
             </VStack>
@@ -327,13 +457,17 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             <Button
               colorScheme="green"
               onClick={() => {
-                onJoinTrade?.()
+                if (viewMode === 'participant') {
+                  onJoinTrade?.()
+                } else {
+                  onViewDetails?.()
+                }
                 onClose()
               }}
               isLoading={isLoading}
-              loadingText="Joining..."
+              loadingText={viewMode === 'initiator' ? 'Opening...' : 'Joining...'}
             >
-              Confirm & Join
+              {viewMode === 'initiator' ? 'Open Details' : 'Confirm & Hop In'}
             </Button>
           </ModalFooter>
         </ModalContent>

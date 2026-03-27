@@ -132,7 +132,7 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
       <Box
         position="relative"
         w={{ base: '170px', md: 'full' }}
-        h={{ base: '150px', md: 'auto' }}
+        h={{ base: '170px', md: 'auto' }}
         pt={{ base: '0', md: '100%' }}
         overflow="hidden"
         bg="gray.100"
@@ -173,7 +173,7 @@ export const StudentAdCard: React.FC<{ ad: StudentAd }> = ({ ad }) => {
 
       {/* Content */}
       {/* Match product-card info sizing */}
-      <VStack spacing={2} p={4} align="stretch" h={{ base: 100, md: 140 }} justify="space-between">
+      <VStack spacing={2} p={4} align="stretch" h={{ base: 128, md: 140 }} justify="space-between">
         {/* Title */}
         <Heading
           size="sm"

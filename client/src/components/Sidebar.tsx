@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useCallback, useEffect, useState } from 'react'
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -29,9 +29,11 @@ import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
 import { FaHome, FaPlus, FaStar, FaMotorcycle, FaCrown } from 'react-icons/fa'
-import { FiGrid, FiHeart, FiLogOut, FiUser, FiBell, FiSettings } from 'react-icons/fi'
+import { FiGrid, FiHeart, FiLogOut, FiBell, FiSettings, FiUser } from 'react-icons/fi'
 import { getImageUrl } from '../utils/imageUtils'
 import VerifiedAvatar from './VerifiedAvatar'
+import InstallAppPrompt from './InstallAppPrompt'
+import { api } from '../services/api'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
@@ -45,6 +47,33 @@ const Sidebar: React.FC = () => {
   const { isOpen, onOpen, onClose } = useMobileNav()
   const { notificationCount } = useRealtime()
   const { user, logout } = useAuth()
+  const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    const fetchRiderStatus = async () => {
+      if (!user) {
+        setRiderStatus(null)
+        return
+      }
+      try {
+        const res = await api.get('/api/deliveries/rider-status')
+        if (mounted && res.data?.success) {
+          setRiderStatus(res.data.data)
+        }
+      } catch {
+        if (mounted) {
+          setRiderStatus(null)
+        }
+      }
+    }
+
+    fetchRiderStatus()
+    return () => {
+      mounted = false
+    }
+  }, [user])
 
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleLogoClick = useCallback(() => {
@@ -56,10 +85,6 @@ const Sidebar: React.FC = () => {
     navigate('/company')
     onClose()
   }, [navigate, onClose])
-
-  const handleProfileClick = useCallback(() => {
-    onClose()
-  }, [onClose])
 
   const handleLogout = useCallback(async () => {
     onClose()
@@ -96,15 +121,27 @@ const Sidebar: React.FC = () => {
       if (user?.role === 'admin') {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
       } else {
-        items.push({ icon: FiHeart, label: 'Saved', path: '/saved-products' })
+        items.push(
+          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
+          {
+            icon: FiGrid,
+            label: 'Organizations',
+            path: '/organizations'
+          }
+        )
       }
       items.push(
-        { icon: FaMotorcycle, label: 'Rider', path: '/rider' },
-      )
-      if (!user?.is_premium) {
-        items.push({ icon: FaCrown, label: 'Buy Premium', path: '/premium' })
-      }
-      items.push(
+        { icon: FiGrid, label: 'Organizations', path: '/organizations' },
+        {
+          icon: FaMotorcycle,
+          label: riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider',
+          path: '/rider'
+        },
+        {
+          icon: FaCrown,
+          label: (user as any)?.is_premium ? 'Premium' : 'Apply as Premium',
+          path: '/premium'
+        },
         { icon: FiBell, label: 'Notifications', path: '/notifications' },
         { icon: FiSettings, label: 'Settings', path: '/settings' },
       )
@@ -114,7 +151,7 @@ const Sidebar: React.FC = () => {
       { icon: FaHome, label: 'Home', path: '/home' },
       { icon: FiUser, label: 'Login', path: '/login' },
     ]
-  }, [user])
+  }, [user, riderStatus])
 
   return (
     <>
@@ -149,12 +186,17 @@ const Sidebar: React.FC = () => {
               {/* User Profile Card - Only when logged in */}
               {user && (
                 <Box
+                  as={RouterLink}
+                  to="/profile"
+                  onClick={onClose}
                   bg={useColorModeValue('brand.50', 'gray.700')}
                   p={4}
                   mb={4}
                   borderRadius="lg"
                   mx={4}
                   mt={4}
+                  _hover={{ opacity: 0.85, textDecoration: 'none' }}
+                  display="block"
                 >
                   <Box display="flex" alignItems="center" gap={3} mb={3}>
                     <VerifiedAvatar
@@ -168,17 +210,6 @@ const Sidebar: React.FC = () => {
                       <Box fontSize="xs" color="gray.500" noOfLines={1}>{user.email}</Box>
                     </Box>
                   </Box>
-                  <Button
-                    as={RouterLink}
-                    to={`/users/${(user as any).slug || user.id}`}
-                    size="sm"
-                    w="full"
-                    colorScheme="brand"
-                    variant="outline"
-                    onClick={handleProfileClick}
-                  >
-                    View Profile
-                  </Button>
                 </Box>
               )}
 
@@ -246,6 +277,8 @@ const Sidebar: React.FC = () => {
                     </Button>
                   )
                 })}
+
+                <InstallAppPrompt variant="mobile-menu" onInstalled={onClose} />
               </VStack>
             </VStack>
           </DrawerBody>
@@ -355,7 +388,7 @@ const Sidebar: React.FC = () => {
 
           {/* Settings at the bottom - only when logged in */}
           {user && (
-            <Box mb={4}>
+            <VStack spacing={3} mb={4}>
               <Tooltip label="Settings" placement="right" hasArrow>
                 <IconButton
                   as={RouterLink}
@@ -371,7 +404,7 @@ const Sidebar: React.FC = () => {
                   transition="all 0.2s"
                 />
               </Tooltip>
-            </Box>
+            </VStack>
           )}
         </Box>
       </Box>

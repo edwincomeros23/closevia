@@ -3,12 +3,17 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
 	xendit "github.com/xendit/xendit-go/v3"
 	"github.com/xendit/xendit-go/v3/invoice"
@@ -34,7 +39,10 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	}
 
 	// Verify User
-	userID := c.Locals("user_id").(int)
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
 
 	// Fetch Trade details and verify participation
 	var trade models.Trade
@@ -97,9 +105,20 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		fmt.Printf("🛒 Purchase detected (0 items offered). Added product price: %.2f\n", productPrice)
 	}
 
-	// 3. Delivery Fee
+	// 3. Delivery Fee (Express is a Premium feature)
 	deliveryFee := 0.0
-	if deliveryType.Valid {
+	if deliveryType.Valid && deliveryType.String != "" {
+		// Check premium status for express delivery
+		var isPremium bool
+		h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
+
+		if deliveryType.String == "express" && !isPremium {
+			return c.Status(403).JSON(models.APIResponse{
+				Success: false,
+				Error:   "Express Delivery is a Premium feature. Please upgrade to use it.",
+			})
+		}
+
 		switch deliveryType.String {
 		case "express":
 			deliveryFee = 150.0
@@ -125,15 +144,16 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 	// Initialize Xendit Client
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	if apiKey == "" {
-		return c.Status(500).JSON(models.APIResponse{
+		// Avoid a generic 500 here; this is a configuration problem in local/dev.
+		return c.Status(503).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Payment gateway is not configured",
+			Error:   "Xendit is not configured (missing XENDIT_SECRET_KEY). Use Cash on Delivery or set the key.",
 		})
 	}
 	xenditClient := xendit.NewClient(apiKey)
 
 	// Create Invoice Parameters
-	externalID := fmt.Sprintf("trade_%d_%s", trade.ID, os.Getenv("PORT")) // Unique reference
+	externalID := fmt.Sprintf("trade_%d_%d", trade.ID, time.Now().Unix()) // Unique reference
 	description := fmt.Sprintf("Clovia Trade Escrow #%d", trade.ID)
 
 	// Create Xendit Invoice Request
@@ -172,8 +192,8 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		}
 	}
 
-	successUrl := fmt.Sprintf("%s/dashboard?trade_id=%d", frontendURL, trade.ID)
-	failureUrl := fmt.Sprintf("%s/dashboard?trade_id=%d&payment=failed", frontendURL, trade.ID)
+	successUrl := fmt.Sprintf("%s/dashboard?trade_id=%d&xendit_external_id=%s", frontendURL, trade.ID, url.QueryEscape(externalID))
+	failureUrl := fmt.Sprintf("%s/dashboard?trade_id=%d&payment=failed&xendit_external_id=%s", frontendURL, trade.ID, url.QueryEscape(externalID))
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
@@ -200,13 +220,25 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		})
 	}
 
+	// Store latest invoice reference for fallback "sync" in local dev (where webhooks may not reach)
+	if resp.Id != nil && strings.TrimSpace(*resp.Id) != "" {
+		if _, err := h.db.Exec(
+			"UPDATE trades SET xendit_invoice_id = ?, xendit_external_id = ?, payment_method = 'online' WHERE id = ?",
+			*resp.Id, externalID, trade.ID,
+		); err != nil {
+			log.Printf("Warning: failed to store Xendit invoice reference for trade %d: %v", trade.ID, err)
+		}
+	}
+
 	// Return checkout URL to frontend
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data": fiber.Map{
 			"checkout_url": resp.InvoiceUrl,
-			"invoice_id":   resp.Id,
+			"invoice_id":   func() string { if resp.Id == nil { return "" }; return *resp.Id }(),
+			"external_id":  externalID,
 		},
+
 	})
 }
 
@@ -236,20 +268,38 @@ func (h *PaymentHandler) CreatePremiumInvoice(c *fiber.Ctx) error {
 	externalID := fmt.Sprintf("premium_%s_%d", productID, userID)
 	description := fmt.Sprintf("Clovia Premium Upgrade: %s", title)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/dashboard", frontendURL)
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -291,20 +341,38 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 	externalID := fmt.Sprintf("boost_%s_%d", productID, userID)
 	description := fmt.Sprintf("Clovia Product Boost: %s", title)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/products/%s", frontendURL, productID)
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -324,33 +392,94 @@ func (h *PaymentHandler) CreateBoostInvoice(c *fiber.Ctx) error {
 func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(int)
 
+	var payload struct {
+		Tier string `json:"tier"` // "plus" or "pro"
+		Plan string `json:"plan"` // "monthly" or "yearly"
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		payload.Tier = "plus"
+		payload.Plan = "monthly"
+	}
+	if payload.Tier == "" {
+		payload.Tier = "plus"
+	}
+	if payload.Plan == "" {
+		payload.Plan = "monthly"
+	}
+
 	var buyerName, buyerEmail string
 	err := h.db.QueryRow("SELECT name, email FROM users WHERE id = ?", userID).Scan(&buyerName, &buyerEmail)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
-	amount := 499.0 // Pricing for full premium account
+	// Check current premium status — allow Plus→Pro upgrades
+	var isPremium bool
+	var currentTier string
+	h.db.QueryRow("SELECT COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE id = ?", userID).Scan(&isPremium, &currentTier)
+	if isPremium && currentTier == "pro" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You already have Pro — the highest tier"})
+	}
+	if isPremium && currentTier == payload.Tier {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You are already a %s member", payload.Tier)})
+	}
+
+	// Pricing: Plus ₱79/mo or ₱699/yr, Pro ₱120/mo or ₱1,099/yr
+	amount := 79.0
+	description := "Clovia Plus Subscription (Monthly)"
+
+	if payload.Tier == "pro" {
+		if payload.Plan == "yearly" {
+			amount = 1099.0
+			description = "Clovia Pro Subscription (Yearly)"
+		} else {
+			amount = 120.0
+			description = "Clovia Pro Subscription (Monthly)"
+		}
+	} else {
+		if payload.Plan == "yearly" {
+			amount = 699.0
+			description = "Clovia Plus Subscription (Yearly)"
+		}
+	}
+
 	apiKey := os.Getenv("XENDIT_SECRET_KEY")
 	xenditClient := xendit.NewClient(apiKey)
 
-	externalID := fmt.Sprintf("user_premium_%d", userID)
-	description := "Clovia Premium Subscription (Lifetime)"
+	externalID := fmt.Sprintf("user_premium_%s_%d", payload.Tier, userID)
 
-	frontendURL := os.Getenv("FRONTEND_URL")
+	// Determine frontend URL dynamically
+	frontendURL := c.Get("Origin")
 	if frontendURL == "" {
-		frontendURL = "http://localhost:5173"
+		referer := c.Get("Referer")
+		if referer != "" {
+			parsedURL, err := url.Parse(referer)
+			if err == nil {
+				frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+			}
+		}
+	}
+
+	// Final fallbacks
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
 	}
 	successUrl := fmt.Sprintf("%s/premium", frontendURL)
 
 	currency := "PHP"
 	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
-		ExternalId:  externalID,
-		Amount:      float32(amount),
-		Description: &description,
-		PayerEmail:  &buyerEmail,
+		ExternalId:         externalID,
+		Amount:             float32(amount),
+		Description:        &description,
+		PayerEmail:         &buyerEmail,
 		SuccessRedirectUrl: &successUrl,
-		Currency:    &currency,
+		Currency:           &currency,
 	})
 
 	resp, _, execErr := req.Execute()
@@ -366,18 +495,259 @@ func (h *PaymentHandler) CreateUserPremiumInvoice(c *fiber.Ctx) error {
 	})
 }
 
+func toFloat64(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case float32:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case json.Number:
+		f, err := t.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
+}
+
+func fetchXenditInvoiceByID(apiKey, invoiceID string) (status string, amount float64, externalID string, _ error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.xendit.co/v2/invoices/%s", url.PathEscape(invoiceID)), nil)
+	if err != nil {
+		return "", 0, "", err
+	}
+	// Xendit uses Basic Auth: secret key as username, empty password
+	req.SetBasicAuth(apiKey, "")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, "", err
+	}
+	defer resp.Body.Close()
+
+	decoder := json.NewDecoder(resp.Body)
+	decoder.UseNumber()
+	var raw map[string]any
+	if err := decoder.Decode(&raw); err != nil {
+		return "", 0, "", err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Try to extract a readable message
+		if msg, ok := raw["message"].(string); ok && msg != "" {
+			return "", 0, "", fmt.Errorf("xendit: %s", msg)
+		}
+		return "", 0, "", fmt.Errorf("xendit: unexpected status %d", resp.StatusCode)
+	}
+
+	if s, ok := raw["status"].(string); ok {
+		status = strings.ToUpper(s)
+	}
+	if e, ok := raw["external_id"].(string); ok {
+		externalID = e
+	}
+	if a, ok := toFloat64(raw["amount"]); ok {
+		amount = a
+	}
+
+	return status, amount, externalID, nil
+}
+
+func fetchXenditInvoiceByExternalID(apiKey, externalID string) (status string, amount float64, resolvedExternalID string, _ error) {
+	u := fmt.Sprintf("https://api.xendit.co/v2/invoices?external_id=%s", url.QueryEscape(externalID))
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return "", 0, "", err
+	}
+	req.SetBasicAuth(apiKey, "")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, "", err
+	}
+	defer resp.Body.Close()
+
+	decoder := json.NewDecoder(resp.Body)
+	decoder.UseNumber()
+	var raw any
+	if err := decoder.Decode(&raw); err != nil {
+		return "", 0, "", err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", 0, "", fmt.Errorf("xendit: unexpected status %d", resp.StatusCode)
+	}
+
+	arr, ok := raw.([]any)
+	if !ok || len(arr) == 0 {
+		return "", 0, "", fmt.Errorf("xendit: invoice not found for external_id")
+	}
+	obj, ok := arr[0].(map[string]any)
+	if !ok {
+		return "", 0, "", fmt.Errorf("xendit: invalid invoice response")
+	}
+
+	if s, ok := obj["status"].(string); ok {
+		status = strings.ToUpper(s)
+	}
+	if e, ok := obj["external_id"].(string); ok {
+		resolvedExternalID = e
+	}
+	if a, ok := toFloat64(obj["amount"]); ok {
+		amount = a
+	}
+
+	return status, amount, resolvedExternalID, nil
+}
+
+// SyncTradePayment is a fallback for environments where webhooks can't reach the backend (e.g., localhost).
+// It checks the latest invoice status directly from Xendit and updates the trade if paid.
+func (h *PaymentHandler) SyncTradePayment(c *fiber.Ctx) error {
+	tradeID := c.Params("id")
+	if tradeID == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Trade ID is required"})
+	}
+
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var id int
+	var buyerID int
+	var paymentConfirmed bool
+	var invoiceID sql.NullString
+
+	// Keep the trade query compatible with older DBs (no xendit_* columns required)
+	if err := h.db.QueryRow(
+		"SELECT id, buyer_id, COALESCE(payment_confirmed, FALSE), COALESCE(xendit_invoice_id, '') FROM trades WHERE id = ?",
+		tradeID,
+	).Scan(&id, &buyerID, &paymentConfirmed, &invoiceID); err != nil {
+		// If xendit_invoice_id column doesn't exist yet, fall back to a minimal query
+		if strings.Contains(strings.ToLower(err.Error()), "unknown column") {
+			if err2 := h.db.QueryRow(
+				"SELECT id, buyer_id, COALESCE(payment_confirmed, FALSE) FROM trades WHERE id = ?",
+				tradeID,
+			).Scan(&id, &buyerID, &paymentConfirmed); err2 != nil {
+				return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
+			}
+			invoiceID = sql.NullString{String: "", Valid: false}
+		} else {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
+		}
+	}
+
+	if userID != buyerID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Only the buyer can sync payment status"})
+	}
+
+	if paymentConfirmed {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": true}})
+	}
+
+	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	if apiKey == "" {
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: "Xendit is not configured (missing XENDIT_SECRET_KEY)."})
+	}
+
+	// If we have neither invoice ID (stored) nor external ID (from redirect), we can't sync.
+	// The dashboard redirect includes external_id, so this normally only happens if the user never went through checkout.
+	// (We validate after parsing the body below.)
+
+	// If the dashboard redirect provides external_id, we can sync without relying on DB columns.
+	var payload struct {
+		ExternalID string `json:"external_id"`
+	}
+	_ = c.BodyParser(&payload)
+	if strings.TrimSpace(payload.ExternalID) == "" {
+		payload.ExternalID = c.Query("external_id")
+	}
+
+	if strings.TrimSpace(payload.ExternalID) == "" && (!invoiceID.Valid || strings.TrimSpace(invoiceID.String) == "") {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Missing invoice reference. Please return from Xendit checkout to the dashboard, or click checkout again."})
+	}
+
+	var (
+		status     string
+		amount     float64
+		xExternalID string
+		err        error
+	)
+	if strings.TrimSpace(payload.ExternalID) != "" {
+		status, amount, xExternalID, err = fetchXenditInvoiceByExternalID(apiKey, payload.ExternalID)
+	} else {
+		status, amount, xExternalID, err = fetchXenditInvoiceByID(apiKey, invoiceID.String)
+	}
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment: " + err.Error()})
+	}
+	if xExternalID == "" {
+		xExternalID = payload.ExternalID
+	}
+
+	paid := status == "PAID" || status == "SETTLED" || status == "COMPLETED" || status == "SUCCEEDED"
+	if !paid {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": false, "status": status}})
+	}
+
+	// Update trade as paid
+	// Update trade as paid (xendit_external_id column is optional; ignore if missing)
+	if _, err := h.db.Exec(
+		"UPDATE trades SET payment_confirmed = TRUE, payment_method = 'online', net_amount = ? WHERE id = ?",
+		amount, id,
+	); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade payment status"})
+	}
+	_, _ = h.db.Exec("UPDATE trades SET xendit_external_id = ? WHERE id = ?", xExternalID, id)
+
+	// Record earnings once (guard against duplicates)
+	_, _ = h.db.Exec(`
+		INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
+		SELECT ?, ?, 'trade_escrow', ?, ?
+		WHERE NOT EXISTS (
+			SELECT 1 FROM earnings WHERE source_type = 'trade_escrow' AND external_id = ?
+		)
+	`, buyerID, amount, id, xExternalID, xExternalID)
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": true, "status": status, "external_id": xExternalID}})
+}
+
 // XenditWebhook handles asynchronous payment confirmations
 func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	var payload map[string]interface{}
 	if err := c.BodyParser(&payload); err != nil {
+		log.Printf("❌ Webhook Error: Invalid payload: %v", err)
 		return c.Status(400).SendString("Invalid payload")
 	}
 
-	status, _ := payload["status"].(string)
-	externalID, _ := payload["external_id"].(string)
-	amount, _ := payload["amount"].(float64)
+	var status, externalID string
+	var amount float64
 
-	if status != "PAID" {
+	// Try top-level structure (Invoices)
+	if s, ok := payload["status"].(string); ok { status = s }
+	if e, ok := payload["external_id"].(string); ok { externalID = e }
+	if a, ok := payload["amount"].(float64); ok { amount = a }
+
+	// Try nested structure (Recurring/Subscriptions)
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		if s, ok := data["status"].(string); ok { status = s }
+		if e, ok := data["external_id"].(string); ok { externalID = e }
+		if a, ok := data["amount"].(float64); ok { amount = a }
+	}
+
+	status = strings.ToUpper(status)
+	log.Printf("🔔 Webhook Received: Status=%s, ExternalID=%s, Amount=%.2f", status, externalID, amount)
+
+	// Xendit uses "PAID" for invoices, but other methods might use "COMPLETED" or "SUCCEEDED"
+	if status != "PAID" && status != "COMPLETED" && status != "SUCCEEDED" {
+		log.Printf("⏭️  Webhook: Ignoring non-success status: %s", status)
 		return c.SendStatus(200)
 	}
 
@@ -391,16 +761,19 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 			h.db.QueryRow("SELECT buyer_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID)
 
 			// Update trade
-			_, err := h.db.Exec("UPDATE trades SET payment_confirmed = true, net_amount = ? WHERE id = ?", amount, tradeID)
+			_, err := h.db.Exec("UPDATE trades SET payment_confirmed = true, payment_method = 'online', net_amount = ?, xendit_external_id = ? WHERE id = ?", amount, externalID, tradeID)
 			if err != nil {
 				fmt.Printf("Webhook Error: Failed to update trade %d: %v\n", tradeID, err)
 			}
 
-			// Record Earnings
+			// Record Earnings (guard against duplicates)
 			_, err = h.db.Exec(`
 				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
-				VALUES (?, ?, 'trade_escrow', ?, ?)`,
-				buyerID, amount, tradeID, externalID)
+				SELECT ?, ?, 'trade_escrow', ?, ?
+				WHERE NOT EXISTS (
+					SELECT 1 FROM earnings WHERE source_type = 'trade_escrow' AND external_id = ?
+				)
+			`, buyerID, amount, tradeID, externalID, externalID)
 			if err != nil {
 				fmt.Printf("Earnings Error (Trade %d): %v\n", tradeID, err)
 			}
@@ -441,13 +814,27 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 		}
 	} else if strings.HasPrefix(externalID, "user_premium_") {
 		var userID int
-		fmt.Sscanf(externalID, "user_premium_%d", &userID)
+		var tier string
+		if strings.Count(externalID, "_") >= 3 {
+			// user_premium_<tier>_<userID> e.g. user_premium_plus_123
+			parts := strings.Split(externalID, "_")
+			tier = parts[2]
+			fmt.Sscanf(parts[len(parts)-1], "%d", &userID)
+		} else {
+			// user_premium_<userID> (legacy support)
+			fmt.Sscanf(externalID, "user_premium_%d", &userID)
+			tier = "plus" // Default to plus for legacy
+		}
 
 		if userID > 0 {
 			// Update user status
-			_, err := h.db.Exec("UPDATE users SET is_premium = true WHERE id = ?", userID)
+			log.Printf("💎 Webhook: Granting %s premium to user %d (Amount: %.2f)", tier, userID, amount)
+			_, err := h.db.Exec("UPDATE users SET is_premium = true, premium_tier = ?, verified = true WHERE id = ?", tier, userID)
 			if err != nil {
+				log.Printf("❌ Webhook Error: User premium update failed for user %d: %v\n", userID, err)
 				fmt.Printf("Webhook Error: User premium update failed for user %d: %v\n", userID, err)
+			} else {
+				log.Printf("✅ Webhook SUCCESS: Updated user %d to premium tier %s\n", userID, tier)
 			}
 
 			// Record Earnings
@@ -455,6 +842,10 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 				INSERT INTO earnings (user_id, amount, source_type, source_id, external_id)
 				VALUES (?, ?, 'premium_upgrade', ?, ?)`,
 				userID, amount, userID, externalID)
+			if err != nil {
+				log.Printf("❌ Earnings Error (User %d): %v\n", userID, err)
+				fmt.Printf("Earnings Error (User %d): %v\n", userID, err)
+			}
 		}
 	}
 

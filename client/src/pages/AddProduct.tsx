@@ -28,6 +28,7 @@ import {
   AlertDescription,
   Skeleton,
   Tooltip,
+  Switch,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -81,6 +82,11 @@ import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type
 
 const CONDITION_OPTIONS = ['New', 'Like New', 'Good', 'Used', 'For Parts']
 const MAX_DAILY_AI_REQUESTS = 100
+const QA_MOCK_LOCATION = {
+  label: 'QA Mock Location (Work Network)',
+  latitude: 14.5995,
+  longitude: 120.9842,
+}
 
 // ── Daily Budget Helpers ──────────────────────────────────────────────────
 
@@ -204,17 +210,34 @@ const AddProduct: React.FC = () => {
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [useMockLocation, setUseMockLocation] = useState(false)
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
-
+  
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const pageBg = '#FFFDF1'
 
   // ── Location ──────────────────────────────────────────────────────────────
 
+  const applyMockLocation = useCallback(() => {
+    setFormData(prev => ({
+      ...prev,
+      location: QA_MOCK_LOCATION.label,
+      latitude: QA_MOCK_LOCATION.latitude,
+      longitude: QA_MOCK_LOCATION.longitude,
+    }))
+    setLocationText(QA_MOCK_LOCATION.label)
+    setLocationDetected(true)
+    setIsGettingLocation(false)
+  }, [])
+
   const detectLocation = useCallback(() => {
+    if (useMockLocation) {
+      applyMockLocation()
+      return
+    }
     if (!navigator.geolocation) return
     setIsGettingLocation(true)
     navigator.geolocation.getCurrentPosition(
@@ -249,7 +272,26 @@ const AddProduct: React.FC = () => {
         setIsGettingLocation(false)
       }
     )
-  }, [])
+  }, [applyMockLocation, useMockLocation])
+
+  const handleMockLocationToggle = useCallback((enabled: boolean) => {
+    setUseMockLocation(enabled)
+
+    if (enabled) {
+      applyMockLocation()
+      return
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      location: '',
+      latitude: undefined,
+      longitude: undefined,
+    }))
+    setLocationText('')
+    setLocationDetected(false)
+    detectLocation()
+  }, [applyMockLocation, detectLocation])
 
   useEffect(() => {
     detectLocation()
@@ -734,12 +776,6 @@ const AddProduct: React.FC = () => {
           <Text fontSize="sm" color="gray.600" fontWeight="semibold">📸 Upload Media</Text>
           <Text fontSize="xs" color="gray.500">Min 1 photo. AI analyzes automatically.</Text>
         </VStack>
-        {isGenerating && (
-          <Badge colorScheme="purple" px={3} py={1.5} borderRadius="md" display="flex" alignItems="center" gap={2} whiteSpace="nowrap">
-            <Spinner size="xs" />
-            <Text fontSize="xs">Analyzing...</Text>
-          </Badge>
-        )}
         {!isGenerating && aiDone && (
           <Badge colorScheme="green" px={3} py={1.5} borderRadius="md" fontSize="xs" whiteSpace="nowrap">
             ✓ Auto-filled
@@ -1163,21 +1199,6 @@ const AddProduct: React.FC = () => {
               <Text fontSize="lg" color="gray.500" cursor="pointer">▲</Text>
             </HStack>
 
-            {/* AI Analyzing Indicator */}
-            {isGenerating && !aiDone && (
-              <Alert
-                status="info"
-                fontSize="xs"
-                borderRadius="md"
-                bg="blue.50"
-                borderColor="blue.200"
-                borderWidth="1px"
-              >
-                <Spinner size="xs" mr={2} color="blue.500" />
-                <Text color="blue.700">AI is analyzing your photos...</Text>
-              </Alert>
-            )}
-
             {/* Product Name */}
             <FormControl isRequired>
               <FormLabel fontSize="xs" fontWeight="bold" color="gray.600">Product Name</FormLabel>
@@ -1268,6 +1289,16 @@ const AddProduct: React.FC = () => {
 
       {/* ──────── LOCATION BAR (Simple, subtle) ──────── */}
       <Box bg="gray.100" p={2} borderRadius="md">
+        <HStack justify="space-between" mb={2}>
+          <Text fontSize="xs" color="gray.700" fontWeight="semibold">Use QA Mock Location</Text>
+          <Switch
+            size="sm"
+            colorScheme="orange"
+            isChecked={useMockLocation}
+            onChange={(e) => handleMockLocationToggle(e.target.checked)}
+          />
+        </HStack>
+
         {isGettingLocation ? (
           <HStack spacing={2}>
             <Spinner size="sm" color="blue.600" />
@@ -1286,6 +1317,7 @@ const AddProduct: React.FC = () => {
               py={1}
               onClick={detectLocation}
               isLoading={isGettingLocation}
+              isDisabled={useMockLocation}
               _hover={{ bg: "gray.200" }}
             >
               Wrong Location?
@@ -1294,7 +1326,13 @@ const AddProduct: React.FC = () => {
         ) : (
           <HStack spacing={2}>
             <Text fontSize="xs" color="red.600">⚠️ Location access needed</Text>
-            <Button size="xs" onClick={detectLocation} isLoading={isGettingLocation} fontSize="9px">
+            <Button
+              size="xs"
+              onClick={detectLocation}
+              isLoading={isGettingLocation}
+              isDisabled={useMockLocation}
+              fontSize="9px"
+            >
               Enable
             </Button>
           </HStack>
@@ -1323,11 +1361,24 @@ const AddProduct: React.FC = () => {
                     onClick={(e) => {
                       e.stopPropagation()
                       const current = formData.wanted_categories || []
-                      const next = isSelected 
+                      if (!isSelected && current.length >= 3) {
+                        toast({
+                          id: 'addproduct-wanted-categories-max',
+                          title: 'Maximum 3 categories',
+                          description: 'You can choose up to 3 desired categories only.',
+                          status: 'warning',
+                          duration: 2500,
+                          isClosable: true,
+                          position: 'top-right',
+                        })
+                        return
+                      }
+                      const next = isSelected
                         ? current.filter(v => v !== cat.value)
                         : [...current, cat.value]
                       handleField('wanted_categories', next)
                     }}
+                    isDisabled={!isSelected && (formData.wanted_categories?.length || 0) >= 3}
                     fontSize="9px"
                     h="24px"
                     rounded="full"
@@ -1338,41 +1389,42 @@ const AddProduct: React.FC = () => {
                 )
               })}
             </SimpleGrid>
+            <FormHelperText fontSize="10px">Choose up to 3 categories.</FormHelperText>
           </FormControl>
           
           <FormControl>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
-            <HStack spacing={3} align="flex-start">
-              <Box flex={1}>
-                <FormControl>
-                  <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Price</FormLabel>
-                  <Input
-                    placeholder="e.g. 500"
-                    type="number"
-                    value={formData.price ?? ''}
-                    onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
-                    size="sm"
-                    bg="white"
-                    h="32px"
-                    onClick={e => e.stopPropagation()}
-                  />
-                  <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
-                </FormControl>
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+              <Box>
+                <FormLabel fontSize="xs" color="gray.600" mb={1}>Desired Price</FormLabel>
+                <Input
+                  placeholder="e.g. 500"
+                  type="number"
+                  value={formData.price ?? ''}
+                  onChange={e => handleField('price', e.target.value ? Number(e.target.value) : undefined)}
+                  size="sm"
+                  bg="white"
+                  h="36px"
+                  onClick={e => e.stopPropagation()}
+                />
+                <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
               </Box>
-              <Box flex={1}>
+
+              <Box>
+                <FormLabel fontSize="xs" color="gray.600" mb={1}>Preferred Item</FormLabel>
                 <Input
                   placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
                   value={formData.wants}
                   onChange={e => handleField('wants', e.target.value)}
                   size="sm"
                   bg="white"
-                  maxLength={50}
-                  h="32px"
+                  maxLength={80}
+                  h="36px"
                   onClick={e => e.stopPropagation()}
                 />
                 <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
               </Box>
-            </HStack>
+            </SimpleGrid>
           </FormControl>
         </VStack>
       </Box>
@@ -1649,11 +1701,6 @@ const AddProduct: React.FC = () => {
                     >
                       {step.icon} {step.title}
                     </Text>
-                    {currentStep === step.number && (
-                      <Badge colorScheme="brand" fontSize="10px">
-                        {Math.round((step.number / TOTAL_STEPS) * 100)}%
-                      </Badge>
-                    )}
                   </HStack>
                   {idx < stepLabels.length - 1 && (
                     <Text color="gray.400" fontWeight="bold">→</Text>
@@ -1700,11 +1747,9 @@ const AddProduct: React.FC = () => {
                 hasArrow
               >
                 <Button
-                  rightIcon={isGenerating ? <Spinner size="sm" /> : <ArrowForwardIcon />}
+                  rightIcon={<ArrowForwardIcon />}
                   onClick={handleNextClick}
                   isDisabled={!canProceed()}
-                  isLoading={isGenerating && currentStep === 1}
-                  loadingText={isGenerating ? 'Analyzing...' : 'Next'}
                   colorScheme="brand"
                   size={{ base: "sm", sm: "md" }}
                   fontSize={{ base: "xs", sm: "sm" }}

@@ -121,7 +121,7 @@ import { User, Product, PaginatedResponse, APIResponse } from '../types';
 // â"€â"€â"€ PDF / DOCX imports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, TableLayoutType, TextRun, HeadingLevel, AlignmentType, WidthType, ShadingType } from 'docx';
+import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -288,113 +288,32 @@ function exportToPDF(stats: AdminStats) {
   doc.save(`clovia-report-${now.toISOString().slice(0, 10)}.pdf`);
 }
 
-async function exportToDOCX(stats: AdminStats) {
+async function exportToExcel(stats: AdminStats) {
   const now = new Date();
-  const rows = buildReportRows(stats);
+  
+  // Create workbook
+  const wb = XLSX.utils.book_new();
 
-  const makeCell = (text: string, bold = false, shade?: string) =>
-    new TableCell({
-      shading: shade
-        ? { type: ShadingType.CLEAR, color: 'auto', fill: shade }
-        : { type: ShadingType.CLEAR, color: 'auto', fill: 'FFFFFF' },
-      width: { size: 50, type: WidthType.PERCENTAGE },
-      margins: { top: 80, bottom: 80, left: 140, right: 140 },
-      children: [
-        new Paragraph({
-          children: [new TextRun({ text, bold, size: 20 })],
-        }),
-      ],
-    });
+  // Core Metrics sheet
+  const coreData = buildReportRows(stats).map(row => ({
+    Metric: row[0],
+    Value: row[1]
+  }));
+  const wsCore = XLSX.utils.json_to_sheet(coreData);
+  XLSX.utils.book_append_sheet(wb, wsCore, 'Core Metrics');
 
-  const tableRows = [
-    new TableRow({
-      tableHeader: true,
-      children: [
-        makeCell('Metric', true, '3182CE'),
-        makeCell('Value', true, '3182CE'),
-      ],
-    }),
-    ...rows.map((row, i) =>
-      new TableRow({
-        children: [
-          makeCell(row[0], true, i % 2 === 0 ? 'EBF4FF' : 'FFFFFF'),
-          makeCell(row[1], false, i % 2 === 0 ? 'EBF4FF' : 'FFFFFF'),
-        ],
-      })
-    ),
-  ];
+  // Revenue Breakdown sheet
+  if (stats.revenue_breakdown && stats.revenue_breakdown.length > 0) {
+    const revenueData = stats.revenue_breakdown.map(r => ({
+      Period: r.period,
+      'Revenue (PHP)': r.amount
+    }));
+    const wsRev = XLSX.utils.json_to_sheet(revenueData);
+    XLSX.utils.book_append_sheet(wb, wsRev, 'Revenue Breakdown');
+  }
 
-  const revenueRows =
-    stats.revenue_breakdown && stats.revenue_breakdown.length > 0
-      ? [
-        new TableRow({
-          tableHeader: true,
-          children: [makeCell('Period', true, '38B2AC'), makeCell('Revenue (PHP)', true, '38B2AC')],
-        }),
-        ...stats.revenue_breakdown.map((r, i) =>
-          new TableRow({
-            children: [
-              makeCell(r.period, true, i % 2 === 0 ? 'F0FFFE' : 'FFFFFF'),
-              makeCell(formatCurrency(r.amount), false, i % 2 === 0 ? 'F0FFFE' : 'FFFFFF'),
-            ],
-          })
-        ),
-      ]
-      : [];
-
-  const doc = new Document({
-    sections: [
-      {
-        properties: {},
-        children: [
-          new Paragraph({
-            text: 'Clovia Admin â€" Site Usage Report',
-            heading: HeadingLevel.HEADING_1,
-            alignment: AlignmentType.CENTER,
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: `Generated: ${now.toLocaleString('en-PH')}`, size: 18, color: '555555' }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: `Data as of: ${stats.last_updated ?? now.toLocaleString('en-PH')}`, size: 18, color: '555555' }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-          new Paragraph({ text: '' }),
-          new Paragraph({
-            text: 'Core Metrics',
-            heading: HeadingLevel.HEADING_2,
-          }),
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            layout: TableLayoutType.FIXED,
-            rows: tableRows,
-          }),
-          ...(revenueRows.length > 0
-            ? [
-              new Paragraph({ text: '' }),
-              new Paragraph({ text: 'Revenue Breakdown (Last 4 Weeks)', heading: HeadingLevel.HEADING_2 }),
-              new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, layout: TableLayoutType.FIXED, rows: revenueRows }),
-            ]
-            : []),
-          new Paragraph({ text: '' }),
-          new Paragraph({
-            children: [
-              new TextRun({ text: 'Clovia Admin Report  â€¢  Confidential', size: 16, color: '999999', italics: true }),
-            ],
-            alignment: AlignmentType.CENTER,
-          }),
-        ],
-      },
-    ],
-  });
-
-  const blob = await Packer.toBlob(doc);
-  saveAs(blob, `clovia-report-${now.toISOString().slice(0, 10)}.docx`);
+  // Generate Excel file
+  XLSX.writeFile(wb, `clovia-report-${now.toISOString().slice(0, 10)}.xlsx`);
 }
 
 // â"€â"€â"€ Calendar Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -547,6 +466,7 @@ const UsageCalendar: React.FC<CalendarProps> = ({
 
 // â"€â"€â"€ Main Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const AdminDashboard: React.FC = () => {
+  type SectionId = 'overview' | 'moderation' | 'management' | 'system';
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -574,11 +494,16 @@ const AdminDashboard: React.FC = () => {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersPage, setUsersPage] = useState(1);
   const [usersTotalPages, setUsersTotalPages] = useState(1);
+  const [usersSearch, setUsersSearch] = useState('');
+  const [usersRoleFilter, setUsersRoleFilter] = useState('');
+  const [usersIsVerifiedFilter, setUsersIsVerifiedFilter] = useState('');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsPage, setProductsPage] = useState(1);
   const [productsTotalPages, setProductsTotalPages] = useState(1);
+  const [productsSearch, setProductsSearch] = useState('');
+  const [productsStatusFilter, setProductsStatusFilter] = useState('');
 
   // Reports state
   const [reports, setReports] = useState<any[]>([]);
@@ -586,6 +511,12 @@ const AdminDashboard: React.FC = () => {
   const [reportsPage, setReportsPage] = useState(1);
   const [reportsTotalPages, setReportsTotalPages] = useState(1);
   const [reportsStatusFilter, setReportsStatusFilter] = useState('');
+
+  // Multi-way matcher debug state
+  const [loopDebugTradeID, setLoopDebugTradeID] = useState('');
+  const [loopDebugCompareTradeID, setLoopDebugCompareTradeID] = useState('');
+  const [loopDebugLoading, setLoopDebugLoading] = useState(false);
+  const [loopDebugResult, setLoopDebugResult] = useState<any | null>(null);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'product' | 'campaign'; id: number; name: string } | null>(null);
@@ -597,27 +528,6 @@ const AdminDashboard: React.FC = () => {
   const { isOpen: isCampaignModalOpen, onOpen: openCampaignModal, onClose: closeCampaignModal } = useDisclosure();
   const [editingCampaign, setEditingCampaign] = useState<Partial<Campaign> | null>(null);
   const [campaignFormLoading, setCampaignFormLoading] = useState(false);
-
-  // ID/COR verifications (admin review)
-  type VerificationItem = {
-    id: number;
-    name: string;
-    email: string;
-    verification_status: string;
-    school_name: string;
-    school_email: string;
-    school_email_verified_at?: string;
-    verification_rejection_reason?: string;
-    document_type?: string;
-    has_id_image: boolean;
-  };
-  const [verifications, setVerifications] = useState<VerificationItem[]>([]);
-  const [verificationsLoading, setVerificationsLoading] = useState(false);
-  const [rejectTarget, setRejectTarget] = useState<VerificationItem | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectLoading, setRejectLoading] = useState(false);
-  const [idImageModal, setIdImageModal] = useState<{ userId: number; name: string } | null>(null);
-  const [idImageUrl, setIdImageUrl] = useState<string | null>(null);
 
   // Rider application verification state
   type RiderAppItem = {
@@ -665,6 +575,15 @@ const AdminDashboard: React.FC = () => {
   const headerBg = useColorModeValue('brand.50', 'brand.900');
   const sidebarBg = useColorModeValue('white', 'gray.800');
   const topBarBg = useColorModeValue('white', 'gray.800');
+  const mainBg = useColorModeValue('gray.50', 'gray.900');
+  const isMobile = useBreakpointValue({ base: true, lg: false });
+
+  const sidebarNav: { id: SectionId; label: string; icon: any; description: string; badge?: number | string }[] = [
+    { id: 'overview', label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
+    { id: 'moderation', label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & riders', badge: (reports.filter((r: any) => r.status === 'pending').length + riderApplications.filter(r => r.status === 'pending').length) || undefined },
+    { id: 'management', label: 'Management', icon: FiGrid, description: 'Users, items & campaigns' },
+    { id: 'system', label: 'System', icon: FiSettings, description: 'Metrics & calendar' },
+  ];
 
   // â"€â"€ Connection check â"€â"€
   const checkConnection = useCallback(async () => {
@@ -788,14 +707,14 @@ const AdminDashboard: React.FC = () => {
     }
   }, [stats, toast]);
 
-  const handleExportDOCX = useCallback(async () => {
+  const handleExportExcel = useCallback(async () => {
     if (!stats) return;
     setExportLoading(true);
     try {
-      await exportToDOCX(stats);
-      toast({ id: 'docx-exported-successfully', title: 'DOCX exported successfully', status: 'success', duration: 3000, isClosable: true });
+      await exportToExcel(stats);
+      toast({ id: 'excel-exported-successfully', title: 'Excel exported successfully', status: 'success', duration: 3000, isClosable: true });
     } catch (e) {
-      toast({ id: 'docx-export-failed', title: 'DOCX export failed', status: 'error', duration: 3000, isClosable: true });
+      toast({ id: 'excel-export-failed', title: 'Excel export failed', status: 'error', duration: 3000, isClosable: true });
     } finally {
       setExportLoading(false);
     }
@@ -853,12 +772,78 @@ const AdminDashboard: React.FC = () => {
     }
   }, [reportsPage, reportsStatusFilter, fetchAdminReports, toast]);
 
+  const handleRunLoopDebug = useCallback(async () => {
+    const tradeID = Number(loopDebugTradeID);
+    if (!Number.isFinite(tradeID) || tradeID <= 0) {
+      toast({
+        id: 'loop-debug-invalid-trade-id',
+        title: 'Invalid trade ID',
+        description: 'Enter a valid primary trade ID.',
+        status: 'warning',
+        duration: 2500,
+        isClosable: true,
+      });
+      return;
+    }
+
+    const compareID = loopDebugCompareTradeID.trim() ? Number(loopDebugCompareTradeID) : 0;
+    if (loopDebugCompareTradeID.trim() && (!Number.isFinite(compareID) || compareID <= 0)) {
+      toast({
+        id: 'loop-debug-invalid-compare-id',
+        title: 'Invalid compare trade ID',
+        description: 'Enter a valid comparison trade ID or leave it blank.',
+        status: 'warning',
+        duration: 2500,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      setLoopDebugLoading(true);
+      const params = new URLSearchParams({ trade_id: String(tradeID) });
+      if (compareID > 0) {
+        params.append('compare_trade_id', String(compareID));
+      }
+      const response = await api.get(`/api/trades/loops/debug/match?${params.toString()}`);
+      if (response.data?.success) {
+        setLoopDebugResult(response.data.data || null);
+      } else {
+        setLoopDebugResult(null);
+        toast({
+          id: 'loop-debug-no-data',
+          title: 'No debug data returned',
+          status: 'warning',
+          duration: 2500,
+          isClosable: true,
+        });
+      }
+    } catch (err: any) {
+      setLoopDebugResult(null);
+      toast({
+        id: 'loop-debug-request-failed',
+        title: 'Failed to run matcher debug',
+        description: err?.response?.data?.error || err.message || 'Request failed',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setLoopDebugLoading(false);
+    }
+  }, [loopDebugTradeID, loopDebugCompareTradeID, toast]);
+
   // â"€â"€ Fetch users for admin list â"€â"€
   const fetchAdminUsers = useCallback(
-    async (page = 1) => {
+    async (page = 1, search = usersSearch, role = usersRoleFilter, verified = usersIsVerifiedFilter) => {
       try {
         setUsersLoading(true);
-        const response = await api.get<APIResponse<PaginatedResponse<User>>>(`/api/admin/users?page=${page}&limit=10`);
+        const params = new URLSearchParams({ page: String(page), limit: '10' });
+        if (search) params.append('search', search);
+        if (role) params.append('role', role);
+        if (verified) params.append('verified', verified);
+
+        const response = await api.get<APIResponse<PaginatedResponse<User>>>(`/api/admin/users?${params.toString()}`);
         if (response.data.success && response.data.data) {
           const data = response.data.data as PaginatedResponse<User>;
           setUsers(data.data || []);
@@ -886,10 +871,14 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ Fetch products for admin list â"€â"€
   const fetchAdminProducts = useCallback(
-    async (page = 1) => {
+    async (page = 1, search = productsSearch, status = productsStatusFilter) => {
       try {
         setProductsLoading(true);
-        const response = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?page=${page}&limit=10`);
+        const params = new URLSearchParams({ page: String(page), limit: '10' });
+        if (search) params.append('search', search);
+        if (status) params.append('status', status);
+
+        const response = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?${params.toString()}`);
         if (response.data.success && response.data.data) {
           const data = response.data.data as PaginatedResponse<Product>;
           setProducts(data.data || []);
@@ -1044,35 +1033,12 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast, fetchAdminCampaigns]);
 
-  // â"€â"€ Fetch ID/COR verifications (pending & rejected) â"€â"€
-  const fetchAdminVerifications = useCallback(async () => {
-    try {
-      setVerificationsLoading(true);
-      const response = await api.get<APIResponse<VerificationItem[]>>('/api/admin/verifications');
-      if (response.data?.success && Array.isArray(response.data.data)) {
-        setVerifications(response.data.data);
-      } else {
-        setVerifications([]);
-      }
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-failed-to-load-verifications",
-        title: 'Failed to load verifications',
-        description: err?.response?.data?.error || err.message || 'Unable to fetch verifications',
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      });
-      setVerifications([]);
-    } finally {
-      setVerificationsLoading(false);
-    }
-  }, [toast]);
+
 
   // ── Fetch rider applications ──
-  const fetchRiderApplications = useCallback(async () => {
+  const fetchRiderApplications = useCallback(async (silent = false) => {
     try {
-      setRiderAppsLoading(true);
+      if (!silent) setRiderAppsLoading(true);
       const params = new URLSearchParams();
       if (riderStatusFilter) params.set('status', riderStatusFilter);
       if (riderSearchQuery) params.set('search', riderSearchQuery);
@@ -1092,8 +1058,8 @@ const AdminDashboard: React.FC = () => {
   const handleApproveRider = useCallback(async (riderId: number) => {
     try {
       await api.post(`/api/admin/rider-applications/${riderId}/approve`);
+      setRiderApplications(prev => prev.map(r => r.id === riderId ? { ...r, status: 'approved' } : r));
       toast({ title: 'Rider approved', status: 'success', duration: 3000 });
-      fetchRiderApplications();
     } catch (err: any) {
       toast({ title: 'Failed to approve', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
     }
@@ -1102,8 +1068,8 @@ const AdminDashboard: React.FC = () => {
   const handleMarkRiderUnderReview = useCallback(async (riderId: number) => {
     try {
       await api.post(`/api/admin/rider-applications/${riderId}/review`);
+      setRiderApplications(prev => prev.map(r => r.id === riderId ? { ...r, status: 'under_review' } : r));
       toast({ title: 'Marked as under review', status: 'info', duration: 3000 });
-      fetchRiderApplications();
     } catch (err: any) {
       toast({ title: 'Failed', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
     }
@@ -1114,10 +1080,10 @@ const AdminDashboard: React.FC = () => {
     setRejectRiderLoading(true);
     try {
       await api.post(`/api/admin/rider-applications/${rejectRiderTarget.id}/reject`, { reason: rejectRiderReason.trim() });
+      setRiderApplications(prev => prev.map(r => r.id === rejectRiderTarget.id ? { ...r, status: 'rejected', rejection_reason: rejectRiderReason.trim() } : r));
       toast({ title: 'Rider application rejected', status: 'info', duration: 3000 });
       setRejectRiderTarget(null);
       setRejectRiderReason('');
-      fetchRiderApplications();
     } catch (err: any) {
       toast({ title: 'Failed to reject', description: err?.response?.data?.error || 'Error', status: 'error', duration: 3000 });
     } finally {
@@ -1125,81 +1091,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [rejectRiderTarget, rejectRiderReason, fetchRiderApplications, toast]);
 
-  // ── View ID image (fetch as blob and show in modal) ──
-  const handleViewIdImage = useCallback(async (userId: number, name: string) => {
-    setIdImageModal({ userId, name });
-    setIdImageUrl(null);
-    try {
-      const response = await api.get(`/api/admin/verifications/${userId}/image`, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      setIdImageUrl(url);
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-could-not-load-image",
-        title: 'Could not load image',
-        description: err?.response?.data?.error || 'Image not found or access denied',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      setIdImageModal(null);
-    }
-  }, [toast]);
 
-  const closeIdImageModal = useCallback(() => {
-    if (idImageUrl) URL.revokeObjectURL(idImageUrl);
-    setIdImageUrl(null);
-    setIdImageModal(null);
-  }, [idImageUrl]);
-
-  // â"€â"€ Approve verification â"€â"€
-  const handleApproveVerification = useCallback(async (userId: number) => {
-    try {
-      await api.post(`/api/admin/verifications/${userId}/approve`);
-      toast({
-        id: "admindashboard-user-verified", title: 'User verified', description: 'Verification approved.', status: 'success', duration: 3000, isClosable: true });
-      fetchAdminVerifications();
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-approve-failed",
-        title: 'Approve failed',
-        description: err?.response?.data?.error || 'Could not approve',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  }, [toast, fetchAdminVerifications]);
-
-  // â"€â"€ Reject verification (open modal to enter reason) â"€â"€
-  const openRejectModal = useCallback((item: VerificationItem) => {
-    setRejectTarget(item);
-    setRejectReason('');
-  }, []);
-
-  const handleConfirmReject = useCallback(async () => {
-    if (!rejectTarget) return;
-    try {
-      setRejectLoading(true);
-      await api.post(`/api/admin/verifications/${rejectTarget.id}/reject`, { reason: rejectReason || 'Not specified' });
-      toast({
-        id: "admindashboard-verification-declined", title: 'Verification declined', description: 'User has been notified.', status: 'success', duration: 3000, isClosable: true });
-      setRejectTarget(null);
-      setRejectReason('');
-      fetchAdminVerifications();
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-reject-failed",
-        title: 'Reject failed',
-        description: err?.response?.data?.error || 'Could not reject',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setRejectLoading(false);
-    }
-  }, [rejectTarget, rejectReason, toast, fetchAdminVerifications]);
 
   // â"€â"€ Delete handlers â"€â"€
   const askDeleteUser = useCallback((user: User) => {
@@ -1269,21 +1161,27 @@ const AdminDashboard: React.FC = () => {
   }, [deleteTarget, toast, closeDeleteDialog]);
 
   useEffect(() => {
-    // Run all fetches in parallel instead of sequentially
+    // Initial data fetch - only once on mount
     Promise.allSettled([
       fetchAdminStats(),
       fetchAdminUsers(1),
       fetchAdminProducts(1),
       fetchAdminReports(1),
-      fetchAdminVerifications(),
       fetchAdminCampaigns(),
       fetchRiderApplications(),
     ]);
-    // Check connection in background, don't block rendering
+
+    // Connection check doesn't need to be in the mount effect but we'll keep it there for simplicity
     checkConnection();
     const connectionInterval = setInterval(checkConnection, 30000);
     return () => clearInterval(connectionInterval);
-  }, [checkConnection, fetchAdminStats, fetchAdminUsers, fetchAdminProducts, fetchAdminReports, fetchAdminVerifications, fetchAdminCampaigns, fetchRiderApplications]);
+    // Empty dependency array prevents re-runs when filter functions change
+  }, []);
+
+  // Separate effect for rider filter changes - doesn't trigger full dashboard refresh
+  useEffect(() => {
+    fetchRiderApplications();
+  }, [riderStatusFilter, riderSearchQuery, fetchRiderApplications]);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -1293,7 +1191,7 @@ const AdminDashboard: React.FC = () => {
 
 
   // â"€â"€ Sidebar / SPA state â"€â"€
-  type SectionId = 'overview' | 'moderation' | 'management' | 'system';
+
   const [activeSection, setActiveSection] = useState<SectionId>('overview');
   const { isOpen: isSidebarOpen, onOpen: openSidebar, onClose: closeSidebar } = useDisclosure();
 
@@ -1334,15 +1232,7 @@ const AdminDashboard: React.FC = () => {
     }
   }, [moderationTarget, fetchAdminReports, reportsPage, reportsStatusFilter, toast]);
 
-  // â"€â"€ Sidebar nav config â"€â"€
-  const sidebarNav = [
-    { id: 'overview' as SectionId, label: 'Overview', icon: FiHome, description: 'Metrics & charts' },
-    { id: 'moderation' as SectionId, label: 'Moderation Queue', icon: FiAlertTriangle, description: 'Reports & verifications', badge: (reports.filter((r: any) => r.status === 'pending').length + verifications.filter(v => v.verification_status === 'pending').length + riderApplications.filter(r => r.status === 'pending').length) || undefined },
-    { id: 'management' as SectionId, label: 'Management', icon: FiGrid, description: 'Users, items & campaigns' },
-    { id: 'system' as SectionId, label: 'System', icon: FiSettings, description: 'Metrics & calendar' },
-  ];
 
-  const isMobile = useBreakpointValue({ base: true, lg: false });
 
   if (loading) {
     return (
@@ -1499,8 +1389,8 @@ const AdminDashboard: React.FC = () => {
         <SimpleGrid columns={{ base: 1, md: 2, xl: 4 }} spacing={4}>
           <MetricCard icon={FiUsers} color="indigo" label="Total Users" value={stats!.total_users} />
           <MetricCard icon={FiStar} color="violet" label="Premium Users" value={stats!.premium_users} />
-          <MetricCard icon={FiShield} color="brand" label="Verified Users" value={stats!.verified_users} />
           <MetricCard icon={FiUsers} color="orange" label="New Today" value={stats!.new_users_today} />
+          <MetricCard icon={FiBarChart2} color="brand" label="Activity" value={stats!.recent_activity?.length ?? 0} />
         </SimpleGrid>
       </Box>
 
@@ -1891,60 +1781,6 @@ const AdminDashboard: React.FC = () => {
         </CardBody>
       </Card>
 
-      {/* ID Verifications */}
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
-          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-            <HStack>
-              <Icon as={FiShield} color="brand.500" boxSize={5} />
-              <Heading size="sm" color={textColor}>ID / COR Verifications</Heading>
-              {verifications.filter(v => v.verification_status === 'pending').length > 0 && (
-                <Badge colorScheme="orange" borderRadius="full" px={2}>{verifications.filter(v => v.verification_status === 'pending').length} pending</Badge>
-              )}
-            </HStack>
-            <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchAdminVerifications} isLoading={verificationsLoading}>Refresh</Button>
-          </Flex>
-        </CardHeader>
-        <CardBody overflowX="auto" px={0}>
-          {verificationsLoading ? (
-            <Center py={8}><Spinner color="teal.500" /></Center>
-          ) : verifications.length === 0 ? (
-            <Center py={8}><VStack spacing={2}><Icon as={FiShield} boxSize={10} color="gray.300" /><Text color="#64748b">No pending verifications</Text></VStack></Center>
-          ) : (
-            <ChakraTable variant="simple" size="sm">
-              <Thead bg={headerBg}>
-                <Tr>
-                  <Th color={mutedTextColor}>User</Th><Th color={mutedTextColor}>School</Th><Th color={mutedTextColor}>School Email</Th>
-                  <Th color={mutedTextColor}>Doc</Th><Th color={mutedTextColor}>Status</Th><Th color={mutedTextColor}>Actions</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {verifications.map(item => (
-                  <Tr key={item.id} _hover={{ bg: hoverBg }}>
-                    <Td><VStack align="start" spacing={0}><Text fontWeight="600" fontSize="sm">{item.name || `User #${item.id}`}</Text><Text fontSize="xs" color={mutedTextColor}>{item.email}</Text></VStack></Td>
-                    <Td fontSize="sm">{item.school_name || '-'}</Td>
-                    <Td fontSize="sm">{item.school_email || '-'}</Td>
-                    <Td><Tag size="sm" colorScheme="blue" textTransform="uppercase">{item.document_type || 'id'}</Tag></Td>
-                    <Td><Badge colorScheme={item.verification_status === 'pending' ? 'orange' : 'red'} borderRadius="full" px={2}>{item.verification_status === 'pending' ? 'Pending' : 'Rejected'}</Badge></Td>
-                    <Td>
-                      <HStack spacing={2}>
-                        {item.has_id_image && <Tooltip label="View ID/COR" hasArrow><IconButton aria-label="View ID" size="sm" variant="outline" icon={<FiEye />} onClick={() => handleViewIdImage(item.id, item.name)} /></Tooltip>}
-                        {item.verification_status === 'pending' && (
-                          <>
-                            <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveVerification(item.id)}>Verify</Button>
-                            <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => openRejectModal(item)}>Decline</Button>
-                          </>
-                        )}
-                      </HStack>
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </ChakraTable>
-          )}
-        </CardBody>
-      </Card>
-
       {/* Rider Applications */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
         <CardHeader>
@@ -1964,7 +1800,7 @@ const AdminDashboard: React.FC = () => {
                 <option value="rejected">Rejected</option>
               </Select>
               <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
-              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchRiderApplications} isLoading={riderAppsLoading}>Refresh</Button>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchRiderApplications()} isLoading={riderAppsLoading}>Refresh</Button>
             </HStack>
           </Flex>
         </CardHeader>
@@ -2096,20 +1932,14 @@ const AdminDashboard: React.FC = () => {
 
                 {selectedRiderApp.license_image_url && (
                   <Box>
-                    <Text fontSize="sm" fontWeight="bold" mb={2}>Driver's License</Text>
                     <Image src={selectedRiderApp.license_image_url} alt="License" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                   </Box>
                 )}
 
                 {selectedRiderApp.selfie_image_url && (
                   <Box>
-                    <Text fontSize="sm" fontWeight="bold" mb={2}>Selfie</Text>
                     <Image src={selectedRiderApp.selfie_image_url} alt="Selfie" maxH="200px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
                   </Box>
-                )}
-
-                {!selectedRiderApp.license_image_url && !selectedRiderApp.selfie_image_url && (
-                  <Text color="gray.400" fontSize="sm" textAlign="center">No documents uploaded</Text>
                 )}
               </VStack>
             )}
@@ -2126,7 +1956,7 @@ const AdminDashboard: React.FC = () => {
           <ModalBody>
             <Text fontSize="sm" mb={3}>Applicant: <strong>{rejectRiderTarget?.full_name || rejectRiderTarget?.name}</strong> ({rejectRiderTarget?.email})</Text>
             <Textarea
-              placeholder="Reason for rejection (e.g., Invalid license, unclear documents)"
+              placeholder="Reason for rejection"
               value={rejectRiderReason}
               onChange={e => setRejectRiderReason(e.target.value)}
               rows={3}
@@ -2150,9 +1980,22 @@ const AdminDashboard: React.FC = () => {
     <VStack spacing={8} align="stretch">
       {/* Users */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
+        <CardHeader pb={0}>
           <Heading size="sm" color={textColor}>Users</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
+          <HStack mt={4} mb={2} spacing={3} wrap="wrap">
+            <Input size="sm" placeholder="Search users by name, email..." value={usersSearch} onChange={(e) => setUsersSearch(e.target.value)} maxW="300px" />
+            <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => { setUsersRoleFilter(e.target.value); fetchAdminUsers(1, usersSearch, e.target.value); }}>
+              <option value="admin">Admin</option>
+              <option value="user">User</option>
+              <option value="suspended">Suspended</option>
+            </Select>
+            <Select size="sm" w="150px" placeholder="All Verifications" value={usersIsVerifiedFilter} onChange={(e) => { setUsersIsVerifiedFilter(e.target.value); fetchAdminUsers(1, usersSearch, usersRoleFilter, e.target.value); }}>
+              <option value="true">Verified Only</option>
+              <option value="false">Unverified Only</option>
+            </Select>
+            <Button size="sm" onClick={() => fetchAdminUsers(1)}>Search</Button>
+          </HStack>
         </CardHeader>
         <CardBody px={0} pb={2}>
           {usersLoading ? <Center py={6}><Spinner color="brand.500" /></Center> : users.length === 0 ? <Text fontSize="sm" color={mutedTextColor} px={4}>No users found.</Text> : (
@@ -2196,9 +2039,19 @@ const AdminDashboard: React.FC = () => {
 
       {/* Items */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
+        <CardHeader pb={0}>
           <Heading size="sm" color={textColor}>Items</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
+          <HStack mt={4} mb={2} spacing={3} wrap="wrap">
+            <Input size="sm" placeholder="Search items by title..." value={productsSearch} onChange={(e) => setProductsSearch(e.target.value)} maxW="300px" />
+            <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => { setProductsStatusFilter(e.target.value); fetchAdminProducts(1, productsSearch, e.target.value); }}>
+              <option value="available">Available</option>
+              <option value="reserved">Reserved</option>
+              <option value="traded">Traded</option>
+              <option value="suspended">Suspended</option>
+            </Select>
+            <Button size="sm" onClick={() => fetchAdminProducts(1)}>Search</Button>
+          </HStack>
         </CardHeader>
         <CardBody px={0} pb={2}>
           {productsLoading ? <Center py={6}><Spinner color="brand.500" /></Center> : products.length === 0 ? <Text fontSize="sm" color={mutedTextColor} px={4}>No items found.</Text> : (
@@ -2210,18 +2063,48 @@ const AdminDashboard: React.FC = () => {
                     <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Trader</Th>
                     <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
                     <Th isNumeric color={mutedTextColor} w="88px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
-                    <Th textAlign="right" color={mutedTextColor} w="44px" px={1}></Th>
+                    <Th textAlign="right" color={mutedTextColor} w="80px" px={1}></Th>
                   </Tr></Thead>
                   <Tbody>
-                    {products.map(product => (
-                      <Tr key={product.id} _hover={{ bg: hoverBg }}>
-                        <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
-                        <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
-                        <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : 'gray'}>{product.status}</Tag></Td>
-                        <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : 'â€"'}</Text></Td>
-                        <Td textAlign="right"><Tooltip label="Delete item" hasArrow><IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} /></Tooltip></Td>
-                      </Tr>
-                    ))}
+                    {products.map(product => {
+                      const isSuspended = product.status === 'suspended';
+                      return (
+                        <Tr key={product.id} _hover={{ bg: hoverBg }}>
+                          <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
+                          <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
+                          <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'}>{product.status}</Tag></Td>
+                          <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : '—'}</Text></Td>
+                          <Td textAlign="right">
+                            <HStack spacing={1} justify="flex-end">
+                              <Tooltip label="View Details" hasArrow>
+                                <IconButton as="a" href={`/product/${product.id}`} target="_blank" aria-label="View Details" size="sm" colorScheme="blue" variant="ghost" icon={<FiEye />} />
+                              </Tooltip>
+                              <Tooltip label={isSuspended ? "Unsuspend listing" : "Suspend listing"} hasArrow>
+                                <IconButton
+                                  aria-label="Toggle suspend"
+                                  size="sm"
+                                  colorScheme={isSuspended ? "green" : "orange"}
+                                  variant="ghost"
+                                  icon={isSuspended ? <FiCheckCircle /> : <FiXCircle />}
+                                  onClick={async () => {
+                                    try {
+                                      await api.put(`/api/admin/products/${product.id}/${isSuspended ? 'unsuspend' : 'suspend'}`);
+                                      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, status: isSuspended ? 'available' : 'suspended' } : p));
+                                      toast({ title: isSuspended ? 'Listing Unsuspended' : 'Listing Suspended', status: 'success', duration: 2000 });
+                                    } catch (err: any) {
+                                      toast({ title: 'Failed to update status', status: 'error' });
+                                    }
+                                  }}
+                                />
+                              </Tooltip>
+                              <Tooltip label="Delete item" hasArrow>
+                                <IconButton aria-label="Delete item" size="sm" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteProduct(product)} />
+                              </Tooltip>
+                            </HStack>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
                   </Tbody>
                 </ChakraTable>
               </Box>
@@ -2307,6 +2190,103 @@ const AdminDashboard: React.FC = () => {
 
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
       </Card>
+
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <CardHeader>
+          <HStack>
+            <Icon as={FiServer} color="brand.500" boxSize={5} />
+            <Heading size="sm" color={textColor}>Multi-way Match Debug</Heading>
+          </HStack>
+          <Text fontSize="xs" color={mutedTextColor} mt={1}>Explain why a trade did or did not produce a loop suggestion.</Text>
+        </CardHeader>
+        <CardBody>
+          <VStack align="stretch" spacing={4}>
+            <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+              <Input
+                placeholder="Primary trade ID"
+                value={loopDebugTradeID}
+                onChange={(e) => setLoopDebugTradeID(e.target.value)}
+                bg={tableBg}
+              />
+              <Input
+                placeholder="Compare trade ID (optional)"
+                value={loopDebugCompareTradeID}
+                onChange={(e) => setLoopDebugCompareTradeID(e.target.value)}
+                bg={tableBg}
+              />
+              <Button colorScheme="brand" onClick={handleRunLoopDebug} isLoading={loopDebugLoading}>
+                Run Debug
+              </Button>
+            </SimpleGrid>
+
+            {!loopDebugResult ? (
+              <Text fontSize="sm" color={mutedTextColor}>Run the debug query to see scoring details, threshold failures, and recommended loop state.</Text>
+            ) : (
+              <VStack align="stretch" spacing={4}>
+                {[{ key: 'primary', label: 'Primary Trade' }, { key: 'comparison', label: 'Comparison Trade' }].map((section) => {
+                  const entry = loopDebugResult?.[section.key];
+                  if (!entry) return null;
+
+                  const candidates = entry?.debug?.candidates || [];
+                  return (
+                    <Box key={section.key} border="1px solid" borderColor={borderColor} borderRadius="lg" p={4} bg={tableBg}>
+                      <HStack justify="space-between" align="start" mb={2}>
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="700" color={textColor}>{section.label}</Text>
+                          <Text fontSize="xs" color={mutedTextColor}>
+                            Trade #{entry.trade_id} • status: {entry.trade_status}
+                          </Text>
+                        </VStack>
+                        <Badge colorScheme={entry.recommended_loop_status === 'no_match' ? 'gray' : entry.recommended_loop_status === 'pending_initiator_upgrade' ? 'orange' : 'green'}>
+                          {entry.recommended_loop_status}
+                        </Badge>
+                      </HStack>
+
+                      <Text fontSize="sm" color={mutedTextColor} mb={2}>
+                        Matches: {entry.match_count} • Threshold: {entry?.debug?.threshold ?? '-'}
+                      </Text>
+                      {entry?.debug?.no_match_reason ? (
+                        <Alert status="warning" borderRadius="md" mb={3}>
+                          <AlertIcon />
+                          <Text fontSize="sm">{entry.debug.no_match_reason}</Text>
+                        </Alert>
+                      ) : null}
+
+                      {candidates.length === 0 ? (
+                        <Text fontSize="sm" color={mutedTextColor}>No candidates evaluated.</Text>
+                      ) : (
+                        <VStack align="stretch" spacing={2}>
+                          {candidates.slice(0, 6).map((cand: any, idx: number) => (
+                            <Box key={`${section.key}-${idx}`} border="1px solid" borderColor={borderColor} borderRadius="md" p={3} bg={cardBg}>
+                              <HStack justify="space-between" mb={1}>
+                                <Text fontSize="sm" fontWeight="600" color={textColor}>
+                                  User #{cand.user3_id}: {cand.user3_product_title}
+                                </Text>
+                                <Badge colorScheme={cand.passed_threshold ? 'green' : 'red'}>
+                                  Score {cand.score}
+                                </Badge>
+                              </HStack>
+                              <Text fontSize="xs" color={mutedTextColor}>Offered item: {cand.offered_title}</Text>
+                              <Text fontSize="xs" color={mutedTextColor} mt={1}>{(cand.reasons || []).join(' | ')}</Text>
+                            </Box>
+                          ))}
+                        </VStack>
+                      )}
+                    </Box>
+                  );
+                })}
+                {loopDebugResult?.comparison_error ? (
+                  <Alert status="warning" borderRadius="md">
+                    <AlertIcon />
+                    <Text fontSize="sm">Comparison error: {loopDebugResult.comparison_error}</Text>
+                  </Alert>
+                ) : null}
+              </VStack>
+            )}
+          </VStack>
+        </CardBody>
+      </Card>
+
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
         <CardHeader><Heading size="sm" color={textColor}>Revenue Breakdown (Last 4 Weeks)</Heading></CardHeader>
         <CardBody>
@@ -2332,7 +2312,7 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')} display="flex">
+      <Box minH="100vh" bg={mainBg} display="flex">
 
         {/* â"€â"€ Desktop Sidebar â"€â"€ */}
         {!isMobile && (
@@ -2395,7 +2375,7 @@ const AdminDashboard: React.FC = () => {
                   <MenuButton as={Button} leftIcon={<FiPrinter />} rightIcon={<FiChevronDown />} size="sm" colorScheme="brand" isLoading={exportLoading} loadingText="Exporting…">Export</MenuButton>
                   <MenuList shadow="lg" borderRadius="lg">
                     <MenuItem icon={<FiFileText />} onClick={handleExportPDF}>Export as PDF</MenuItem>
-                    <MenuItem icon={<FiFileText />} onClick={handleExportDOCX}>Export as DOCX</MenuItem>
+                    <MenuItem icon={<FiFileText />} onClick={handleExportExcel}>Export as Excel</MenuItem>
                   </MenuList>
                 </Menu>
               </HStack>
@@ -2471,31 +2451,7 @@ const AdminDashboard: React.FC = () => {
           </AlertDialogOverlay>
         </AlertDialog>
 
-        {/* â"€â"€ ID Image Modal â"€â"€ */}
-        <Modal isOpen={!!idImageModal} onClose={closeIdImageModal} size="xl">
-          <ModalOverlay />
-          <ModalContent borderRadius="xl">
-            <ModalHeader>ID / COR â€" {idImageModal?.name}</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody pb={4}>
-              {idImageUrl ? <Box as="img" src={idImageUrl} alt="Submitted ID" maxH="70vh" mx="auto" borderRadius="md" /> : <Center py={8}><Spinner size="lg" color="brand.500" /></Center>}
-            </ModalBody>
-          </ModalContent>
-        </Modal>
 
-        {/* â"€â"€ Reject Verification Modal â"€â"€ */}
-        <Modal isOpen={!!rejectTarget} onClose={() => { setRejectTarget(null); setRejectReason(''); }}>
-          <ModalOverlay />
-          <ModalContent borderRadius="xl">
-            <ModalHeader>Decline Verification</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody>
-              <Text fontSize="sm" color="#64748b" mb={3}>User: <strong>{rejectTarget?.name}</strong> ({rejectTarget?.email})</Text>
-              <Textarea placeholder="e.g. Document does not appear to be a valid school ID or COR" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} />
-            </ModalBody>
-            <Box px={6} pb={4} pt={2}><HStack justify="flex-end" spacing={3}><Button variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(''); }}>Cancel</Button><Button colorScheme="red" onClick={handleConfirmReject} isLoading={rejectLoading}>Decline</Button></HStack></Box>
-          </ModalContent>
-        </Modal>
 
         {/* â"€â"€ Campaign Create/Edit Modal â"€â"€ */}
         <Modal isOpen={isCampaignModalOpen} onClose={() => { closeCampaignModal(); setEditingCampaign(null); }} size="lg">

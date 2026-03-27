@@ -12,6 +12,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import VerifyEmail from './pages/VerifyEmail'
 import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import ProductDetail from './pages/ProductDetail'
 import AddProduct from './pages/AddProduct'
@@ -23,6 +24,10 @@ import Trades from './pages/Trades'
 import Offers from './pages/Offers'
 import Profile from './pages/Profile'
 import UserProfile from './pages/UserProfile'
+import CreateOrganization from './pages/CreateOrganization'
+import OrganizationProfile from './pages/OrganizationProfile'
+import Organizations from './pages/Organizations'
+import OrganizationProducts from './pages/OrganizationProducts'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
@@ -224,6 +229,11 @@ const AppContent: React.FC = () => {
                     <ForgotPassword />
                   </PageTransition>
                 } />
+                <Route path="/reset-password" element={
+                  <PageTransition>
+                    <ResetPassword />
+                  </PageTransition>
+                } />
                 <Route path="/products/:id" element={
                   <PageTransition>
                     <ProductDetail />
@@ -267,6 +277,26 @@ const AppContent: React.FC = () => {
                 <Route path="/users/:id" element={
                   <PageTransition>
                     <UserProfile />
+                  </PageTransition>
+                } />
+                <Route path="/organizations/new" element={
+                  <PageTransition>
+                    <ProtectedRoute><CreateOrganization /></ProtectedRoute>
+                  </PageTransition>
+                } />
+                <Route path="/organizations" element={
+                  <PageTransition>
+                    <Organizations />
+                  </PageTransition>
+                } />
+                <Route path="/org/:handle" element={
+                  <PageTransition>
+                    <OrganizationProfile />
+                  </PageTransition>
+                } />
+                <Route path="/org/:handle/products" element={
+                  <PageTransition>
+                    <OrganizationProducts />
                   </PageTransition>
                 } />
                 <Route path="/settings" element={

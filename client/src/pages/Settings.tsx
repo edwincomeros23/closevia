@@ -42,6 +42,7 @@ import {
   Flex,
   Icon,
   Spinner,
+  Tooltip,
 } from '@chakra-ui/react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
@@ -82,6 +83,13 @@ const SettingsPage: React.FC = () => {
   // Account State
   const [username, setUsername] = useState(user?.name || '')
   const [email, setEmail] = useState(user?.email || '')
+  const [phoneNumber, setPhoneNumber] = useState((user as any)?.phone || '')
+  const [phoneVerified, setPhoneVerified] = useState<boolean>((user as any)?.phone_verified || false)
+  const [phoneOtpCode, setPhoneOtpCode] = useState('')
+  const [phoneVerifyLoading, setPhoneVerifyLoading] = useState(false)
+  const [phoneSendLoading, setPhoneSendLoading] = useState(false)
+  const [resendPhoneCooldown, setResendPhoneCooldown] = useState(0)
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false)
   const [profileImage, setProfileImage] = useState<string | null>((user as any)?.profile_picture || null)
   const [uploadingImage, setUploadingImage] = useState(false)
 
@@ -132,11 +140,13 @@ const SettingsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [changingPassword, setChangingPassword] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
 
   
   // Modals
   const { isOpen: isPasswordModalOpen, onOpen: onPasswordModalOpen, onClose: onPasswordModalClose } = useDisclosure()
+  const { isOpen: isPhoneModalOpen, onOpen: onPhoneModalOpen, onClose: onPhoneModalClose } = useDisclosure()
   const { isOpen: isLogoutModalOpen, onOpen: onLogoutModalOpen, onClose: onLogoutModalClose } = useDisclosure()
   const { isOpen: isDeleteAccountOpen, onOpen: onDeleteAccountOpen, onClose: onDeleteAccountClose } = useDisclosure()
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -155,6 +165,8 @@ const SettingsPage: React.FC = () => {
     if (user) {
       setUsername(user.name || '')
       setEmail(user.email || '')
+      setPhoneNumber((user as any)?.phone || '')
+      setPhoneVerified((user as any)?.phone_verified || false)
       // Strip any cache busters that might have been saved
       const cleanPicture = stripCacheBuster((user as any)?.profile_picture)
       setProfileImage(cleanPicture)
@@ -179,6 +191,7 @@ const SettingsPage: React.FC = () => {
     const hasChanges =
       username !== (user?.name || '') ||
       email !== (user?.email || '') ||
+      phoneNumber !== ((user as any)?.phone || '') ||
       profileImage !== ((user as any)?.profile_picture || null) ||
       emailNotifications !== ((user as any)?.email_notifications_enabled ?? true) ||
       pushNotifications !== ((user as any)?.push_notifications_enabled ?? true)
@@ -187,6 +200,7 @@ const SettingsPage: React.FC = () => {
   }, [
     username,
     email,
+    phoneNumber,
     profileImage,
     emailNotifications,
     pushNotifications,
@@ -203,6 +217,12 @@ const SettingsPage: React.FC = () => {
     }
   }, [saveStatus])
 
+  useEffect(() => {
+    if (resendPhoneCooldown <= 0) return
+    const t = setInterval(() => setResendPhoneCooldown((c) => Math.max(0, c - 1)), 1000)
+    return () => clearInterval(t)
+  }, [resendPhoneCooldown])
+
   // Handle profile image upload
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -211,11 +231,12 @@ const SettingsPage: React.FC = () => {
     console.log('📸 Image file selected:', { name: file.name, size: file.size, type: file.type })
 
     // Validate file type
-    if (!file.type.startsWith('image/')) {
+    const supportedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+    if (!supportedImageTypes.includes(file.type.toLowerCase())) {
       toast({
         id: 'invalid-file-type',
         title: 'Invalid file type',
-        description: 'Please upload an image file.',
+        description: 'Please upload a JPG, PNG, or WEBP image.',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -361,6 +382,132 @@ const SettingsPage: React.FC = () => {
     return emailRegex.test(email)
   }
 
+  const validatePhone = (phone: string): boolean => {
+    if (!phone.trim()) return true
+    return /^\d{10,15}$/.test(phone.trim())
+  }
+
+  const getPasswordChangedLabel = (): string => {
+    const raw = (user as any)?.password_changed_at
+    if (!raw) return 'Password last changed: Not available'
+    const parsed = new Date(raw)
+    if (Number.isNaN(parsed.getTime())) return 'Password last changed: Not available'
+    return `Password last changed: ${parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}`
+  }
+
+  const handleStartPhoneVerification = async () => {
+    if (!validatePhone(phoneNumber) || !phoneNumber.trim()) {
+      toast({
+        id: 'settings-invalid-phone-start',
+        title: 'Invalid phone number',
+        description: 'Use 10 to 15 digits before requesting a code.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    setPhoneSendLoading(true)
+    try {
+      const resp = await api.post('/api/users/verification/phone/start', { phone: phoneNumber.trim() })
+      setPhoneOtpSent(true)
+      setResendPhoneCooldown(60)
+      toast({
+        id: 'settings-phone-code-sent',
+        title: 'Code sent',
+        description: resp?.data?.message || 'Verification code sent to your phone number.',
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      })
+    } catch (err: any) {
+      toast({
+        id: 'settings-phone-code-send-failed',
+        title: 'Could not send code',
+        description: err?.response?.data?.error || 'Failed to send verification code',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setPhoneSendLoading(false)
+    }
+  }
+
+  const handleResendPhoneVerification = async () => {
+    if (resendPhoneCooldown > 0) return
+    setPhoneSendLoading(true)
+    try {
+      const resp = await api.post('/api/users/verification/phone/resend')
+      setPhoneOtpSent(true)
+      setResendPhoneCooldown(60)
+      toast({
+        id: 'settings-phone-code-resent',
+        title: 'Code resent',
+        description: resp?.data?.message || 'Verification code resent to your phone number.',
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      })
+    } catch (err: any) {
+      toast({
+        id: 'settings-phone-code-resend-failed',
+        title: 'Could not resend code',
+        description: err?.response?.data?.error || 'Failed to resend verification code',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setPhoneSendLoading(false)
+    }
+  }
+
+  const handleVerifyPhoneCode = async () => {
+    const code = phoneOtpCode.trim()
+    if (code.length !== 6) {
+      toast({
+        id: 'settings-phone-code-invalid-length',
+        title: 'Enter 6-digit code',
+        description: 'The verification code must be 6 digits.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    setPhoneVerifyLoading(true)
+    try {
+      const resp = await api.post('/api/users/verification/phone/verify', { code })
+      setPhoneVerified(true)
+      setPhoneOtpCode('')
+      setPhoneOtpSent(false)
+      onPhoneModalClose()
+      await refreshUser()
+      toast({
+        id: 'settings-phone-verified',
+        title: 'Phone verified',
+        description: resp?.data?.message || 'Your phone number is now verified.',
+        status: 'success',
+        duration: 4000,
+        isClosable: true,
+      })
+    } catch (err: any) {
+      toast({
+        id: 'settings-phone-verify-failed',
+        title: 'Verification failed',
+        description: err?.response?.data?.error || 'Invalid or expired verification code',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      })
+    } finally {
+      setPhoneVerifyLoading(false)
+    }
+  }
+
   // Handle save
   const handleSave = async () => {
     // Validate email
@@ -380,8 +527,21 @@ const SettingsPage: React.FC = () => {
     if (!username.trim()) {
       toast({
         id: 'username-required',
-        title: 'Username required',
-        description: 'Please enter a username.',
+        title: 'Display name required',
+        description: 'Please enter your display name.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
+    // Validate phone number
+    if (!validatePhone(phoneNumber)) {
+      toast({
+        id: 'invalid-phone',
+        title: 'Invalid phone number',
+        description: 'Use 10 to 15 digits only.',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -427,7 +587,12 @@ const SettingsPage: React.FC = () => {
       
       // DON'T save cache busters to the database - they're only for display
       if (updateProfile) {
-        await updateProfile({ name: username, email, profile_picture: profileUrlToSave })
+        await updateProfile({
+          name: username,
+          email,
+          phone: phoneNumber.trim(),
+          profile_picture: profileUrlToSave,
+        })
         // Update local state with the clean URL (no cache buster)
         if (profileUrlToSave) {
           setProfileImage(profileUrlToSave)
@@ -438,6 +603,7 @@ const SettingsPage: React.FC = () => {
       const settings = {
         username,
         email,
+        phoneNumber,
         profileImage: profileUrlToSave ?? profileImage,
         emailNotifications,
         pushNotifications,
@@ -449,6 +615,7 @@ const SettingsPage: React.FC = () => {
       const resp = await api.put('/api/users/profile', {
         name: username,
         email: email,
+        phone: phoneNumber.trim(),
         profile_picture: profileUrlToSave ?? profileImage,
         email_notifications_enabled: emailNotifications,
         push_notifications_enabled: pushNotifications,
@@ -606,74 +773,7 @@ const SettingsPage: React.FC = () => {
     }
   }
 
-  const handleUploadSchoolID = async (file: File | null) => {
-    if (!file) return
 
-    // Basic client-side validation for ID/COR upload
-    if (!file.type.startsWith('image/')) {
-      toast({
-        id: "settings-invalid-file-type",
-        title: 'Invalid file type',
-        description: 'Please upload a clear image of your school ID or COR.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        id: "settings-file-too-large",
-        title: 'File too large',
-        description: 'Please upload an image smaller than 5MB.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-    if (!schoolName || !schoolEmail) {
-      toast({
-        id: "settings-email-verification-required",
-        title: 'Email verification required',
-        description: 'Please verify your school email before uploading your ID.',
-        status: 'warning',
-        duration: 3000,
-        isClosable: true,
-      })
-      return
-    }
-    setIdUploadLoading(true)
-    try {
-      const form = new FormData()
-      form.append('id_image', file)
-      form.append('document_type', documentType)
-      await api.post('/api/users/verification/upload-id', form)
-      toast({
-        id: "settings-id-submitted",
-        title: 'ID submitted',
-        description: 'Your school ID has been submitted for review.',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      })
-      await refreshUser()
-      setVerificationStatus('pending')
-      setVerificationReason(null)
-    } catch (err: any) {
-      const message = err?.response?.data?.error || err?.message || 'Failed to upload school ID'
-      toast({
-        id: "settings-upload-error",
-        title: 'Upload error',
-        description: message,
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      })
-    } finally {
-      setIdUploadLoading(false)
-    }
-  }
 
   // Handle logout — clear tokens/cookies and notify backend if possible
   const handleLogout = async () => {
@@ -818,14 +918,18 @@ const SettingsPage: React.FC = () => {
                 <FormControl>
                   <FormLabel>Profile Picture</FormLabel>
                   <HStack spacing={4}>
-                    <VerifiedAvatar
-                      key={profileImage || 'no-image'} // Force re-render when image changes
-                      size="xl"
-                      src={profileImage || undefined}
-                      name={username || user?.name || 'User'}
-                      bg="brand.500"
-                      isVerified={user?.verification_status === 'verified' || user?.verified || false}
-                    />
+                    <Tooltip label="Blue check means your account is verified." hasArrow>
+                      <Box>
+                        <VerifiedAvatar
+                          key={profileImage || 'no-image'} // Force re-render when image changes
+                          size="xl"
+                          src={profileImage || undefined}
+                          name={username || user?.name || 'User'}
+                          bg="brand.500"
+                          isVerified={user?.verification_status === 'verified' || user?.verified || false}
+                        />
+                      </Box>
+                    </Tooltip>
                     <VStack align="start" spacing={2}>
                       <Input
                         type="file"
@@ -847,7 +951,10 @@ const SettingsPage: React.FC = () => {
                         Upload Photo
                       </Button>
                       <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
-                        JPG, PNG or GIF. Max size 5MB.
+                        JPG, PNG, or WEBP. Max size 5MB.
+                      </Text>
+                      <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')}>
+                        Avatar check badge indicates verified account status.
                       </Text>
                     </VStack>
                   </HStack>
@@ -855,34 +962,157 @@ const SettingsPage: React.FC = () => {
 
                 <Divider />
 
-                {/* Username */}
+                {/* Display Name */}
                 <FormControl>
-                  <FormLabel>Username</FormLabel>
+                  <FormLabel>Display Name</FormLabel>
                   <Input
                     value={username}
                     onChange={(e) => {
                       setUsername(e.target.value)
                       setHasUnsavedChanges(true)
                     }}
-                    placeholder="Your display name"
+                    placeholder="Your public display name"
                   />
+                </FormControl>
+
+                {/* Phone Number */}
+                <FormControl>
+                  <HStack justify="space-between" mb={2}>
+                    <FormLabel mb={0}>Phone Number</FormLabel>
+                    <HStack spacing={2}>
+                      {phoneVerified ? (
+                        <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
+                          <HStack spacing={1}>
+                            <Icon as={FaCheckCircle} boxSize={3} />
+                            <Text fontSize="2xs">Verified</Text>
+                          </HStack>
+                        </Badge>
+                      ) : (
+                        <Badge colorScheme="orange" variant="subtle" borderRadius="full" px={2}>
+                          <Text fontSize="2xs">Unverified</Text>
+                        </Badge>
+                      )}
+                    </HStack>
+                  </HStack>
+
+                  <HStack spacing={2}>
+                    <Input
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => {
+                        const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 15)
+                        setPhoneNumber(digitsOnly)
+                        if (phoneVerified && digitsOnly !== ((user as any)?.phone || '')) {
+                          setPhoneVerified(false)
+                        }
+                        setHasUnsavedChanges(true)
+                      }}
+                      placeholder="e.g. 09171234567"
+                    />
+                    <Button
+                      size="sm"
+                      colorScheme="orange"
+                      variant="ghost"
+                      fontSize="xs"
+                      isDisabled={!phoneNumber.trim() || phoneVerified}
+                      onClick={() => {
+                        setPhoneOtpCode('')
+                        setPhoneOtpSent(false)
+                        setResendPhoneCooldown(0)
+                        onPhoneModalOpen()
+                      }}
+                    >
+                      {phoneVerified ? 'Verified' : 'Verify'}
+                    </Button>
+                  </HStack>
+
+                  {phoneNumber && !validatePhone(phoneNumber) && (
+                    <Text fontSize="xs" color="red.500" mt={1}>
+                      Phone number must be 10 to 15 digits.
+                    </Text>
+                  )}
+
+                  {!phoneVerified && phoneNumber && validatePhone(phoneNumber) && (
+                    <Text fontSize="xs" color="orange.500" mt={2}>
+                      Add your phone number to strengthen account trust for trades and delivery.
+                    </Text>
+                  )}
                 </FormControl>
 
                 {/* Email */}
                 <FormControl>
-                  <FormLabel>Email Address</FormLabel>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value)
-                      setHasUnsavedChanges(true)
-                    }}
-                    placeholder="you@example.com"
-                  />
+                  <HStack justify="space-between" mb={2}>
+                    <FormLabel mb={0}>Email Address</FormLabel>
+                    <HStack spacing={2}>
+                      {user?.verified ? (
+                        <Badge colorScheme="green" variant="subtle" borderRadius="full" px={2}>
+                          <HStack spacing={1}>
+                            <Icon as={FaCheckCircle} boxSize={3} />
+                            <Text fontSize="2xs">Verified</Text>
+                          </HStack>
+                        </Badge>
+                      ) : (
+                        <Badge colorScheme="orange" variant="subtle" borderRadius="full" px={2}>
+                          <Text fontSize="2xs">Unverified</Text>
+                        </Badge>
+                      )}
+                    </HStack>
+                  </HStack>
+                  <HStack spacing={2}>
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value)
+                        setHasUnsavedChanges(true)
+                      }}
+                      placeholder="you@example.com"
+                    />
+                    {!user?.verified && email === user?.email && (
+                      <Button
+                        size="sm"
+                        colorScheme="orange"
+                        variant="ghost"
+                        fontSize="xs"
+                        isLoading={verificationLoading}
+                        onClick={async () => {
+                          setVerificationLoading(true)
+                          try {
+                            await api.post('/api/auth/resend-verification', { email: user?.email })
+                            toast({
+                              title: 'Verification email sent',
+                              description: 'Please check your inbox for the code.',
+                              status: 'info',
+                              duration: 5000,
+                              isClosable: true,
+                            })
+                            // Redirect to verification page
+                            navigate('/verify-email', { state: { email: user?.email } })
+                          } catch (err: any) {
+                            toast({
+                              title: 'Error',
+                              description: err.response?.data?.error || 'Failed to send verification email',
+                              status: 'error',
+                              duration: 3000,
+                              isClosable: true,
+                            })
+                          } finally {
+                            setVerificationLoading(false)
+                          }
+                        }}
+                      >
+                        Verify Now
+                      </Button>
+                    )}
+                  </HStack>
                   {email && !validateEmail(email) && (
                     <Text fontSize="xs" color="red.500" mt={1}>
                       Please enter a valid email address
+                    </Text>
+                  )}
+                  {!user?.verified && (
+                    <Text fontSize="xs" color="orange.500" mt={2}>
+                      ⚠️ Your email is not verified. Some features may be restricted.
                     </Text>
                   )}
                 </FormControl>
@@ -902,6 +1132,25 @@ const SettingsPage: React.FC = () => {
                   </Button>
                   <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
                     Keep your account secure by updating your password regularly.
+                  </Text>
+                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                    {getPasswordChangedLabel()}
+                  </Text>
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Session</FormLabel>
+                  <Button
+                    leftIcon={<FaSignOutAlt />}
+                    colorScheme="orange"
+                    variant="outline"
+                    size="sm"
+                    onClick={onLogoutModalOpen}
+                  >
+                    Logout
+                  </Button>
+                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={2}>
+                    Sign out from this device.
                   </Text>
                 </FormControl>
               </VStack>
@@ -966,6 +1215,9 @@ const SettingsPage: React.FC = () => {
                     <option value="">Select your school</option>
                     <option value="WMSU">Western Mindanao State University (WMSU)</option>
                   </Select>
+                  <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                    Supported schools right now: WMSU only.
+                  </Text>
                 </FormControl>
 
                 <FormControl>
@@ -1128,7 +1380,10 @@ const SettingsPage: React.FC = () => {
                   colorScheme="red"
                   variant="outline"
                   leftIcon={<FaTrash />}
-                  onClick={onDeleteAccountOpen}
+                  onClick={() => {
+                    setDeleteConfirmText('')
+                    onDeleteAccountOpen()
+                  }}
                   w="fit-content"
                   size="sm"
                 >
@@ -1168,6 +1423,8 @@ const SettingsPage: React.FC = () => {
                     if (user) {
                       setUsername(user.name || '')
                       setEmail(user.email || '')
+                      setPhoneNumber((user as any)?.phone || '')
+                      setPhoneVerified((user as any)?.phone_verified || false)
                       setProfileImage((user as any)?.profile_picture || null)
                       setEmailNotifications((user as any)?.email_notifications_enabled ?? true)
                       setPushNotifications((user as any)?.push_notifications_enabled ?? true)
@@ -1300,6 +1557,90 @@ const SettingsPage: React.FC = () => {
         </ModalContent>
       </Modal>
 
+      {/* Phone Verification Modal */}
+      <Modal
+        isOpen={isPhoneModalOpen}
+        onClose={() => {
+          setPhoneOtpCode('')
+          setPhoneOtpSent(false)
+          setResendPhoneCooldown(0)
+          onPhoneModalClose()
+        }}
+        size="md"
+      >
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Verify Phone Number</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4} align="stretch">
+              <FormControl>
+                <FormLabel>Phone Number</FormLabel>
+                <Input value={phoneNumber} isReadOnly />
+                <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.400')} mt={1}>
+                  We will send a 6-digit verification code to this number.
+                </Text>
+              </FormControl>
+
+              {phoneVerified ? (
+                <Badge colorScheme="green" variant="subtle" borderRadius="full" px={3} py={1} w="fit-content">
+                  <HStack spacing={1}>
+                    <Icon as={FaCheckCircle} boxSize={3} />
+                    <Text fontSize="xs">Phone already verified</Text>
+                  </HStack>
+                </Badge>
+              ) : (
+                <>
+                  <HStack spacing={2}>
+                    <Button
+                      size="sm"
+                      colorScheme="orange"
+                      onClick={phoneOtpSent ? handleResendPhoneVerification : handleStartPhoneVerification}
+                      isLoading={phoneSendLoading}
+                      isDisabled={phoneOtpSent && resendPhoneCooldown > 0}
+                    >
+                      {phoneOtpSent
+                        ? (resendPhoneCooldown > 0 ? `Resend in ${resendPhoneCooldown}s` : 'Resend Code')
+                        : 'Send Code'}
+                    </Button>
+                  </HStack>
+
+                  {phoneOtpSent && (
+                    <FormControl>
+                      <FormLabel>Verification Code</FormLabel>
+                      <Input
+                        maxLength={6}
+                        value={phoneOtpCode}
+                        onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        fontFamily="mono"
+                        fontSize="lg"
+                        w="140px"
+                      />
+                    </FormControl>
+                  )}
+                </>
+              )}
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onPhoneModalClose}>
+              Close
+            </Button>
+            {!phoneVerified && (
+              <Button
+                colorScheme="green"
+                onClick={handleVerifyPhoneCode}
+                isLoading={phoneVerifyLoading}
+                isDisabled={phoneOtpCode.trim().length !== 6}
+              >
+                Verify Code
+              </Button>
+            )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       {/* Logout Confirmation Modal */}
       <AlertDialog
         isOpen={isLogoutModalOpen}
@@ -1341,13 +1682,30 @@ const SettingsPage: React.FC = () => {
               This will permanently delete your account and all your data. This action cannot be undone.
               <br />
               <br />
-              Are you sure you want to continue?
+              Type <strong>DELETE</strong> to confirm.
+              <Input
+                mt={3}
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Type DELETE"
+              />
             </AlertDialogBody>
             <AlertDialogFooter>
-              <Button ref={deleteAccountCancelRef} onClick={onDeleteAccountClose}>
+              <Button
+                ref={deleteAccountCancelRef}
+                onClick={() => {
+                  setDeleteConfirmText('')
+                  onDeleteAccountClose()
+                }}
+              >
                 Cancel
               </Button>
-              <Button colorScheme="red" onClick={handleDeleteAccount} ml={3}>
+              <Button
+                colorScheme="red"
+                onClick={handleDeleteAccount}
+                ml={3}
+                isDisabled={deleteConfirmText.trim() !== 'DELETE'}
+              >
                 Delete Account
               </Button>
             </AlertDialogFooter>

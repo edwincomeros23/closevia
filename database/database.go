@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -46,8 +47,13 @@ func InitDatabase() error {
 		return fmt.Errorf("DB_PASSWORD environment variable is not set (required for hosted database)")
 	}
 
-	var dsn string
+	// Fail fast on network / DB stalls so the API doesn't hang for 15s+.
+	const connectTimeout = "5s"
+	const readTimeout = "15s"
+	const writeTimeout = "15s"
+	commonParams := fmt.Sprintf("timeout=%s&readTimeout=%s&writeTimeout=%s", connectTimeout, readTimeout, writeTimeout)
 
+	var dsn string
 	if isHostedDatabase {
 		// Create TLS config for hosted database
 		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
@@ -59,13 +65,11 @@ func InitDatabase() error {
 			return fmt.Errorf("failed to register TLS config: %v", err)
 		}
 
-		// Create DSN with TLS enabled for hosted database
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
-			dbUser, dbPassword, dbHost, dbPort, dbName)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom&%s",
+			dbUser, dbPassword, dbHost, dbPort, dbName, commonParams)
 	} else {
-		// Create DSN without TLS for local database (XAMPP)
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
-			dbUser, dbPassword, dbHost, dbPort, dbName)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&%s",
+			dbUser, dbPassword, dbHost, dbPort, dbName, commonParams)
 	}
 
 	// Open database connection
@@ -75,13 +79,16 @@ func InitDatabase() error {
 		return fmt.Errorf("failed to open database: %v", openErr)
 	}
 
-	// Configure connection pool
-	DB.SetMaxOpenConns(25)
-	DB.SetMaxIdleConns(25)
-	DB.SetConnMaxLifetime(10 * time.Minute)
+	// Configure connection pool with better resilience
+	DB.SetMaxOpenConns(10)
+	DB.SetMaxIdleConns(5)
+	DB.SetConnMaxLifetime(5 * time.Minute)
+	DB.SetConnMaxIdleTime(2 * time.Minute)
 
-	// Test the connection
-	if err := DB.Ping(); err != nil {
+	// Test the connection (with timeout to avoid long startup hangs)
+	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := DB.PingContext(pingCtx); err != nil {
 		return fmt.Errorf("failed to ping database: %v", err)
 	}
 
@@ -131,13 +138,50 @@ func CloseDatabase() {
 
 // CreateTables creates all necessary tables if they don't exist
 func CreateTables() error {
-	// First, check if language_preference exists in users table, if not add it
-	// This ensures existing databases are upgraded automatically
+	var err error
 	var exists int
-	err := DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
+
+	// Add premium_tier column to users table if missing
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'premium_tier'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing premium_tier column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing language_preference column to users table...")
 		DB.Exec("ALTER TABLE users ADD COLUMN language_preference VARCHAR(10) NULL DEFAULT 'en'")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone VARCHAR(20) NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_verified'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_verified column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_verified BOOLEAN DEFAULT FALSE")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_otp_hash'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_otp_hash column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_otp_hash VARCHAR(255) NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_otp_expires'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_otp_expires column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_otp_expires TIMESTAMP NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'password_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing password_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP NULL")
 	}
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews' AND COLUMN_NAME = 'reply'").Scan(&exists)
 	if err == nil && exists == 0 {
@@ -186,12 +230,23 @@ func CreateTables() error {
 			slug VARCHAR(255) NULL UNIQUE,
 			name VARCHAR(255) NOT NULL,
 			email VARCHAR(255) UNIQUE NOT NULL,
+			phone VARCHAR(20) NULL,
+			phone_verified BOOLEAN DEFAULT FALSE,
+			phone_otp_hash VARCHAR(255) NULL,
+			phone_otp_expires TIMESTAMP NULL,
 			password_hash VARCHAR(255) NOT NULL,
+			password_changed_at TIMESTAMP NULL,
 			role VARCHAR(10) NOT NULL DEFAULT 'user',
 			is_organization TINYINT(1) NOT NULL DEFAULT 0,
 			org_verified TINYINT(1) NOT NULL DEFAULT 0,
 			org_name VARCHAR(255) NULL,
+			org_handle VARCHAR(100) NULL,
 			org_logo_url VARCHAR(512) NULL,
+			org_cover_url VARCHAR(512) NULL,
+			org_category VARCHAR(120) NULL,
+			org_website VARCHAR(512) NULL,
+			org_location VARCHAR(255) NULL,
+			org_contact_email VARCHAR(255) NULL,
 			profile_picture VARCHAR(255) NULL,
 			background_image VARCHAR(512) NULL,
 			background_position VARCHAR(64) NULL,
@@ -208,6 +263,7 @@ func CreateTables() error {
 			school_id_image_path VARCHAR(512) NULL,
 			verification_rejection_reason TEXT NULL,
 			is_premium BOOLEAN DEFAULT FALSE,
+			premium_tier VARCHAR(20) DEFAULT 'free',
 			verified BOOLEAN DEFAULT FALSE,
 			last_login TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -365,6 +421,70 @@ func CreateTables() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		)`,
+		`CREATE TABLE IF NOT EXISTS organizations (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			creator_user_id INT NOT NULL,
+			name VARCHAR(255) NOT NULL,
+			slug VARCHAR(80) NOT NULL UNIQUE,
+			description TEXT NULL,
+			category VARCHAR(120) NOT NULL,
+			logo_url VARCHAR(512) NULL,
+			cover_url VARCHAR(512) NULL,
+			is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			deleted_at TIMESTAMP NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_org_creator (creator_user_id),
+			INDEX idx_org_deleted (is_deleted)
+		)`,
+		`CREATE TABLE IF NOT EXISTS organization_memberships (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			organization_id INT NOT NULL,
+			user_id INT NOT NULL,
+			status ENUM('pending','approved','rejected','removed','blocked','cancelled_org_deleted') NOT NULL DEFAULT 'pending',
+			requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			decided_at TIMESTAMP NULL,
+			decided_by_user_id INT NULL,
+			removed_at TIMESTAMP NULL,
+			cooldown_until TIMESTAMP NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_org_user (organization_id, user_id),
+			FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (decided_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_org_membership_status (organization_id, status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS organization_posts (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			organization_id INT NOT NULL,
+			author_user_id INT NOT NULL,
+			content TEXT NOT NULL,
+			category_tag VARCHAR(120) NOT NULL,
+			is_visible_in_org_feed BOOLEAN NOT NULL DEFAULT TRUE,
+			hidden_reason ENUM('member_removed','org_deleted','admin_action') NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+			FOREIGN KEY (author_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_org_posts_feed (organization_id, is_visible_in_org_feed, created_at),
+			INDEX idx_org_posts_author (author_user_id, created_at)
+		)`,
+		`CREATE TABLE IF NOT EXISTS organization_trade_posts (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			organization_id INT NOT NULL,
+			user_id INT NOT NULL,
+			product_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_org_product (organization_id, product_id),
+			INDEX idx_org_trade_posts_org (organization_id, created_at),
+			INDEX idx_org_trade_posts_user (user_id, created_at)
+		)`,
 		`CREATE TABLE IF NOT EXISTS comments (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			product_id INT NOT NULL,
@@ -466,6 +586,53 @@ func CreateTables() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE KEY uniq_loop_user (loop_id, user_id),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_rejection_signals (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			rejector_user_id INT NOT NULL,
+			rejected_user_id INT NOT NULL,
+			target_product_id INT NULL,
+			target_category VARCHAR(255) NULL,
+			reason TEXT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (rejector_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (rejected_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_trade_rejector (rejector_user_id, created_at),
+			INDEX idx_trade_rejected (rejected_user_id, created_at)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_cache (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			loop_id VARCHAR(255) NOT NULL,
+			loop_type VARCHAR(20) NOT NULL DEFAULT 'graph',
+			loop_length INT NOT NULL DEFAULT 0,
+			score INT NOT NULL DEFAULT 0,
+			payload_json LONGTEXT NOT NULL,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_trade_loop_cache_user_loop (user_id, loop_id),
+			INDEX idx_trade_loop_cache_expiry (user_id, expires_at),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS loop_quota_usage (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			period VARCHAR(7) NOT NULL COMMENT 'YYYY-MM',
+			used INT NOT NULL DEFAULT 0,
+			` + "`limit`" + ` INT NOT NULL DEFAULT 5,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			UNIQUE KEY uniq_loop_quota_usage_user_period (user_id, period),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_loop_cancellations (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			loop_id VARCHAR(255) NOT NULL UNIQUE,
+			cancelled_by INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS delivery_items (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -621,13 +788,33 @@ func CreateTables() error {
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			user_id INT NOT NULL,
 			amount DECIMAL(10,2) NOT NULL,
-			source_type ENUM('trade_escrow', 'premium_upgrade', 'delivery_fee', 'product_boost') NOT NULL,
+			source_type ENUM('trade_escrow', 'premium_upgrade', 'delivery_fee', 'product_boost', 'riders_remittance', 'advertisers_revenue', 'google_ads') NOT NULL,
 			source_id INT NOT NULL,
 			external_id VARCHAR(255) NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 			INDEX idx_earnings_source (source_type, source_id),
 			INDEX idx_earnings_created (created_at)
+		)`,
+		`CREATE TABLE IF NOT EXISTS profile_views (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			target_user_id INT NOT NULL,
+			viewer_user_id INT NULL,
+			viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (viewer_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_target_user (target_user_id),
+			INDEX idx_viewed_at (viewed_at)
+		)`,
+		`CREATE TABLE IF NOT EXISTS product_views (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			product_id INT NOT NULL,
+			viewer_user_id INT NULL,
+			viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (viewer_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_product_id (product_id),
+			INDEX idx_viewed_at (viewed_at)
 		)`,
 	}
 
@@ -690,7 +877,13 @@ func ensureUserColumns() {
 		{"is_organization", "TINYINT(1) NOT NULL DEFAULT 0"},
 		{"org_verified", "TINYINT(1) NOT NULL DEFAULT 0"},
 		{"org_name", "VARCHAR(255) NULL"},
+		{"org_handle", "VARCHAR(100) NULL"},
 		{"org_logo_url", "VARCHAR(512) NULL"},
+		{"org_cover_url", "VARCHAR(512) NULL"},
+		{"org_category", "VARCHAR(120) NULL"},
+		{"org_website", "VARCHAR(512) NULL"},
+		{"org_location", "VARCHAR(255) NULL"},
+		{"org_contact_email", "VARCHAR(255) NULL"},
 		{"profile_picture", "VARCHAR(255) NULL"},
 		{"background_image", "VARCHAR(512) NULL"},
 		{"background_position", "VARCHAR(64) NULL"},
@@ -708,9 +901,18 @@ func ensureUserColumns() {
 		{"verification_rejection_reason", "TEXT NULL"},
 		{"school_email_otp_hash", "VARCHAR(255) NULL"},
 		{"school_email_otp_expires", "TIMESTAMP NULL"},
+		{"phone", "VARCHAR(20) NULL"},
+		{"phone_verified", "BOOLEAN DEFAULT FALSE"},
+		{"phone_otp_hash", "VARCHAR(255) NULL"},
+		{"phone_otp_expires", "TIMESTAMP NULL"},
+		{"password_changed_at", "TIMESTAMP NULL"},
 		{"school_id_document_type", "VARCHAR(20) NULL"},
 		{"is_premium", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"last_login", "TIMESTAMP NULL"},
+		{"email_otp_hash", "VARCHAR(255) NULL"},
+		{"email_otp_expires", "TIMESTAMP NULL"},
+		{"reset_password_otp_hash", "VARCHAR(255) NULL"},
+		{"reset_password_otp_expires", "TIMESTAMP NULL"},
 		{"password_reset_otp_hash", "VARCHAR(255) NULL"},
 		{"password_reset_otp_expires", "TIMESTAMP NULL"},
 	}
@@ -772,6 +974,7 @@ func ensureProductColumns() {
 		{"estimated_value_min", "DECIMAL(10,2) NULL"},
 		{"estimated_value_max", "DECIMAL(10,2) NULL"},
 		{"value", "DECIMAL(10,2) NULL"},
+		{"price_reasoning", "TEXT NULL"},
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 		{"boosted_at", "TIMESTAMP NULL"},
 	}
@@ -859,6 +1062,9 @@ func ensureTradeColumns() {
 		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
 		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
 		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
+		{"xendit_invoice_id", "VARCHAR(255) NULL"},
+		{"xendit_external_id", "VARCHAR(255) NULL"},
+		{"delivery_instructions", "TEXT NULL"},
 		{"proof_of_delivery", "LONGTEXT NULL"},
 		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
 		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
@@ -866,6 +1072,11 @@ func ensureTradeColumns() {
 		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
 		{"option_change_requested", "VARCHAR(20) NULL DEFAULT NULL"},
 		{"net_amount", "DECIMAL(10,2) DEFAULT 0.00"},
+		{"meetup_time", "VARCHAR(50) NULL"},
+		{"buyer_meetup_location", "VARCHAR(500) NULL"},
+		{"buyer_meetup_time", "VARCHAR(50) NULL"},
+		{"seller_meetup_location", "VARCHAR(500) NULL"},
+		{"seller_meetup_time", "VARCHAR(50) NULL"},
 	}
 
 	for _, col := range columns {
@@ -895,18 +1106,86 @@ func ensureTradeColumns() {
 		}
 	}
 
-	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired
+	// Ensure trades status ENUM includes auto_completed, awaiting_confirmation, expired, pending_multiway, multiway_active
 	var tradeStatusType string
 	if err := DB.QueryRow(`
 		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
 		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME = 'status'
 	`).Scan(&tradeStatusType); err == nil {
-		if !contains(tradeStatusType, "'expired'") {
-			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired') DEFAULT 'pending'`); err != nil {
+		if !contains(tradeStatusType, "'pending_multiway'") || !contains(tradeStatusType, "'multiway_active'") {
+			if _, err := DB.Exec(`ALTER TABLE trades MODIFY COLUMN status ENUM('pending','accepted','declined','countered','active','awaiting_confirmation','completed','cancelled','auto_completed','expired','pending_multiway','multiway_active') DEFAULT 'pending'`); err != nil {
 				log.Printf("Warning: failed to update trades status enum: %v", err)
 			} else {
-				log.Println("Updated trades status enum to include 'expired'")
+				log.Println("Updated trades status enum to include 'pending_multiway' and 'multiway_active'")
 			}
+		}
+	}
+
+	// Ensure multiway_trades table exists for tracking multiway chain participants
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_trades (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		original_trade_id INT NOT NULL,
+		initiator_user_id INT NOT NULL COMMENT 'User 2 who converted to multiway',
+		user1_id INT NOT NULL COMMENT 'Original buyer (User 1)',
+		user2_id INT NOT NULL COMMENT 'User who converted to multiway (User 2)',
+		user3_id INT NULL COMMENT 'Matched third party (User 3)',
+		user3_trade_id INT NULL COMMENT 'Trade ID linking User 3',
+		status ENUM('searching','pending_user3','pending_initiator_upgrade','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching',
+		expires_at TIMESTAMP NULL COMMENT 'Expiry for pending_initiator_upgrade records (7 days)',
+		cancelled_at TIMESTAMP NULL,
+		cancelled_by INT NULL,
+		trade_option VARCHAR(20) NULL DEFAULT 'meetup',
+		meetup_location VARCHAR(500) NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (original_trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+		FOREIGN KEY (initiator_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (user3_id) REFERENCES users(id) ON DELETE SET NULL,
+		FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL,
+		INDEX idx_multiway_chain (chain_id),
+		INDEX idx_multiway_status (status),
+		INDEX idx_multiway_user3 (user3_id),
+		INDEX idx_multiway_expires (expires_at)
+	)`)
+
+	// Ensure multiway_trades status enum includes pending_initiator_upgrade on existing databases.
+	var multiwayStatusType string
+	if err := DB.QueryRow(`
+		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'status'
+	`).Scan(&multiwayStatusType); err == nil {
+		if !contains(multiwayStatusType, "'pending_initiator_upgrade'") {
+			if _, err := DB.Exec(`
+				ALTER TABLE multiway_trades
+				MODIFY COLUMN status ENUM('searching','pending_user3','pending_initiator_upgrade','user3_accepted','user3_declined','active','completed','cancelled','fully_declined') DEFAULT 'searching'
+			`); err != nil {
+				log.Printf("Warning: failed to update multiway_trades status enum: %v", err)
+			} else {
+				log.Println("Updated multiway_trades status enum to include 'pending_initiator_upgrade'")
+			}
+		}
+	}
+
+	// Ensure expires_at column exists on multiway_trades for 7-day TTL
+	var expiresExists int
+	if err := DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'expires_at'
+	`).Scan(&expiresExists); err == nil && expiresExists == 0 {
+		if _, err := DB.Exec(`
+			ALTER TABLE multiway_trades
+			ADD COLUMN expires_at TIMESTAMP NULL COMMENT 'Expiry for pending_initiator_upgrade records (7 days)',
+			ADD COLUMN cancelled_at TIMESTAMP NULL,
+			ADD COLUMN cancelled_by INT NULL,
+			ADD FOREIGN KEY fk_cancelled_by (cancelled_by) REFERENCES users(id) ON DELETE SET NULL,
+			ADD INDEX idx_multiway_expires (expires_at)
+		`); err != nil {
+			log.Printf("Warning: failed to add expires_at/cancelled columns to multiway_trades: %v", err)
+		} else {
+			log.Println("Added expires_at and cancellation columns to multiway_trades")
 		}
 	}
 }
@@ -1039,6 +1318,7 @@ func ensureIndexes() {
 		{"notifications", "idx_notifications_user", "user_id"},
 		{"notifications", "idx_notifications_read", "is_read"},
 		{"notifications", "idx_notifications_type", "type"},
+		{"users", "idx_users_org_handle", "org_handle"},
 		{"comments", "idx_comments_product", "product_id"},
 		{"comments", "idx_comments_user", "user_id"},
 		{"wishlists", "idx_wishlists_user", "user_id"},

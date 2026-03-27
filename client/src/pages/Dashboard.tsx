@@ -44,12 +44,18 @@ import {
   InputGroup,
   InputLeftElement,
   InputRightElement,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  MenuDivider,
   ScaleFade,
   Fade,
   Tooltip,
   useColorModeValue,
   useBreakpointValue,
   Checkbox,
+  Skeleton,
 } from '@chakra-ui/react'
 import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon, SearchIcon, ViewIcon, StarIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
@@ -58,8 +64,8 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
-import { FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
-import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList } from 'react-icons/fi'
+import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
+import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
@@ -73,6 +79,8 @@ import { SuggestedTradesModal } from '../components/SuggestedTradesModal'
 import TradeModal from '../components/TradeModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 import MultiWayTradeUI from '../components/MultiWayTradeUI'
+import MultiWayTradeModal from '../components/MultiWayTradeModal'
+import { fetchMultiWayTrade, fetchLoopQuota } from '../services/tradeService'
 import {
   useDashboardProducts,
   useDashboardOrders,
@@ -115,10 +123,11 @@ const Dashboard: React.FC = () => {
   const { invalidateDashboard, invalidateProducts, invalidateOffers } = useInvalidateDashboard()
 
   // Derived state from cached data
-  const tradedItems = useMemo(() =>
-    actualUserProducts.filter(p => p.status === 'traded' || p.status === 'sold'),
+  const inventoryProducts = useMemo(
+    () => actualUserProducts.filter(p => p.status !== 'traded' && p.status !== 'sold'),
     [actualUserProducts]
   )
+  const hasListedProducts = actualUserProducts.length > 0
 
   // Buyout offers - filter from receivedOffers where items are empty and cash is present
   const buyoutOffers = useMemo(() => {
@@ -136,6 +145,7 @@ const Dashboard: React.FC = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [boosting, setBoosting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [tradedCurrentPage, setTradedCurrentPage] = useState(1)
   const itemsPerPage = 12
@@ -147,7 +157,7 @@ const Dashboard: React.FC = () => {
   const toast = useToast()
 
   // Product filters
-  const [productFilter, setProductFilter] = useState<'all' | 'available' | 'sold' | 'traded' | 'locked'>('all')
+  const [productFilter, setProductFilter] = useState<'all' | 'available' | 'locked'>('all')
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all')
   const [productSearch, setProductSearch] = useState('')
   const [productSort, setProductSort] = useState<'newest' | 'oldest'>('newest')
@@ -157,6 +167,7 @@ const Dashboard: React.FC = () => {
   // Unified search - searches across all content
   const [unifiedSearch, setUnifiedSearch] = useState('')
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
+  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false)
   // notifications state (handled on /notifications page)
   // dev helper: when true, show multiple pages for testing even if there are no notifications
   const DEV_SHOW_PAGES_ALWAYS = true
@@ -172,7 +183,7 @@ const Dashboard: React.FC = () => {
   const ongoingLoading = false
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
-  const [offersSubTab, setOffersSubTab] = useState(0) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing
+  const [offersSubTab, setOffersSubTab] = useState(2) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing, 4: Archive
   const [offersPage, setOffersPage] = useState(1)
   const [offersSearch, setOffersSearch] = useState('')
   const [offersStatusFilter, setOffersStatusFilter] = useState<string>('all')
@@ -203,6 +214,10 @@ const Dashboard: React.FC = () => {
   const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
+  const [showPremiumModal, setShowPremiumModal] = useState(false)
+  const [multiWayManagerOpen, setMultiWayManagerOpen] = useState(false)
+  const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
+  const [loopQuota, setLoopQuota] = useState<null | { unlimited: boolean; period: string; used: number; limit: number }>(null)
 
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
@@ -212,6 +227,7 @@ const Dashboard: React.FC = () => {
   const defaultOffersViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
   const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
+  const [multiWayChainFilter, setMultiWayChainFilter] = useState<'all' | '3' | '4plus'>('all')
   const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
 
   // Color mode values
@@ -234,10 +250,34 @@ const Dashboard: React.FC = () => {
   }, [defaultProductViewMode])
 
   useEffect(() => {
+    const handleScroll = () => {
+      setIsHeaderScrolled(window.scrollY > 6)
+    }
+
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  useEffect(() => {
     if (user && user?.id) {
       prefetchDashboardData()
     }
   }, [user?.id, prefetchDashboardData])
+
+  useEffect(() => {
+    if (!loading && isAuthenticated && user && !user.is_premium) {
+      const hasShown = sessionStorage.getItem('clovia_premium_up_shown')
+      if (!hasShown) {
+        // Delay slightly for better UX after dashboard load
+        const timer = setTimeout(() => {
+          setShowPremiumModal(true)
+          sessionStorage.setItem('clovia_premium_up_shown', 'true')
+        }, 3000)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [isAuthenticated, user, loading])
 
   // Check if user is authenticated, redirect to login if not
   // Only redirect if not loading (to prevent race conditions after login)
@@ -250,7 +290,7 @@ const Dashboard: React.FC = () => {
 
   // Fetch multi-way trades when tab is selected
   useEffect(() => {
-    if (user && activeTab === 2 && user.is_premium) {
+    if (user && activeTab === 2) {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
@@ -259,47 +299,105 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const tradeIdParam = searchParams.get('trade_id')
     const paymentStatus = searchParams.get('payment')
+    const xenditExternalIDParam = searchParams.get('xendit_external_id')
     if (!tradeIdParam) return
 
     const tradeId = parseInt(tradeIdParam, 10)
     if (isNaN(tradeId)) return
 
-    if (paymentStatus === 'failed') {
-      toast({
-        title: 'Payment Failed',
-        description: 'Your payment was not completed. Please try again.',
-        status: 'error',
-        duration: 5000,
-      })
-    } else {
-      toast({
-        title: 'Payment Successful! 🎉',
-        description: 'Your payment has been received. View trade details below.',
-        status: 'success',
-        duration: 5000,
-      })
-    }
+    const storedExternalID = sessionStorage.getItem(`xendit_external_id_trade_${tradeId}`)
+    const xenditExternalID = xenditExternalIDParam || storedExternalID || undefined
 
-    // Switch to the Offers tab (tab index 1)
-    setActiveTab(1)
+    ;(async () => {
+      const toastKey = `xendit_return_toast_${tradeId}`
+      if (paymentStatus === 'failed') {
+        if (!sessionStorage.getItem(toastKey)) {
+          sessionStorage.setItem(toastKey, '1')
+          toast({
+            title: 'Payment Failed',
+            description: 'Your payment was not completed. Please try again.',
+            status: 'error',
+            duration: 5000,
+          })
+        }
+      } else {
+        if (!sessionStorage.getItem(toastKey)) {
+          sessionStorage.setItem(toastKey, '1')
+          toast({
+            title: 'Payment Successful!',
+            description: 'Syncing payment status... this can take a few seconds.',
+            status: 'success',
+            duration: 5000,
+          })
+        }
 
-    // Try to find the trade and open it
-    const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
-    const matchedTrade = allTrades.find(t => t.id === tradeId)
-    if (matchedTrade) {
-      setSelectedTrade(matchedTrade)
-      setViewTradeModalOpen(true)
-    }
+        // Fallback sync for localhost/dev (webhooks can’t reach localhost)
+        // Payment status can take a moment to finalize, so retry a few times.
+        try {
+          for (let i = 0; i < 5; i++) {
+            let r
+            try {
+              r = await api.post(`/api/payments/trade/${tradeId}/sync`, {
+                external_id: xenditExternalID,
+              })
+            } catch (err: any) {
+              if (err?.response?.status === 405) {
+                r = await api.get(`/api/payments/trade/${tradeId}/sync`, {
+                  params: { external_id: xenditExternalID },
+                })
+              } else {
+                throw err
+              }
+            }
+            if (r.data?.data?.paid) break
+            await new Promise(res => setTimeout(res, 1500))
+          }
+        } catch (_) {
+          // Best-effort; we’ll still fetch the trade below
+        }
+      }
 
-    // Clean up URL params
-    navigate('/dashboard', { replace: true })
+      // Handle tab parameter
+      const tabParam = searchParams.get('tab')
+      if (tabParam) {
+        const tabIndex = parseInt(tabParam, 10)
+        if (!isNaN(tabIndex)) {
+          setActiveTab(tabIndex)
+        }
+      }
+
+      // Switch to the Offers tab (tab index 1)
+      setActiveTab(1)
+
+      // Fetch the trade fresh (so payment_confirmed updates immediately)
+      try {
+        const res = await api.get(`/api/trades/${tradeId}`)
+        const tradeData = res.data?.data
+        if (tradeData) {
+          setSelectedTrade(tradeData)
+          setViewTradeModalOpen(true)
+        }
+      } catch (_) {
+        // Fallback to local list
+        const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
+        const matchedTrade = allTrades.find(t => t.id === tradeId)
+        if (matchedTrade) {
+          setSelectedTrade(matchedTrade)
+          setViewTradeModalOpen(true)
+        }
+      }
+
+      // Clean up URL params
+      navigate('/dashboard', { replace: true })
+    })()
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, ongoingTradesData, sentOffersData, receivedOffersData])
 
   // Computed dashboard stats - optimized to minimize recalculations
   const dashboardStats = useMemo(() => {
-    const totalProducts = actualUserProducts.length
-    const activeProducts = actualUserProducts.length // All actualUserProducts are already filtered to available
+    const totalProducts = inventoryProducts.length
+    const activeProducts = inventoryProducts.filter(p => p.status === 'available').length
     const activeTrades = (ongoingTradesData || []).length
     const newOffers = (incoming || []).length // All incoming trades are already filtered to pending
     const completedTrades = (tradeHistory || []).length
@@ -310,13 +408,54 @@ const Dashboard: React.FC = () => {
       newOffers,
       completedTrades
     }
-  }, [actualUserProducts, incoming, ongoingTradesData, tradeHistory])
+  }, [inventoryProducts, incoming, ongoingTradesData, tradeHistory])
 
   // Get product title helper (needs to be defined before use)
   const getProductTitle = (productId: number, fallbackTitle?: string): string => {
     if (fallbackTitle) return fallbackTitle
     return productTitles.get(productId) || 'Unnamed Item'
   }
+
+  const getTradeReceivedTitle = useCallback((trade: Trade): string => {
+    if (trade.items && trade.items.length > 0) {
+      return getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)
+    }
+    if (trade.offered_cash_amount && trade.offered_cash_amount > 0) {
+      return `Cash ${formatPHP(trade.offered_cash_amount)}`
+    }
+    return 'N/A'
+  }, [getProductTitle])
+
+  const getTradePartnerInfo = useCallback((trade: Trade) => {
+    const isYouBuyer = trade.buyer_id === user?.id
+    return {
+      name: isYouBuyer ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous'),
+      role: isYouBuyer ? 'Seller' : 'Buyer',
+      direction: isYouBuyer ? 'You initiated this trade' : 'They initiated this trade',
+    }
+  }, [user?.id])
+
+  const getTradeWhere = useCallback((trade: Trade): string => {
+    if (trade.trade_option === 'delivery') {
+      return trade.delivery_address || 'Delivery location not set'
+    }
+    if (trade.trade_option === 'meetup') {
+      return trade.meetup_location || 'Meetup location not set'
+    }
+    return trade.meetup_location || trade.delivery_address || 'Location not set'
+  }, [])
+
+  const getTradeWhen = useCallback((trade: Trade) => {
+    const source = trade.completed_at || trade.updated_at || trade.created_at
+    const dt = new Date(source)
+    if (Number.isNaN(dt.getTime())) {
+      return { date: 'Date unavailable', time: '' }
+    }
+    return {
+      date: dt.toLocaleDateString(),
+      time: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }
+  }, [])
 
   // Unified search filter - applies to all content types
   const applyUnifiedSearch = useCallback((items: any[], searchTerm: string, type: 'product' | 'trade') => {
@@ -349,14 +488,14 @@ const Dashboard: React.FC = () => {
 
   // Filtered products - optimized with better memoization
   const filteredProducts = useMemo(() => {
-    let filtered = actualUserProducts
+    let filtered = inventoryProducts
 
     // Status filter - optimize by avoiding unnecessary filtering
     if (productFilter === 'all') {
       // Hide locked products by default (they are in active trades)
-      filtered = actualUserProducts.filter(p => p.status !== 'locked')
+      filtered = inventoryProducts.filter(p => p.status !== 'locked')
     } else {
-      filtered = actualUserProducts.filter(p => p.status === productFilter)
+      filtered = inventoryProducts.filter(p => p.status === productFilter)
     }
 
     // Category filter
@@ -371,7 +510,7 @@ const Dashboard: React.FC = () => {
     }
 
     return filtered
-  }, [actualUserProducts, productFilter, productCategoryFilter, unifiedSearch, productSearch, applyUnifiedSearch])
+  }, [inventoryProducts, productFilter, productCategoryFilter, unifiedSearch, productSearch, applyUnifiedSearch])
 
   // Debounced cache invalidation for notification counts
   const invalidateCountsDebounced = useCallback(() => {
@@ -521,6 +660,60 @@ const Dashboard: React.FC = () => {
     return undefined
   }
 
+  const getMultiWayTradeSummary = useCallback((trade: any) => {
+    const participants = Array.isArray(trade?.participants) ? trade.participants : []
+    const edges = Array.isArray(trade?.edges) ? trade.edges : []
+    const summaryText = typeof trade?.summary === 'string' ? trade.summary : ''
+    const currentUserID = Number(user?.id || 0)
+
+    const giveGetMatch = summaryText.match(/You give\s+(.*?),\s*you get\s+(.*?)(?:\.|$)/i)
+    const summaryGive = giveGetMatch?.[1]?.trim()
+    const summaryGet = giveGetMatch?.[2]?.trim()
+    const summaryChain = summaryText.match(/Chain:\s*(.*)$/i)?.[1]?.trim()
+
+    const participantIndex = participants.findIndex((p: any) => Number(p?.id) === currentUserID)
+    const yourParticipant = participantIndex >= 0 ? participants[participantIndex] : null
+    const nextParticipant = participantIndex >= 0 && participants.length > 0
+      ? participants[(participantIndex + 1) % participants.length]
+      : null
+
+    const yourIncomingEdge = edges.find((e: any) => Number(e?.from_user) === currentUserID)
+    const yourOutgoingEdge = edges.find((e: any) => Number(e?.to_user) === currentUserID)
+
+    const yourGive =
+      summaryGive ||
+      yourOutgoingEdge?.product_title ||
+      yourParticipant?.product_title ||
+      'Your listed item'
+
+    const yourGet =
+      summaryGet ||
+      yourIncomingEdge?.product_title ||
+      nextParticipant?.product_title ||
+      'Matched item from the loop'
+
+    const chainLabel = summaryChain || (
+      participants.length > 1
+        ? `${participants.map((p: any) => p?.user_name || `User ${p?.id}`).join(' -> ')} -> ${participants[0]?.user_name || `User ${participants[0]?.id}`}`
+        : 'Waiting for participant chain details'
+    )
+
+    return { yourGive, yourGet, chainLabel }
+  }, [user?.id])
+
+  const filteredMultiWayTrades = useMemo(() => {
+    const getChainSize = (trade: any) => {
+      const participants = Array.isArray(trade?.participants) ? trade.participants.length : 0
+      if (participants > 0) return participants
+      const edges = Array.isArray(trade?.edges) ? trade.edges.length : 0
+      return edges
+    }
+
+    if (multiWayChainFilter === 'all') return multiWayTrades
+    if (multiWayChainFilter === '3') return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 3)
+    return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) >= 4)
+  }, [multiWayTrades, multiWayChainFilter])
+
   const fetchMultiWayTrades = async () => {
     try {
       setMultiWayTradesLoading(true)
@@ -528,9 +721,19 @@ const Dashboard: React.FC = () => {
         params: { user_id: user?.id }
       })
       setMultiWayTrades(response.data?.data || [])
-    } catch (error) {
+
+      // Free tier monthly quota indicator (used for upsells + disabling where needed).
+      try {
+        const quota = await fetchLoopQuota()
+        setLoopQuota(quota)
+      } catch (quotaErr) {
+        // Non-fatal: multi-way loops can still render without quota info.
+        console.error('Failed to fetch loop quota:', quotaErr)
+      }
+    } catch (error: any) {
       console.error('Failed to fetch multi-way trades:', error)
-      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: 'Failed to load multi-way trades', status: 'error' })
+      const msg = error?.response?.data?.error || 'Failed to load multi-way trades'
+      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: msg, status: 'error' })
       setMultiWayTrades([])
     } finally {
       setMultiWayTradesLoading(false)
@@ -540,9 +743,27 @@ const Dashboard: React.FC = () => {
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
       setMultiWayTradeJoining(true)
-      await api.post(`/api/trades/loops/${trade.id}/accept`, {
-        user_id: user?.id,
+      const tradeIdString = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+      console.log('[Dashboard] Hop In clicked', {
+        tradeIdString,
+        tradeChainId: trade?.chain_id,
+        tradeLoopId: trade?.loop_id,
+        tradeId: trade?.id,
+        userId: user?.id,
       })
+      
+      if (!tradeIdString) {
+        throw new Error('Invalid loop ID. Please refresh and try again.')
+      }
+
+      if (tradeIdString.startsWith('chain_')) {
+        await api.post(`/api/trades/multiway/${tradeIdString}/accept`)
+      } else {
+        await api.post(`/api/trades/loops/${tradeIdString}/accept`, {
+          user_id: user?.id,
+        })
+      }
+      
       toast({
         id: 'success-joined-trade-loop',
         title: 'Success',
@@ -557,7 +778,7 @@ const Dashboard: React.FC = () => {
       toast({
         id: 'error-join-trade',
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to join trade',
+        description: error.response?.data?.error || error.response?.data?.message || 'Failed to join trade',
         status: 'error',
       })
     } finally {
@@ -565,11 +786,32 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleDeclineMultiWayTrade = async (trade: any) => {
+  const handleDeclineMultiWayTrade = async (trade: any, searchAgain: boolean = false) => {
     try {
-      await api.post(`/api/trades/loops/${trade.id}/decline`, {
-        reason: 'Not interested'
+      const tradeIdString = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+      console.log('[Dashboard] Decline clicked', {
+        tradeIdString,
+        tradeChainId: trade?.chain_id,
+        tradeLoopId: trade?.loop_id,
+        tradeId: trade?.id,
+        searchAgain,
+        userId: user?.id,
       })
+
+      if (!tradeIdString) {
+        throw new Error('Invalid loop ID. Please refresh and try again.')
+      }
+      
+      if (tradeIdString.startsWith('chain_')) {
+        await api.post(`/api/trades/multiway/${tradeIdString}/decline`, {
+          search_again: searchAgain
+        })
+      } else {
+        await api.post(`/api/trades/loops/${tradeIdString}/decline`, {
+          reason: 'Not interested'
+        })
+      }
+      
       toast({
         id: 'declined',
         title: 'Declined',
@@ -584,7 +826,7 @@ const Dashboard: React.FC = () => {
       toast({
         id: 'error-decline-trade',
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to decline trade',
+        description: error.response?.data?.error || error.response?.data?.message || 'Failed to decline trade',
         status: 'error',
       })
     }
@@ -746,21 +988,59 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleConvertToMultiWay = () => {
+  const handleConvertToMultiWay = async () => {
     if (!tradeToDecline) {
       setDeclineModalOpen(false)
       return
     }
 
+    setIsProcessing(true)
     setDeclineModalOpen(false)
-    toast({
-      title: 'Searching for multi-way trade',
-      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
-      status: 'info',
-      duration: 5000
-    })
 
-    navigate('/premium')
+    try {
+      await updateTrade(tradeToDecline.id, {
+        action: 'convert_to_multiway'
+      })
+
+      setTradeToDecline(null)
+      setDeclineFeedback('')
+
+      toast({
+        id: 'success-convert-multiway',
+        title: 'Converting to Multi-Way',
+        description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
+        status: 'success',
+        duration: 5000
+      })
+
+      // Refresh trades after conversion
+      setTimeout(() => {
+        setIsProcessing(false)
+        // Optionally refetch trades or let real-time update handle it
+      }, 1000)
+    } catch (error: any) {
+      setIsProcessing(false)
+
+      const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
+
+      // Soft upsell for non-premium users creating loops.
+      if (errorMsg.includes('premium') || error?.response?.status === 403) {
+        toast({
+          id: 'error-convert-multiway-premium',
+          title: 'Pro members can initiate',
+          description: "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
+          status: 'warning',
+          duration: 5000
+        })
+      } else {
+        toast({
+          id: 'error-convert-multiway',
+          title: 'Error',
+          description: errorMsg,
+          status: 'error'
+        })
+      }
+    }
   }
 
   const historyStatuses = ['declined', 'cancelled', 'completed', 'auto_completed', 'expired']
@@ -1065,6 +1345,7 @@ const Dashboard: React.FC = () => {
 
   const handleBoostProductClick = async (product: Product) => {
     try {
+      setBoosting(true)
       showPopup({
         type: 'loading',
         title: 'Boosting Listing...',
@@ -1073,7 +1354,7 @@ const Dashboard: React.FC = () => {
         confirmColorScheme: 'blue'
       })
 
-      const response = await api.post(`/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/${product.id}/boost`)
 
       if (response.data?.success) {
         showPopup({
@@ -2367,9 +2648,39 @@ const Dashboard: React.FC = () => {
 
   if (loading || initialLoading) {
     return (
-      <Center h="50vh">
-        <Spinner size="xl" color="brand.500" />
-      </Center>
+      <Box bg="#FFFDF1" minH="100vh" w="100%">
+        <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 3, md: 6 }}>
+          <VStack spacing={{ base: 3, md: 6 }} align="stretch">
+            <Box>
+              <Skeleton height="28px" width="220px" mb={2} />
+              <Skeleton height="16px" width="280px" />
+            </Box>
+
+            <HStack spacing={3}>
+              <Skeleton height="42px" flex={1} borderRadius="md" />
+              <Skeleton height="42px" width="96px" borderRadius="md" />
+            </HStack>
+
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
+              {[1, 2, 3, 4].map((n) => (
+                <Card key={n} bg={cardBg} border="1px" borderColor={borderColor} borderRadius="xl">
+                  <CardBody>
+                    <Skeleton height="18px" width="70%" mb={3} />
+                    <Skeleton height="24px" width="50%" mb={2} />
+                    <Skeleton height="14px" width="60%" />
+                  </CardBody>
+                </Card>
+              ))}
+            </SimpleGrid>
+
+            <SimpleGrid columns={{ base: 1, sm: 2, xl: 3 }} spacing={{ base: 3, md: 4 }}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <ProductCardSkeleton key={n} />
+              ))}
+            </SimpleGrid>
+          </VStack>
+        </Container>
+      </Box>
     )
   }
 
@@ -2378,18 +2689,104 @@ const Dashboard: React.FC = () => {
     return null
   }
 
+  const dashboardSubtitleByTab: Record<number, string> = {
+    0: 'Manage your listings and keep them trade-ready.',
+    1: 'Review your offers and respond quickly to pending actions.',
+    2: 'Track multi-way matches and loop opportunities for your listings.',
+    3: 'Review your completed and archived trade history.',
+  }
+  const activeSubtitle = dashboardSubtitleByTab[activeTab] || 'Manage your products, trades, and offers.'
+
+  const handleMobileToggleView = () => {
+    if (activeTab === 0) {
+      setProductViewMode(m => m === 'grid' ? 'list' : 'grid')
+      return
+    }
+    if (activeTab === 1) {
+      setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')
+      return
+    }
+    if (activeTab === 2) {
+      setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')
+      return
+    }
+    setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')
+  }
+
+  const handleMobileCycleFilter = () => {
+    if (activeTab === 0) {
+      const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
+      const currentIndex = filters.indexOf(productFilter)
+      setProductFilter(filters[(currentIndex + 1) % filters.length])
+      setCurrentPage(1)
+      return
+    }
+    if (activeTab === 1) {
+      const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+      const currentIndex = statuses.indexOf(offersStatusFilter)
+      setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+      setOffersPage(1)
+      return
+    }
+    if (activeTab === 2) {
+      const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
+      const currentIndex = filters.indexOf(multiWayChainFilter)
+      setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+      return
+    }
+  }
+
+  const handleMobileSetSort = (mode: 'newest' | 'oldest') => {
+    if (activeTab === 0) {
+      setProductSort(mode)
+      setCurrentPage(1)
+      return
+    }
+    if (activeTab === 1 || activeTab === 2) {
+      setOffersSort(mode)
+      return
+    }
+    setTradeHistorySort(mode)
+    setTradeHistoryPage(1)
+  }
+
+  const activeViewMode = activeTab === 0
+    ? productViewMode
+    : activeTab === 1
+      ? offersViewMode
+      : activeTab === 2
+        ? multiWayTradesViewMode
+        : tradeHistoryViewMode
+
+  const activeSortMode = activeTab === 0
+    ? productSort
+    : activeTab === 1 || activeTab === 2
+      ? offersSort
+      : tradeHistorySort
+
   return (
     <Box bg="#FFFDF1" minH="100vh" w="100%">
       <Container maxW="container.xl" py={{ base: 3, md: 8 }} px={{ base: 3, md: 6 }}>
         <VStack spacing={{ base: 3, md: 6 }} align="stretch">
           {/* Sticky header: search bar + view toggle stay visible when scrolling long product lists */}
-          <Box position="sticky" top={0} zIndex={20} bg="#FFFDF1" py={2} mt={-2} mb={-2}>
+          <Box
+            position="sticky"
+            top={0}
+            zIndex={20}
+            bg="#FFFDF1"
+            py={2}
+            mt={-2}
+            mb={-2}
+            boxShadow={isHeaderScrolled ? 'sm' : 'none'}
+            transition="box-shadow 0.2s ease"
+          >
             <VStack spacing={{ base: 2, md: 4 }} align="stretch">
               <Flex
                 align="center"
                 justify="space-between"
                 gap={{ base: 2, md: 4 }}
-                flexWrap={{ base: 'wrap', md: 'nowrap' }}
+                flexWrap="nowrap"
+                display={{ base: 'flex', md: 'flex' }}
               >
                 {/* Left: Welcome Message */}
                 <Box minW="fit-content" display={{ base: 'none', md: 'block' }}>
@@ -2397,14 +2794,14 @@ const Dashboard: React.FC = () => {
                     Welcome, <Box as="span" textTransform="capitalize">{user?.name}</Box>!
                   </Heading>
                   <Text color="gray.600" fontSize="sm">
-                    Manage your products, trades, and offers
+                    {activeSubtitle}
                   </Text>
                 </Box>
 
                 {/* Center: Unified Search Bar */}
                 <InputGroup
-                  flex={{ base: '1', md: '1 1 350px' }}
-                  maxW={{ base: '100%', md: '800px' }}
+                  flex={{ base: '1 1 auto', sm: '0 0 64%', md: '1 1 350px' }}
+                  maxW={{ base: '65%', sm: '70%', md: '800px' }}
                   position="relative"
                 >
                   <InputLeftElement pointerEvents="none">
@@ -2431,7 +2828,7 @@ const Dashboard: React.FC = () => {
                       borderColor: 'brand.400',
                       boxShadow: '0 0 0 1px var(--chakra-colors-brand-400)'
                     }}
-                    size="md"
+                    size={{ base: 'sm', md: 'md' }}
                   />
                   {unifiedSearch && (
                     <InputRightElement>
@@ -2595,10 +2992,38 @@ const Dashboard: React.FC = () => {
              </HStack>
              */}
 
-                {/* Filter/Sort Controls - All Screens */}
-                <HStack spacing={1} flexShrink={0}>
+                {/* Filter/Sort Controls - Desktop */}
+                <HStack
+                  spacing={{ base: 2, md: 1 }}
+                  flexShrink={0}
+                  display={{ base: 'none', md: 'flex' }}
+                  sx={{
+                    '& .chakra-icon-button': {
+                      minW: { base: '36px', md: '32px' },
+                      h: { base: '36px', md: '32px' },
+                      fontSize: { base: '22px', md: '16px' },
+                      bg: { base: 'teal.50', md: 'transparent' },
+                      borderWidth: { base: '1px', md: '0px' },
+                      borderColor: { base: 'teal.200', md: 'transparent' },
+                      color: { base: 'teal.700', md: 'inherit' },
+                      _hover: { bg: { base: 'teal.100', md: 'transparent' } },
+                    },
+                  }}
+                >
                   {activeTab === 0 && (
                     <>
+                      <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={productViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={productViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
                       <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={productViewMode === 'grid' ? 'List view' : 'Grid view'}
@@ -2606,22 +3031,58 @@ const Dashboard: React.FC = () => {
                           size="sm"
                           variant={productViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
                       </Tooltip>
-                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Status' : productFilter}`} hasArrow>
+
+                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          isDisabled={!hasListedProducts}
+                          onClick={() => {
+                            const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
+                            const currentIndex = filters.indexOf(productFilter)
+                            setProductFilter(filters[(currentIndex + 1) % filters.length])
+                            setCurrentPage(1)
+                          }}
+                        >
+                          Filter
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`} hasArrow>
                         <IconButton
                           aria-label="Filter products"
                           icon={<FiFilter />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
+                          isDisabled={!hasListedProducts}
                           onClick={() => {
-                            const filters = ['all', 'available', 'sold', 'traded', 'locked']
+                            const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
                             const currentIndex = filters.indexOf(productFilter)
-                            setProductFilter(filters[(currentIndex + 1) % filters.length] as any)
+                            setProductFilter(filters[(currentIndex + 1) % filters.length])
                             setCurrentPage(1)
                           }}
                         />
+                      </Tooltip>
+
+                      <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
+                            setCurrentPage(1)
+                          }}
+                        >
+                          Sort
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
@@ -2629,6 +3090,7 @@ const Dashboard: React.FC = () => {
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
                             setCurrentPage(1)
@@ -2641,21 +3103,54 @@ const Dashboard: React.FC = () => {
                   {activeTab === 1 && (
                     <>
                       <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={offersViewMode === 'grid' ? 'List view' : 'Grid view'}
                           icon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
                           size="sm"
                           variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
+                      </Tooltip>
+
+                      <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="orange"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
+                            const currentIndex = statuses.indexOf(offersStatusFilter)
+                            setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
+                            setOffersPage(1)
+                          }}
+                        >
+                          Filter
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
                         <IconButton
                           aria-label="Filter offers"
                           icon={<FiFilter />}
                           size="sm"
-                          variant="ghost"
+                          variant="outline"
+                          colorScheme="orange"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
                             const currentIndex = statuses.indexOf(offersStatusFilter)
@@ -2664,12 +3159,27 @@ const Dashboard: React.FC = () => {
                           }}
                         />
                       </Tooltip>
+
+                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                          }}
+                        >
+                          Sort
+                        </Button>
+                      </Tooltip>
                       <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
                           aria-label="Sort offers"
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
                           }}
@@ -2681,14 +3191,77 @@ const Dashboard: React.FC = () => {
                   {activeTab === 2 && (
                     <>
                       <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={multiWayTradesViewMode === 'grid' ? 'List view' : 'Grid view'}
                           icon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
                           size="sm"
                           variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
+                      </Tooltip>
+                      <Tooltip
+                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`}
+                        hasArrow
+                      >
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="purple"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
+                            const currentIndex = filters.indexOf(multiWayChainFilter)
+                            setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+                          }}
+                        >
+                          Filter
+                        </Button>
+                      </Tooltip>
+                      <Tooltip
+                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`}
+                        hasArrow
+                      >
+                        <IconButton
+                          aria-label="Filter multi-way trades"
+                          icon={<FiFilter />}
+                          size="sm"
+                          variant="outline"
+                          colorScheme="purple"
+                          display={{ base: 'inline-flex', md: 'none' }}
+                          onClick={() => {
+                            const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
+                            const currentIndex = filters.indexOf(multiWayChainFilter)
+                            setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
+                          }}
+                        >
+                          Sort
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
@@ -2696,6 +3269,7 @@ const Dashboard: React.FC = () => {
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
                           }}
@@ -2707,14 +3281,64 @@ const Dashboard: React.FC = () => {
                   {activeTab === 3 && (
                     <>
                       <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                        <Button
+                          size="sm"
+                          variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
+                          colorScheme="brand"
+                          leftIcon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                        >
+                          View
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
                         <IconButton
                           aria-label={tradeHistoryViewMode === 'grid' ? 'List view' : 'Grid view'}
                           icon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
                           size="sm"
                           variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
                           colorScheme="brand"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
                         />
+                      </Tooltip>
+                      <Tooltip label="History filters coming soon" hasArrow>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="gray"
+                          leftIcon={<FiFilter />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          isDisabled
+                        >
+                          Filter
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label="History filters coming soon" hasArrow>
+                        <IconButton
+                          aria-label="Filter trade history"
+                          icon={<FiFilter />}
+                          size="sm"
+                          variant="outline"
+                          colorScheme="gray"
+                          display={{ base: 'inline-flex', md: 'none' }}
+                          isDisabled
+                        />
+                      </Tooltip>
+                      <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<FiArrowDown />}
+                          display={{ base: 'none', md: 'inline-flex' }}
+                          onClick={() => {
+                            setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
+                            setTradeHistoryPage(1)
+                          }}
+                        >
+                          Sort
+                        </Button>
                       </Tooltip>
                       <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
                         <IconButton
@@ -2722,6 +3346,7 @@ const Dashboard: React.FC = () => {
                           icon={<FiArrowDown />}
                           size="sm"
                           variant="ghost"
+                          display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
                             setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
                             setTradeHistoryPage(1)
@@ -2732,17 +3357,90 @@ const Dashboard: React.FC = () => {
                   )}
                 </HStack>
 
-                {/* Notifications & Profile - Mobile Only */}
-                <HStack spacing={2} flexShrink={0} display={{ base: 'flex', md: 'none' }}>
+                {/* Notifications - Desktop */}
+                <HStack spacing={2} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
                   <Box position="relative">
                     <IconButton
                       aria-label="Notifications"
                       icon={<BellIcon />}
-                      size="md"
-                      bg="#319795"
-                      color="white"
-                      _hover={{ bg: '#2A8280' }}
-                      _active={{ bg: '#267E7C' }}
+                      size="sm"
+                      variant="outline"
+                      colorScheme={unreadNotifications > 0 ? 'orange' : 'gray'}
+                      onClick={() => navigate('/notifications')}
+                    />
+                    {unreadNotifications > 0 && (
+                      <Badge
+                        position="absolute"
+                        top="-6px"
+                        right="-6px"
+                        bg="red.500"
+                        color="white"
+                        borderRadius="full"
+                        fontSize="2xs"
+                        minW="16px"
+                        h="16px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        fontWeight="bold"
+                      >
+                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                      </Badge>
+                    )}
+                  </Box>
+                </HStack>
+
+                {/* Mobile controls: Search stays left; Controls + Bell + Avatar on the right */}
+                <HStack spacing={2} flexShrink={0} display={{ base: 'flex', md: 'none' }}>
+                  <Menu placement="bottom-end" closeOnSelect>
+                    <MenuButton
+                      as={IconButton}
+                      aria-label="Open controls"
+                      icon={<Icon as={FiSliders} boxSize={5.5} />}
+                      size="sm"
+                      variant="outline"
+                      color="#3D9E8C"
+                      borderColor="#3D9E8C"
+                      _hover={{ bg: 'teal.50' }}
+                      _active={{ bg: 'teal.100' }}
+                    />
+                    <MenuList bg="white" borderRadius="md" boxShadow="md" minW="220px">
+                      <MenuItem icon={<Icon as={activeViewMode === 'grid' ? FiGrid : FiList} />} onClick={handleMobileToggleView}>
+                        {activeViewMode === 'grid' ? 'Grid view' : 'List view'} <Text as="span" ml={2}>✓</Text>
+                      </MenuItem>
+                      <MenuItem
+                        icon={<Icon as={FiFilter} />}
+                        onClick={handleMobileCycleFilter}
+                        isDisabled={activeTab === 3 || (activeTab === 0 && !hasListedProducts)}
+                      >
+                        {activeTab === 0
+                          ? `Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`
+                          : activeTab === 1
+                            ? `Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`
+                            : activeTab === 2
+                              ? `Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`
+                              : 'Filter: Coming soon'}
+                      </MenuItem>
+                      <MenuDivider />
+                      <MenuItem icon={<Icon as={FiArrowDown} />} onClick={() => handleMobileSetSort('newest')}>
+                        Newest {activeSortMode === 'newest' ? '✓' : ''}
+                      </MenuItem>
+                      <MenuItem icon={<Icon as={FiArrowDown} />} onClick={() => handleMobileSetSort('oldest')}>
+                        Latest {activeSortMode === 'oldest' ? '✓' : ''}
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+
+                  <Box position="relative">
+                    <IconButton
+                      aria-label="Notifications"
+                      icon={<BellIcon />}
+                      size="sm"
+                      variant="outline"
+                      color="#3D9E8C"
+                      borderColor="#3D9E8C"
+                      _hover={{ bg: 'teal.50' }}
+                      _active={{ bg: 'teal.100' }}
                       onClick={() => navigate('/notifications')}
                     />
                     {unreadNotifications > 0 && (
@@ -2765,19 +3463,27 @@ const Dashboard: React.FC = () => {
                       </Badge>
                     )}
                   </Box>
-                  <VerifiedAvatar
-                    name={user?.name || 'User'}
-                    src={user?.profile_picture || undefined}
-                    size="md"
-                    bg="brand.500"
-                    color="white"
+                  <Box
+                    border="2px solid"
+                    borderColor="#3D9E8C"
+                    borderRadius="full"
+                    p="1px"
                     cursor="pointer"
-                    onClick={() => navigate('/UserProfile')}
-                    _hover={{ opacity: 0.8 }}
-                    isVerified={user?.verified || (user as any)?.verification_status === 'verified' || false}
-                  />
+                    onClick={() => navigate(`/users/${(user as any)?.slug || user?.id}`)}
+                  >
+                    <VerifiedAvatar
+                      name={user?.name || 'User'}
+                      src={user?.profile_picture || undefined}
+                      size="sm"
+                      bg="brand.500"
+                      color="white"
+                      _hover={{ opacity: 0.8 }}
+                      isVerified={user?.verified || (user as any)?.verification_status === 'verified' || false}
+                    />
+                  </Box>
                 </HStack>
               </Flex>
+
             </VStack>
           </Box>
 
@@ -2828,9 +3534,9 @@ const Dashboard: React.FC = () => {
                       <HStack spacing={1}>
                         <Icon as={FiShoppingBag} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Products</Text>
-                        {actualUserProducts.filter(p => p.status !== 'locked').length > 0 && (
+                        {inventoryProducts.filter(p => p.status !== 'locked').length > 0 && (
                           <Badge colorScheme="green" borderRadius="full" fontSize="2xs" display={{ base: 'none', sm: 'inline-flex' }}>
-                            {actualUserProducts.filter(p => p.status !== 'locked').length}
+                            {inventoryProducts.filter(p => p.status !== 'locked').length}
                           </Badge>
                         )}
                       </HStack>
@@ -2848,6 +3554,11 @@ const Dashboard: React.FC = () => {
                       <HStack spacing={1}>
                         <Icon as={FiMessageCircle} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Offers</Text>
+                        {unreadOffers > 0 && (
+                          <Badge colorScheme="red" borderRadius="full" fontSize="2xs">
+                            {unreadOffers > 99 ? '99+' : unreadOffers}
+                          </Badge>
+                        )}
                         {(sentOffers.length + receivedOffers.length + ongoingTrades.length) > 0 && (
                           <Badge
                             colorScheme="orange"
@@ -2872,9 +3583,11 @@ const Dashboard: React.FC = () => {
                         <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
-                        <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
-                          PRO
-                        </Badge>
+                        {user?.is_premium && (
+                          <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
+                            PRO
+                          </Badge>
+                        )}
                       </HStack>
                     </Tab>
                     <Tab
@@ -2914,24 +3627,28 @@ const Dashboard: React.FC = () => {
                             Searching: "{unifiedSearch}"
                           </Badge>
                         )}
-                        {/* Category Filter Dropdown */}
-                        <Select
-                          size="sm"
-                          value={productCategoryFilter}
-                          onChange={e => { setProductCategoryFilter(e.target.value); setCurrentPage(1) }}
-                          maxW="160px"
-                          borderRadius="md"
-                          fontSize="sm"
-                        >
-                          <option value="all">All Categories</option>
-                          {PRODUCT_CATEGORIES.map(cat => (
-                            <option key={cat.value} value={cat.value}>{cat.label}</option>
-                          ))}
-                        </Select>
-                        {productCategoryFilter !== 'all' && (
-                          <Badge colorScheme="green" variant="subtle" fontSize="sm" px={2} py={1} cursor="pointer" onClick={() => setProductCategoryFilter('all')}>
-                            Category: {productCategoryFilter} ✕
-                          </Badge>
+                        {hasListedProducts && (
+                          <>
+                            {/* Category Filter Dropdown */}
+                            <Select
+                              size="sm"
+                              value={productCategoryFilter}
+                              onChange={e => { setProductCategoryFilter(e.target.value); setCurrentPage(1) }}
+                              maxW="160px"
+                              borderRadius="md"
+                              fontSize="sm"
+                            >
+                              <option value="all">All Categories</option>
+                              {PRODUCT_CATEGORIES.map(cat => (
+                                <option key={cat.value} value={cat.value}>{cat.label}</option>
+                              ))}
+                            </Select>
+                            {productCategoryFilter !== 'all' && (
+                              <Badge colorScheme="green" variant="subtle" fontSize="sm" px={2} py={1} cursor="pointer" onClick={() => setProductCategoryFilter('all')}>
+                                Category: {productCategoryFilter} ✕
+                              </Badge>
+                            )}
+                          </>
                         )}
                       </HStack>
                     </HStack>
@@ -3122,45 +3839,96 @@ const Dashboard: React.FC = () => {
                           }
                         }}
                       >
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Buyout Offers</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Buyout</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="orange.200"
+                          bg="orange.50"
+                          _selected={{ bg: 'orange.100', borderColor: 'orange.400', color: 'orange.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FaMoneyBillWave} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Buyout Offers</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Buyout</Box>
+                          </HStack>
                           {offersStats.buyout > 0 && (
                             <Badge ml={2} colorScheme="orange" borderRadius="full" fontSize="xs">
                               {offersStats.buyout}
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="yellow.200"
+                          bg="yellow.50"
+                          _selected={{ bg: 'yellow.100', borderColor: 'yellow.400', color: 'yellow.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FiSend} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Sent Offers</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Sent</Box>
+                          </HStack>
                           {offersStats.sentPending > 0 && (
                             <Badge ml={2} colorScheme="yellow" borderRadius="full" fontSize="xs">
                               {offersStats.sentPending}
                             </Badge>
                           )}
                         </Tab>
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="blue.200"
+                          bg="blue.50"
+                          _selected={{ bg: 'blue.100', borderColor: 'blue.400', color: 'blue.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FiInbox} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Received Offers</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Received</Box>
+                          </HStack>
                           {offersStats.receivedPending > 0 && (
                             <Badge ml={2} colorScheme="blue" borderRadius="full" fontSize="xs">
                               {offersStats.receivedPending}
                             </Badge>
                           )}
+                          {offersStats.receivedPending > 0 && (
+                            <Badge ml={2} colorScheme="red" variant="solid" fontSize="2xs">Action</Badge>
+                          )}
                         </Tab>
-                        <Tab fontSize={{ base: 'xs', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="green.200"
+                          bg="green.50"
+                          _selected={{ bg: 'green.100', borderColor: 'green.400', color: 'green.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FaClock} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
+                          </HStack>
                           {offersStats.ongoing > 0 && (
                             <Badge ml={2} colorScheme="green" borderRadius="full" fontSize="xs">
                               {offersStats.ongoing}
                             </Badge>
                           )}
+                          {offersStats.ongoing > 0 && (
+                            <Badge ml={2} colorScheme="red" variant="solid" fontSize="2xs">Action</Badge>
+                          )}
                         </Tab>
-                        <Tab fontSize={{ base: '10px', md: 'sm' }}>
-                          <Box display={{ base: 'none', md: 'inline' }}>Archive</Box>
-                          <Box display={{ base: 'inline', md: 'none' }}>Archive</Box>
+                        <Tab
+                          fontSize={{ base: '10px', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="gray.200"
+                          bg="gray.50"
+                          _selected={{ bg: 'gray.100', borderColor: 'gray.400', color: 'gray.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FiArchive} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Archive</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Archive</Box>
+                          </HStack>
                           {archivedTradesData.length > 0 && (
                             <Badge ml={2} colorScheme="red" borderRadius="full" fontSize="xs">
                               {archivedTradesData.length}
@@ -3730,74 +4498,81 @@ const Dashboard: React.FC = () => {
 
                 {/* Multi-Way Trades Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
+                  <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg" mb={4}>
+                    <VStack align="start" spacing={1}>
+                      <Text fontSize="xs" color="blue.800">
+                        Tip: Make sure your listings have desired items filled in to appear in multi-way matches.
+                      </Text>
+                      {!user?.is_premium && (
+                        <Text fontSize="xs" color="blue.900" fontWeight="semibold">
+                          You're viewing matches found for your listings. Initiating a multi-way search requires Premium.
+                        </Text>
+                      )}
+                    </VStack>
+                  </Box>
+
+                  {!user?.is_premium && loopQuota && !loopQuota.unlimited && (
+                    <VStack align="stretch" spacing={2} mb={4}>
+                      <Box p={3} bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="lg">
+                        <Text fontSize="sm" color="purple.800" fontWeight="bold">
+                          {loopQuota.used} of {loopQuota.limit} free loop hops used this month
+                        </Text>
+                      </Box>
+                      {loopQuota.used >= loopQuota.limit && (
+                        <Box p={3} bg="red.50" border="1px solid" borderColor="red.200" borderRadius="lg">
+                          <Text fontSize="xs" color="red.700">
+                            You've used your free loop matches this month — upgrade to Pro for unlimited.
+                          </Text>
+                        </Box>
+                      )}
+                    </VStack>
+                  )}
+
+                  {!user?.is_premium && (multiWayTrades || []).some((t: any) => t?.loop_type === 'detected_loop' && t?.pro_nudge) && (
+                    <Box p={3} bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="lg" mb={4}>
+                      <Text fontSize="xs" color="yellow.800" fontWeight="bold">
+                        You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.
+                      </Text>
+                    </Box>
+                  )}
+
                   {multiWayTradesLoading ? (
                     <Center py={12}>
                       <Spinner size="lg" color="brand.500" />
                     </Center>
-                  ) : multiWayTrades.length === 0 ? (
+                  ) : filteredMultiWayTrades.length === 0 ? (
                     multiWayTradesViewMode === 'list' ? (
                       <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={6} textAlign="center">
                         <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
                         <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                          No multi-way trades available
+                          {multiWayChainFilter === 'all' ? 'No multi-way trades available' : 'No matches for this chain filter'}
                         </Text>
                         <Text color="gray.500" fontSize="sm">
-                          Multi-way trade opportunities will appear here. Check back soon!
+                          {multiWayChainFilter === 'all'
+                            ? (user?.is_premium
+                              ? 'Multi-way trade opportunities will appear here. Check back soon!'
+                              : 'This space shows matches found for your listings. Upgrade to Premium to initiate multi-way searches.')
+                            : 'Try changing the chain-size filter to see more matches.'}
                         </Text>
                       </Box>
                     ) : (
-                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                        {/* Mock Trade Loop 1 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 1, user_name: 'John Doe', product_id: 1, product_title: 'PlayStation 5' },
-                              { id: 2, user_name: 'Sarah Smith', product_id: 2, product_title: 'iPhone 13' },
-                              { id: 3, user_name: 'Mike Johnson', product_id: 3, product_title: 'MacBook Pro' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 2 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 4, user_name: 'Emma Wilson', product_id: 4, product_title: 'Galaxy S23' },
-                              { id: 5, user_name: 'Alex Chen', product_id: 5, product_title: 'iPad Air' },
-                              { id: 6, user_name: 'Lisa Anderson', product_id: 6, product_title: 'Apple Watch' },
-                              { id: 7, user_name: 'Tom Davis', product_id: 7, product_title: 'AirPods Pro' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop-2", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-
-                        {/* Mock Trade Loop 3 */}
-                        <Box p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={[
-                              { id: 8, user_name: 'Chris Martin', product_id: 8, product_title: 'Nintendo Switch' },
-                              { id: 9, user_name: 'Jessica Brown', product_id: 9, product_title: 'Bicycle' },
-                              { id: 10, user_name: 'Robert Taylor', product_id: 10, product_title: 'Guitar' },
-                              { id: 11, user_name: 'Nina Patel', product_id: 11, product_title: 'Camera' },
-                              { id: 12, user_name: 'Kevin Lee', product_id: 12, product_title: 'Headphones' },
-                            ]}
-                            onJoinTrade={() => toast({
-        id: "dashboard-joined-trade-loop-3", title: 'Joined Trade Loop', status: 'success' })}
-                            onViewDetails={() => { }}
-                            onDecline={() => { }}
-                            isLoading={false}
-                          />
-                        </Box>
-                      </SimpleGrid>
+                      <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={8} textAlign="center" w="100%">
+                        <VStack spacing={4}>
+                          <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={2} />
+                          <VStack spacing={1}>
+                            <Text color="gray.600" fontSize="lg" fontWeight="semibold">
+                              {multiWayChainFilter === 'all' ? 'No multi-way trades available' : 'No matches for this chain filter'}
+                            </Text>
+                            <Text color="gray.500" fontSize="sm" maxW="400px">
+                              {multiWayChainFilter === 'all'
+                                ? (user?.is_premium
+                                  ? 'Multi-way trade opportunities will appear here once we find a trading loop that involves your products. Check back later!'
+                                  : 'You can view detected matches here. Upgrade to Premium to initiate and run loop searches.')
+                                : 'No loops currently match the selected chain size. Try All Chains.'}
+                            </Text>
+                          </VStack>
+                        </VStack>
+                      </Box>
                     )
                   ) : multiWayTradesViewMode === 'list' ? (
                     <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
@@ -3813,59 +4588,173 @@ const Dashboard: React.FC = () => {
                         textTransform="uppercase"
                         display={{ base: 'none', md: 'flex' }}
                       >
-                        Trade Loop • Participants • Action
+                        What • Chain • Participants • Action
                       </Box>
-                      {multiWayTrades.map((trade, idx) => (
+                      {filteredMultiWayTrades.map((trade, idx) => (
                         <Flex
                           key={trade.id}
                           align="center"
                           gap={{ base: 2, md: 4 }}
                           p={3}
-                          borderBottom={idx < multiWayTrades.length - 1 ? '1px' : 'none'}
+                          borderBottom={idx < filteredMultiWayTrades.length - 1 ? '1px' : 'none'}
                           borderColor={borderColor}
                           _hover={{ bg: 'gray.50' }}
                           minW={0}
                           flexWrap="wrap"
                         >
+                          {(() => {
+                            const summary = getMultiWayTradeSummary(trade)
+                            return (
                           <VStack align="start" spacing={0} flex={1} minW={0}>
                             <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }}>
                               Trade Loop #{trade.id}
+                            </Text>
+                            <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                              You give: {summary.yourGive}
+                            </Text>
+                            <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                              You get: {summary.yourGet}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                              Chain: {summary.chainLabel}
                             </Text>
                             <Text fontSize="xs" color="gray.600">
                               {trade.participants?.length || 0} participants
                             </Text>
                           </VStack>
+                            )
+                          })()}
                           <HStack spacing={2} flexShrink={0}>
                             <Badge colorScheme="purple" variant="subtle" fontSize="2xs" px={2} py={1}>
                               {trade.participants?.length || 0} in loop
                             </Badge>
-                            <Button
-                              size="sm"
-                              colorScheme="purple"
-                              variant="outline"
-                              fontSize={{ base: 'xs', md: 'sm' }}
-                              px={{ base: 2, md: 3 }}
-                              onClick={() => setSelectedMultiWayTrade(trade)}
-                            >
-                              View
-                            </Button>
+                            {trade?.initiator_view ? (
+                              <Button
+                                size="sm"
+                                colorScheme="purple"
+                                variant="outline"
+                                fontSize={{ base: 'xs', md: 'sm' }}
+                                px={{ base: 2, md: 3 }}
+                                onClick={() => {
+                                  if (trade?.loop_type !== 'detected_loop') return
+                                  if (!user?.is_premium) {
+                                    setShowPremiumModal(true)
+                                    return
+                                  }
+                                  void (async () => {
+                                    try {
+                                      setMultiWayManagerLoading(true)
+                                      const loopId = String(trade?.loop_id || trade?.id || '')
+                                      const details = await fetchMultiWayTrade(loopId)
+                                      setSelectedMultiWayTrade(details)
+                                      setMultiWayManagerOpen(true)
+                                    } catch (e) {
+                                      console.error('Failed to load loop details:', e)
+                                      toast({
+                                        id: 'error-load-loop-details',
+                                        title: 'Error',
+                                        description: 'Failed to load trade loop details.',
+                                        status: 'error',
+                                      })
+                                    } finally {
+                                      setMultiWayManagerLoading(false)
+                                    }
+                                  })()
+                                }}
+                              >
+                                View
+                              </Button>
+                            ) : (
+                              <HStack spacing={2}>
+                                <Button
+                                  size="sm"
+                                  colorScheme="green"
+                                  onClick={() => handleJoinMultiWayTrade(trade)}
+                                  isLoading={multiWayTradeJoining}
+                                  loadingText="Joining..."
+                                  isDisabled={!trade?.can_join}
+                                >
+                                  Hop In
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  colorScheme="red"
+                                  variant="outline"
+                                  onClick={() => handleDeclineMultiWayTrade(trade, false)}
+                                  isDisabled={!trade?.can_decline}
+                                >
+                                  Decline
+                                </Button>
+                                {trade?.loop_type === 'detected_loop' && !trade?.can_create && !user?.is_premium && (
+                                  <Button
+                                    size="sm"
+                                    colorScheme="purple"
+                                    variant="outline"
+                                    onClick={() => setShowPremiumModal(true)}
+                                  >
+                                    Start a Loop <Badge ml={2} colorScheme="purple" fontSize="10px">Pro</Badge>
+                                  </Button>
+                                )}
+                              </HStack>
+                            )}
                           </HStack>
                         </Flex>
                       ))}
                     </Box>
                   ) : (
                     <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                      {multiWayTrades.map((trade) => (
-                        <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                          <MultiWayTradeUI
-                            participants={trade.participants || []}
-                            onJoinTrade={() => handleJoinMultiWayTrade(trade)}
-                            onViewDetails={() => setSelectedMultiWayTrade(trade)}
-                            onDecline={() => handleDeclineMultiWayTrade(trade)}
-                            isLoading={multiWayTradeJoining}
-                          />
-                        </Box>
-                      ))}
+                      {filteredMultiWayTrades.map((trade) => {
+                        const summary = getMultiWayTradeSummary(trade)
+                        return (
+                          <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                            <MultiWayTradeUI
+                              participants={trade.participants || []}
+                              isChain={trade.is_chain}
+                              yourGive={summary.yourGive}
+                              yourGet={summary.yourGet}
+                              chainLabel={summary.chainLabel}
+                              viewMode={trade?.initiator_view ? 'initiator' : 'participant'}
+                              initiatorName={trade?.initiator_name}
+                              canJoin={Boolean(trade?.can_join ?? true)}
+                              canDecline={Boolean(trade?.can_decline ?? true)}
+                              canCreate={Boolean(trade?.can_create ?? false)}
+                              loopType={trade?.loop_type}
+                              proNudgeText={trade?.pro_nudge_text}
+                              loopStatus={trade?.status}
+                              expiryLabel={trade?.expires_at ? new Date(trade.expires_at).toLocaleString() : undefined}
+                              onJoinTrade={() => handleJoinMultiWayTrade(trade)}
+                              onViewDetails={() => {
+                                void (async () => {
+                                  try {
+                                    if (trade?.loop_type !== 'detected_loop') return
+                                    setMultiWayManagerLoading(true)
+                                    const loopId = String(trade?.loop_id || trade?.id || '')
+                                    const details = await fetchMultiWayTrade(loopId)
+                                    setSelectedMultiWayTrade(details)
+                                    setMultiWayManagerOpen(true)
+                                  } catch (e) {
+                                    console.error('Failed to load loop details:', e)
+                                    toast({
+                                      id: 'error-load-loop-details',
+                                      title: 'Error',
+                                      description: 'Failed to load trade loop details.',
+                                      status: 'error',
+                                    })
+                                  } finally {
+                                    setMultiWayManagerLoading(false)
+                                  }
+                                })()
+                              }}
+                              onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}
+                              onStartLoop={() => {
+                                // Soft upsell touchpoint: free users can’t manually initiate.
+                                setShowPremiumModal(true)
+                              }}
+                              isLoading={multiWayTradeJoining}
+                            />
+                          </Box>
+                        )
+                      })}
                     </SimpleGrid>
                   )}
                 </TabPanel>
@@ -3911,13 +4800,14 @@ const Dashboard: React.FC = () => {
                             textTransform="uppercase"
                             display={{ base: 'none', md: 'flex' }}
                           >
-                            Product • Partner • Date • Action
+                            What • Who • Where • When • Action
                           </Box>
                           {paginatedTradeHistory.map((trade, idx) => {
-                            const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
-                            const tradingPartner = isIncoming
-                              ? (trade.buyer_name || 'Anonymous')
-                              : (trade.seller_name || 'Anonymous')
+                            const partner = getTradePartnerInfo(trade)
+                            const where = getTradeWhere(trade)
+                            const when = getTradeWhen(trade)
+                            const gaveTitle = getProductTitle(trade.target_product_id, trade.product_title)
+                            const receivedTitle = getTradeReceivedTitle(trade)
 
                             return (
                               <Flex
@@ -3945,22 +4835,23 @@ const Dashboard: React.FC = () => {
                                     size="100%"
                                   />
                                 </Box>
-                                <VStack align="start" spacing={0} flex={1} minW={0}>
+                                <VStack align="start" spacing={1} flex={1} minW={0}>
                                   <Text fontWeight="semibold" noOfLines={1} fontSize={{ base: 'sm', md: 'md' }}>
-                                    {getProductTitle(trade.target_product_id, trade.product_title)}
+                                    {gaveTitle}
                                   </Text>
-                                  <HStack spacing={2} mt={1}>
-                                    <Text fontSize="xs" color="gray.600">{tradingPartner}</Text>
-                                    <Badge colorScheme={isIncoming ? 'green' : 'blue'} fontSize="2xs" px={1.5} py={0.5}>
-                                      {isIncoming ? 'Received' : 'Sent'}
-                                    </Badge>
+                                  <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                                    Received: {receivedTitle}
+                                  </Text>
+                                  <HStack spacing={2} flexWrap="wrap">
+                                    <Badge colorScheme="blue" fontSize="2xs" px={1.5}>WHO: {partner.name}</Badge>
+                                    <Badge colorScheme="purple" fontSize="2xs" px={1.5}>WHERE: {where}</Badge>
+                                    <Badge colorScheme="green" fontSize="2xs" px={1.5}>WHEN: {when.date}</Badge>
                                   </HStack>
                                 </VStack>
-                                {trade.completed_at && (
-                                  <Text fontSize="xs" color="gray.600" flexShrink={0}>
-                                    {new Date(trade.completed_at).toLocaleDateString()}
-                                  </Text>
-                                )}
+                                <VStack align="end" spacing={0} flexShrink={0}>
+                                  <Text fontSize="xs" color="gray.600">{when.date}</Text>
+                                  <Text fontSize="2xs" color="gray.500">{when.time || 'N/A'}</Text>
+                                </VStack>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -4001,19 +4892,19 @@ const Dashboard: React.FC = () => {
                             h="fit-content"
                           >
                             <Box w="60px" flexShrink={0}>Product</Box>
-                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>Your Item</Box>
+                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>WHAT: You Gave</Box>
                             <Box w="40px" display="flex" justifyContent="center" flexShrink={0}>↔</Box>
-                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>Received Item</Box>
-                            <Box w="120px" flexShrink={0}>Partner</Box>
-                            <Box w="100px" flexShrink={0}>Date</Box>
+                            <Box flex={1} minW={{ base: '120px', md: '150px' }}>WHAT: You Received</Box>
+                            <Box w="120px" flexShrink={0}>WHO</Box>
+                            <Box w="140px" flexShrink={0}>WHERE</Box>
+                            <Box w="100px" flexShrink={0}>WHEN</Box>
                             <Box w="80px" flexShrink={0} textAlign="center">Action</Box>
                           </HStack>
                           {/* Trade Rows */}
                           {paginatedTradeHistory.map((trade, idx) => {
-                            const isIncoming = incoming.some((t: Trade) => t.id === trade.id)
-                            const tradingPartner = isIncoming
-                              ? (trade.buyer_name || 'Anonymous')
-                              : (trade.seller_name || 'Anonymous')
+                            const partner = getTradePartnerInfo(trade)
+                            const where = getTradeWhere(trade)
+                            const when = getTradeWhen(trade)
 
                             return (
                               <HStack
@@ -4054,41 +4945,34 @@ const Dashboard: React.FC = () => {
 
                                 {/* Received Item Info */}
                                 <VStack align="start" spacing={0} flex={1.2} minW={{ base: '120px', md: '150px' }}>
-                                  {trade.items && trade.items.length > 0 ? (
-                                    <>
-                                      <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="semibold" color="gray.800" noOfLines={1}>
-                                        {getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)}
-                                      </Text>
-                                      <Badge colorScheme="green" fontSize="2xs" w="fit-content">
-                                        Received
-                                      </Badge>
-                                    </>
-                                  ) : (
-                                    <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.500">N/A</Text>
-                                  )}
+                                  <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="semibold" color="gray.800" noOfLines={1}>
+                                    {getTradeReceivedTitle(trade)}
+                                  </Text>
+                                  <Badge colorScheme="green" fontSize="2xs" w="fit-content">
+                                    Received
+                                  </Badge>
                                 </VStack>
 
                                 {/* Partner Name */}
                                 <VStack align="start" spacing={0} w={{ base: '100px', md: '140px' }} flexShrink={0}>
                                   <Text fontSize={{ base: 'xs', md: 'sm' }} fontWeight="medium" color="gray.800" noOfLines={1}>
-                                    {tradingPartner}
+                                    {partner.name}
                                   </Text>
                                   <Badge colorScheme="gray" fontSize="2xs" w="fit-content">
-                                    {isIncoming ? 'Buyer' : 'Trader'}
+                                    {partner.role}
                                   </Badge>
                                 </VStack>
 
+                                {/* Location */}
+                                <Text fontSize="xs" color="gray.700" w={{ base: '120px', md: '160px' }} noOfLines={2} flexShrink={0}>
+                                  {where}
+                                </Text>
+
                                 {/* Date */}
                                 <VStack align="start" spacing={0} w={{ base: '90px', md: '110px' }} flexShrink={0}>
-                                  <Text fontSize={{ base: '2xs', md: 'xs' }} color="gray.600">
-                                    {trade.completed_at
-                                      ? new Date(trade.completed_at).toLocaleDateString()
-                                      : new Date(trade.updated_at).toLocaleDateString()}
-                                  </Text>
+                                  <Text fontSize={{ base: '2xs', md: 'xs' }} color="gray.600">{when.date}</Text>
                                   <Text fontSize="2xs" color="gray.500">
-                                    {trade.completed_at
-                                      ? new Date(trade.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                      : 'N/A'}
+                                    {when.time || 'N/A'}
                                   </Text>
                                 </VStack>
 
@@ -4114,10 +4998,9 @@ const Dashboard: React.FC = () => {
                         {/* Mobile Card View */}
                         <VStack spacing={4} align="stretch" display={{ base: 'flex', md: 'none' }}>
                           {paginatedTradeHistory.map((trade) => {
-                            const isIncoming = incoming.some(t => t.id === trade.id)
-                            const tradingPartner = isIncoming
-                              ? (trade.buyer_name || 'Anonymous')
-                              : (trade.seller_name || 'Anonymous')
+                            const partner = getTradePartnerInfo(trade)
+                            const where = getTradeWhere(trade)
+                            const when = getTradeWhen(trade)
 
                             return (
                               <Box
@@ -4141,28 +5024,32 @@ const Dashboard: React.FC = () => {
                                       />
                                     </Box>
                                     <VStack align="start" spacing={0} flex={1}>
-                                      <Text fontSize="xs" fontWeight="semibold" color="gray.600">
-                                        Trading with
-                                      </Text>
+                                      <Text fontSize="xs" fontWeight="semibold" color="gray.600">WHO</Text>
                                       <Text fontSize="sm" fontWeight="medium" color="gray.800" noOfLines={1}>
-                                        {tradingPartner}
+                                        {partner.name}
                                       </Text>
+                                      <Text fontSize="2xs" color="gray.500">{partner.direction}</Text>
                                     </VStack>
                                   </HStack>
 
-                                  {/* Date */}
-                                  <Text fontSize="xs" color="gray.500">
-                                    {trade.completed_at
-                                      ? new Date(trade.completed_at).toLocaleDateString()
-                                      : new Date(trade.updated_at).toLocaleDateString()}
-                                  </Text>
+                                  <SimpleGrid columns={2} spacing={2}>
+                                    <Box bg="gray.50" p={2} borderRadius="md">
+                                      <Text fontSize="2xs" color="gray.500" textTransform="uppercase">Where</Text>
+                                      <Text fontSize="xs" color="gray.700" noOfLines={2}>{where}</Text>
+                                    </Box>
+                                    <Box bg="gray.50" p={2} borderRadius="md">
+                                      <Text fontSize="2xs" color="gray.500" textTransform="uppercase">When</Text>
+                                      <Text fontSize="xs" color="gray.700">{when.date}</Text>
+                                      <Text fontSize="2xs" color="gray.500">{when.time || 'N/A'}</Text>
+                                    </Box>
+                                  </SimpleGrid>
 
                                   {/* Trade details */}
                                   <Box bg="gray.50" p={3} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
                                     <VStack align="stretch" spacing={2}>
                                       <VStack align="start" spacing={1}>
                                         <Text fontSize="xs" fontWeight="semibold" color="gray.600" textTransform="uppercase">
-                                          You Gave
+                                          What: You Gave
                                         </Text>
                                         <Text fontSize="sm" color="gray.800">
                                           {getProductTitle(trade.target_product_id, trade.product_title)}
@@ -4175,12 +5062,10 @@ const Dashboard: React.FC = () => {
 
                                       <VStack align="start" spacing={1}>
                                         <Text fontSize="xs" fontWeight="semibold" color="gray.600" textTransform="uppercase">
-                                          You Received
+                                          What: You Received
                                         </Text>
                                         <Text fontSize="sm" color="gray.800">
-                                          {trade.items && trade.items.length > 0
-                                            ? getProductTitle(Number(trade.items[0].product_id), trade.items[0].product_title)
-                                            : 'N/A'}
+                                          {getTradeReceivedTitle(trade)}
                                         </Text>
                                       </VStack>
                                     </VStack>
@@ -4291,6 +5176,22 @@ const Dashboard: React.FC = () => {
             onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
             onTradeUpdate={setSelectedTrade}
           />
+
+          {/* Multi-way Loop Manager (Pro) */}
+          {selectedMultiWayTrade && (
+            <MultiWayTradeModal
+              isOpen={multiWayManagerOpen}
+              onClose={() => {
+                setMultiWayManagerOpen(false)
+                setSelectedMultiWayTrade(null)
+              }}
+              multiWayTrade={selectedMultiWayTrade}
+              canManage={Boolean(user?.is_premium) && !selectedMultiWayTrade?.is_chain}
+              onTradeCompleted={() => {
+                void fetchMultiWayTrades()
+              }}
+            />
+          )}
 
           <TradeCompletionModal
             trade={selectedTrade}
@@ -4523,6 +5424,72 @@ const Dashboard: React.FC = () => {
         imageUrl={zoomImageUrl}
         altText={zoomAltText}
       />
+
+      {/* Premium Opportunity Modal */}
+      <Modal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} isCentered size="md">
+        <ModalOverlay backdropFilter="blur(8px)" />
+        <ModalContent borderRadius="2xl" overflow="hidden" boxShadow="2xl">
+          <ModalBody p={0}>
+            <Box position="relative">
+              <Box bg="purple.600" h="140px" display="flex" alignItems="center" justifyContent="center">
+                <Icon as={FaCrown} color="yellow.400" fontSize="60px" filter="drop-shadow(0 0 10px rgba(236, 201, 75, 0.4))" />
+              </Box>
+              <ModalCloseButton color="white" top={4} right={4} />
+              
+              <VStack spacing={6} p={8} textAlign="center">
+                <VStack spacing={2}>
+                  <Heading size="lg" fontWeight="extrabold">Level Up to Premium!</Heading>
+                  <Text color="gray.500" fontSize="md">
+                    Unlock exclusive features like unlimited trade offers, priority listing, and verified badge.
+                  </Text>
+                </VStack>
+
+                <SimpleGrid columns={2} spacing={3} w="full">
+                  {[
+                    'Unlimited Offers',
+                    'Priority Listing',
+                    'Can Sell (Buyout)',
+                    'Express Delivery',
+                    'Lower Fees',
+                    'Verified Badge'
+                  ].map((f, i) => (
+                    <HStack key={i} spacing={2}>
+                      <Icon as={CheckIcon} color="green.500" boxSize={3} />
+                      <Text fontSize="xs" fontWeight="bold" color="gray.600">{f}</Text>
+                    </HStack>
+                  ))}
+                </SimpleGrid>
+
+                <VStack spacing={3} w="full">
+                  <Button 
+                    colorScheme="purple" 
+                    w="full" 
+                    size="lg" 
+                    h="56px"
+                    fontSize="lg"
+                    borderRadius="xl"
+                    leftIcon={<FaCrown />}
+                    onClick={() => {
+                      setShowPremiumModal(false)
+                      navigate('/premium')
+                    }}
+                    _hover={{ transform: 'translateY(-2px)', boxShadow: 'lg' }}
+                  >
+                    Take Me There
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    w="full"
+                    onClick={() => setShowPremiumModal(false)}
+                  >
+                    Maybe Later
+                  </Button>
+                </VStack>
+              </VStack>
+            </Box>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Box>
   )
 }

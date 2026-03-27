@@ -237,38 +237,27 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         let res
         // If the current authenticated user's ID matches the requested route ID.
         // Or if the requested route is the user's slug, check against currentUser as well.
+        console.log('🔍 UserProfile: Checking if own profile - id:', id, 'currentUser.id:', currentUser?.id, 'currentUser.slug:', currentUser?.slug)
         if (currentUser && (id === String(currentUser.id) || id === currentUser.slug)) {
+          console.log('✅ UserProfile: Own profile detected, fetching from /api/users/profile')
           res = await api.get('/api/users/profile')
         } else {
           // Fetch public user info
-          res = await api.get(`/api/users/${id}`).catch(err => {
-            // If user not found, use fallback data
-            if (err.response?.status === 404) {
-              return {
-                data: {
-                  id, // Can be string or number but fallback assumes string id/slug
-                  name: 'User',
-                  created_at: new Date().toISOString(),
-                  rating: 4.8,
-                  positive_feedback: 98,
-                  response_time_minutes: 30,
-                  total_reviews: 42,
-                  bio: 'This user prefers to keep an air of mystery about them.',
-                  department: 'Unknown',
-                  verified: false,
-                  is_organization: false,
-                },
-              }
-            }
-            throw err
-          })
+          console.log('🔍 UserProfile: Public profile, fetching from /api/users/' + id)
+          res = await api.get(`/api/users/${id}`)
         }
 
-        const apiUser = (res.data?.data || res.data) as Partial<PublicUser>
+        console.log('🔍 Full API response:', res.data)
+        console.log('🔍 res.data.data:', res.data?.data)
+        console.log('🔍 res.data.data.user:', res.data?.data?.user)
+
+        const apiUser = (res.data?.data?.user || res.data?.user || res.data) as Partial<PublicUser>
+        console.log('🔍 Extracted apiUser:', apiUser)
 
 
         // Log the API response to debug profile picture and name
         console.log('🔍 API User Response:', {
+          id: apiUser.id,
           name: apiUser.name,
           profile_picture: (apiUser as any).profile_picture,
           org_logo_url: (apiUser as any).org_logo_url,
@@ -298,10 +287,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
           activity_status: (apiUser as any).activity_status || 'inactive',
         })
 
-        // Fetch user's products to infer stats and successful trades
-        // Ensure we pass the actual resolved numeric ID if available, or just pass the slug/id string and let the backend handle it.
-        const page1 = await getUserProducts(apiUser.id || id as any, 1)
-        setProducts(page1.data || [])
+        // Only fetch products if we have a valid ID
+        if (apiUser.id) {
+          const page1 = await getUserProducts(apiUser.id as any, 1)
+          setProducts(page1.data || [])
+        } else {
+          console.warn('⚠️ UserProfile: apiUser.id is missing, skipping product fetch')
+          setProducts([])
+        }
       } catch (e: any) {
         setError(e?.message || 'Failed to load user')
       } finally {
@@ -309,7 +302,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       }
     }
     run()
-  }, [id, getUserProducts])
+  }, [id, currentUser?.id, currentUser?.slug])
 
   // Fetch which products are saved by current user
   useEffect(() => {
@@ -912,9 +905,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
             The user profile you're looking for doesn't exist or may have been removed.
           </Text>
           <Button
-            as={RouterLink}
-            to="/"
             colorScheme="brand"
+            onClick={() => navigate('/')}
           >
             Back to Home
           </Button>
@@ -1052,19 +1044,19 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   if (isOrg) {
                     if (!hasEnoughData) return null
                     if (isNew) return (
-                      <Tooltip label="This organization is new to the platform" hasArrow>
+                      <Tooltip key="org-new" label="This organization is new to the platform" hasArrow>
                         <Badge colorScheme="gray" borderRadius="full" px={3} py={1} fontSize="xs" cursor="default">
                           🏢 New Organization
                         </Badge>
                       </Tooltip>
                     )
                     if (isRisky && (sellerStats.report_count ?? 0) > 2 && (sellerStats.positive_percent ?? 100) < 50) return (
-                      <Badge colorScheme="red" borderRadius="full" px={3} py={1} fontSize="xs">
+                      <Badge key="org-risky" colorScheme="red" borderRadius="full" px={3} py={1} fontSize="xs">
                         🔴 Risky Trader
                       </Badge>
                     )
                     if (!isRisky) return (
-                      <Badge colorScheme="green" borderRadius="full" px={3} py={1} fontSize="xs">
+                      <Badge key="org-trusted" colorScheme="green" borderRadius="full" px={3} py={1} fontSize="xs">
                         🟢 Trusted Trader
                       </Badge>
                     )
@@ -1072,6 +1064,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   }
                   return (
                     <Badge
+                      key="user-trust"
                       colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
                       borderRadius="full" px={3} py={1} fontSize="xs"
                     >
@@ -1304,7 +1297,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                           : 'This user hasn\'t listed any items yet'}
                       </Text>
                       {currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) && (
-                        <Button as={RouterLink} to="/add-product" colorScheme="brand" size="sm" mt={2}>
+                        <Button colorScheme="brand" size="sm" mt={2} onClick={() => navigate('/add-product')}>
                           List an Item
                         </Button>
                       )}
@@ -1321,37 +1314,36 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         </HStack>
                         <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={3}>
                           {sortedProducts.slice(0, 3).map((product) => (
-                            <Box
-                              key={`pin-${product.id}`}
-                              as={RouterLink}
-                              to={getProductUrl(product)}
-                              border="1px"
-                              borderColor="orange.200"
-                              rounded="md"
-                              overflow="hidden"
-                              bg="white"
-                              _hover={{ transform: 'translateY(-2px)', shadow: 'sm', borderColor: 'orange.400' }}
-                              transition="all 0.2s"
-                              display="flex"
-                              alignItems="center"
-                              gap={3}
-                              p={2}
-                            >
-                              <Image
-                                src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
-                                alt={product.title}
-                                boxSize="50px"
-                                objectFit="cover"
-                                borderRadius="md"
-                                flexShrink={0}
-                              />
-                              <Box minW={0}>
-                                <Text fontSize="xs" fontWeight="semibold" noOfLines={2} color="gray.800">{product.title}</Text>
-                                <Text fontSize="xs" color="brand.500" fontWeight="bold">
-                                  {product.price ? `₱${product.price.toFixed(2)}` : 'For Trade'}
-                                </Text>
+                            <RouterLink key={`pin-${product.id}`} to={getProductUrl(product)} style={{ textDecoration: 'none' }}>
+                              <Box
+                                border="1px"
+                                borderColor="orange.200"
+                                rounded="md"
+                                overflow="hidden"
+                                bg="white"
+                                _hover={{ transform: 'translateY(-2px)', shadow: 'sm', borderColor: 'orange.400' }}
+                                transition="all 0.2s"
+                                display="flex"
+                                alignItems="center"
+                                gap={3}
+                                p={2}
+                              >
+                                <Image
+                                  src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
+                                  alt={product.title}
+                                  boxSize="50px"
+                                  objectFit="cover"
+                                  borderRadius="md"
+                                  flexShrink={0}
+                                />
+                                <Box minW={0}>
+                                  <Text fontSize="xs" fontWeight="semibold" noOfLines={2} color="gray.800">{product.title}</Text>
+                                  <Text fontSize="xs" color="brand.500" fontWeight="bold">
+                                    {product.price ? `₱${product.price.toFixed(2)}` : 'For Trade'}
+                                  </Text>
+                                </Box>
                               </Box>
-                            </Box>
+                            </RouterLink>
                           ))}
                         </SimpleGrid>
                       </Box>
@@ -1429,17 +1421,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                           </Box>
 
                           <Box p={3}>
-                            <Text
-                              as={RouterLink}
-                              to={getProductUrl(product)}
-                              fontWeight="medium"
-                              noOfLines={2}
-                              mb={1}
-                              wordBreak="break-word"
-                              _hover={{ color: 'brand.500' }}
-                            >
-                              {product.title}
-                            </Text>
+                            <RouterLink to={getProductUrl(product)} style={{ textDecoration: 'none' }}>
+                              <Text
+                                fontWeight="medium"
+                                noOfLines={2}
+                                mb={1}
+                                wordBreak="break-word"
+                                _hover={{ color: 'brand.500' }}
+                              >
+                                {product.title}
+                              </Text>
+                            </RouterLink>
 
                             <HStack justify="space-between" align="center" mt={2}>
                               <Text fontWeight="bold" color="gray.800">

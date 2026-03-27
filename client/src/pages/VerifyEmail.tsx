@@ -82,15 +82,16 @@ const VerifyEmail: React.FC = () => {
         return `${m}:${s.toString().padStart(2, '0')}`
     }
 
-    const handleVerify = async () => {
-        if (otp.length !== 6) {
+    const handleVerify = async (codeOverride?: string) => {
+        const code = codeOverride ?? otp
+        if (code.length !== 6) {
             setError('Please enter all 6 digits')
             return
         }
         setError('')
         setLoading(true)
         try {
-            const response = await api.post('/api/auth/verify-email', { email, code: otp })
+            const response = await api.post('/api/auth/verify-email', { email, code })
             if (response.data.success) {
                 const { token } = response.data.data
                 // Store token and update auth state
@@ -105,7 +106,7 @@ const VerifyEmail: React.FC = () => {
                     duration: 3000,
                     isClosable: true,
                 })
-                setTimeout(() => navigate('/dashboard'), 1500)
+                setTimeout(() => navigate('/home'), 1500)
             }
         } catch (err: any) {
             setError(err.response?.data?.error || 'Verification failed. Try again.')
@@ -169,7 +170,7 @@ const VerifyEmail: React.FC = () => {
                         </Heading>
                         <Text color="gray.500" fontSize="sm" maxW="320px">
                             {success
-                                ? 'Your email has been verified. Redirecting you to the dashboard...'
+                                ? 'Your email has been verified. Redirecting you to Home...'
                                 : <>We sent a 6-digit code to <Text as="span" fontWeight="600" color="gray.700">{maskedEmail}</Text>. Enter it below.</>
                             }
                         </Text>
@@ -199,8 +200,11 @@ const VerifyEmail: React.FC = () => {
                                             otp
                                             size="lg"
                                             value={otp}
-                                            onChange={setOtp}
-                                            onComplete={handleVerify}
+                                            onChange={(value) => {
+                                                setOtp(value)
+                                                if (error) setError('')
+                                            }}
+                                            onComplete={(value) => handleVerify(value)}
                                             isDisabled={loading}
                                         >
                                             {[...Array(6)].map((_, i) => (
@@ -239,7 +243,7 @@ const VerifyEmail: React.FC = () => {
                                     w="full"
                                     isLoading={loading}
                                     loadingText="Verifying..."
-                                    onClick={handleVerify}
+                                    onClick={() => handleVerify()}
                                     isDisabled={otp.length !== 6 || expirySeconds === 0}
                                     fontWeight="600"
                                     borderRadius="xl"

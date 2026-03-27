@@ -3,13 +3,23 @@ export interface User {
   slug?: string // Unique URL identifier
   name: string
   email: string
+  phone?: string
+  phone_verified?: boolean
   role: string
   verified: boolean
   profile_picture?: string
   is_organization?: boolean
   org_verified?: boolean
   org_name?: string
+  org_handle?: string
   org_logo_url?: string
+  org_cover_url?: string
+  org_category?: string
+  org_website?: string
+  org_location?: string
+  org_contact_email?: string
+  background_image?: string
+  background_position?: string
   department?: string
   bio?: string
   badges?: number[]
@@ -20,9 +30,11 @@ export interface User {
   latitude?: number
   longitude?: number
   is_premium?: boolean
+  premium_tier?: 'free' | 'plus' | 'pro'
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
   school_name?: string
   school_email?: string
+  password_changed_at?: string
   last_login?: string
   activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
@@ -39,7 +51,7 @@ export interface Product {
   seller_name?: string
   seller_profile_picture?: string
   premium: boolean
-  status: 'available' | 'sold' | 'traded' | 'locked'
+  status: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
   allow_buying: boolean
   barter_only: boolean
   location?: string
@@ -101,7 +113,7 @@ export interface ProductUpdate {
   price?: number
   image_urls?: string[]
   premium?: boolean
-  status?: 'available' | 'sold' | 'traded' | 'locked'
+  status?: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
   allow_buying?: boolean
   barter_only?: boolean
   location?: string
@@ -139,6 +151,16 @@ export interface SearchSuggestions {
   categories: string[]
   tags: string[]
   brands: string[]
+  users?: Array<{
+    id: number
+    slug?: string
+    name: string
+    profile_picture?: string
+    verified?: boolean
+    is_organization?: boolean
+    org_name?: string
+    org_handle?: string
+  }>
 }
 
 export interface PaginatedResponse<T> {
@@ -190,13 +212,16 @@ export interface Trade {
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
   // Delivery state fields
-  delivery_type?: 'standard' | 'express' | 'meetup'
+  delivery_type?: 'standard' | 'express' // Removed meetup - only delivery options
   payment_method?: 'gcash' | 'cod' | 'wallet' | 'online' // online includes GCash/PayMaya via Xendit
   payment_confirmed?: boolean
+  delivery_instructions?: string
   proof_of_delivery?: string | null // Base64 encoded image
   buyer_confirmed_receipt?: boolean
   seller_confirmed_delivery?: boolean
   delivery_estimated_time?: string // Estimated delivery time
+  buyer_location?: string // Buyer coordinates as "lat,lng"
+  seller_location?: string // Seller coordinates as "lat,lng"
 }
 
 // Multi-way/Three-way Trading Types
@@ -254,7 +279,7 @@ export interface TradeCreate {
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number

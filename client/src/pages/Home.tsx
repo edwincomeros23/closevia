@@ -45,6 +45,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   AddIcon,
+  BellIcon,
   HamburgerIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -71,6 +72,7 @@ import ProductCard from '../components/ProductCard'
 import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
+import InstallAppPrompt from '../components/InstallAppPrompt'
 
 // Custom debounce hook
 const useDebounce = (value: string, delay: number) => {
@@ -127,7 +129,7 @@ const Home: React.FC = () => {
   const [hasSearched, setHasSearched] = useState(false)
 
   // Smart search suggestions state
-  const [suggestions, setSuggestions] = useState<SearchSuggestions>({ products: [], categories: [], tags: [], brands: [] })
+  const [suggestions, setSuggestions] = useState<SearchSuggestions>({ products: [], categories: [], tags: [], brands: [], users: [] })
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
@@ -136,7 +138,7 @@ const Home: React.FC = () => {
   // Fetch search suggestions
   useEffect(() => {
     if (debouncedSuggestionTerm.trim().length < 2) {
-      setSuggestions({ products: [], categories: [], tags: [], brands: [] })
+      setSuggestions({ products: [], categories: [], tags: [], brands: [], users: [] })
       setShowSuggestions(false)
       return
     }
@@ -144,11 +146,19 @@ const Home: React.FC = () => {
     const fetchSuggestions = async () => {
       setSuggestionsLoading(true)
       try {
-        const res = await api.get(`/api/products/search-suggestions?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}`)
-        if (!cancelled && res.data?.success && res.data?.data) {
-          setSuggestions(res.data.data)
-          const d = res.data.data
-          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0
+        const [productRes, userRes] = await Promise.all([
+          api.get(`/api/products/search-suggestions?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}`),
+          api.get(`/api/users/search?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}&limit=5`),
+        ])
+        if (!cancelled && productRes.data?.success && productRes.data?.data) {
+          const users = userRes.data?.success && Array.isArray(userRes.data?.data) ? userRes.data.data : []
+          const merged: SearchSuggestions = {
+            ...productRes.data.data,
+            users,
+          }
+          setSuggestions(merged)
+          const d = merged
+          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0 || (d.users?.length || 0) > 0
           setShowSuggestions(hasResults)
         }
       } catch {
@@ -213,9 +223,10 @@ const Home: React.FC = () => {
     // Reset category and search state to defaults on mount
     setSelectedCategory('All')
     setSearchTerm('')
-    // Fetch the default "All" feed every time the Home page mounts
+    // Trigger a single initial fetch through the filters effect
     console.log('🔍 Fetching initial products with limit: 20')
-    searchProducts({ limit: 20, page: 1 })
+    setFilters(prev => ({ ...prev, keyword: '', category: '', page: 1, limit: 20 }))
+    setHasSearched(true)
 
     // Set flag so returning users bypass landing page
     localStorage.setItem('has_visited', 'true')
@@ -264,11 +275,11 @@ const Home: React.FC = () => {
       setFilters(prev => {
         // Only trigger refetch if there was a keyword before
         if (prev.keyword) {
+          setHasSearched(true)
           return { ...prev, keyword: '', page: 1 }
         }
         return prev
       })
-      setHasSearched(true)
       return
     }
     setFilters(prev => ({ ...prev, keyword: debouncedSearchTerm, page: 1 }))
@@ -298,8 +309,24 @@ const Home: React.FC = () => {
     setHasSearched(true)
   }
 
-  const handleSuggestionClick = (text: string, type: 'product' | 'category' | 'tag' | 'brand') => {
+  const handleSuggestionClick = (
+    text: string,
+    type: 'product' | 'category' | 'tag' | 'brand' | 'user',
+    userId?: number,
+    selectedUser?: NonNullable<SearchSuggestions['users']>[number]
+  ) => {
     setShowSuggestions(false)
+    if (type === 'user' && userId) {
+      if (selectedUser?.is_organization) {
+        const orgHandle = selectedUser.org_handle || selectedUser.slug
+        if (orgHandle) {
+          navigate(`/org/${orgHandle}/products`)
+          return
+        }
+      }
+      navigate(`/users/${selectedUser?.slug || userId}`)
+      return
+    }
     if (type === 'category') {
       setSearchTerm('')
       setSelectedCategory(text)
@@ -495,6 +522,16 @@ const Home: React.FC = () => {
     navigate('/login')
   }, [logout, onCloseLogoutModal, navigate])
 
+  const userSuggestions = useMemo(
+    () => (suggestions.users || []).filter((u) => !u.is_organization),
+    [suggestions.users]
+  )
+
+  const organizationSuggestions = useMemo(
+    () => (suggestions.users || []).filter((u) => u.is_organization),
+    [suggestions.users]
+  )
+
   // Add state for offer sorting
   const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
 
@@ -588,13 +625,23 @@ const Home: React.FC = () => {
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
             <Box key={`product-${item.data.id}`} w="full" h="full">
+              {(() => {
+                const scoreDetail = tradeScores.get(item.data.id)
+                return (
               <ProductCard
-                product={{ ...item.data, tradeMatchScore: tradeScores.get(item.data.id) }}
+                product={{
+                  ...item.data,
+                  tradeMatchScore: scoreDetail?.total,
+                  tradeMatchBreakdown: scoreDetail,
+                }}
                 onTradeClick={handleTradeClick}
                 onBuyoutClick={handleBuyoutClick}
                 onBuyClick={handleBuyClick}
                 onViewOffers={handleViewOffers}
+                showPriceOverlay
               />
+                )
+              })()}
             </Box>
           ) : (
             <Box key={`ad-${item.data.id}`} w="full" h="full">
@@ -638,7 +685,7 @@ const Home: React.FC = () => {
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value.trim().length >= 2) setShowSuggestions(true) }}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); if (e.key === 'Escape') setShowSuggestions(false) }}
-                  onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0)) setShowSuggestions(true) }}
+                  onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || (suggestions.users?.length || 0) > 0)) setShowSuggestions(true) }}
                   bg="white"
                   border="2px"
                   borderColor="gray.200"
@@ -725,6 +772,34 @@ const Home: React.FC = () => {
                         ))}
                       </>
                     )}
+                    {userSuggestions.length > 0 && (
+                      <>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Users</Text>
+                        {userSuggestions.map((u, i) => (
+                          <Box key={`u-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.name, 'user', u.id, u)}>
+                            <HStack spacing={3}>
+                              <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.name} />
+                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.name}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {organizationSuggestions.length > 0 && (
+                      <>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || userSuggestions.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Organizations</Text>
+                        {organizationSuggestions.map((u, i) => (
+                          <Box key={`o-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.org_name || u.name, 'user', u.id, u)}>
+                            <HStack spacing={3}>
+                              <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.org_name || u.name} />
+                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.org_name || u.name}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
                   </VStack>
                 )}
               </Box>
@@ -740,6 +815,37 @@ const Home: React.FC = () => {
               onClick={() => setShowFilters(!showFilters)}
               display={{ base: 'inline-flex', md: 'none' }}
             />
+
+            {/* Mobile notifications button beside hamburger */}
+            {user && (
+              <Box position="relative" display={{ base: 'inline-flex', md: 'none' }}>
+                <IconButton
+                  aria-label="Notifications"
+                  icon={<BellIcon />}
+                  size={{ base: 'md', md: 'lg' }}
+                  variant="ghost"
+                  onClick={() => navigate('/notifications')}
+                />
+                {offerCount > 0 && (
+                  <Badge
+                    position="absolute"
+                    top="-1"
+                    right="-1"
+                    colorScheme="red"
+                    borderRadius="full"
+                    minW="18px"
+                    h="18px"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    fontSize="xs"
+                    px={1}
+                  >
+                    {offerCount > 99 ? '99+' : offerCount}
+                  </Badge>
+                )}
+              </Box>
+            )}
 
             {/* Mobile hamburger to open nav drawer (after filters icon) */}
             <IconButton
@@ -779,14 +885,16 @@ const Home: React.FC = () => {
                 <PopoverTrigger>
                   <Box
                     as="button"
-                    cursor="pointer"
+                    cursor={user.id ? "pointer" : "not-allowed"}
                     display={{ base: 'none', md: 'inline-flex' }}
                     alignItems="center"
                     justifyContent="center"
                     borderRadius="full"
-                    _hover={{ opacity: 0.8, transform: 'scale(1.05)' }}
+                    _hover={{ opacity: user.id ? 0.8 : 1, transform: user.id ? 'scale(1.05)' : 'scale(1)' }}
                     transition="all 0.2s"
-                    onClick={() => navigate(`/users/${user.slug || user.id}`)}
+                    onClick={() => user.id && navigate(`/users/${user.slug || user.id}`)}
+                    disabled={!user.id}
+                    opacity={user.id ? 1 : 0.5}
                   >
                     <VerifiedAvatar
                       size="sm"
@@ -835,7 +943,8 @@ const Home: React.FC = () => {
                         </Box>
                         <Button
                           as={RouterLink}
-                          to={`/users/${user.id}`}
+                          to={user.id ? `/users/${user.id}` : '#'}
+                          isDisabled={!user.id}
                           size="sm"
                           w="full"
                           colorScheme="brand"
@@ -858,20 +967,32 @@ const Home: React.FC = () => {
                         {riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider'}
                       </Button>
 
-                      {!(user as any).is_premium && (
-                        <Button
-                          as={RouterLink}
-                          to="/premium"
-                          size="sm"
-                          w="full"
-                          variant="ghost"
-                          justifyContent="flex-start"
-                          leftIcon={<Icon as={FaCrown} color="purple.500" />}
-                          color="purple.600"
-                        >
-                          Buy Premium
-                        </Button>
-                      )}
+                      <Button
+                        as={RouterLink}
+                        to="/premium"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaCrown} color="purple.500" />}
+                        color="purple.600"
+                      >
+                        {(user as any).is_premium ? 'Premium' : 'Buy Premium'}
+                      </Button>
+
+                      <Button
+                        as={RouterLink}
+                        to="/organizations"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FaHome} />}
+                      >
+                        Organizations
+                      </Button>
+
+                      <InstallAppPrompt variant="profile-menu" />
 
                       <Divider />
                       <Button

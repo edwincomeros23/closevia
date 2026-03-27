@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden, SimpleGrid, IconButton, Tooltip } from '@chakra-ui/react'
+import { Box, Heading, VStack, HStack, Text, Badge, Button, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden, SimpleGrid, IconButton, Tooltip, Skeleton } from '@chakra-ui/react'
 import { FaHandshake, FaTimes, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { FiGrid, FiList } from 'react-icons/fi'
 import { api } from '../services/api'
@@ -25,6 +25,7 @@ const Offers: React.FC = () => {
   const [tradeToDecline, setTradeToDecline] = useState<Trade | null>(null)
   const [declineFeedback, setDeclineFeedback] = useState('')
   const [activeTab, setActiveTab] = useState(0)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<number | undefined>()
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const toast = useToast()
@@ -134,13 +135,15 @@ const Offers: React.FC = () => {
 
   const updateTrade = async (id: number, action: TradeAction) => {
     try {
-      await api.put(`/api/trades/${id}`, action)
+      const response = await api.put(`/api/trades/${id}`, action)
       toast({
         id: "offers-success", title: 'Success', description: 'Offer updated', status: 'success' })
       fetchAll()
+      return response.data
     } catch (e: any) {
       toast({
         id: "offers-error-2", title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
+      throw e
     }
   }
 
@@ -157,6 +160,7 @@ const Offers: React.FC = () => {
   const handleConfirmCancel = async () => {
     if (!tradeToCancel) return
     
+    setIsProcessing(true)
     try {
       await updateTrade(tradeToCancel.id, { action: 'cancel' })
       setCancelModalOpen(false)
@@ -175,6 +179,8 @@ const Offers: React.FC = () => {
         description: error?.response?.data?.error || 'Failed to cancel offer',
         status: 'error'
       })
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -187,6 +193,7 @@ const Offers: React.FC = () => {
   const handleConfirmDecline = async () => {
     if (!tradeToDecline) return
     
+    setIsProcessing(true)
     try {
       await updateTrade(tradeToDecline.id, { 
         action: 'decline',
@@ -209,24 +216,78 @@ const Offers: React.FC = () => {
         description: error?.response?.data?.error || 'Failed to decline offer',
         status: 'error'
       })
+    } finally {
+      setIsProcessing(false)
     }
   }
 
-  const handleConvertToMultiWay = () => {
+  const handleConvertToMultiWay = async () => {
     if (!tradeToDecline) {
       setDeclineModalOpen(false)
       return
     }
 
+    setIsProcessing(true)
     setDeclineModalOpen(false)
-    toast({
-      title: 'Searching for multi-way trade',
-      description: 'We will keep this offer open while we look for multi-way trade loops. You will be notified if we find a match.',
-      status: 'info',
-      duration: 5000
-    })
 
-    navigate('/premium')
+    try {
+      const result = await updateTrade(tradeToDecline.id, {
+        action: 'convert_to_multiway'
+      })
+
+      setTradeToDecline(null)
+      setDeclineFeedback('')
+
+      if (result?.multiway?.match_found) {
+        toast({
+          id: 'success-convert-multiway-match',
+          title: 'Match Found!',
+          description: 'A 3-way trade match was found immediately! Redirecting to your multi-way dashboard...',
+          status: 'success',
+          duration: 5000
+        })
+        
+        // Redirect to dashboard multi-way tab
+        setTimeout(() => {
+          navigate('/dashboard?tab=2')
+        }, 2000)
+      } else {
+        toast({
+          id: 'success-convert-multiway',
+          title: 'Converting to Multi-Way',
+          description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
+          status: 'success',
+          duration: 5000
+        })
+      }
+
+      // Refresh trades after conversion
+      setTimeout(() => {
+        setIsProcessing(false)
+      }, 1000)
+    } catch (error: any) {
+      setIsProcessing(false)
+
+      const errorMsg = error?.response?.data?.error || 'Failed to convert to multi-way'
+
+      // Soft upsell for non-premium users creating loops.
+      if (errorMsg.includes('premium') || error?.response?.status === 403) {
+        toast({
+          id: 'error-convert-multiway-premium',
+          title: 'Pro members can initiate',
+          description: "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
+          status: 'warning',
+          duration: 5000
+        })
+      } else {
+        toast({
+          id: 'error-convert-multiway',
+          title: 'Error',
+          description: errorMsg,
+          status: 'error'
+        })
+      }
+    }
   }
 
   const sortList = (list: Trade[]) => {
@@ -254,7 +315,7 @@ const Offers: React.FC = () => {
     if (!s) return 3
     const v = s.toLowerCase()
     if (v === 'countered') return 0
-    if (v === 'pending') return 1
+    if (v === 'pending' || v === 'pending_multiway') return 1
     return 2
   }
 
@@ -368,7 +429,45 @@ const Offers: React.FC = () => {
 
   if (loading) {
     return (
-      <Center h="50vh"><Spinner size="xl" color="brand.500" /></Center>
+      <Box minH="100vh" bg="#FFFDF1" px={8} py={20}>
+        <HStack justify="space-between" mb={6} pl={24} mt={4}>
+          <Skeleton h="34px" w="220px" borderRadius="md" />
+          <HStack spacing={3}>
+            <Skeleton h="14px" w="36px" />
+            <Skeleton h="32px" w="140px" borderRadius="md" />
+            <Skeleton h="32px" w="32px" borderRadius="md" />
+          </HStack>
+        </HStack>
+
+        <Box bg={cardBg} borderRadius="lg" border="1px solid" borderColor="gray.100" overflow="hidden" boxShadow="sm">
+          <HStack bg={softAccent} p={3} gap={2}>
+            <Skeleton h="36px" w="170px" borderRadius="md" />
+            <Skeleton h="36px" w="140px" borderRadius="md" />
+            <Skeleton h="36px" w="120px" borderRadius="md" />
+          </HStack>
+
+          <VStack p={4} spacing={3} align="stretch">
+            {[0, 1, 2, 3].map((idx) => (
+              <Box key={idx} bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="lg" p={4}>
+                <HStack justify="space-between" mb={3}>
+                  <Skeleton h="18px" w="130px" borderRadius="full" />
+                  <Skeleton h="22px" w="92px" borderRadius="full" />
+                </HStack>
+                <VStack align="stretch" spacing={2}>
+                  <Skeleton h="18px" w="65%" />
+                  <Skeleton h="14px" w="45%" />
+                  <Skeleton h="14px" w="50%" />
+                </VStack>
+                <HStack mt={4} spacing={2}>
+                  <Skeleton h="30px" flex="1" borderRadius="md" />
+                  <Skeleton h="30px" flex="1" borderRadius="md" />
+                  <Skeleton h="30px" w="86px" borderRadius="md" />
+                </HStack>
+              </Box>
+            ))}
+          </VStack>
+        </Box>
+      </Box>
     )
   }
 
@@ -1269,6 +1368,7 @@ const Offers: React.FC = () => {
                     size="md"
                     flex={1}
                     onClick={handleConfirmCancel}
+                    isLoading={isProcessing}
                     leftIcon={<Icon as={FaTimes} />}
                   >
                     Cancel Offer
@@ -1342,6 +1442,7 @@ const Offers: React.FC = () => {
                     size="md"
                     flex={1}
                     onClick={handleConvertToMultiWay}
+                    isLoading={isProcessing}
                   >
                     Convert to Multi-Way
                   </Button>
@@ -1350,6 +1451,7 @@ const Offers: React.FC = () => {
                     size="md"
                     flex={1}
                     onClick={handleConfirmDecline}
+                    isLoading={isProcessing}
                     leftIcon={<Icon as={FaTimes} />}
                   >
                     Decline Offer

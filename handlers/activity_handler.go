@@ -1,10 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math"
+	"log"
 	"strconv"
 	"time"
 
@@ -31,44 +32,58 @@ type ActivityItem struct {
 }
 
 func (h *ActivityHandler) GetRecentActivity(c *fiber.Ctx) error {
-	var activities []ActivityItem
+	// The activity feed is non-critical UI. If the DB is slow/unavailable, fail soft and return [].
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
 
-	// 1. Fetch recent new listings
-	rows, err := h.db.Query(`
+	if err := h.db.PingContext(ctx); err != nil {
+		log.Printf("GetRecentActivity: DB unavailable: %v", err)
+		return c.JSON(fiber.Map{"success": true, "data": []ActivityItem{}})
+	}
+
+	activities := make([]ActivityItem, 0, 15)
+
+	// 1) Fetch recent new listings
+	rows, err := h.db.QueryContext(ctx, `
 		SELECT id, title, image_urls, created_at
 		FROM products
 		WHERE status = 'available'
 		ORDER BY created_at DESC
 		LIMIT 10
 	`)
-	if err == nil {
+	if err != nil {
+		log.Printf("GetRecentActivity: listings query failed: %v", err)
+	} else {
 		defer rows.Close()
 		for rows.Next() {
 			var id int
-			var title, imageURLsJSON string
+			var title sql.NullString
+			var imageURLsJSON sql.NullString
 			var createdAt time.Time
-			if err := rows.Scan(&id, &title, &imageURLsJSON, &createdAt); err == nil {
-				img := ""
-				var urls []string
-				if json.Unmarshal([]byte(imageURLsJSON), &urls) == nil && len(urls) > 0 {
+			if err := rows.Scan(&id, &title, &imageURLsJSON, &createdAt); err != nil {
+				continue
+			}
+
+			img := ""
+			var urls []string
+			if imageURLsJSON.Valid {
+				if json.Unmarshal([]byte(imageURLsJSON.String), &urls) == nil && len(urls) > 0 {
 					img = urls[0]
 				}
-
-				activities = append(activities, ActivityItem{
-					Type:      "new_listing",
-					ID:        id,
-					Message:   fmt.Sprintf("New item posted: %s", title),
-					ImageURL:  img,
-					Timestamp: createdAt,
-				})
 			}
+
+			activities = append(activities, ActivityItem{
+				Type:      "new_listing",
+				ID:        id,
+				Message:   fmt.Sprintf("New item posted: %s", title.String),
+				ImageURL:  img,
+				Timestamp: createdAt,
+			})
 		}
 	}
 
-	// 2. Fetch recently completed trades
-	// We need the target product title + the offered product title
-	// To simplify, we'll fetch the target product title and just 1 offered product title
-	tradeRows, err := h.db.Query(`
+	// 2) Fetch recently completed trades
+	tradeRows, err := h.db.QueryContext(ctx, `
 		SELECT t.id, t.updated_at, p.title as target_title, p.image_urls
 		FROM trades t
 		JOIN products p ON t.target_product_id = p.id
@@ -76,45 +91,53 @@ func (h *ActivityHandler) GetRecentActivity(c *fiber.Ctx) error {
 		ORDER BY t.updated_at DESC
 		LIMIT 10
 	`)
-	if err == nil {
+	if err != nil {
+		log.Printf("GetRecentActivity: trades query failed: %v", err)
+	} else {
 		defer tradeRows.Close()
 		for tradeRows.Next() {
 			var id int
 			var updatedAt time.Time
-			var targetTitle, imageURLsJSON string
-			if err := tradeRows.Scan(&id, &updatedAt, &targetTitle, &imageURLsJSON); err == nil {
-				img := ""
-				var urls []string
-				if json.Unmarshal([]byte(imageURLsJSON), &urls) == nil && len(urls) > 0 {
+			var targetTitle sql.NullString
+			var imageURLsJSON sql.NullString
+			if err := tradeRows.Scan(&id, &updatedAt, &targetTitle, &imageURLsJSON); err != nil {
+				continue
+			}
+
+			img := ""
+			var urls []string
+			if imageURLsJSON.Valid {
+				if json.Unmarshal([]byte(imageURLsJSON.String), &urls) == nil && len(urls) > 0 {
 					img = urls[0]
 				}
-
-				// Find one offered item to make "Laptop <-> Camera" string
-				var offeredTitle string
-				errOffered := h.db.QueryRow(`
-					SELECT p.title 
-					FROM trade_items ti 
-					JOIN products p ON ti.product_id = p.id 
-					WHERE ti.trade_id = ? LIMIT 1
-				`, id).Scan(&offeredTitle)
-
-				message := fmt.Sprintf("Trade completed: %s", targetTitle)
-				if errOffered == nil && offeredTitle != "" {
-					message = fmt.Sprintf("Trade completed: %s ↔ %s", targetTitle, offeredTitle)
-				}
-
-				activities = append(activities, ActivityItem{
-					Type:      "trade",
-					ID:        id,
-					Message:   message,
-					ImageURL:  img,
-					Timestamp: updatedAt,
-				})
 			}
+
+			// Find one offered item to make "A ↔ B" string (best-effort)
+			var offeredTitle sql.NullString
+			_ = h.db.QueryRowContext(ctx, `
+				SELECT p.title
+				FROM trade_items ti
+				JOIN products p ON ti.product_id = p.id
+				WHERE ti.trade_id = ?
+				LIMIT 1
+			`, id).Scan(&offeredTitle)
+
+			message := fmt.Sprintf("Trade completed: %s", targetTitle.String)
+			if offeredTitle.Valid && offeredTitle.String != "" {
+				message = fmt.Sprintf("Trade completed: %s ↔ %s", targetTitle.String, offeredTitle.String)
+			}
+
+			activities = append(activities, ActivityItem{
+				Type:      "trade",
+				ID:        id,
+				Message:   message,
+				ImageURL:  img,
+				Timestamp: updatedAt,
+			})
 		}
 	}
 
-	// 3. Near-you listings (only if caller provides lat/lng)
+	// 3) Near-you listings (only if caller provides lat/lng)
 	latStr := c.Query("lat")
 	lngStr := c.Query("lng")
 	if latStr != "" && lngStr != "" {
@@ -123,7 +146,9 @@ func (h *ActivityHandler) GetRecentActivity(c *fiber.Ctx) error {
 		if latErr == nil && lngErr == nil {
 			// Rough bounding box ~10km (about 0.09 degrees)
 			const radiusDeg = 0.09
-			nearRows, nearErr := h.db.Query(`
+			var count int
+			var sample sql.NullString
+			nearErr := h.db.QueryRowContext(ctx, `
 				SELECT COUNT(*) as cnt, MIN(title) as sample
 				FROM products
 				WHERE status = 'available'
@@ -135,31 +160,20 @@ func (h *ActivityHandler) GetRecentActivity(c *fiber.Ctx) error {
 			`,
 				viewerLat-radiusDeg, viewerLat+radiusDeg,
 				viewerLng-radiusDeg, viewerLng+radiusDeg,
-			)
-			if nearErr == nil {
-				defer nearRows.Close()
-				if nearRows.Next() {
-					var count int
-					var sample string
-					if err := nearRows.Scan(&count, &sample); err == nil && count > 0 {
-						// Fine-grained haversine filter: only emit if avg point is close
-						// (bounding box already does the heavy lifting, this is just display)
-						_ = math.Pi // use math to avoid unused import
-						activities = append(activities, ActivityItem{
-							Type:      "near_you",
-							ID:        0,
-							Message:   fmt.Sprintf("%d new listing(s) near you 📍", count),
-							ImageURL:  "",
-							Timestamp: time.Now(),
-						})
-					}
-				}
+			).Scan(&count, &sample)
+			if nearErr == nil && count > 0 {
+				activities = append(activities, ActivityItem{
+					Type:      "near_you",
+					ID:        0,
+					Message:   fmt.Sprintf("%d new listing(s) near you 📍", count),
+					ImageURL:  "",
+					Timestamp: time.Now(),
+				})
 			}
 		}
 	}
 
-	// Sort unified timeline by timestamp DESC
-	// Bubble sort or just simple sort
+	// Sort unified timeline by timestamp DESC (small list; simple O(n^2) sort is fine)
 	for i := 0; i < len(activities); i++ {
 		for j := i + 1; j < len(activities); j++ {
 			if activities[i].Timestamp.Before(activities[j].Timestamp) {
@@ -168,7 +182,6 @@ func (h *ActivityHandler) GetRecentActivity(c *fiber.Ctx) error {
 		}
 	}
 
-	// Cap to 15 items max to avoid overwhelming the feed
 	if len(activities) > 15 {
 		activities = activities[:15]
 	}

@@ -12,7 +12,7 @@ import {
   Icon,
 } from '@chakra-ui/react'
 import { StarIcon } from '@chakra-ui/icons'
-import { FaTag, FaHandshake } from 'react-icons/fa'
+import { FaMoneyBillWave, FaHandshake } from 'react-icons/fa'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
@@ -25,6 +25,7 @@ interface ProductCardProps {
   onBuyoutClick: (productId: number) => void
   onBuyClick: (productId: number) => void
   onViewOffers: (productId: number) => void
+  showPriceOverlay?: boolean
 }
 
 /**
@@ -37,8 +38,47 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onBuyoutClick,
   onBuyClick,
   onViewOffers,
+  showPriceOverlay = false,
 }) => {
   const navigate = useNavigate()
+
+  const formatDistanceCompact = (rawDistance: unknown): string => {
+    if (!rawDistance) return ''
+
+    const raw = String(rawDistance).trim().toLowerCase()
+    if (!raw) return ''
+
+    const match = raw.match(/([\d.]+)\s*(km|m)\b/)
+    if (!match) return ''
+
+    const value = Number(match[1])
+    const unit = match[2]
+    if (!Number.isFinite(value)) return ''
+
+    if (unit === 'm') {
+      if (value < 1000) {
+        return `${Math.round(value)}m`
+      }
+
+      const km = value / 1000
+      const oneDecimal = Math.round(km * 10) / 10
+      return `${oneDecimal.toString().replace(/\.0$/, '.0')}km`
+    }
+
+    const meters = value * 1000
+    if (meters <= 2000) {
+      return `${Math.round(meters)}m`
+    }
+
+    if (value < 10) {
+      const oneDecimal = Math.round(value * 10) / 10
+      return `${oneDecimal.toString().replace(/\.0$/, '')}km`
+    }
+
+    return `${Math.round(value)}km`
+  }
+
+  const compactDistance = formatDistanceCompact(product.distance)
 
   const sellerAvatar = product.seller_profile_picture
     ? getImageUrl(product.seller_profile_picture)
@@ -81,6 +121,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
     [product.id, onViewOffers]
   )
 
+  const formatPriceCompact = (value: unknown): string => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) return ''
+    return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  }
+
   return (
     <Box
       key={product.id}
@@ -113,38 +159,91 @@ const ProductCard: React.FC<ProductCardProps> = ({
           fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
         />
 
-        {/* Premium / type badge */}
-        {product.premium && (
-          <Badge
-            position="absolute"
-            top={2}
-            right={2}
-            colorScheme="yellow"
-            variant="solid"
-            borderRadius="full"
-            px={2}
-          >
-            <StarIcon mr={0} />
-          </Badge>
-        )}
+        {/* Top-right image badges */}
+        <Box position="absolute" top={{ base: 1.5, md: 2 }} right={{ base: 1.5, md: 2 }} zIndex={1}>
+          <Box display="flex" flexDirection="column" gap={1} alignItems="flex-end">
+            {product.premium && (
+              <Badge
+                colorScheme="yellow"
+                variant="solid"
+                borderRadius="full"
+                px={2}
+              >
+                <StarIcon mr={0} />
+              </Badge>
+            )}
 
-        {/* Trade Match score badge */}
+            {showPriceOverlay && (
+              <Box
+                px={{ base: 1.5, md: 2.5 }}
+                py={{ base: 0.75, md: 1.5 }}
+                bg="blackAlpha.700"
+                color="white"
+                borderRadius="lg"
+                textAlign="right"
+                display="inline-flex"
+                flexDirection="column"
+                alignItems="flex-end"
+                w="auto"
+                borderWidth="1px"
+                borderColor="whiteAlpha.300"
+                boxShadow="md"
+                backdropFilter="blur(4px)"
+              >
+                <Text fontSize={{ base: '2xs', md: 'xs' }} fontWeight="bold" lineHeight="1.2" letterSpacing="0.01em">
+                  {product.price && product.price > 0
+                    ? `₱${formatPriceCompact(product.price)}`
+                    : product.estimated_value_min && product.estimated_value_max
+                      ? `₱${formatPriceCompact(product.estimated_value_min)} – ₱${formatPriceCompact(product.estimated_value_max)}`
+                      : 'Price Unavailable'}
+                </Text>
+                {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
+                  <Text display={{ base: 'none', sm: 'block' }} fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
+                    AI Est. ₱{formatPriceCompact(product.estimated_value_min)} – ₱{formatPriceCompact(product.estimated_value_max)}
+                  </Text>
+                )}
+                {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
+                  <Text display={{ base: 'block', sm: 'none' }} fontSize="2xs" color="brand.100" lineHeight="1.2" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
+                    AI ₱{formatPriceCompact(product.estimated_value_min)}-₱{formatPriceCompact(product.estimated_value_max)}
+                  </Text>
+                )}
+                {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
+                  <Text fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium">
+                    AI Est. range
+                  </Text>
+                )}
+              </Box>
+            )}
+          </Box>
+        </Box>
+
+        {/* Trade Ready score badge */}
         {product.tradeMatchScore != null && product.tradeMatchScore > 0 && (
-          <Badge
-            position="absolute"
-            top={2}
-            left={2}
-            variant="solid"
-            borderRadius="full"
-            px={2}
-            py={0.5}
-            fontSize="10px"
-            fontWeight="bold"
-            bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
-            color="white"
+          <Tooltip
+            hasArrow
+            placement="top-start"
+            label={
+              product.tradeMatchBreakdown
+                ? `${product.tradeMatchBreakdown.isSuperCheap ? 'Warning: super cheap vs AI estimate | ' : ''}Value ${product.tradeMatchBreakdown.value} | Category ${product.tradeMatchBreakdown.category} | Demand ${product.tradeMatchBreakdown.demand} | Distance ${product.tradeMatchBreakdown.distance}${product.tradeMatchBreakdown.valueNote ? ` | ${product.tradeMatchBreakdown.valueNote}` : ''}`
+                : 'Trade ready score'
+            }
           >
-            {product.tradeMatchScore}% Match
-          </Badge>
+            <Badge
+              position="absolute"
+              top={2}
+              left={2}
+              variant="solid"
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="10px"
+              fontWeight="bold"
+              bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
+              color="white"
+            >
+              {product.tradeMatchScore}% Ready
+            </Badge>
+          </Tooltip>
         )}
 
         {/* Status badge (e.g. sold) */}
@@ -163,23 +262,25 @@ const ProductCard: React.FC<ProductCardProps> = ({
         )}
 
         {/* Location badge */}
-        <Badge
-          position="absolute"
-          bottom={2}
-          left={2}
-          colorScheme="gray"
-          variant="solid"
-          borderRadius="full"
-          px={2}
-          bg="blackAlpha.600"
-          color="white"
-          fontSize="xs"
-        >
-          <Text as="span" mr={1}>
-            📍
-          </Text>
-          {product.distance || 'Nearby'}
-        </Badge>
+        {compactDistance && (
+          <Badge
+            position="absolute"
+            bottom={2}
+            left={2}
+            colorScheme="gray"
+            variant="solid"
+            borderRadius="full"
+            px={2}
+            bg="blackAlpha.600"
+            color="white"
+            fontSize="xs"
+          >
+            <Text as="span" mr={1}>
+              📍
+            </Text>
+            {compactDistance}
+          </Badge>
+        )}
       </Box>
 
       {/* Info section */}
@@ -193,18 +294,29 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Seller row (desktop) */}
         <Flex justify="space-between" align="center" mb={1}>
           <HStack spacing={1} align="center" mt="auto">
-            <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+            {((product as any).seller_slug || product.seller_id) ? (
+              <RouterLink to={`/users/${(product as any).seller_slug || product.seller_id}`} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                <VerifiedAvatar
+                  size={{ base: 'xs', md: 'sm' } as any}
+                  src={sellerAvatar}
+                  name={product.seller_name || 'U'}
+                  bg="brand.500"
+                  flexShrink={0}
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8 }}
+                  isVerified={product.seller_verified || false}
+                />
+              </RouterLink>
+            ) : (
               <VerifiedAvatar
                 size={{ base: 'xs', md: 'sm' } as any}
                 src={sellerAvatar}
                 name={product.seller_name || 'U'}
                 bg="brand.500"
                 flexShrink={0}
-                cursor="pointer"
-                _hover={{ opacity: 0.8 }}
                 isVerified={product.seller_verified || false}
               />
-            </RouterLink>
+            )}
             <Text fontSize={{ base: 'xs', md: 'xs' }} color="black" fontWeight="medium" noOfLines={1}>
               {product.seller_name || 'Unknown'}
             </Text>
@@ -294,11 +406,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <Tooltip label="Buyout offer" placement="top">
             <IconButton
               aria-label="Buyout offer"
-              icon={<Icon as={FaTag} color="yellow.500" />}
+              icon={<Icon as={FaMoneyBillWave} color="orange.500" />}
               size="xs"
               variant="outline"
-              borderColor="yellow.400"
-              _hover={{ borderColor: 'yellow.500', bg: 'yellow.50', transform: 'translateY(-1px)' }}
+              borderColor="orange.400"
+              _hover={{ borderColor: 'orange.500', bg: 'orange.50', transform: 'translateY(-1px)' }}
               _active={{ transform: 'scale(0.98)' }}
               onClick={handleBuyoutClick}
               isDisabled={product.status === 'sold'}

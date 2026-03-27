@@ -409,18 +409,17 @@ const Login: React.FC = () => {
                       </InputRightElement>
                     </InputGroup>
                   </FormControl>
-
-                  {/* Forgot Password Link */}
-                  <Box w="full" textAlign="right" mt={-2}>
+                  
+                  <Box w="full" textAlign="right" mt={-3}>
                     <Link
                       as={RouterLink}
                       to="/forgot-password"
-                      color="#2D876D"
-                      fontSize={{ base: '13px', md: '13px' }}
-                      fontWeight="500"
-                      _hover={{ textDecoration: 'underline' }}
+                      fontSize="xs"
+                      color="#666"
+                      fontWeight="600"
+                      _hover={{ color: '#2D876D', textDecoration: 'underline' }}
                     >
-                      Forgot Password?
+                      Forgot password?
                     </Link>
                   </Box>
 

@@ -147,8 +147,8 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     // Convert to meters
     const meters = distanceKm * 1000
     
-    if (meters < 1000) {
-      // If less than 1km, show in Meters with 1 decimal place if very close
+    if (meters < 2000) {
+      // Show nearby distances in meters for better granularity (up to ~2km)
       if (meters < 10) {
         return `${meters.toFixed(1)} M away`
       }
@@ -278,8 +278,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         params.append('limit', (filters.limit || 10).toString())
 
         const endpoint = filters.useSmartSearch ? '/api/products/smart-search' : '/api/products'
-        const response = await api.get(`${endpoint}?${params.toString()}`, {
-          headers: getAuthHeaders(),
+        const response = await apiCallWithRetry(async () => {
+          return await api.get(`${endpoint}?${params.toString()}`, {
+            headers: getAuthHeaders(),
+          })
         })
 
         console.log('API Response:', response.data)

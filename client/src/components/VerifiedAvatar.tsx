@@ -1,6 +1,6 @@
 import React from 'react'
 import { Avatar, AvatarProps, Box, Icon } from '@chakra-ui/react'
-import { FiCheckCircle } from 'react-icons/fi'
+import { FiCheck } from 'react-icons/fi'
 
 interface VerifiedAvatarProps extends AvatarProps {
   isVerified?: boolean
@@ -17,21 +17,24 @@ const VerifiedAvatar: React.FC<VerifiedAvatarProps> = ({ isVerified = false, ...
       {isVerified && (
         <Box
           position="absolute"
-          bottom={0}
-          right={0}
+          bottom="-1px"
+          right="-1px"
+          w="16px"
+          h="16px"
           display="flex"
           alignItems="center"
           justifyContent="center"
-          bg="white"
+          bg="#0A66C2"
+          border="1.5px solid"
+          borderColor="white"
           borderRadius="full"
-          p="1px"
-          boxShadow="0 2px 4px rgba(0,0,0,0.2)"
+          boxShadow="0 1px 3px rgba(0,0,0,0.18)"
         >
           <Icon
-            as={FiCheckCircle}
-            boxSize={5}
-            color="brand.500"
-            fill="brand.500"
+            as={FiCheck}
+            boxSize={2.5}
+            color="white"
+            strokeWidth={3}
           />
         </Box>
       )}
