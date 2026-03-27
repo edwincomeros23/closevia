@@ -335,7 +335,7 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 		// Notify User 3 with specific details
 		user3Msg := fmt.Sprintf("%s invited you to a loop to trade your %s for their %s", initiatorName, targetProductTitle, best.User1ProductTitle)
 		if user3ProductTitle != "" {
-			user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, initiatorName, targetProductTitle, user3ProductTitle)
+			user3Msg = fmt.Sprintf("%s invited you to a 3-way loop: %s wants your %s, and you want their %s", initiatorName, targetProductTitle, user3ProductTitle, best.User1ProductTitle)
 		}
 		h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", best.User3ID, user3Msg)
 		publishNotification(best.User3ID, user3Msg)
@@ -1203,19 +1203,19 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup time is required"})
 		}
 
-		// Update meetup location, time, and confirmation status
-		var updateColumn string
+		// Store each party's meetup selection separately
+		var updateQuery string
 		switch userID {
 		case buyerID:
-			updateColumn = "buyer_meetup_confirmed"
+			updateQuery = "UPDATE trades SET buyer_meetup_location=?, buyer_meetup_time=?, buyer_meetup_confirmed=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?"
 		case sellerID:
-			updateColumn = "seller_meetup_confirmed"
+			updateQuery = "UPDATE trades SET seller_meetup_location=?, seller_meetup_time=?, seller_meetup_confirmed=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?"
 		default:
 			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 		}
 
-		// Update the trade with meetup location, time, and confirmation
-		_, err = h.db.Exec("UPDATE trades SET meetup_location=?, meetup_time=?, "+updateColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", payload.MeetupLocation, payload.MeetupTime, tradeID)
+		// Update the trade with this party's meetup selection
+		_, err = h.db.Exec(updateQuery, payload.MeetupLocation, payload.MeetupTime, tradeID)
 		if err != nil {
 			log.Printf("Failed to update meetup confirmation for trade %d: %v", tradeID, err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup"})
@@ -1232,31 +1232,73 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			confirmerName = "seller"
 		}
 
-		notifMsg := fmt.Sprintf("The %s has confirmed the meetup: %s at %s", confirmerName, payload.MeetupLocation, payload.MeetupTime)
+		notifMsg := fmt.Sprintf("The %s has selected meetup: %s at %s", confirmerName, payload.MeetupLocation, payload.MeetupTime)
 		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, notifMsg)
 
-		// Check if both parties have confirmed meetup
+		// Check if both parties have confirmed and if their selections MATCH
 		var buyerConfirmed, sellerConfirmed bool
-		err = h.db.QueryRow("SELECT buyer_meetup_confirmed, seller_meetup_confirmed FROM trades WHERE id = ?", tradeID).Scan(&buyerConfirmed, &sellerConfirmed)
-		if err == nil && buyerConfirmed && sellerConfirmed {
-			// Both parties confirmed, update trade status to active
-			_, err = h.db.Exec("UPDATE trades SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
-			if err == nil {
-				log.Printf("Both parties confirmed meetup for trade %d, status updated to active", tradeID)
-				publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active"}})
-				publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active"}})
+		var buyerLocation, buyerTime, sellerLocation, sellerTime sql.NullString
+		err = h.db.QueryRow(`
+			SELECT buyer_meetup_confirmed, seller_meetup_confirmed,
+			       buyer_meetup_location, buyer_meetup_time,
+			       seller_meetup_location, seller_meetup_time
+			FROM trades WHERE id = ?`, tradeID).Scan(
+			&buyerConfirmed, &sellerConfirmed,
+			&buyerLocation, &buyerTime,
+			&sellerLocation, &sellerTime)
 
-				// Send completion notifications
-				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Both parties confirmed meetup! Trade is now active.")
-				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "Both parties confirmed meetup! Trade is now active.")
+		if err == nil && buyerConfirmed && sellerConfirmed {
+			// Both parties confirmed - check if selections match
+			if buyerLocation.String == sellerLocation.String && buyerTime.String == sellerTime.String {
+				// Selections match! Update trade status to active and set the final meetup details
+				_, err = h.db.Exec(`
+					UPDATE trades
+					SET status='active', meetup_location=?, meetup_time=?, updated_at=CURRENT_TIMESTAMP
+					WHERE id = ?`, buyerLocation.String, buyerTime.String, tradeID)
+				if err == nil {
+					log.Printf("Both parties agreed on meetup for trade %d (location: %s, time: %s), status updated to active",
+						tradeID, buyerLocation.String, buyerTime.String)
+					publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
+					publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
+
+					// Send agreement notifications
+					_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
+						buyerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
+					_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
+						sellerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
+				}
+			} else {
+				// Selections don't match - notify both parties
+				log.Printf("Meetup selections don't match for trade %d. Buyer: %s at %s, Seller: %s at %s",
+					tradeID, buyerLocation.String, buyerTime.String, sellerLocation.String, sellerTime.String)
+				publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_mismatch": true}})
+				publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_mismatch": true}})
+
+				// Send mismatch notifications
+				mismatchMsg := fmt.Sprintf("Meetup selections don't match! You selected %s at %s, but the other party selected %s at %s. Please coordinate.",
+					payload.MeetupLocation, payload.MeetupTime,
+					func() string {
+						if userID == buyerID {
+							return sellerLocation.String
+						}
+						return buyerLocation.String
+					}(),
+					func() string {
+						if userID == buyerID {
+							return sellerTime.String
+						}
+						return buyerTime.String
+					}())
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", userID, mismatchMsg)
 			}
 		} else {
 			// Only one party confirmed, notify both about the confirmation
-			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_confirmed": true}})
-			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_confirmed": true}})
+			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_selection_submitted": true}})
+			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_selection_submitted": true}})
 		}
 
-		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_confirmed', ?)", tradeID, userID, currentStatus, "Meetup confirmed: "+payload.MeetupLocation+" at "+payload.MeetupTime)
+		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_selection', ?)",
+			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
 	case "update_delivery_state":
 		// Handle delivery state updates (payment confirmation, proof of delivery, confirmations)
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")
@@ -1874,7 +1916,13 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	}
 
 	query += `,
-          COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
+          COALESCE(t.meetup_location, '') as meetup_location,
+          COALESCE(t.meetup_time, '') as meetup_time,
+          t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
+          COALESCE(t.buyer_meetup_location, '') as buyer_meetup_location,
+          COALESCE(t.buyer_meetup_time, '') as buyer_meetup_time,
+          COALESCE(t.seller_meetup_location, '') as seller_meetup_location,
+          COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
         FROM trades t
         JOIN users ub ON ub.id = t.buyer_id
@@ -1885,7 +1933,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	var deliveryType, paymentMethod, deliveryInstructions string
 	var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
 	var proofOfDelivery sql.NullString
-	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.MeetupTime, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
 	tr.DeliveryType = deliveryType
 	tr.PaymentMethod = paymentMethod
 	tr.PaymentConfirmed = paymentConfirmed

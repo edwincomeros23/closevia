@@ -62,12 +62,12 @@ const Register: React.FC = () => {
       errors.department = 'Department/College is required for WMSU students'
     }
 
-    // Phone number validation: max 11 digits, numeric only
+    // Phone number validation: 10 to 15 digits, numeric only
     if (phoneNumber && !/^\d+$/.test(phoneNumber)) {
       errors.phone = 'Phone number must contain only digits'
     }
-    if (phoneNumber && phoneNumber.length > 11) {
-      errors.phone = 'Phone number must be 11 digits or less'
+    if (phoneNumber && (phoneNumber.length < 10 || phoneNumber.length > 15)) {
+      errors.phone = 'Phone number must be 10 to 15 digits'
     }
 
     if (!password) {
@@ -113,6 +113,7 @@ const Register: React.FC = () => {
       const result = await register({
         name: fullName,
         email,
+        phone: phoneNumber || undefined,
         password,
         department: department || undefined,
         bio: bio || undefined,
@@ -359,12 +360,12 @@ const Register: React.FC = () => {
                         </FormControl>
                       </SimpleGrid>
 
-                      {/* Phone Number - Max 11 digits */}
+                      {/* Phone Number - 10 to 15 digits */}
                       <FormControl isInvalid={!!fieldErrors.phone}>
                         <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">
                           Phone Number
                           <Text as="span" fontSize="11px" color="gray.500" ml={2} fontWeight="400">
-                            ({phoneNumber.length}/11 digits)
+                            ({phoneNumber.length}/15 digits)
                           </Text>
                         </FormLabel>
                         <Input
@@ -372,12 +373,12 @@ const Register: React.FC = () => {
                           inputMode="numeric"
                           value={phoneNumber}
                           onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 11)
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 15)
                             setPhoneNumber(value)
                             if (fieldErrors.phone) setFieldErrors({ ...fieldErrors, phone: '' })
                           }}
-                          placeholder="09XX-XXX-XXXX (11 digits)"
-                          maxLength={11}
+                          placeholder="e.g. 09171234567"
+                          maxLength={15}
                           size="lg"
                           bg={fieldErrors.phone ? '#FFF5F5' : '#F5F5F5'}
                           borderColor={fieldErrors.phone ? '#ef5350' : '#E0E0E0'}

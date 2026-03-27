@@ -26,6 +26,8 @@ import Profile from './pages/Profile'
 import UserProfile from './pages/UserProfile'
 import CreateOrganization from './pages/CreateOrganization'
 import OrganizationProfile from './pages/OrganizationProfile'
+import Organizations from './pages/Organizations'
+import OrganizationProducts from './pages/OrganizationProducts'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
@@ -282,9 +284,19 @@ const AppContent: React.FC = () => {
                     <ProtectedRoute><CreateOrganization /></ProtectedRoute>
                   </PageTransition>
                 } />
+                <Route path="/organizations" element={
+                  <PageTransition>
+                    <Organizations />
+                  </PageTransition>
+                } />
                 <Route path="/org/:handle" element={
                   <PageTransition>
                     <OrganizationProfile />
+                  </PageTransition>
+                } />
+                <Route path="/org/:handle/products" element={
+                  <PageTransition>
+                    <OrganizationProducts />
                   </PageTransition>
                 } />
                 <Route path="/settings" element={

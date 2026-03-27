@@ -290,6 +290,7 @@ func main() {
 	campaignHandler := handlers.NewCampaignHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
+	organizationHandler := handlers.NewOrganizationHandler()
 
 	// Hybrid matcher background refresh (MVP cron-like task).
 	go func() {
@@ -325,6 +326,10 @@ func main() {
 	users.Post("/verification/resend-school-email-code", middleware.AuthMiddleware(), verificationHandler.ResendSchoolEmailCode)
 	users.Post("/verification/upload-id", middleware.AuthMiddleware(), verificationHandler.UploadSchoolID)
 	users.Get("/verification/status", middleware.AuthMiddleware(), verificationHandler.GetVerificationStatus)
+	users.Post("/verification/phone/start", middleware.AuthMiddleware(), verificationHandler.StartPhoneVerification)
+	users.Post("/verification/phone/verify", middleware.AuthMiddleware(), verificationHandler.VerifyPhoneCode)
+	users.Post("/verification/phone/resend", middleware.AuthMiddleware(), verificationHandler.ResendPhoneCode)
+	users.Get("/verification/phone/status", middleware.AuthMiddleware(), verificationHandler.GetPhoneVerificationStatus)
 
 	// Saved products routes (must be BEFORE dynamic ":id" route)
 	users.Post("/saved-products", middleware.AuthMiddleware(), userHandler.SaveProduct)
@@ -333,6 +338,8 @@ func main() {
 	users.Get("/saved-products", middleware.AuthMiddleware(), userHandler.GetSavedProducts)
 	users.Post("/organization", middleware.AuthMiddleware(), userHandler.CreateOrganization)
 	users.Get("/organizations/:handle", userHandler.GetOrganizationByHandle)
+	users.Get("/search", userHandler.SearchUsersPublic)
+	users.Get("/:id/org-posts", organizationHandler.GetProfilePosts)
 
 	// Review routes (must be BEFORE dynamic ":id" route)
 	users.Post("/:id/reviews", middleware.AuthMiddleware(), reviewHandler.CreateReview)
@@ -379,6 +386,25 @@ func main() {
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
 	products.Delete("/:id", middleware.AuthMiddleware(), productHandler.DeleteProduct)
+
+	// Organization community routes
+	organizations := api.Group("/organizations")
+	organizations.Get("", organizationHandler.ListOrganizations)
+	organizations.Get("/quota", middleware.AuthMiddleware(), organizationHandler.GetQuota)
+	organizations.Post("", middleware.AuthMiddleware(), organizationHandler.CreateOrganization)
+	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
+	organizations.Post("/:slug/join-request", middleware.AuthMiddleware(), organizationHandler.RequestJoin)
+	organizations.Get("/:slug/join-requests", middleware.AuthMiddleware(), organizationHandler.ListJoinRequests)
+	organizations.Get("/:slug/members", middleware.AuthMiddleware(), organizationHandler.ListMembers)
+	organizations.Post("/:slug/join-requests/:userId", middleware.AuthMiddleware(), organizationHandler.DecideJoinRequest)
+	organizations.Post("/:slug/members/:userId/remove", middleware.AuthMiddleware(), organizationHandler.RemoveMember)
+	organizations.Get("/:slug/feed", middleware.AuthMiddleware(), organizationHandler.GetFeed)
+	organizations.Post("/:slug/posts", middleware.AuthMiddleware(), organizationHandler.CreatePost)
+	organizations.Delete("/:slug", middleware.AuthMiddleware(), organizationHandler.DeleteOrganization)
+
+	// Organization trade posts
+	organizations.Post("/:slug/trade-posts", middleware.AuthMiddleware(), organizationHandler.PostProductForTrade)
+	organizations.Get("/:slug/trade-feed", middleware.AuthMiddleware(), organizationHandler.GetTradeFeed)
 
 	// Order routes (authentication required)
 	orders := api.Group("/orders")
@@ -465,6 +491,9 @@ func main() {
 	admin.Get("/verifications/:id/image", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminGetIDImage)
 	admin.Post("/verifications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminApproveVerification)
 	admin.Post("/verifications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminRejectVerification)
+	admin.Get("/phone-verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListPhoneVerifications)
+	admin.Post("/users/:id/verify-phone", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminVerifyPhone)
+	admin.Post("/users/:id/unverify-phone", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminUnverifyPhone)
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)

@@ -3,6 +3,8 @@ export interface User {
   slug?: string // Unique URL identifier
   name: string
   email: string
+  phone?: string
+  phone_verified?: boolean
   role: string
   verified: boolean
   profile_picture?: string
@@ -32,6 +34,7 @@ export interface User {
   verification_status?: 'not_verified' | 'pending' | 'verified' | 'rejected'
   school_name?: string
   school_email?: string
+  password_changed_at?: string
   last_login?: string
   activity_status?: 'active_today' | 'active_this_week' | 'inactive'
 }
@@ -48,7 +51,7 @@ export interface Product {
   seller_name?: string
   seller_profile_picture?: string
   premium: boolean
-  status: 'available' | 'sold' | 'traded' | 'locked'
+  status: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
   allow_buying: boolean
   barter_only: boolean
   location?: string
@@ -110,7 +113,7 @@ export interface ProductUpdate {
   price?: number
   image_urls?: string[]
   premium?: boolean
-  status?: 'available' | 'sold' | 'traded' | 'locked'
+  status?: 'available' | 'sold' | 'traded' | 'locked' | 'suspended'
   allow_buying?: boolean
   barter_only?: boolean
   location?: string
@@ -148,6 +151,16 @@ export interface SearchSuggestions {
   categories: string[]
   tags: string[]
   brands: string[]
+  users?: Array<{
+    id: number
+    slug?: string
+    name: string
+    profile_picture?: string
+    verified?: boolean
+    is_organization?: boolean
+    org_name?: string
+    org_handle?: string
+  }>
 }
 
 export interface PaginatedResponse<T> {
