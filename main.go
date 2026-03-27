@@ -21,6 +21,11 @@ import (
 	"github.com/xashathebest/clovia/services"
 )
 
+func debugEndpointsEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_DEBUG_ENDPOINTS")))
+	return v == "true" || v == "1" || v == "yes"
+}
+
 func main() {
 	// Load .env file only in local development (Render sets PORT automatically)
 	// This prevents a committed .env from overriding Render dashboard env vars
@@ -94,9 +99,13 @@ func main() {
 		ExposeHeaders:    "Content-Length, Content-Type, Authorization",
 	}))
 
-	// Explicit OPTIONS handler for preflight requests
-	app.Options("/*", func(c *fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusNoContent)
+	// Handle preflight requests without registering a wildcard OPTIONS route.
+	// A wildcard OPTIONS route can cause non-existent endpoints to return 405 instead of 404.
+	app.Use(func(c *fiber.Ctx) error {
+		if c.Method() == fiber.MethodOptions {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+		return c.Next()
 	})
 
 	// Serve static files (uploads directory)
@@ -108,6 +117,15 @@ func main() {
 		return c.JSON(fiber.Map{
 			"success": true,
 			"message": "Welcome to Clovia API",
+		})
+	})
+
+	log.Printf("Backend version: xendit-sync-all-405-fix")
+	// Quick sanity-check endpoint to confirm you restarted the backend with latest routes.
+	app.Get("/api/version", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"success": true,
+			"version": "xendit-sync-all-405-fix",
 		})
 	})
 
@@ -151,6 +169,7 @@ func main() {
 		// Check delivery state columns
 		columns := []string{
 			"delivery_type", "payment_method", "payment_confirmed",
+			"delivery_instructions",
 			"proof_of_delivery", "buyer_confirmed_receipt", "seller_confirmed_delivery",
 		}
 
@@ -457,6 +476,8 @@ func main() {
 	// Payment routes
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
+	// Accept any method for sync to avoid 405 issues in dev/proxies.
+	payments.All("/trade/:id/sync", middleware.AuthMiddleware(), paymentHandler.SyncTradePayment)
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
@@ -527,6 +548,10 @@ func main() {
 	// Rider-specific routes must come before /:id to avoid shadowing
 	deliveries.Get("/available", middleware.AuthMiddleware(), deliveryHandler.GetAvailableDeliveries)
 	deliveries.Get("/my-jobs", middleware.AuthMiddleware(), deliveryHandler.GetRiderDeliveries)
+	if debugEndpointsEnabled() {
+		log.Println("Debug endpoints enabled: /api/deliveries/my-jobs-debug")
+		deliveries.Get("/my-jobs-debug", middleware.AuthMiddleware(), deliveryHandler.DebugRiderJobs)
+	}
 	deliveries.Post("/register-rider", middleware.AuthMiddleware(), deliveryHandler.RegisterAsRider)
 	deliveries.Get("/rider-status", middleware.AuthMiddleware(), deliveryHandler.CheckRiderStatus)
 	deliveries.Post("/apply-rider", middleware.AuthMiddleware(), deliveryHandler.ApplyAsRider)

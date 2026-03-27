@@ -299,51 +299,98 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const tradeIdParam = searchParams.get('trade_id')
     const paymentStatus = searchParams.get('payment')
+    const xenditExternalIDParam = searchParams.get('xendit_external_id')
     if (!tradeIdParam) return
 
     const tradeId = parseInt(tradeIdParam, 10)
     if (isNaN(tradeId)) return
 
-    if (paymentStatus === 'failed') {
-      toast({
-        title: 'Payment Failed',
-        description: 'Your payment was not completed. Please try again.',
-        status: 'error',
-        duration: 5000,
-      })
-    } else {
-      toast({
-        title: 'Payment Successful! 🎉',
-        description: 'Your payment has been received. View trade details below.',
-        status: 'success',
-        duration: 5000,
-      })
-    }
+    const storedExternalID = sessionStorage.getItem(`xendit_external_id_trade_${tradeId}`)
+    const xenditExternalID = xenditExternalIDParam || storedExternalID || undefined
 
-    // Handle tab parameter
-    const tabParam = searchParams.get('tab')
-    if (tabParam) {
-      const tabIndex = parseInt(tabParam, 10)
-      if (!isNaN(tabIndex)) {
-        setActiveTab(tabIndex)
+    ;(async () => {
+      const toastKey = `xendit_return_toast_${tradeId}`
+      if (paymentStatus === 'failed') {
+        if (!sessionStorage.getItem(toastKey)) {
+          sessionStorage.setItem(toastKey, '1')
+          toast({
+            title: 'Payment Failed',
+            description: 'Your payment was not completed. Please try again.',
+            status: 'error',
+            duration: 5000,
+          })
+        }
+      } else {
+        if (!sessionStorage.getItem(toastKey)) {
+          sessionStorage.setItem(toastKey, '1')
+          toast({
+            title: 'Payment Successful!',
+            description: 'Syncing payment status... this can take a few seconds.',
+            status: 'success',
+            duration: 5000,
+          })
+        }
+
+        // Fallback sync for localhost/dev (webhooks can’t reach localhost)
+        // Payment status can take a moment to finalize, so retry a few times.
+        try {
+          for (let i = 0; i < 5; i++) {
+            let r
+            try {
+              r = await api.post(`/api/payments/trade/${tradeId}/sync`, {
+                external_id: xenditExternalID,
+              })
+            } catch (err: any) {
+              if (err?.response?.status === 405) {
+                r = await api.get(`/api/payments/trade/${tradeId}/sync`, {
+                  params: { external_id: xenditExternalID },
+                })
+              } else {
+                throw err
+              }
+            }
+            if (r.data?.data?.paid) break
+            await new Promise(res => setTimeout(res, 1500))
+          }
+        } catch (_) {
+          // Best-effort; we’ll still fetch the trade below
+        }
       }
-    }
 
-    // Switch to the Offers tab (tab index 1)
-    if (tradeIdParam) {
+      // Handle tab parameter
+      const tabParam = searchParams.get('tab')
+      if (tabParam) {
+        const tabIndex = parseInt(tabParam, 10)
+        if (!isNaN(tabIndex)) {
+          setActiveTab(tabIndex)
+        }
+      }
+
+      // Switch to the Offers tab (tab index 1)
       setActiveTab(1)
-    }
 
-    // Try to find the trade and open it
-    const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
-    const matchedTrade = allTrades.find(t => t.id === tradeId)
-    if (matchedTrade) {
-      setSelectedTrade(matchedTrade)
-      setViewTradeModalOpen(true)
-    }
+      // Fetch the trade fresh (so payment_confirmed updates immediately)
+      try {
+        const res = await api.get(`/api/trades/${tradeId}`)
+        const tradeData = res.data?.data
+        if (tradeData) {
+          setSelectedTrade(tradeData)
+          setViewTradeModalOpen(true)
+        }
+      } catch (_) {
+        // Fallback to local list
+        const allTrades = [...ongoingTradesData, ...sentOffersData, ...receivedOffersData]
+        const matchedTrade = allTrades.find(t => t.id === tradeId)
+        if (matchedTrade) {
+          setSelectedTrade(matchedTrade)
+          setViewTradeModalOpen(true)
+        }
+      }
 
-    // Clean up URL params
-    navigate('/dashboard', { replace: true })
+      // Clean up URL params
+      navigate('/dashboard', { replace: true })
+    })()
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, ongoingTradesData, sentOffersData, receivedOffersData])
 
