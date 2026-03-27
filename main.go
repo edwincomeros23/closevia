@@ -382,6 +382,7 @@ func main() {
 	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
+	products.Get("/:id/multiway-status", tradeHandler.GetProductMultiwayStatus) // Public — listing badge
 	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
@@ -446,6 +447,21 @@ func main() {
 	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
 	trades.Post("/multiway/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineMultiwayChain)
 
+	// Phase 2: Per-leg chain management
+	trades.Get("/multiway/:id/legs", middleware.AuthMiddleware(), tradeHandler.GetChainLegs)
+	trades.Put("/multiway/legs/:legId/handoff", middleware.AuthMiddleware(), tradeHandler.UpdateLegHandoff)
+	trades.Post("/multiway/legs/:legId/complete", middleware.AuthMiddleware(), tradeHandler.CompleteLeg)
+
+	// Phase 3: Resilience — collapse, re-match, strikes, conflict
+	trades.Post("/multiway/:id/backout", middleware.AuthMiddleware(), tradeHandler.BackOutChain)
+	trades.Post("/multiway/conflict/resolve", middleware.AuthMiddleware(), tradeHandler.ResolveMultiwayConflict)
+
+	// Product-level conflict check (must be before generic /:id)
+	products.Get("/:id/multiway-conflict", middleware.AuthMiddleware(), tradeHandler.CheckMultiwayConflict)
+
+	// Phase 4: Per-leg disputes & upstream collapse
+	trades.Post("/multiway/legs/:legId/dispute", middleware.AuthMiddleware(), tradeHandler.FileLegDispute)
+
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
 	trades.Put("/:id", middleware.AuthMiddleware(), tradeHandler.UpdateTrade)
@@ -506,12 +522,19 @@ func main() {
 	admin.Post("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.CreateCampaign)
 	admin.Put("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.UpdateCampaign)
 	admin.Delete("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.DeleteCampaign)
+	// Admin multiway chain dashboard & strikes (Phase 3)
+	admin.Get("/multiway-chains", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetChains)
+	admin.Get("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.GetUserStrikes)
+	// Admin leg disputes (Phase 4)
+	admin.Get("/multiway-disputes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetLegDisputes)
+	admin.Put("/multiway-disputes/:disputeId/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminResolveLegDispute)
 	// Admin rider verification
 	admin.Get("/rider-applications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminListRiderApplications)
 	admin.Get("/rider-applications/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminGetRiderApplication)
 	admin.Post("/rider-applications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminApproveRider)
 	admin.Post("/rider-applications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminRejectRider)
 	admin.Post("/rider-applications/:id/review", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminMarkUnderReview)
+	admin.Post("/backfill-ledgers", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.BackfillLedgers)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")

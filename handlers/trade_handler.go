@@ -304,12 +304,10 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 		loopStatus = "pending_initiator_upgrade"
 	}
 
-	// Calculate expires_at: 7 days from now for free users, NULL for premium
-	var expiresAt *time.Time
-	if !initiatorIsPremium {
-		expiresTime := time.Now().AddDate(0, 0, 7)
-		expiresAt = &expiresTime
-	}
+	// Calculate expires_at: 18 hours from now for all chains (acceptance window).
+	// All parties must accept within this window or the chain dissolves.
+	expiresTime := time.Now().Add(18 * time.Hour)
+	expiresAt := &expiresTime
 
 	_, err = h.db.Exec(`
 		INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, status, expires_at)
@@ -3838,16 +3836,27 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	defer tx.Rollback()
 
 	// Verify user is User 3 for this chain (lock the row).
-	var user1ID, user2ID int
+	var user1ID, user2ID, originalTradeID int
+	var user3ProductID sql.NullInt64
 	err = tx.QueryRow(`
-		SELECT user1_id, user2_id
+		SELECT user1_id, user2_id, original_trade_id, user3_product_id
 		FROM multiway_trades
 		WHERE chain_id = ? AND user3_id = ? AND status = 'pending_user3'
 		FOR UPDATE
-	`, chainID, userID).Scan(&user1ID, &user2ID)
+	`, chainID, userID).Scan(&user1ID, &user2ID, &originalTradeID, &user3ProductID)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Opportunity not found or already processed"})
 	}
+
+	// Fetch product IDs from the original trade for leg creation.
+	var u1ProductID, u2ProductID int
+	_ = tx.QueryRow(`
+		SELECT ti.product_id, t.target_product_id
+		FROM trades t
+		JOIN trade_items ti ON ti.trade_id = t.id
+		WHERE t.id = ?
+		LIMIT 1
+	`, originalTradeID).Scan(&u1ProductID, &u2ProductID)
 
 	// Free tier: enforce monthly quota for auto-match loop hops.
 	if !isPremium {
@@ -3887,6 +3896,34 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 
 	// Update original trade status to multiway_active
 	_, _ = tx.Exec("UPDATE trades SET status = 'multiway_active' WHERE id = (SELECT original_trade_id FROM multiway_trades WHERE chain_id = ?)", chainID)
+
+	// Create per-leg records for the 3 handoffs (Phase 2: per-leg tracking).
+	// Leg 0: User1 → User2 (User1 gives their product to User2)
+	// Leg 1: User2 → User3 (User2 gives their product to User3)
+	// Leg 2: User3 → User1 (User3 gives their product to User1)
+	u3PID := 0
+	if user3ProductID.Valid {
+		u3PID = int(user3ProductID.Int64)
+	}
+	legs := []struct {
+		idx     int
+		from    int
+		to      int
+		product int
+	}{
+		{0, user1ID, user2ID, u1ProductID},
+		{1, user2ID, userID, u2ProductID},
+		{2, userID, user1ID, u3PID},
+	}
+	for _, leg := range legs {
+		if leg.product > 0 {
+			_, _ = tx.Exec(`
+				INSERT INTO multiway_trade_legs (chain_id, leg_index, from_user_id, to_user_id, product_id, status)
+				VALUES (?, ?, ?, ?, ?, 'pending')
+				ON DUPLICATE KEY UPDATE updated_at = NOW()
+			`, chainID, leg.idx, leg.from, leg.to, leg.product)
+		}
+	}
 
 	// Commit DB changes before side effects (notifications/cache rebuild).
 	if err := tx.Commit(); err != nil {
@@ -3972,4 +4009,1172 @@ func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 	go h.rebuildTradeLoopCacheForUsers([]int{userID})
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Opportunity declined"})
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 2: Per-leg status tracking, chain health, privacy-scoped views
+// ──────────────────────────────────────────────────────────────────────────────
+
+// GetChainLegs returns the legs of a multiway chain along with a health indicator.
+// Privacy-scoped: users only see legs where they are sender or receiver + the overall
+// health indicator ("2 of 3 legs complete").
+func (h *TradeHandler) GetChainLegs(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	chainID := c.Params("id")
+
+	// Verify this user is a participant of the chain.
+	var participantCount int
+	h.db.QueryRow(`
+		SELECT COUNT(*) FROM multiway_trades
+		WHERE chain_id = ? AND (user1_id = ? OR user2_id = ? OR user3_id = ?)
+	`, chainID, userID, userID, userID).Scan(&participantCount)
+	if participantCount == 0 {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not a participant of this chain"})
+	}
+
+	// Get overall health: total legs and completed legs.
+	var totalLegs, completedLegs int
+	h.db.QueryRow("SELECT COUNT(*), SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) FROM multiway_trade_legs WHERE chain_id = ?", chainID).Scan(&totalLegs, &completedLegs)
+
+	// Fetch only legs the user is involved in (privacy scope).
+	rows, err := h.db.Query(`
+		SELECT l.id, l.leg_index, l.from_user_id, l.to_user_id, l.product_id,
+		       l.handoff_method, COALESCE(l.handoff_location, '') as handoff_location,
+		       COALESCE(l.handoff_time, '') as handoff_time,
+		       COALESCE(l.handoff_photo_url, '') as handoff_photo_url,
+		       l.status,
+		       COALESCE(fu.name, '') as from_user_name,
+		       COALESCE(tu.name, '') as to_user_name,
+		       COALESCE(p.title, '') as product_title
+		FROM multiway_trade_legs l
+		JOIN users fu ON fu.id = l.from_user_id
+		JOIN users tu ON tu.id = l.to_user_id
+		JOIN products p ON p.id = l.product_id
+		WHERE l.chain_id = ? AND (l.from_user_id = ? OR l.to_user_id = ?)
+		ORDER BY l.leg_index ASC
+	`, chainID, userID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch legs"})
+	}
+	defer rows.Close()
+
+	var legs []fiber.Map
+	for rows.Next() {
+		var legID, legIndex, fromUID, toUID, productID int
+		var handoffMethod, handoffLocation, handoffTime, handoffPhotoURL, status string
+		var fromName, toName, productTitle string
+		if err := rows.Scan(&legID, &legIndex, &fromUID, &toUID, &productID,
+			&handoffMethod, &handoffLocation, &handoffTime, &handoffPhotoURL,
+			&status, &fromName, &toName, &productTitle); err != nil {
+			continue
+		}
+		legs = append(legs, fiber.Map{
+			"id":                legID,
+			"leg_index":         legIndex,
+			"from_user_id":      fromUID,
+			"from_user_name":    fromName,
+			"to_user_id":        toUID,
+			"to_user_name":      toName,
+			"product_id":        productID,
+			"product_title":     productTitle,
+			"handoff_method":    handoffMethod,
+			"handoff_location":  handoffLocation,
+			"handoff_time":      handoffTime,
+			"handoff_photo_url": handoffPhotoURL,
+			"status":            status,
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"chain_id":       chainID,
+			"legs":           legs,
+			"total_legs":     totalLegs,
+			"completed_legs": completedLegs,
+			"health":         fmt.Sprintf("%d of %d legs complete", completedLegs, totalLegs),
+			"all_complete":   completedLegs == totalLegs && totalLegs > 0,
+		},
+	})
+}
+
+// UpdateLegHandoff lets either party in a leg choose the handoff method (meetup or delivery).
+func (h *TradeHandler) UpdateLegHandoff(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	legID := c.Params("legId")
+
+	var payload struct {
+		Method   string `json:"method"`   // "meetup" or "delivery"
+		Location string `json:"location"` // optional meetup location
+		Time     string `json:"time"`     // optional meetup time
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	if payload.Method != "meetup" && payload.Method != "delivery" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Method must be 'meetup' or 'delivery'"})
+	}
+
+	// Verify the user is part of this leg.
+	res, err := h.db.Exec(`
+		UPDATE multiway_trade_legs
+		SET handoff_method = ?, handoff_location = ?, handoff_time = ?, status = 'in_progress', updated_at = NOW()
+		WHERE id = ? AND (from_user_id = ? OR to_user_id = ?) AND status IN ('pending', 'in_progress')
+	`, payload.Method, payload.Location, payload.Time, legID, userID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update handoff"})
+	}
+	ra, _ := res.RowsAffected()
+	if ra == 0 {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Leg not found or not your leg"})
+	}
+
+	// Notify the other party.
+	var otherUserID int
+	var chainID string
+	h.db.QueryRow("SELECT CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END, chain_id FROM multiway_trade_legs WHERE id = ?", userID, legID).Scan(&otherUserID, &chainID)
+	if otherUserID > 0 {
+		msg := fmt.Sprintf("Your trade partner has chosen %s for your handoff. Check your multi-way chain details.", payload.Method)
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, msg)
+		publishNotification(otherUserID, msg)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Message: "Handoff method updated"})
+}
+
+// CompleteLeg marks a specific leg as completed, with optional handoff photo.
+// When all legs of a chain are complete, the entire chain is marked as completed.
+func (h *TradeHandler) CompleteLeg(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	legID := c.Params("legId")
+
+	var payload struct {
+		HandoffPhotoURL string `json:"handoff_photo_url"`
+	}
+	_ = c.BodyParser(&payload)
+
+	// Complete the leg (only the receiver confirms completion).
+	res, err := h.db.Exec(`
+		UPDATE multiway_trade_legs
+		SET status = 'completed', completed_at = NOW(), handoff_photo_url = COALESCE(?, handoff_photo_url), updated_at = NOW()
+		WHERE id = ? AND to_user_id = ? AND status IN ('pending', 'in_progress')
+	`, payload.HandoffPhotoURL, legID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to complete leg"})
+	}
+	ra, _ := res.RowsAffected()
+	if ra == 0 {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Leg not found, not your leg to confirm, or already completed"})
+	}
+
+	// Check if ALL legs of this chain are now complete → auto-complete the chain.
+	var chainID string
+	h.db.QueryRow("SELECT chain_id FROM multiway_trade_legs WHERE id = ?", legID).Scan(&chainID)
+
+	var totalLegs, completedLegs int
+	h.db.QueryRow("SELECT COUNT(*), SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) FROM multiway_trade_legs WHERE chain_id = ?", chainID).Scan(&totalLegs, &completedLegs)
+
+	// Notify the sender that the leg is complete.
+	var senderID int
+	h.db.QueryRow("SELECT from_user_id FROM multiway_trade_legs WHERE id = ?", legID).Scan(&senderID)
+	if senderID > 0 {
+		msg := fmt.Sprintf("Your handoff has been confirmed! (%d of %d legs complete)", completedLegs, totalLegs)
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", senderID, msg)
+		publishNotification(senderID, msg)
+	}
+
+	if completedLegs == totalLegs && totalLegs > 0 {
+		// All legs done → mark chain as completed.
+		_, _ = h.db.Exec("UPDATE multiway_trades SET status = 'completed', updated_at = NOW() WHERE chain_id = ?", chainID)
+
+		// Mark original trade as completed too.
+		_, _ = h.db.Exec(`
+			UPDATE trades SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+			WHERE id = (SELECT original_trade_id FROM multiway_trades WHERE chain_id = ?)
+		`, chainID)
+
+		// Mark all involved products as traded.
+		_, _ = h.db.Exec(`
+			UPDATE products SET status = 'traded', updated_at = NOW()
+			WHERE id IN (SELECT product_id FROM multiway_trade_legs WHERE chain_id = ?)
+		`, chainID)
+
+		// Notify all participants.
+		var u1ID, u2ID, u3ID int
+		h.db.QueryRow("SELECT user1_id, user2_id, COALESCE(user3_id, 0) FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&u1ID, &u2ID, &u3ID)
+		completionMsg := "🎉 All legs of your multi-way trade are complete! Great trading!"
+		for _, uid := range []int{u1ID, u2ID, u3ID} {
+			if uid > 0 {
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, completionMsg)
+				publishNotification(uid, completionMsg)
+			}
+		}
+
+		log.Printf("Multi-way chain %s fully completed (all %d legs done)", chainID, totalLegs)
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: fmt.Sprintf("Leg completed! %d of %d legs done.", completedLegs, totalLegs),
+		Data: fiber.Map{
+			"completed_legs": completedLegs,
+			"total_legs":     totalLegs,
+			"all_complete":   completedLegs == totalLegs,
+		},
+	})
+}
+
+// GetProductMultiwayStatus checks if a product is currently involved in an active multiway chain.
+// Used by frontend to show a "Pending multi-way match" badge on listings.
+func (h *TradeHandler) GetProductMultiwayStatus(c *fiber.Ctx) error {
+	productID := c.Params("id")
+
+	var chainID string
+	var status string
+	err := h.db.QueryRow(`
+		SELECT mw.chain_id, mw.status
+		FROM multiway_trades mw
+		LEFT JOIN multiway_trade_legs l ON l.chain_id = mw.chain_id AND l.product_id = ?
+		LEFT JOIN trades t ON t.id = mw.original_trade_id
+		LEFT JOIN trade_items ti ON ti.trade_id = t.id AND ti.product_id = ?
+		WHERE (l.product_id IS NOT NULL OR t.target_product_id = ? OR ti.product_id IS NOT NULL)
+		  AND mw.status IN ('pending_user3', 'user3_accepted', 'active', 'searching')
+		LIMIT 1
+	`, productID, productID, productID).Scan(&chainID, &status)
+
+	if err != nil {
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: fiber.Map{
+				"in_multiway_chain": false,
+			},
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"in_multiway_chain": true,
+			"chain_id":          chainID,
+			"chain_status":      status,
+		},
+	})
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 3: Chain collapse, re-match, strike system, conflict resolution, admin
+// ──────────────────────────────────────────────────────────────────────────────
+
+// BackOutChain handles a participant backing out of an already-accepted chain.
+// This triggers: (1) chain collapse, (2) strike for the backer-out, (3) single-leg
+// re-match attempt with a 12-hour hold for the remaining parties.
+func (h *TradeHandler) BackOutChain(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	chainID := c.Params("id")
+
+	// Check if user is restricted by a previous strike-3.
+	var restrictedUntil sql.NullTime
+	h.db.QueryRow(`
+		SELECT restricted_until FROM user_strikes
+		WHERE user_id = ? AND restricted_until IS NOT NULL AND restricted_until > NOW()
+		ORDER BY created_at DESC LIMIT 1
+	`, userID).Scan(&restrictedUntil)
+	if restrictedUntil.Valid {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("You are restricted from multi-way trades until %s due to repeated back-outs.", restrictedUntil.Time.Format("Jan 2, 2006")),
+		})
+	}
+
+	// Verify the user is a participant and the chain is in an accepted/active state.
+	var u1ID, u2ID, u3ID, originalTradeID int
+	var chainStatus string
+	err := h.db.QueryRow(`
+		SELECT user1_id, user2_id, COALESCE(user3_id, 0), original_trade_id, status
+		FROM multiway_trades
+		WHERE chain_id = ? AND (user1_id = ? OR user2_id = ? OR user3_id = ?)
+	`, chainID, userID, userID, userID).Scan(&u1ID, &u2ID, &u3ID, &originalTradeID, &chainStatus)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Chain not found or you are not a participant"})
+	}
+	if chainStatus != "user3_accepted" && chainStatus != "active" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Can only back out of accepted/active chains"})
+	}
+
+	// 1. Collapse the chain — cancel all legs.
+	_, _ = h.db.Exec("UPDATE multiway_trade_legs SET status = 'cancelled', updated_at = NOW() WHERE chain_id = ? AND status NOT IN ('completed', 'cancelled')", chainID)
+	_, _ = h.db.Exec("UPDATE multiway_trades SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = ?, updated_at = NOW() WHERE chain_id = ?", userID, chainID)
+
+	// 2. Issue a strike to the backing-out user.
+	strikeMsg := h.issueStrike(userID, chainID, "Backed out of an accepted multi-way chain")
+
+	// 3. Notify the other participants about the collapse.
+	var backerName string
+	h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&backerName)
+	if backerName == "" {
+		backerName = "A participant"
+	}
+
+	collapseMsg := fmt.Sprintf("%s backed out of the multi-way chain. The chain has been dissolved. We're attempting to find a replacement.", backerName)
+	for _, uid := range []int{u1ID, u2ID, u3ID} {
+		if uid > 0 && uid != userID {
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, collapseMsg)
+			publishNotification(uid, collapseMsg)
+		}
+	}
+
+	// 4. Attempt single-leg re-match: find a replacement for the backed-out user.
+	// Determine which user positions remain and which needs replacement.
+	remainingUsers := []int{}
+	for _, uid := range []int{u1ID, u2ID, u3ID} {
+		if uid > 0 && uid != userID {
+			remainingUsers = append(remainingUsers, uid)
+		}
+	}
+
+	// Create a 12-hour re-match hold.
+	backedOutLegIndex := 0
+	switch userID {
+	case u1ID:
+		backedOutLegIndex = 0
+	case u2ID:
+		backedOutLegIndex = 1
+	case u3ID:
+		backedOutLegIndex = 2
+	}
+
+	holdExpires := time.Now().Add(12 * time.Hour)
+	_, _ = h.db.Exec(`
+		INSERT INTO multiway_rematch_holds (chain_id, original_chain_id, backed_out_user_id, backed_out_leg_index, hold_expires_at, status)
+		VALUES (?, ?, ?, ?, ?, 'searching')
+	`, chainID, chainID, userID, backedOutLegIndex, holdExpires)
+
+	// Attempt immediate re-match using the existing matcher.
+	excluded := []int{userID}
+	// Collect all previously declined user3s for this trade.
+	prevRows, _ := h.db.Query("SELECT user3_id FROM multiway_trades WHERE original_trade_id = ? AND status = 'user3_declined'", originalTradeID)
+	if prevRows != nil {
+		for prevRows.Next() {
+			var prevID int
+			if prevRows.Scan(&prevID) == nil {
+				excluded = append(excluded, prevID)
+			}
+		}
+		prevRows.Close()
+	}
+
+	rematchResult := "no_match"
+	matches, _ := services.FindMultiwayMatch(h.db, u1ID, u2ID, originalTradeID, excluded)
+	if len(matches) > 0 {
+		match := matches[0]
+		newChainID := fmt.Sprintf("chain_%d_%d_%d_%d", originalTradeID, u1ID, u2ID, match.User3ID)
+		expiresAt := time.Now().Add(18 * time.Hour)
+		_, insertErr := h.db.Exec(`
+			INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_product_id, status, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_user3', ?)
+		`, newChainID, originalTradeID, u2ID, u1ID, u2ID, match.User3ID, match.User3ProductID, expiresAt)
+		if insertErr == nil {
+			rematchResult = "found"
+			// Update the hold record.
+			_, _ = h.db.Exec("UPDATE multiway_rematch_holds SET status = 'found', replacement_user_id = ?, replacement_chain_id = ? WHERE chain_id = ? AND status = 'searching'",
+				match.User3ID, newChainID, chainID)
+
+			// Notify the new candidate.
+			notifMsg := fmt.Sprintf("Someone wants your %s and has something you like! Check your multi-way opportunities.", match.User3ProductTitle)
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", match.User3ID, notifMsg)
+			publishNotification(match.User3ID, notifMsg)
+
+			// Notify remaining parties that a replacement was found.
+			holdMsg := "A replacement participant has been found for the collapsed chain. Please wait for their response."
+			for _, uid := range remainingUsers {
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, holdMsg)
+				publishNotification(uid, holdMsg)
+			}
+		}
+	}
+
+	if rematchResult == "no_match" {
+		// No replacement found immediately — trade stays pending for 12hrs.
+		// The background scheduler will dissolve it if no match is found.
+		_, _ = h.db.Exec("UPDATE trades SET status = 'pending', updated_at = NOW() WHERE id = ? AND status IN ('multiway_active', 'pending_multiway')", originalTradeID)
+		holdMsg := "We're searching for a replacement participant. You'll be notified within 12 hours."
+		for _, uid := range remainingUsers {
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, holdMsg)
+			publishNotification(uid, holdMsg)
+		}
+	}
+
+	go h.rebuildTradeLoopCacheForUsers([]int{u1ID, u2ID, u3ID})
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "You have backed out of the chain.",
+		Data: fiber.Map{
+			"strike_message":   strikeMsg,
+			"rematch_status":   rematchResult,
+			"hold_expires":     holdExpires.Format("2006-01-02 15:04:05"),
+			"remaining_users":  remainingUsers,
+		},
+	})
+}
+
+// issueStrike adds a progressive strike to a user's record and returns the warning message.
+func (h *TradeHandler) issueStrike(userID int, chainID, reason string) string {
+	// Count existing strikes for this user.
+	var currentStrikes int
+	h.db.QueryRow("SELECT COUNT(*) FROM user_strikes WHERE user_id = ?", userID).Scan(&currentStrikes)
+
+	newStrikeNumber := currentStrikes + 1
+	var severity, message string
+	var restrictedUntil *time.Time
+
+	switch {
+	case newStrikeNumber >= 3:
+		severity = "restriction"
+		until := time.Now().AddDate(0, 0, 30) // 30-day restriction
+		restrictedUntil = &until
+		message = fmt.Sprintf("Strike %d: You have been restricted from multi-way trades for 30 days due to repeated back-outs.", newStrikeNumber)
+	case newStrikeNumber == 2:
+		severity = "final_warning"
+		message = "Strike 2 — Final Warning: Backing out of accepted chains again will result in a 30-day restriction from multi-way trading."
+	default:
+		severity = "friendly_warning"
+		message = "Strike 1 — Friendly Warning: Backing out of accepted multi-way chains affects other participants. Please be sure before accepting."
+	}
+
+	_, _ = h.db.Exec(`
+		INSERT INTO user_strikes (user_id, chain_id, strike_number, reason, severity, restricted_until)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, userID, chainID, newStrikeNumber, reason, severity, restrictedUntil)
+
+	// Notify the user.
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", userID, message)
+	publishNotification(userID, message)
+
+	log.Printf("Issued strike %d (%s) to user %d for chain %s: %s", newStrikeNumber, severity, userID, chainID, reason)
+	return message
+}
+
+// CheckMultiwayConflict checks if a product has conflicting pending offers
+// (both a regular 2-way trade AND a pending multiway chain).
+// The owner sees this and decides which to accept first.
+func (h *TradeHandler) CheckMultiwayConflict(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	productID := c.Params("id")
+
+	// Check for pending 2-way trades on this product.
+	var twoWayCount int
+	var twoWayTradeID sql.NullInt64
+	h.db.QueryRow(`
+		SELECT COUNT(*), MIN(id) FROM trades
+		WHERE target_product_id = ? AND seller_id = ? AND status IN ('pending', 'accepted')
+	`, productID, userID).Scan(&twoWayCount, &twoWayTradeID)
+
+	// Check for pending multiway chains involving this product.
+	var multiwayCount int
+	var multiwayChainID sql.NullString
+	var multiwayStatus sql.NullString
+	h.db.QueryRow(`
+		SELECT COUNT(*), MIN(mw.chain_id), MIN(mw.status)
+		FROM multiway_trades mw
+		LEFT JOIN multiway_trade_legs l ON l.chain_id = mw.chain_id AND l.product_id = ?
+		LEFT JOIN trades t ON t.id = mw.original_trade_id
+		LEFT JOIN trade_items ti ON ti.trade_id = t.id AND ti.product_id = ?
+		WHERE (l.product_id IS NOT NULL OR t.target_product_id = ? OR ti.product_id IS NOT NULL)
+		  AND mw.status IN ('pending_user3', 'user3_accepted', 'active', 'searching')
+	`, productID, productID, productID).Scan(&multiwayCount, &multiwayChainID, &multiwayStatus)
+
+	hasConflict := twoWayCount > 0 && multiwayCount > 0
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"has_conflict":       hasConflict,
+			"two_way_count":      twoWayCount,
+			"two_way_trade_id":   twoWayTradeID,
+			"multiway_count":     multiwayCount,
+			"multiway_chain_id":  multiwayChainID,
+			"multiway_status":    multiwayStatus,
+			"recommendation":     "Accept the offer you prefer first. If you accept the 2-way trade, the multi-way chain will dissolve automatically.",
+		},
+	})
+}
+
+// ResolveMultiwayConflict lets the product owner choose between the 2-way offer
+// and the multiway chain. If they choose 2-way, the multiway chain dissolves.
+func (h *TradeHandler) ResolveMultiwayConflict(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var payload struct {
+		KeepType string `json:"keep_type"` // "two_way" or "multiway"
+		ChainID  string `json:"chain_id"`
+		TradeID  int    `json:"trade_id"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	if payload.KeepType == "two_way" && payload.ChainID != "" {
+		// Dissolve the multiway chain.
+		_, _ = h.db.Exec("UPDATE multiway_trades SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = ?, updated_at = NOW() WHERE chain_id = ?", userID, payload.ChainID)
+		_, _ = h.db.Exec("UPDATE multiway_trade_legs SET status = 'cancelled', updated_at = NOW() WHERE chain_id = ?", payload.ChainID)
+
+		// Notify multiway participants.
+		rows, _ := h.db.Query(`
+			SELECT user1_id, user2_id, COALESCE(user3_id, 0) FROM multiway_trades WHERE chain_id = ?
+		`, payload.ChainID)
+		if rows != nil {
+			for rows.Next() {
+				var u1, u2, u3 int
+				if rows.Scan(&u1, &u2, &u3) == nil {
+					msg := "A multi-way chain you were part of has been dissolved because the item owner accepted a different trade offer."
+					for _, uid := range []int{u1, u2, u3} {
+						if uid > 0 && uid != userID {
+							_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, msg)
+							publishNotification(uid, msg)
+						}
+					}
+				}
+			}
+			rows.Close()
+		}
+
+		return c.JSON(models.APIResponse{Success: true, Message: "Multi-way chain dissolved. 2-way trade preserved."})
+	} else if payload.KeepType == "multiway" && payload.TradeID > 0 {
+		// Decline the 2-way trade.
+		_, _ = h.db.Exec("UPDATE trades SET status = 'declined', updated_at = NOW() WHERE id = ? AND (seller_id = ? OR buyer_id = ?)", payload.TradeID, userID, userID)
+
+		// Notify the 2-way trade partner.
+		var partnerID int
+		h.db.QueryRow("SELECT CASE WHEN buyer_id = ? THEN seller_id ELSE buyer_id END FROM trades WHERE id = ?", userID, payload.TradeID).Scan(&partnerID)
+		if partnerID > 0 {
+			msg := "Your trade offer was declined because the item is part of a multi-way chain."
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", partnerID, msg)
+			publishNotification(partnerID, msg)
+		}
+
+		return c.JSON(models.APIResponse{Success: true, Message: "2-way trade declined. Multi-way chain preserved."})
+	}
+
+	return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid keep_type — must be 'two_way' or 'multiway'"})
+}
+
+// AdminGetChains returns all multiway chains with status, participants, health, and re-match holds.
+func (h *TradeHandler) AdminGetChains(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	statusFilter := c.Query("status", "")
+	offset := (page - 1) * limit
+
+	// Count total chains.
+	var total int
+	countQuery := "SELECT COUNT(*) FROM multiway_trades"
+	if statusFilter != "" {
+		countQuery += " WHERE status = '" + statusFilter + "'"
+	}
+	h.db.QueryRow(countQuery).Scan(&total)
+
+	// Fetch chains.
+	query := `
+		SELECT mw.id, mw.chain_id, mw.original_trade_id, mw.initiator_user_id,
+		       mw.user1_id, mw.user2_id, COALESCE(mw.user3_id, 0), mw.status,
+		       COALESCE(mw.expires_at, '1970-01-01') as expires_at,
+		       COALESCE(mw.cancelled_at, '1970-01-01') as cancelled_at,
+		       COALESCE(mw.cancelled_by, 0),
+		       mw.created_at, mw.updated_at,
+		       COALESCE(u1.name, '') as user1_name,
+		       COALESCE(u2.name, '') as user2_name,
+		       COALESCE(u3.name, '') as user3_name,
+		       COALESCE(ui.name, '') as initiator_name
+		FROM multiway_trades mw
+		JOIN users u1 ON u1.id = mw.user1_id
+		JOIN users u2 ON u2.id = mw.user2_id
+		LEFT JOIN users u3 ON u3.id = mw.user3_id
+		JOIN users ui ON ui.id = mw.initiator_user_id
+	`
+	if statusFilter != "" {
+		query += " WHERE mw.status = ?"
+	}
+	query += " ORDER BY mw.created_at DESC LIMIT ? OFFSET ?"
+
+	var rows *sql.Rows
+	var err error
+	if statusFilter != "" {
+		rows, err = h.db.Query(query, statusFilter, limit, offset)
+	} else {
+		rows, err = h.db.Query(query, limit, offset)
+	}
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch chains"})
+	}
+	defer rows.Close()
+
+	var chains []fiber.Map
+	for rows.Next() {
+		var id, tradeID, initiatorID, u1ID, u2ID, u3ID, cancelledBy int
+		var cID, status, u1Name, u2Name, u3Name, initiatorName string
+		var expiresAt, cancelledAt, createdAt, updatedAt time.Time
+		if err := rows.Scan(&id, &cID, &tradeID, &initiatorID,
+			&u1ID, &u2ID, &u3ID, &status,
+			&expiresAt, &cancelledAt, &cancelledBy,
+			&createdAt, &updatedAt,
+			&u1Name, &u2Name, &u3Name, &initiatorName); err != nil {
+			continue
+		}
+
+		// Get leg health for this chain.
+		var totalLegs, completedLegs int
+		h.db.QueryRow("SELECT COUNT(*), COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) FROM multiway_trade_legs WHERE chain_id = ?", cID).Scan(&totalLegs, &completedLegs)
+
+		// Check for active re-match holds.
+		var activeHolds int
+		h.db.QueryRow("SELECT COUNT(*) FROM multiway_rematch_holds WHERE chain_id = ? AND status = 'searching'", cID).Scan(&activeHolds)
+
+		// Get strike count for participants.
+		var totalStrikes int
+		h.db.QueryRow("SELECT COUNT(*) FROM user_strikes WHERE chain_id = ?", cID).Scan(&totalStrikes)
+
+		chain := fiber.Map{
+			"id":               id,
+			"chain_id":         cID,
+			"original_trade_id": tradeID,
+			"status":           status,
+			"initiator_user_id": initiatorID,
+			"initiator_name":   initiatorName,
+			"participants": []fiber.Map{
+				{"id": u1ID, "name": u1Name, "role": "user1"},
+				{"id": u2ID, "name": u2Name, "role": "user2"},
+			},
+			"created_at":     createdAt.Format("2006-01-02 15:04:05"),
+			"updated_at":     updatedAt.Format("2006-01-02 15:04:05"),
+			"total_legs":     totalLegs,
+			"completed_legs": completedLegs,
+			"health":         fmt.Sprintf("%d of %d", completedLegs, totalLegs),
+			"active_holds":   activeHolds,
+			"strikes_issued": totalStrikes,
+		}
+		if u3ID > 0 {
+			chain["participants"] = append(chain["participants"].([]fiber.Map), fiber.Map{"id": u3ID, "name": u3Name, "role": "user3"})
+		}
+		if !expiresAt.IsZero() && expiresAt.Year() > 1970 {
+			chain["expires_at"] = expiresAt.Format("2006-01-02 15:04:05")
+		}
+		if !cancelledAt.IsZero() && cancelledAt.Year() > 1970 {
+			chain["cancelled_at"] = cancelledAt.Format("2006-01-02 15:04:05")
+			chain["cancelled_by"] = cancelledBy
+		}
+		chains = append(chains, chain)
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"chains":      chains,
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"total_pages": (total + limit - 1) / limit,
+		},
+	})
+}
+
+// GetUserStrikes returns the strike history for a user (admin or self).
+func (h *TradeHandler) GetUserStrikes(c *fiber.Ctx) error {
+	targetUserID, _ := strconv.Atoi(c.Params("userId"))
+	if targetUserID == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid user ID"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT id, chain_id, strike_number, reason, severity,
+		       COALESCE(restricted_until, '1970-01-01') as restricted_until, created_at
+		FROM user_strikes WHERE user_id = ?
+		ORDER BY created_at DESC
+	`, targetUserID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch strikes"})
+	}
+	defer rows.Close()
+
+	var strikes []fiber.Map
+	for rows.Next() {
+		var id, strikeNum int
+		var chainID, reason, severity string
+		var restrictedUntil, createdAt time.Time
+		if err := rows.Scan(&id, &chainID, &strikeNum, &reason, &severity, &restrictedUntil, &createdAt); err != nil {
+			continue
+		}
+		s := fiber.Map{
+			"id":             id,
+			"chain_id":       chainID,
+			"strike_number":  strikeNum,
+			"reason":         reason,
+			"severity":       severity,
+			"created_at":     createdAt.Format("2006-01-02 15:04:05"),
+		}
+		if restrictedUntil.Year() > 1970 {
+			s["restricted_until"] = restrictedUntil.Format("2006-01-02 15:04:05")
+		}
+		strikes = append(strikes, s)
+	}
+
+	// Check if currently restricted.
+	var isRestricted bool
+	h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM user_strikes WHERE user_id = ? AND restricted_until IS NOT NULL AND restricted_until > NOW())", targetUserID).Scan(&isRestricted)
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"user_id":       targetUserID,
+			"total_strikes": len(strikes),
+			"is_restricted": isRestricted,
+			"strikes":       strikes,
+		},
+	})
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Phase 4: Per-leg dispute isolation, upstream collapse, admin dispute view
+// ──────────────────────────────────────────────────────────────────────────────
+
+// FileLegDispute allows a participant to file a dispute on a specific leg.
+// Only the affected leg is frozen to 'disputed' status — the rest of the chain continues.
+func (h *TradeHandler) FileLegDispute(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	legID, err := strconv.Atoi(c.Params("legId"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid leg ID"})
+	}
+
+	var payload struct {
+		Reason       string   `json:"reason"`
+		Description  string   `json:"description"`
+		EvidenceURLs []string `json:"evidence_urls"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	if payload.Reason == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reason is required"})
+	}
+
+	// Verify the user is part of this leg.
+	var chainID string
+	var fromUID, toUID int
+	var legStatus string
+	err = h.db.QueryRow(`
+		SELECT chain_id, from_user_id, to_user_id, status
+		FROM multiway_trade_legs WHERE id = ?
+	`, legID).Scan(&chainID, &fromUID, &toUID, &legStatus)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Leg not found"})
+	}
+	if userID != fromUID && userID != toUID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant of this leg"})
+	}
+	if legStatus == "cancelled" || legStatus == "disputed" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This leg is already " + legStatus})
+	}
+
+	// Check for existing open dispute on this leg.
+	var existingDispute int
+	h.db.QueryRow("SELECT COUNT(*) FROM multiway_leg_disputes WHERE leg_id = ? AND status IN ('open', 'under_review')", legID).Scan(&existingDispute)
+	if existingDispute > 0 {
+		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "A dispute is already open on this leg"})
+	}
+
+	// Determine who the dispute is against.
+	againstUserID := toUID
+	if userID == toUID {
+		againstUserID = fromUID
+	}
+
+	// Marshal evidence URLs to JSON.
+	var evidenceJSON []byte
+	if len(payload.EvidenceURLs) > 0 {
+		evidenceJSON, _ = json.Marshal(payload.EvidenceURLs)
+	}
+
+	// Create the dispute record.
+	result, err := h.db.Exec(`
+		INSERT INTO multiway_leg_disputes (chain_id, leg_id, filed_by, against_user_id, reason, description, evidence_urls, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'open')
+	`, chainID, legID, userID, againstUserID, payload.Reason, payload.Description, evidenceJSON)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to file dispute"})
+	}
+	disputeID, _ := result.LastInsertId()
+
+	// Freeze ONLY the affected leg — set status to 'disputed'.
+	_, _ = h.db.Exec("UPDATE multiway_trade_legs SET status = 'disputed', updated_at = NOW() WHERE id = ?", legID)
+
+	// Notify the other party.
+	var filerName string
+	h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&filerName)
+	if filerName == "" {
+		filerName = "Your trade partner"
+	}
+	msg := fmt.Sprintf("%s has filed a dispute on your handoff. The leg is frozen until an admin reviews it.", filerName)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", againstUserID, msg)
+	publishNotification(againstUserID, msg)
+
+	// Notify admins.
+	adminRows, _ := h.db.Query("SELECT id FROM users WHERE role = 'admin'")
+	if adminRows != nil {
+		adminMsg := fmt.Sprintf("New multi-way leg dispute filed (chain: %s, leg: %d) by user %d against user %d: %s", chainID, legID, userID, againstUserID, payload.Reason)
+		for adminRows.Next() {
+			var adminID int
+			if adminRows.Scan(&adminID) == nil {
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'report', ?, FALSE)", adminID, adminMsg)
+			}
+		}
+		adminRows.Close()
+	}
+
+	return c.Status(201).JSON(models.APIResponse{
+		Success: true,
+		Message: "Dispute filed. Only this leg has been frozen — other legs in the chain continue normally.",
+		Data: fiber.Map{
+			"dispute_id": disputeID,
+			"leg_id":     legID,
+			"chain_id":   chainID,
+		},
+	})
+}
+
+// AdminResolveLegDispute allows an admin to resolve a per-leg dispute.
+// Actions: no_action (unfreeze), cancel_leg (trigger upstream collapse), cancel_chain (full collapse).
+func (h *TradeHandler) AdminResolveLegDispute(c *fiber.Ctx) error {
+	adminID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	disputeID, err := strconv.Atoi(c.Params("disputeId"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid dispute ID"})
+	}
+
+	var payload struct {
+		Resolution string `json:"resolution"` // "no_action", "cancel_leg", "cancel_chain"
+		Status     string `json:"status"`      // "resolved_in_favor", "resolved_against", "cancelled_leg"
+		AdminNotes string `json:"admin_notes"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	// Fetch the dispute.
+	var chainID string
+	var legID, filedBy, againstUID int
+	err = h.db.QueryRow(`
+		SELECT chain_id, leg_id, filed_by, against_user_id
+		FROM multiway_leg_disputes WHERE id = ? AND status IN ('open', 'under_review')
+	`, disputeID).Scan(&chainID, &legID, &filedBy, &againstUID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Dispute not found or already resolved"})
+	}
+
+	// Update dispute resolution.
+	resolvedStatus := payload.Status
+	if resolvedStatus == "" {
+		resolvedStatus = "resolved_in_favor"
+	}
+	_, _ = h.db.Exec(`
+		UPDATE multiway_leg_disputes
+		SET status = ?, resolution_action = ?, admin_reviewer_id = ?, admin_notes = ?, resolved_at = NOW(), updated_at = NOW()
+		WHERE id = ?
+	`, resolvedStatus, payload.Resolution, adminID, payload.AdminNotes, disputeID)
+
+	upstreamTriggered := false
+
+	switch payload.Resolution {
+	case "no_action":
+		// Unfreeze the leg — restore to in_progress.
+		_, _ = h.db.Exec("UPDATE multiway_trade_legs SET status = 'in_progress', updated_at = NOW() WHERE id = ?", legID)
+		// Notify both parties.
+		msg := "The dispute on your trade leg has been resolved — no action taken. The leg is unfrozen and you can proceed."
+		for _, uid := range []int{filedBy, againstUID} {
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, msg)
+			publishNotification(uid, msg)
+		}
+
+	case "cancel_leg":
+		// Cancel ONLY this leg and trigger upstream collapse for dependent legs.
+		_, _ = h.db.Exec("UPDATE multiway_trade_legs SET status = 'cancelled', updated_at = NOW() WHERE id = ?", legID)
+		upstreamTriggered = h.upstreamCollapse(chainID, legID)
+		_, _ = h.db.Exec("UPDATE multiway_leg_disputes SET upstream_collapse_triggered = ? WHERE id = ?", upstreamTriggered, disputeID)
+
+		// Notify the leg participants.
+		msg := "The dispute on your trade leg has been resolved. This leg has been cancelled."
+		for _, uid := range []int{filedBy, againstUID} {
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, msg)
+			publishNotification(uid, msg)
+		}
+
+		// Issue a strike to the party the dispute was resolved against.
+		if resolvedStatus == "resolved_in_favor" {
+			h.issueStrike(againstUID, chainID, "Dispute resolved against you — leg cancelled")
+		}
+
+	case "cancel_chain":
+		// Full chain collapse.
+		_, _ = h.db.Exec("UPDATE multiway_trade_legs SET status = 'cancelled', updated_at = NOW() WHERE chain_id = ? AND status NOT IN ('completed', 'cancelled')", chainID)
+		_, _ = h.db.Exec("UPDATE multiway_trades SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = ?, updated_at = NOW() WHERE chain_id = ?", adminID, chainID)
+		upstreamTriggered = true
+		_, _ = h.db.Exec("UPDATE multiway_leg_disputes SET upstream_collapse_triggered = TRUE WHERE id = ?", disputeID)
+
+		// Restore the original trade.
+		_, _ = h.db.Exec(`
+			UPDATE trades SET status = 'pending', updated_at = NOW()
+			WHERE id = (SELECT original_trade_id FROM multiway_trades WHERE chain_id = ?)
+			  AND status IN ('multiway_active', 'pending_multiway')
+		`, chainID)
+
+		// Restore all products.
+		_, _ = h.db.Exec(`
+			UPDATE products SET status = 'available', updated_at = NOW()
+			WHERE id IN (SELECT product_id FROM multiway_trade_legs WHERE chain_id = ?)
+			  AND status = 'locked'
+		`, chainID)
+
+		// Notify all chain participants.
+		var u1, u2, u3 int
+		h.db.QueryRow("SELECT user1_id, user2_id, COALESCE(user3_id, 0) FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&u1, &u2, &u3)
+		msg := "The entire multi-way chain has been cancelled by an admin due to a dispute. Your items are available again."
+		for _, uid := range []int{u1, u2, u3} {
+			if uid > 0 {
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, msg)
+				publishNotification(uid, msg)
+			}
+		}
+
+		if resolvedStatus == "resolved_in_favor" {
+			h.issueStrike(againstUID, chainID, "Dispute resolved against you — entire chain cancelled by admin")
+		}
+
+	default:
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Resolution must be 'no_action', 'cancel_leg', or 'cancel_chain'"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: fmt.Sprintf("Dispute resolved with action: %s", payload.Resolution),
+		Data: fiber.Map{
+			"dispute_id":        disputeID,
+			"resolution":        payload.Resolution,
+			"upstream_collapse": upstreamTriggered,
+		},
+	})
+}
+
+// upstreamCollapse cascades a leg cancellation to downstream legs that depend on it.
+// In a 3-party chain (U1→U2→U3→U1), if leg 1 (U2→U3) is cancelled:
+//   - Leg 2 (U3→U1) becomes impossible because U3 never received their item
+//   - Leg 0 (U1→U2) may already be completed — that stays
+//
+// Returns true if any downstream legs were collapsed.
+func (h *TradeHandler) upstreamCollapse(chainID string, cancelledLegID int) bool {
+	// Get the cancelled leg's index.
+	var cancelledIndex int
+	h.db.QueryRow("SELECT leg_index FROM multiway_trade_legs WHERE id = ?", cancelledLegID).Scan(&cancelledIndex)
+
+	// Get all legs for this chain.
+	rows, err := h.db.Query(`
+		SELECT id, leg_index, from_user_id, to_user_id, status
+		FROM multiway_trade_legs WHERE chain_id = ? ORDER BY leg_index
+	`, chainID)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+
+	type legInfo struct {
+		id, index, from, to int
+		status              string
+	}
+	var legs []legInfo
+	for rows.Next() {
+		var l legInfo
+		if rows.Scan(&l.id, &l.index, &l.from, &l.to, &l.status) == nil {
+			legs = append(legs, l)
+		}
+	}
+
+	collapsed := false
+	// Cancel downstream legs that haven't completed yet.
+	// "Downstream" = legs after the cancelled one in the chain order (wrapping around).
+	totalLegs := len(legs)
+	for i := 1; i < totalLegs; i++ {
+		downstreamIdx := (cancelledIndex + i) % totalLegs
+		for _, leg := range legs {
+			if leg.index == downstreamIdx && leg.status != "completed" && leg.status != "cancelled" {
+				_, _ = h.db.Exec("UPDATE multiway_trade_legs SET status = 'cancelled', updated_at = NOW() WHERE id = ?", leg.id)
+
+				// Restore the product to available.
+				_, _ = h.db.Exec(`
+					UPDATE products SET status = 'available', updated_at = NOW()
+					WHERE id = (SELECT product_id FROM multiway_trade_legs WHERE id = ?) AND status = 'locked'
+				`, leg.id)
+
+				// Notify both parties of this leg.
+				msg := "A leg in your multi-way chain has been cancelled due to a dispute on an earlier leg. Your item is available again."
+				for _, uid := range []int{leg.from, leg.to} {
+					_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, msg)
+					publishNotification(uid, msg)
+				}
+				collapsed = true
+			}
+		}
+	}
+
+	// If all legs are now cancelled or completed, update the chain status.
+	var pendingLegs int
+	h.db.QueryRow("SELECT COUNT(*) FROM multiway_trade_legs WHERE chain_id = ? AND status NOT IN ('completed', 'cancelled')", chainID).Scan(&pendingLegs)
+	if pendingLegs == 0 {
+		var completedLegs int
+		h.db.QueryRow("SELECT COUNT(*) FROM multiway_trade_legs WHERE chain_id = ? AND status = 'completed'", chainID).Scan(&completedLegs)
+		if completedLegs > 0 && completedLegs < totalLegs {
+			// Partial completion — mark chain as cancelled (incomplete).
+			_, _ = h.db.Exec("UPDATE multiway_trades SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW() WHERE chain_id = ?", chainID)
+		}
+	}
+
+	if collapsed {
+		log.Printf("Upstream collapse triggered for chain %s from leg %d: downstream legs cancelled", chainID, cancelledLegID)
+	}
+	return collapsed
+}
+
+// AdminGetLegDisputes returns all leg disputes with chain context for the admin dashboard.
+func (h *TradeHandler) AdminGetLegDisputes(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	statusFilter := c.Query("status", "")
+	offset := (page - 1) * limit
+
+	// Count.
+	var total int
+	if statusFilter != "" {
+		h.db.QueryRow("SELECT COUNT(*) FROM multiway_leg_disputes WHERE status = ?", statusFilter).Scan(&total)
+	} else {
+		h.db.QueryRow("SELECT COUNT(*) FROM multiway_leg_disputes").Scan(&total)
+	}
+
+	// Fetch disputes with context.
+	query := `
+		SELECT d.id, d.chain_id, d.leg_id, d.filed_by, d.against_user_id,
+		       d.reason, COALESCE(d.description, '') as description,
+		       d.status, d.resolution_action, d.upstream_collapse_triggered,
+		       COALESCE(d.admin_notes, '') as admin_notes,
+		       d.created_at, COALESCE(d.resolved_at, '1970-01-01') as resolved_at,
+		       COALESCE(filer.name, '') as filer_name,
+		       COALESCE(against.name, '') as against_name,
+		       COALESCE(l.leg_index, 0) as leg_index,
+		       COALESCE(p.title, '') as product_title,
+		       COALESCE(l.status, '') as leg_status,
+		       COALESCE(mw.status, '') as chain_status
+		FROM multiway_leg_disputes d
+		JOIN users filer ON filer.id = d.filed_by
+		JOIN users against ON against.id = d.against_user_id
+		LEFT JOIN multiway_trade_legs l ON l.id = d.leg_id
+		LEFT JOIN products p ON p.id = l.product_id
+		LEFT JOIN multiway_trades mw ON mw.chain_id = d.chain_id
+	`
+	var args []interface{}
+	if statusFilter != "" {
+		query += " WHERE d.status = ?"
+		args = append(args, statusFilter)
+	}
+	query += " ORDER BY d.created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := h.db.Query(query, args...)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch disputes"})
+	}
+	defer rows.Close()
+
+	var disputes []fiber.Map
+	for rows.Next() {
+		var id, legID, filedBy, againstUID, legIndex int
+		var chainID, reason, description, status, filerName, againstName string
+		var productTitle, legStatus, chainStatus string
+		var resolutionAction sql.NullString
+		var adminNotes string
+		var upstreamCollapse bool
+		var createdAt, resolvedAt time.Time
+
+		if err := rows.Scan(&id, &chainID, &legID, &filedBy, &againstUID,
+			&reason, &description, &status, &resolutionAction, &upstreamCollapse,
+			&adminNotes, &createdAt, &resolvedAt,
+			&filerName, &againstName, &legIndex, &productTitle, &legStatus, &chainStatus); err != nil {
+			continue
+		}
+
+		// Count affected users from upstream collapse.
+		var affectedUsers int
+		if upstreamCollapse {
+			h.db.QueryRow("SELECT COUNT(DISTINCT from_user_id) + COUNT(DISTINCT to_user_id) FROM multiway_trade_legs WHERE chain_id = ? AND status = 'cancelled'", chainID).Scan(&affectedUsers)
+		}
+
+		d := fiber.Map{
+			"id":                          id,
+			"chain_id":                    chainID,
+			"leg_id":                      legID,
+			"leg_index":                   legIndex,
+			"filed_by":                    filedBy,
+			"filer_name":                  filerName,
+			"against_user_id":             againstUID,
+			"against_name":                againstName,
+			"reason":                      reason,
+			"description":                 description,
+			"status":                      status,
+			"admin_notes":                 adminNotes,
+			"upstream_collapse_triggered": upstreamCollapse,
+			"affected_users":              affectedUsers,
+			"product_title":               productTitle,
+			"leg_status":                  legStatus,
+			"chain_status":                chainStatus,
+			"created_at":                  createdAt.Format("2006-01-02 15:04:05"),
+		}
+		if resolutionAction.Valid {
+			d["resolution_action"] = resolutionAction.String
+		}
+		if resolvedAt.Year() > 1970 {
+			d["resolved_at"] = resolvedAt.Format("2006-01-02 15:04:05")
+		}
+		disputes = append(disputes, d)
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"disputes":    disputes,
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"total_pages": (total + limit - 1) / limit,
+		},
+	})
 }
