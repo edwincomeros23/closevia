@@ -400,65 +400,88 @@ const Notifications: React.FC = () => {
                 </Box>
               )
             ) : (
-              paginated.map((notification) => (
-                <Card
-                  key={notification.id}
-                  bg={bgColor}
-                  border="1px"
-                  borderColor={borderColor}
-                  shadow="sm"
-                  opacity={notification.read ? 0.7 : 1}
-                  transition="all 0.2s"
-                  _hover={{ shadow: 'md' }}
-                >
-                  <CardHeader pb={2}>
-                    <HStack justify="space-between" align="start" flexWrap="wrap" gap={2}>
-                      <HStack spacing={3} align="start" minW={0} flex={1}>
-                        <Text fontSize="2xl">
-                          {getNotificationIcon(notification.type)}
-                        </Text>
-                        <VStack align="start" spacing={1} minW={0}>
-                          <HStack spacing={2} flexWrap="wrap">
-                            <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }} noOfLines={1}>
-                              {notification.type.replace('_', ' ').toUpperCase()}
-                            </Text>
-                            {!notification.read && (
-                              <Badge colorScheme="red" size="sm">
-                                New
-                              </Badge>
-                            )}
-                          </HStack>
-                          <Badge colorScheme={getNotificationColor(notification.type)} size="sm">
-                            {notification.type}
-                          </Badge>
-                        </VStack>
-                      </HStack>
-                      <Text fontSize="sm" color="gray.500">
-                        {new Date(notification.created_at).toLocaleDateString()}
-                      </Text>
-                    </HStack>
-                  </CardHeader>
-                  
-                  <CardBody pt={0}>
-                    <Text color="gray.700" mb={4}>{notification.message}</Text>
+              paginated.map((notification) => {
+                // Determine redirect path based on notification type/data
+                let redirectPath = null;
+                if (notification.type === 'trade_offer' || notification.type === 'trade_update') {
+                  // Example: redirect to offers/buyout or trade details
+                  if (notification.data && notification.data.trade_id) {
+                    redirectPath = `/offers/buyout/${notification.data.trade_id}`;
+                  } else {
+                    redirectPath = '/offers/buyout';
+                  }
+                }
+                // Add more types as needed
 
-                    {!notification.read ? (
-                      <Button
-                        size="sm"
-                        variant="solid"
-                        colorScheme="blue"
-                        onClick={() => markAsRead(notification.id)}
-                      >
-                        Mark as Read
-                      </Button>
-                    ) : (
-                      <Badge colorScheme="green" variant="subtle" px={2} py={1} borderRadius="full" fontSize="xs">
-                        ✓ Read
-                      </Badge>
-                    )}
-                  </CardBody>
-                </Card>
-              ))
+                const handleNotificationClick = async () => {
+                  if (!notification.read) {
+                    await markAsRead(notification.id);
+                  }
+                  if (redirectPath) {
+                    navigate(redirectPath);
+                  }
+                };
+
+                return (
+                  <Card
+                    key={notification.id}
+                    bg={bgColor}
+                    border="1px"
+                    borderColor={borderColor}
+                    shadow="sm"
+                    opacity={notification.read ? 0.7 : 1}
+                    transition="all 0.2s"
+                    _hover={{ shadow: 'md', cursor: redirectPath ? 'pointer' : 'default' }}
+                    onClick={redirectPath ? handleNotificationClick : undefined}
+                  >
+                    <CardHeader pb={2}>
+                      <HStack justify="space-between" align="start" flexWrap="wrap" gap={2}>
+                        <HStack spacing={3} align="start" minW={0} flex={1}>
+                          <Text fontSize="2xl">
+                            {getNotificationIcon(notification.type)}
+                          </Text>
+                          <VStack align="start" spacing={1} minW={0}>
+                            <HStack spacing={2} flexWrap="wrap">
+                              <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }} noOfLines={1}>
+                                {notification.type.replace('_', ' ').toUpperCase()}
+                              </Text>
+                              {!notification.read && (
+                                <Badge colorScheme="red" size="sm">
+                                  New
+                                </Badge>
+                              )}
+                            </HStack>
+                            <Badge colorScheme={getNotificationColor(notification.type)} size="sm">
+                              {notification.type}
+                            </Badge>
+                          </VStack>
+                        </HStack>
+                        <Text fontSize="sm" color="gray.500">
+                          {new Date(notification.created_at).toLocaleDateString()}
+                        </Text>
+                      </HStack>
+                    </CardHeader>
+                    <CardBody pt={0}>
+                      <Text color="gray.700" mb={4}>{notification.message}</Text>
+
+                      {!notification.read ? (
+                        <Button
+                          size="sm"
+                          variant="solid"
+                          colorScheme="blue"
+                          onClick={e => { e.stopPropagation(); markAsRead(notification.id); }}
+                        >
+                          Mark as Read
+                        </Button>
+                      ) : (
+                        <Badge colorScheme="green" variant="subtle" px={2} py={1} borderRadius="full" fontSize="xs">
+                          ✓ Read
+                        </Badge>
+                      )}
+                    </CardBody>
+                  </Card>
+                );
+              })
             )}
 
             {/* Pagination Controls are rendered below the Container for spacing */}

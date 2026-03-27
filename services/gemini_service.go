@@ -204,6 +204,9 @@ IF THE IMAGE IS SAFE, proceed with normal analysis. Return ONLY this exact struc
   "online_image_reason": ""
 }
 
+If "category" is "Other", you MUST still fill "subcategory" and "item_type" with a helpful short example based on the product image.
+Use "Plants" when it looks like plants (plant pots, succulents, flowers, seeds, etc.), otherwise use "Others".
+
 FURTHER ANALYSIS (only if image is safe):
 
 1. IMAGE QUALITY DETECTION (check carefully):

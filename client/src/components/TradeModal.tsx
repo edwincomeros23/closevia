@@ -533,88 +533,28 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           )}
         </ModalBody>
       </ModalContent>
-
-      {/* Confirmation modal shown after clicking Proceed */}
-      <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} isCentered size="lg">
+      {/* Confirmation dialog: single step, no summary */}
+      <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} isCentered size="sm">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Confirm Offer</ModalHeader>
+          <ModalHeader>Confirm Trade Offer</ModalHeader>
           <ModalCloseButton onClick={() => setShowConfirmModal(false)} />
           <ModalBody pb={6}>
             <VStack spacing={4} align="stretch">
-              {/* Warning if pending offer exists on target */}
-              {hasPendingOfferOnTarget && (
-                <Box bg="orange.50" borderWidth="1px" borderColor="orange.200" rounded="md" p={3}>
-                  <HStack spacing={2} mb={1}>
-                    <Text fontSize="lg">⚠️</Text>
-                    <Text fontSize="sm" fontWeight="bold" color="orange.800">Pending Offer Already Exists</Text>
-                  </HStack>
-                  <Text fontSize="xs" color="orange.700">
-                    You already have a pending offer on this product. Submitting another offer will override your existing one or be rejected by the system.
-                  </Text>
-                </Box>
-              )}
-              <Box>
-                <Text fontWeight="semibold" mb={2}>Your Offer Summary</Text>
-                <Grid templateColumns="repeat(auto-fill, minmax(180px, 220px))" gap={3} justifyContent="start">
-                  {selectedProducts.length === 0 && !cashAmount && (
-                    <Text color="gray.500" gridColumn="1 / -1">No items selected.</Text>
-                  )}
-                  {selectedProducts.map((p) => (
-                    <Box key={p.id} borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
-                      <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" loading="lazy" />
-                      <Box p={2}>
-                        <HStack justify="space-between">
-                          <Text fontSize="sm" fontWeight="semibold" noOfLines={1} wordBreak="break-word">{p.title}</Text>
-                          {p.premium && <Badge colorScheme="yellow">Premium</Badge>}
-                        </HStack>
-                        <Text fontSize="xs" color="gray.600" noOfLines={2} wordBreak="break-word">{p.description}</Text>
-                      </Box>
-                    </Box>
-                  ))}
-                </Grid>
-                {cashAmount && Number(cashAmount) > 0 && (
-                  <Text mt={2} fontSize="sm" color="green.700">Cash included: ₱{Number(cashAmount).toFixed(2)}</Text>
-                )}
-
-                {/* Labeled message block: show message or a fallback so user sees what's being sent */}
-                <Box mt={3} bg="gray.50" borderWidth="1px" borderColor="gray.200" rounded="md" p={3}>
-                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Message</Text>
-                  <Text fontSize="sm" color="gray.700">{tradeMessage && tradeMessage.trim() ? tradeMessage : 'No message provided'}</Text>
-                </Box>
-
-                {/* Trade Option Summary */}
-                <Box mt={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" p={3}>
-                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Trade Option</Text>
-                  <HStack spacing={2}>
-                    <Icon
-                      as={tradeOption === 'meetup' ? FaMapMarkerAlt : FaTruck}
-                      color="blue.600"
-                      boxSize={4}
-                    />
-                    <Text fontSize="sm" color="blue.700" fontWeight="medium">
-                      {tradeOption === 'meetup' ? 'Meetup' : 'Delivery'}
-                    </Text>
-                  </HStack>
-                  {tradeOption === 'delivery' && (
-                    <Text fontSize="xs" color="blue.600" mt={2}>
-                      📍 Location: {
-                        detectedLocationLabel
-                          ? detectedLocationLabel
-                          : detectedCoords
-                            ? formatCoordinates(detectedCoords.lat, detectedCoords.lng)
-                            : user?.latitude && user?.longitude
-                              ? (profileLocationLabel || formatCoordinates(user.latitude, user.longitude))
-                            : manualAddress.trim()
-                              ? manualAddress.trim()
-                              : 'Location not set'
-                      }
-                    </Text>
-                  )}
-                </Box>
+              <Text>Are you sure you want to send this trade offer?</Text>
+              <Box bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" p={4} textAlign="center">
+                <Text fontSize="sm" color="blue.700" mb={1}>You are offering:</Text>
+                <Text fontSize="md" color="blue.800" fontWeight="bold">
+                  {selectedProducts.map((p) => p.title).join(', ')}
+                  {cashAmount && Number(cashAmount) > 0 ? ` + ₱${Number(cashAmount).toFixed(2)}` : ''}
+                </Text>
               </Box>
-              <HStack justify="flex-end" spacing={3}>
-                <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>Back</Button>
+              <Box mt={2}>
+                <Text fontSize="sm" fontWeight="semibold">For item:</Text>
+                <Text fontSize="md">{targetProduct?.title}</Text>
+              </Box>
+              <HStack justify="flex-end" mt={4} spacing={3}>
+                <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>Cancel</Button>
                 <Button colorScheme="brand" isLoading={submittingTrade} onClick={submitTrade}>Send Offer</Button>
               </HStack>
             </VStack>

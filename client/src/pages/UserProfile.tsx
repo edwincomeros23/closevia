@@ -1003,81 +1003,45 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 )}
               </Flex>
 
-              {/* Inline stats */}
-              <HStack spacing={4} flexWrap="wrap" fontSize="sm" color="gray.600" mb={2}>
-                  <HStack spacing={1}>
-                    {displayTotalReviews === 0 ? (
-                      <Text color="gray.500">⭐ No reviews yet</Text>
-                    ) : (
-                      <>
-                        <Icon as={FiStar} color="yellow.400" />
-                        <Text fontWeight="semibold" color="gray.800">{displayRating.toFixed(1)}</Text>
-                        <Text color="gray.500">({displayTotalReviews})</Text>
-                      </>
-                    )}
-                  </HStack>
-                  <Text color="gray.300">|</Text>
-                  <HStack spacing={1}>
-                    <Text fontWeight="semibold" color="green.500">{Math.round(displayPositivePercent)}%</Text>
-                    <Text>Positive</Text>
-                  </HStack>
-                  <Text color="gray.300">|</Text>
-                  <HStack spacing={1}>
-                    <Text fontWeight="semibold" color="gray.800">{stats.completed}</Text>
-                    <Text>Trades</Text>
-                  </HStack>
-                  <Text color="gray.300">|</Text>
-                  <HStack spacing={1}>
-                    <Icon as={FiClock} boxSize={3.5} />
-                    <Text>{stats.avgResponse}</Text>
-                  </HStack>
-                </HStack>
+              {/* Condensed rating/status line */}
+              <HStack spacing={2} flexWrap="wrap" fontSize="sm" color="gray.600" mb={2}>
+                {displayTotalReviews === 0 ? (
+                  <Text color="gray.500">Positive: 0% (0 trades)</Text>
+                ) : (
+                  <>
+                    <Icon as={FiStar} color="yellow.400" />
+                    <Text fontWeight="semibold" color="gray.800">{displayRating.toFixed(1)}</Text>
+                    <Text color="gray.500">({displayTotalReviews} reviews)</Text>
+                    <Text color="gray.300">•</Text>
+                    <Text fontWeight="semibold" color="green.500">Positive: {Math.round(displayPositivePercent)}%</Text>
+                    <Text color="gray.800">({stats.completed} trades)</Text>
+                  </>
+                )}
+              </HStack>
 
-              {/* Trust level + Activity badges */}
+              {/* Combined status line for new/inactive/risky users */}
               <HStack spacing={2} mb={3} flexWrap="wrap">
-                {sellerStats?.trust_level && (() => {
-                  const isOrg = user.is_organization
-                  const isNew = sellerStats.trust_level === 'new'
-                  const isRisky = sellerStats.trust_level === 'risky'
-                  const hasEnoughData = (sellerStats.completed_trades ?? 0) > 0 || (sellerStats.report_count ?? 0) > 0
-                  // For orgs: hide badge if no data, show "New Organization" if new, only show Risky if reports+low completion
-                  if (isOrg) {
-                    if (!hasEnoughData) return null
-                    if (isNew) return (
-                      <Tooltip key="org-new" label="This organization is new to the platform" hasArrow>
-                        <Badge colorScheme="gray" borderRadius="full" px={3} py={1} fontSize="xs" cursor="default">
-                          🏢 New Organization
-                        </Badge>
-                      </Tooltip>
-                    )
-                    if (isRisky && (sellerStats.report_count ?? 0) > 2 && (sellerStats.positive_percent ?? 100) < 50) return (
-                      <Badge key="org-risky" colorScheme="red" borderRadius="full" px={3} py={1} fontSize="xs">
-                        🔴 Risky Trader
-                      </Badge>
-                    )
-                    if (!isRisky) return (
-                      <Badge key="org-trusted" colorScheme="green" borderRadius="full" px={3} py={1} fontSize="xs">
-                        🟢 Trusted Trader
-                      </Badge>
-                    )
-                    return null
-                  }
-                  return (
-                    <Badge
-                      key="user-trust"
-                      colorScheme={sellerStats.trust_level === 'trusted' ? 'green' : sellerStats.trust_level === 'new' ? 'yellow' : 'red'}
-                      borderRadius="full" px={3} py={1} fontSize="xs"
-                    >
-                      {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
-                    </Badge>
-                  )
-                })()}
-                <Badge
-                  colorScheme={user.activity_status === 'active_today' ? 'green' : user.activity_status === 'active_this_week' ? 'yellow' : 'red'}
-                  borderRadius="full" px={3} py={1} fontSize="xs"
-                >
-                  {user.activity_status === 'active_today' ? '🟢 Active today' : user.activity_status === 'active_this_week' ? '🟡 Active this week' : '🔴 Inactive'}
-                </Badge>
+                <Box as="span" fontSize="sm" color="gray.600" borderWidth="1px" borderColor="gray.300" borderRadius="md" px={2} py={0.5} bg="gray.50">
+                  Status: {user.activity_status === 'active_today' ? 'Active today' : user.activity_status === 'active_this_week' ? 'Active this week' : 'Inactive'}
+                  <Text as="span" color="gray.400" mx={1}>•</Text>
+                  <Tooltip label={
+                    sellerStats?.trust_level === 'risky'
+                      ? 'Risky: This trader has a high risk level due to low ratings, negative feedback, or reports. Improve by completing positive trades.'
+                      : sellerStats?.trust_level === 'new'
+                        ? 'Medium: New traders have not yet established a risk level.'
+                        : 'Low: Trusted trader with positive history.'
+                  } hasArrow>
+                    <Box as="span" cursor="pointer">
+                      Risk Level: {sellerStats?.trust_level === 'trusted' ? 'Low' : sellerStats?.trust_level === 'new' ? 'Medium' : 'High'}
+                      {sellerStats?.trust_level === 'risky' && (
+                        <Icon as={FiInfo} ml={1} color="red.400" boxSize={4} />
+                      )}
+                      {sellerStats?.trust_level !== 'risky' && (
+                        <Icon as={FiInfo} ml={1} color="gray.400" boxSize={4} />
+                      )}
+                    </Box>
+                  </Tooltip>
+                </Box>
               </HStack>
 
               {/* Verification Depth sub-badges (organization only) */}
@@ -1179,22 +1143,50 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 </Box>
               )}
 
-              {user.bio && <Text color="gray.700" fontSize="sm" mb={3}>{user.bio}</Text>}
+              {/* Bio section with CTA for owner */}
+              {user.bio && user.bio !== 'No bio provided yet.' ? (
+                <Text color="gray.700" fontSize="sm" mb={3}>{user.bio}</Text>
+              ) : currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) ? (
+                <Text color="gray.500" fontSize="sm" mb={3}>
+                  Tell buyers about yourself — <Button variant="link" size="sm" colorScheme="brand" onClick={openEdit}>Add a bio</Button>
+                </Text>
+              ) : null}
 
               {/* Stats card below */}
               <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3} mb={4} p={3} bg="gray.50" borderRadius="md">
                 <Box lineHeight="1.4">
                   <Text color="gray.500" fontSize="xs">Member Since</Text>
-                  <Text fontWeight="500" color="gray.800" fontSize="sm">{new Date(user.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                  <Text fontWeight="500" color="gray.800" fontSize="sm">
+                    {(() => {
+                      const joinDate = new Date(user.created_at)
+                      const now = new Date()
+                      if (isNaN(joinDate.getTime()) || joinDate > now) return 'Recently joined'
+                      return joinDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    })()}
+                  </Text>
+                </Box>
+                <Box lineHeight="1.4">
+                  <Tooltip label="Trust Score is based on completed trades, positive ratings, and reports. Higher is better." hasArrow>
+                    <Text color="gray.500" fontSize="xs" cursor="pointer">Trust Score</Text>
+                  </Tooltip>
+                  <Text fontWeight="500" color="gray.800" fontSize="sm">{sellerStats?.trust_score ?? 'N/A'}</Text>
                 </Box>
                 <Box lineHeight="1.4">
                   <Text color="gray.500" fontSize="xs">Items for Sale</Text>
                   <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
                 </Box>
-                <Box lineHeight="1.4">
-                  <Text color="gray.500" fontSize="xs">Department</Text>
-                  <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department || 'Unknown'}</Text>
-                </Box>
+                {/* Department field: hide if unknown, show CTA if owner */}
+                {(user.department && user.department !== 'Unknown') ? (
+                  <Box lineHeight="1.4">
+                    <Text color="gray.500" fontSize="xs">Department</Text>
+                    <Text fontWeight="500" color="gray.800" fontSize="sm">{user.department}</Text>
+                  </Box>
+                ) : currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) ? (
+                  <Box lineHeight="1.4">
+                    <Text color="gray.500" fontSize="xs">Department</Text>
+                    <Button variant="link" size="sm" colorScheme="brand" onClick={openEdit}>Add your department</Button>
+                  </Box>
+                ) : null}
                 <Box lineHeight="1.4">
                   <Text color="gray.500" fontSize="xs">Total Listings</Text>
                   <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
@@ -1221,19 +1213,23 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     responseTime={sellerStats.avg_response_time}
                   />
                 </Box>
-              )}
-
-              {/* Report Warning Banner */}
-              {sellerStats?.has_reports && (sellerStats.report_count ?? 0) > 0 && (
-                <Alert status="warning" borderRadius="md" mb={3}>
-                  <AlertIcon />
-                  <Box>
-                    <Text fontWeight="bold" fontSize="sm">⚠ This trader has received reports</Text>
-                    <Text fontSize="xs" color="gray.600">Trade with caution</Text>
-                  </Box>
-                </Alert>
-              )}
-
+                ) : (
+                  <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4} p={4}>
+                    {mergedTradeActivity.map((trade, idx) => (
+                      <Box key={trade.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4} bg="gray.50">
+                        <Text fontSize="xs" color="gray.500" mb={1}>
+                          Trade #{trade.id || idx}
+                        </Text>
+                        <Text fontSize="sm" color="gray.600" mb={2}>
+                          {/* Label for trade type/status */}
+                          {trade.status ? `Status: ${trade.status}` : 'Trade'}
+                        </Text>
+                        {/* ...existing trade details... */}
+                        {/* Add more trade info here as needed */}
+                      </Box>
+                    ))}
+                  </SimpleGrid>
+                )}
               {/* Show action buttons only when viewing someone else's profile */}
               {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && !user.is_organization && (
                 <HStack spacing={3}>

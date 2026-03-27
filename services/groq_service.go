@@ -146,6 +146,9 @@ Proceed with product analysis. Return this JSON structure:
   "online_image_reason": ""
 }
 
+If "category" is "Other", you MUST still fill "subcategory" and "item_type" with a helpful short example based on the product image.
+Use "Plants" when it looks like plants (plant pots, succulents, flowers, seeds, etc.), otherwise use "Others".
+
 IMPORTANT - IMAGE QUALITY DETECTION (check carefully):
 1. BLURRY/DARK: Set is_blurry_or_dark=true if the photo is noticeably blurry, out of focus, too dark (underexposed), or too bright (overexposed). Provide quality_warning with a specific reason.
 2. SUSPICIOUS IMAGE: Set is_suspicious_image=true if the image looks like:

@@ -197,7 +197,11 @@ const AddProduct: React.FC = () => {
 
   // AI Analysis blocking/warning state
   const [aiBlockingError, setAiBlockingError] = useState<string | null>(null) // Blocks form submission
-  const [aiWarnings, setAiWarnings] = useState<string[]>([]) // Just warnings
+  type AIWarningKind = 'person' | 'suspicious' | 'quality' | 'non_product' | 'online'
+  type AIWarning = { kind: AIWarningKind; message: string }
+
+  const [aiWarnings, setAiWarnings] = useState<AIWarning[]>([]) // Just warnings (server-side)
+  const [showAllAiWarnings, setShowAllAiWarnings] = useState(false)
 
   // Client-side image quality state
   const [clientQualityResults, setClientQualityResults] = useState<ClientQualityResult[]>([])
@@ -318,15 +322,7 @@ const AddProduct: React.FC = () => {
     aiTriggeredRef.current = true
     setIsGenerating(true)
 
-    toast({
-        id: "addproduct-analyzing-images",
-      title: '🔍 Analyzing images...',
-      description: 'AI is scanning all photos for product details and checking image quality.',
-      status: 'info',
-      duration: 3000,
-      isClosable: true,
-      position: 'top-right',
-    })
+    // Removed: 'Analyzing images...' notification (handled by inline UI)
 
     try {
       // Send all images in a batch (single API request)
@@ -372,7 +368,7 @@ const AddProduct: React.FC = () => {
         // Increment daily counter for successful analysis
         incrementDailyCount()
 
-        const warnings: string[] = []
+        const warnings: AIWarning[] = []
 
         // Check for secondary blocking issues (older field structure)
         if (d.is_prohibited) {
@@ -392,31 +388,47 @@ const AddProduct: React.FC = () => {
 
         // Check for person warning
         if (d.contains_person) {
-          warnings.push(d.person_warning || 'This photo contains a person. Please retake without people in frame.')
+          warnings.push({
+            kind: 'person',
+            message: d.person_warning || 'This photo contains a person. Please retake without people in frame.',
+          })
         }
 
         // Check for suspicious image warning
         if (d.is_suspicious_image) {
           const reason = d.suspicious_reason || 'This looks like a screenshot or stock photo'
-          warnings.push(`⚠️ ${reason}: Original product photos work better and get better engagement!`)
+          warnings.push({
+            kind: 'suspicious',
+            message: `⚠️ ${reason}: Original product photos work better and get better engagement!`,
+          })
         }
 
         // Check for quality warning (blurry/dark)
         if (d.is_blurry_or_dark) {
-          warnings.push(d.quality_warning || '⚠ Image quality is low. Please retake the photo for better trade chances.')
+          warnings.push({
+            kind: 'quality',
+            message: d.quality_warning || '⚠ Image quality is low. Please retake the photo for better trade chances.',
+          })
         }
 
         // Check for non-product image
         if (d.is_non_product_image) {
-          warnings.push(`⚠️ ${d.non_product_reason || 'This does not appear to be a product photo.'} Please upload a clear photo of the actual item.`)
+          warnings.push({
+            kind: 'non_product',
+            message: `⚠️ ${d.non_product_reason || 'This does not appear to be a product photo.'} Please upload a clear photo of the actual item.`,
+          })
         }
 
         // Check if image appears to be from an online source
         if (d.appears_online) {
-          warnings.push(`⚠️ ${d.online_image_reason || 'This image appears to be from an online source.'} Original photos get better engagement and build trust with traders.`)
+          warnings.push({
+            kind: 'online',
+            message: `⚠️ ${d.online_image_reason || 'This image appears to be from an online source.'} Original photos get better engagement and build trust with traders.`,
+          })
         }
 
         setAiWarnings(warnings)
+        setShowAllAiWarnings(false)
 
         // Fill form with AI data
         setFormData(prev => ({
@@ -440,7 +452,7 @@ const AddProduct: React.FC = () => {
           toast({
         id: "addproduct-ai-completed-with-notes",
             title: '⚠️ AI completed with notes',
-            description: warnings[0],
+            description: warnings[0]?.message,
             status: 'warning',
             duration: 5000,
             isClosable: true,
@@ -530,28 +542,7 @@ const AddProduct: React.FC = () => {
       try {
         const qualityResults = await checkMultipleImageQuality(processed)
         setClientQualityResults(prev => [...prev, ...qualityResults])
-
-        // Show instant quality warnings
-        const qualityWarnings: string[] = []
-        qualityResults.forEach((qr, idx) => {
-          qr.issues.forEach(issue => {
-            const prefix = processed.length > 1 ? `Photo ${idx + 1}: ` : ''
-            qualityWarnings.push(`${prefix}${issue.message} ${issue.suggestion}`)
-          })
-        })
-
-        if (qualityWarnings.length > 0) {
-          // Show the first quality warning as a toast
-          toast({
-        id: "addproduct-image-quality-check",
-            title: '📸 Image Quality Check',
-            description: qualityWarnings[0],
-            status: 'warning',
-            duration: 6000,
-            isClosable: true,
-            position: 'top-right',
-          })
-        }
+        // All image quality feedback is now shown inline, not as notifications
       } catch (err) {
         console.warn('Client-side quality check failed (non-blocking):', err)
       } finally {
@@ -561,6 +552,7 @@ const AddProduct: React.FC = () => {
       // Clear AI errors when new images are uploaded
       setAiBlockingError(null)
       setAiWarnings([])
+      setShowAllAiWarnings(false)
       aiTriggeredRef.current = false
       setAiDone(false)
     }
@@ -593,6 +585,7 @@ const AddProduct: React.FC = () => {
     // Clear AI errors and allow re-triggering when images are removed
     setAiBlockingError(null)
     setAiWarnings([])
+      setShowAllAiWarnings(false)
     aiTriggeredRef.current = false
     setAiDone(false)
   }
@@ -1070,21 +1063,73 @@ const AddProduct: React.FC = () => {
       )}
 
       {aiWarnings.length > 0 && (
-        <VStack spacing={2} align="stretch" w="full">
-          <Text fontSize="xs" fontWeight="semibold" color="orange.600" px={1}>
-            🤖 AI detected {aiWarnings.length} issue{aiWarnings.length > 1 ? 's' : ''} — these are suggestions, you can still post
-          </Text>
-          {aiWarnings.map((warning, idx) => (
-            <Alert key={idx} status="warning" borderRadius="lg" variant="left-accent">
-              <AlertIcon />
-              <Box flex="1">
-                <AlertDescription fontSize="sm">
-                  {warning}
-                </AlertDescription>
-              </Box>
-            </Alert>
-          ))}
-        </VStack>
+        (() => {
+          const hasClientQualityIssues = clientQualityResults.some(qr => qr.issues.length > 0)
+          const hideAiQualityWarnings = qualityChecking || hasClientQualityIssues
+
+          // When the client quality checker already flagged issues, hide AI "quality" warnings
+          // to prevent the duplication shown by users.
+          const filtered = hideAiQualityWarnings
+            ? aiWarnings.filter(w => w.kind !== 'quality')
+            : aiWarnings
+
+          // Dedupe by kind + message
+          const unique: typeof filtered = []
+          const seen = new Set<string>()
+          filtered.forEach(w => {
+            const key = `${w.kind}::${w.message}`
+            if (seen.has(key)) return
+            seen.add(key)
+            unique.push(w)
+          })
+
+          if (unique.length === 0) return null
+
+          const displayed = showAllAiWarnings ? unique : unique.slice(0, 2)
+
+          // Friendly summary message
+          const summary =
+            'Some of your photos could be improved for better results. For best chances, use clear, original photos of your item, avoid blurry or dark images, and try not to use stock or marketing pictures.'
+
+          return (
+            <VStack spacing={2} align="stretch" w="full">
+              <Alert status="warning" borderRadius="lg" variant="left-accent">
+                <AlertIcon />
+                <Box flex="1">
+                  <AlertDescription fontSize="sm">
+                    <b>Tip:</b> {summary}
+                  </AlertDescription>
+                </Box>
+              </Alert>
+              {showAllAiWarnings && (
+                <VStack spacing={1} align="stretch">
+                  {unique.map((warning, idx) => (
+                    <Alert key={`${warning.kind}-${warning.message}-${idx}`} status="warning" borderRadius="lg" variant="left-accent">
+                      <AlertIcon />
+                      <Box flex="1">
+                        <AlertDescription fontSize="sm">
+                          {warning.message}
+                        </AlertDescription>
+                      </Box>
+                    </Alert>
+                  ))}
+                </VStack>
+              )}
+              {unique.length > 1 && (
+                <Button
+                  size="xs"
+                  variant="link"
+                  colorScheme="orange"
+                  alignSelf="flex-start"
+                  onClick={() => setShowAllAiWarnings(v => !v)}
+                  px={0}
+                >
+                  {showAllAiWarnings ? 'Show less' : 'View details'}
+                </Button>
+              )}
+            </VStack>
+          )
+        })()
       )}
 
       {/* Compact Video Upload - Same Row Style */}

@@ -214,6 +214,7 @@ const Dashboard: React.FC = () => {
   const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
+  const prevMultiWayLoopIds = useRef<Set<string>>(new Set())
   const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [multiWayManagerOpen, setMultiWayManagerOpen] = useState(false)
   const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
@@ -673,7 +674,25 @@ const Dashboard: React.FC = () => {
       const response = await api.get('/api/trades/loops', {
         params: { user_id: user?.id }
       })
-      setMultiWayTrades(response.data?.data || [])
+      const newTrades = response.data?.data || []
+      setMultiWayTrades(newTrades)
+
+      // Detect new loops and notify user
+      const newLoopIds = new Set((newTrades || []).map((t: any) => t.loop_id || t.chain_id || t.id))
+      const prevIds = prevMultiWayLoopIds.current
+      for (const id of newLoopIds) {
+        if (!prevIds.has(id)) {
+          toast({
+            id: `new-loop-${id}`,
+            title: 'New Trade Loop Found!',
+            description: 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
+            status: 'info',
+            duration: 6000,
+            isClosable: true,
+          })
+        }
+      }
+      prevMultiWayLoopIds.current = newLoopIds
 
       // Free tier monthly quota indicator (used for upsells + disabling where needed).
       try {
