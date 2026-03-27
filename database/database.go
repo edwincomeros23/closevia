@@ -1179,6 +1179,98 @@ func ensureTradeColumns() {
 			log.Println("Added expires_at and cancellation columns to multiway_trades")
 		}
 	}
+
+	// Per-leg status table for multi-way trade chains (Phase 2).
+	// Each row represents one handoff (e.g. User1→User2, User2→User3).
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_trade_legs (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		leg_index INT NOT NULL COMMENT '0-based order within the chain',
+		from_user_id INT NOT NULL,
+		to_user_id INT NOT NULL,
+		product_id INT NOT NULL COMMENT 'Product being handed off in this leg',
+		handoff_method ENUM('pending','meetup','delivery') NOT NULL DEFAULT 'pending',
+		handoff_location VARCHAR(500) NULL,
+		handoff_time VARCHAR(100) NULL,
+		handoff_photo_url VARCHAR(512) NULL,
+		status ENUM('pending','in_progress','completed','disputed','cancelled') NOT NULL DEFAULT 'pending',
+		completed_at TIMESTAMP NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+		UNIQUE KEY uniq_chain_leg (chain_id, leg_index),
+		INDEX idx_leg_chain (chain_id),
+		INDEX idx_leg_status (status),
+		INDEX idx_leg_from_user (from_user_id),
+		INDEX idx_leg_to_user (to_user_id)
+	)`)
+
+	// Strike system for multi-way trade violations (Phase 3).
+	// Strike 1 = friendly warning, Strike 2 = final warning, Strike 3 = 30-day restriction.
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS user_strikes (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT NOT NULL,
+		chain_id VARCHAR(255) NULL COMMENT 'Chain that triggered the strike',
+		strike_number INT NOT NULL COMMENT '1, 2, or 3',
+		reason VARCHAR(500) NOT NULL,
+		severity ENUM('friendly_warning','final_warning','restriction') NOT NULL,
+		restricted_until TIMESTAMP NULL COMMENT 'Non-null for strike 3 = 30-day ban',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_strikes_user (user_id),
+		INDEX idx_strikes_restricted (restricted_until)
+	)`)
+
+	// Re-match hold tracking (Phase 3).
+	// When a participant backs out, the remaining parties get a 12-hour hold
+	// while the algorithm searches for a replacement.
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_rematch_holds (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		original_chain_id VARCHAR(255) NOT NULL COMMENT 'Chain that triggered re-match',
+		backed_out_user_id INT NOT NULL,
+		backed_out_leg_index INT NOT NULL COMMENT 'Which leg position needs replacement',
+		hold_expires_at TIMESTAMP NOT NULL COMMENT 'NOW() + 12 hours',
+		status ENUM('searching','found','expired','dissolved') NOT NULL DEFAULT 'searching',
+		replacement_user_id INT NULL,
+		replacement_chain_id VARCHAR(255) NULL COMMENT 'New chain_id if replacement found',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (backed_out_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_rematch_chain (chain_id),
+		INDEX idx_rematch_status (status),
+		INDEX idx_rematch_expires (hold_expires_at)
+	)`)
+
+	// Per-leg dispute isolation (Phase 4).
+	// Only the affected leg freezes; the rest of the chain continues.
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_leg_disputes (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		leg_id INT NOT NULL,
+		filed_by INT NOT NULL,
+		against_user_id INT NOT NULL,
+		reason VARCHAR(500) NOT NULL,
+		description TEXT NULL,
+		evidence_urls JSON NULL COMMENT 'Array of photo/video URLs',
+		status ENUM('open','under_review','resolved_in_favor','resolved_against','cancelled_leg') NOT NULL DEFAULT 'open',
+		admin_reviewer_id INT NULL,
+		admin_notes TEXT NULL,
+		resolution_action ENUM('no_action','refund','cancel_leg','cancel_chain') NULL,
+		upstream_collapse_triggered BOOLEAN NOT NULL DEFAULT FALSE,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		resolved_at TIMESTAMP NULL,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (leg_id) REFERENCES multiway_trade_legs(id) ON DELETE CASCADE,
+		FOREIGN KEY (filed_by) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (against_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (admin_reviewer_id) REFERENCES users(id) ON DELETE SET NULL,
+		INDEX idx_dispute_chain (chain_id),
+		INDEX idx_dispute_leg (leg_id),
+		INDEX idx_dispute_status (status),
+		INDEX idx_dispute_filed_by (filed_by)
+	)`)
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow
