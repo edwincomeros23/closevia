@@ -290,7 +290,7 @@ function exportToPDF(stats: AdminStats) {
 
 async function exportToExcel(stats: AdminStats) {
   const now = new Date();
-  
+
   // Create workbook
   const wb = XLSX.utils.book_new();
 
@@ -488,6 +488,7 @@ const AdminDashboard: React.FC = () => {
   const [selectedDayDetail, setSelectedDayDetail] = useState<DayDetail | null>(null);
   const [dayDetailLoading, setDayDetailLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [backfillLoading, setBackfillLoading] = useState(false);
 
   // Admin lists state
   const [users, setUsers] = useState<User[]>([]);
@@ -720,6 +721,30 @@ const AdminDashboard: React.FC = () => {
     }
   }, [stats, toast]);
 
+  const handleBackfillLedgers = useCallback(async () => {
+    try {
+      setBackfillLoading(true);
+      const res = await api.post('/api/admin/backfill-ledgers');
+      toast({
+        title: 'Legacy Legders Successfully Synced!',
+        description: res.data.message || 'Rider ledgers updated perfectly.',
+        status: 'success',
+        duration: 6000,
+        isClosable: true,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Backfill Failed',
+        description: err.response?.data?.error || err.message,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setBackfillLoading(false);
+    }
+  }, [toast]);
+
   // â"€â"€ Fetch reports for admin â"€â"€
   const fetchAdminReports = useCallback(
     async (page = 1, status = '') => {
@@ -738,7 +763,7 @@ const AdminDashboard: React.FC = () => {
         }
       } catch (err: any) {
         toast({
-        id: "admindashboard-failed-to-load-reports",
+          id: "admindashboard-failed-to-load-reports",
           title: 'Failed to load reports',
           description: err?.response?.data?.error || err.message || 'Unable to fetch reports',
           status: 'error',
@@ -758,7 +783,8 @@ const AdminDashboard: React.FC = () => {
     try {
       await api.put(`/api/admin/reports/${reportId}/status`, { status: newStatus });
       toast({
-        id: "admindashboard-report-updated", title: 'Report updated', status: 'success', duration: 2000, isClosable: true });
+        id: "admindashboard-report-updated", title: 'Report updated', status: 'success', duration: 2000, isClosable: true
+      });
       fetchAdminReports(reportsPage, reportsStatusFilter);
     } catch (err: any) {
       toast({
@@ -854,7 +880,7 @@ const AdminDashboard: React.FC = () => {
         }
       } catch (err: any) {
         toast({
-        id: "admindashboard-failed-to-load-users",
+          id: "admindashboard-failed-to-load-users",
           title: 'Failed to load users',
           description: err?.response?.data?.error || err.message || 'Unable to fetch users',
           status: 'error',
@@ -889,7 +915,7 @@ const AdminDashboard: React.FC = () => {
         }
       } catch (err: any) {
         toast({
-        id: "admindashboard-failed-to-load-items",
+          id: "admindashboard-failed-to-load-items",
           title: 'Failed to load items',
           description: err?.response?.data?.error || err.message || 'Unable to fetch items',
           status: 'error',
@@ -964,7 +990,8 @@ const AdminDashboard: React.FC = () => {
     e.preventDefault();
     if (!editingCampaign?.title) {
       toast({
-        id: "admindashboard-title-is-required", title: 'Title is required', status: 'warning', duration: 2000 });
+        id: "admindashboard-title-is-required", title: 'Title is required', status: 'warning', duration: 2000
+      });
       return;
     }
 
@@ -987,7 +1014,8 @@ const AdminDashboard: React.FC = () => {
         // Update
         await api.put(`/api/admin/campaigns/${editingCampaign.id}`, payload);
         toast({
-        id: "admindashboard-campaign-updated", title: 'Campaign updated', status: 'success', duration: 3000 });
+          id: "admindashboard-campaign-updated", title: 'Campaign updated', status: 'success', duration: 3000
+        });
       } else {
         // Create
         await api.post('/api/admin/campaigns', Object.assign({
@@ -996,7 +1024,8 @@ const AdminDashboard: React.FC = () => {
           is_active: true,
         }, payload));
         toast({
-        id: "admindashboard-campaign-created", title: 'Campaign created', status: 'success', duration: 3000 });
+          id: "admindashboard-campaign-created", title: 'Campaign created', status: 'success', duration: 3000
+        });
       }
       closeCampaignModal();
       setEditingCampaign(null);
@@ -1025,11 +1054,13 @@ const AdminDashboard: React.FC = () => {
     try {
       await api.put(`/api/admin/campaigns/${camp.id}`, { is_active: !camp.is_active });
       toast({
-        id: "admindashboard-campaign-camp-is-active", title: `Campaign ${!camp.is_active ? 'activated' : 'deactivated'}`, status: 'success', duration: 2000 });
+        id: "admindashboard-campaign-camp-is-active", title: `Campaign ${!camp.is_active ? 'activated' : 'deactivated'}`, status: 'success', duration: 2000
+      });
       fetchAdminCampaigns();
     } catch (err: any) {
       toast({
-        id: "admindashboard-status-update-failed", title: 'Status update failed', status: 'error', duration: 3000 });
+        id: "admindashboard-status-update-failed", title: 'Status update failed', status: 'error', duration: 3000
+      });
     }
   }, [toast, fetchAdminCampaigns]);
 
@@ -1116,7 +1147,7 @@ const AdminDashboard: React.FC = () => {
         await api.delete(`/api/admin/users/${deleteTarget.id}`);
         setUsers(prev => prev.filter(u => u.id !== deleteTarget.id));
         toast({
-        id: "admindashboard-user-deleted",
+          id: "admindashboard-user-deleted",
           title: 'User deleted',
           description: 'The user and related data have been removed.',
           status: 'success',
@@ -1127,7 +1158,7 @@ const AdminDashboard: React.FC = () => {
         await api.delete(`/api/admin/products/${deleteTarget.id}`);
         setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
         toast({
-        id: "admindashboard-item-deleted",
+          id: "admindashboard-item-deleted",
           title: 'Item deleted',
           description: 'The item has been removed from the marketplace.',
           status: 'success',
@@ -1138,7 +1169,7 @@ const AdminDashboard: React.FC = () => {
         await api.delete(`/api/admin/campaigns/${deleteTarget.id}`);
         setCampaigns(prev => prev.filter(c => c.id !== deleteTarget.id));
         toast({
-        id: "admindashboard-campaign-deleted",
+          id: "admindashboard-campaign-deleted",
           title: 'Campaign deleted',
           status: 'success',
           duration: 3000,
@@ -1225,7 +1256,8 @@ const AdminDashboard: React.FC = () => {
       fetchAdminReports(reportsPage, reportsStatusFilter);
     } catch (err: any) {
       toast({
-        id: "admindashboard-action-failed-2", title: 'Action failed', description: err?.response?.data?.error || 'Could not apply action', status: 'error', duration: 3000, isClosable: true });
+        id: "admindashboard-action-failed-2", title: 'Action failed', description: err?.response?.data?.error || 'Could not apply action', status: 'error', duration: 3000, isClosable: true
+      });
     } finally {
       setModerationLoading(false);
       setModerationTarget(null);
@@ -1553,426 +1585,426 @@ const AdminDashboard: React.FC = () => {
     const [expandedReportId, setExpandedReportId] = React.useState<number | null>(null);
     const toggleExpand = (id: number) => setExpandedReportId(prev => prev === id ? null : id);
     return (
-    <VStack spacing={8} align="stretch">
-      {/* Report Summary Cards */}
-      <Box>
-        <HStack mb={3} spacing={2}>
-          <Icon as={FiAlertTriangle} color="#f43f5e" />
-          <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports Overview</Text>
-        </HStack>
-        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
-          <Card bg={pendingCount > 0 ? 'red.50' : cardBg} border="1px solid" borderColor={pendingCount > 0 ? 'red.200' : borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
-            <CardBody py={4}>
-              <HStack mb={1}><Icon as={FiAlertCircle} color="red.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Pending</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="red.500">{pendingCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>Need action</Text>
-            </CardBody>
-          </Card>
-          <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
-            <CardBody py={4}>
-              <HStack mb={1}><Icon as={FiEye} color="blue.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Reviewed</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="blue.500">{reviewedCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>Under review</Text>
-            </CardBody>
-          </Card>
-          <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
-            <CardBody py={4}>
-              <HStack mb={1}><Icon as={FiCheckCircle} color="green.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Resolved</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="green.500">{resolvedCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>Closed</Text>
-            </CardBody>
-          </Card>
-          <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
-            <CardBody py={4}>
-              <HStack mb={1}><Icon as={FiXCircle} color="gray.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Dismissed</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="gray.500">{dismissedCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>No action</Text>
-            </CardBody>
-          </Card>
-        </SimpleGrid>
-      </Box>
+      <VStack spacing={8} align="stretch">
+        {/* Report Summary Cards */}
+        <Box>
+          <HStack mb={3} spacing={2}>
+            <Icon as={FiAlertTriangle} color="#f43f5e" />
+            <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports Overview</Text>
+          </HStack>
+          <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
+            <Card bg={pendingCount > 0 ? 'red.50' : cardBg} border="1px solid" borderColor={pendingCount > 0 ? 'red.200' : borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+              <CardBody py={4}>
+                <HStack mb={1}><Icon as={FiAlertCircle} color="red.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Pending</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="red.500">{pendingCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>Need action</Text>
+              </CardBody>
+            </Card>
+            <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+              <CardBody py={4}>
+                <HStack mb={1}><Icon as={FiEye} color="blue.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Reviewed</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="blue.500">{reviewedCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>Under review</Text>
+              </CardBody>
+            </Card>
+            <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+              <CardBody py={4}>
+                <HStack mb={1}><Icon as={FiCheckCircle} color="green.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Resolved</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="green.500">{resolvedCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>Closed</Text>
+              </CardBody>
+            </Card>
+            <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+              <CardBody py={4}>
+                <HStack mb={1}><Icon as={FiXCircle} color="gray.400" boxSize={4} /><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Dismissed</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="gray.500">{dismissedCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>No action</Text>
+              </CardBody>
+            </Card>
+          </SimpleGrid>
+        </Box>
 
-      {/* Report Type Breakdown Cards */}
-      <Box>
-        <HStack mb={3} spacing={2}>
-          <Icon as={FiAlertCircle} color="orange.500" />
-          <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports by Reason</Text>
-        </HStack>
-        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
-          <Card bg="red.50" border="1px solid" borderColor="red.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s" cursor="pointer" onClick={() => { setReportsStatusFilter(''); fetchAdminReports(1, ''); }}>
-            <CardBody py={4}>
-              <HStack mb={1}><Text fontSize="lg">🚨</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Scam</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="red.600">{scamCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>Fraud / scam reports</Text>
-            </CardBody>
-          </Card>
-          <Card bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
-            <CardBody py={4}>
-              <HStack mb={1}><Text fontSize="lg">📢</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Spam</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="yellow.600">{spamCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>Spam / repeated posts</Text>
-            </CardBody>
-          </Card>
-          <Card bg="orange.50" border="1px solid" borderColor="orange.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
-            <CardBody py={4}>
-              <HStack mb={1}><Text fontSize="lg">🎭</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Counterfeit</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="orange.600">{counterfeitCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>Fake / counterfeit items</Text>
-            </CardBody>
-          </Card>
-          <Card bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
-            <CardBody py={4}>
-              <HStack mb={1}><Text fontSize="lg">⚠️</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Inappropriate</Text></HStack>
-              <Text fontWeight="800" fontSize="2xl" color="purple.600">{inappropriateCount}</Text>
-              <Text fontSize="xs" color={mutedTextColor}>Inappropriate content</Text>
-            </CardBody>
-          </Card>
-        </SimpleGrid>
-      </Box>
+        {/* Report Type Breakdown Cards */}
+        <Box>
+          <HStack mb={3} spacing={2}>
+            <Icon as={FiAlertCircle} color="orange.500" />
+            <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports by Reason</Text>
+          </HStack>
+          <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
+            <Card bg="red.50" border="1px solid" borderColor="red.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s" cursor="pointer" onClick={() => { setReportsStatusFilter(''); fetchAdminReports(1, ''); }}>
+              <CardBody py={4}>
+                <HStack mb={1}><Text fontSize="lg">🚨</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Scam</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="red.600">{scamCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>Fraud / scam reports</Text>
+              </CardBody>
+            </Card>
+            <Card bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+              <CardBody py={4}>
+                <HStack mb={1}><Text fontSize="lg">📢</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Spam</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="yellow.600">{spamCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>Spam / repeated posts</Text>
+              </CardBody>
+            </Card>
+            <Card bg="orange.50" border="1px solid" borderColor="orange.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+              <CardBody py={4}>
+                <HStack mb={1}><Text fontSize="lg">🎭</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Counterfeit</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="orange.600">{counterfeitCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>Fake / counterfeit items</Text>
+              </CardBody>
+            </Card>
+            <Card bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="xl" _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }} transition="all 0.2s">
+              <CardBody py={4}>
+                <HStack mb={1}><Text fontSize="lg">⚠️</Text><Text fontSize="xs" color={mutedTextColor} fontWeight="500">Inappropriate</Text></HStack>
+                <Text fontWeight="800" fontSize="2xl" color="purple.600">{inappropriateCount}</Text>
+                <Text fontSize="xs" color={mutedTextColor}>Inappropriate content</Text>
+              </CardBody>
+            </Card>
+          </SimpleGrid>
+        </Box>
 
-      {/* User Reports */}
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
-          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-            <HStack>
-              <Icon as={FiAlertTriangle} color="#f43f5e" boxSize={5} />
-              <Heading size="sm" color={textColor}>User Reports</Heading>
-              {reports.filter((r: any) => r.status === 'pending').length > 0 && (
-                <Badge colorScheme="red" borderRadius="full" px={2}>{reports.filter((r: any) => r.status === 'pending').length} pending</Badge>
-              )}
-            </HStack>
-            <HStack>
-              <select
-                value={reportsStatusFilter}
-                onChange={(e) => { setReportsStatusFilter(e.target.value); fetchAdminReports(1, e.target.value); }}
-                style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', cursor: 'pointer' }}
-              >
-                <option value="">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="reviewed">Reviewed</option>
-                <option value="resolved">Resolved</option>
-                <option value="dismissed">Dismissed</option>
-              </select>
-              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchAdminReports(reportsPage, reportsStatusFilter)} isLoading={reportsLoading}>Refresh</Button>
-            </HStack>
-          </Flex>
-        </CardHeader>
-        <CardBody px={0} pb={2}>
-          {reportsLoading ? (
-            <Center py={8}><Spinner color="#f43f5e" /></Center>
-          ) : reports.length === 0 ? (
-            <Center py={8}><VStack spacing={2}><Icon as={FiShield} boxSize={10} color="gray.300" /><Text color="#64748b">No reports found</Text></VStack></Center>
-          ) : (
-            <>
-              <Box overflowX="auto" w="full">
-                <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '560px' }}>
-                  <Thead bg={headerBg}>
-                    <Tr>
-                      <Th color={mutedTextColor} w="48px" px={2}>#</Th>
-                      <Th color={mutedTextColor} w="100px" px={2}>Reporter</Th>
-                      <Th color={mutedTextColor} w="100px" px={2}>Against</Th>
-                      <Th color={mutedTextColor} px={2}>Details</Th>
-                      <Th color={mutedTextColor} w="88px" px={2}>Status</Th>
-                      <Th color={mutedTextColor} w="76px" px={2} display={{ base: 'none', md: 'table-cell' }}>Date</Th>
-                      <Th color={mutedTextColor} w="44px" px={1} textAlign="center">Act</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {reports.map((report: any) => (
-                      <React.Fragment key={report.id}>
-                        <Tr _hover={{ bg: hoverBg }} verticalAlign="top" cursor="pointer" onClick={() => toggleExpand(report.id)}>
-                          <Td px={2} fontWeight="bold" color="gray.500" fontSize="xs">#{report.id}</Td>
-                          <Td px={2}>
-                            <VStack align="start" spacing={0}>
-                              <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px">
-                                {report.reporter_name || `User #${report.reporter_id}`}
-                              </Text>
-                              <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reporter_id}</Text>
-                            </VStack>
-                          </Td>
-                          <Td px={2}>
-                            <VStack align="start" spacing={0}>
-                              <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px" color="red.600">
-                                {report.reported_name || `User #${report.reported_user_id}`}
-                              </Text>
-                              <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reported_user_id}</Text>
-                            </VStack>
-                          </Td>
-                          <Td px={2}>
-                            <VStack align="start" spacing={1}>
-                              <Badge
-                                colorScheme={report.reason === 'scam' ? 'red' : report.reason === 'counterfeit' ? 'orange' : report.reason === 'spam' ? 'yellow' : report.reason === 'inappropriate' ? 'purple' : 'gray'}
-                                borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize"
-                              >
-                                {report.reason || 'Other'}
-                              </Badge>
-                              {report.description && (
-                                <Text fontSize="2xs" color={mutedTextColor} noOfLines={2} maxW="180px">
-                                  {report.description}
+        {/* User Reports */}
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack>
+                <Icon as={FiAlertTriangle} color="#f43f5e" boxSize={5} />
+                <Heading size="sm" color={textColor}>User Reports</Heading>
+                {reports.filter((r: any) => r.status === 'pending').length > 0 && (
+                  <Badge colorScheme="red" borderRadius="full" px={2}>{reports.filter((r: any) => r.status === 'pending').length} pending</Badge>
+                )}
+              </HStack>
+              <HStack>
+                <select
+                  value={reportsStatusFilter}
+                  onChange={(e) => { setReportsStatusFilter(e.target.value); fetchAdminReports(1, e.target.value); }}
+                  style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', background: 'white', cursor: 'pointer' }}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="dismissed">Dismissed</option>
+                </select>
+                <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchAdminReports(reportsPage, reportsStatusFilter)} isLoading={reportsLoading}>Refresh</Button>
+              </HStack>
+            </Flex>
+          </CardHeader>
+          <CardBody px={0} pb={2}>
+            {reportsLoading ? (
+              <Center py={8}><Spinner color="#f43f5e" /></Center>
+            ) : reports.length === 0 ? (
+              <Center py={8}><VStack spacing={2}><Icon as={FiShield} boxSize={10} color="gray.300" /><Text color="#64748b">No reports found</Text></VStack></Center>
+            ) : (
+              <>
+                <Box overflowX="auto" w="full">
+                  <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '560px' }}>
+                    <Thead bg={headerBg}>
+                      <Tr>
+                        <Th color={mutedTextColor} w="48px" px={2}>#</Th>
+                        <Th color={mutedTextColor} w="100px" px={2}>Reporter</Th>
+                        <Th color={mutedTextColor} w="100px" px={2}>Against</Th>
+                        <Th color={mutedTextColor} px={2}>Details</Th>
+                        <Th color={mutedTextColor} w="88px" px={2}>Status</Th>
+                        <Th color={mutedTextColor} w="76px" px={2} display={{ base: 'none', md: 'table-cell' }}>Date</Th>
+                        <Th color={mutedTextColor} w="44px" px={1} textAlign="center">Act</Th>
+                      </Tr>
+                    </Thead>
+                    <Tbody>
+                      {reports.map((report: any) => (
+                        <React.Fragment key={report.id}>
+                          <Tr _hover={{ bg: hoverBg }} verticalAlign="top" cursor="pointer" onClick={() => toggleExpand(report.id)}>
+                            <Td px={2} fontWeight="bold" color="gray.500" fontSize="xs">#{report.id}</Td>
+                            <Td px={2}>
+                              <VStack align="start" spacing={0}>
+                                <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px">
+                                  {report.reporter_name || `User #${report.reporter_id}`}
                                 </Text>
-                              )}
-                              {report.product_title && (
-                                <Text fontSize="2xs" color="brand.500" isTruncated maxW="180px">
-                                  📦 {report.product_title}
-                                </Text>
-                              )}
-                            </VStack>
-                          </Td>
-                          <Td px={2}><Badge colorScheme={report.status === 'pending' ? 'orange' : report.status === 'resolved' ? 'green' : report.status === 'reviewed' ? 'blue' : 'gray'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{report.status}</Badge></Td>
-                          <Td px={2} fontSize="xs" color={mutedTextColor} display={{ base: 'none', md: 'table-cell' }}>{report.created_at ? new Date(report.created_at).toLocaleDateString() : '-'}</Td>
-                          <Td px={1} textAlign="center" onClick={(e) => e.stopPropagation()}>
-                            <Menu>
-                              <MenuButton as={IconButton} icon={<FiMoreVertical />} size="xs" variant="ghost" aria-label="Actions" />
-                              <MenuList shadow="lg" borderRadius="lg" minW="180px">
-                                {['Warn User', 'Delete Listing', 'Suspend Account', 'Mark Resolved', 'Dismiss'].map(action => (
-                                  <MenuItem
-                                    key={action}
-                                    fontSize="sm"
-                                    color={action === 'Suspend Account' || action === 'Delete Listing' ? '#f43f5e' : 'gray.700'}
-                                    onClick={() => setModerationTarget({ report, action })}
-                                  >
-                                    {action}
-                                  </MenuItem>
-                                ))}
-                              </MenuList>
-                            </Menu>
-                          </Td>
-                        </Tr>
-                        {expandedReportId === report.id && (
-                          <Tr bg={hoverBg}>
-                            <Td colSpan={7} px={4} py={3}>
-                              <VStack align="start" spacing={2}>
-                                <HStack spacing={4} flexWrap="wrap">
-                                  <Text fontSize="xs"><Text as="span" fontWeight="700">Reporter:</Text> {report.reporter_name} (ID: {report.reporter_id})</Text>
-                                  <Text fontSize="xs"><Text as="span" fontWeight="700">Reported:</Text> {report.reported_name} (ID: {report.reported_user_id})</Text>
-                                  {report.product_title && <Text fontSize="xs"><Text as="span" fontWeight="700">Listing:</Text> {report.product_title}</Text>}
-                                </HStack>
-                                {report.description && (
-                                  <Box bg="white" border="1px solid" borderColor={borderColor} borderRadius="md" p={3} w="full">
-                                    <Text fontSize="xs" fontWeight="600" color={mutedTextColor} mb={1}>Description</Text>
-                                    <Text fontSize="sm">{report.description}</Text>
-                                  </Box>
-                                )}
-                                {report.reviewer_comment && (
-                                  <Box bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="md" p={3} w="full">
-                                    <Text fontSize="xs" fontWeight="600" color="blue.600" mb={1}>Reviewer Comment</Text>
-                                    <Text fontSize="sm">{report.reviewer_comment}</Text>
-                                  </Box>
-                                )}
-                                <Text fontSize="2xs" color={mutedTextColor}>Submitted: {report.created_at ? new Date(report.created_at).toLocaleString() : '-'} • Updated: {report.updated_at ? new Date(report.updated_at).toLocaleString() : '-'}</Text>
+                                <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reporter_id}</Text>
                               </VStack>
                             </Td>
+                            <Td px={2}>
+                              <VStack align="start" spacing={0}>
+                                <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px" color="red.600">
+                                  {report.reported_name || `User #${report.reported_user_id}`}
+                                </Text>
+                                <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reported_user_id}</Text>
+                              </VStack>
+                            </Td>
+                            <Td px={2}>
+                              <VStack align="start" spacing={1}>
+                                <Badge
+                                  colorScheme={report.reason === 'scam' ? 'red' : report.reason === 'counterfeit' ? 'orange' : report.reason === 'spam' ? 'yellow' : report.reason === 'inappropriate' ? 'purple' : 'gray'}
+                                  borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize"
+                                >
+                                  {report.reason || 'Other'}
+                                </Badge>
+                                {report.description && (
+                                  <Text fontSize="2xs" color={mutedTextColor} noOfLines={2} maxW="180px">
+                                    {report.description}
+                                  </Text>
+                                )}
+                                {report.product_title && (
+                                  <Text fontSize="2xs" color="brand.500" isTruncated maxW="180px">
+                                    📦 {report.product_title}
+                                  </Text>
+                                )}
+                              </VStack>
+                            </Td>
+                            <Td px={2}><Badge colorScheme={report.status === 'pending' ? 'orange' : report.status === 'resolved' ? 'green' : report.status === 'reviewed' ? 'blue' : 'gray'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{report.status}</Badge></Td>
+                            <Td px={2} fontSize="xs" color={mutedTextColor} display={{ base: 'none', md: 'table-cell' }}>{report.created_at ? new Date(report.created_at).toLocaleDateString() : '-'}</Td>
+                            <Td px={1} textAlign="center" onClick={(e) => e.stopPropagation()}>
+                              <Menu>
+                                <MenuButton as={IconButton} icon={<FiMoreVertical />} size="xs" variant="ghost" aria-label="Actions" />
+                                <MenuList shadow="lg" borderRadius="lg" minW="180px">
+                                  {['Warn User', 'Delete Listing', 'Suspend Account', 'Mark Resolved', 'Dismiss'].map(action => (
+                                    <MenuItem
+                                      key={action}
+                                      fontSize="sm"
+                                      color={action === 'Suspend Account' || action === 'Delete Listing' ? '#f43f5e' : 'gray.700'}
+                                      onClick={() => setModerationTarget({ report, action })}
+                                    >
+                                      {action}
+                                    </MenuItem>
+                                  ))}
+                                </MenuList>
+                              </Menu>
+                            </Td>
                           </Tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </Tbody>
-                </ChakraTable>
-              </Box>
-              {reportsTotalPages > 1 && (
-                <HStack spacing={2} justify="center" mt={3} pb={3}>
-                  <Button size="xs" variant="outline" isDisabled={reportsPage <= 1} onClick={() => { setReportsPage(p => p - 1); fetchAdminReports(reportsPage - 1, reportsStatusFilter); }}>Prev</Button>
-                  <Text fontSize="xs" color={mutedTextColor}>{reportsPage} / {reportsTotalPages}</Text>
-                  <Button size="xs" variant="outline" isDisabled={reportsPage >= reportsTotalPages} onClick={() => { setReportsPage(p => p + 1); fetchAdminReports(reportsPage + 1, reportsStatusFilter); }}>Next</Button>
-                </HStack>
-              )}
-            </>
-          )}
-        </CardBody>
-      </Card>
-
-      {/* Rider Applications */}
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
-        <CardHeader>
-          <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-            <HStack>
-              <Icon as={FaMotorcycle} color="brand.500" boxSize={5} />
-              <Heading size="sm" color={textColor}>Rider Applications</Heading>
-              {riderApplications.filter(r => r.status === 'pending').length > 0 && (
-                <Badge colorScheme="orange" borderRadius="full" px={2}>{riderApplications.filter(r => r.status === 'pending').length} pending</Badge>
-              )}
-            </HStack>
-            <HStack spacing={2}>
-              <Select size="sm" w="130px" value={riderStatusFilter} onChange={e => setRiderStatusFilter(e.target.value)} placeholder="All statuses">
-                <option value="pending">Pending</option>
-                <option value="under_review">Under Review</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </Select>
-              <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
-              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchRiderApplications()} isLoading={riderAppsLoading}>Refresh</Button>
-            </HStack>
-          </Flex>
-        </CardHeader>
-        <CardBody overflowX="auto" px={0}>
-          {riderAppsLoading ? (
-            <Center py={8}><Spinner color="teal.500" /></Center>
-          ) : riderApplications.length === 0 ? (
-            <Center py={8}><VStack spacing={2}><Icon as={FaMotorcycle} boxSize={10} color="gray.300" /><Text color="#64748b">No rider applications</Text></VStack></Center>
-          ) : (
-            <ChakraTable variant="simple" size="sm">
-              <Thead bg={headerBg}>
-                <Tr>
-                  <Th color={mutedTextColor}>Applicant</Th>
-                  <Th color={mutedTextColor}>Vehicle</Th>
-                  <Th color={mutedTextColor}>Contact</Th>
-                  <Th color={mutedTextColor}>Status</Th>
-                  <Th color={mutedTextColor}>Applied</Th>
-                  <Th color={mutedTextColor}>Actions</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {riderApplications.map(app => (
-                  <Tr key={app.id} _hover={{ bg: hoverBg }}>
-                    <Td>
-                      <VStack align="start" spacing={0}>
-                        <Text fontWeight="600" fontSize="sm">{app.full_name || app.name}</Text>
-                        <Text fontSize="xs" color={mutedTextColor}>{app.email}</Text>
-                      </VStack>
-                    </Td>
-                    <Td>
-                      <VStack align="start" spacing={0}>
-                        <Text fontSize="sm" textTransform="capitalize">{app.vehicle_type}</Text>
-                        <Text fontSize="xs" color={mutedTextColor}>{app.vehicle_plate || 'No plate'}</Text>
-                      </VStack>
-                    </Td>
-                    <Td fontSize="sm">{app.contact_number || '-'}</Td>
-                    <Td>
-                      <Badge
-                        colorScheme={app.status === 'approved' ? 'green' : app.status === 'rejected' ? 'red' : app.status === 'under_review' ? 'blue' : 'orange'}
-                        borderRadius="full" px={2}
-                      >
-                        {app.status === 'under_review' ? 'Under Review' : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                      </Badge>
-                    </Td>
-                    <Td fontSize="xs" color={mutedTextColor}>{new Date(app.created_at).toLocaleDateString()}</Td>
-                    <Td>
-                      <HStack spacing={1}>
-                        <Tooltip label="View Details" hasArrow>
-                          <IconButton aria-label="View" size="sm" variant="outline" icon={<FiEye />} onClick={() => setSelectedRiderApp(app)} />
-                        </Tooltip>
-                        {app.status === 'pending' && (
-                          <>
-                            <Button size="xs" colorScheme="blue" variant="outline" onClick={() => handleMarkRiderUnderReview(app.id)}>Review</Button>
-                            <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
-                            <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
-                          </>
-                        )}
-                        {app.status === 'under_review' && (
-                          <>
-                            <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
-                            <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
-                          </>
-                        )}
-                      </HStack>
-                    </Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </ChakraTable>
-          )}
-        </CardBody>
-      </Card>
-
-      {/* Rider Application Detail Modal */}
-      <Modal isOpen={!!selectedRiderApp} onClose={() => setSelectedRiderApp(null)} size="lg" isCentered>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader fontSize="md">
-            <HStack>
-              <Icon as={FaMotorcycle} color="brand.500" />
-              <Text>Rider Application Details</Text>
-            </HStack>
-          </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody pb={6}>
-            {selectedRiderApp && (
-              <VStack spacing={4} align="stretch">
-                <SimpleGrid columns={2} spacing={4}>
-                  <Box>
-                    <Text fontSize="xs" color="gray.500">Full Name</Text>
-                    <Text fontWeight="bold">{selectedRiderApp.full_name || selectedRiderApp.name}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontSize="xs" color="gray.500">Email</Text>
-                    <Text fontWeight="bold">{selectedRiderApp.email}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontSize="xs" color="gray.500">Contact Number</Text>
-                    <Text fontWeight="bold">{selectedRiderApp.contact_number || 'N/A'}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontSize="xs" color="gray.500">Vehicle</Text>
-                    <Text fontWeight="bold" textTransform="capitalize">{selectedRiderApp.vehicle_type} {selectedRiderApp.vehicle_plate ? `(${selectedRiderApp.vehicle_plate})` : ''}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontSize="xs" color="gray.500">Status</Text>
-                    <Badge colorScheme={selectedRiderApp.status === 'approved' ? 'green' : selectedRiderApp.status === 'rejected' ? 'red' : selectedRiderApp.status === 'under_review' ? 'blue' : 'orange'}>
-                      {selectedRiderApp.status === 'under_review' ? 'Under Review' : selectedRiderApp.status.charAt(0).toUpperCase() + selectedRiderApp.status.slice(1)}
-                    </Badge>
-                  </Box>
-                  <Box>
-                    <Text fontSize="xs" color="gray.500">Applied On</Text>
-                    <Text fontWeight="bold">{new Date(selectedRiderApp.created_at).toLocaleString()}</Text>
-                  </Box>
-                </SimpleGrid>
-
-                {selectedRiderApp.rejection_reason && (
-                  <Box bg="red.50" p={3} borderRadius="md">
-                    <Text fontSize="xs" color="red.600" fontWeight="bold">Rejection Reason</Text>
-                    <Text fontSize="sm">{selectedRiderApp.rejection_reason}</Text>
-                  </Box>
+                          {expandedReportId === report.id && (
+                            <Tr bg={hoverBg}>
+                              <Td colSpan={7} px={4} py={3}>
+                                <VStack align="start" spacing={2}>
+                                  <HStack spacing={4} flexWrap="wrap">
+                                    <Text fontSize="xs"><Text as="span" fontWeight="700">Reporter:</Text> {report.reporter_name} (ID: {report.reporter_id})</Text>
+                                    <Text fontSize="xs"><Text as="span" fontWeight="700">Reported:</Text> {report.reported_name} (ID: {report.reported_user_id})</Text>
+                                    {report.product_title && <Text fontSize="xs"><Text as="span" fontWeight="700">Listing:</Text> {report.product_title}</Text>}
+                                  </HStack>
+                                  {report.description && (
+                                    <Box bg="white" border="1px solid" borderColor={borderColor} borderRadius="md" p={3} w="full">
+                                      <Text fontSize="xs" fontWeight="600" color={mutedTextColor} mb={1}>Description</Text>
+                                      <Text fontSize="sm">{report.description}</Text>
+                                    </Box>
+                                  )}
+                                  {report.reviewer_comment && (
+                                    <Box bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="md" p={3} w="full">
+                                      <Text fontSize="xs" fontWeight="600" color="blue.600" mb={1}>Reviewer Comment</Text>
+                                      <Text fontSize="sm">{report.reviewer_comment}</Text>
+                                    </Box>
+                                  )}
+                                  <Text fontSize="2xs" color={mutedTextColor}>Submitted: {report.created_at ? new Date(report.created_at).toLocaleString() : '-'} • Updated: {report.updated_at ? new Date(report.updated_at).toLocaleString() : '-'}</Text>
+                                </VStack>
+                              </Td>
+                            </Tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </Tbody>
+                  </ChakraTable>
+                </Box>
+                {reportsTotalPages > 1 && (
+                  <HStack spacing={2} justify="center" mt={3} pb={3}>
+                    <Button size="xs" variant="outline" isDisabled={reportsPage <= 1} onClick={() => { setReportsPage(p => p - 1); fetchAdminReports(reportsPage - 1, reportsStatusFilter); }}>Prev</Button>
+                    <Text fontSize="xs" color={mutedTextColor}>{reportsPage} / {reportsTotalPages}</Text>
+                    <Button size="xs" variant="outline" isDisabled={reportsPage >= reportsTotalPages} onClick={() => { setReportsPage(p => p + 1); fetchAdminReports(reportsPage + 1, reportsStatusFilter); }}>Next</Button>
+                  </HStack>
                 )}
-
-                {selectedRiderApp.reviewed_at && (
-                  <Text fontSize="xs" color="gray.500">Reviewed at: {new Date(selectedRiderApp.reviewed_at).toLocaleString()}</Text>
-                )}
-
-                <Divider />
-
-                {selectedRiderApp.license_image_url && (
-                  <Box>
-                    <Image src={selectedRiderApp.license_image_url} alt="License" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
-                  </Box>
-                )}
-
-                {selectedRiderApp.selfie_image_url && (
-                  <Box>
-                    <Image src={selectedRiderApp.selfie_image_url} alt="Selfie" maxH="200px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
-                  </Box>
-                )}
-              </VStack>
+              </>
             )}
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+          </CardBody>
+        </Card>
 
-      {/* Reject Rider Modal */}
-      <Modal isOpen={!!rejectRiderTarget} onClose={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }} isCentered>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader fontSize="md">Reject Rider Application</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Text fontSize="sm" mb={3}>Applicant: <strong>{rejectRiderTarget?.full_name || rejectRiderTarget?.name}</strong> ({rejectRiderTarget?.email})</Text>
-            <Textarea
-              placeholder="Reason for rejection"
-              value={rejectRiderReason}
-              onChange={e => setRejectRiderReason(e.target.value)}
-              rows={3}
-            />
-          </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }}>Cancel</Button>
-            <Button colorScheme="red" onClick={handleConfirmRejectRider} isLoading={rejectRiderLoading} isDisabled={!rejectRiderReason.trim()}>
-              Reject Application
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+        {/* Rider Applications */}
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack>
+                <Icon as={FaMotorcycle} color="brand.500" boxSize={5} />
+                <Heading size="sm" color={textColor}>Rider Applications</Heading>
+                {riderApplications.filter(r => r.status === 'pending').length > 0 && (
+                  <Badge colorScheme="orange" borderRadius="full" px={2}>{riderApplications.filter(r => r.status === 'pending').length} pending</Badge>
+                )}
+              </HStack>
+              <HStack spacing={2}>
+                <Select size="sm" w="130px" value={riderStatusFilter} onChange={e => setRiderStatusFilter(e.target.value)} placeholder="All statuses">
+                  <option value="pending">Pending</option>
+                  <option value="under_review">Under Review</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </Select>
+                <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
+                <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchRiderApplications()} isLoading={riderAppsLoading}>Refresh</Button>
+              </HStack>
+            </Flex>
+          </CardHeader>
+          <CardBody overflowX="auto" px={0}>
+            {riderAppsLoading ? (
+              <Center py={8}><Spinner color="teal.500" /></Center>
+            ) : riderApplications.length === 0 ? (
+              <Center py={8}><VStack spacing={2}><Icon as={FaMotorcycle} boxSize={10} color="gray.300" /><Text color="#64748b">No rider applications</Text></VStack></Center>
+            ) : (
+              <ChakraTable variant="simple" size="sm">
+                <Thead bg={headerBg}>
+                  <Tr>
+                    <Th color={mutedTextColor}>Applicant</Th>
+                    <Th color={mutedTextColor}>Vehicle</Th>
+                    <Th color={mutedTextColor}>Contact</Th>
+                    <Th color={mutedTextColor}>Status</Th>
+                    <Th color={mutedTextColor}>Applied</Th>
+                    <Th color={mutedTextColor}>Actions</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {riderApplications.map(app => (
+                    <Tr key={app.id} _hover={{ bg: hoverBg }}>
+                      <Td>
+                        <VStack align="start" spacing={0}>
+                          <Text fontWeight="600" fontSize="sm">{app.full_name || app.name}</Text>
+                          <Text fontSize="xs" color={mutedTextColor}>{app.email}</Text>
+                        </VStack>
+                      </Td>
+                      <Td>
+                        <VStack align="start" spacing={0}>
+                          <Text fontSize="sm" textTransform="capitalize">{app.vehicle_type}</Text>
+                          <Text fontSize="xs" color={mutedTextColor}>{app.vehicle_plate || 'No plate'}</Text>
+                        </VStack>
+                      </Td>
+                      <Td fontSize="sm">{app.contact_number || '-'}</Td>
+                      <Td>
+                        <Badge
+                          colorScheme={app.status === 'approved' ? 'green' : app.status === 'rejected' ? 'red' : app.status === 'under_review' ? 'blue' : 'orange'}
+                          borderRadius="full" px={2}
+                        >
+                          {app.status === 'under_review' ? 'Under Review' : app.status.charAt(0).toUpperCase() + app.status.slice(1)}
+                        </Badge>
+                      </Td>
+                      <Td fontSize="xs" color={mutedTextColor}>{new Date(app.created_at).toLocaleDateString()}</Td>
+                      <Td>
+                        <HStack spacing={1}>
+                          <Tooltip label="View Details" hasArrow>
+                            <IconButton aria-label="View" size="sm" variant="outline" icon={<FiEye />} onClick={() => setSelectedRiderApp(app)} />
+                          </Tooltip>
+                          {app.status === 'pending' && (
+                            <>
+                              <Button size="xs" colorScheme="blue" variant="outline" onClick={() => handleMarkRiderUnderReview(app.id)}>Review</Button>
+                              <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
+                              <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
+                            </>
+                          )}
+                          {app.status === 'under_review' && (
+                            <>
+                              <Button size="xs" colorScheme="green" leftIcon={<FiCheck />} onClick={() => handleApproveRider(app.id)}>Approve</Button>
+                              <Button size="xs" colorScheme="red" variant="outline" leftIcon={<FiX />} onClick={() => { setRejectRiderTarget(app); setRejectRiderReason(''); }}>Reject</Button>
+                            </>
+                          )}
+                        </HStack>
+                      </Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </ChakraTable>
+            )}
+          </CardBody>
+        </Card>
 
-    </VStack>
-  );
+        {/* Rider Application Detail Modal */}
+        <Modal isOpen={!!selectedRiderApp} onClose={() => setSelectedRiderApp(null)} size="lg" isCentered>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader fontSize="md">
+              <HStack>
+                <Icon as={FaMotorcycle} color="brand.500" />
+                <Text>Rider Application Details</Text>
+              </HStack>
+            </ModalHeader>
+            <ModalCloseButton />
+            <ModalBody pb={6}>
+              {selectedRiderApp && (
+                <VStack spacing={4} align="stretch">
+                  <SimpleGrid columns={2} spacing={4}>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Full Name</Text>
+                      <Text fontWeight="bold">{selectedRiderApp.full_name || selectedRiderApp.name}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Email</Text>
+                      <Text fontWeight="bold">{selectedRiderApp.email}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Contact Number</Text>
+                      <Text fontWeight="bold">{selectedRiderApp.contact_number || 'N/A'}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Vehicle</Text>
+                      <Text fontWeight="bold" textTransform="capitalize">{selectedRiderApp.vehicle_type} {selectedRiderApp.vehicle_plate ? `(${selectedRiderApp.vehicle_plate})` : ''}</Text>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Status</Text>
+                      <Badge colorScheme={selectedRiderApp.status === 'approved' ? 'green' : selectedRiderApp.status === 'rejected' ? 'red' : selectedRiderApp.status === 'under_review' ? 'blue' : 'orange'}>
+                        {selectedRiderApp.status === 'under_review' ? 'Under Review' : selectedRiderApp.status.charAt(0).toUpperCase() + selectedRiderApp.status.slice(1)}
+                      </Badge>
+                    </Box>
+                    <Box>
+                      <Text fontSize="xs" color="gray.500">Applied On</Text>
+                      <Text fontWeight="bold">{new Date(selectedRiderApp.created_at).toLocaleString()}</Text>
+                    </Box>
+                  </SimpleGrid>
+
+                  {selectedRiderApp.rejection_reason && (
+                    <Box bg="red.50" p={3} borderRadius="md">
+                      <Text fontSize="xs" color="red.600" fontWeight="bold">Rejection Reason</Text>
+                      <Text fontSize="sm">{selectedRiderApp.rejection_reason}</Text>
+                    </Box>
+                  )}
+
+                  {selectedRiderApp.reviewed_at && (
+                    <Text fontSize="xs" color="gray.500">Reviewed at: {new Date(selectedRiderApp.reviewed_at).toLocaleString()}</Text>
+                  )}
+
+                  <Divider />
+
+                  {selectedRiderApp.license_image_url && (
+                    <Box>
+                      <Image src={selectedRiderApp.license_image_url} alt="License" maxH="250px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
+                    </Box>
+                  )}
+
+                  {selectedRiderApp.selfie_image_url && (
+                    <Box>
+                      <Image src={selectedRiderApp.selfie_image_url} alt="Selfie" maxH="200px" borderRadius="md" border="1px solid" borderColor="gray.200" objectFit="contain" w="full" bg="gray.50" />
+                    </Box>
+                  )}
+                </VStack>
+              )}
+            </ModalBody>
+          </ModalContent>
+        </Modal>
+
+        {/* Reject Rider Modal */}
+        <Modal isOpen={!!rejectRiderTarget} onClose={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }} isCentered>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader fontSize="md">Reject Rider Application</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Text fontSize="sm" mb={3}>Applicant: <strong>{rejectRiderTarget?.full_name || rejectRiderTarget?.name}</strong> ({rejectRiderTarget?.email})</Text>
+              <Textarea
+                placeholder="Reason for rejection"
+                value={rejectRiderReason}
+                onChange={e => setRejectRiderReason(e.target.value)}
+                rows={3}
+              />
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="ghost" mr={3} onClick={() => { setRejectRiderTarget(null); setRejectRiderReason(''); }}>Cancel</Button>
+              <Button colorScheme="red" onClick={handleConfirmRejectRider} isLoading={rejectRiderLoading} isDisabled={!rejectRiderReason.trim()}>
+                Reject Application
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+      </VStack>
+    );
   };
 
   // â"€â"€ SECTION: Management â"€â"€
@@ -2370,6 +2402,7 @@ const AdminDashboard: React.FC = () => {
                 </VStack>
               </HStack>
               <HStack spacing={2} mr={20}>
+                <Button onClick={handleBackfillLedgers} size="sm" colorScheme="orange" variant="solid" isLoading={backfillLoading}>Sync Legacy Ledgers</Button>
                 <Button leftIcon={<FiRefreshCw />} onClick={handleRefresh} size="sm" colorScheme="brand" variant="outline" isLoading={loading}>Refresh</Button>
                 <Menu>
                   <MenuButton as={Button} leftIcon={<FiPrinter />} rightIcon={<FiChevronDown />} size="sm" colorScheme="brand" isLoading={exportLoading} loadingText="Exporting…">Export</MenuButton>

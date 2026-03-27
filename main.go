@@ -534,6 +534,7 @@ func main() {
 	admin.Post("/rider-applications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminApproveRider)
 	admin.Post("/rider-applications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminRejectRider)
 	admin.Post("/rider-applications/:id/review", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminMarkUnderReview)
+	admin.Post("/backfill-ledgers", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.BackfillLedgers)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
