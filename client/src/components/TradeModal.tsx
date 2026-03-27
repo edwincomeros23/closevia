@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner } from '@chakra-ui/react'
 import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaLocationArrow } from 'react-icons/fa'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { api } from '../services/api'
 import { Product, TradeCreate, TradeOption } from '../types'
 import { getFirstImage } from '../utils/imageUtils'
 import { reverseGeocodeToAddress, formatCoordinates } from '../utils/locationUtils'
+import { useInvalidateDashboard, DASHBOARD_QUERY_KEYS } from '../hooks/useDashboard'
 
 interface TradeModalProps {
   isOpen: boolean
@@ -18,6 +20,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const { user, refreshUser } = useAuth()
   const toast = useToast()
   const { showNotification } = useNotification()
+  const queryClient = useQueryClient()
+  const { invalidateOffers, invalidateDashboard } = useInvalidateDashboard()
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const [targetProduct, setTargetProduct] = useState<Product | null>(null)
   const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([])
@@ -70,10 +74,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setProfileLocationLabel('')
     setManualAddress('')
     setDetectingLocation(false)
-    // Auto-set delivery option if user has location
-    if (user?.latitude && user?.longitude) {
-      setTradeOption('delivery')
-    }
+    // Auto-set to delivery (only option available)
+    setTradeOption('delivery')
     if (user && targetProductId) {
       ; (async () => {
         try {
@@ -180,14 +182,9 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
         id: "trademodal-select-items", title: 'Select items', description: 'Please select at least one of your items to offer.', status: 'warning' })
       return
     }
-    if (!tradeOption) {
+    if (!hasDeliveryLocation) {
       toast({
-        id: "trademodal-select-trade-option", title: 'Select trade option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
-      return
-    }
-    if (tradeOption === 'delivery' && !hasDeliveryLocation) {
-      toast({
-        id: "trademodal-delivery-location-required", title: 'Delivery location required', description: 'Please detect your location or enter an address to use delivery.', status: 'warning' })
+        id: "trademodal-delivery-location-required", title: 'Delivery location required', description: 'Please detect your location or enter an address for delivery.', status: 'warning' })
       return
     }
 
@@ -211,11 +208,17 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
         offered_product_ids: selectedOfferIds,
         message: tradeMessage,
         offered_cash_amount: cashAmount ? Number(cashAmount) : undefined,
-        trade_option: tradeOption,
-        delivery_address: tradeOption === 'delivery' ? resolvedDeliveryAddress() : undefined,
+        trade_option: 'delivery', // Always delivery now
+        delivery_address: resolvedDeliveryAddress(),
       }
       console.log('Submitting trade payload:', payload)
       await api.post('/api/trades', payload)
+
+      // Invalidate dashboard cache so sent offers show immediately
+      invalidateOffers()
+      invalidateDashboard()
+      await queryClient.refetchQueries({ queryKey: DASHBOARD_QUERY_KEYS.sentOffers })
+
       showNotification('Trade Offer Sent', 'success')
       setSelectedOfferIds([])
       setTradeMessage('')
@@ -306,172 +309,64 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
               <Divider />
 
-              {/* Trade Option Selection */}
+              {/* Delivery Information - Simplified since it's the only option */}
               <FormControl isRequired>
                 <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Trade Fulfillment Option
+                  Delivery Information
                 </FormLabel>
                 <Text fontSize="xs" color="gray.600" mb={3}>
-                  Select how you want to complete this trade
+                  📦 All trades are fulfilled through our secure delivery service
                 </Text>
-                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
-                  {/* Meetup Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={tradeOption === 'meetup' ? '2px' : '1px'}
-                    borderColor={tradeOption === 'meetup' ? selectedBorder : borderColor}
-                    bg={tradeOption === 'meetup' ? selectedBg : cardBg}
-                    onClick={() => setTradeOption('meetup')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: tradeOption === 'meetup' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
+
+                {/* Delivery Address Display */}
+                <Box>
+                  <FormLabel fontSize="sm">Your Delivery Location</FormLabel>
+                  {detectedCoords ? (
+                    <Box p={3} bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" borderLeftWidth="4px" borderLeftColor="green.500">
+                      <HStack justify="space-between">
+                        <Text fontSize="sm" color="green.900" fontWeight="medium">
+                          📍 {detectedLocationLabel || formatCoordinates(detectedCoords.lat, detectedCoords.lng)}
+                        </Text>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          onClick={() => {
+                            setDetectedCoords(null)
+                            setDetectedLocationLabel('')
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </HStack>
+                      <Text fontSize="xs" color="green.700" mt={1}>Location detected from your device</Text>
+                    </Box>
+                  ) : user?.latitude && user?.longitude ? (
+                    <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
+                      <Text fontSize="sm" color="blue.900" fontWeight="medium">
+                        📍 {profileLocationLabel || formatCoordinates(user.latitude, user.longitude)}
+                      </Text>
+                      <Text fontSize="xs" color="blue.700" mt={1}>Current location saved in your profile</Text>
+                    </Box>
+                  ) : (
+                    <>
+                      <VStack spacing={3} align="stretch">
                         <Box
                           p={3}
-                          borderRadius="full"
-                          bg={tradeOption === 'meetup' ? 'brand.500' : 'gray.100'}
-                          color={tradeOption === 'meetup' ? 'white' : 'gray.600'}
+                          bg="yellow.50"
+                          borderWidth="1px"
+                          borderColor="yellow.200"
+                          rounded="md"
+                          borderLeftWidth="4px"
+                          borderLeftColor="yellow.500"
                         >
-                          <Icon as={FaMapMarkerAlt} boxSize={6} />
+                          <Text fontSize="sm" color="yellow.900" fontWeight="medium">
+                            Location not set
+                          </Text>
+                          <Text fontSize="xs" color="yellow.700" mt={1}>
+                            Detect your location or enter an address below for delivery
+                          </Text>
                         </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">
-                            Meetup
-                          </Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">
-                            Meet in person at a safe, public location
-                          </Text>
-                        </VStack>
-                        {tradeOption === 'meetup' && (
-                          <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />
-                        )}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-
-                  {/* Delivery Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={tradeOption === 'delivery' ? '2px' : '1px'}
-                    borderColor={tradeOption === 'delivery' ? selectedBorder : borderColor}
-                    bg={tradeOption === 'delivery' ? selectedBg : cardBg}
-                    onClick={() => setTradeOption('delivery')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: tradeOption === 'delivery' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box
-                          p={3}
-                          borderRadius="full"
-                          bg={tradeOption === 'delivery' ? 'brand.500' : 'gray.100'}
-                          color={tradeOption === 'delivery' ? 'white' : 'gray.600'}
-                        >
-                          <Icon as={FaTruck} boxSize={6} />
-                        </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">
-                            Delivery
-                          </Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">
-                            Ship items to each other's addresses
-                          </Text>
-                        </VStack>
-                        {tradeOption === 'delivery' && (
-                          <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />
-                        )}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                </Grid>
-
-                {/* Delivery Address Display (shown when delivery is selected) */}
-                {tradeOption === 'delivery' && (
-                  <Box mt={4}>
-                    <FormControl>
-                      <FormLabel fontSize="sm">Delivery Location</FormLabel>
-                      {detectedCoords ? (
-                        <Box p={3} bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" borderLeftWidth="4px" borderLeftColor="green.500">
-                          <HStack justify="space-between">
-                            <Text fontSize="sm" color="green.900" fontWeight="medium">
-                              📍 {detectedLocationLabel || formatCoordinates(detectedCoords.lat, detectedCoords.lng)}
-                            </Text>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              colorScheme="red"
-                              onClick={() => {
-                                setDetectedCoords(null)
-                                setDetectedLocationLabel('')
-                              }}
-                            >
-                              Clear
-                            </Button>
-                          </HStack>
-                          <Text fontSize="xs" color="green.700" mt={1}>Location detected from your device</Text>
-                        </Box>
-                      ) : user?.latitude && user?.longitude ? (
-                        <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
-                          <Text fontSize="sm" color="blue.900" fontWeight="medium">
-                            📍 {profileLocationLabel || formatCoordinates(user.latitude, user.longitude)}
-                          </Text>
-                          <Text fontSize="xs" color="blue.700" mt={1}>Current location saved in your profile</Text>
-                        </Box>
-                      ) : (
-                        <>
-                          <VStack spacing={3} align="stretch">
-                            <Box
-                              p={3}
-                              bg="yellow.50"
-                              borderWidth="1px"
-                              borderColor="yellow.200"
-                              rounded="md"
-                              borderLeftWidth="4px"
-                              borderLeftColor="yellow.500"
-                            >
-                              <Text fontSize="sm" color="yellow.900" fontWeight="medium">
-                                Location not set
-                              </Text>
-                              <Text fontSize="xs" color="yellow.700" mt={1}>
-                                Detect your location or enter an address below
-                              </Text>
-                            </Box>
-                            <Button
-                              leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
-                              size="sm"
-                              colorScheme="brand"
-                              variant="outline"
-                              onClick={handleDetectLocation}
-                              isLoading={detectingLocation}
-                              loadingText="Detecting..."
-                            >
-                              Detect My Location
-                            </Button>
-                            <Text fontSize="xs" color="gray.500" textAlign="center">— or enter address manually —</Text>
-                            <Textarea
-                              placeholder="e.g., Barangay Maasin, Zamboanga City"
-                              value={manualAddress}
-                              onChange={(e) => setManualAddress(e.target.value)}
-                              size="sm"
-                              rows={2}
-                              resize="none"
-                            />
-                          </VStack>
-                        </>
-                      )}
-
-                      {(detectedCoords || (user?.latitude && user?.longitude)) && (
                         <Button
                           leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
                           size="sm"
@@ -480,14 +375,37 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                           onClick={handleDetectLocation}
                           isLoading={detectingLocation}
                           loadingText="Detecting..."
-                          mt={3}
                         >
                           Detect My Location
                         </Button>
-                      )}
-                    </FormControl>
-                  </Box>
-                )}
+                        <Text fontSize="xs" color="gray.500" textAlign="center">— or enter address manually —</Text>
+                        <Textarea
+                          placeholder="e.g., Barangay Maasin, Zamboanga City"
+                          value={manualAddress}
+                          onChange={(e) => setManualAddress(e.target.value)}
+                          size="sm"
+                          rows={2}
+                          resize="none"
+                        />
+                      </VStack>
+                    </>
+                  )}
+
+                  {(detectedCoords || (user?.latitude && user?.longitude)) && (
+                    <Button
+                      leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
+                      size="sm"
+                      colorScheme="brand"
+                      variant="outline"
+                      onClick={handleDetectLocation}
+                      isLoading={detectingLocation}
+                      loadingText="Detecting..."
+                      mt={3}
+                    >
+                      Update Location
+                    </Button>
+                  )}
+                </Box>
               </FormControl>
 
               <Divider />
@@ -498,7 +416,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                   colorScheme="brand"
                   isLoading={submittingTrade}
                   onClick={() => setShowConfirmModal(true)}
-                  isDisabled={selectedOfferIds.length === 0 || !tradeOption || (tradeOption === 'delivery' && !hasDeliveryLocation)}
+                  isDisabled={selectedOfferIds.length === 0 || !hasDeliveryLocation}
                 >
                   Proceed
                 </Button>
@@ -541,13 +459,135 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           <ModalCloseButton onClick={() => setShowConfirmModal(false)} />
           <ModalBody pb={6}>
             <VStack spacing={4} align="stretch">
-              <Text>Are you sure you want to send this trade offer?</Text>
-              <Box bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" p={4} textAlign="center">
-                <Text fontSize="sm" color="blue.700" mb={1}>You are offering:</Text>
-                <Text fontSize="md" color="blue.800" fontWeight="bold">
-                  {selectedProducts.map((p) => p.title).join(', ')}
-                  {cashAmount && Number(cashAmount) > 0 ? ` + ₱${Number(cashAmount).toFixed(2)}` : ''}
-                </Text>
+              {/* Warning if pending offer exists on target */}
+              {hasPendingOfferOnTarget && (
+                <Box bg="orange.50" borderWidth="1px" borderColor="orange.200" rounded="md" p={3}>
+                  <HStack spacing={2} mb={1}>
+                    <Text fontSize="lg">⚠️</Text>
+                    <Text fontSize="sm" fontWeight="bold" color="orange.800">Pending Offer Already Exists</Text>
+                  </HStack>
+                  <Text fontSize="xs" color="orange.700">
+                    You already have a pending offer on this product. Submitting another offer will override your existing one or be rejected by the system.
+                  </Text>
+                </Box>
+              )}
+              <Box>
+                <Text fontWeight="semibold" mb={2}>Your Offer Summary</Text>
+                <Grid templateColumns="repeat(auto-fill, minmax(180px, 220px))" gap={3} justifyContent="start">
+                  {selectedProducts.length === 0 && !cashAmount && (
+                    <Text color="gray.500" gridColumn="1 / -1">No items selected.</Text>
+                  )}
+                  {selectedProducts.map((p) => (
+                    <Box key={p.id} borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
+                      <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" loading="lazy" />
+                      <Box p={2}>
+                        <HStack justify="space-between">
+                          <Text fontSize="sm" fontWeight="semibold" noOfLines={1} wordBreak="break-word">{p.title}</Text>
+                          {p.premium && <Badge colorScheme="yellow">Premium</Badge>}
+                        </HStack>
+                        <Text fontSize="xs" color="gray.600" noOfLines={2} wordBreak="break-word">{p.description}</Text>
+                      </Box>
+                    </Box>
+                  ))}
+                </Grid>
+                {cashAmount && Number(cashAmount) > 0 && (
+                  <Text mt={2} fontSize="sm" color="green.700">Cash included: ₱{Number(cashAmount).toFixed(2)}</Text>
+                )}
+
+                {/* Labeled message block: show message or a fallback so user sees what's being sent */}
+                <Box mt={3} bg="gray.50" borderWidth="1px" borderColor="gray.200" rounded="md" p={3}>
+                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Message</Text>
+                  <Text fontSize="sm" color="gray.700">{tradeMessage && tradeMessage.trim() ? tradeMessage : 'No message provided'}</Text>
+                </Box>
+
+                {/* Trade Option Summary */}
+                <Box mt={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" p={3}>
+                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Delivery Method</Text>
+                  <HStack spacing={2}>
+                    <Icon as={FaTruck} color="blue.600" boxSize={4} />
+                    <Text fontSize="sm" color="blue.700" fontWeight="medium">
+                      Secure Delivery Service
+                    </Text>
+                  </HStack>
+                  <Text fontSize="xs" color="blue.600" mt={2}>
+                    📍 Location: {
+                      detectedLocationLabel
+                        ? detectedLocationLabel
+                        : detectedCoords
+                          ? formatCoordinates(detectedCoords.lat, detectedCoords.lng)
+                          : user && user.latitude !== undefined && user.longitude !== undefined
+                            ? (profileLocationLabel || formatCoordinates(user.latitude, user.longitude))
+                          : manualAddress.trim()
+                            ? manualAddress.trim()
+                            : 'Location not set'
+                    }
+                  </Text>
+                </Box>
+              </Box>
+              {/* Warning if pending offer exists on target */}
+              {hasPendingOfferOnTarget && (
+                <Box bg="orange.50" borderWidth="1px" borderColor="orange.200" rounded="md" p={3}>
+                  <HStack spacing={2} mb={1}>
+                    <Text fontSize="lg">⚠️</Text>
+                    <Text fontSize="sm" fontWeight="bold" color="orange.800">Pending Offer Already Exists</Text>
+                  </HStack>
+                  <Text fontSize="xs" color="orange.700">
+                    You already have a pending offer on this product. Submitting another offer will override your existing one or be rejected by the system.
+                  </Text>
+                </Box>
+              )}
+              <Box>
+                <Text fontWeight="semibold" mb={2}>Your Offer Summary</Text>
+                <Grid templateColumns="repeat(auto-fill, minmax(180px, 220px))" gap={3} justifyContent="start">
+                  {selectedProducts.length === 0 && !cashAmount && (
+                    <Text color="gray.500" gridColumn="1 / -1">No items selected.</Text>
+                  )}
+                  {selectedProducts.map((p) => (
+                    <Box key={p.id} borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
+                      <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" loading="lazy" />
+                      <Box p={2}>
+                        <HStack justify="space-between">
+                          <Text fontSize="sm" fontWeight="semibold" noOfLines={1} wordBreak="break-word">{p.title}</Text>
+                          {p.premium && <Badge colorScheme="yellow">Premium</Badge>}
+                        </HStack>
+                        <Text fontSize="xs" color="gray.600" noOfLines={2} wordBreak="break-word">{p.description}</Text>
+                      </Box>
+                    </Box>
+                  ))}
+                </Grid>
+                {cashAmount && Number(cashAmount) > 0 && (
+                  <Text mt={2} fontSize="sm" color="green.700">Cash included: ₱{Number(cashAmount).toFixed(2)}</Text>
+                )}
+
+                {/* Labeled message block: show message or a fallback so user sees what's being sent */}
+                <Box mt={3} bg="gray.50" borderWidth="1px" borderColor="gray.200" rounded="md" p={3}>
+                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Message</Text>
+                  <Text fontSize="sm" color="gray.700">{tradeMessage && tradeMessage.trim() ? tradeMessage : 'No message provided'}</Text>
+                </Box>
+
+                {/* Trade Option Summary */}
+                <Box mt={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" p={3}>
+                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Delivery Method</Text>
+                  <HStack spacing={2}>
+                    <Icon as={FaTruck} color="blue.600" boxSize={4} />
+                    <Text fontSize="sm" color="blue.700" fontWeight="medium">
+                      Secure Delivery Service
+                    </Text>
+                  </HStack>
+                  <Text fontSize="xs" color="blue.600" mt={2}>
+                    📍 Location: {
+                      detectedLocationLabel
+                        ? detectedLocationLabel
+                        : detectedCoords
+                          ? formatCoordinates(detectedCoords.lat, detectedCoords.lng)
+                          : user && user.latitude !== undefined && user.longitude !== undefined
+                            ? (profileLocationLabel || formatCoordinates(user.latitude, user.longitude))
+                          : manualAddress.trim()
+                            ? manualAddress.trim()
+                            : 'Location not set'
+                    }
+                  </Text>
+                </Box>
               </Box>
               <Box mt={2}>
                 <Text fontSize="sm" fontWeight="semibold">For item:</Text>

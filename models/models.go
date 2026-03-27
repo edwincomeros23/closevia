@@ -312,6 +312,7 @@ type Trade struct {
 	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
 	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet upfront"`
 	PaymentConfirmed        bool   `json:"payment_confirmed"`
+	DeliveryInstructions    string `json:"delivery_instructions,omitempty"`
 	ProofOfDelivery         string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
 	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
 	SellerConfirmedDelivery bool   `json:"seller_confirmed_delivery"`

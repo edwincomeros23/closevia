@@ -504,6 +504,7 @@ const RiderHome: React.FC = () => {
   const navigate = useNavigate()
   const toast = useToast()
   const { riderState, loading: stateLoading } = useRiderState()
+  const debugUIEnabled = import.meta.env.VITE_ENABLE_DEBUG_UI === 'true'
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'home' | 'jobs' | 'earnings'>('home')
@@ -524,8 +525,13 @@ const RiderHome: React.FC = () => {
   // Modal state
   const { isOpen: isDetailsOpen, onOpen: openDetails, onClose: closeDetails } = useDisclosure()
   const { isOpen: isBatchOpen, onOpen: openBatch, onClose: closeBatch } = useDisclosure()
+  const { isOpen: isDebugOpen, onOpen: openDebug, onClose: closeDebug } = useDisclosure()
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryWithBatch | null>(null)
   const [batchExpiredDelivery, setBatchExpiredDelivery] = useState<DeliveryWithBatch | null>(null)
+
+  // Diagnostics (helps debug "accepted but not showing")
+  const [debugLoading, setDebugLoading] = useState(false)
+  const [debugData, setDebugData] = useState<any>(null)
 
   // Fetch deliveries
   const fetchDeliveries = useCallback(async () => {
@@ -548,12 +554,14 @@ const RiderHome: React.FC = () => {
       } else {
         setExpressLockMessage('')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch deliveries:', error)
+      const msg = error?.response?.data?.error || error?.message || 'Failed to fetch deliveries'
+      toast({ title: 'Deliveries error', description: msg, status: 'error', duration: 3500 })
     } finally {
       setLoading(false)
     }
-  }, [riderState?.permissions?.can_view_jobs])
+  }, [riderState?.permissions?.can_view_jobs, toast])
 
   useEffect(() => {
     fetchDeliveries()
@@ -590,8 +598,10 @@ const RiderHome: React.FC = () => {
     setAccepting(delivery.id)
     try {
       await api.post(`/api/deliveries/${delivery.id}/claim`)
-      toast({ title: 'Delivery Accepted!', description: 'Navigate to active jobs to start.', status: 'success', duration: 3000 })
+      toast({ title: 'Delivery Accepted!', description: 'Moved to Active jobs.', status: 'success', duration: 3000 })
       closeDetails()
+      // Show the claimed job immediately
+      setDeliveryTab(1)
       fetchDeliveries()
     } catch (error: any) {
       toast({ title: 'Error', description: error?.response?.data?.error || 'Failed to accept delivery', status: 'error', duration: 3000 })
@@ -608,6 +618,22 @@ const RiderHome: React.FC = () => {
     closeBatch()
     setBatchExpiredDelivery(null)
     fetchDeliveries()
+  }
+
+  const runJobsDiagnostics = async () => {
+    if (!debugUIEnabled) return
+
+    setDebugLoading(true)
+    try {
+      const res = await api.get('/api/deliveries/my-jobs-debug')
+      setDebugData(res.data?.data || null)
+      openDebug()
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || error?.message || 'Failed to run diagnostics'
+      toast({ title: 'Diagnostics error', description: msg, status: 'error', duration: 3500 })
+    } finally {
+      setDebugLoading(false)
+    }
   }
 
   // Handle solo dispatch
@@ -749,6 +775,23 @@ const RiderHome: React.FC = () => {
                 <VStack spacing={3}>
                   <Icon as={FaCheckCircle} boxSize={12} color="gray.300" />
                   <Text color="gray.500">No active deliveries</Text>
+                  {debugUIEnabled && (
+                    <>
+                      <Text fontSize="xs" color="gray.400" textAlign="center" maxW="280px">
+                        If you just accepted a job but it’s not showing, run diagnostics to see what the backend has assigned to your rider.
+                      </Text>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        colorScheme="brand"
+                        onClick={runJobsDiagnostics}
+                        isLoading={debugLoading}
+                        loadingText="Checking..."
+                      >
+                        Run Diagnostics
+                      </Button>
+                    </>
+                  )}
                 </VStack>
               </Center>
             ) : (
@@ -949,6 +992,31 @@ const RiderHome: React.FC = () => {
         onDispatchSolo={handleDispatchSolo}
         loading={accepting === batchExpiredDelivery?.id}
       />
+
+      <Modal isOpen={isDebugOpen} onClose={closeDebug} size="lg">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Rider Jobs Diagnostics</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Box
+              as="pre"
+              fontSize="xs"
+              whiteSpace="pre-wrap"
+              bg="gray.50"
+              border="1px"
+              borderColor="gray.200"
+              borderRadius="md"
+              p={3}
+            >
+              {JSON.stringify(debugData, null, 2)}
+            </Box>
+          </ModalBody>
+          <ModalFooter>
+            <Button onClick={closeDebug}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   )
 }
