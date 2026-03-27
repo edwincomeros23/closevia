@@ -58,8 +58,13 @@ func NewTradeGraph(db *sql.DB) (*TradeGraph, error) {
 	return graph, nil
 }
 
+// MaxChainLength is the maximum number of parties in a multi-way trade chain.
+// Set to 3 for MVP — increase this constant to allow longer chains later.
+const MaxChainLength = 3
+
 // FindTradeLoops detects cycles in the trade graph and returns them.
 // A loop is a path of trades that starts and ends at the same user.
+// Chains are capped at MaxChainLength parties to keep coordination manageable.
 func (g *TradeGraph) FindTradeLoops() [][]TradeEdge {
 	// Adjacency list representation of the graph
 	adj := make(map[int][]TradeEdge)
@@ -71,14 +76,15 @@ func (g *TradeGraph) FindTradeLoops() [][]TradeEdge {
 	for startNode := range g.Nodes {
 		path := []TradeEdge{}
 		visited := make(map[int]bool)
-		g.dfs(startNode, startNode, adj, &path, &visited, &loops)
+		g.dfs(startNode, startNode, adj, &path, &visited, &loops, 0)
 	}
 
 	return loops
 }
 
 // dfs is a helper function to perform a depth-first search for cycles.
-func (g *TradeGraph) dfs(startNode, currentNode int, adj map[int][]TradeEdge, path *[]TradeEdge, visited *map[int]bool, loops *[][]TradeEdge) {
+// depth tracks how many edges deep we are; we stop exploring beyond MaxChainLength.
+func (g *TradeGraph) dfs(startNode, currentNode int, adj map[int][]TradeEdge, path *[]TradeEdge, visited *map[int]bool, loops *[][]TradeEdge, depth int) {
 	(*visited)[currentNode] = true
 
 	for _, edge := range adj[currentNode] {
@@ -86,13 +92,15 @@ func (g *TradeGraph) dfs(startNode, currentNode int, adj map[int][]TradeEdge, pa
 		*path = append(*path, edge)
 
 		if edge.ToUser == startNode {
-			// Found a loop
-			loop := make([]TradeEdge, len(*path))
-			copy(loop, *path)
-			*loops = append(*loops, loop)
-		} else if !(*visited)[edge.ToUser] {
-			// Continue DFS
-			g.dfs(startNode, edge.ToUser, adj, path, visited, loops)
+			// Found a loop — only keep it if within the chain length cap
+			if len(*path) <= MaxChainLength {
+				loop := make([]TradeEdge, len(*path))
+				copy(loop, *path)
+				*loops = append(*loops, loop)
+			}
+		} else if !(*visited)[edge.ToUser] && depth+1 < MaxChainLength {
+			// Continue DFS only if we haven't hit the depth cap
+			g.dfs(startNode, edge.ToUser, adj, path, visited, loops, depth+1)
 		}
 
 		// Backtrack
