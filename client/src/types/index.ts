@@ -159,7 +159,7 @@ export interface PaginatedResponse<T> {
 }
 
 export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
-export type TradeOption = 'delivery' // Only delivery is supported now
+export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
   id: number
@@ -207,6 +207,8 @@ export interface Trade {
   buyer_confirmed_receipt?: boolean
   seller_confirmed_delivery?: boolean
   delivery_estimated_time?: string // Estimated delivery time
+  buyer_location?: string // Buyer coordinates as "lat,lng"
+  seller_location?: string // Seller coordinates as "lat,lng"
 }
 
 // Multi-way/Three-way Trading Types
