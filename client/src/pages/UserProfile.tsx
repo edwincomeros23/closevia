@@ -1139,7 +1139,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               </SimpleGrid>
 
               {/* Trust Score Card */}
-              {sellerStats && (
+              {sellerStats ? (
                 <Box mb={3}>
                   <TrustScoreCard
                     score={sellerStats.trust_score ?? 0}
@@ -1158,23 +1158,23 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     responseTime={sellerStats.avg_response_time}
                   />
                 </Box>
-                ) : (
-                  <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4} p={4}>
-                    {mergedTradeActivity.map((trade, idx) => (
-                      <Box key={trade.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4} bg="gray.50">
-                        <Text fontSize="xs" color="gray.500" mb={1}>
-                          Trade #{trade.id || idx}
-                        </Text>
-                        <Text fontSize="sm" color="gray.600" mb={2}>
-                          {/* Label for trade type/status */}
-                          {trade.status ? `Status: ${trade.status}` : 'Trade'}
-                        </Text>
-                        {/* ...existing trade details... */}
-                        {/* Add more trade info here as needed */}
-                      </Box>
-                    ))}
-                  </SimpleGrid>
-                )}
+              ) : (
+                <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4} p={4}>
+                  {mergedTradeActivity.map((trade, idx) => (
+                    <Box key={trade.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4} bg="gray.50">
+                      <Text fontSize="xs" color="gray.500" mb={1}>
+                        Trade #{trade.id || idx}
+                      </Text>
+                      <Text fontSize="sm" color="gray.600" mb={2}>
+                        {/* Label for trade type/status */}
+                        {trade.status ? `Status: ${trade.status}` : 'Trade'}
+                      </Text>
+                      {/* ...existing trade details... */}
+                      {/* Add more trade info here as needed */}
+                    </Box>
+                  ))}
+                </SimpleGrid>
+              )}
               {/* Show action buttons only when viewing someone else's profile */}
               {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && !user.is_organization && (
                 <HStack spacing={3}>

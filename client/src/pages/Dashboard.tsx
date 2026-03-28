@@ -215,7 +215,7 @@ const Dashboard: React.FC = () => {
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
   const prevMultiWayLoopIds = useRef<Set<string>>(new Set())
-  const [showPremiumModal, setShowPremiumModal] = useState(false)
+  // Premium modal state removed: multiway trading is now available to all users
   const [multiWayManagerOpen, setMultiWayManagerOpen] = useState(false)
   const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
   const [loopQuota, setLoopQuota] = useState<null | { unlimited: boolean; period: string; used: number; limit: number }>(null)
@@ -266,19 +266,7 @@ const Dashboard: React.FC = () => {
     }
   }, [user?.id, prefetchDashboardData])
 
-  useEffect(() => {
-    if (!loading && isAuthenticated && user && !user.is_premium) {
-      const hasShown = sessionStorage.getItem('clovia_premium_up_shown')
-      if (!hasShown) {
-        // Delay slightly for better UX after dashboard load
-        const timer = setTimeout(() => {
-          setShowPremiumModal(true)
-          sessionStorage.setItem('clovia_premium_up_shown', 'true')
-        }, 3000)
-        return () => clearTimeout(timer)
-      }
-    }
-  }, [isAuthenticated, user, loading])
+  // Premium upsell effect removed: multiway trading is now available to all users
 
   // Check if user is authenticated, redirect to login if not
   // Only redirect if not loading (to prevent race conditions after login)
