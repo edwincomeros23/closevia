@@ -205,7 +205,6 @@ const AddProduct: React.FC = () => {
 
   // Client-side image quality state
   const [clientQualityResults, setClientQualityResults] = useState<ClientQualityResult[]>([])
-  const [qualityChecking, setQualityChecking] = useState(false)
 
   const [titleLength, setTitleLength] = useState(0)
   const [descriptionLength, setDescriptionLength] = useState(0)
@@ -394,24 +393,27 @@ const AddProduct: React.FC = () => {
           })
         }
 
-        // Check for suspicious image warning
-        if (d.is_suspicious_image) {
-          const reason = d.suspicious_reason || 'This looks like a screenshot or stock photo'
+        // Stock / catalog / downloaded photo — one note only (AI often sets both flags with near-duplicate text)
+        if (d.is_suspicious_image && d.appears_online) {
           warnings.push({
             kind: 'suspicious',
-            message: `⚠️ ${reason}: Original product photos work better and get better engagement!`,
+            message:
+              'This looks like a stock, catalog, or downloaded product photo (e.g. perfect lighting or plain white background). Your own original photos usually get better engagement and trust.',
           })
-        }
-
-        // Check for quality warning (blurry/dark)
-        if (d.is_blurry_or_dark) {
+        } else if (d.is_suspicious_image) {
+          const reason = d.suspicious_reason || 'This may be a screenshot or stock-style image'
           warnings.push({
-            kind: 'quality',
-            message: d.quality_warning || '⚠ Image quality is low. Please retake the photo for better trade chances.',
+            kind: 'suspicious',
+            message: `⚠️ ${reason}. Original photos of your actual item work better.`,
+          })
+        } else if (d.appears_online) {
+          warnings.push({
+            kind: 'online',
+            message: `⚠️ ${d.online_image_reason || 'This may have been saved from the web.'} Original photos build more trust.`,
           })
         }
 
-        // Check for non-product image
+        // Non-product image
         if (d.is_non_product_image) {
           warnings.push({
             kind: 'non_product',
@@ -419,13 +421,7 @@ const AddProduct: React.FC = () => {
           })
         }
 
-        // Check if image appears to be from an online source
-        if (d.appears_online) {
-          warnings.push({
-            kind: 'online',
-            message: `⚠️ ${d.online_image_reason || 'This image appears to be from an online source.'} Original photos get better engagement and build trust with traders.`,
-          })
-        }
+        // Skip AI blur/resolution/exposure warnings: the client "Image Quality Check" already covers pixel-level issues and listing them twice felt noisy.
 
         setAiWarnings(warnings)
         setShowAllAiWarnings(false)
@@ -448,27 +444,7 @@ const AddProduct: React.FC = () => {
         if (d.description) setDescriptionLength(d.description.length)
         setAiDone(true)
 
-        if (warnings.length > 0) {
-          toast({
-        id: "addproduct-ai-completed-with-notes",
-            title: '⚠️ AI completed with notes',
-            description: warnings[0]?.message,
-            status: 'warning',
-            duration: 5000,
-            isClosable: true,
-            position: 'top-right',
-          })
-        } else {
-          toast({
-        id: "addproduct-ai-analysis-complete",
-            title: '✨ AI analysis complete!',
-            description: 'Product fields have been auto-filled. Review and edit as needed.',
-            status: 'success',
-            duration: 4000,
-            isClosable: true,
-            position: 'top-right',
-          })
-        }
+        // No toast for normal completion — inline UI on step 1 already shows status and tips
       } else {
         throw new Error(data.error || 'AI generation failed')
       }
@@ -531,30 +507,26 @@ const AddProduct: React.FC = () => {
       }
 
       const finalImages = [...uploadedImages, ...processed].slice(0, 8)
-      setUploadedImages(finalImages)
-      setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
 
-      // Trigger AI analysis immediately for the new set of images
-      triggerAI(finalImages)
-
-      // Run client-side image quality checks (instant, no network)
-      setQualityChecking(true)
-      try {
-        const qualityResults = await checkMultipleImageQuality(processed)
-        setClientQualityResults(prev => [...prev, ...qualityResults])
-        // All image quality feedback is now shown inline, not as notifications
-      } catch (err) {
-        console.warn('Client-side quality check failed (non-blocking):', err)
-      } finally {
-        setQualityChecking(false)
-      }
-
-      // Clear AI errors when new images are uploaded
+      // Reset AI state for this batch before analysis (avoid clearing after AI finishes)
       setAiBlockingError(null)
       setAiWarnings([])
       setShowAllAiWarnings(false)
-      aiTriggeredRef.current = false
       setAiDone(false)
+      aiTriggeredRef.current = false
+
+      setUploadedImages(finalImages)
+      setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
+
+      // Instant client quality first, then AI — keeps technical issues in one place
+      try {
+        const qualityResults = await checkMultipleImageQuality(processed)
+        setClientQualityResults(prev => [...prev, ...qualityResults])
+      } catch (err) {
+        console.warn('Client-side quality check failed (non-blocking):', err)
+      }
+
+      triggerAI(finalImages)
     }
     processFiles()
   }, [uploadedImages.length, toast, triggerAI, uploadedImages])
@@ -585,7 +557,7 @@ const AddProduct: React.FC = () => {
     // Clear AI errors and allow re-triggering when images are removed
     setAiBlockingError(null)
     setAiWarnings([])
-      setShowAllAiWarnings(false)
+    setShowAllAiWarnings(false)
     aiTriggeredRef.current = false
     setAiDone(false)
   }
@@ -999,21 +971,16 @@ const AddProduct: React.FC = () => {
 
       {/* AI Analysis Status - Loading, Errors, & Warnings */}
       {isGenerating && (
-        <VStack spacing={2} align="stretch" w="full" bg="blue.50" p={4} borderRadius="lg" border="1px solid" borderColor="blue.200">
-          <HStack spacing={2}>
-            <Spinner size="sm" color="blue.500" />
-            <Text fontSize="sm" fontWeight="semibold" color="blue.700">
-              🔍 Analyzing images...
-            </Text>
-          </HStack>
-          <Text fontSize="xs" color="blue.600">
-            AI is checking image quality, detecting prohibited items, and extracting product details...
+        <HStack spacing={2} w="full" bg="blue.50" px={3} py={2} borderRadius="md" border="1px solid" borderColor="blue.100">
+          <Spinner size="sm" color="blue.500" />
+          <Text fontSize="xs" color="blue.700" fontWeight="medium">
+            Extracting title, category, and details from your photos…
           </Text>
-        </VStack>
+        </HStack>
       )}
 
       {/* Client-side Image Quality Results (instant feedback) */}
-      {clientQualityResults.length > 0 && clientQualityResults.some(qr => qr.issues.length > 0) && !isGenerating && (
+      {clientQualityResults.length > 0 && clientQualityResults.some(qr => qr.issues.length > 0) && (
         <Box bg="orange.50" p={4} borderRadius="lg" border="1px solid" borderColor="orange.200">
           <HStack spacing={2} mb={2}>
             <Text fontSize="sm" fontWeight="semibold" color="orange.700">
@@ -1064,14 +1031,8 @@ const AddProduct: React.FC = () => {
 
       {aiWarnings.length > 0 && (
         (() => {
-          const hasClientQualityIssues = clientQualityResults.some(qr => qr.issues.length > 0)
-          const hideAiQualityWarnings = qualityChecking || hasClientQualityIssues
-
-          // When the client quality checker already flagged issues, hide AI "quality" warnings
-          // to prevent the duplication shown by users.
-          const filtered = hideAiQualityWarnings
-            ? aiWarnings.filter(w => w.kind !== 'quality')
-            : aiWarnings
+          // Never repeat pixel-level quality here — "Image Quality Check" above is the source of truth
+          const filtered = aiWarnings.filter(w => w.kind !== 'quality')
 
           // Dedupe by kind + message
           const unique: typeof filtered = []
@@ -1085,19 +1046,20 @@ const AddProduct: React.FC = () => {
 
           if (unique.length === 0) return null
 
-          const displayed = showAllAiWarnings ? unique : unique.slice(0, 2)
-
-          // Friendly summary message
-          const summary =
-            'Some of your photos could be improved for better results. For best chances, use clear, original photos of your item, avoid blurry or dark images, and try not to use stock or marketing pictures.'
+          const genericTip =
+            'Optional tip: original photos you take yourself usually work better than catalog or website images.'
+          const primaryText = unique.length === 1 ? unique[0].message : genericTip
 
           return (
             <VStack spacing={2} align="stretch" w="full">
-              <Alert status="warning" borderRadius="lg" variant="left-accent">
+              <Text fontSize="xs" fontWeight="semibold" color="orange.600" px={1}>
+                🤖 Photo suggestions ({unique.length}) — you can still post
+              </Text>
+              <Alert status="warning" borderRadius="md" variant="subtle">
                 <AlertIcon />
                 <Box flex="1">
-                  <AlertDescription fontSize="sm">
-                    <b>Tip:</b> {summary}
+                  <AlertDescription fontSize="xs" color="gray.700">
+                    {primaryText}
                   </AlertDescription>
                 </Box>
               </Alert>
