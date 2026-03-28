@@ -216,6 +216,7 @@ const Dashboard: React.FC = () => {
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
   const prevMultiWayLoopIds = useRef<Set<string>>(new Set())
   // Premium modal state removed: multiway trading is now available to all users
+  const [showPremiumModal, setShowPremiumModal] = useState(false)
   const [multiWayManagerOpen, setMultiWayManagerOpen] = useState(false)
   const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
   const [loopQuota, setLoopQuota] = useState<null | { unlimited: boolean; period: string; used: number; limit: number }>(null)

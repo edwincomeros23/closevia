@@ -66,7 +66,7 @@ const Premium: React.FC = () => {
 
   // Premium status logic removed: multiway trading is now available to all users
   const isPremiumUser = true
-  const currentTier = 'free'
+  const currentTier = 'free' as 'free' | 'plus' | 'pro'
 
   useEffect(() => {
     fetchLoops()
