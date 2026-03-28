@@ -34,9 +34,9 @@ const Offers: React.FC = () => {
   const cardBg = useColorModeValue('#FDFDFD', 'gray.800')
   const softAccent = useColorModeValue('#F8F9FA', 'gray.700')
 
-  const fetchAll = async () => {
+  const fetchAll = async (isBackground = false) => {
     try {
-      setLoading(true)
+      if (!isBackground) setLoading(true)
       const [incRes, outRes] = await Promise.all([
         api.get('/api/trades', { params: { direction: 'incoming' } }),
         api.get('/api/trades', { params: { direction: 'outgoing' } }),
@@ -50,7 +50,7 @@ const Offers: React.FC = () => {
       toast({
         id: "offers-error", title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
     } finally {
-      setLoading(false)
+      if (!isBackground) setLoading(false)
     }
   }
 
@@ -112,6 +112,13 @@ const Offers: React.FC = () => {
     if (userId) {
       setCurrentUserId(parseInt(userId))
     }
+
+    // Set up real-time background polling every 5 seconds
+    const interval = setInterval(() => {
+      fetchAll(true)
+    }, 5000)
+
+    return () => clearInterval(interval)
   }, [])
 
   // Debug: inspect API structure for /api/trades

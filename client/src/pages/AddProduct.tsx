@@ -36,7 +36,7 @@ import {
   ModalBody,
   ModalCloseButton,
 } from '@chakra-ui/react'
-import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
+import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
 
 export interface ProductFormData {
   title: string
@@ -427,20 +427,28 @@ const AddProduct: React.FC = () => {
         setShowAllAiWarnings(false)
 
         // Fill form with AI data
-        setFormData(prev => ({
-          ...prev,
-          title: d.title || prev.title,
-          description: d.description || prev.description,
-          condition: d.condition || prev.condition || 'Used',
-          category: d.category || prev.category || 'General',
-          item_type: d.subcategory || d.item_type || prev.item_type,
-          brand: d.brand || prev.brand,
-          authenticity_risks: d.authenticity_risks || prev.authenticity_risks,
-          estimated_value_min: d.estimated_value_min ?? prev.estimated_value_min,
-          estimated_value_max: d.estimated_value_max ?? prev.estimated_value_max,
-          tags: d.tags ? JSON.stringify(d.tags) : prev.tags,
-        }))
-        if (d.title) setTitleLength(d.title.length)
+        setFormData(prev => {
+          const aiTitle = d.title || prev.title
+          const finalTitle = aiTitle ? aiTitle.substring(0, 25) : ''
+          const aiCat = d.category || prev.category || 'General'
+          const isValidCat = PRODUCT_CATEGORIES.some(c => c.value === aiCat)
+          const finalCat = isValidCat ? aiCat : 'Others'
+
+          return {
+            ...prev,
+            title: finalTitle,
+            description: d.description || prev.description,
+            condition: d.condition || prev.condition || 'Used',
+            category: finalCat,
+            item_type: d.subcategory || d.item_type || prev.item_type,
+            brand: d.brand || prev.brand,
+            authenticity_risks: d.authenticity_risks || prev.authenticity_risks,
+            estimated_value_min: d.estimated_value_min ?? prev.estimated_value_min,
+            estimated_value_max: d.estimated_value_max ?? prev.estimated_value_max,
+            tags: d.tags ? JSON.stringify(d.tags) : prev.tags,
+          }
+        })
+        if (d.title) setTitleLength(Math.min(d.title.length, 25))
         if (d.description) setDescriptionLength(d.description.length)
         setAiDone(true)
 
@@ -609,6 +617,10 @@ const AddProduct: React.FC = () => {
       return false
     }
 
+    if (isGenerating) {
+      return false
+    }
+
     // Cannot proceed if daily AI request limit reached on step 1
     if (currentStep === 1 && uploadedImages.length >= 1 && !canMakeAIRequest()) {
       return false
@@ -623,9 +635,10 @@ const AddProduct: React.FC = () => {
           formData.title.trim().length > 0 &&
           formData.title.trim().length <= 25 &&
           formData.description.trim().length >= 50 &&
-          !!formData.condition &&
           !!formData.category &&
-          !!formData.location?.trim()
+          !!formData.location?.trim() &&
+          !!formData.wanted_categories && 
+          formData.wanted_categories.length > 0
         )
       case 3:
         return true
@@ -639,6 +652,10 @@ const AddProduct: React.FC = () => {
     // AI Blocking Error
     if (aiBlockingError) {
       return aiBlockingError
+    }
+
+    if (isGenerating) {
+      return 'Analyzing details...'
     }
 
     // Daily limit reached on step 1
@@ -657,6 +674,7 @@ const AddProduct: React.FC = () => {
         if (!formData.condition) issues.push('Select a condition')
         if (!formData.category) issues.push('Select a category')
         if (!formData.location?.trim()) issues.push('Add a location')
+        if (!formData.wanted_categories || formData.wanted_categories.length === 0) issues.push('Select desired categories')
         return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
       case 3:
         return 'Ready to post'
@@ -670,17 +688,17 @@ const AddProduct: React.FC = () => {
   const handleSubmit = async () => {
     if (!formData.title.trim()) {
       toast({
-        id: "addproduct-missing-name", title: 'Missing name', status: 'warning', duration: 3000 })
+        id: "addproduct-missing-name", title: 'We need a short name!', description: 'Please provide a catchy title for your item.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
     if (formData.description.trim().length < 50) {
       toast({
-        id: "addproduct-description-too-short", title: 'Description too short', description: 'Minimum 50 characters', status: 'warning', duration: 3000 })
+        id: "addproduct-description-too-short", title: 'Tell us a bit more!', description: 'Your description is too short. Please add a few more details (minimum 50 characters).', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
     if (uploadedImages.length === 0) {
       toast({
-        id: "addproduct-no-images", title: 'No images', description: 'Please upload at least one photo', status: 'warning', duration: 3000 })
+        id: "addproduct-no-images", title: 'Show off your item!', description: 'Upload at least one picture so others can see what you are offering.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
 
@@ -720,12 +738,25 @@ const AddProduct: React.FC = () => {
       await createProduct(fd)
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
       toast({
-        id: "addproduct-product-posted", title: 'Product posted! 🎉', status: 'success', duration: 3000 })
+        id: "addproduct-product-posted", title: 'All set! 🎉', description: 'Your item is now live and visible to others.', status: 'success', position: 'top', duration: 3000, isClosable: true })
       navigate('/dashboard')
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || 'Failed to create product'
+      let friendlyMsg = 'Something went wrong while saving your item. Please try again.'
+      if (err.response?.status === 413) {
+        friendlyMsg = 'One or more of your files are too large. Try uploading a smaller image.'
+      } else if (err.response?.data?.error) {
+        friendlyMsg = err.response.data.error // Sometimes backend errors are already nice
+      }
+      
       toast({
-        id: "addproduct-error-creating-product", title: 'Error creating product', description: msg, status: 'error', duration: 6000 })
+        id: "addproduct-error-creating-product", 
+        title: 'Oops! Could not post your item.', 
+        description: friendlyMsg, 
+        status: 'error', 
+        position: 'top',
+        duration: 6000,
+        isClosable: true
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -981,40 +1012,34 @@ const AddProduct: React.FC = () => {
 
       {/* Client-side Image Quality Results (instant feedback) */}
       {clientQualityResults.length > 0 && clientQualityResults.some(qr => qr.issues.length > 0) && (
-        <Box bg="orange.50" p={4} borderRadius="lg" border="1px solid" borderColor="orange.200">
-          <HStack spacing={2} mb={2}>
-            <Text fontSize="sm" fontWeight="semibold" color="orange.700">
-              📸 Image Quality Check
-            </Text>
-            {(() => {
-              const avgScore = clientQualityResults.length > 0
-                ? Math.round(clientQualityResults.reduce((a, r) => a + r.overallScore, 0) / clientQualityResults.length)
-                : 100
-              return (
-                <Badge colorScheme={getQualityColorScheme(avgScore)} fontSize="xs" px={2} py={0.5} borderRadius="md">
-                  {getQualityLabel(avgScore)} ({avgScore}/100)
-                </Badge>
-              )
-            })()}
-          </HStack>
-          <VStack spacing={1.5} align="stretch">
-            {clientQualityResults.flatMap((qr, imgIdx) =>
-              qr.issues.map((issue, issIdx) => (
-                <HStack key={`${imgIdx}-${issIdx}`} spacing={2} align="flex-start">
-                  <Text fontSize="xs" color={issue.severity === 'error' ? 'red.600' : 'orange.600'} flexShrink={0}>
-                    {issue.severity === 'error' ? '❌' : '⚠️'}
+        <Alert status="warning" borderRadius="lg" variant="subtle" py={2} px={3}>
+          <AlertIcon boxSize="14px" alignSelf="flex-start" mt={0.5} />
+          <Box flex="1">
+            <HStack justify="space-between" mb={1}>
+              <AlertTitle fontSize="xs" fontWeight="semibold">Image Quality Check</AlertTitle>
+              {(() => {
+                const avgScore = Math.round(clientQualityResults.reduce((a, r) => a + r.overallScore, 0) / clientQualityResults.length)
+                return (
+                  <Badge colorScheme={getQualityColorScheme(avgScore)} fontSize="9px">
+                    {getQualityLabel(avgScore)} ({avgScore})
+                  </Badge>
+                )
+              })()}
+            </HStack>
+            <VStack spacing={0.5} align="stretch">
+              {clientQualityResults.flatMap((qr, imgIdx) =>
+                qr.issues.map((issue, issIdx) => (
+                  <Text key={`${imgIdx}-${issIdx}`} fontSize="11px" color="gray.700" lineHeight="1.2">
+                    <Text as="span" color={issue.severity === 'error' ? 'red.500' : 'orange.500'} mr={1}>•</Text>
+                    {clientQualityResults.length > 1 ? `Photo ${imgIdx + 1}: ` : ''} 
+                    <Text as="span" fontWeight="medium">{issue.message}</Text> 
+                    <Text as="span" color="gray.500"> — {issue.suggestion}</Text>
                   </Text>
-                  <Box>
-                    <Text fontSize="xs" color="gray.700" fontWeight="medium">
-                      {clientQualityResults.length > 1 ? `Photo ${imgIdx + 1}: ` : ''}{issue.message}
-                    </Text>
-                    <Text fontSize="xs" color="gray.500">{issue.suggestion}</Text>
-                  </Box>
-                </HStack>
-              ))
-            )}
-          </VStack>
-        </Box>
+                ))
+              )}
+            </VStack>
+          </Box>
+        </Alert>
       )}
 
       {aiBlockingError && (
@@ -1348,13 +1373,21 @@ const AddProduct: React.FC = () => {
 
       {/* Manual value field removed as per user request to use AI instead */}
 
-      {/* ──────── WHAT ARE YOU LOOKING FOR? (OPTIONAL) ──────── */}
+      {/* ──────── WHAT ARE YOU LOOKING FOR? (MANDATORY) ──────── */}
       <Box p={4} bg="brand.50" borderRadius="lg" border="1px dashed" borderColor="brand.200">
-        <Text fontSize="sm" fontWeight="bold" color="brand.700" mb={3}>
-          🔍 What are you looking for? (Optional)
+        <HStack mb={1}>
+          <Text fontSize="sm" fontWeight="bold" color="brand.700">
+            🔍 What are you looking for?
+          </Text>
+          <Tooltip label="This is how the system matches your items to other products based on your wants. It is strictly required for trading." placement="top" hasArrow>
+            <Box cursor="help" color="brand.500"><InfoOutlineIcon boxSize={3.5} mb={0.5} /></Box>
+          </Tooltip>
+        </HStack>
+        <Text fontSize="xs" color="gray.600" mb={3}>
+          Please select up to 3 categories.
         </Text>
         <VStack spacing={3} align="stretch">
-          <FormControl>
+          <FormControl isRequired>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Categories (Select multiple)</FormLabel>
             <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={1.5}>
               {PRODUCT_CATEGORIES.map((cat) => {

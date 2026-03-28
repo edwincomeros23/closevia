@@ -3373,7 +3373,10 @@ const Dashboard: React.FC = () => {
                       icon={<BellIcon />}
                       size="sm"
                       variant="outline"
-                      colorScheme={unreadNotifications > 0 ? 'orange' : 'gray'}
+                      color="#3D9E8C"
+                      borderColor="#3D9E8C"
+                      _hover={{ bg: 'teal.50' }}
+                      _active={{ bg: 'teal.100' }}
                       onClick={() => navigate('/notifications')}
                     />
                     {unreadNotifications > 0 && (

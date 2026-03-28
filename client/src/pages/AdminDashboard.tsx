@@ -116,6 +116,7 @@ import { checkConnectionStatus } from '../utils/apiUtils';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ErrorBoundary from '../components/ErrorBoundary';
 import VerifiedAvatar from '../components/VerifiedAvatar';
+import AdvertisementCMS from '../components/AdvertisementCMS';
 import { User, Product, PaginatedResponse, APIResponse } from '../types';
 
 // â"€â"€â"€ PDF / DOCX imports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -2149,6 +2150,9 @@ const AdminDashboard: React.FC = () => {
           )}
         </CardBody>
       </Card>
+
+      {/* Advertisements */}
+      <AdvertisementCMS />
 
       {/* Campaigns */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
