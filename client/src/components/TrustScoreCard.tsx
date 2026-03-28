@@ -12,7 +12,7 @@ import {
   Progress,
   Divider,
 } from '@chakra-ui/react'
-import { FiCheckCircle, FiAlertTriangle, FiXCircle, FiAward } from 'react-icons/fi'
+import { FiCheckCircle, FiAlertTriangle, FiXCircle, FiAward, FiInfo } from 'react-icons/fi'
 
 interface TrustFactor {
   label: string
