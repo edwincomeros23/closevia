@@ -128,9 +128,8 @@ const Register: React.FC = () => {
         navigate('/verify-email', { state: { email: result.email } })
       } else {
         // Verification disabled — token returned directly; store it and log the user in
-        if (result.token) {
-          localStorage.setItem('clovia_token', result.token)
-        }
+        // Auth state is handled by register() -> completeLogin() in AuthContext
+
         // Check if WMSU student – show premium badge toast
         const isWmsu = email.toLowerCase().endsWith('@wmsu.edu.ph')
         if (isWmsu) {

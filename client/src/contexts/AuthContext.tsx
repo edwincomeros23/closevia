@@ -13,6 +13,7 @@ interface AuthContextType {
   updateProfile: (payload: { name?: string; email?: string; profile_picture?: string; phone?: string; phone_verified?: boolean }) => Promise<void>
   refreshUser: () => Promise<void>
   restoreAuthentication: () => Promise<void>
+  completeLogin: (token: string, user?: User) => Promise<void>
   loading: boolean
 }
 
@@ -227,23 +228,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await api.post('/api/auth/login', { email, password })
       const { token: newToken, user: userData } = response.data.data
 
-      // Set authorization header
-      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-
-      // Set state (also persists to localStorage via wrappers)
-      setToken(newToken)
-      const normalizedUser = normalizeUser(userData)
-      setUser(normalizedUser)
-
-      if (!userData?.profile_picture) {
-        await fetchUserProfile(newToken)
-      }
-
+      // Use centralized completeLogin to handle state and persistence
+      const normalizedUser = await completeLogin(newToken, userData)
+      
       console.log('AuthContext: Login successful')
       return normalizedUser
     } catch (error: any) {
       throw new Error(error.response?.data?.error || 'Login failed')
     }
+  }
+
+  const completeLogin = async (newToken: string, userData?: User) => {
+    console.log('AuthContext: Completing login with token and user data:', !!userData)
+    
+    // 1. Set authorization header for current and future requests
+    api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+    
+    // 2. Update token state (triggers localStorage update via wrapper)
+    setToken(newToken)
+    
+    // 3. Update user state if provided, otherwise fetch it
+    let finalUser = userData ? normalizeUser(userData) : null
+    
+    if (finalUser) {
+      setUser(finalUser)
+    }
+    
+    // 4. Always ensure we have the latest profile from server
+    // (This also handles the case where userData wasn't provided)
+    await fetchUserProfile(newToken)
+    
+    // Get the updated user from state or freshly fetched
+    // Note: setUser is async-ish via state update, so we return what we just fetched/normalized
+    return finalUser
   }
 
   const googleLogin = async (firebaseToken: string, userData: any) => {
@@ -259,18 +276,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('AuthContext: Backend response received:', response.data)
       const { token: newToken, user: userDataResponse } = response.data.data
 
-      // Set authorization header
-      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-
-      console.log('AuthContext: Setting token and user state')
-      // Set state (also persists to localStorage via wrappers)
-      setToken(newToken)
-      const normalizedUser = normalizeUser(userDataResponse)
-      setUser(normalizedUser)
-
-      if (!userDataResponse?.profile_picture) {
-        await fetchUserProfile(newToken)
-      }
+      // Use centralized completeLogin to handle state and persistence
+      const normalizedUser = await completeLogin(newToken, userDataResponse)
+      
       console.log('AuthContext: Google login completed successfully')
       return normalizedUser
     } catch (error: any) {
@@ -333,19 +341,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return { requiresVerification: true, email: payload.email }
       }
 
-      // Fallback: backend skipped verification (e.g. existing flow), log in directly
+      // Verification disabled — token returned directly; store it and log the user in
       const { token: newToken, user: userData } = responseData
 
-      // Set authorization header
-      api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-
-      // Set state (also persists to localStorage via wrappers)
-      setToken(newToken)
-      setUser(normalizeUser(userData))
-
-      if (!userData?.profile_picture) {
-        await fetchUserProfile(newToken)
-      }
+      // Use centralized completeLogin to handle state and persistence
+      await completeLogin(newToken, userData)
 
       console.log('AuthContext: Registration successful')
       return { requiresVerification: false, email: payload.email, token: newToken }
@@ -372,6 +372,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     updateProfile,
     refreshUser,
     restoreAuthentication,
+    completeLogin,
     loading,
   }
 
