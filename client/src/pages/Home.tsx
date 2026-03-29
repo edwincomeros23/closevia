@@ -73,8 +73,7 @@ import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
 import InstallAppPrompt from '../components/InstallAppPrompt'
-
-// Custom debounce hook
+import AdvertisementCarousel from '../components/AdvertisementCarousel'
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value)
 
@@ -1139,109 +1138,8 @@ const Home: React.FC = () => {
           )}
         </VStack>
       </Box>
-      {/* slider / visual box - fully responsive from mobile to 2xl */}
-      <Box
-        w="full"
-        maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
-        mx={{ base: 'auto', lg: 0 }}
-        ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
-        mb={8}
-        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
-      >
-        <Box
-          position="relative"
-          overflow="hidden"
-          w="calc(100% - 30px)"
-          mx="15px"
-          h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }}
-          rounded="lg"
-          border="1px"
-          borderColor="gray.200"
-          bg="gray.50"
-          onWheel={onWheelSlide}
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
-        >
-          {sliderImages.map((src, idx) => (
-            <Image
-              key={src}
-              src={src}
-              alt={`slide-${idx + 1}`}
-              position="absolute"
-              top={0}
-              left={0}
-              w="100%"
-              h="100%"
-              objectFit="cover"
-              transition="opacity 600ms ease"
-              opacity={idx === slideIndex ? 1 : 0}
-              zIndex={idx === slideIndex ? 2 : 1}
-              loading="eager"
-              draggable={false}
-              pointerEvents="none"
-            />
-          ))}
-
-          {/* Prev / Next controls (tablet+). Mobile users swipe instead. */}
-          <IconButton
-            type="button"
-            aria-label="Previous slide"
-            icon={<ArrowLeftIcon />}
-            position="absolute"
-            left={{ base: 2, md: 3, lg: 4 }}
-            top="50%"
-            transform="translateY(-50%)"
-            zIndex={10}
-            size={{ base: 'xs', md: 'sm', lg: 'md' }}
-            colorScheme="blackAlpha"
-            variant="ghost"
-            display={{ base: 'none', sm: 'flex' }}
-            pointerEvents="auto"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              goPrev()
-            }}
-          />
-
-          <IconButton
-            type="button"
-            aria-label="Next slide"
-            icon={<ArrowRightIcon />}
-            position="absolute"
-            right={{ base: 2, md: 3, lg: 4 }}
-            top="50%"
-            transform="translateY(-50%)"
-            zIndex={10}
-            size={{ base: 'xs', md: 'sm', lg: 'md' }}
-            colorScheme="blackAlpha"
-            variant="ghost"
-            display={{ base: 'none', sm: 'flex' }}
-            pointerEvents="auto"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              goNext()
-            }}
-          />
-
-          {/* Dots - responsive sizing */}
-          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={10} pointerEvents="auto">
-            {sliderImages.map((_, i) => (
-              <Box
-                key={i}
-                as="button"
-                w={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
-                h={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
-                bg={i === slideIndex ? 'brand.500' : 'gray.300'}
-                borderRadius="full"
-                transition="all 0.3s ease"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); setSlideIndex(i); scheduleResume(2000) }}
-              />
-            ))}
-          </HStack>
-        </Box>
-      </Box>
+      {/* Dynamic Advertisement Carousel Box */}
+      <AdvertisementCarousel />
       {/* Horizontal category pills - desktop: centered max-width */}
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
@@ -1372,50 +1270,7 @@ const Home: React.FC = () => {
           </Box>
         )}
 
-        {/* Error Display with Retry */}
-        {error && !loading && (
-          <Box
-            bg="red.50"
-            border="1px"
-            borderColor="red.200"
-            rounded="lg"
-            p={6}
-            maxW="4xl"
-            mx="auto"
-          >
-            <VStack spacing={4} align="stretch">
-              <VStack spacing={2} align="stretch">
-                <Text color="red.800" fontWeight="semibold" fontSize="lg">
-                  ⚠️ Error Loading Products
-                </Text>
-                <Text color="red.700" fontSize="sm">
-                  {error.includes('timeout') ?
-                    'The request took too long. Your connection might be slow. Please try again.' :
-                    error}
-                </Text>
-              </VStack>
-              <HStack spacing={3} justify="flex-start">
-                <Button
-                  size="sm"
-                  colorScheme="red"
-                  onClick={handleRetrySearch}
-                  isLoading={loading}
-                  loadingText="Retrying..."
-                >
-                  Retry
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  colorScheme="red"
-                  onClick={clearFilters}
-                >
-                  Reset Filters
-                </Button>
-              </HStack>
-            </VStack>
-          </Box>
-        )}
+        {/* Error Display removed intentionally for cleaner UX */}
 
         {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
         {!loading && !isLoadingCategoryChange && products.length > 0 && (

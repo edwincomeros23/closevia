@@ -105,7 +105,7 @@ export const useSentOffers = () => {
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    refetchInterval: 5000, // Background refetch every 5 seconds for real-time
     placeholderData: keepPreviousData,
   })
 }
@@ -128,7 +128,7 @@ export const useReceivedOffers = () => {
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    refetchInterval: 5000, // Background refetch every 5 seconds for real-time
     placeholderData: keepPreviousData,
   })
 }

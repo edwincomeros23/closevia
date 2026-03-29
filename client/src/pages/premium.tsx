@@ -64,32 +64,15 @@ const Premium: React.FC = () => {
   const subtleBg = useColorModeValue('gray.50', 'gray.900')
   const mutedText = useColorModeValue('gray.500', 'gray.400')
 
-  const isPremiumUser = user?.is_premium === true
-  const currentTier = user?.premium_tier || 'free'
+  // Premium status logic removed: multiway trading is now available to all users
+  const isPremiumUser = true
+  const currentTier = 'free' as 'free' | 'plus' | 'pro'
 
   useEffect(() => {
-    refreshUser()
-
-    const params = new URLSearchParams(window.location.search)
-    const isFromPayment = params.has('utm_source') || window.location.href.includes('premium')
-
-    if (isFromPayment) {
-      const refreshAttempts = [1000, 2000, 3000, 5000]
-      const timers = refreshAttempts.map(delay =>
-        setTimeout(() => {
-          console.log(`Refreshing premium status (${delay}ms after redirect)`)
-          refreshUser()
-        }, delay)
-      )
-      return () => timers.forEach(timer => clearTimeout(timer))
-    }
-
-    if (isPremiumUser) {
-      fetchLoops()
-      const interval = setInterval(fetchLoops, 30000)
-      return () => clearInterval(interval)
-    }
-  }, [isPremiumUser, refreshUser])
+    fetchLoops()
+    const interval = setInterval(fetchLoops, 30000)
+    return () => clearInterval(interval)
+  }, [refreshUser])
 
   const fetchLoops = async () => {
     try {
@@ -104,16 +87,6 @@ const Premium: React.FC = () => {
   }
 
   const handleSelectLoop = async (loop: TradeLoop) => {
-    if (!isPremiumUser) {
-      toast({
-        id: 'premium-premium-feature',
-        title: 'Premium Feature',
-        description: 'Multi-way trading is available to premium members only',
-        status: 'info',
-      })
-      return
-    }
-
     try {
       setLoading(true)
       const loopId = `loop_${loop.edges.map(e => e.trade_id).join('_')}`
@@ -256,7 +229,7 @@ const Premium: React.FC = () => {
     { feature: 'Express Delivery', free: '—', plus: '✓', pro: '✓' },
     { feature: 'Delivery Fee Discount', free: '—', plus: '10%', pro: '20%' },
     { feature: 'Priority Matches', free: '—', plus: '✓', pro: 'Top of queue' },
-    { feature: 'Multi-Way Trading', free: '—', plus: '—', pro: '✓' },
+    { feature: 'Multi-Way Trading', free: '✓', plus: '✓', pro: '✓' },
     { feature: 'Trade Dispute Priority', free: '—', plus: '✓', pro: '✓' },
     { feature: 'Profile Views', free: 'Total only', plus: 'Usernames', pro: 'Full history' },
     { feature: 'Trade Analytics', free: '—', plus: 'Popularity', pro: 'Full analytics' },
@@ -274,7 +247,7 @@ const Premium: React.FC = () => {
     },
     {
       question: 'What is Multi-Way Trading?',
-      answer: 'When someone declines your trade, they can convert it to a multi-way trade. The system finds a third user who wants what you have and has what the second user wants — creating a 3-way (or more) trade chain. This is a Pro-exclusive feature.'
+      answer: 'When someone declines your trade, they can convert it to a multi-way trade. The system finds a third user who wants what you have and has what the second user wants — creating a 3-way (or more) trade chain. This is now available to all users.'
     },
     {
       question: 'What is the Store Page (Alegre)?',

@@ -122,12 +122,7 @@ const Sidebar: React.FC = () => {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
       } else {
         items.push(
-          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-          {
-            icon: FiGrid,
-            label: 'Organizations',
-            path: '/organizations'
-          }
+          { icon: FiHeart, label: 'Saved', path: '/saved-products' }
         )
       }
       items.push(

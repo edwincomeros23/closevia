@@ -288,6 +288,7 @@ func main() {
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
 	campaignHandler := handlers.NewCampaignHandler()
+	advertisementHandler := handlers.NewAdvertisementHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
 	organizationHandler := handlers.NewOrganizationHandler()
@@ -522,6 +523,11 @@ func main() {
 	admin.Post("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.CreateCampaign)
 	admin.Put("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.UpdateCampaign)
 	admin.Delete("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.DeleteCampaign)
+	// Admin advertisement management
+	admin.Get("/advertisements", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.GetAllAdvertisements)
+	admin.Post("/advertisements", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.CreateAdvertisement)
+	admin.Put("/advertisements/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.UpdateAdvertisement)
+	admin.Delete("/advertisements/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.DeleteAdvertisement)
 	// Admin multiway chain dashboard & strikes (Phase 3)
 	admin.Get("/multiway-chains", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetChains)
 	admin.Get("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.GetUserStrikes)
@@ -589,6 +595,12 @@ func main() {
 	// Campaigns route (public-facing for fetching active campaigns)
 	campaigns := api.Group("/campaigns")
 	campaigns.Get("/active", middleware.OptionalAuthMiddleware(), campaignHandler.GetActiveCampaigns)
+
+	// Advertisements routes
+	advs := api.Group("/advertisements")
+	advs.Get("/active", middleware.OptionalAuthMiddleware(), advertisementHandler.GetActiveAdvertisements)
+	advs.Post("/:id/view", middleware.OptionalAuthMiddleware(), advertisementHandler.RecordView)
+	advs.Post("/:id/click", middleware.OptionalAuthMiddleware(), advertisementHandler.RecordClick)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")

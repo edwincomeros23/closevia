@@ -816,6 +816,26 @@ func CreateTables() error {
 			INDEX idx_product_id (product_id),
 			INDEX idx_viewed_at (viewed_at)
 		)`,
+		`CREATE TABLE IF NOT EXISTS advertisements (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			title VARCHAR(255) NOT NULL,
+			description TEXT NULL,
+			media_url VARCHAR(512) NOT NULL,
+			media_type ENUM('image', 'video') NOT NULL DEFAULT 'image',
+			link_url VARCHAR(512) NULL,
+			cta_text VARCHAR(100) NULL,
+			is_active BOOLEAN NOT NULL DEFAULT TRUE,
+			priority INT NOT NULL DEFAULT 0,
+			start_date TIMESTAMP NULL,
+			end_date TIMESTAMP NULL,
+			views INT NOT NULL DEFAULT 0,
+			clicks INT NOT NULL DEFAULT 0,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			INDEX idx_advertisements_active (is_active),
+			INDEX idx_advertisements_dates (start_date, end_date),
+			INDEX idx_advertisements_priority (priority)
+		)`,
 	}
 
 	// Execute table creation queries
