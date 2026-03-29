@@ -74,8 +74,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setProfileLocationLabel('')
     setManualAddress('')
     setDetectingLocation(false)
-    // Auto-set to delivery (only option available)
-    setTradeOption('delivery')
+    setDetectingLocation(false)
     if (user && targetProductId) {
       ; (async () => {
         try {
@@ -182,9 +181,14 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
         id: "trademodal-select-items", title: 'Select items', description: 'Please select at least one of your items to offer.', status: 'warning' })
       return
     }
-    if (!hasDeliveryLocation) {
+    if (tradeOption === 'delivery' && !hasDeliveryLocation) {
       toast({
         id: "trademodal-delivery-location-required", title: 'Delivery location required', description: 'Please detect your location or enter an address for delivery.', status: 'warning' })
+      return
+    }
+    if (!tradeOption) {
+      toast({
+        id: "trademodal-select-option", title: 'Select method', description: 'Please select Meetup or Delivery.', status: 'warning' })
       return
     }
 
@@ -208,8 +212,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
         offered_product_ids: selectedOfferIds,
         message: tradeMessage,
         offered_cash_amount: cashAmount ? Number(cashAmount) : undefined,
-        trade_option: 'delivery', // Always delivery now
-        delivery_address: resolvedDeliveryAddress(),
+        trade_option: tradeOption,
+        delivery_address: tradeOption === 'delivery' ? resolvedDeliveryAddress() : undefined,
       }
       console.log('Submitting trade payload:', payload)
       await api.post('/api/trades', payload)
@@ -226,7 +230,6 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
       setTradeOption(null)
       setDetectedCoords(null)
       setManualAddress('')
-      setShowConfirmModal(false)
       onClose()
     } catch (e: any) {
       const errorMessage = e?.response?.data?.error || 'Failed to send trade'
@@ -309,11 +312,33 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
               <Divider />
 
-              {/* Delivery Information - Simplified since it's the only option */}
+              {/* Delivery / Meetup Toggle */}
               <FormControl isRequired>
                 <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Delivery Information
+                  Trade Method
                 </FormLabel>
+                <HStack spacing={4} mb={4}>
+                  <Button
+                    flex={1}
+                    variant={tradeOption === 'meetup' ? 'solid' : 'outline'}
+                    colorScheme={tradeOption === 'meetup' ? 'brand' : 'gray'}
+                    onClick={() => setTradeOption('meetup')}
+                    leftIcon={<Icon as={FaMapMarkerAlt} />}
+                  >
+                    Meetup
+                  </Button>
+                  <Button
+                    flex={1}
+                    variant={tradeOption === 'delivery' ? 'solid' : 'outline'}
+                    colorScheme={tradeOption === 'delivery' ? 'brand' : 'gray'}
+                    onClick={() => setTradeOption('delivery')}
+                    leftIcon={<Icon as={FaTruck} />}
+                  >
+                    Delivery
+                  </Button>
+                </HStack>
+                {tradeOption === 'delivery' && (
+                <>
                 <Text fontSize="xs" color="gray.600" mb={3}>
                   📦 All trades are fulfilled through our secure delivery service
                 </Text>
@@ -406,6 +431,8 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                     </Button>
                   )}
                 </Box>
+                </>
+                )}
               </FormControl>
 
               <Divider />
@@ -415,10 +442,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                 <Button
                   colorScheme="brand"
                   isLoading={submittingTrade}
-                  onClick={() => setShowConfirmModal(true)}
-                  isDisabled={selectedOfferIds.length === 0 || !hasDeliveryLocation}
+                  onClick={submitTrade}
+                  isDisabled={selectedOfferIds.length === 0 || !tradeOption || (tradeOption === 'delivery' && !hasDeliveryLocation)}
                 >
-                  Proceed
+                  Confirm
                 </Button>
               </HStack>
             </VStack>
@@ -451,88 +478,6 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
           )}
         </ModalBody>
       </ModalContent>
-
-      {/* Confirmation modal shown after clicking Proceed */}
-      <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} isCentered size="lg">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Confirm Offer</ModalHeader>
-          <ModalCloseButton onClick={() => setShowConfirmModal(false)} />
-          <ModalBody pb={6}>
-            <VStack spacing={4} align="stretch">
-              {/* Warning if pending offer exists on target */}
-              {hasPendingOfferOnTarget && (
-                <Box bg="orange.50" borderWidth="1px" borderColor="orange.200" rounded="md" p={3}>
-                  <HStack spacing={2} mb={1}>
-                    <Text fontSize="lg">⚠️</Text>
-                    <Text fontSize="sm" fontWeight="bold" color="orange.800">Pending Offer Already Exists</Text>
-                  </HStack>
-                  <Text fontSize="xs" color="orange.700">
-                    You already have a pending offer on this product. Submitting another offer will override your existing one or be rejected by the system.
-                  </Text>
-                </Box>
-              )}
-              <Box>
-                <Text fontWeight="semibold" mb={2}>Your Offer Summary</Text>
-                <Grid templateColumns="repeat(auto-fill, minmax(180px, 220px))" gap={3} justifyContent="start">
-                  {selectedProducts.length === 0 && !cashAmount && (
-                    <Text color="gray.500" gridColumn="1 / -1">No items selected.</Text>
-                  )}
-                  {selectedProducts.map((p) => (
-                    <Box key={p.id} borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden">
-                      <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="100px" objectFit="cover" loading="lazy" />
-                      <Box p={2}>
-                        <HStack justify="space-between">
-                          <Text fontSize="sm" fontWeight="semibold" noOfLines={1} wordBreak="break-word">{p.title}</Text>
-                          {p.premium && <Badge colorScheme="yellow">Premium</Badge>}
-                        </HStack>
-                        <Text fontSize="xs" color="gray.600" noOfLines={2} wordBreak="break-word">{p.description}</Text>
-                      </Box>
-                    </Box>
-                  ))}
-                </Grid>
-                {cashAmount && Number(cashAmount) > 0 && (
-                  <Text mt={2} fontSize="sm" color="green.700">Cash included: ₱{Number(cashAmount).toFixed(2)}</Text>
-                )}
-
-                {/* Labeled message block: show message or a fallback so user sees what's being sent */}
-                <Box mt={3} bg="gray.50" borderWidth="1px" borderColor="gray.200" rounded="md" p={3}>
-                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Message</Text>
-                  <Text fontSize="sm" color="gray.700">{tradeMessage && tradeMessage.trim() ? tradeMessage : 'No message provided'}</Text>
-                </Box>
-
-                {/* Trade Option Summary */}
-                <Box mt={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" p={3}>
-                  <Text fontSize="sm" fontWeight="semibold" mb={2}>Delivery Method</Text>
-                  <HStack spacing={2}>
-                    <Icon as={FaTruck} color="blue.600" boxSize={4} />
-                    <Text fontSize="sm" color="blue.700" fontWeight="medium">
-                      Secure Delivery Service
-                    </Text>
-                  </HStack>
-                  <Text fontSize="xs" color="blue.600" mt={2}>
-                    📍 Location: {
-                      detectedLocationLabel
-                        ? detectedLocationLabel
-                        : detectedCoords
-                          ? formatCoordinates(detectedCoords.lat, detectedCoords.lng)
-                          : user?.latitude && user?.longitude
-                            ? (profileLocationLabel || formatCoordinates(user.latitude, user.longitude))
-                          : manualAddress.trim()
-                            ? manualAddress.trim()
-                            : 'Location not set'
-                    }
-                  </Text>
-                </Box>
-              </Box>
-              <HStack justify="flex-end" spacing={3}>
-                <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>Back</Button>
-                <Button colorScheme="brand" isLoading={submittingTrade} onClick={submitTrade}>Send Offer</Button>
-              </HStack>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
     </Modal>
   )
 }

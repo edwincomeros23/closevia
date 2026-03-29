@@ -5,6 +5,7 @@ import (
 	"log"
 	"mime/multipart"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,8 @@ func AnalyzeProductWithFallback(images []*multipart.FileHeader) (*AIAnalysisResu
 	geminiTimeMs := time.Since(startTime).Milliseconds()
 
 	if geminiErr == nil && geminiResult != nil {
+		enrichOtherCategoryExamples(geminiResult)
+
 		// ✅ Gemini succeeded - return immediately (fast path)
 		result.Success = true
 		result.Provider = "gemini"
@@ -53,6 +56,8 @@ func AnalyzeProductWithFallback(images []*multipart.FileHeader) (*AIAnalysisResu
 	totalTimeMs := time.Since(startTime).Milliseconds()
 
 	if groqErr == nil && groqResult != nil {
+		enrichOtherCategoryExamples(groqResult)
+
 		// ✅ Groq succeeded
 		result.Success = true
 		result.Provider = "groq"
@@ -72,6 +77,65 @@ func AnalyzeProductWithFallback(images []*multipart.FileHeader) (*AIAnalysisResu
 	log.Printf("❌ [AI] CRITICAL: Both Gemini and Groq failed after %dms total: %s", totalTimeMs, result.Error)
 
 	return result, fmt.Errorf("AI analysis unavailable: %s", result.Error)
+}
+
+func enrichOtherCategoryExamples(data *GeminiResponse) {
+	if data == nil {
+		return
+	}
+
+	if normalizeCategory(data.Category) != "other" {
+		return
+	}
+
+	// If the AI left subcategory/item_type blank (or set them to "Other"),
+	// fill them with a helpful example so the UI doesn't show "—".
+	title := strings.ToLower(data.Title)
+	description := strings.ToLower(data.Description)
+	text := title + " " + description
+
+	plantKeywords := []string{
+		"plant", "plants",
+		"flower", "flowers",
+		"seed", "seeds",
+		"succulent",
+		"cactus",
+		"bonsai",
+		"potted", "pot",
+		"soil",
+		"garden",
+		"tree", "trees",
+		"hydroponic",
+		"sprout", "sprouts",
+	}
+
+	example := "Others"
+	for _, kw := range plantKeywords {
+		if kw != "" && strings.Contains(text, kw) {
+			example = "Plants"
+			break
+		}
+	}
+
+	if isBlankOrOther(data.ItemType) {
+		data.ItemType = example
+	}
+	if isBlankOrOther(data.Subcategory) {
+		data.Subcategory = example
+	}
+}
+
+func normalizeCategory(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func isBlankOrOther(s string) bool {
+	t := strings.TrimSpace(s)
+	if t == "" {
+		return true
+	}
+	lower := strings.ToLower(t)
+	return lower == "other" || lower == "others"
 }
 
 // GetActiveAIProvider returns which AI provider is currently available

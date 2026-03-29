@@ -122,12 +122,7 @@ const Sidebar: React.FC = () => {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
       } else {
         items.push(
-          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-          {
-            icon: FiGrid,
-            label: 'Organizations',
-            path: '/organizations'
-          }
+          { icon: FiHeart, label: 'Saved', path: '/saved-products' }
         )
       }
       items.push(
@@ -135,7 +130,7 @@ const Sidebar: React.FC = () => {
         {
           icon: FaMotorcycle,
           label: riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider',
-          path: '/rider'
+          path: '/rider-home'
         },
         {
           icon: FaCrown,

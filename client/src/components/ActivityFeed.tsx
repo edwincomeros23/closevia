@@ -89,7 +89,7 @@ const ActivityFeed = () => {
                     fetchActivities(pollLat, pollLng);
                 },
                 () => {},
-                { timeout: 4000, maximumAge: 60000 }
+                { enableHighAccuracy: true, timeout: 4000, maximumAge: 60000 }
             );
         }
 

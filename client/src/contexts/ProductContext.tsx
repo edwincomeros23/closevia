@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Product, ProductCreate, ProductUpdate, SearchFilters, PaginatedResponse } from '../types'
 import { api } from '../services/api'
 import { apiCallWithRetry } from '../utils/apiUtils'
@@ -47,6 +48,7 @@ interface ProductProviderProps {
 }
 
 export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) => {
+  const queryClient = useQueryClient()
   // Avoid calling `useAuth()` here to prevent errors when provider ordering
   // is incorrect during initialization. Read token from localStorage instead
   // which is safe even if `AuthProvider` isn't present yet.
@@ -508,6 +510,10 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
       })
       const newProduct = response.data.data
       safeSetProducts([newProduct, ...(products || [])])
+      
+      // Invalidate dashboard products cache
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
+      
       return newProduct
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to create product')
@@ -534,6 +540,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         headers: getAuthHeaders(),
       })
       safeSetProducts((products || []).map(p => p.id === id ? { ...p, ...product } : p))
+      
+      // Invalidate dashboard products cache
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
     } catch (error: any) {
       setError(error.response?.data?.error || 'Failed to update product')
       throw error
@@ -547,6 +556,9 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         headers: getAuthHeaders(),
       })
       safeSetProducts((products || []).filter(p => p.id !== id))
+      
+      // Invalidate dashboard products cache
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
     } catch (error: any) {
       const errorMsg = error.response?.data?.error || 'Failed to delete product'
       setError(errorMsg)

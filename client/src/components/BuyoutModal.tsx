@@ -509,7 +509,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
           )}
         </ModalBody>
       </ModalContent>
-
+      {/* Confirmation dialog: single step, no summary */}
       <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} isCentered size="sm">
         <ModalOverlay />
         <ModalContent>
@@ -517,25 +517,18 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
           <ModalCloseButton onClick={() => setShowConfirmModal(false)} />
           <ModalBody pb={6}>
             <VStack spacing={4} align="stretch">
-              {hasPendingOfferOnTarget && (
-                <Box bg="orange.50" borderWidth="1px" borderColor="orange.200" rounded="md" p={3}>
-                  <Text fontSize="sm" fontWeight="bold" color="orange.800">⚠️ Pending Offer Already Exists</Text>
-                  <Text fontSize="xs" color="orange.700">You already have an active offer on this product.</Text>
-                </Box>
-              )}
+              <Text>Are you sure you want to send this buyout offer?</Text>
               <Box bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" p={4} textAlign="center">
                 <Text fontSize="sm" color="green.700" mb={1}>You are offering to pay</Text>
                 <Text fontSize="3xl" fontWeight="bold" color="green.600">₱{Number(cashAmount).toFixed(2)}</Text>
               </Box>
-              
               <Box mt={2}>
                 <Text fontSize="sm" fontWeight="semibold">For item:</Text>
                 <Text fontSize="md">{targetProduct?.title}</Text>
               </Box>
-              
               <HStack justify="flex-end" mt={4} spacing={3}>
-                <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>Back</Button>
-                <Button colorScheme="green" isLoading={submittingTrade} onClick={submitTrade}>Submit Offer</Button>
+                <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>Cancel</Button>
+                <Button colorScheme="green" isLoading={submittingTrade} onClick={submitTrade}>Send Offer</Button>
               </HStack>
             </VStack>
           </ModalBody>

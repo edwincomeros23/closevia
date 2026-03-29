@@ -2566,9 +2566,7 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 
 	userLoops := []map[string]interface{}{}
 
-	// Discover loop suggestions for all users.
-	// - Pro: sees Loop Manager (can_create=true)
-	// - Free: sees Hop In (can_create=false) + upsell nudge
+	// Discover loop suggestions for all users. All users can create/join loops now.
 	graph, err := services.NewTradeGraph(h.db)
 	if err != nil {
 		log.Printf("Error fetching trades for graph: %v", err)
@@ -2623,18 +2621,16 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			"id":                loopID,
 			"loop_id":           loopID,
 			"loop_type":         "detected_loop",
-			"initiator_view":    isPremium,
+			"initiator_view":    true,
 			"can_join":          true,
 			"can_decline":       true,
-			"can_create":        isPremium,
+			"can_create":        true,
 			"edges":             edges,
 			"loop_length":       len(loopEdges),
 			"participants":      participants,
 			"status":            "pending",
 			"initiator_user_id": userID,
 			"expires_at":        expiresAt,
-			"pro_nudge":         !isPremium,
-			"pro_nudge_text":    "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
 		})
 	}
 
@@ -4422,10 +4418,10 @@ func (h *TradeHandler) BackOutChain(c *fiber.Ctx) error {
 		Success: true,
 		Message: "You have backed out of the chain.",
 		Data: fiber.Map{
-			"strike_message":   strikeMsg,
-			"rematch_status":   rematchResult,
-			"hold_expires":     holdExpires.Format("2006-01-02 15:04:05"),
-			"remaining_users":  remainingUsers,
+			"strike_message":  strikeMsg,
+			"rematch_status":  rematchResult,
+			"hold_expires":    holdExpires.Format("2006-01-02 15:04:05"),
+			"remaining_users": remainingUsers,
 		},
 	})
 }
@@ -4504,13 +4500,13 @@ func (h *TradeHandler) CheckMultiwayConflict(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data: fiber.Map{
-			"has_conflict":       hasConflict,
-			"two_way_count":      twoWayCount,
-			"two_way_trade_id":   twoWayTradeID,
-			"multiway_count":     multiwayCount,
-			"multiway_chain_id":  multiwayChainID,
-			"multiway_status":    multiwayStatus,
-			"recommendation":     "Accept the offer you prefer first. If you accept the 2-way trade, the multi-way chain will dissolve automatically.",
+			"has_conflict":      hasConflict,
+			"two_way_count":     twoWayCount,
+			"two_way_trade_id":  twoWayTradeID,
+			"multiway_count":    multiwayCount,
+			"multiway_chain_id": multiwayChainID,
+			"multiway_status":   multiwayStatus,
+			"recommendation":    "Accept the offer you prefer first. If you accept the 2-way trade, the multi-way chain will dissolve automatically.",
 		},
 	})
 }
@@ -4653,12 +4649,12 @@ func (h *TradeHandler) AdminGetChains(c *fiber.Ctx) error {
 		h.db.QueryRow("SELECT COUNT(*) FROM user_strikes WHERE chain_id = ?", cID).Scan(&totalStrikes)
 
 		chain := fiber.Map{
-			"id":               id,
-			"chain_id":         cID,
+			"id":                id,
+			"chain_id":          cID,
 			"original_trade_id": tradeID,
-			"status":           status,
+			"status":            status,
 			"initiator_user_id": initiatorID,
-			"initiator_name":   initiatorName,
+			"initiator_name":    initiatorName,
 			"participants": []fiber.Map{
 				{"id": u1ID, "name": u1Name, "role": "user1"},
 				{"id": u2ID, "name": u2Name, "role": "user2"},
@@ -4723,12 +4719,12 @@ func (h *TradeHandler) GetUserStrikes(c *fiber.Ctx) error {
 			continue
 		}
 		s := fiber.Map{
-			"id":             id,
-			"chain_id":       chainID,
-			"strike_number":  strikeNum,
-			"reason":         reason,
-			"severity":       severity,
-			"created_at":     createdAt.Format("2006-01-02 15:04:05"),
+			"id":            id,
+			"chain_id":      chainID,
+			"strike_number": strikeNum,
+			"reason":        reason,
+			"severity":      severity,
+			"created_at":    createdAt.Format("2006-01-02 15:04:05"),
 		}
 		if restrictedUntil.Year() > 1970 {
 			s["restricted_until"] = restrictedUntil.Format("2006-01-02 15:04:05")
@@ -4877,7 +4873,7 @@ func (h *TradeHandler) AdminResolveLegDispute(c *fiber.Ctx) error {
 
 	var payload struct {
 		Resolution string `json:"resolution"` // "no_action", "cancel_leg", "cancel_chain"
-		Status     string `json:"status"`      // "resolved_in_favor", "resolved_against", "cancelled_leg"
+		Status     string `json:"status"`     // "resolved_in_favor", "resolved_against", "cancelled_leg"
 		AdminNotes string `json:"admin_notes"`
 	}
 	if err := c.BodyParser(&payload); err != nil {

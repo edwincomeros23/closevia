@@ -217,14 +217,14 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		return nil, debug, nil
 	}
 
-	// 2. Get User 2's target product details
-	var targetCat, targetTitle string
+	// 2. Get User 2's target product details and wants
+	var targetCat, targetTitle, targetWants, targetWantedCat, targetDesiredProd string
 	err = db.QueryRow(`
-		SELECT p.category, p.title 
+		SELECT p.category, p.title, COALESCE(p.wants, ''), COALESCE(p.wanted_categories, ''), COALESCE(p.desired_product, '')
 		FROM trades t 
 		JOIN products p ON p.id = t.target_product_id 
 		WHERE t.id = ?
-	`, originalTradeID).Scan(&targetCat, &targetTitle)
+	`, originalTradeID).Scan(&targetCat, &targetTitle, &targetWants, &targetWantedCat, &targetDesiredProd)
 	if err != nil {
 		return nil, debug, err
 	}
@@ -241,11 +241,10 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		FROM products p
 		JOIN users u ON u.id = p.seller_id
 		WHERE p.status = 'available'
-		AND (p.category = ? OR p.title LIKE ?)
 	`
-	searchRows, err := db.Query(query, targetCat, "%"+targetTitle+"%")
+	searchRows, err := db.Query(query)
 	if err != nil {
-		return nil, debug, nil
+		return nil, debug, err
 	}
 	defer searchRows.Close()
 
@@ -270,14 +269,18 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 			score := 0
 			reasons := []string{}
 
-			if strings.EqualFold(strings.TrimSpace(user3Category), strings.TrimSpace(targetCat)) {
+			u2Haystack := strings.ToLower(targetWants + " " + targetWantedCat + " " + targetDesiredProd)
+			u3TitleLower := strings.ToLower(strings.TrimSpace(user3ProductTitle))
+			u3CatLower := strings.ToLower(strings.TrimSpace(user3Category))
+
+			if u3TitleLower != "" && strings.Contains(u2Haystack, u3TitleLower) {
 				score += 35
-				reasons = append(reasons, "Category matched target item (+35)")
-			} else if strings.Contains(strings.ToLower(user3ProductTitle), strings.ToLower(strings.TrimSpace(targetTitle))) {
+				reasons = append(reasons, "User 3 title matched what User 2 wants (+35)")
+			} else if u3CatLower != "" && strings.Contains(u2Haystack, u3CatLower) {
 				score += 20
-				reasons = append(reasons, "Title similarity matched target item (+20)")
+				reasons = append(reasons, "User 3 category matched what User 2 wants (+20)")
 			} else {
-				reasons = append(reasons, "No category/title signal against target item (+0)")
+				reasons = append(reasons, "User 3 product did not strongly match User 2's explicit wants (+0)")
 			}
 
 			if up.Price > 0 && user3Price > 0 {

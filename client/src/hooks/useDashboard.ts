@@ -49,7 +49,8 @@ export const useDashboardProducts = (userId: number | undefined) => {
     },
     enabled: !!userId,
     // Products data reduced to 1 minute to avoid stale dashboard
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: 1000 * 30, // 30 seconds for dashboard freshness
+    refetchOnMount: 'always',
     placeholderData: keepPreviousData,
   })
 }
@@ -104,7 +105,7 @@ export const useSentOffers = () => {
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    refetchInterval: 5000, // Background refetch every 5 seconds for real-time
     placeholderData: keepPreviousData,
   })
 }
@@ -127,7 +128,7 @@ export const useReceivedOffers = () => {
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    refetchInterval: 1000 * 60 * 5, // Background refetch every 5 minutes
+    refetchInterval: 5000, // Background refetch every 5 seconds for real-time
     placeholderData: keepPreviousData,
   })
 }
@@ -270,19 +271,19 @@ export const useInvalidateDashboard = () => {
   const queryClient = useQueryClient()
 
   const invalidateDashboard = () => {
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    return queryClient.invalidateQueries({ queryKey: ['dashboard'] })
   }
 
   const invalidateProducts = () => {
-    queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.products })
+    return queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.products })
   }
 
   const invalidateOffers = () => {
-    queryClient.invalidateQueries({ queryKey: ['dashboard', 'offers'] })
+    return queryClient.invalidateQueries({ queryKey: ['dashboard', 'offers'] })
   }
 
   const invalidateCounts = () => {
-    queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.counts })
+    return queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.counts })
   }
 
   return {

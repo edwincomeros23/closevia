@@ -573,11 +573,12 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                 w="full"
                 onClick={handleSubmitCompletion}
                 isLoading={submitting}
-                loadingText="Confirming..."
+                loadingText="Completing..."
                 leftIcon={<FaCheck />}
                 isDisabled={rating === 0 || !policyAgreed || uploadingImage}
+                mt={4}
               >
-                Confirm Trade Completion
+                Complete Trade
               </Button>
             </ModalFooter>
           )}

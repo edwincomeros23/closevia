@@ -62,12 +62,9 @@ const Register: React.FC = () => {
       errors.department = 'Department/College is required for WMSU students'
     }
 
-    // Phone number validation: 10 to 15 digits, numeric only
-    if (phoneNumber && !/^\d+$/.test(phoneNumber)) {
-      errors.phone = 'Phone number must contain only digits'
-    }
-    if (phoneNumber && (phoneNumber.length < 10 || phoneNumber.length > 15)) {
-      errors.phone = 'Phone number must be 10 to 15 digits'
+    // Phone number validation: must be 11 digits, start with 09, numeric only (PH only)
+    if (phoneNumber && !/^09\d{9}$/.test(phoneNumber)) {
+      errors.phone = 'Phone number must be 11 digits, start with 09 (PH mobile only)'
     }
 
     if (!password) {
@@ -131,9 +128,8 @@ const Register: React.FC = () => {
         navigate('/verify-email', { state: { email: result.email } })
       } else {
         // Verification disabled — token returned directly; store it and log the user in
-        if (result.token) {
-          localStorage.setItem('clovia_token', result.token)
-        }
+        // Auth state is handled by register() -> completeLogin() in AuthContext
+
         // Check if WMSU student – show premium badge toast
         const isWmsu = email.toLowerCase().endsWith('@wmsu.edu.ph')
         if (isWmsu) {
@@ -365,7 +361,7 @@ const Register: React.FC = () => {
                         <FormLabel fontSize="13px" fontWeight="600" color="#666" mb="8px">
                           Phone Number
                           <Text as="span" fontSize="11px" color="gray.500" ml={2} fontWeight="400">
-                            ({phoneNumber.length}/15 digits)
+                            ({phoneNumber.length}/11 digits, PH only)
                           </Text>
                         </FormLabel>
                         <Input
@@ -373,12 +369,14 @@ const Register: React.FC = () => {
                           inputMode="numeric"
                           value={phoneNumber}
                           onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 15)
+                            // Only allow numbers, max 11 digits, must start with 09
+                            let value = e.target.value.replace(/\D/g, '')
+                            if (value.length > 11) value = value.slice(0, 11)
                             setPhoneNumber(value)
                             if (fieldErrors.phone) setFieldErrors({ ...fieldErrors, phone: '' })
                           }}
                           placeholder="e.g. 09171234567"
-                          maxLength={15}
+                          maxLength={11}
                           size="lg"
                           bg={fieldErrors.phone ? '#FFF5F5' : '#F5F5F5'}
                           borderColor={fieldErrors.phone ? '#ef5350' : '#E0E0E0'}
