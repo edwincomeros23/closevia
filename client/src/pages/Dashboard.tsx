@@ -4514,11 +4514,9 @@ const Dashboard: React.FC = () => {
                       <Text fontSize="xs" color="blue.800">
                         Tip: Make sure your listings have desired items filled in to appear in multi-way matches.
                       </Text>
-                      {!user?.is_premium && (
-                        <Text fontSize="xs" color="blue.900" fontWeight="semibold">
-                          You're viewing matches found for your listings. Initiating a multi-way search requires Premium.
-                        </Text>
-                      )}
+                      <Text fontSize="xs" color="blue.900" fontWeight="semibold">
+                        Multi-way loops are open for everyone. Start trading and discovering loops!
+                      </Text>
                     </VStack>
                   </Box>
 
@@ -4539,13 +4537,7 @@ const Dashboard: React.FC = () => {
                     </VStack>
                   )}
 
-                  {!user?.is_premium && (multiWayTrades || []).some((t: any) => t?.loop_type === 'detected_loop' && t?.pro_nudge) && (
-                    <Box p={3} bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="lg" mb={4}>
-                      <Text fontSize="xs" color="yellow.800" fontWeight="bold">
-                        You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.
-                      </Text>
-                    </Box>
-                  )}
+
 
                   {multiWayTradesLoading ? (
                     <Center py={12}>
@@ -4560,9 +4552,7 @@ const Dashboard: React.FC = () => {
                         </Text>
                         <Text color="gray.500" fontSize="sm">
                           {multiWayChainFilter === 'all'
-                            ? (user?.is_premium
-                              ? 'Multi-way trade opportunities will appear here. Check back soon!'
-                              : 'This space shows matches found for your listings. Upgrade to Premium to initiate multi-way searches.')
+                            ? 'Multi-way trade opportunities will appear here. Check back soon!'
                             : 'Try changing the chain-size filter to see more matches.'}
                         </Text>
                       </Box>
@@ -4576,9 +4566,7 @@ const Dashboard: React.FC = () => {
                             </Text>
                             <Text color="gray.500" fontSize="sm" maxW="400px">
                               {multiWayChainFilter === 'all'
-                                ? (user?.is_premium
-                                  ? 'Multi-way trade opportunities will appear here once we find a trading loop that involves your products. Check back later!'
-                                  : 'You can view detected matches here. Upgrade to Premium to initiate and run loop searches.')
+                                ? 'Multi-way trade opportunities will appear here once we find a trading loop that involves your products. Check back later!'
                                 : 'No loops currently match the selected chain size. Try All Chains.'}
                             </Text>
                           </VStack>
@@ -4648,10 +4636,6 @@ const Dashboard: React.FC = () => {
                                 px={{ base: 2, md: 3 }}
                                 onClick={() => {
                                   if (trade?.loop_type !== 'detected_loop') return
-                                  if (!user?.is_premium) {
-                                    setShowPremiumModal(true)
-                                    return
-                                  }
                                   void (async () => {
                                     try {
                                       setMultiWayManagerLoading(true)
@@ -4696,16 +4680,7 @@ const Dashboard: React.FC = () => {
                                 >
                                   Decline
                                 </Button>
-                                {trade?.loop_type === 'detected_loop' && !trade?.can_create && !user?.is_premium && (
-                                  <Button
-                                    size="sm"
-                                    colorScheme="purple"
-                                    variant="outline"
-                                    onClick={() => setShowPremiumModal(true)}
-                                  >
-                                    Start a Loop <Badge ml={2} colorScheme="purple" fontSize="10px">Pro</Badge>
-                                  </Button>
-                                )}
+
                               </HStack>
                             )}
                           </HStack>
@@ -4758,8 +4733,26 @@ const Dashboard: React.FC = () => {
                               }}
                               onDecline={(searchAgain) => handleDeclineMultiWayTrade(trade, searchAgain)}
                               onStartLoop={() => {
-                                // Soft upsell touchpoint: free users can’t manually initiate.
-                                setShowPremiumModal(true)
+                                void (async () => {
+                                  try {
+                                    if (trade?.loop_type !== 'detected_loop') return
+                                    setMultiWayManagerLoading(true)
+                                    const loopId = String(trade?.loop_id || trade?.id || '')
+                                    const details = await fetchMultiWayTrade(loopId)
+                                    setSelectedMultiWayTrade(details)
+                                    setMultiWayManagerOpen(true)
+                                  } catch (e) {
+                                    console.error('Failed to load loop details:', e)
+                                    toast({
+                                      id: 'error-load-loop-details',
+                                      title: 'Error',
+                                      description: 'Failed to load trade loop details.',
+                                      status: 'error',
+                                    })
+                                  } finally {
+                                    setMultiWayManagerLoading(false)
+                                  }
+                                })()
                               }}
                               isLoading={multiWayTradeJoining}
                             />

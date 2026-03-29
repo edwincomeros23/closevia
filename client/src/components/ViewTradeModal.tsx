@@ -590,7 +590,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                           <Text fontSize="xs" color="gray.500">
                             {method === 'cod' && 'Pay when you receive the item'}
                             {method === 'online' && 'Secure checkout via Xendit gateway'}
-                            {method === 'wallet' && 'Pay using your Clovia wallet balance'}
                           </Text>
                         </VStack>
                       </HStack>
@@ -642,7 +641,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 }}
               >
                 {deliveryState.paymentConfirmed
-                  ? `✅ ${paymentMethods[deliveryState.paymentMethod].label} Confirmed`
+                  ? `✅ Payment Confirmed`
                   : deliveryState.paymentMethod === 'online'
                     ? 'Proceed to Xendit Checkout'
                     : `Confirm ${paymentMethods[deliveryState.paymentMethod].label}`}
@@ -1228,7 +1227,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const paymentMethods = {
     cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
     online: { label: 'Online Payment (Xendit)', icon: '💳', color: 'blue' },
-    wallet: { label: 'Clovia Wallet', icon: '💼', color: 'purple' },
   }
   const tradingPartner = isUserBuyer
     ? trade?.seller_name || `User #${trade?.seller_id}`

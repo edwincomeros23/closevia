@@ -2156,10 +2156,11 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 
 	// 1. Verified account: 15 points (Verified = 15, Not verified = 0)
 	var verificationStatus string
-	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified') FROM users WHERE id = ?", userID).Scan(&verificationStatus)
+	var isVerifiedBool bool
+	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified'), verified FROM users WHERE id = ?", userID).Scan(&verificationStatus, &isVerifiedBool)
 	verifiedPoints := 0
 	verifiedStatus := "fail"
-	if verificationStatus == "verified" {
+	if verificationStatus == "verified" || isVerifiedBool {
 		verifiedPoints = 15
 		verifiedStatus = "pass"
 	} else if verificationStatus == "pending" {

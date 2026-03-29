@@ -273,7 +273,8 @@ const AddProduct: React.FC = () => {
       },
       () => {
         setIsGettingLocation(false)
-      }
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     )
   }, [applyMockLocation, useMockLocation])
 
