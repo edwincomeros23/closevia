@@ -336,6 +336,8 @@ type Trade struct {
 	SellerName            string `json:"seller_name,omitempty"`
 	ProductTitle          string `json:"product_title,omitempty"`
 	ProductImageURL       string `json:"product_image_url,omitempty"`
+	BuyerMet              bool   `json:"buyer_met"`
+	SellerMet             bool   `json:"seller_met"`
 }
 
 // TradeItem represents an item offered in a trade
@@ -364,7 +366,7 @@ type TradeCreate struct {
 
 // TradeAction represents accept/decline/counter actions
 type TradeAction struct {
-	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup update_delivery_state request_option_change approve_option_change reject_option_change"`
+	Action                   string   `json:"action" validate:"required,oneof=accept decline counter complete cancel confirm_meetup confirm_meetup_done update_delivery_state request_option_change approve_option_change reject_option_change"`
 	Message                  string   `json:"message,omitempty"`
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
