@@ -2576,6 +2576,10 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	allLoops := graph.FindTradeLoops()
 	expiresAt := time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	for _, loopEdges := range allLoops {
+		// Skip 2-edge "loops" (A→B→A) — these are just regular bilateral trades, not multi-way
+		if len(loopEdges) < 3 {
+			continue
+		}
 		involvesUser := false
 		participants := []map[string]interface{}{}
 		var edges []map[string]interface{}
