@@ -35,6 +35,14 @@ import {
   Progress,
   Image,
   Tooltip,
+  FormControl,
+  FormLabel,
+  Input,
+  Select,
+  FormHelperText,
+  Stack,
+  AlertTitle,
+  AlertDescription,
 } from '@chakra-ui/react'
 import {
   FaHome,
@@ -51,8 +59,10 @@ import {
   FaTimesCircle,
   FaSync,
   FaBolt,
+  FaCamera,
+  FaIdCard,
 } from 'react-icons/fa'
-import { WarningIcon } from '@chakra-ui/icons'
+import { WarningIcon, AddIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'
 import { Delivery } from '../types'
 import { useRiderState } from '../hooks/useRiderState'
@@ -70,6 +80,263 @@ interface DeliveryWithBatch extends Delivery {
   sender_fee?: number
   receiver_fee?: number
   rider_cut?: number
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RIDER APPLICATION FORM - RESTORED
+// ─────────────────────────────────────────────────────────────────────────────
+interface RiderApplicationFormProps {
+  onSuccess: () => void
+}
+
+const RiderApplicationForm: React.FC<RiderApplicationFormProps> = ({ onSuccess }) => {
+  const toast = useToast()
+  const [loading, setLoading] = useState(false)
+  const [uploadingLicense, setUploadingLicense] = useState(false)
+  const [uploadingSelfie, setUploadingSelfie] = useState(false)
+
+  const [formData, setFormData] = useState({
+    full_name: '',
+    contact_number: '',
+    vehicle_type: 'motorcycle',
+    vehicle_plate: '',
+    license_image_url: '',
+    selfie_image_url: '',
+  })
+
+  const uploadImage = async (file: File, type: string) => {
+    const uploadData = new FormData()
+    uploadData.append('image', file)
+    uploadData.append('type', type)
+
+    const res = await api.post('/api/upload', uploadData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+
+    if (res.data?.success && res.data?.data?.url) {
+      return res.data.data.url
+    }
+    throw new Error('Upload failed')
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: 'license_image_url' | 'selfie_image_url') => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (field === 'license_image_url') setUploadingLicense(true)
+    else setUploadingSelfie(true)
+
+    try {
+      const url = await uploadImage(file, 'rider-doc')
+      setFormData(prev => ({ ...prev, [field]: url }))
+      toast({ title: 'Image uploaded', status: 'success', duration: 2000 })
+    } catch (err) {
+      toast({ title: 'Upload failed', status: 'error' })
+    } finally {
+      if (field === 'license_image_url') setUploadingLicense(false)
+      else setUploadingSelfie(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.full_name || !formData.contact_number || !formData.license_image_url) {
+      toast({ title: 'Please fill all required fields', status: 'warning' })
+      return
+    }
+
+    if (formData.contact_number.length !== 11) {
+      toast({ title: 'Contact number must be 11 digits', status: 'error' })
+      return
+    }
+
+    setLoading(true)
+    try {
+      await api.post('/api/deliveries/apply', formData)
+      toast({
+        title: 'Application Submitted!',
+        description: 'We will review your application within 24-48 hours.',
+        status: 'success',
+        duration: 5000,
+      })
+      onSuccess()
+    } catch (err: any) {
+      toast({
+        title: 'Submission failed',
+        description: err.response?.data?.error || 'Please try again later',
+        status: 'error',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Box p={4} maxW="md" mx="auto" pb="100px">
+      <VStack spacing={6} align="stretch" as="form" onSubmit={handleSubmit}>
+        <VStack align="start" spacing={1}>
+          <Heading size="lg" color="brand.600">Apply as Rider</Heading>
+          <Text color="gray.600" fontSize="sm">Join our delivery network and start earning.</Text>
+        </VStack>
+
+        <Card variant="outline" borderRadius="xl" shadow="sm">
+          <CardBody>
+            <VStack spacing={4}>
+              <FormControl isRequired>
+                <FormLabel fontSize="sm" fontWeight="bold">Full Name</FormLabel>
+                <Input
+                  placeholder="Juan Dela Cruz"
+                  value={formData.full_name}
+                  onChange={e => setFormData({ ...formData, full_name: e.target.value })}
+                  focusBorderColor="brand.400"
+                />
+              </FormControl>
+
+              <FormControl isRequired>
+                <FormLabel fontSize="sm" fontWeight="bold">Contact Number</FormLabel>
+                <Input
+                  placeholder="09171234567"
+                  maxLength={11}
+                  value={formData.contact_number}
+                  onChange={e => setFormData({ ...formData, contact_number: e.target.value.replace(/\D/g, '') })}
+                  focusBorderColor="brand.400"
+                />
+                <FormHelperText fontSize="xs">Used for delivery updates (11 digits)</FormHelperText>
+              </FormControl>
+
+              <FormControl isRequired>
+                <FormLabel fontSize="sm" fontWeight="bold">Vehicle Type</FormLabel>
+                <Select
+                  value={formData.vehicle_type}
+                  onChange={e => setFormData({ ...formData, vehicle_type: e.target.value })}
+                  focusBorderColor="brand.400"
+                >
+                  <option value="motorcycle">Motorcycle</option>
+                  <option value="bicycle">Bicycle</option>
+                  <option value="car">Car</option>
+                </Select>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize="sm" fontWeight="bold">Vehicle Plate Number</FormLabel>
+                <Input
+                  placeholder="ABC 1234"
+                  value={formData.vehicle_plate}
+                  onChange={e => setFormData({ ...formData, vehicle_plate: e.target.value })}
+                  focusBorderColor="brand.400"
+                />
+              </FormControl>
+            </VStack>
+          </CardBody>
+        </Card>
+
+        <Heading size="xs" textTransform="uppercase" letterSpacing="wider" color="gray.500" pt={2}>
+          Required Documents
+        </Heading>
+
+        <SimpleGrid columns={2} spacing={4}>
+          <VStack align="stretch">
+            <FormControl isRequired>
+              <FormLabel fontSize="xs" textAlign="center">Driver's License</FormLabel>
+              <Box
+                h="120px"
+                bg="gray.50"
+                border="2px dashed"
+                borderColor={formData.license_image_url ? 'brand.200' : 'gray.200'}
+                borderRadius="lg"
+                position="relative"
+                overflow="hidden"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                cursor="pointer"
+                onClick={() => document.getElementById('license-upload')?.click()}
+                _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
+              >
+                {uploadingLicense ? (
+                  <Spinner color="brand.500" />
+                ) : formData.license_image_url ? (
+                  <Image src={formData.license_image_url} alt="License" objectFit="cover" w="full" h="full" />
+                ) : (
+                  <VStack spacing={1}>
+                    <Icon as={FaIdCard} color="gray.400" boxSize={6} />
+                    <Text fontSize="2xs" color="gray.500">Upload Photo</Text>
+                  </VStack>
+                )}
+                <Input
+                  id="license-upload"
+                  type="file"
+                  accept="image/*"
+                  display="none"
+                  onChange={e => handleFileChange(e, 'license_image_url')}
+                />
+              </Box>
+            </FormControl>
+          </VStack>
+
+          <VStack align="stretch">
+            <FormControl>
+              <FormLabel fontSize="xs" textAlign="center">Selfie with ID</FormLabel>
+              <Box
+                h="120px"
+                bg="gray.50"
+                border="2px dashed"
+                borderColor={formData.selfie_image_url ? 'brand.200' : 'gray.200'}
+                borderRadius="lg"
+                position="relative"
+                overflow="hidden"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                cursor="pointer"
+                onClick={() => document.getElementById('selfie-upload')?.click()}
+                _hover={{ borderColor: 'brand.400', bg: 'brand.50' }}
+              >
+                {uploadingSelfie ? (
+                  <Spinner color="brand.500" />
+                ) : formData.selfie_image_url ? (
+                  <Image src={formData.selfie_image_url} alt="Selfie" objectFit="cover" w="full" h="full" />
+                ) : (
+                  <VStack spacing={1}>
+                    <Icon as={FaCamera} color="gray.400" boxSize={6} />
+                    <Text fontSize="2xs" color="gray.500">Take Selfie</Text>
+                  </VStack>
+                )}
+                <Input
+                  id="selfie-upload"
+                  type="file"
+                  accept="image/*"
+                  display="none"
+                  onChange={e => handleFileChange(e, 'selfie_image_url')}
+                />
+              </Box>
+            </FormControl>
+          </VStack>
+        </SimpleGrid>
+
+        <Alert status="info" borderRadius="lg" variant="subtle" py={2}>
+          <AlertIcon />
+          <Text fontSize="xs" color="blue.700">
+            Your documents are safe and will only be used for verification.
+          </Text>
+        </Alert>
+
+        <Button
+          type="submit"
+          colorScheme="brand"
+          size="lg"
+          h="56px"
+          borderRadius="xl"
+          isLoading={loading}
+          loadingText="Submitting..."
+          shadow="md"
+          _hover={{ shadow: 'lg', transform: 'translateY(-1px)' }}
+        >
+          Submit Application
+        </Button>
+      </VStack>
+    </Box>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -655,12 +922,12 @@ const RiderHome: React.FC = () => {
     })
   }
 
-  // Redirect unauthorized riders outside render to avoid navigation side-effects during render
-  useEffect(() => {
-    if (!stateLoading && !riderState?.permissions?.can_view_jobs) {
-      navigate('/rider')
-    }
-  }, [stateLoading, riderState?.permissions?.can_view_jobs, navigate])
+  // Redirect unauthorized riders (REMOVED) - we now show the application form instead of /home
+  // useEffect(() => {
+  //   if (!stateLoading && !riderState?.permissions?.can_view_jobs) {
+  //     navigate('/home')
+  //   }
+  // }, [stateLoading, riderState?.permissions?.can_view_jobs, navigate])
 
   // Loading state
   if (stateLoading) {
@@ -671,9 +938,90 @@ const RiderHome: React.FC = () => {
     )
   }
 
-  // Block if not authorized
-  if (!riderState?.permissions?.can_view_jobs) {
-    return null
+  // ─── RIDER APPLICATION STATES ──────────────────────────────────────────────
+  
+  if (riderState?.state === 'NOT_APPLIED') {
+    return (
+      <Box minH="100vh" bg="#FFFDF1">
+        <RiderApplicationForm onSuccess={() => window.location.reload()} />
+      </Box>
+    )
+  }
+
+  if (riderState?.state === 'under_review' || riderState?.status === 'under_review' || riderState?.status === 'pending') {
+    return (
+      <Center minH="100vh" bg="#FFFDF1" p={6}>
+        <Card maxW="sm" w="full" textAlign="center" borderRadius="xl" shadow="lg" border="1px" borderColor="brand.100">
+          <CardBody py={8}>
+            <VStack spacing={6}>
+              <Box position="relative">
+                <Icon as={FaClock} boxSize={16} color="brand.400" />
+                <Box position="absolute" top={-1} right={-1}>
+                  <Spinner size="sm" color="brand.500" />
+                </Box>
+              </Box>
+              <VStack spacing={2}>
+                <Heading size="md">Application Pending</Heading>
+                <Text color="gray.600">
+                  Your application is currently under review by our team. This usually takes 24-48 hours.
+                </Text>
+              </VStack>
+              <Button colorScheme="brand" variant="outline" w="full" onClick={() => navigate('/home')}>
+                Go to Marketplace
+              </Button>
+            </VStack>
+          </CardBody>
+        </Card>
+      </Center>
+    )
+  }
+
+  if (riderState?.state === 'rejected' || riderState?.status === 'rejected') {
+    return (
+      <Center minH="100vh" bg="#FFFDF1" p={6}>
+        <Card maxW="sm" w="full" textAlign="center" borderRadius="xl" shadow="lg" border="1px" borderColor="red.100">
+          <CardBody py={8}>
+            <VStack spacing={6}>
+              <Icon as={FaExclamationTriangle} boxSize={16} color="red.400" />
+              <VStack spacing={2}>
+                <Heading size="md" color="red.600">Application Rejected</Heading>
+                <Text color="gray.600">
+                  Unfortunately, your application was not approved at this time.
+                </Text>
+                {riderState?.rejection_reason && (
+                  <Alert status="error" variant="subtle" borderRadius="md" mt={2}>
+                    <AlertIcon />
+                    <AlertDescription fontSize="xs">
+                      {riderState.rejection_reason}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </VStack>
+              <Button colorScheme="brand" w="full" onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+              <Button variant="ghost" colorScheme="gray" w="full" onClick={() => navigate('/home')}>
+                Back to Home
+              </Button>
+            </VStack>
+          </CardBody>
+        </Card>
+      </Center>
+    )
+  }
+
+  // Block if not authorized but hasn't fit into above states (extra safety)
+  if (!riderState?.permissions?.can_view_jobs && riderState?.state !== 'approved') {
+    return (
+      <Center minH="100vh" bg="#FFFDF1" p={6}>
+        <VStack spacing={4}>
+          <Icon as={FaExclamationTriangle} boxSize={12} color="orange.400" />
+          <Text fontWeight="bold">Access Restricted</Text>
+          <Text textAlign="center" color="gray.600">You don't have permission to view this page.</Text>
+          <Button onClick={() => navigate('/home')}>Go Home</Button>
+        </VStack>
+      </Center>
+    )
   }
 
   // ─── RENDER HOME CONTENT ─────────────────────────────────────────────

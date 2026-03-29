@@ -249,13 +249,13 @@ const BatchStatus: React.FC = () => {
 
         {/* Complete Batch Button */}
         {completedCount === batch.totalJobs && (
-          <Button w="full" colorScheme="green" size="lg" onClick={() => navigate('/rider/queue')}>
+          <Button w="full" colorScheme="green" size="lg" onClick={() => navigate('/rider-home')}>
             ✓ Batch Complete — Claim New Job
           </Button>
         )}
 
         {/* Back Button */}
-        <Button w="full" variant="outline" onClick={() => navigate('/rider/jobs')}>
+        <Button w="full" variant="outline" onClick={() => navigate('/rider-home')}>
           Back to Deliveries
         </Button>
       </VStack>

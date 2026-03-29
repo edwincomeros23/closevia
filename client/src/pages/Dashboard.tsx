@@ -102,7 +102,7 @@ const Dashboard: React.FC = () => {
   const [searchParams] = useSearchParams()
 
   // Use React Query hooks for cached data
-  const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched } = useDashboardProducts(user?.id)
+  const { data: userProducts = [], isLoading: productsLoading, isFetched: productsFetched, isFetching: productsFetching } = useDashboardProducts(user?.id)
   const actualUserProducts = Array.isArray(userProducts) ? userProducts : []
   const { data: orders = [], isFetched: ordersFetched } = useDashboardOrders()
   const { data: counts = { unread_notifications: 0, pending_offers: 0 }, isFetched: countsFetched } = useDashboardCounts()
@@ -1385,7 +1385,7 @@ const Dashboard: React.FC = () => {
           icon: FaCheckCircle,
           confirmColorScheme: 'green'
         })
-        invalidateDashboard()
+        await invalidateDashboard()
       } else {
         throw new Error(response.data?.error || 'Failed to boost product')
       }
@@ -1454,8 +1454,8 @@ const Dashboard: React.FC = () => {
           for (const id of deletableIds) {
             await deleteProduct(id)
           }
-          invalidateProducts()
-          invalidateOffers()
+          await invalidateProducts()
+          await invalidateOffers()
           setSelectedProductIds(new Set())
           setPopupOpen(false)
           toast({ id: 'deleted', title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
@@ -1488,7 +1488,7 @@ const Dashboard: React.FC = () => {
       for (const p of productsToUnlock) {
         await updateProduct(p.id, { status: 'available' })
       }
-      invalidateProducts()
+      await invalidateProducts()
       setSelectedProductIds(new Set())
       const locked = productsToLock.length
       const unlocked = productsToUnlock.length
@@ -1538,8 +1538,8 @@ const Dashboard: React.FC = () => {
       setDeleting(true)
       await deleteProduct(productToDelete.id)
       // Invalidate products cache to refresh data
-      invalidateProducts()
-      invalidateOffers() // Also invalidate offers since deleting a product affects trades
+      await invalidateProducts()
+      await invalidateOffers() // Also invalidate offers since deleting a product affects trades
 
       setPopupOpen(false)
       showPopup({
@@ -2812,8 +2812,14 @@ const Dashboard: React.FC = () => {
                   <Heading size="md" color="brand.500" mb={1}>
                     Welcome, <Box as="span" textTransform="capitalize">{user?.name}</Box>!
                   </Heading>
-                  <Text color="gray.600" fontSize="sm">
+                  <Text color="gray.600" fontSize="sm" display="flex" alignItems="center">
                     {activeSubtitle}
+                    {productsFetching && !productsLoading && (
+                      <HStack spacing={1} ml={3}>
+                        <Spinner size="xs" color="brand.500" />
+                        <Text fontSize="xs" fontWeight="medium" color="brand.500">Updating...</Text>
+                      </HStack>
+                    )}
                   </Text>
                 </Box>
 

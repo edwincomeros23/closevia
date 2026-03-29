@@ -1,0 +1,29 @@
+ M client/src/App.tsx
+ M client/src/components/Sidebar.tsx
+ M client/src/contexts/ProductContext.tsx
+ M client/src/delivery_option/BatchPreview.tsx
+ M client/src/delivery_option/BatchStatus.tsx
+ M client/src/delivery_option/RemittanceLedger.tsx
+ M client/src/delivery_option/RiderHome.tsx
+ M client/src/delivery_option/TaskStepper.tsx
+ D client/src/delivery_option/rider.tsx
+ D client/src/delivery_option/riderqueue.tsx
+ M client/src/hooks/useDashboard.ts
+ M client/src/hooks/useRiderState.ts
+ M client/src/pages/AddProduct.tsx
+ M client/src/pages/Dashboard.tsx
+ M client/src/pages/EditProduct.tsx
+ M client/src/pages/Home.tsx
+ M client/src/pages/UserProfile.tsx
+ M fraud_predictions.log
+ M tmp/main.exe
+?? git_status_out.txt
+?? query_output.txt
+?? query_product.go
+?? query_results.json
+?? uploads/products/1774720239558018300_552176748_798377016135904_8161000536109674886_n.jpg
+?? uploads/products/1774720239574926400_564704103_794657116499937_7395925138632312924_n.jpg
+?? uploads/products/1774720239584287000_551040883_1823817024899456_8959964471307522433_n.jpg
+?? uploads/products/1774721381627411400_552176748_798377016135904_8161000536109674886_n.jpg
+?? uploads/products/1774721381638135100_564704103_794657116499937_7395925138632312924_n.jpg
+?? uploads/products/1774721381649664900_551040883_1823817024899456_8959964471307522433_n.jpg

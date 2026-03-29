@@ -51,7 +51,7 @@ import {
   Alert,
   AlertIcon,
 } from '@chakra-ui/react'
-import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera, FiActivity, FiTag } from 'react-icons/fi'
+import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera, FiActivity, FiTag, FiInfo } from 'react-icons/fi'
 import { FaHeart, FaBuilding, FaGraduationCap, FaStore, FaFileAlt, FaThumbsUp, FaThumbtack } from 'react-icons/fa'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -1043,10 +1043,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 </Box>
               </HStack>
 
-              {/* Verification Depth sub-badges (organization only) */}
-              {user.is_organization && (user.verification_status === 'verified' || user.verified || user.org_verified) && (
-                {/* Organization verification badges removed for redundancy. TrustScoreCard and check icon now serve as the only verification indicators. */}
-              )}
+
 
               {/* Activity & Transparency (organization only) */}
               {user.is_organization && (
@@ -1139,7 +1136,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               </SimpleGrid>
 
               {/* Trust Score Card */}
-              {sellerStats && (
+              {sellerStats ? (
                 <Box mb={3}>
                   <TrustScoreCard
                     score={sellerStats.trust_score ?? 0}

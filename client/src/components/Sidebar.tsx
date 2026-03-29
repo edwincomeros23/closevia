@@ -135,7 +135,7 @@ const Sidebar: React.FC = () => {
         {
           icon: FaMotorcycle,
           label: riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider',
-          path: '/rider'
+          path: '/rider-home'
         },
         {
           icon: FaCrown,

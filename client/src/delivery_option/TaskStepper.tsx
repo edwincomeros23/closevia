@@ -321,7 +321,7 @@ const TaskStepper: React.FC = () => {
 
       if (nextStatus === 'delivered') {
         // Give a moment for the user to see success, then navigate
-        setTimeout(() => navigate('/rider'), 2000)
+        setTimeout(() => navigate('/rider-home'), 2000)
       }
     } catch (error: any) {
       const errMsg = error?.response?.data?.error || 'Failed to update delivery status'
@@ -364,7 +364,7 @@ const TaskStepper: React.FC = () => {
       <Center minH="100vh" bg="#FFFDF1">
         <VStack spacing={3}>
           <Text color="gray.500">Delivery not found</Text>
-          <Button colorScheme="brand" onClick={() => navigate('/rider')}>
+          <Button colorScheme="brand" onClick={() => navigate('/rider-home')}>
             Back to Jobs
           </Button>
         </VStack>
@@ -714,7 +714,7 @@ const TaskStepper: React.FC = () => {
             size="sm"
             variant="outline"
             colorScheme="brand"
-            onClick={() => navigate('/rider')}
+            onClick={() => navigate('/rider-home')}
           >
             Back to Jobs
           </Button>

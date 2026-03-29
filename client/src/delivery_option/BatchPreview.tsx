@@ -123,7 +123,7 @@ const BatchPreview: React.FC = () => {
         isClosable: true,
       })
 
-      navigate(`/rider/task-stepper/${batchId}`)
+      navigate(`/task-stepper/${batchId}`)
     } catch (error) {
       toast({
         id: "batchpreview-claim-failed",
