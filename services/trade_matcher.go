@@ -92,7 +92,7 @@ func (g *TradeGraph) dfs(startNode, currentNode int, adj map[int][]TradeEdge, pa
 		*path = append(*path, edge)
 
 		if edge.ToUser == startNode {
-			// Found a loop — only keep it if within the chain length cap
+			// Found a loop — keep it if within the chain length cap
 			if len(*path) <= MaxChainLength {
 				loop := make([]TradeEdge, len(*path))
 				copy(loop, *path)
