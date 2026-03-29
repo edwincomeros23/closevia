@@ -956,7 +956,7 @@ const Home: React.FC = () => {
                       {/* Menu Items */}
                       <Button
                         as={RouterLink}
-                        to="/rider"
+                        to="/rider-home"
                         size="sm"
                         w="full"
                         variant="ghost"

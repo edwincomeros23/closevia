@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Box,
   Container,
@@ -27,6 +28,7 @@ import { PRODUCT_CATEGORIES } from '../utils/categories'
 
 const EditProduct: React.FC = () => {
   const { id } = useParams<{ id: string }>()
+  const queryClient = useQueryClient()
   const [formData, setFormData] = useState<ProductUpdate>({})
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
@@ -233,6 +235,9 @@ const EditProduct: React.FC = () => {
       }
 
       await api.put(`/api/products/${id}`, form)
+      
+      // Invalidate dashboard products cache to ensure consistency
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
 
       toast({
         id: 'editproduct-product-updated',

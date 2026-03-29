@@ -737,7 +737,7 @@ const AddProduct: React.FC = () => {
       if (uploadedVideo) fd.append('video', uploadedVideo)
 
       await createProduct(fd)
-      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
       toast({
         id: "addproduct-product-posted", title: 'All set! 🎉', description: 'Your item is now live and visible to others.', status: 'success', position: 'top', duration: 3000, isClosable: true })
       navigate('/dashboard')

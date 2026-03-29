@@ -307,7 +307,7 @@ const RemittanceLedger: React.FC = () => {
             size="sm"
             variant="outline"
             colorScheme="brand"
-            onClick={() => navigate('/rider-queue')}
+            onClick={() => navigate('/rider-home')}
           >
             📍 Find Batches
           </Button>
@@ -316,7 +316,7 @@ const RemittanceLedger: React.FC = () => {
             size="sm"
             variant="outline"
             colorScheme="brand"
-            onClick={() => navigate('/rider')}
+            onClick={() => navigate('/rider-home')}
           >
             📋 My Jobs
           </Button>
@@ -328,7 +328,7 @@ const RemittanceLedger: React.FC = () => {
           variant="ghost"
           colorScheme="brand"
           fontSize="sm"
-          onClick={() => navigate('/rider-queue')}
+          onClick={() => navigate('/rider-home')}
         >
           ← Back to Queue
         </Button>
