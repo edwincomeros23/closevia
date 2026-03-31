@@ -2665,6 +2665,11 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 					continue
 				}
 
+				// Hide from User A until User C accepts
+				if mStatus == "pending_user3" && userID != initiatorUserID && userID != u3ID {
+					continue
+				}
+
 				user3Status := "pending"
 				switch mStatus {
 				case "user3_accepted", "active":

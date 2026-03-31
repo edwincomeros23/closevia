@@ -134,7 +134,7 @@ const Dashboard: React.FC = () => {
     return (receivedOffersData || []).filter(t =>
       (!t.items || t.items.length === 0) &&
       (t.offered_cash_amount && t.offered_cash_amount > 0) &&
-      (t.status === 'pending' || t.status === 'pending_multiway')
+      t.status === 'pending'
     )
   }, [receivedOffersData])
 
@@ -1115,7 +1115,7 @@ const Dashboard: React.FC = () => {
   }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const receivedOffers = useMemo(() => {
-    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Only show pending offers
+    const active = (incoming || []).filter(t => t.status === 'pending') // Only show strictly pending offers for received, multiway moves to multiway tab
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {

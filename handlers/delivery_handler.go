@@ -2479,3 +2479,27 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 		return c.JSON(models.APIResponse{Success: true, Message: "Payment rejected"})
 	}
 }
+
+// BackfillLedgers creates missing rider ledgers for all riders (admin tool)
+func (h *DeliveryHandler) BackfillLedgers(c *fiber.Ctx) error {
+	rows, err := h.db.Query("SELECT id FROM riders")
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch riders"})
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var riderID int
+		if err := rows.Scan(&riderID); err != nil {
+			continue
+		}
+		h.ensureRiderLedger(riderID)
+		count++
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: fmt.Sprintf("Successfully checked/backfilled %d rider ledgers", count),
+	})
+}
