@@ -126,7 +126,27 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   }, [isOpen, selectedOfferIds, selectedProducts])
 
   const toggleOfferSelection = (id: number) => {
-    setSelectedOfferIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setSelectedOfferIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(x => x !== id)
+      }
+      
+      // Check limit
+      const limit = targetProduct?.max_items_per_offer || 0
+      if (limit > 0 && prev.length >= limit) {
+        toast({
+          id: 'trademodal-selection-limit',
+          title: 'Selection Limit Reached',
+          description: `You can only select up to ${limit} items for this trade.`,
+          status: 'warning',
+          duration: 3000,
+          isClosable: true,
+        })
+        return prev
+      }
+      
+      return [...prev, id]
+    })
   }
 
   // Resolved delivery address for payload submission
@@ -285,7 +305,21 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
 
               <Divider />
 
-              <Text fontWeight="semibold">Select your items to offer:</Text>
+              <VStack align="start" spacing={1} w="full">
+                <Text fontWeight="semibold">
+                  Select your items to offer:
+                  {targetProduct?.max_items_per_offer ? (
+                    <Badge ml={2} colorScheme="brand" variant="subtle">
+                      Max {targetProduct.max_items_per_offer} items
+                    </Badge>
+                  ) : null}
+                </Text>
+                {selectedOfferIds.length > 0 && (
+                  <Text fontSize="xs" color="brand.500" fontWeight="bold">
+                    {selectedOfferIds.length} {targetProduct?.max_items_per_offer ? `/ ${targetProduct.max_items_per_offer}` : ''} items selected
+                  </Text>
+                )}
+              </VStack>
               {/* Scrollable grid: shows 2 full rows + small peek of 3rd; scroll when overflowing */}
               <Box maxH="244px" overflowY="auto" pr={2}>
                 <Grid templateColumns="repeat(auto-fill, minmax(100px, 150px))" gap={3} gridAutoRows="120px" justifyContent="start">

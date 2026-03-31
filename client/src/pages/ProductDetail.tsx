@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -1218,6 +1218,18 @@ const ProductDetail: React.FC = () => {
                                 fontSize="xs"
                               >
                                 {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
+                              </Badge>
+                            )}
+                            {product.max_items_per_offer && product.max_items_per_offer > 0 && (
+                              <Badge
+                                colorScheme="brand"
+                                variant="subtle"
+                                borderRadius="full"
+                                px={3}
+                                py={1}
+                                fontSize="xs"
+                              >
+                                Max {product.max_items_per_offer} items per offer
                               </Badge>
                             )}
                           </VStack>

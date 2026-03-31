@@ -199,6 +199,8 @@ type Product struct {
 	AuthenticityRisks    string            `json:"authenticity_risks,omitempty"`
 	PriceReasoning       string            `json:"price_reasoning,omitempty"`
 	Tags                 StringArray       `json:"tags,omitempty"`
+	BiddingType          string            `json:"bidding_type,omitempty"`
+	MaxItemsPerOffer     int               `json:"max_items_per_offer,omitempty"`
 	Latitude             *float64          `json:"latitude,omitempty"`
 	Longitude            *float64          `json:"longitude,omitempty"`
 	VideoURL             string            `json:"video_url,omitempty"`
@@ -206,7 +208,6 @@ type Product struct {
 	Distance             string            `json:"distance,omitempty"` // Computed distance from viewer (e.g. "3.2 KM")
 	CreatedAt            time.Time         `json:"created_at"`
 	UpdatedAt            time.Time         `json:"updated_at"`
-	BiddingType          string            `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
 	WishlistCount        int               `json:"wishlist_count,omitempty"`
 	WantCount            int               `json:"want_count"`
 	OfferCount           int               `json:"offer_count"`
@@ -215,34 +216,37 @@ type Product struct {
 
 // ProductCreate represents data for creating a product
 type ProductCreate struct {
-	Title       string      `json:"title" validate:"required,min=2,max=255"`
-	Description string      `json:"description"`
-	Price       *float64    `json:"price,omitempty"` // Optional for barter-only items
-	ImageURLs   StringArray `json:"image_urls,omitempty"`
-	Premium     bool        `json:"premium"`
-	AllowBuying bool        `json:"allow_buying"`
-	BarterOnly  bool        `json:"barter_only"`
-	Location    string      `json:"location,omitempty"`
-	Condition   string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category    string      `json:"category,omitempty"`
-	Value       *float64    `json:"value,omitempty"` // User-defined product value
+	Title            string      `json:"title" validate:"required,min=2,max=255"`
+	Description      string      `json:"description"`
+	Price            *float64    `json:"price,omitempty"` // Optional for barter-only items
+	ImageURLs        StringArray `json:"image_urls,omitempty"`
+	Premium          bool        `json:"premium"`
+	AllowBuying      bool        `json:"allow_buying"`
+	BarterOnly       bool        `json:"barter_only"`
+	Location         string      `json:"location,omitempty"`
+	Condition        string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category         string      `json:"category,omitempty"`
+	Value            *float64    `json:"value,omitempty"` // User-defined product value
+	BiddingType      string      `json:"bidding_type,omitempty"`
+	MaxItemsPerOffer int         `json:"max_items_per_offer,omitempty"`
 }
 
 // ProductUpdate represents data for updating a product
 type ProductUpdate struct {
-	Title       *string      `json:"title,omitempty" validate:"omitempty,min=2,max=255"`
-	Description *string      `json:"description,omitempty"`
-	Price       *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
-	ImageURLs   *StringArray `json:"image_urls,omitempty"`
-	Premium     *bool        `json:"premium,omitempty"`
-	Status      *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked"`
-	AllowBuying *bool        `json:"allow_buying,omitempty"`
-	BarterOnly  *bool        `json:"barter_only,omitempty"`
-	Location    *string      `json:"location,omitempty"`
-	Condition   *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
-	Category    *string      `json:"category,omitempty"`
-	BiddingType *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
-	Value       *float64     `json:"value,omitempty"` // User-defined product value
+	Title            *string      `json:"title,omitempty" validate:"omitempty,min=2,max=255"`
+	Description      *string      `json:"description,omitempty"`
+	Price            *float64     `json:"price,omitempty" validate:"omitempty,gt=0"`
+	ImageURLs        *StringArray `json:"image_urls,omitempty"`
+	Premium          *bool        `json:"premium,omitempty"`
+	Status           *string      `json:"status,omitempty" validate:"omitempty,oneof=available sold traded locked"`
+	AllowBuying      *bool        `json:"allow_buying,omitempty"`
+	BarterOnly       *bool        `json:"barter_only,omitempty"`
+	Location         *string      `json:"location,omitempty"`
+	Condition        *string      `json:"condition,omitempty" validate:"omitempty,oneof=New Like-New Used Fair"`
+	Category         *string      `json:"category,omitempty"`
+	BiddingType      *string      `json:"bidding_type,omitempty" validate:"omitempty,oneof=none blind open"`
+	Value            *float64     `json:"value,omitempty"` // User-defined product value
+	MaxItemsPerOffer *int         `json:"max_items_per_offer,omitempty"`
 }
 
 // ProductVote represents a user's vote on a product price
@@ -586,7 +590,7 @@ type DeliveryStop struct {
 	ContactName    string     `json:"contact_name"`
 	ContactPhone   string     `json:"contact_phone"`
 	Address        string     `json:"address"`
-	Latitude       *float64   `json:"latitude,omitempty"`
+	Latitude       *float64   `json:"latitude"`
 	Longitude      *float64   `json:"longitude,omitempty"`
 	ItemQRCode     string     `json:"item_qr_code,omitempty"`
 	FeeAmount      float64    `json:"fee_amount"`

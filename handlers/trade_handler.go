@@ -71,14 +71,23 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Delivery address is required when choosing delivery option"})
 	}
 
-	// Check if target product is still available
+	// Check if target product is still available and get selection limit
 	var targetStatus string
-	err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
+	var maxItems int
+	err := h.db.QueryRow("SELECT status, max_items_per_offer FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus, &maxItems)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
 	}
 	if targetStatus != "available" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This product is no longer available for trading"})
+	}
+
+	// Validate selection limit
+	if maxItems > 0 && len(payload.OfferedProductIDs) > maxItems {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false, 
+			Error:   fmt.Sprintf("This product only allows up to %d items per trade offer", maxItems),
+		})
 	}
 
 	// Check if offered products are still available
@@ -1070,6 +1079,25 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		offeredBy := "buyer"
 		if userID == sellerID {
 			offeredBy = "seller"
+		}
+
+		// Check target product item limit
+		var targetProductID int
+		if err := h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade details"})
+		}
+		var maxItems int
+		if err := h.db.QueryRow("SELECT max_items_per_offer FROM products WHERE id = ?", targetProductID).Scan(&maxItems); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load product limits"})
+		}
+		if maxItems > 0 && len(payload.CounterOfferedProductIDs) > maxItems {
+			_ = tx.Rollback()
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   fmt.Sprintf("This trade only allows up to %d items per offer", maxItems),
+			})
 		}
 
 		// Replace items in the trade

@@ -50,6 +50,7 @@ export interface ProductFormData {
   allow_buying: boolean
   barter_only: boolean
   bidding_type: string
+  max_items_per_offer: number
   location: string
   latitude?: number
   longitude?: number
@@ -172,6 +173,7 @@ const AddProduct: React.FC = () => {
     condition: '',
     category: '',
     bidding_type: 'none',
+    max_items_per_offer: 0,
     images: [],
     latitude: undefined,
     longitude: undefined,
@@ -713,6 +715,7 @@ const AddProduct: React.FC = () => {
       fd.append('allow_buying', formData.allow_buying ? '1' : '0')
       fd.append('barter_only', formData.barter_only ? '1' : '0')
       fd.append('bidding_type', formData.bidding_type || 'none')
+      fd.append('max_items_per_offer', String(formData.max_items_per_offer || 0))
       fd.append('location', formData.location?.trim() || '')
       fd.append('condition', formData.condition || 'Used')
       fd.append('category', formData.category || 'General')
@@ -1464,6 +1467,25 @@ const AddProduct: React.FC = () => {
                   onClick={e => e.stopPropagation()}
                 />
                 <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+              </Box>
+
+              <Box>
+                <FormLabel fontSize="xs" color="gray.600" mb={1}>Offer Item Limit</FormLabel>
+                <Select
+                  value={formData.max_items_per_offer}
+                  onChange={e => handleField('max_items_per_offer', Number(e.target.value))}
+                  size="sm"
+                  bg="white"
+                  h="36px"
+                >
+                  <option value={0}>Unlimited Items</option>
+                  <option value={1}>1 Item Only</option>
+                  <option value={2}>Up to 2 Items</option>
+                  <option value={3}>Up to 3 Items</option>
+                  <option value={5}>Up to 5 Items</option>
+                  <option value={10}>Up to 10 Items</option>
+                </Select>
+                <FormHelperText fontSize="10px">Max items a buyer can offer in one go.</FormHelperText>
               </Box>
             </SimpleGrid>
           </FormControl>

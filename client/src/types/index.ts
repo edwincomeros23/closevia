@@ -79,6 +79,7 @@ export interface Product {
   wanted_categories?: string[];
   wants?: string;
   brand?: string;
+  max_items_per_offer?: number;
 }
 
 export interface Order {
@@ -105,6 +106,7 @@ export interface ProductCreate {
   category?: string
   bidding_type?: 'none' | 'blind' | 'open'
   wants?: string
+  max_items_per_offer?: number
 }
 
 export interface ProductUpdate {
@@ -120,6 +122,7 @@ export interface ProductUpdate {
   condition?: string
   category?: string
   bidding_type?: 'none' | 'blind' | 'open'
+  max_items_per_offer?: number
 }
 
 export interface OrderCreate {
