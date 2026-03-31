@@ -17,6 +17,12 @@ import (
 	"github.com/xashathebest/clovia/models"
 )
 
+// BackfillLedgers is an HTTP handler that triggers backfilling missing deliveries
+func (h *DeliveryHandler) BackfillLedgers(c *fiber.Ctx) error {
+	h.BackfillMissingDeliveries()
+	return c.JSON(models.APIResponse{Success: true, Message: "Backfill completed (see logs for details)"})
+}
+
 type DeliveryHandler struct {
 	db *sql.DB
 }

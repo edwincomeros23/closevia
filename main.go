@@ -384,7 +384,7 @@ func main() {
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
 	products.Get("/:id/multiway-status", tradeHandler.GetProductMultiwayStatus) // Public — listing badge
-	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
+	products.Get("/:id", productHandler.GetProduct)                             // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
 	products.Delete("/:id", middleware.AuthMiddleware(), productHandler.DeleteProduct)

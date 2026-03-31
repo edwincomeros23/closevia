@@ -644,7 +644,7 @@ func CreateTables() error {
 			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
-		` CREATE TABLE IF NOT EXISTS delivery_stops (
+		`CREATE TABLE IF NOT EXISTS delivery_stops (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			delivery_id INT NOT NULL,
 			stop_number INT NOT NULL,
@@ -668,20 +668,22 @@ func CreateTables() error {
 			INDEX idx_delivery_stop (delivery_id, stop_number),
 			INDEX idx_stop_status (status)
 		)`,
-		`CREATE TABLE IF NOT EXISTS rider_cash_collections (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			rider_id INT NOT NULL,
-			delivery_id INT NOT NULL,
-			stop_id INT NOT NULL,
-			collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
-			amount DECIMAL(10,2) NOT NULL,
-			collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
-			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
-			FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
-			INDEX idx_rider_collections (rider_id, collected_at),
-			INDEX idx_delivery_collections (delivery_id)
-		)`,
+		   // ...existing code...
+			   // Move rider_cash_collections table creation after delivery_stops
+			   `CREATE TABLE IF NOT EXISTS rider_cash_collections (
+				   id INT AUTO_INCREMENT PRIMARY KEY,
+				   rider_id INT NOT NULL,
+				   delivery_id INT NOT NULL,
+				   stop_id INT NOT NULL,
+				   collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
+				   amount DECIMAL(10,2) NOT NULL,
+				   collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				   FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
+				   FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
+				   FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
+				   INDEX idx_rider_collections (rider_id, collected_at),
+				   INDEX idx_delivery_collections (delivery_id)
+			   )`,
 		`CREATE TABLE IF NOT EXISTS rider_ledger (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			rider_id INT NOT NULL UNIQUE,
@@ -818,12 +820,53 @@ func CreateTables() error {
 		)`,
 	}
 
+	// Disable foreign key checks during table creation to avoid errno 150.
+	DB.Exec("SET FOREIGN_KEY_CHECKS = 0")
+
+	// Fix: riders table may exist without a PRIMARY KEY on `id`, which breaks
+	// any FK that references riders(id). Add the PK if it is missing.
+	var ridersPKCount int
+	DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'riders'
+		AND CONSTRAINT_TYPE = 'PRIMARY KEY'
+	`).Scan(&ridersPKCount)
+	if ridersPKCount == 0 {
+		// Table may or may not exist yet; ALTER is only needed when it does.
+		DB.Exec("ALTER TABLE `riders` ADD PRIMARY KEY (`id`)")
+		DB.Exec("ALTER TABLE `riders` MODIFY `id` INT NOT NULL AUTO_INCREMENT")
+		log.Println("Fixed riders table: added missing PRIMARY KEY on id")
+	}
+
+	// Same check for deliveries table
+	var deliveriesPKCount int
+	DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'deliveries'
+		AND CONSTRAINT_TYPE = 'PRIMARY KEY'
+	`).Scan(&deliveriesPKCount)
+	if deliveriesPKCount == 0 {
+		DB.Exec("ALTER TABLE `deliveries` ADD PRIMARY KEY (`id`)")
+		DB.Exec("ALTER TABLE `deliveries` MODIFY `id` INT NOT NULL AUTO_INCREMENT")
+		log.Println("Fixed deliveries table: added missing PRIMARY KEY on id")
+	}
+
+	// Normalize charset/engine on key tables to avoid FK mismatches
+	fixTables := []string{"users", "products", "orders", "trades", "riders", "deliveries", "delivery_items", "delivery_stops"}
+	for _, tbl := range fixTables {
+		DB.Exec(fmt.Sprintf("ALTER TABLE `%s` ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci", tbl))
+	}
+
 	// Execute table creation queries
 	for _, query := range queries {
 		if _, err := DB.Exec(query); err != nil {
+			DB.Exec("SET FOREIGN_KEY_CHECKS = 1")
 			return fmt.Errorf("failed to create tables: %v", err)
 		}
 	}
+
+	// Re-enable foreign key checks
+	DB.Exec("SET FOREIGN_KEY_CHECKS = 1")
 
 	ensureIndexes()
 
