@@ -190,7 +190,7 @@ func (h *AdvertisementHandler) RecordClick(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true})
 }
 
-func stringToIntDef(s string, def int) int {
+func stringToIntDef(s string, _ int) int {
 	var result int
 	for _, ch := range s {
 		if ch >= '0' && ch <= '9' {

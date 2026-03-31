@@ -205,7 +205,6 @@ func CreateTables() error {
 		"authenticity_risks":  "VARCHAR(50) NULL",
 		"tags":                "JSON NULL",
 		"boosted_at":          "TIMESTAMP NULL",
-		"max_items_per_offer": "INT DEFAULT 0",
 	}
 
 	for col, def := range productCols {
@@ -304,7 +303,6 @@ func CreateTables() error {
 			longitude FLOAT,
 			video_url VARCHAR(500) NULL,
 			bidding_type ENUM('none', 'blind', 'open') DEFAULT 'none',
-			max_items_per_offer INT DEFAULT 0,
 			boosted_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -822,53 +820,12 @@ func CreateTables() error {
 		)`,
 	}
 
-	// Disable foreign key checks during table creation to avoid errno 150.
-	DB.Exec("SET FOREIGN_KEY_CHECKS = 0")
-
-	// Fix: riders table may exist without a PRIMARY KEY on `id`, which breaks
-	// any FK that references riders(id). Add the PK if it is missing.
-	var ridersPKCount int
-	DB.QueryRow(`
-		SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
-		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'riders'
-		AND CONSTRAINT_TYPE = 'PRIMARY KEY'
-	`).Scan(&ridersPKCount)
-	if ridersPKCount == 0 {
-		// Table may or may not exist yet; ALTER is only needed when it does.
-		DB.Exec("ALTER TABLE `riders` ADD PRIMARY KEY (`id`)")
-		DB.Exec("ALTER TABLE `riders` MODIFY `id` INT NOT NULL AUTO_INCREMENT")
-		log.Println("Fixed riders table: added missing PRIMARY KEY on id")
-	}
-
-	// Same check for deliveries table
-	var deliveriesPKCount int
-	DB.QueryRow(`
-		SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
-		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'deliveries'
-		AND CONSTRAINT_TYPE = 'PRIMARY KEY'
-	`).Scan(&deliveriesPKCount)
-	if deliveriesPKCount == 0 {
-		DB.Exec("ALTER TABLE `deliveries` ADD PRIMARY KEY (`id`)")
-		DB.Exec("ALTER TABLE `deliveries` MODIFY `id` INT NOT NULL AUTO_INCREMENT")
-		log.Println("Fixed deliveries table: added missing PRIMARY KEY on id")
-	}
-
-	// Normalize charset/engine on key tables to avoid FK mismatches
-	fixTables := []string{"users", "products", "orders", "trades", "riders", "deliveries", "delivery_items", "delivery_stops"}
-	for _, tbl := range fixTables {
-		DB.Exec(fmt.Sprintf("ALTER TABLE `%s` ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci", tbl))
-	}
-
 	// Execute table creation queries
 	for _, query := range queries {
 		if _, err := DB.Exec(query); err != nil {
-			DB.Exec("SET FOREIGN_KEY_CHECKS = 1")
 			return fmt.Errorf("failed to create tables: %v", err)
 		}
 	}
-
-	// Re-enable foreign key checks
-	DB.Exec("SET FOREIGN_KEY_CHECKS = 1")
 
 	ensureIndexes()
 
