@@ -741,6 +741,7 @@ type SellerStats struct {
 	HasReports      bool                `json:"has_reports"`               // Whether user has been reported
 	TrustFactors    []TrustFactor       `json:"trust_factors,omitempty"`   // Detailed breakdown of trust score
 	ConductSummary  *UserConductSummary `json:"conduct_summary,omitempty"` // Trade quality & conduct grades
+	HasActiveDispute bool                `json:"has_active_dispute"`      // Whether user has an active unresolved dispute
 }
 
 // Report represents a trader report for policy violations

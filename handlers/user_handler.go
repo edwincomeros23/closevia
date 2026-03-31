@@ -2291,6 +2291,16 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	stats.ReportCount = reportCount
 	stats.HasReports = reportCount > 0
 
+	// Check for active unresolved disputes in multi-way trades
+	var activeDisputeCount int
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM multiway_leg_disputes 
+		WHERE against_user_id = ? AND status IN ('open', 'under_review')
+	`, userID).Scan(&activeDisputeCount)
+	if err == nil {
+		stats.HasActiveDispute = activeDisputeCount > 0
+	}
+
 	// --- Conduct Summary from trade grades ---
 	conductSummary := h.computeConductSummary(userID)
 	if conductSummary != nil {

@@ -1649,6 +1649,19 @@ const ProductDetail: React.FC = () => {
                         {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
                       </Badge>
                     )}
+                    {sellerStats?.has_active_dispute && (
+                      <Badge
+                        colorScheme="orange"
+                        variant="solid"
+                        borderRadius="full"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                        fontWeight="bold"
+                      >
+                        ⚠️ Active Dispute
+                      </Badge>
+                    )}
                   </HStack>
                   <Text color="gray.600" fontSize="sm">
                     Member since {sellerStats?.member_since_year ?? new Date().getFullYear()}
