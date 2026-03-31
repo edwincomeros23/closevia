@@ -138,6 +138,8 @@ type User struct {
 	PasswordChangedAt           *time.Time `json:"password_changed_at,omitempty"`
 	LastLogin                   *time.Time `json:"last_login,omitempty"`
 	ActivityStatus              string     `json:"activity_status,omitempty"`
+	Strikes                     int        `json:"strikes"`
+	IsSuspended                 bool       `json:"is_suspended"`
 }
 
 // UserLogin represents login credentials

@@ -148,6 +148,18 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'strikes'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding strikes column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN strikes INT DEFAULT 0")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_suspended'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding is_suspended column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN is_suspended BOOLEAN DEFAULT FALSE")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing language_preference column to users table...")
@@ -265,6 +277,8 @@ func CreateTables() error {
 			is_premium BOOLEAN DEFAULT FALSE,
 			premium_tier VARCHAR(20) DEFAULT 'free',
 			verified BOOLEAN DEFAULT FALSE,
+			strikes INT DEFAULT 0,
+			is_suspended BOOLEAN DEFAULT FALSE,
 			last_login TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -120,9 +120,18 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	title := c.FormValue("title")
 	description := c.FormValue("description")
 	priceStr := c.FormValue("price")
-	// Fetch user tier and enforce listing limits
+	// Fetch user tier, strikes and enforce listing limits
 	var tier string
-	h.db.QueryRow("SELECT COALESCE(premium_tier, 'free') FROM users WHERE id = ?", userID).Scan(&tier)
+	var strikes int
+	h.db.QueryRow("SELECT COALESCE(premium_tier, 'free'), strikes FROM users WHERE id = ?", userID).Scan(&tier, &strikes)
+
+	// Strike Ladder Enforcement: 2 strikes = Restricted (cannot post new offers/listings)
+	if strikes >= 2 {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Account Restricted: You cannot post new listings because you have 2 or more strikes. You can still finish your ongoing trades.",
+		})
+	}
 
 	var activeCount int
 	h.db.QueryRow("SELECT COUNT(*) FROM products WHERE seller_id = ? AND status = 'available'", userID).Scan(&activeCount)

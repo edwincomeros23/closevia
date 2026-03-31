@@ -605,9 +605,9 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 	// Find user by email
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), strikes, is_suspended FROM users WHERE email = ?",
 		login.Email,
-	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
 
 	if err != nil {
 		return c.Status(401).JSON(models.APIResponse{
@@ -621,6 +621,14 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Please verify your email address before logging in.",
+		})
+	}
+
+	// Check for strikes suspension ladder
+	if user.IsSuspended || user.Strikes >= 3 {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Your account has been auto-suspended pending admin review due to multiple strikes or policy violations.",
 		})
 	}
 
@@ -684,9 +692,9 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	// Check if user exists
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), strikes, is_suspended FROM users WHERE email = ?",
 		req.Email,
-	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
 
 	if err == sql.ErrNoRows {
 		// Generate slug for the new user
@@ -750,6 +758,14 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Database error",
+		})
+	}
+
+	// Check if user is suspended or has 3+ strikes
+	if user.IsSuspended || user.Strikes >= 3 {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Your account has been auto-suspended pending admin review due to multiple strikes or policy violations.",
 		})
 	}
 
@@ -822,6 +838,8 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
 		        COALESCE(premium_tier, 'free') AS premium_tier,
+		        COALESCE(strikes, 0) AS strikes,
+		        COALESCE(is_suspended, FALSE) AS is_suspended,
 		        created_at, updated_at, password_changed_at, last_login
 		 FROM users WHERE id = ?`,
 		userID,
@@ -835,7 +853,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
-		&user.LanguagePreference, &user.PremiumTier,
+		&user.LanguagePreference, &user.PremiumTier, &user.Strikes, &user.IsSuspended,
 		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &lastLogin,
 	)
 

@@ -124,7 +124,16 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// CHECK PREMIUM LIMITS: Non-premium users are limited to 5 pending offers
 	var isPremium bool
-	_ = h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
+	var strikes int
+	_ = h.db.QueryRow("SELECT is_premium, strikes FROM users WHERE id = ?", userID).Scan(&isPremium, &strikes)
+
+	// Strike Ladder Enforcement: 2 strikes = Restricted (cannot post/send new offers)
+	if strikes >= 2 {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Account Restricted: You cannot send new trade offers because you have 2 or more strikes. You can still finish your ongoing trades.",
+		})
+	}
 
 	if !isPremium {
 		var pendingCount int
