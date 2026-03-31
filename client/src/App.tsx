@@ -26,12 +26,13 @@ import Profile from './pages/Profile'
 import UserProfile from './pages/UserProfile'
 import CreateOrganization from './pages/CreateOrganization'
 import OrganizationProfile from './pages/OrganizationProfile'
+import Organizations from './pages/Organizations'
+import OrganizationProducts from './pages/OrganizationProducts'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
 import AdminDashboard from './pages/AdminDashboard'
 import Premium from './pages/premium'
 import DeliveryOption from './delivery_option/delivery'
-import RiderOption from './delivery_option/rider'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProductProvider } from './contexts/ProductContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
@@ -67,7 +68,6 @@ const ThemeApplier: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return <>{children}</>
 }
 // Lazy load delivery option components with error handling
-const RiderQueue = lazy(() => import('./delivery_option/riderqueue').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Queue</Text></Box> })))
 const RiderHome = lazy(() => import('./delivery_option/RiderHome').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Rider Home</Text></Box> })))
 const BatchPreview = lazy(() => import('./delivery_option/BatchPreview').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Preview</Text></Box> })))
 const BatchStatus = lazy(() => import('./delivery_option/BatchStatus').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Status</Text></Box> })))
@@ -155,16 +155,8 @@ const AppContent: React.FC = () => {
         } />
 
         {/* Rider routes - no sidebar */}
-        <Route path="/rider" element={
-          <PageTransition>
-            <RiderOption />
-          </PageTransition>
-        } />
-        <Route path="/rider-queue" element={
-          <PageTransition>
-            <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderQueue /></Suspense>
-          </PageTransition>
-        } />
+        <Route path="/rider" element={<Navigate to="/rider-home" replace />} />
+        <Route path="/rider-queue" element={<Navigate to="/rider-home" replace />} />
         <Route path="/rider-home" element={
           <PageTransition>
             <Suspense fallback={<Center h="100vh"><Spinner /></Center>}><RiderHome /></Suspense>
@@ -282,9 +274,19 @@ const AppContent: React.FC = () => {
                     <ProtectedRoute><CreateOrganization /></ProtectedRoute>
                   </PageTransition>
                 } />
+                <Route path="/organizations" element={
+                  <PageTransition>
+                    <Organizations />
+                  </PageTransition>
+                } />
                 <Route path="/org/:handle" element={
                   <PageTransition>
                     <OrganizationProfile />
+                  </PageTransition>
+                } />
+                <Route path="/org/:handle/products" element={
+                  <PageTransition>
+                    <OrganizationProducts />
                   </PageTransition>
                 } />
                 <Route path="/settings" element={

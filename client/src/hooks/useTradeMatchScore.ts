@@ -4,10 +4,26 @@ import { useAuth } from '../contexts/AuthContext'
 import { api } from '../services/api'
 
 // Weights for each scoring component
-const VALUE_WEIGHT = 0.35
-const CATEGORY_WEIGHT = 0.30
-const DEMAND_WEIGHT = 0.20
-const PROXIMITY_WEIGHT = 0.15
+const VALUE_WEIGHT = 0.65
+const CATEGORY_WEIGHT = 0.15
+const DEMAND_WEIGHT = 0.10
+const PROXIMITY_WEIGHT = 0.10
+
+// Price-alignment thresholds (tunable in one place)
+const SLIGHTLY_BELOW_MIN_RATIO = 0.85
+const SUPER_CHEAP_MIN_RATIO = 0.70
+const SLIGHTLY_ABOVE_MAX_RATIO = 1.15
+const MODERATELY_ABOVE_MAX_RATIO = 1.40
+
+export interface TradeMatchBreakdown {
+  value: number
+  category: number
+  demand: number
+  distance: number
+  total: number
+  isSuperCheap?: boolean
+  valueNote?: string
+}
 
 function getProductValue(p: Product): number | null {
   // Use typed value fields: price, estimated range, suggested_value
@@ -20,20 +36,84 @@ function getProductValue(p: Product): number | null {
   return null
 }
 
-function calcValueScore(userProducts: Product[], target: Product): number {
-  const targetValue = getProductValue(target)
-  if (!targetValue) return 50 // neutral if no value data
+function calcEstimateAlignment(target: Product): { score: number; isSuperCheap: boolean; note: string } {
+  const listedPrice = Number(target.price)
+  const fairMin = Number(target.estimated_value_min)
+  const fairMax = Number(target.estimated_value_max)
 
-  let bestScore = 0
+  const hasPrice = Number.isFinite(listedPrice) && listedPrice > 0
+  const hasFairRange = Number.isFinite(fairMin) && Number.isFinite(fairMax) && fairMin > 0 && fairMax > fairMin
+
+  if (!hasPrice || !hasFairRange) {
+    return { score: 60, isSuperCheap: false, note: 'No AI range data' }
+  }
+
+  // In range gets high value confidence.
+  if (listedPrice >= fairMin && listedPrice <= fairMax) {
+    return { score: 95, isSuperCheap: false, note: 'Price within AI range' }
+  }
+
+  const belowRatio = listedPrice / fairMin
+
+  // Slightly below fair range is still considered attractive/healthy.
+  if (listedPrice < fairMin && belowRatio >= SLIGHTLY_BELOW_MIN_RATIO) {
+    return { score: 88, isSuperCheap: false, note: 'Slightly below AI range (good)' }
+  }
+
+  // Moderately below range: still okay but lower confidence.
+  if (listedPrice < fairMin && belowRatio >= SUPER_CHEAP_MIN_RATIO) {
+    return { score: 62, isSuperCheap: false, note: 'Below AI range' }
+  }
+
+  // Extremely low price can indicate mismatch/risk; flag it.
+  if (listedPrice < fairMin && belowRatio < SUPER_CHEAP_MIN_RATIO) {
+    return { score: 25, isSuperCheap: true, note: 'Super cheap vs AI range' }
+  }
+
+  // Above range gets lower value confidence but not as severe as extreme underpricing.
+  const aboveRatio = listedPrice / fairMax
+  if (aboveRatio <= SLIGHTLY_ABOVE_MAX_RATIO) {
+    return { score: 72, isSuperCheap: false, note: 'Slightly above AI range' }
+  }
+  if (aboveRatio <= MODERATELY_ABOVE_MAX_RATIO) {
+    return { score: 52, isSuperCheap: false, note: 'Above AI range' }
+  }
+  return { score: 35, isSuperCheap: false, note: 'Far above AI range' }
+}
+
+function calcValueScore(userProducts: Product[], target: Product): { score: number; isSuperCheap: boolean; note: string } {
+  const targetValue = getProductValue(target)
+  const estimate = calcEstimateAlignment(target)
+  if (!targetValue) {
+    return { score: estimate.score, isSuperCheap: estimate.isSuperCheap, note: estimate.note }
+  }
+
+  const similarityScores: number[] = []
   for (const up of userProducts) {
     const userValue = getProductValue(up)
     if (!userValue) continue
     // Ratio-based similarity: 1.0 = perfect match, decays as ratio diverges
     const ratio = Math.min(userValue, targetValue) / Math.max(userValue, targetValue)
     const score = ratio * 100
-    if (score > bestScore) bestScore = score
+    similarityScores.push(score)
   }
-  return bestScore || 30 // default if no user products have values
+
+  if (similarityScores.length === 0) {
+    return { score: estimate.score, isSuperCheap: estimate.isSuperCheap, note: estimate.note }
+  }
+
+  // Use average of the best 3 matches to avoid one lucky outlier dominating the score.
+  const topThree = similarityScores.sort((a, b) => b - a).slice(0, 3)
+  const avgTopThree = topThree.reduce((sum, s) => sum + s, 0) / topThree.length
+
+  // Blend personal inventory matching with AI fair-range alignment.
+  const blended = avgTopThree * 0.6 + estimate.score * 0.4
+
+  return {
+    score: Math.round(blended),
+    isSuperCheap: estimate.isSuperCheap,
+    note: estimate.note,
+  }
 }
 
 function calcCategoryScore(userProducts: Product[], target: Product): number {
@@ -43,27 +123,32 @@ function calcCategoryScore(userProducts: Product[], target: Product): number {
     userProducts.flatMap(p => (p.wanted_categories || []).map(c => c.toLowerCase()))
   )
 
-  // Does the target product match what the user wants?
   const targetCat = target.category?.toLowerCase() || ''
-  if (targetCat && userWantedCats.has(targetCat)) {
-    score += 50 // user explicitly wants this category
-  }
-
-  // Does the user have products the target seller wants?
   const targetWantedCats = (target.wanted_categories || []).map(c => c.toLowerCase())
-  for (const twc of targetWantedCats) {
-    if (userCategories.has(twc)) {
-      score += 50 // seller wants what user has
-      break
-    }
+
+  const userWantsTargetCategory = targetCat ? userWantedCats.has(targetCat) : false
+  const targetWantsUserCategoryMatches = targetWantedCats.filter((cat) => userCategories.has(cat))
+  const targetWantsUserCategory = targetWantsUserCategoryMatches.length > 0
+
+  // Full intent points require both sides to express category intent.
+  if (userWantsTargetCategory && targetWantsUserCategory) {
+    score += 70
+  } else if (userWantsTargetCategory || targetWantsUserCategory) {
+    score += 30
   }
 
-  // Bonus for same-category products (easier to compare value)
+  // Precision bonus: how much of target's wanted categories can user satisfy.
+  if (targetWantedCats.length > 0) {
+    const overlapRatio = targetWantsUserCategoryMatches.length / targetWantedCats.length
+    score += overlapRatio * 20
+  }
+
+  // Small fallback relevance if user already trades in this category.
   if (targetCat && userCategories.has(targetCat)) {
-    score += 20
+    score += 10
   }
 
-  return Math.min(score, 100)
+  return Math.round(Math.min(score, 100))
 }
 
 function calcDemandScore(target: Product): number {
@@ -86,23 +171,32 @@ function calcProximityScore(target: Product): number {
   return 15
 }
 
-function calculateTradeScore(userProducts: Product[], target: Product): number {
-  const value = calcValueScore(userProducts, target)
+function calculateTradeScore(userProducts: Product[], target: Product): TradeMatchBreakdown {
+  const valueResult = calcValueScore(userProducts, target)
+  const value = valueResult.score
   const category = calcCategoryScore(userProducts, target)
   const demand = calcDemandScore(target)
   const proximity = calcProximityScore(target)
 
-  const weighted = (
+  const weighted = Math.round(
     value * VALUE_WEIGHT +
     category * CATEGORY_WEIGHT +
     demand * DEMAND_WEIGHT +
     proximity * PROXIMITY_WEIGHT
   )
 
-  return Math.round(Math.max(0, Math.min(100, weighted)))
+  return {
+    value: Math.round(value),
+    category: Math.round(category),
+    demand: Math.round(demand),
+    distance: Math.round(proximity),
+    total: Math.max(0, Math.min(100, weighted)),
+    isSuperCheap: valueResult.isSuperCheap,
+    valueNote: valueResult.note,
+  }
 }
 
-export function useTradeMatchScores(feedProducts: Product[]): Map<number, number> {
+export function useTradeMatchScores(feedProducts: Product[]): Map<number, TradeMatchBreakdown> {
   const { user } = useAuth()
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const fetchedRef = useRef(false)
@@ -138,7 +232,7 @@ export function useTradeMatchScores(feedProducts: Product[]): Map<number, number
 
   // Calculate scores for all feed products
   const scores = useMemo(() => {
-    const map = new Map<number, number>()
+    const map = new Map<number, TradeMatchBreakdown>()
     if (userProducts.length === 0 || !user?.id) return map
 
     for (const product of feedProducts) {

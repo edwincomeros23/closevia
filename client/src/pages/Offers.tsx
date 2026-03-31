@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Heading, VStack, HStack, Text, Badge, Button, Spinner, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden, SimpleGrid, IconButton, Tooltip } from '@chakra-ui/react'
+import { Box, Heading, VStack, HStack, Text, Badge, Button, Center, useToast, Tabs, TabList, TabPanels, Tab, TabPanel, Select, Image, Link, useColorModeValue, Slide, ScaleFade, Icon, Modal, ModalOverlay, ModalContent, ModalBody, ModalCloseButton, Textarea, VisuallyHidden, SimpleGrid, IconButton, Tooltip, Skeleton } from '@chakra-ui/react'
 import { FaHandshake, FaTimes, FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
 import { FiGrid, FiList } from 'react-icons/fi'
 import { api } from '../services/api'
@@ -34,9 +34,9 @@ const Offers: React.FC = () => {
   const cardBg = useColorModeValue('#FDFDFD', 'gray.800')
   const softAccent = useColorModeValue('#F8F9FA', 'gray.700')
 
-  const fetchAll = async () => {
+  const fetchAll = async (isBackground = false) => {
     try {
-      setLoading(true)
+      if (!isBackground) setLoading(true)
       const [incRes, outRes] = await Promise.all([
         api.get('/api/trades', { params: { direction: 'incoming' } }),
         api.get('/api/trades', { params: { direction: 'outgoing' } }),
@@ -50,7 +50,7 @@ const Offers: React.FC = () => {
       toast({
         id: "offers-error", title: 'Error', description: e?.response?.data?.error || 'Failed to load offers', status: 'error' })
     } finally {
-      setLoading(false)
+      if (!isBackground) setLoading(false)
     }
   }
 
@@ -112,6 +112,13 @@ const Offers: React.FC = () => {
     if (userId) {
       setCurrentUserId(parseInt(userId))
     }
+
+    // Set up real-time background polling every 5 seconds
+    const interval = setInterval(() => {
+      fetchAll(true)
+    }, 5000)
+
+    return () => clearInterval(interval)
   }, [])
 
   // Debug: inspect API structure for /api/trades
@@ -429,7 +436,45 @@ const Offers: React.FC = () => {
 
   if (loading) {
     return (
-      <Center h="50vh"><Spinner size="xl" color="brand.500" /></Center>
+      <Box minH="100vh" bg="#FFFDF1" px={8} py={20}>
+        <HStack justify="space-between" mb={6} pl={24} mt={4}>
+          <Skeleton h="34px" w="220px" borderRadius="md" />
+          <HStack spacing={3}>
+            <Skeleton h="14px" w="36px" />
+            <Skeleton h="32px" w="140px" borderRadius="md" />
+            <Skeleton h="32px" w="32px" borderRadius="md" />
+          </HStack>
+        </HStack>
+
+        <Box bg={cardBg} borderRadius="lg" border="1px solid" borderColor="gray.100" overflow="hidden" boxShadow="sm">
+          <HStack bg={softAccent} p={3} gap={2}>
+            <Skeleton h="36px" w="170px" borderRadius="md" />
+            <Skeleton h="36px" w="140px" borderRadius="md" />
+            <Skeleton h="36px" w="120px" borderRadius="md" />
+          </HStack>
+
+          <VStack p={4} spacing={3} align="stretch">
+            {[0, 1, 2, 3].map((idx) => (
+              <Box key={idx} bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="lg" p={4}>
+                <HStack justify="space-between" mb={3}>
+                  <Skeleton h="18px" w="130px" borderRadius="full" />
+                  <Skeleton h="22px" w="92px" borderRadius="full" />
+                </HStack>
+                <VStack align="stretch" spacing={2}>
+                  <Skeleton h="18px" w="65%" />
+                  <Skeleton h="14px" w="45%" />
+                  <Skeleton h="14px" w="50%" />
+                </VStack>
+                <HStack mt={4} spacing={2}>
+                  <Skeleton h="30px" flex="1" borderRadius="md" />
+                  <Skeleton h="30px" flex="1" borderRadius="md" />
+                  <Skeleton h="30px" w="86px" borderRadius="md" />
+                </HStack>
+              </Box>
+            ))}
+          </VStack>
+        </Box>
+      </Box>
     )
   }
 

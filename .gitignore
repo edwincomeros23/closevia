@@ -33,3 +33,13 @@ dist/
 
 # Local Netlify folder
 .netlify
+
+# Temporary and Build Files
+tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+binary/
+bin/

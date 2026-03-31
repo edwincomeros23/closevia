@@ -73,8 +73,7 @@ import { ProductGridSkeleton } from '../components/ProductSkeleton'
 import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
 import InstallAppPrompt from '../components/InstallAppPrompt'
-
-// Custom debounce hook
+import AdvertisementCarousel from '../components/AdvertisementCarousel'
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value)
 
@@ -129,7 +128,7 @@ const Home: React.FC = () => {
   const [hasSearched, setHasSearched] = useState(false)
 
   // Smart search suggestions state
-  const [suggestions, setSuggestions] = useState<SearchSuggestions>({ products: [], categories: [], tags: [], brands: [] })
+  const [suggestions, setSuggestions] = useState<SearchSuggestions>({ products: [], categories: [], tags: [], brands: [], users: [] })
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
@@ -138,7 +137,7 @@ const Home: React.FC = () => {
   // Fetch search suggestions
   useEffect(() => {
     if (debouncedSuggestionTerm.trim().length < 2) {
-      setSuggestions({ products: [], categories: [], tags: [], brands: [] })
+      setSuggestions({ products: [], categories: [], tags: [], brands: [], users: [] })
       setShowSuggestions(false)
       return
     }
@@ -146,11 +145,19 @@ const Home: React.FC = () => {
     const fetchSuggestions = async () => {
       setSuggestionsLoading(true)
       try {
-        const res = await api.get(`/api/products/search-suggestions?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}`)
-        if (!cancelled && res.data?.success && res.data?.data) {
-          setSuggestions(res.data.data)
-          const d = res.data.data
-          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0
+        const [productRes, userRes] = await Promise.all([
+          api.get(`/api/products/search-suggestions?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}`),
+          api.get(`/api/users/search?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}&limit=5`),
+        ])
+        if (!cancelled && productRes.data?.success && productRes.data?.data) {
+          const users = userRes.data?.success && Array.isArray(userRes.data?.data) ? userRes.data.data : []
+          const merged: SearchSuggestions = {
+            ...productRes.data.data,
+            users,
+          }
+          setSuggestions(merged)
+          const d = merged
+          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0 || (d.users?.length || 0) > 0
           setShowSuggestions(hasResults)
         }
       } catch {
@@ -301,8 +308,24 @@ const Home: React.FC = () => {
     setHasSearched(true)
   }
 
-  const handleSuggestionClick = (text: string, type: 'product' | 'category' | 'tag' | 'brand') => {
+  const handleSuggestionClick = (
+    text: string,
+    type: 'product' | 'category' | 'tag' | 'brand' | 'user',
+    userId?: number,
+    selectedUser?: NonNullable<SearchSuggestions['users']>[number]
+  ) => {
     setShowSuggestions(false)
+    if (type === 'user' && userId) {
+      if (selectedUser?.is_organization) {
+        const orgHandle = selectedUser.org_handle || selectedUser.slug
+        if (orgHandle) {
+          navigate(`/org/${orgHandle}/products`)
+          return
+        }
+      }
+      navigate(`/users/${selectedUser?.slug || userId}`)
+      return
+    }
     if (type === 'category') {
       setSearchTerm('')
       setSelectedCategory(text)
@@ -498,6 +521,16 @@ const Home: React.FC = () => {
     navigate('/login')
   }, [logout, onCloseLogoutModal, navigate])
 
+  const userSuggestions = useMemo(
+    () => (suggestions.users || []).filter((u) => !u.is_organization),
+    [suggestions.users]
+  )
+
+  const organizationSuggestions = useMemo(
+    () => (suggestions.users || []).filter((u) => u.is_organization),
+    [suggestions.users]
+  )
+
   // Add state for offer sorting
   const [offersSortBy, setOffersSortBy] = useState<'newest' | 'oldest' | 'accepted'>('accepted')
 
@@ -591,14 +624,23 @@ const Home: React.FC = () => {
         {itemsWithAds.map((item, displayIndex) =>
           item.type === 'product' ? (
             <Box key={`product-${item.data.id}`} w="full" h="full">
+              {(() => {
+                const scoreDetail = tradeScores.get(item.data.id)
+                return (
               <ProductCard
-                product={{ ...item.data, tradeMatchScore: tradeScores.get(item.data.id) }}
+                product={{
+                  ...item.data,
+                  tradeMatchScore: scoreDetail?.total,
+                  tradeMatchBreakdown: scoreDetail,
+                }}
                 onTradeClick={handleTradeClick}
                 onBuyoutClick={handleBuyoutClick}
                 onBuyClick={handleBuyClick}
                 onViewOffers={handleViewOffers}
                 showPriceOverlay
               />
+                )
+              })()}
             </Box>
           ) : (
             <Box key={`ad-${item.data.id}`} w="full" h="full">
@@ -642,7 +684,7 @@ const Home: React.FC = () => {
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value.trim().length >= 2) setShowSuggestions(true) }}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); if (e.key === 'Escape') setShowSuggestions(false) }}
-                  onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0)) setShowSuggestions(true) }}
+                  onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || (suggestions.users?.length || 0) > 0)) setShowSuggestions(true) }}
                   bg="white"
                   border="2px"
                   borderColor="gray.200"
@@ -724,6 +766,34 @@ const Home: React.FC = () => {
                             <HStack spacing={3}>
                               <StarIcon color="yellow.400" boxSize={3} />
                               <Text fontSize="sm" color="gray.700">{b}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {userSuggestions.length > 0 && (
+                      <>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Users</Text>
+                        {userSuggestions.map((u, i) => (
+                          <Box key={`u-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.name, 'user', u.id, u)}>
+                            <HStack spacing={3}>
+                              <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.name} />
+                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.name}</Text>
+                            </HStack>
+                          </Box>
+                        ))}
+                      </>
+                    )}
+                    {organizationSuggestions.length > 0 && (
+                      <>
+                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || userSuggestions.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Organizations</Text>
+                        {organizationSuggestions.map((u, i) => (
+                          <Box key={`o-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.org_name || u.name, 'user', u.id, u)}>
+                            <HStack spacing={3}>
+                              <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.org_name || u.name} />
+                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.org_name || u.name}</Text>
                             </HStack>
                           </Box>
                         ))}
@@ -886,7 +956,7 @@ const Home: React.FC = () => {
                       {/* Menu Items */}
                       <Button
                         as={RouterLink}
-                        to="/rider"
+                        to="/rider-home"
                         size="sm"
                         w="full"
                         variant="ghost"
@@ -911,14 +981,14 @@ const Home: React.FC = () => {
 
                       <Button
                         as={RouterLink}
-                        to={user.is_organization && (user as any).org_handle ? `/org/${(user as any).org_handle}` : '/organizations/new'}
+                        to="/organizations"
                         size="sm"
                         w="full"
                         variant="ghost"
                         justifyContent="flex-start"
                         leftIcon={<Icon as={FaHome} />}
                       >
-                        {user.is_organization && (user as any).org_handle ? 'Organization Page' : 'Create Organization'}
+                        Organizations
                       </Button>
 
                       <InstallAppPrompt variant="profile-menu" />
@@ -1068,109 +1138,8 @@ const Home: React.FC = () => {
           )}
         </VStack>
       </Box>
-      {/* slider / visual box - fully responsive from mobile to 2xl */}
-      <Box
-        w="full"
-        maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }}
-        mx={{ base: 'auto', lg: 0 }}
-        ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
-        mb={8}
-        px={{ base: 3, md: 6, lg: 8, xl: 10 }}
-      >
-        <Box
-          position="relative"
-          overflow="hidden"
-          w="calc(100% - 30px)"
-          mx="15px"
-          h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }}
-          rounded="lg"
-          border="1px"
-          borderColor="gray.200"
-          bg="gray.50"
-          onWheel={onWheelSlide}
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
-        >
-          {sliderImages.map((src, idx) => (
-            <Image
-              key={src}
-              src={src}
-              alt={`slide-${idx + 1}`}
-              position="absolute"
-              top={0}
-              left={0}
-              w="100%"
-              h="100%"
-              objectFit="cover"
-              transition="opacity 600ms ease"
-              opacity={idx === slideIndex ? 1 : 0}
-              zIndex={idx === slideIndex ? 2 : 1}
-              loading="eager"
-              draggable={false}
-              pointerEvents="none"
-            />
-          ))}
-
-          {/* Prev / Next controls (tablet+). Mobile users swipe instead. */}
-          <IconButton
-            type="button"
-            aria-label="Previous slide"
-            icon={<ArrowLeftIcon />}
-            position="absolute"
-            left={{ base: 2, md: 3, lg: 4 }}
-            top="50%"
-            transform="translateY(-50%)"
-            zIndex={10}
-            size={{ base: 'xs', md: 'sm', lg: 'md' }}
-            colorScheme="blackAlpha"
-            variant="ghost"
-            display={{ base: 'none', sm: 'flex' }}
-            pointerEvents="auto"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              goPrev()
-            }}
-          />
-
-          <IconButton
-            type="button"
-            aria-label="Next slide"
-            icon={<ArrowRightIcon />}
-            position="absolute"
-            right={{ base: 2, md: 3, lg: 4 }}
-            top="50%"
-            transform="translateY(-50%)"
-            zIndex={10}
-            size={{ base: 'xs', md: 'sm', lg: 'md' }}
-            colorScheme="blackAlpha"
-            variant="ghost"
-            display={{ base: 'none', sm: 'flex' }}
-            pointerEvents="auto"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              goNext()
-            }}
-          />
-
-          {/* Dots - responsive sizing */}
-          <HStack spacing={{ base: 1.5, md: 2 }} position="absolute" bottom={{ base: 2, md: 3, lg: 4 }} left="50%" transform="translateX(-50%)" zIndex={10} pointerEvents="auto">
-            {sliderImages.map((_, i) => (
-              <Box
-                key={i}
-                as="button"
-                w={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
-                h={i === slideIndex ? { base: 2.5, md: 3 } : { base: 2, md: 2.5 }}
-                bg={i === slideIndex ? 'brand.500' : 'gray.300'}
-                borderRadius="full"
-                transition="all 0.3s ease"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => { e.stopPropagation(); setSlideIndex(i); scheduleResume(2000) }}
-              />
-            ))}
-          </HStack>
-        </Box>
-      </Box>
+      {/* Dynamic Advertisement Carousel Box */}
+      <AdvertisementCarousel />
       {/* Horizontal category pills - desktop: centered max-width */}
       <Box
         px={{ base: 3, md: 6, lg: 8, xl: 10 }}
@@ -1301,50 +1270,7 @@ const Home: React.FC = () => {
           </Box>
         )}
 
-        {/* Error Display with Retry */}
-        {error && !loading && (
-          <Box
-            bg="red.50"
-            border="1px"
-            borderColor="red.200"
-            rounded="lg"
-            p={6}
-            maxW="4xl"
-            mx="auto"
-          >
-            <VStack spacing={4} align="stretch">
-              <VStack spacing={2} align="stretch">
-                <Text color="red.800" fontWeight="semibold" fontSize="lg">
-                  ⚠️ Error Loading Products
-                </Text>
-                <Text color="red.700" fontSize="sm">
-                  {error.includes('timeout') ?
-                    'The request took too long. Your connection might be slow. Please try again.' :
-                    error}
-                </Text>
-              </VStack>
-              <HStack spacing={3} justify="flex-start">
-                <Button
-                  size="sm"
-                  colorScheme="red"
-                  onClick={handleRetrySearch}
-                  isLoading={loading}
-                  loadingText="Retrying..."
-                >
-                  Retry
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  colorScheme="red"
-                  onClick={clearFilters}
-                >
-                  Reset Filters
-                </Button>
-              </HStack>
-            </VStack>
-          </Box>
-        )}
+        {/* Error Display removed intentionally for cleaner UX */}
 
         {/* Products Grid - desktop: no extra maxW (parent constrains), 2xl: 6 cols */}
         {!loading && !isLoadingCategoryChange && products.length > 0 && (

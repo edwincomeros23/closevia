@@ -105,7 +105,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
 
   // Validate participants count
   const validParticipants = useMemo(() => {
-    if (!Array.isArray(participants) || participants.length < 3) {
+    if (!Array.isArray(participants) || participants.length < 2) {
       return []
     }
     // Cap at 5 participants

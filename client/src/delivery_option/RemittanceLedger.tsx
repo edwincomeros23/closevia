@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -10,7 +10,6 @@ import {
   Card,
   CardBody,
   Divider,
-  Badge,
   SimpleGrid,
   Modal,
   ModalOverlay,
@@ -20,58 +19,90 @@ import {
   ModalFooter,
   useDisclosure,
   useToast,
+  Spinner,
+  Center,
+  Badge,
+  Image,
+  Input
 } from '@chakra-ui/react'
-import { CheckCircleIcon, WarningIcon } from '@chakra-ui/icons'
+import { CheckCircleIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons'
 import { FaMoneyBillWave, FaCreditCard, FaUniversity, FaLock } from 'react-icons/fa'
+import { api } from '../services/api'
 
-interface RemittanceEntry {
-  date: string
-  description: string
-  batchId: string
-  earnings: number
-  systemFee: number
-  status: 'pending' | 'paid'
+interface RiderLedger {
+  id: number
+  rider_id: number
+  total_cash_collected: number
+  remittance_owed: number
+  take_home: number
+  free_slots_remaining: number
+  total_free_slots_used: number
+  last_remittance_at: string | null
+  is_locked_for_remittance: boolean
 }
 
 const RemittanceLedger: React.FC = () => {
-  const { batchId } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
-  
+
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('')
+  const [paymentProofUrl, setPaymentProofUrl] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
-  const [ledger] = useState<RemittanceEntry[]>([
-    {
-      date: '2024-01-15',
-      description: 'Batch BGC-001 (4 tasks)',
-      batchId: 'batch-001',
-      earnings: 450,
-      systemFee: 45,
-      status: 'paid',
-    },
-    {
-      date: '2024-01-15',
-      description: 'Batch Makati-002 (3 tasks)',
-      batchId: 'batch-002',
-      earnings: 320,
-      systemFee: 32,
-      status: 'paid',
-    },
-    {
-      date: '2024-01-15',
-      description: 'Batch Ortigas-003 (5 tasks)',
-      batchId: 'batch-003',
-      earnings: 600,
-      systemFee: 60,
-      status: 'pending',
-    },
-  ])
+  const [ledgerData, setLedgerData] = useState<RiderLedger | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const totalEarnings = ledger.reduce((sum, entry) => sum + entry.earnings, 0)
-  const totalFeesDue = ledger.filter(e => e.status === 'pending').reduce((sum, entry) => sum + entry.systemFee, 0)
-  const totalPaid = ledger.filter(e => e.status === 'paid').reduce((sum, entry) => sum + entry.systemFee, 0)
+  const handleUploadProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsUploading(true)
+    const formData = new FormData()
+    formData.append('image', file)
+    try {
+      const res = await api.post('/api/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      if (res.data.success) {
+        setPaymentProofUrl(res.data.data.url)
+        toast({ title: 'Upload successful', status: 'success', duration: 2000 })
+      }
+    } catch (err: any) {
+      toast({ title: 'Upload failed', description: err.response?.data?.error || err.message, status: 'error', duration: 3000 })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const fetchLedger = async () => {
+    setIsLoading(true)
+    try {
+      const res = await api.get('/api/deliveries/rider-ledger')
+      if (res.data?.success) {
+        setLedgerData(res.data.data)
+      }
+    } catch (err) {
+      console.error(err)
+      toast({
+        id: "remittance-error",
+        title: 'Error loading ledger',
+        status: 'error',
+        duration: 3000
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchLedger()
+  }, [])
+
+  const totalEarnings = ledgerData?.total_cash_collected || 0
+  const totalFeesDue = ledgerData?.remittance_owed || 0
+  const takeHome = ledgerData?.take_home || 0
+  const isLocked = ledgerData?.is_locked_for_remittance || false
 
   const handleRemitFees = async () => {
     if (!selectedPaymentMethod) {
@@ -85,83 +116,112 @@ const RemittanceLedger: React.FC = () => {
       return
     }
 
+    if (!paymentProofUrl) {
+      toast({
+        id: "remittanceleader-proof-required",
+        title: 'Proof of Payment Required',
+        description: 'Please upload the receipt to verify your transfer.',
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
     setIsProcessing(true)
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      toast({
-        id: "remittanceledger-payment-successful",
-        title: 'Payment Successful! ✅',
-        description: `₱${totalFeesDue} remitted via ${selectedPaymentMethod}`,
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
+      const res = await api.post('/api/deliveries/remittance-payment', {
+        amount_paid: totalFeesDue,
+        payment_method: selectedPaymentMethod,
+        payment_proof_url: paymentProofUrl
       })
 
-      navigate('/rider-queue')
-    } catch (error) {
+      if (res.data.success) {
+        toast({
+          id: "remittanceledger-payment-successful",
+          title: 'Payment Submitted! ✅',
+          description: `₱${totalFeesDue} remitted via ${selectedPaymentMethod}. Awaiting admin verification.`,
+          status: 'success',
+          duration: 4000,
+          isClosable: true,
+        })
+        fetchLedger() // Refresh immediately to show pending status
+        onClose()
+      }
+    } catch (error: any) {
       toast({
         id: "remittanceledger-payment-failed",
         title: 'Payment Failed',
-        description: 'Please try again',
+        description: error.response?.data?.error || 'Please try again',
         status: 'error',
         duration: 2000,
       })
     } finally {
       setIsProcessing(false)
-      onClose()
     }
+  }
+
+  if (isLoading) {
+    return (
+      <Center h="100vh" bg="#FFFDF1">
+        <Spinner size="xl" color="brand.500" />
+      </Center>
+    )
   }
 
   return (
     <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
       <VStack spacing={6} maxW="md" mx="auto">
         {/* Header */}
-        <VStack spacing={2} w="full">
-          <Heading size="lg" color="brand.500">
-            Earnings & Remittance
-          </Heading>
-          <Text fontSize="sm" color="gray.600">
-            Transparent ledger of your work
-          </Text>
-        </VStack>
+        <HStack w="full" justify="space-between">
+          <VStack spacing={1} align="start">
+            <Heading size="lg" color="brand.500">
+              Rider Ledger
+            </Heading>
+            <Text fontSize="sm" color="gray.600">
+              Live updates of your cash earnings
+            </Text>
+          </VStack>
+          <Button size="sm" variant="ghost" onClick={fetchLedger} leftIcon={<RepeatIcon />}>
+            Refresh
+          </Button>
+        </HStack>
 
         {/* Summary Cards */}
         <SimpleGrid columns={3} spacing={3} w="full">
-          <Card bg="green.50" border="1px" borderColor="green.200">
+          <Card bg="white" border="2px" borderColor="brand.200" shadow="sm">
             <CardBody p={3}>
               <VStack spacing={1} align="center">
-                <Text fontSize="xs" color="green.800" fontWeight="bold">
-                  Total Earned
-                </Text>
-                <Text fontSize="lg" fontWeight="bold" color="green.600">
-                  ₱{totalEarnings}
-                </Text>
-              </VStack>
-            </CardBody>
-          </Card>
-
-          <Card bg="blue.50" border="1px" borderColor="blue.200">
-            <CardBody p={3}>
-              <VStack spacing={1} align="center">
-                <Text fontSize="xs" color="blue.800" fontWeight="bold">
-                  Fees Due
+                <Text fontSize="xs" color="gray.600" fontWeight="bold" textAlign="center">
+                  Total Cash Collected
                 </Text>
                 <Text fontSize="lg" fontWeight="bold" color="blue.600">
-                  ₱{totalFeesDue}
+                  ₱{totalEarnings.toFixed(2)}
                 </Text>
               </VStack>
             </CardBody>
           </Card>
 
-          <Card bg="purple.50" border="1px" borderColor="purple.200">
+          <Card bg="white" border="2px" borderColor="red.200" shadow="sm">
             <CardBody p={3}>
               <VStack spacing={1} align="center">
-                <Text fontSize="xs" color="purple.800" fontWeight="bold">
-                  Already Paid
+                <Text fontSize="xs" color="gray.600" fontWeight="bold" textAlign="center">
+                  Remittance Owed
                 </Text>
-                <Text fontSize="lg" fontWeight="bold" color="purple.600">
-                  ₱{totalPaid}
+                <Text fontSize="lg" fontWeight="bold" color="red.600">
+                  ₱{totalFeesDue.toFixed(2)}
+                </Text>
+              </VStack>
+            </CardBody>
+          </Card>
+
+          <Card bg="green.50" border="2px" borderColor="green.400" shadow="md">
+            <CardBody p={3}>
+              <VStack spacing={1} align="center">
+                <Text fontSize="xs" color="green.800" fontWeight="bold" textAlign="center">
+                  Take-Home
+                </Text>
+                <Text fontSize="lg" fontWeight="bold" color="green.600">
+                  ₱{takeHome.toFixed(2)}
                 </Text>
               </VStack>
             </CardBody>
@@ -173,23 +233,23 @@ const RemittanceLedger: React.FC = () => {
           <CardBody>
             <VStack spacing={2} align="stretch">
               <Text fontWeight="bold" fontSize="sm" color="blue.900">
-                How Clovia Fees Work
+                How Cash Collection Works
               </Text>
               <Text fontSize="xs" color="blue.800">
-                • Clovia takes 10% commission per batch to maintain platform
+                • Clovia takes a 15% commission per delivery.
               </Text>
               <Text fontSize="xs" color="blue.800">
-                • You pay fees upfront before claiming new passes
+                • Your ledger updates automatically after completing a job.
               </Text>
               <Text fontSize="xs" color="blue.800">
-                • Riders with unpaid fees cannot claim new batches
+                • ₱1000 limit: Your account will be locked from claiming new batches until you remit fees.
               </Text>
             </VStack>
           </CardBody>
         </Card>
 
         {/* Lock Warning (if fees due) */}
-        {totalFeesDue > 0 && (
+        {isLocked && (
           <Card bg="orange.50" w="full" border="2px" borderColor="orange.400">
             <CardBody>
               <HStack spacing={2} align="start">
@@ -199,7 +259,7 @@ const RemittanceLedger: React.FC = () => {
                     Account Lock Warning
                   </Text>
                   <Text fontSize="xs" color="orange.800">
-                    You have ₱{totalFeesDue} in pending fees. Pay now to unlock new batch claims.
+                    You have ₱{totalFeesDue.toFixed(2)} in pending fees. Pay now to unlock new batch claims.
                   </Text>
                 </VStack>
               </HStack>
@@ -207,69 +267,38 @@ const RemittanceLedger: React.FC = () => {
           </Card>
         )}
 
-        {/* Ledger History */}
-        <VStack spacing={3} w="full" align="stretch">
-          <Heading size="sm" color="gray.800">
-            Transaction History
-          </Heading>
-          
-          {ledger.map((entry, idx) => (
-            <Card key={idx} bg="white" border="1px" borderColor="gray.200">
-              <CardBody p={3}>
-                <VStack spacing={2} align="stretch">
-                  {/* Header */}
-                  <HStack justify="space-between" align="start">
-                    <VStack align="start" spacing={0} flex={1}>
-                      <Text fontWeight="bold" fontSize="sm" color="gray.800">
-                        {entry.description}
-                      </Text>
-                      <Text fontSize="xs" color="gray.500">
-                        {entry.date}
-                      </Text>
-                    </VStack>
-                    <Badge colorScheme={entry.status === 'paid' ? 'green' : 'yellow'}>
-                      {entry.status === 'paid' ? '✓ Paid' : 'Pending'}
-                    </Badge>
-                  </HStack>
-
-                  <Divider />
-
-                  {/* Earnings Breakdown */}
-                  <HStack justify="space-between" fontSize="sm">
-                    <Text color="gray.600">Your Earnings:</Text>
-                    <Text fontWeight="bold" color="green.600">
-                      +₱{entry.earnings}
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between" fontSize="sm">
-                    <Text color="gray.600">Clovia Fee (10%):</Text>
-                    <Text fontWeight="bold" color="red.600">
-                      -₱{entry.systemFee}
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between" fontSize="sm">
-                    <Text fontWeight="bold" color="gray.800">Net Earnings:</Text>
-                    <Text fontWeight="bold" color="brand.600">
-                      ₱{entry.earnings - entry.systemFee}
-                    </Text>
-                  </HStack>
-                </VStack>
-              </CardBody>
-            </Card>
-          ))}
-        </VStack>
+        {/* Account Details Box */}
+        <Card bg="white" w="full" border="1px" borderColor="gray.200">
+          <CardBody>
+            <VStack spacing={3} align="stretch">
+              <Heading size="sm" color="gray.700">Ledger Details</Heading>
+              <Divider />
+              <HStack justify="space-between" fontSize="sm">
+                <Text color="gray.600">Free Slots Remaining:</Text>
+                <Badge colorScheme={ledgerData?.free_slots_remaining ? "green" : "red"}>{ledgerData?.free_slots_remaining}</Badge>
+              </HStack>
+              <HStack justify="space-between" fontSize="sm">
+                <Text color="gray.600">Total Free Slots Used:</Text>
+                <Text fontWeight="bold">{ledgerData?.total_free_slots_used}</Text>
+              </HStack>
+              <HStack justify="space-between" fontSize="sm">
+                <Text color="gray.600">Last Remittance:</Text>
+                <Text fontWeight="medium">{ledgerData?.last_remittance_at ? new Date(ledgerData.last_remittance_at).toLocaleDateString() : 'Never'}</Text>
+              </HStack>
+            </VStack>
+          </CardBody>
+        </Card>
 
         {/* Remit Button */}
-        {totalFeesDue > 0 && (
-          <Button
-            w="full"
-            colorScheme="brand"
-            size="lg"
-            onClick={onOpen}
-          >
-            Pay ₱{totalFeesDue} Fees Now
-          </Button>
-        )}
+        <Button
+          w="full"
+          colorScheme="brand"
+          size="lg"
+          onClick={onOpen}
+          isDisabled={totalFeesDue <= 0}
+        >
+          {totalFeesDue > 0 ? `Pay ₱${totalFeesDue.toFixed(2)} Fees Now` : `No Remittance Fees Owed`}
+        </Button>
 
         {/* Navigation Buttons */}
         <HStack spacing={2} w="full">
@@ -278,7 +307,7 @@ const RemittanceLedger: React.FC = () => {
             size="sm"
             variant="outline"
             colorScheme="brand"
-            onClick={() => navigate('/rider-queue')}
+            onClick={() => navigate('/rider-home')}
           >
             📍 Find Batches
           </Button>
@@ -287,7 +316,7 @@ const RemittanceLedger: React.FC = () => {
             size="sm"
             variant="outline"
             colorScheme="brand"
-            onClick={() => navigate('/rider')}
+            onClick={() => navigate('/rider-home')}
           >
             📋 My Jobs
           </Button>
@@ -299,7 +328,7 @@ const RemittanceLedger: React.FC = () => {
           variant="ghost"
           colorScheme="brand"
           fontSize="sm"
-          onClick={() => navigate('/rider-queue')}
+          onClick={() => navigate('/rider-home')}
         >
           ← Back to Queue
         </Button>
@@ -317,7 +346,7 @@ const RemittanceLedger: React.FC = () => {
                   <HStack justify="space-between">
                     <Text fontWeight="bold">Total Due:</Text>
                     <Text fontWeight="bold" fontSize="lg" color="brand.600">
-                      ₱{totalFeesDue}
+                      ₱{totalFeesDue.toFixed(2)}
                     </Text>
                   </HStack>
                 </CardBody>
@@ -328,22 +357,22 @@ const RemittanceLedger: React.FC = () => {
                   Select Payment Method:
                 </Text>
 
-                {/* Online Payment */}
+                {/* GCash / E-Wallet */}
                 <Card
-                  bg={selectedPaymentMethod === 'online' ? 'blue.50' : 'white'}
+                  bg={selectedPaymentMethod === 'gcash' ? 'blue.50' : 'white'}
                   border="2px"
-                  borderColor={selectedPaymentMethod === 'online' ? 'blue.400' : 'gray.200'}
+                  borderColor={selectedPaymentMethod === 'gcash' ? 'blue.400' : 'gray.200'}
                   cursor="pointer"
-                  onClick={() => setSelectedPaymentMethod('online')}
+                  onClick={() => setSelectedPaymentMethod('gcash')}
                 >
                   <CardBody p={3}>
                     <HStack spacing={2}>
-                      <FaCreditCard size={24} color={selectedPaymentMethod === 'online' ? '#0066FF' : '#999'} />
+                      <FaCreditCard size={24} color={selectedPaymentMethod === 'gcash' ? '#0066FF' : '#999'} />
                       <VStack align="start" spacing={0} flex={1}>
-                        <Text fontWeight="bold" fontSize="sm">Online Payment</Text>
-                        <Text fontSize="xs" color="gray.600">Instant via Xendit (Online Payment)</Text>
+                        <Text fontWeight="bold" fontSize="sm">E-Wallet (GCash / PayMaya)</Text>
+                        <Text fontSize="xs" color="gray.600">Send to exactly: 0912-345-6789</Text>
                       </VStack>
-                      {selectedPaymentMethod === 'online' && <CheckCircleIcon color="green.500" />}
+                      {selectedPaymentMethod === 'gcash' && <CheckCircleIcon color="green.500" />}
                     </HStack>
                   </CardBody>
                 </Card>
@@ -361,13 +390,32 @@ const RemittanceLedger: React.FC = () => {
                       <FaUniversity size={24} color={selectedPaymentMethod === 'bank' ? '#0066FF' : '#999'} />
                       <VStack align="start" spacing={0} flex={1}>
                         <Text fontWeight="bold" fontSize="sm">Bank Transfer</Text>
-                        <Text fontSize="xs" color="gray.600">1-2 business days</Text>
+                        <Text fontSize="xs" color="gray.600">BDO Account: 1234-5678-9000</Text>
                       </VStack>
                       {selectedPaymentMethod === 'bank' && <CheckCircleIcon color="green.500" />}
                     </HStack>
                   </CardBody>
                 </Card>
+
               </VStack>
+
+              <Divider />
+
+              {/* Image Upload for Proof */}
+              <Box mt={2} px={1}>
+                <Text fontWeight="bold" fontSize="sm" mb={2}>Proof of Payment (Required):</Text>
+                {paymentProofUrl ? (
+                  <VStack spacing={3}>
+                    <Image src={paymentProofUrl} alt="Payment Proof" boxSize="150px" objectFit="contain" border="2px dashed" borderColor="gray.300" borderRadius="md" p={1} />
+                    <Button size="sm" colorScheme="red" variant="ghost" onClick={() => setPaymentProofUrl('')}>Remove Receipt</Button>
+                  </VStack>
+                ) : (
+                  <Button as="label" w="full" py={6} variant="outline" cursor="pointer" isLoading={isUploading} leftIcon={<FaCreditCard />} borderStyle="dashed" borderWidth="2px" _hover={{ bg: "gray.50" }}>
+                    Upload Screenshot of Receipt
+                    <input type="file" hidden accept="image/*" onChange={handleUploadProof} />
+                  </Button>
+                )}
+              </Box>
             </VStack>
           </ModalBody>
           <ModalFooter>

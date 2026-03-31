@@ -122,19 +122,15 @@ const Sidebar: React.FC = () => {
         items.push({ icon: FaStar, label: 'Admin', path: '/admin' })
       } else {
         items.push(
-          { icon: FiHeart, label: 'Saved', path: '/saved-products' },
-          {
-            icon: FiGrid,
-            label: user?.is_organization && (user as any)?.org_handle ? 'Organization Page' : 'Create Organization',
-            path: user?.is_organization && (user as any)?.org_handle ? `/org/${(user as any).org_handle}` : '/organizations/new'
-          }
+          { icon: FiHeart, label: 'Saved', path: '/saved-products' }
         )
       }
       items.push(
+        { icon: FiGrid, label: 'Organizations', path: '/organizations' },
         {
           icon: FaMotorcycle,
           label: riderStatus?.is_rider && riderStatus?.status === 'approved' ? 'Rider Dashboard' : 'Apply as Rider',
-          path: '/rider'
+          path: '/rider-home'
         },
         {
           icon: FaCrown,
@@ -185,12 +181,17 @@ const Sidebar: React.FC = () => {
               {/* User Profile Card - Only when logged in */}
               {user && (
                 <Box
+                  as={RouterLink}
+                  to="/profile"
+                  onClick={onClose}
                   bg={useColorModeValue('brand.50', 'gray.700')}
                   p={4}
                   mb={4}
                   borderRadius="lg"
                   mx={4}
                   mt={4}
+                  _hover={{ opacity: 0.85, textDecoration: 'none' }}
+                  display="block"
                 >
                   <Box display="flex" alignItems="center" gap={3} mb={3}>
                     <VerifiedAvatar

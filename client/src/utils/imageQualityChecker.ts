@@ -55,8 +55,8 @@ export async function checkImageQuality(file: File): Promise<ImageQualityResult>
     issues.push({
       type: 'low_resolution',
       severity: resScore < 30 ? 'error' : 'warning',
-      message: `⚠ Image resolution is low (${width}×${height}).`,
-      suggestion: 'Please retake the photo at higher resolution for better trade chances.',
+      message: `Low resolution (${width}×${height})`,
+      suggestion: 'Retake photo if possible.',
       score: resScore,
     })
   }
@@ -66,8 +66,8 @@ export async function checkImageQuality(file: File): Promise<ImageQualityResult>
     issues.push({
       type: 'small_file',
       severity: 'warning',
-      message: '⚠ Image file is very small, which may indicate poor quality.',
-      suggestion: 'Use the original photo from your camera for best results.',
+      message: 'File size too small',
+      suggestion: 'Use an original photo.',
       score: 40,
     })
     scores.push(40)
@@ -79,8 +79,8 @@ export async function checkImageQuality(file: File): Promise<ImageQualityResult>
     issues.push({
       type: 'aspect_ratio',
       severity: 'warning',
-      message: '⚠ Unusual aspect ratio — this may be a screenshot or cropped image.',
-      suggestion: 'Use a standard photo of the product for the best listing results.',
+      message: 'Unusual aspect ratio',
+      suggestion: 'May be a screenshot. Use a standard photo.',
       score: 55,
     })
     scores.push(55)
@@ -113,8 +113,8 @@ export async function checkImageQuality(file: File): Promise<ImageQualityResult>
     issues.push({
       type: 'dark',
       severity: avgBrightness < 35 ? 'error' : 'warning',
-      message: '⚠ Image quality is low — the photo appears too dark.',
-      suggestion: 'Please retake the photo with better lighting for better trade chances.',
+      message: 'Image is too dark',
+      suggestion: 'Check lighting.',
       score: brightScore,
     })
   } else if (brightPct > 0.45 || avgBrightness > BRIGHT_THRESHOLD) {
@@ -123,8 +123,8 @@ export async function checkImageQuality(file: File): Promise<ImageQualityResult>
     issues.push({
       type: 'bright',
       severity: 'warning',
-      message: '⚠ Image appears overexposed or washed out.',
-      suggestion: 'Reduce brightness or avoid direct flash when photographing your item.',
+      message: 'Overexposed or washed out',
+      suggestion: 'Reduce brightness or flash.',
       score: brightScore,
     })
   }
@@ -142,8 +142,8 @@ export async function checkImageQuality(file: File): Promise<ImageQualityResult>
     issues.push({
       type: 'blur',
       severity: blurVariance < BLUR_THRESHOLD / 2 ? 'error' : 'warning',
-      message: '⚠ Image quality is low — the photo appears blurry.',
-      suggestion: 'Please retake the photo with a steady hand for better trade chances.',
+      message: 'Image appears blurry',
+      suggestion: 'Retake with a steady hand.',
       score: sharpScore,
     })
   }

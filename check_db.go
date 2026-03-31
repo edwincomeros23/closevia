@@ -82,6 +82,20 @@ func main() {
 		fmt.Printf("Trade #%d: status=%s, option=%s\n", id, status, opt)
 	}
 
+	// --- USERS ---
+	fmt.Println("\n=== ALL USERS ===")
+	rows, err = database.DB.Query("SELECT id, name, email FROM users ORDER BY id DESC LIMIT 50")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var name, email string
+		rows.Scan(&id, &name, &email)
+		fmt.Printf("User #%d: name=%s, email=%s\n", id, name, email)
+	}
+
 	// Check riders table
 	fmt.Println("\n=== RIDERS ===")
 	rows4, err := database.DB.Query(`SELECT id, user_id, name, is_active FROM riders LIMIT 10`)

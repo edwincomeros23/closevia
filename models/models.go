@@ -99,6 +99,8 @@ type User struct {
 	Slug                        string     `json:"slug,omitempty"` // Unique URL identifier
 	Name                        string     `json:"name" validate:"required,min=2,max=255"`
 	Email                       string     `json:"email" validate:"required,email"`
+	Phone                       string     `json:"phone,omitempty"`
+	PhoneVerified               bool       `json:"phone_verified,omitempty"`
 	PasswordHash                string     `json:"-" validate:"required"`
 	Role                        string     `json:"role" validate:"oneof=user admin"`
 	Verified                    bool       `json:"verified"`
@@ -133,6 +135,7 @@ type User struct {
 	VerificationRejectionReason string     `json:"verification_rejection_reason,omitempty"`
 	EmailNotificationsEnabled   bool       `json:"email_notifications_enabled"`
 	PushNotificationsEnabled    bool       `json:"push_notifications_enabled"`
+	PasswordChangedAt           *time.Time `json:"password_changed_at,omitempty"`
 	LastLogin                   *time.Time `json:"last_login,omitempty"`
 	ActivityStatus              string     `json:"activity_status,omitempty"`
 }
@@ -147,6 +150,7 @@ type UserLogin struct {
 type UserRegister struct {
 	Name           string  `json:"name" validate:"required,min=2,max=255"`
 	Email          string  `json:"email" validate:"required,email"`
+	Phone          string  `json:"phone"`
 	Password       string  `json:"password" validate:"required,min=6"`
 	Role           string  `json:"role" validate:"omitempty,oneof=user admin"`
 	IsOrganization bool    `json:"is_organization"`
@@ -308,6 +312,7 @@ type Trade struct {
 	DeliveryType            string `json:"delivery_type,omitempty" validate:"omitempty,oneof=standard express meetup"`
 	PaymentMethod           string `json:"payment_method,omitempty" validate:"omitempty,oneof=gcash cod wallet upfront"`
 	PaymentConfirmed        bool   `json:"payment_confirmed"`
+	DeliveryInstructions    string `json:"delivery_instructions,omitempty"`
 	ProofOfDelivery         string `json:"proof_of_delivery,omitempty"` // Base64 encoded image
 	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
 	SellerConfirmedDelivery bool   `json:"seller_confirmed_delivery"`
@@ -320,8 +325,13 @@ type Trade struct {
 	SellerProofURL string `json:"seller_proof_url,omitempty"`
 	// Meetup-related fields
 	MeetupLocation        string `json:"meetup_location,omitempty"`
+	MeetupTime            string `json:"meetup_time,omitempty"`
 	BuyerMeetupConfirmed  bool   `json:"buyer_meetup_confirmed"`
 	SellerMeetupConfirmed bool   `json:"seller_meetup_confirmed"`
+	BuyerMeetupLocation   string `json:"buyer_meetup_location,omitempty"`
+	BuyerMeetupTime       string `json:"buyer_meetup_time,omitempty"`
+	SellerMeetupLocation  string `json:"seller_meetup_location,omitempty"`
+	SellerMeetupTime      string `json:"seller_meetup_time,omitempty"`
 	BuyerName             string `json:"buyer_name,omitempty"`
 	SellerName            string `json:"seller_name,omitempty"`
 	ProductTitle          string `json:"product_title,omitempty"`
@@ -359,6 +369,7 @@ type TradeAction struct {
 	CounterOfferedProductIDs []int    `json:"counter_offered_product_ids,omitempty"`
 	CounterOfferedCashAmount *float64 `json:"counter_offered_cash_amount,omitempty"`
 	MeetupLocation           string   `json:"meetup_location,omitempty"`
+	MeetupTime               string   `json:"meetup_time,omitempty"`
 	RequestedOption          string   `json:"requested_option,omitempty"`
 	DeliveryAddress          string   `json:"delivery_address,omitempty"`
 }

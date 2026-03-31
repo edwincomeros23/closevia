@@ -142,9 +142,38 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// Check if user already exists
-	var existingUser models.User
-	err := h.db.QueryRow("SELECT id FROM users WHERE email = ?", user.Email).Scan(&existingUser.ID)
+	var existingUser struct {
+		ID       int
+		Verified bool
+	}
+	err := h.db.QueryRow("SELECT id, verified FROM users WHERE email = ?", user.Email).Scan(&existingUser.ID, &existingUser.Verified)
 	if err == nil {
+		if !existingUser.Verified {
+			// User exists but not verified: resend OTP and return requires_verification
+			otpCode, otpHash, otpExpiry, otpErr := generateOTP()
+			if otpErr == nil {
+				h.db.Exec(
+					"UPDATE users SET email_otp_hash = ?, email_otp_expires = ? WHERE id = ?",
+					otpHash, otpExpiry, existingUser.ID,
+				)
+				go func() {
+					_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", existingUser.ID).Scan(&user.Name)
+					err := services.SendOTPEmail(user.Email, user.Name, otpCode)
+					if err != nil {
+						fmt.Printf("❌ Failed to send OTP email: %v\n", err)
+					}
+				}()
+			}
+			return c.Status(200).JSON(models.APIResponse{
+				Success: true,
+				Message: "Account already exists but is not verified. Verification code resent.",
+				Data: fiber.Map{
+					"requires_verification": true,
+					"email":                 user.Email,
+				},
+			})
+		}
+		// User exists and is verified
 		return c.Status(409).JSON(models.APIResponse{
 			Success: false,
 			Error:   "User with this email already exists",
@@ -202,11 +231,27 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 	}
 
 	// Insert new user
+	cleanPhone := strings.TrimSpace(user.Phone)
+	if cleanPhone != "" {
+		// Only allow PH numbers: must be 11 digits, start with '09' or '9', and store as +63XXXXXXXXXX
+		phoneRegex := regexp.MustCompile(`^(09|9)\d{9}$`)
+		if !phoneRegex.MatchString(cleanPhone) {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Phone number must be 11 digits and start with 09 (PH mobile only)"})
+		}
+		// Normalize to +63XXXXXXXXXX
+		if strings.HasPrefix(cleanPhone, "0") {
+			cleanPhone = "+63" + cleanPhone[1:]
+		} else if strings.HasPrefix(cleanPhone, "9") {
+			cleanPhone = "+63" + cleanPhone
+		}
+	}
+
 	result, err := h.db.Exec(
-		"INSERT INTO users (slug, name, email, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference, premium_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?, ?)",
+		"INSERT INTO users (slug, name, email, phone, password_hash, role, is_organization, org_verified, org_name, org_logo_url, department, bio, badges, profile_picture, language_preference, premium_tier) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY(), ?, ?, ?)",
 		slug,
 		user.Name,
 		user.Email,
+		nullableString(&cleanPhone),
 		hashedPassword,
 		user.Role,
 		user.IsOrganization,
@@ -260,6 +305,8 @@ func (h *UserHandler) Register(c *fiber.Ctx) error {
 				Slug:               slug,
 				Name:               user.Name,
 				Email:              user.Email,
+				Phone:              cleanPhone,
+				PhoneVerified:      false,
 				Verified:           !requiresVerification,
 				IsOrganization:     user.IsOrganization,
 				OrgVerified:        false,
@@ -743,11 +790,14 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 
 	var user models.User
 	var schoolEmailVerifiedAt sql.NullTime
+	var passwordChangedAt sql.NullTime
 	var lastLogin sql.NullTime
 
 	var slugNull sql.NullString
 	err := h.db.QueryRow(
 		`SELECT id, slug, name, email, role, verified, 
+		        COALESCE(phone, '') AS phone,
+		        COALESCE(phone_verified, FALSE) AS phone_verified,
 		        COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') AS org_name,
 		        COALESCE(org_handle, '') AS org_handle,
 		        COALESCE(org_logo_url, '') AS org_logo_url,
@@ -772,11 +822,12 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
 		        COALESCE(premium_tier, 'free') AS premium_tier,
-		        created_at, updated_at, last_login
+		        created_at, updated_at, password_changed_at, last_login
 		 FROM users WHERE id = ?`,
 		userID,
 	).Scan(
 		&user.ID, &slugNull, &user.Name, &user.Email, &user.Role, &user.Verified,
+		&user.Phone, &user.PhoneVerified,
 		&user.IsOrganization, &user.OrgVerified, &user.OrgName,
 		&user.OrgHandle, &user.OrgLogoURL, &user.OrgCoverURL, &user.OrgCategory,
 		&user.OrgWebsite, &user.OrgLocation, &user.OrgContactEmail,
@@ -785,11 +836,14 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.LanguagePreference, &user.PremiumTier,
-		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
+		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &lastLogin,
 	)
 
 	if schoolEmailVerifiedAt.Valid {
 		user.SchoolEmailVerifiedAt = &schoolEmailVerifiedAt.Time
+	}
+	if passwordChangedAt.Valid {
+		user.PasswordChangedAt = &passwordChangedAt.Time
 	}
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
@@ -884,6 +938,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	var updateData struct {
 		Name                      *string `json:"name"`
 		Email                     *string `json:"email"`
+		Phone                     *string `json:"phone"`
 		ProfilePicture            *string `json:"profile_picture"`
 		Bio                       *string `json:"bio"`
 		BackgroundImage           *string `json:"background_image"`
@@ -924,6 +979,27 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		}
 	}
 
+	var normalizedPhone string
+	var phoneChanged bool
+	if updateData.Phone != nil {
+		normalizedPhone = strings.TrimSpace(*updateData.Phone)
+		if normalizedPhone != "" {
+			phoneRegex := regexp.MustCompile(`^\d{10,15}$`)
+			if !phoneRegex.MatchString(normalizedPhone) {
+				return c.Status(400).JSON(models.APIResponse{
+					Success: false,
+					Error:   "Phone number must be 10 to 15 digits",
+				})
+			}
+		}
+
+		var currentPhone sql.NullString
+		err := h.db.QueryRow("SELECT phone FROM users WHERE id = ?", userID).Scan(&currentPhone)
+		if err == nil {
+			phoneChanged = normalizedPhone != strings.TrimSpace(currentPhone.String)
+		}
+	}
+
 	// Build update query dynamically
 	query := "UPDATE users SET updated_at = CURRENT_TIMESTAMP"
 	var args []interface{}
@@ -939,6 +1015,14 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 			query += ", verified = false"
 			// Revoke is_premium if it was from WMSU, they will get it back after verifying new WMSU email
 			query += ", is_premium = false"
+		}
+	}
+
+	if updateData.Phone != nil {
+		query += ", phone = ?"
+		args = append(args, normalizedPhone)
+		if phoneChanged {
+			query += ", phone_verified = false"
 		}
 	}
 
@@ -985,6 +1069,8 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if err != nil {
 		// Handle missing columns: try to add any known columns then retry once
 		if strings.Contains(err.Error(), "Unknown column") || strings.Contains(err.Error(), "1054") {
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20) NULL")
+			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_image VARCHAR(255) NULL")
 			h.db.Exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS background_position VARCHAR(50) NULL")
@@ -1179,7 +1265,7 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	}
 
 	// Update DB
-	_, err = h.db.Exec("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", hashed, userID)
+	_, err = h.db.Exec("UPDATE users SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", hashed, userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update password"})
 	}
@@ -1470,9 +1556,36 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 	offset := (page - 1) * limit
 
+	search := c.Query("search", "")
+	role := c.Query("role", "")
+	verified := c.Query("verified", "")
+
+	baseQuery := " FROM users WHERE 1=1"
+	var args []interface{}
+
+	if search != "" {
+		baseQuery += " AND (name LIKE ? OR email LIKE ?)"
+		likeSearch := "%" + search + "%"
+		args = append(args, likeSearch, likeSearch)
+	}
+
+	if role != "" {
+		baseQuery += " AND role = ?"
+		args = append(args, role)
+	}
+
+	if verified != "" {
+		switch verified {
+		case "true":
+			baseQuery += " AND verified = true"
+		case "false":
+			baseQuery += " AND verified = false"
+		}
+	}
+
 	// Get total count
 	var total int
-	err := h.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&total)
+	err := h.db.QueryRow("SELECT COUNT(*)"+baseQuery, args...).Scan(&total)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
@@ -1481,10 +1594,10 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	}
 
 	// Get users
-	rows, err := h.db.Query(
-		"SELECT id, name, email, role, verified, profile_picture, created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?",
-		limit, offset,
-	)
+	query := "SELECT id, name, email, role, verified, profile_picture, created_at" + baseQuery + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
@@ -1521,6 +1634,83 @@ func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 			TotalPages: totalPages,
 		},
 	})
+}
+
+// SearchUsersPublic returns public user matches for search/autocomplete.
+func (h *UserHandler) SearchUsersPublic(c *fiber.Ctx) error {
+	q := strings.TrimSpace(c.Query("q", ""))
+	if q == "" {
+		return c.JSON(models.APIResponse{Success: true, Data: []fiber.Map{}})
+	}
+
+	limit, _ := strconv.Atoi(c.Query("limit", "8"))
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 20 {
+		limit = 20
+	}
+
+	pattern := "%" + q + "%"
+	rows, err := h.db.Query(`
+		SELECT id,
+		       COALESCE(slug, ''),
+		       COALESCE(name, ''),
+		       COALESCE(profile_picture, ''),
+		       COALESCE(verified, FALSE),
+		       COALESCE(is_organization, FALSE),
+		       COALESCE(org_name, ''),
+		       COALESCE(org_handle, '')
+		FROM users
+		WHERE role <> 'suspended'
+		  AND (name LIKE ? OR slug LIKE ? OR org_name LIKE ? OR org_handle LIKE ? OR email LIKE ?)
+		ORDER BY
+		  CASE
+		    WHEN name LIKE ? THEN 0
+		    WHEN org_name LIKE ? THEN 1
+		    WHEN org_handle LIKE ? THEN 2
+		    WHEN slug LIKE ? THEN 3
+		    ELSE 4
+		  END,
+		  verified DESC,
+		  created_at DESC
+		LIMIT ?
+	`, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to search users"})
+	}
+	defer rows.Close()
+
+	users := make([]fiber.Map, 0, limit)
+	for rows.Next() {
+		var (
+			id             int
+			slug           string
+			name           string
+			profilePicture string
+			verified       bool
+			isOrganization bool
+			orgName        string
+			orgHandle      string
+		)
+
+		if err := rows.Scan(&id, &slug, &name, &profilePicture, &verified, &isOrganization, &orgName, &orgHandle); err != nil {
+			continue
+		}
+
+		users = append(users, fiber.Map{
+			"id":              id,
+			"slug":            slug,
+			"name":            name,
+			"profile_picture": profilePicture,
+			"verified":        verified,
+			"is_organization": isOrganization,
+			"org_name":        orgName,
+			"org_handle":      orgHandle,
+		})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: users})
 }
 
 // DeleteUser permanently deletes a user (admin only).
@@ -1964,50 +2154,57 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	// --- Trust Score Computation (0-100) with detailed breakdown ---
 	var trustFactors []models.TrustFactor
 
-	// 1. Verified account: 15 points
+	// 1. Verified account: 15 points (Verified = 15, Not verified = 0)
 	var verificationStatus string
-	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified') FROM users WHERE id = ?", userID).Scan(&verificationStatus)
+	var isVerifiedBool bool
+	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified'), verified FROM users WHERE id = ?", userID).Scan(&verificationStatus, &isVerifiedBool)
 	verifiedPoints := 0
 	verifiedStatus := "fail"
-	switch verificationStatus {
-	case "verified":
+	if verificationStatus == "verified" || isVerifiedBool {
 		verifiedPoints = 15
 		verifiedStatus = "pass"
-	case "pending":
-		verifiedPoints = 5
+	} else if verificationStatus == "pending" {
 		verifiedStatus = "warn"
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Verified account", Status: verifiedStatus, Points: verifiedPoints, Max: 15})
 
-	// 2. Completed trades: 25 points (capped at 20 trades)
-	tradePoints := 0
+	// 2. Completed trades: 15 points (progressive, 0 trades = neutral 5)
+	tradePoints := 5
 	tradeStatus := "warn"
-	if stats.CompletedTrades > 0 {
-		capped := stats.CompletedTrades
-		if capped > 20 {
-			capped = 20
-		}
-		tradePoints = int((float64(capped) / 20.0) * 25.0)
-		if stats.CompletedTrades >= 5 {
-			tradeStatus = "pass"
-		}
+	if stats.CompletedTrades >= 6 {
+		tradePoints = 15
+		tradeStatus = "pass"
+	} else if stats.CompletedTrades >= 3 {
+		tradePoints = 12
+		tradeStatus = "pass"
+	} else if stats.CompletedTrades >= 1 {
+		tradePoints = 8
+		tradeStatus = "warn"
 	}
-	trustFactors = append(trustFactors, models.TrustFactor{Label: "Completed trades", Status: tradeStatus, Points: tradePoints, Max: 25})
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Completed trades", Status: tradeStatus, Points: tradePoints, Max: 15})
 
-	// 3. Positive ratings: 25 points (avg_rating / 5 * 25)
-	ratingPoints := 0
-	ratingStatus := "warn"
-	if stats.AvgRating > 0 {
-		ratingPoints = int((stats.AvgRating / 5.0) * 25.0)
-		if stats.AvgRating >= 4.0 {
+	// 3. Positive ratings: 25 points (based on percentage)
+	ratingPoints := 25 // Default neutral/clean
+	ratingStatus := "pass"
+	var positivePercentVal float64 = 100
+	if stats.TotalFeedback > 0 {
+		positivePercentVal = stats.PositivePercent
+		if positivePercentVal == 100 {
+			ratingPoints = 25
+		} else if positivePercentVal >= 80 {
+			ratingPoints = 18 + int((positivePercentVal-80)/19.0*6.0)
 			ratingStatus = "pass"
-		} else if stats.AvgRating < 2.5 {
+		} else if positivePercentVal >= 60 {
+			ratingPoints = 10 + int((positivePercentVal-60)/19.0*7.0)
+			ratingStatus = "warn"
+		} else {
+			ratingPoints = int(positivePercentVal / 59.0 * 9.0)
 			ratingStatus = "fail"
 		}
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Positive ratings", Status: ratingStatus, Points: ratingPoints, Max: 25})
 
-	// 4. No reports: 20 points (lose points per report)
+	// 4. No reports: 20 points
 	var reportCount int
 	err = h.db.QueryRow("SELECT COUNT(*) FROM reports WHERE reported_user_id = ? AND status IN ('reviewed', 'resolved')", userID).Scan(&reportCount)
 	if err != nil {
@@ -2016,52 +2213,77 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	reportPoints := 20
 	reportStatus := "pass"
 	if reportCount > 0 {
-		reportPoints = 20 - (reportCount * 5)
+		reportPoints -= reportCount * 8
 		if reportPoints < 0 {
 			reportPoints = 0
 		}
-		if reportCount >= 3 {
+		if reportPoints < 10 {
 			reportStatus = "fail"
 		} else {
 			reportStatus = "warn"
 		}
 	}
-	trustFactors = append(trustFactors, models.TrustFactor{Label: "No reports", Status: reportStatus, Points: reportPoints, Max: 20})
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Clean record", Status: reportStatus, Points: reportPoints, Max: 20})
 
-	// 5. Response time: 15 points
-	responsePoints := 0
+	// 5. Response time: 15 points (Faster = better, inactive = minimum 5)
+	responsePoints := 12 // Default moderate for no activity
 	responseStatus := "warn"
 	if avgResponseTimeMinutes.Valid {
 		minutes := int(avgResponseTimeMinutes.Float64)
-		if minutes <= 60 {
+		if minutes <= 360 { // Fast (within hours)
 			responsePoints = 15
 			responseStatus = "pass"
-		} else if minutes <= 360 {
-			responsePoints = 10
+		} else if minutes <= 1440 { // Moderate (within a day)
+			responsePoints = 12
 			responseStatus = "pass"
-		} else if minutes <= 1440 {
+		} else if minutes <= 4320 { // Slow (few days)
+			responsePoints = 9
+			responseStatus = "warn"
+		} else { // Very slow
 			responsePoints = 5
-			responseStatus = "warn"
-		} else {
-			responsePoints = 0
-			responseStatus = "warn"
+			responseStatus = "fail"
 		}
 	}
-	trustFactors = append(trustFactors, models.TrustFactor{Label: "Fast responses", Status: responseStatus, Points: responsePoints, Max: 15})
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Response speed", Status: responseStatus, Points: responsePoints, Max: 15})
+
+	// 6. Trade Success Rate: 10 points
+	var totalAttempted int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed', 'cancelled')", userID).Scan(&totalAttempted)
+	
+	successPoints := 10 // Default neutral if no trades
+	successStatus := "pass"
+	if totalAttempted > 0 {
+		var successCount int
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed')", userID).Scan(&successCount)
+		successRate := (float64(successCount) / float64(totalAttempted)) * 100
+		if successRate >= 90 {
+			successPoints = 10
+		} else if successRate >= 70 {
+			successPoints = 8
+			successStatus = "warn"
+		} else if successRate >= 50 {
+			successPoints = 5
+			successStatus = "warn"
+		} else {
+			successPoints = 2
+			successStatus = "fail"
+		}
+	}
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Trade success", Status: successStatus, Points: successPoints, Max: 10})
 
 	// Sum all factors
-	totalScore := verifiedPoints + tradePoints + ratingPoints + reportPoints + responsePoints
+	totalScore := verifiedPoints + tradePoints + ratingPoints + reportPoints + responsePoints + successPoints
 	if totalScore > 100 {
 		totalScore = 100
 	}
 	stats.TrustScore = totalScore
 	stats.TrustFactors = trustFactors
 
-	// Determine trust level
+	// Determine trust level based on new requirements
 	if stats.TrustScore >= 80 {
 		stats.TrustLevel = "trusted"
-	} else if stats.TrustScore >= 50 {
-		stats.TrustLevel = "new"
+	} else if stats.TrustScore >= 60 {
+		stats.TrustLevel = "new" // Maps to "Trusted" conceptually in UI
 	} else {
 		stats.TrustLevel = "risky"
 	}

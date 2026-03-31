@@ -28,6 +28,7 @@ import {
   AlertDescription,
   Skeleton,
   Tooltip,
+  Switch,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -35,7 +36,7 @@ import {
   ModalBody,
   ModalCloseButton,
 } from '@chakra-ui/react'
-import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon } from '@chakra-ui/icons'
+import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
 
 export interface ProductFormData {
   title: string
@@ -81,6 +82,11 @@ import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type
 
 const CONDITION_OPTIONS = ['New', 'Like New', 'Good', 'Used', 'For Parts']
 const MAX_DAILY_AI_REQUESTS = 100
+const QA_MOCK_LOCATION = {
+  label: 'QA Mock Location (Work Network)',
+  latitude: 14.5995,
+  longitude: 120.9842,
+}
 
 // ── Daily Budget Helpers ──────────────────────────────────────────────────
 
@@ -191,11 +197,14 @@ const AddProduct: React.FC = () => {
 
   // AI Analysis blocking/warning state
   const [aiBlockingError, setAiBlockingError] = useState<string | null>(null) // Blocks form submission
-  const [aiWarnings, setAiWarnings] = useState<string[]>([]) // Just warnings
+  type AIWarningKind = 'person' | 'suspicious' | 'quality' | 'non_product' | 'online'
+  type AIWarning = { kind: AIWarningKind; message: string }
+
+  const [aiWarnings, setAiWarnings] = useState<AIWarning[]>([]) // Just warnings (server-side)
+  const [showAllAiWarnings, setShowAllAiWarnings] = useState(false)
 
   // Client-side image quality state
   const [clientQualityResults, setClientQualityResults] = useState<ClientQualityResult[]>([])
-  const [qualityChecking, setQualityChecking] = useState(false)
 
   const [titleLength, setTitleLength] = useState(0)
   const [descriptionLength, setDescriptionLength] = useState(0)
@@ -204,6 +213,7 @@ const AddProduct: React.FC = () => {
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [useMockLocation, setUseMockLocation] = useState(false)
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
@@ -214,7 +224,23 @@ const AddProduct: React.FC = () => {
 
   // ── Location ──────────────────────────────────────────────────────────────
 
+  const applyMockLocation = useCallback(() => {
+    setFormData(prev => ({
+      ...prev,
+      location: QA_MOCK_LOCATION.label,
+      latitude: QA_MOCK_LOCATION.latitude,
+      longitude: QA_MOCK_LOCATION.longitude,
+    }))
+    setLocationText(QA_MOCK_LOCATION.label)
+    setLocationDetected(true)
+    setIsGettingLocation(false)
+  }, [])
+
   const detectLocation = useCallback(() => {
+    if (useMockLocation) {
+      applyMockLocation()
+      return
+    }
     if (!navigator.geolocation) return
     setIsGettingLocation(true)
     navigator.geolocation.getCurrentPosition(
@@ -247,9 +273,29 @@ const AddProduct: React.FC = () => {
       },
       () => {
         setIsGettingLocation(false)
-      }
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     )
-  }, [])
+  }, [applyMockLocation, useMockLocation])
+
+  const handleMockLocationToggle = useCallback((enabled: boolean) => {
+    setUseMockLocation(enabled)
+
+    if (enabled) {
+      applyMockLocation()
+      return
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      location: '',
+      latitude: undefined,
+      longitude: undefined,
+    }))
+    setLocationText('')
+    setLocationDetected(false)
+    detectLocation()
+  }, [applyMockLocation, detectLocation])
 
   useEffect(() => {
     detectLocation()
@@ -276,15 +322,7 @@ const AddProduct: React.FC = () => {
     aiTriggeredRef.current = true
     setIsGenerating(true)
 
-    toast({
-        id: "addproduct-analyzing-images",
-      title: '🔍 Analyzing images...',
-      description: 'AI is scanning all photos for product details and checking image quality.',
-      status: 'info',
-      duration: 3000,
-      isClosable: true,
-      position: 'top-right',
-    })
+    // Removed: 'Analyzing images...' notification (handled by inline UI)
 
     try {
       // Send all images in a batch (single API request)
@@ -330,7 +368,7 @@ const AddProduct: React.FC = () => {
         // Increment daily counter for successful analysis
         incrementDailyCount()
 
-        const warnings: string[] = []
+        const warnings: AIWarning[] = []
 
         // Check for secondary blocking issues (older field structure)
         if (d.is_prohibited) {
@@ -350,71 +388,72 @@ const AddProduct: React.FC = () => {
 
         // Check for person warning
         if (d.contains_person) {
-          warnings.push(d.person_warning || 'This photo contains a person. Please retake without people in frame.')
+          warnings.push({
+            kind: 'person',
+            message: d.person_warning || 'This photo contains a person. Please retake without people in frame.',
+          })
         }
 
-        // Check for suspicious image warning
-        if (d.is_suspicious_image) {
-          const reason = d.suspicious_reason || 'This looks like a screenshot or stock photo'
-          warnings.push(`⚠️ ${reason}: Original product photos work better and get better engagement!`)
+        // Stock / catalog / downloaded photo — one note only (AI often sets both flags with near-duplicate text)
+        if (d.is_suspicious_image && d.appears_online) {
+          warnings.push({
+            kind: 'suspicious',
+            message:
+              'This looks like a stock, catalog, or downloaded product photo (e.g. perfect lighting or plain white background). Your own original photos usually get better engagement and trust.',
+          })
+        } else if (d.is_suspicious_image) {
+          const reason = d.suspicious_reason || 'This may be a screenshot or stock-style image'
+          warnings.push({
+            kind: 'suspicious',
+            message: `⚠️ ${reason}. Original photos of your actual item work better.`,
+          })
+        } else if (d.appears_online) {
+          warnings.push({
+            kind: 'online',
+            message: `⚠️ ${d.online_image_reason || 'This may have been saved from the web.'} Original photos build more trust.`,
+          })
         }
 
-        // Check for quality warning (blurry/dark)
-        if (d.is_blurry_or_dark) {
-          warnings.push(d.quality_warning || '⚠ Image quality is low. Please retake the photo for better trade chances.')
-        }
-
-        // Check for non-product image
+        // Non-product image
         if (d.is_non_product_image) {
-          warnings.push(`⚠️ ${d.non_product_reason || 'This does not appear to be a product photo.'} Please upload a clear photo of the actual item.`)
+          warnings.push({
+            kind: 'non_product',
+            message: `⚠️ ${d.non_product_reason || 'This does not appear to be a product photo.'} Please upload a clear photo of the actual item.`,
+          })
         }
 
-        // Check if image appears to be from an online source
-        if (d.appears_online) {
-          warnings.push(`⚠️ ${d.online_image_reason || 'This image appears to be from an online source.'} Original photos get better engagement and build trust with traders.`)
-        }
+        // Skip AI blur/resolution/exposure warnings: the client "Image Quality Check" already covers pixel-level issues and listing them twice felt noisy.
 
         setAiWarnings(warnings)
+        setShowAllAiWarnings(false)
 
         // Fill form with AI data
-        setFormData(prev => ({
-          ...prev,
-          title: d.title || prev.title,
-          description: d.description || prev.description,
-          condition: d.condition || prev.condition || 'Used',
-          category: d.category || prev.category || 'General',
-          item_type: d.subcategory || d.item_type || prev.item_type,
-          brand: d.brand || prev.brand,
-          authenticity_risks: d.authenticity_risks || prev.authenticity_risks,
-          estimated_value_min: d.estimated_value_min ?? prev.estimated_value_min,
-          estimated_value_max: d.estimated_value_max ?? prev.estimated_value_max,
-          tags: d.tags ? JSON.stringify(d.tags) : prev.tags,
-        }))
-        if (d.title) setTitleLength(d.title.length)
+        setFormData(prev => {
+          const aiTitle = d.title || prev.title
+          const finalTitle = aiTitle ? aiTitle.substring(0, 25) : ''
+          const aiCat = d.category || prev.category || 'General'
+          const isValidCat = PRODUCT_CATEGORIES.some(c => c.value === aiCat)
+          const finalCat = isValidCat ? aiCat : 'Others'
+
+          return {
+            ...prev,
+            title: finalTitle,
+            description: d.description || prev.description,
+            condition: d.condition || prev.condition || 'Used',
+            category: finalCat,
+            item_type: d.subcategory || d.item_type || prev.item_type,
+            brand: d.brand || prev.brand,
+            authenticity_risks: d.authenticity_risks || prev.authenticity_risks,
+            estimated_value_min: d.estimated_value_min ?? prev.estimated_value_min,
+            estimated_value_max: d.estimated_value_max ?? prev.estimated_value_max,
+            tags: d.tags ? JSON.stringify(d.tags) : prev.tags,
+          }
+        })
+        if (d.title) setTitleLength(Math.min(d.title.length, 25))
         if (d.description) setDescriptionLength(d.description.length)
         setAiDone(true)
 
-        if (warnings.length > 0) {
-          toast({
-        id: "addproduct-ai-completed-with-notes",
-            title: '⚠️ AI completed with notes',
-            description: warnings[0],
-            status: 'warning',
-            duration: 5000,
-            isClosable: true,
-            position: 'top-right',
-          })
-        } else {
-          toast({
-        id: "addproduct-ai-analysis-complete",
-            title: '✨ AI analysis complete!',
-            description: 'Product fields have been auto-filled. Review and edit as needed.',
-            status: 'success',
-            duration: 4000,
-            isClosable: true,
-            position: 'top-right',
-          })
-        }
+        // No toast for normal completion — inline UI on step 1 already shows status and tips
       } else {
         throw new Error(data.error || 'AI generation failed')
       }
@@ -477,50 +516,26 @@ const AddProduct: React.FC = () => {
       }
 
       const finalImages = [...uploadedImages, ...processed].slice(0, 8)
+
+      // Reset AI state for this batch before analysis (avoid clearing after AI finishes)
+      setAiBlockingError(null)
+      setAiWarnings([])
+      setShowAllAiWarnings(false)
+      setAiDone(false)
+      aiTriggeredRef.current = false
+
       setUploadedImages(finalImages)
       setImagePreviewUrls(prev => [...prev, ...previews].slice(0, 8))
 
-      // Trigger AI analysis immediately for the new set of images
-      triggerAI(finalImages)
-
-      // Run client-side image quality checks (instant, no network)
-      setQualityChecking(true)
+      // Instant client quality first, then AI — keeps technical issues in one place
       try {
         const qualityResults = await checkMultipleImageQuality(processed)
         setClientQualityResults(prev => [...prev, ...qualityResults])
-
-        // Show instant quality warnings
-        const qualityWarnings: string[] = []
-        qualityResults.forEach((qr, idx) => {
-          qr.issues.forEach(issue => {
-            const prefix = processed.length > 1 ? `Photo ${idx + 1}: ` : ''
-            qualityWarnings.push(`${prefix}${issue.message} ${issue.suggestion}`)
-          })
-        })
-
-        if (qualityWarnings.length > 0) {
-          // Show the first quality warning as a toast
-          toast({
-        id: "addproduct-image-quality-check",
-            title: '📸 Image Quality Check',
-            description: qualityWarnings[0],
-            status: 'warning',
-            duration: 6000,
-            isClosable: true,
-            position: 'top-right',
-          })
-        }
       } catch (err) {
         console.warn('Client-side quality check failed (non-blocking):', err)
-      } finally {
-        setQualityChecking(false)
       }
 
-      // Clear AI errors when new images are uploaded
-      setAiBlockingError(null)
-      setAiWarnings([])
-      aiTriggeredRef.current = false
-      setAiDone(false)
+      triggerAI(finalImages)
     }
     processFiles()
   }, [uploadedImages.length, toast, triggerAI, uploadedImages])
@@ -551,6 +566,7 @@ const AddProduct: React.FC = () => {
     // Clear AI errors and allow re-triggering when images are removed
     setAiBlockingError(null)
     setAiWarnings([])
+    setShowAllAiWarnings(false)
     aiTriggeredRef.current = false
     setAiDone(false)
   }
@@ -602,6 +618,10 @@ const AddProduct: React.FC = () => {
       return false
     }
 
+    if (isGenerating) {
+      return false
+    }
+
     // Cannot proceed if daily AI request limit reached on step 1
     if (currentStep === 1 && uploadedImages.length >= 1 && !canMakeAIRequest()) {
       return false
@@ -616,9 +636,10 @@ const AddProduct: React.FC = () => {
           formData.title.trim().length > 0 &&
           formData.title.trim().length <= 25 &&
           formData.description.trim().length >= 50 &&
-          !!formData.condition &&
           !!formData.category &&
-          !!formData.location?.trim()
+          !!formData.location?.trim() &&
+          !!formData.wanted_categories && 
+          formData.wanted_categories.length > 0
         )
       case 3:
         return true
@@ -632,6 +653,10 @@ const AddProduct: React.FC = () => {
     // AI Blocking Error
     if (aiBlockingError) {
       return aiBlockingError
+    }
+
+    if (isGenerating) {
+      return 'Analyzing details...'
     }
 
     // Daily limit reached on step 1
@@ -650,6 +675,7 @@ const AddProduct: React.FC = () => {
         if (!formData.condition) issues.push('Select a condition')
         if (!formData.category) issues.push('Select a category')
         if (!formData.location?.trim()) issues.push('Add a location')
+        if (!formData.wanted_categories || formData.wanted_categories.length === 0) issues.push('Select desired categories')
         return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
       case 3:
         return 'Ready to post'
@@ -663,17 +689,17 @@ const AddProduct: React.FC = () => {
   const handleSubmit = async () => {
     if (!formData.title.trim()) {
       toast({
-        id: "addproduct-missing-name", title: 'Missing name', status: 'warning', duration: 3000 })
+        id: "addproduct-missing-name", title: 'We need a short name!', description: 'Please provide a catchy title for your item.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
     if (formData.description.trim().length < 50) {
       toast({
-        id: "addproduct-description-too-short", title: 'Description too short', description: 'Minimum 50 characters', status: 'warning', duration: 3000 })
+        id: "addproduct-description-too-short", title: 'Tell us a bit more!', description: 'Your description is too short. Please add a few more details (minimum 50 characters).', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
     if (uploadedImages.length === 0) {
       toast({
-        id: "addproduct-no-images", title: 'No images', description: 'Please upload at least one photo', status: 'warning', duration: 3000 })
+        id: "addproduct-no-images", title: 'Show off your item!', description: 'Upload at least one picture so others can see what you are offering.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
 
@@ -711,14 +737,27 @@ const AddProduct: React.FC = () => {
       if (uploadedVideo) fd.append('video', uploadedVideo)
 
       await createProduct(fd)
-      queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
       toast({
-        id: "addproduct-product-posted", title: 'Product posted! 🎉', status: 'success', duration: 3000 })
+        id: "addproduct-product-posted", title: 'All set! 🎉', description: 'Your item is now live and visible to others.', status: 'success', position: 'top', duration: 3000, isClosable: true })
       navigate('/dashboard')
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || 'Failed to create product'
+      let friendlyMsg = 'Something went wrong while saving your item. Please try again.'
+      if (err.response?.status === 413) {
+        friendlyMsg = 'One or more of your files are too large. Try uploading a smaller image.'
+      } else if (err.response?.data?.error) {
+        friendlyMsg = err.response.data.error // Sometimes backend errors are already nice
+      }
+      
       toast({
-        id: "addproduct-error-creating-product", title: 'Error creating product', description: msg, status: 'error', duration: 6000 })
+        id: "addproduct-error-creating-product", 
+        title: 'Oops! Could not post your item.', 
+        description: friendlyMsg, 
+        status: 'error', 
+        position: 'top',
+        duration: 6000,
+        isClosable: true
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -964,55 +1003,44 @@ const AddProduct: React.FC = () => {
 
       {/* AI Analysis Status - Loading, Errors, & Warnings */}
       {isGenerating && (
-        <VStack spacing={2} align="stretch" w="full" bg="blue.50" p={4} borderRadius="lg" border="1px solid" borderColor="blue.200">
-          <HStack spacing={2}>
-            <Spinner size="sm" color="blue.500" />
-            <Text fontSize="sm" fontWeight="semibold" color="blue.700">
-              🔍 Analyzing images...
-            </Text>
-          </HStack>
-          <Text fontSize="xs" color="blue.600">
-            AI is checking image quality, detecting prohibited items, and extracting product details...
+        <HStack spacing={2} w="full" bg="blue.50" px={3} py={2} borderRadius="md" border="1px solid" borderColor="blue.100">
+          <Spinner size="sm" color="blue.500" />
+          <Text fontSize="xs" color="blue.700" fontWeight="medium">
+            Extracting title, category, and details from your photos…
           </Text>
-        </VStack>
+        </HStack>
       )}
 
       {/* Client-side Image Quality Results (instant feedback) */}
-      {clientQualityResults.length > 0 && clientQualityResults.some(qr => qr.issues.length > 0) && !isGenerating && (
-        <Box bg="orange.50" p={4} borderRadius="lg" border="1px solid" borderColor="orange.200">
-          <HStack spacing={2} mb={2}>
-            <Text fontSize="sm" fontWeight="semibold" color="orange.700">
-              📸 Image Quality Check
-            </Text>
-            {(() => {
-              const avgScore = clientQualityResults.length > 0
-                ? Math.round(clientQualityResults.reduce((a, r) => a + r.overallScore, 0) / clientQualityResults.length)
-                : 100
-              return (
-                <Badge colorScheme={getQualityColorScheme(avgScore)} fontSize="xs" px={2} py={0.5} borderRadius="md">
-                  {getQualityLabel(avgScore)} ({avgScore}/100)
-                </Badge>
-              )
-            })()}
-          </HStack>
-          <VStack spacing={1.5} align="stretch">
-            {clientQualityResults.flatMap((qr, imgIdx) =>
-              qr.issues.map((issue, issIdx) => (
-                <HStack key={`${imgIdx}-${issIdx}`} spacing={2} align="flex-start">
-                  <Text fontSize="xs" color={issue.severity === 'error' ? 'red.600' : 'orange.600'} flexShrink={0}>
-                    {issue.severity === 'error' ? '❌' : '⚠️'}
+      {clientQualityResults.length > 0 && clientQualityResults.some(qr => qr.issues.length > 0) && (
+        <Alert status="warning" borderRadius="lg" variant="subtle" py={2} px={3}>
+          <AlertIcon boxSize="14px" alignSelf="flex-start" mt={0.5} />
+          <Box flex="1">
+            <HStack justify="space-between" mb={1}>
+              <AlertTitle fontSize="xs" fontWeight="semibold">Image Quality Check</AlertTitle>
+              {(() => {
+                const avgScore = Math.round(clientQualityResults.reduce((a, r) => a + r.overallScore, 0) / clientQualityResults.length)
+                return (
+                  <Badge colorScheme={getQualityColorScheme(avgScore)} fontSize="9px">
+                    {getQualityLabel(avgScore)} ({avgScore})
+                  </Badge>
+                )
+              })()}
+            </HStack>
+            <VStack spacing={0.5} align="stretch">
+              {clientQualityResults.flatMap((qr, imgIdx) =>
+                qr.issues.map((issue, issIdx) => (
+                  <Text key={`${imgIdx}-${issIdx}`} fontSize="11px" color="gray.700" lineHeight="1.2">
+                    <Text as="span" color={issue.severity === 'error' ? 'red.500' : 'orange.500'} mr={1}>•</Text>
+                    {clientQualityResults.length > 1 ? `Photo ${imgIdx + 1}: ` : ''} 
+                    <Text as="span" fontWeight="medium">{issue.message}</Text> 
+                    <Text as="span" color="gray.500"> — {issue.suggestion}</Text>
                   </Text>
-                  <Box>
-                    <Text fontSize="xs" color="gray.700" fontWeight="medium">
-                      {clientQualityResults.length > 1 ? `Photo ${imgIdx + 1}: ` : ''}{issue.message}
-                    </Text>
-                    <Text fontSize="xs" color="gray.500">{issue.suggestion}</Text>
-                  </Box>
-                </HStack>
-              ))
-            )}
-          </VStack>
-        </Box>
+                ))
+              )}
+            </VStack>
+          </Box>
+        </Alert>
       )}
 
       {aiBlockingError && (
@@ -1028,21 +1056,68 @@ const AddProduct: React.FC = () => {
       )}
 
       {aiWarnings.length > 0 && (
-        <VStack spacing={2} align="stretch" w="full">
-          <Text fontSize="xs" fontWeight="semibold" color="orange.600" px={1}>
-            🤖 AI detected {aiWarnings.length} issue{aiWarnings.length > 1 ? 's' : ''} — these are suggestions, you can still post
-          </Text>
-          {aiWarnings.map((warning, idx) => (
-            <Alert key={idx} status="warning" borderRadius="lg" variant="left-accent">
-              <AlertIcon />
-              <Box flex="1">
-                <AlertDescription fontSize="sm">
-                  {warning}
-                </AlertDescription>
-              </Box>
-            </Alert>
-          ))}
-        </VStack>
+        (() => {
+          // Never repeat pixel-level quality here — "Image Quality Check" above is the source of truth
+          const filtered = aiWarnings.filter(w => w.kind !== 'quality')
+
+          // Dedupe by kind + message
+          const unique: typeof filtered = []
+          const seen = new Set<string>()
+          filtered.forEach(w => {
+            const key = `${w.kind}::${w.message}`
+            if (seen.has(key)) return
+            seen.add(key)
+            unique.push(w)
+          })
+
+          if (unique.length === 0) return null
+
+          const genericTip =
+            'Optional tip: original photos you take yourself usually work better than catalog or website images.'
+          const primaryText = unique.length === 1 ? unique[0].message : genericTip
+
+          return (
+            <VStack spacing={2} align="stretch" w="full">
+              <Text fontSize="xs" fontWeight="semibold" color="orange.600" px={1}>
+                🤖 Photo suggestions ({unique.length}) — you can still post
+              </Text>
+              <Alert status="warning" borderRadius="md" variant="subtle">
+                <AlertIcon />
+                <Box flex="1">
+                  <AlertDescription fontSize="xs" color="gray.700">
+                    {primaryText}
+                  </AlertDescription>
+                </Box>
+              </Alert>
+              {showAllAiWarnings && (
+                <VStack spacing={1} align="stretch">
+                  {unique.map((warning, idx) => (
+                    <Alert key={`${warning.kind}-${warning.message}-${idx}`} status="warning" borderRadius="lg" variant="left-accent">
+                      <AlertIcon />
+                      <Box flex="1">
+                        <AlertDescription fontSize="sm">
+                          {warning.message}
+                        </AlertDescription>
+                      </Box>
+                    </Alert>
+                  ))}
+                </VStack>
+              )}
+              {unique.length > 1 && (
+                <Button
+                  size="xs"
+                  variant="link"
+                  colorScheme="orange"
+                  alignSelf="flex-start"
+                  onClick={() => setShowAllAiWarnings(v => !v)}
+                  px={0}
+                >
+                  {showAllAiWarnings ? 'Show less' : 'View details'}
+                </Button>
+              )}
+            </VStack>
+          )
+        })()
       )}
 
       {/* Compact Video Upload - Same Row Style */}
@@ -1247,6 +1322,16 @@ const AddProduct: React.FC = () => {
 
       {/* ──────── LOCATION BAR (Simple, subtle) ──────── */}
       <Box bg="gray.100" p={2} borderRadius="md">
+        <HStack justify="space-between" mb={2}>
+          <Text fontSize="xs" color="gray.700" fontWeight="semibold">Use QA Mock Location</Text>
+          <Switch
+            size="sm"
+            colorScheme="orange"
+            isChecked={useMockLocation}
+            onChange={(e) => handleMockLocationToggle(e.target.checked)}
+          />
+        </HStack>
+
         {isGettingLocation ? (
           <HStack spacing={2}>
             <Spinner size="sm" color="blue.600" />
@@ -1265,6 +1350,7 @@ const AddProduct: React.FC = () => {
               py={1}
               onClick={detectLocation}
               isLoading={isGettingLocation}
+              isDisabled={useMockLocation}
               _hover={{ bg: "gray.200" }}
             >
               Wrong Location?
@@ -1273,7 +1359,13 @@ const AddProduct: React.FC = () => {
         ) : (
           <HStack spacing={2}>
             <Text fontSize="xs" color="red.600">⚠️ Location access needed</Text>
-            <Button size="xs" onClick={detectLocation} isLoading={isGettingLocation} fontSize="9px">
+            <Button
+              size="xs"
+              onClick={detectLocation}
+              isLoading={isGettingLocation}
+              isDisabled={useMockLocation}
+              fontSize="9px"
+            >
               Enable
             </Button>
           </HStack>
@@ -1282,13 +1374,21 @@ const AddProduct: React.FC = () => {
 
       {/* Manual value field removed as per user request to use AI instead */}
 
-      {/* ──────── WHAT ARE YOU LOOKING FOR? (OPTIONAL) ──────── */}
+      {/* ──────── WHAT ARE YOU LOOKING FOR? (MANDATORY) ──────── */}
       <Box p={4} bg="brand.50" borderRadius="lg" border="1px dashed" borderColor="brand.200">
-        <Text fontSize="sm" fontWeight="bold" color="brand.700" mb={3}>
-          🔍 What are you looking for? (Optional)
+        <HStack mb={1}>
+          <Text fontSize="sm" fontWeight="bold" color="brand.700">
+            🔍 What are you looking for?
+          </Text>
+          <Tooltip label="This is how the system matches your items to other products based on your wants. It is strictly required for trading." placement="top" hasArrow>
+            <Box cursor="help" color="brand.500"><InfoOutlineIcon boxSize={3.5} mb={0.5} /></Box>
+          </Tooltip>
+        </HStack>
+        <Text fontSize="xs" color="gray.600" mb={3}>
+          Please select up to 3 categories.
         </Text>
         <VStack spacing={3} align="stretch">
-          <FormControl>
+          <FormControl isRequired>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Desired Categories (Select multiple)</FormLabel>
             <SimpleGrid columns={{ base: 2, sm: 3, md: 4 }} spacing={1.5}>
               {PRODUCT_CATEGORIES.map((cat) => {
@@ -1642,11 +1742,6 @@ const AddProduct: React.FC = () => {
                     >
                       {step.icon} {step.title}
                     </Text>
-                    {currentStep === step.number && (
-                      <Badge colorScheme="brand" fontSize="10px">
-                        {Math.round((step.number / TOTAL_STEPS) * 100)}%
-                      </Badge>
-                    )}
                   </HStack>
                   {idx < stepLabels.length - 1 && (
                     <Text color="gray.400" fontWeight="bold">→</Text>
