@@ -1144,6 +1144,27 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Only active trades can be marked as complete"})
 		}
 		log.Printf("User %d attempting to complete trade %d", userID, tradeID)
+
+		// Enforce photo evidence rule for meetup and delivery
+		var proofURL sql.NullString
+		var isCamera bool
+		var tradeOption string
+		proofCheckCol := "buyer_proof_url"
+		camCheckCol := "buyer_photo_is_camera"
+		if userID == sellerID {
+			proofCheckCol = "seller_proof_url"
+			camCheckCol = "seller_photo_is_camera"
+		}
+		err = h.db.QueryRow("SELECT "+proofCheckCol+", "+camCheckCol+", COALESCE(trade_option, 'meetup') FROM trades WHERE id = ?", tradeID).Scan(&proofURL, &isCamera, &tradeOption)
+		if err == nil && (tradeOption == "meetup" || tradeOption == "delivery") {
+			if !proofURL.Valid || proofURL.String == "" {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence is mandatory for " + tradeOption + " trades. Please provide a handoff photo."})
+			}
+			if !isCamera {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence must be taken using the in-app camera (no gallery upload)."})
+			}
+		}
+
 		column := "buyer_completed"
 		if userID == sellerID {
 			column = "seller_completed"
@@ -2397,9 +2418,10 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	}
 
 	var payload struct {
-		Rating   int    `json:"rating"`
-		Feedback string `json:"feedback"`
-		ProofURL string `json:"proof_url,omitempty"`
+		Rating        int    `json:"rating"`
+		Feedback      string `json:"feedback"`
+		ProofURL      string `json:"transaction_proof_url,omitempty"`
+		IsCameraPhoto bool   `json:"is_camera_photo"`
 	}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
@@ -2410,9 +2432,10 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rating must be between 1 and 5"})
 	}
 
-	// Fetch trade and verify authorization
+	// Fetch trade details
 	var buyerID, sellerID int
-	err = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID)
+	var tradeOption string
+	err = h.db.QueryRow("SELECT buyer_id, seller_id, COALESCE(trade_option, 'meetup') FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &tradeOption)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 	}
@@ -2420,26 +2443,39 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 	}
 
+	// Enforce photo evidence rule for meetup and delivery
+	if tradeOption == "meetup" || tradeOption == "delivery" {
+		if payload.ProofURL == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence is mandatory for " + tradeOption + " trades"})
+		}
+		if !payload.IsCameraPhoto {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence must be taken using the in-app camera (no gallery upload allowed)"})
+		}
+	}
+
 	// Determine which columns to update based on user role
-	var ratingColumn, feedbackColumn, proofColumn, completedColumn string
+	var ratingColumn, feedbackColumn, proofColumn, cameraFlagColumn, completedColumn string
 	if userID == buyerID {
 		ratingColumn = "buyer_rating"
 		feedbackColumn = "buyer_feedback"
 		proofColumn = "buyer_proof_url"
+		cameraFlagColumn = "buyer_photo_is_camera"
 		completedColumn = "buyer_completed"
 	} else {
 		ratingColumn = "seller_rating"
 		feedbackColumn = "seller_feedback"
 		proofColumn = "seller_proof_url"
+		cameraFlagColumn = "seller_photo_is_camera"
 		completedColumn = "seller_completed"
 	}
 
-	// Update the trade with rating, feedback, proof, and completion status
+	// Update the trade with rating, feedback, proof, camera flag, and completion status
 	if payload.ProofURL != "" {
 		_, err = h.db.Exec(
-			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+proofColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
-			payload.Rating, payload.Feedback, payload.ProofURL, tradeID)
+			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+proofColumn+"=?, "+cameraFlagColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+			payload.Rating, payload.Feedback, payload.ProofURL, payload.IsCameraPhoto, tradeID)
 	} else {
+		// This path is only reachable for non-meetup/delivery trades if we allow them without photo
 		_, err = h.db.Exec(
 			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
 			payload.Rating, payload.Feedback, tradeID)

@@ -74,6 +74,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
   const isUserBuyer = trade && currentUserId === trade.buyer_id
   const isUserSeller = trade && currentUserId === trade.seller_id
+  const isPhotoMandatory = trade?.trade_option === 'meetup' || trade?.trade_option === 'delivery'
 
   useEffect(() => {
     if (trade && isOpen) {
@@ -203,7 +204,8 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim(),
-        transaction_proof_url: transactionProof
+        transaction_proof_url: transactionProof,
+        is_camera_photo: true // Enforced via capture="environment"
       })
 
       setHasSubmitted(true)
@@ -453,8 +455,8 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
                     {/* Upload Transaction Photo — compact pill (never expands modal) */}
                     <Box w="full">
-                      <Text fontSize="sm" fontWeight="medium" color="gray.700" mb={2}>
-                        Upload Proof of Transaction (Optional)
+                      <Text fontSize="sm" fontWeight="medium" color={isPhotoMandatory && !transactionProof ? "red.500" : "gray.700"} mb={2}>
+                        Proof of Transaction {isPhotoMandatory ? '(Required)' : '(Optional)'}
                       </Text>
                       <HStack
                         p={2}
@@ -478,11 +480,13 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                           ) : (
                             <Icon as={FaImage} color="gray.400" boxSize={3.5} />
                           )}
-                          <Text fontSize="xs" color={transactionProof ? 'green.700' : 'gray.500'} isTruncated>
+                          <Text fontSize="xs" color={transactionProof ? 'green.700' : isPhotoMandatory ? 'red.500' : 'gray.500'} isTruncated>
                             {uploadingImage
                               ? 'Uploading image…'
                               : transactionProof
                               ? 'Proof uploaded ✓'
+                              : isPhotoMandatory
+                              ? 'Take handoff photo (required)'
                               : 'Click to attach a photo (optional)'}
                           </Text>
                         </HStack>
@@ -517,13 +521,14 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                         )}
                         {!transactionProof && !uploadingImage && (
                           <Text fontSize="xs" color="brand.500" fontWeight="600" flexShrink={0}>
-                            Browse
+                            {isPhotoMandatory ? 'Take Photo' : 'Browse'}
                           </Text>
                         )}
                         <input
                           ref={fileInputRef}
                           type="file"
                           accept="image/*"
+                          capture="environment"
                           style={{ display: 'none' }}
                           onChange={handleImageUpload}
                         />
@@ -575,7 +580,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                 isLoading={submitting}
                 loadingText="Completing..."
                 leftIcon={<FaCheck />}
-                isDisabled={rating === 0 || !policyAgreed || uploadingImage}
+                isDisabled={rating === 0 || !policyAgreed || uploadingImage || (isPhotoMandatory && !transactionProof)}
                 mt={4}
               >
                 Complete Trade

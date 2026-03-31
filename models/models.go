@@ -327,6 +327,8 @@ type Trade struct {
 	SellerFeedback string `json:"seller_feedback,omitempty"`
 	BuyerProofURL  string `json:"buyer_proof_url,omitempty"`
 	SellerProofURL string `json:"seller_proof_url,omitempty"`
+	BuyerPhotoIsCamera  bool   `json:"buyer_photo_is_camera"`
+	SellerPhotoIsCamera bool   `json:"seller_photo_is_camera"`
 	// Meetup-related fields
 	MeetupLocation        string `json:"meetup_location,omitempty"`
 	MeetupTime            string `json:"meetup_time,omitempty"`
