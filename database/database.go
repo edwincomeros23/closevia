@@ -682,9 +682,9 @@ func CreateTables() error {
 			INDEX idx_delivery_stop (delivery_id, stop_number),
 			INDEX idx_stop_status (status)
 		)`,
-		   // ...existing code...
-			   // Move rider_cash_collections table creation after delivery_stops
-			   `CREATE TABLE IF NOT EXISTS rider_cash_collections (
+		// ...existing code...
+		// Move rider_cash_collections table creation after delivery_stops
+		`CREATE TABLE IF NOT EXISTS rider_cash_collections (
 				   id INT AUTO_INCREMENT PRIMARY KEY,
 				   rider_id INT NOT NULL,
 				   delivery_id INT NOT NULL,
@@ -864,6 +864,60 @@ func CreateTables() error {
 			FOREIGN KEY (viewer_user_id) REFERENCES users(id) ON DELETE SET NULL,
 			INDEX idx_product_id (product_id),
 			INDEX idx_viewed_at (viewed_at)
+		)`,
+		`CREATE TABLE IF NOT EXISTS meetup_status (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL UNIQUE,
+			stage VARCHAR(20) NOT NULL DEFAULT 'negotiating' COMMENT 'negotiating, scheduled, on_the_way, arrived, completed, no_show',
+			buyer_proposed_time TIMESTAMP NULL,
+			buyer_proposed_location VARCHAR(500) NULL,
+			seller_proposed_time TIMESTAMP NULL,
+			seller_proposed_location VARCHAR(500) NULL,
+			agreed_time TIMESTAMP NULL,
+			agreed_location VARCHAR(500) NULL,
+			reminder_sent BOOLEAN DEFAULT FALSE,
+			reminder_sent_at TIMESTAMP NULL,
+			buyer_heading_out BOOLEAN DEFAULT FALSE,
+			seller_heading_out BOOLEAN DEFAULT FALSE,
+			buyer_arrived BOOLEAN DEFAULT FALSE,
+			seller_arrived BOOLEAN DEFAULT FALSE,
+			buyer_arrived_at TIMESTAMP NULL,
+			seller_arrived_at TIMESTAMP NULL,
+			completed_at TIMESTAMP NULL,
+			no_show_reported_by INT NULL,
+			no_show_reported_at TIMESTAMP NULL,
+			no_show_reason VARCHAR(500) NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (no_show_reported_by) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_stage (stage),
+			INDEX idx_agreed_time (agreed_time)
+		)`,
+		`CREATE TABLE IF NOT EXISTS meetup_system_messages (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			message_type VARCHAR(50) NOT NULL COMMENT 'negotiation_prompt, scheduled_confirmation, reminder, heading_out, arrived, completion_prompt, no_show_report',
+			title VARCHAR(255) NOT NULL,
+			description TEXT NOT NULL,
+			actions JSON NULL COMMENT 'JSON array of action objects',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			INDEX idx_trade_messages (trade_id, created_at),
+			INDEX idx_message_type (message_type)
+		)`,
+		`CREATE TABLE IF NOT EXISTS meetup_proposals (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			user_id INT NOT NULL,
+			proposed_time TIMESTAMP NOT NULL,
+			proposed_location VARCHAR(500) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_trade_proposals (trade_id),
+			INDEX idx_user_proposals (user_id)
 		)`,
 	}
 
