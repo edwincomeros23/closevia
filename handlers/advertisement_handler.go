@@ -74,7 +74,7 @@ func (h *AdvertisementHandler) CreateAdvertisement(c *fiber.Ctx) error {
 	isActive := c.FormValue("is_active") == "true"
 	priority := 0
 	if p := c.FormValue("priority"); p != "" {
-		priority = stringToIntDef(p)
+		priority = stringToIntDef(p, 0)
 	}
 
 	startDateStr := c.FormValue("start_date")
@@ -125,7 +125,7 @@ func (h *AdvertisementHandler) UpdateAdvertisement(c *fiber.Ctx) error {
 	isActive := c.FormValue("is_active") == "true"
 	priority := 0
 	if p := c.FormValue("priority"); p != "" {
-		priority = stringToIntDef(p)
+		priority = stringToIntDef(p, 0)
 	}
 
 	startDateStr := c.FormValue("start_date")

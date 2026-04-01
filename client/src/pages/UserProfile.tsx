@@ -112,6 +112,7 @@ type SellerStats = {
   trust_level?: 'trusted' | 'new' | 'risky'
   report_count?: number
   has_reports?: boolean
+  has_active_dispute?: boolean
   trust_factors?: TrustFactor[]
   conduct_summary?: {
     letter_grade: string
