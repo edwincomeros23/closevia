@@ -655,13 +655,6 @@ const RiderHome: React.FC = () => {
     })
   }
 
-  // Redirect unauthorized riders outside render to avoid navigation side-effects during render
-  useEffect(() => {
-    if (!stateLoading && !riderState?.permissions?.can_view_jobs) {
-      navigate('/rider')
-    }
-  }, [stateLoading, riderState?.permissions?.can_view_jobs, navigate])
-
   // Loading state
   if (stateLoading) {
     return (
@@ -671,9 +664,41 @@ const RiderHome: React.FC = () => {
     )
   }
 
-  // Block if not authorized
+  // Task 20: Locked state view (single Pay Now button)
+  if (riderState?.state === 'LOCKED') {
+    return (
+      <Center minH="100vh" bg="#FFFDF1" px={6}>
+        <VStack spacing={4} maxW="sm" w="full" bg="white" border="1px" borderColor="orange.200" borderRadius="xl" p={5}>
+          <HStack spacing={2}>
+            <WarningIcon color="orange.500" boxSize={6} />
+            <Heading size="sm" color="gray.800">Account Locked</Heading>
+          </HStack>
+          <Text fontSize="sm" color="gray.600" textAlign="center">
+            {riderState?.message || 'You have remittance due. Pay now to unlock your next job.'}
+          </Text>
+          <Button w="full" colorScheme="brand" onClick={() => navigate('/remittance-ledger')}>
+            Pay Now
+          </Button>
+        </VStack>
+      </Center>
+    )
+  }
+
+  // If not authorized to view jobs, show message (avoid blank screen)
   if (!riderState?.permissions?.can_view_jobs) {
-    return null
+    return (
+      <Center minH="100vh" bg="#FFFDF1" px={6}>
+        <VStack spacing={4} maxW="sm" w="full" bg="white" border="1px" borderColor="gray.200" borderRadius="xl" p={5}>
+          <Heading size="sm" color="gray.800">Rider Access</Heading>
+          <Text fontSize="sm" color="gray.600" textAlign="center">
+            {riderState?.message || 'You are not authorized to view rider jobs.'}
+          </Text>
+          <Button w="full" variant="outline" colorScheme="brand" onClick={() => navigate('/delivery')}>
+            Go to Rider Application
+          </Button>
+        </VStack>
+      </Center>
+    )
   }
 
   // ─── RENDER HOME CONTENT ─────────────────────────────────────────────

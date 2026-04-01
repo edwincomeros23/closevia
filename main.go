@@ -429,18 +429,20 @@ func main() {
 	// Trade routes (order matters: specific paths before :id)
 	trades := api.Group("/trades")
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
+	trades.Post("", middleware.AuthMiddleware(), tradeHandler.CreateTrade) // Support no trailing slash
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
+	trades.Get("", middleware.AuthMiddleware(), tradeHandler.GetTrades) // Support no trailing slash
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
 	trades.Get("/loops/debug/match", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.DebugMultiwayMatch)
 	trades.Get("/loops/notifications", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopNotifications)
 	trades.Post("/loops/notifications/clear", middleware.AuthMiddleware(), tradeHandler.ClearLoopNotifications)
 	trades.Post("/loops/notifications/:id/read", middleware.AuthMiddleware(), tradeHandler.MarkLoopNotificationRead)
-	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Get("/loops/:id", middleware.AuthMiddleware(), tradeHandler.GetTradeLoop)
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 
@@ -552,6 +554,11 @@ func main() {
 	admin.Post("/rider-applications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminRejectRider)
 	admin.Post("/rider-applications/:id/review", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminMarkUnderReview)
 	admin.Post("/backfill-ledgers", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.BackfillLedgers)
+	// Task 19/20: Rider free slots + remittance lock flow
+	admin.Get("/rider-config", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminGetRiderConfig)
+	admin.Put("/rider-config", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminUpdateRiderConfig)
+	admin.Get("/remittance-payments", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminListRemittancePayments)
+	admin.Post("/remittance-payments/:paymentId/verify", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminVerifyRemittancePayment)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")

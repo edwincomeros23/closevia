@@ -237,6 +237,11 @@ func CreateTables() error {
 	}
 
 	queries := []string{
+		`CREATE TABLE IF NOT EXISTS app_settings (
+			setting_key VARCHAR(100) PRIMARY KEY,
+			setting_value VARCHAR(255) NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			slug VARCHAR(255) NULL UNIQUE,
@@ -298,6 +303,7 @@ func CreateTables() error {
 			status ENUM('available', 'sold', 'traded', 'locked') DEFAULT 'available',
 			allow_buying BOOLEAN DEFAULT TRUE,
 			barter_only BOOLEAN DEFAULT FALSE,
+			max_items_per_offer INT DEFAULT 0,
 			location VARCHAR(255),
 			` + "`condition`" + ` VARCHAR(50),
 			suggested_value INT,
@@ -935,6 +941,7 @@ func CreateTables() error {
 	ensureTradeColumns()
 	ensureRiderColumns()
 	ensureDeliveryBatchColumns()
+	ensureAppSettingsDefaults()
 
 	// Seed Mock Rider: Wynry Perian
 	mockRiderEmail := "wynry@clovia.com"
@@ -968,6 +975,14 @@ func CreateTables() error {
 
 	log.Println("Database tables and indexes created successfully")
 	return nil
+}
+
+func ensureAppSettingsDefaults() {
+	// Ensure rider free slots default is present. This powers Task 19/20.
+	_, err := DB.Exec(`INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES ('rider_free_slots_default', '3')`)
+	if err != nil {
+		log.Printf("Warning: failed to seed app_settings defaults: %v", err)
+	}
 }
 
 // ensureUserColumns adds missing columns to the users table if they don't exist
@@ -1080,6 +1095,7 @@ func ensureProductColumns() {
 		{"price_reasoning", "TEXT NULL"},
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 		{"boosted_at", "TIMESTAMP NULL"},
+		{"max_items_per_offer", "INT DEFAULT 0"},
 	}
 
 	for _, col := range columns {
@@ -1116,6 +1132,9 @@ func ensureProductColumns() {
 
 	// Update status enum to include all required statuses
 	updateProductStatusEnum()
+
+	// Ensure defaults
+	DB.Exec("UPDATE products SET max_items_per_offer = 0 WHERE max_items_per_offer IS NULL")
 }
 
 // updateProductStatusEnum ensures the status column has all required enum values

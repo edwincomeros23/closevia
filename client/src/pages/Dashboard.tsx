@@ -4743,12 +4743,9 @@ const Dashboard: React.FC = () => {
                   ) : (
                     <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
                       {filteredMultiWayTrades.map((trade) => {
-                        const participants = Array.isArray(trade?.participants) ? trade.participants : []
-                        // Skip rendering if there aren't enough participants to display
-                        if (participants.length < 2) return null
                         const summary = getMultiWayTradeSummary(trade)
                         return (
-                          <Box key={trade.id || trade.loop_id || trade.chain_id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                          <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
                             <MultiWayTradeUI
                               participants={trade.participants || []}
                               isChain={trade.is_chain}
