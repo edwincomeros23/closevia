@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Box,
   Container,
@@ -27,6 +28,7 @@ import { PRODUCT_CATEGORIES } from '../utils/categories'
 
 const EditProduct: React.FC = () => {
   const { id } = useParams<{ id: string }>()
+  const queryClient = useQueryClient()
   const [formData, setFormData] = useState<ProductUpdate>({})
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
@@ -77,6 +79,7 @@ const EditProduct: React.FC = () => {
         condition: product.condition || '',
         category: product.category || '',
         location: product.location || '',
+        max_items_per_offer: product.max_items_per_offer ?? 0,
       })
 
       // Load persisted previews for this product
@@ -209,6 +212,7 @@ const EditProduct: React.FC = () => {
       if (formData.condition) form.append('condition', formData.condition)
       if (formData.category) form.append('category', formData.category)
       if (formData.location) form.append('location', formData.location)
+      if (formData.max_items_per_offer !== undefined) form.append('max_items_per_offer', String(formData.max_items_per_offer))
 
       // Add image files from previews that are data URLs (newly uploaded)
       // For existing server URLs, we keep them via image_urls field
@@ -233,6 +237,9 @@ const EditProduct: React.FC = () => {
       }
 
       await api.put(`/api/products/${id}`, form)
+      
+      // Invalidate dashboard products cache to ensure consistency
+      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
 
       toast({
         id: 'editproduct-product-updated',
@@ -400,6 +407,26 @@ const EditProduct: React.FC = () => {
                     placeholder="e.g., Cebu City, Philippines"
                     size={{ base: 'md', md: 'lg' }}
                   />
+                </FormControl>
+
+                {/* Offer Item Limit */}
+                <FormControl>
+                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Offer Item Limit</FormLabel>
+                  <Select
+                    value={formData.max_items_per_offer ?? 0}
+                    onChange={(e) => handleInputChange('max_items_per_offer', parseInt(e.target.value) || 0)}
+                    size={{ base: 'md', md: 'lg' }}
+                  >
+                    <option value={0}>Unlimited Items</option>
+                    <option value={1}>1 Item Only</option>
+                    <option value={2}>Up to 2 Items</option>
+                    <option value={3}>Up to 3 Items</option>
+                    <option value={5}>Up to 5 Items</option>
+                    <option value={10}>Up to 10 Items</option>
+                  </Select>
+                  <FormHelperText fontSize="xs" color="gray.500">
+                    Maximum items a buyer can offer for this product.
+                  </FormHelperText>
                 </FormControl>
 
                 {/* Upload Images */}

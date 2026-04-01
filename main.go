@@ -21,6 +21,11 @@ import (
 	"github.com/xashathebest/clovia/services"
 )
 
+func debugEndpointsEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_DEBUG_ENDPOINTS")))
+	return v == "true" || v == "1" || v == "yes"
+}
+
 func main() {
 	// Load .env file only in local development (Render sets PORT automatically)
 	// This prevents a committed .env from overriding Render dashboard env vars
@@ -94,9 +99,13 @@ func main() {
 		ExposeHeaders:    "Content-Length, Content-Type, Authorization",
 	}))
 
-	// Explicit OPTIONS handler for preflight requests
-	app.Options("/*", func(c *fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusNoContent)
+	// Handle preflight requests without registering a wildcard OPTIONS route.
+	// A wildcard OPTIONS route can cause non-existent endpoints to return 405 instead of 404.
+	app.Use(func(c *fiber.Ctx) error {
+		if c.Method() == fiber.MethodOptions {
+			return c.SendStatus(fiber.StatusNoContent)
+		}
+		return c.Next()
 	})
 
 	// Serve static files (uploads directory)
@@ -108,6 +117,15 @@ func main() {
 		return c.JSON(fiber.Map{
 			"success": true,
 			"message": "Welcome to Clovia API",
+		})
+	})
+
+	log.Printf("Backend version: xendit-sync-all-405-fix")
+	// Quick sanity-check endpoint to confirm you restarted the backend with latest routes.
+	app.Get("/api/version", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"success": true,
+			"version": "xendit-sync-all-405-fix",
 		})
 	})
 
@@ -151,6 +169,7 @@ func main() {
 		// Check delivery state columns
 		columns := []string{
 			"delivery_type", "payment_method", "payment_confirmed",
+			"delivery_instructions",
 			"proof_of_delivery", "buyer_confirmed_receipt", "seller_confirmed_delivery",
 		}
 
@@ -269,6 +288,7 @@ func main() {
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
 	campaignHandler := handlers.NewCampaignHandler()
+	advertisementHandler := handlers.NewAdvertisementHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
 	organizationHandler := handlers.NewOrganizationHandler()
@@ -359,11 +379,12 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
-	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
+	products.Post("/boost/:id", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
 	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
-	products.Get("/:id", productHandler.GetProduct) // Public route (must be last)
+	products.Get("/:id/multiway-status", tradeHandler.GetProductMultiwayStatus) // Public — listing badge
+	products.Get("/:id", productHandler.GetProduct)                             // Public route (must be last)
 	products.Post("/", middleware.AuthMiddleware(), productHandler.CreateProduct)
 	products.Put("/:id", middleware.AuthMiddleware(), productHandler.UpdateProduct)
 	products.Delete("/:id", middleware.AuthMiddleware(), productHandler.DeleteProduct)
@@ -414,11 +435,11 @@ func main() {
 	trades.Get("/loops/notifications", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopNotifications)
 	trades.Post("/loops/notifications/clear", middleware.AuthMiddleware(), tradeHandler.ClearLoopNotifications)
 	trades.Post("/loops/notifications/:id/read", middleware.AuthMiddleware(), tradeHandler.MarkLoopNotificationRead)
+	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Get("/loops/:id", middleware.AuthMiddleware(), tradeHandler.GetTradeLoop)
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
-	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 
@@ -426,6 +447,21 @@ func main() {
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
 	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
 	trades.Post("/multiway/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineMultiwayChain)
+
+	// Phase 2: Per-leg chain management
+	trades.Get("/multiway/:id/legs", middleware.AuthMiddleware(), tradeHandler.GetChainLegs)
+	trades.Put("/multiway/legs/:legId/handoff", middleware.AuthMiddleware(), tradeHandler.UpdateLegHandoff)
+	trades.Post("/multiway/legs/:legId/complete", middleware.AuthMiddleware(), tradeHandler.CompleteLeg)
+
+	// Phase 3: Resilience — collapse, re-match, strikes, conflict
+	trades.Post("/multiway/:id/backout", middleware.AuthMiddleware(), tradeHandler.BackOutChain)
+	trades.Post("/multiway/conflict/resolve", middleware.AuthMiddleware(), tradeHandler.ResolveMultiwayConflict)
+
+	// Product-level conflict check (must be before generic /:id)
+	products.Get("/:id/multiway-conflict", middleware.AuthMiddleware(), tradeHandler.CheckMultiwayConflict)
+
+	// Phase 4: Per-leg disputes & upstream collapse
+	trades.Post("/multiway/legs/:legId/dispute", middleware.AuthMiddleware(), tradeHandler.FileLegDispute)
 
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)
@@ -441,6 +477,8 @@ func main() {
 	// Payment routes
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
+	// Accept any method for sync to avoid 405 issues in dev/proxies.
+	payments.All("/trade/:id/sync", middleware.AuthMiddleware(), paymentHandler.SyncTradePayment)
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
@@ -485,12 +523,25 @@ func main() {
 	admin.Post("/campaigns", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.CreateCampaign)
 	admin.Put("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.UpdateCampaign)
 	admin.Delete("/campaigns/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), campaignHandler.DeleteCampaign)
+	// Admin advertisement management
+	admin.Get("/advertisements", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.GetAllAdvertisements)
+	admin.Post("/advertisements", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.CreateAdvertisement)
+	admin.Put("/advertisements/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.UpdateAdvertisement)
+	admin.Delete("/advertisements/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), advertisementHandler.DeleteAdvertisement)
+	// Admin multiway chain dashboard & strikes (Phase 3)
+	admin.Get("/multiway-chains", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetChains)
+	admin.Get("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.GetUserStrikes)
+	admin.Post("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminIssueStrike)
+	// Admin leg disputes (Phase 4)
+	admin.Get("/multiway-disputes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetLegDisputes)
+	admin.Put("/multiway-disputes/:disputeId/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminResolveLegDispute)
 	// Admin rider verification
 	admin.Get("/rider-applications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminListRiderApplications)
 	admin.Get("/rider-applications/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminGetRiderApplication)
 	admin.Post("/rider-applications/:id/approve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminApproveRider)
 	admin.Post("/rider-applications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminRejectRider)
 	admin.Post("/rider-applications/:id/review", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminMarkUnderReview)
+	admin.Post("/backfill-ledgers", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.BackfillLedgers)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -505,6 +556,10 @@ func main() {
 	// Rider-specific routes must come before /:id to avoid shadowing
 	deliveries.Get("/available", middleware.AuthMiddleware(), deliveryHandler.GetAvailableDeliveries)
 	deliveries.Get("/my-jobs", middleware.AuthMiddleware(), deliveryHandler.GetRiderDeliveries)
+	if debugEndpointsEnabled() {
+		log.Println("Debug endpoints enabled: /api/deliveries/my-jobs-debug")
+		deliveries.Get("/my-jobs-debug", middleware.AuthMiddleware(), deliveryHandler.DebugRiderJobs)
+	}
 	deliveries.Post("/register-rider", middleware.AuthMiddleware(), deliveryHandler.RegisterAsRider)
 	deliveries.Get("/rider-status", middleware.AuthMiddleware(), deliveryHandler.CheckRiderStatus)
 	deliveries.Post("/apply-rider", middleware.AuthMiddleware(), deliveryHandler.ApplyAsRider)
@@ -541,6 +596,12 @@ func main() {
 	// Campaigns route (public-facing for fetching active campaigns)
 	campaigns := api.Group("/campaigns")
 	campaigns.Get("/active", middleware.OptionalAuthMiddleware(), campaignHandler.GetActiveCampaigns)
+
+	// Advertisements routes
+	advs := api.Group("/advertisements")
+	advs.Get("/active", middleware.OptionalAuthMiddleware(), advertisementHandler.GetActiveAdvertisements)
+	advs.Post("/:id/view", middleware.OptionalAuthMiddleware(), advertisementHandler.RecordView)
+	advs.Post("/:id/click", middleware.OptionalAuthMiddleware(), advertisementHandler.RecordClick)
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")

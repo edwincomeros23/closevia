@@ -1,0 +1,28 @@
+{
+  "products": [
+    {
+      "id": 66,
+      "title": "bike pedalls",
+      "seller_id": 16,
+      "seller_name": "Jaydee 2",
+      "status": "locked",
+      "image_urls": "[\"https://res.cloudinary.com/dbhq4jerf/image/upload/v1765959673/clovia/products/pedal---Copy-2.webp\", \"https://res.cloudinary.com/dbhq4jerf/image/upload/v1765959674/clovia/products/pedal---Copy.webp\", \"https://res.cloudinary.com/dbhq4jerf/image/upload/v1765959675/clovia/products/pedal.webp\"]"
+    },
+    {
+      "id": 160,
+      "title": "Bike Pedal MTB",
+      "seller_id": 4,
+      "seller_name": "Edwin Comeros",
+      "status": "available",
+      "image_urls": "[\"/uploads/products/1774720239558018300_552176748_798377016135904_8161000536109674886_n.jpg\", \"/uploads/products/1774720239574926400_564704103_794657116499937_7395925138632312924_n.jpg\", \"/uploads/products/1774720239584287000_551040883_1823817024899456_8959964471307522433_n.jpg\"]"
+    },
+    {
+      "id": 161,
+      "title": "Bike Pedal MTB",
+      "seller_id": 60,
+      "seller_name": "Oreo  Cyan",
+      "status": "available",
+      "image_urls": "[\"/uploads/products/1774721381627411400_552176748_798377016135904_8161000536109674886_n.jpg\", \"/uploads/products/1774721381638135100_564704103_794657116499937_7395925138632312924_n.jpg\", \"/uploads/products/1774721381649664900_551040883_1823817024899456_8959964471307522433_n.jpg\"]"
+    }
+  ]
+}

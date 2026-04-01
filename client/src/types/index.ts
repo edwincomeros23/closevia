@@ -79,6 +79,7 @@ export interface Product {
   wanted_categories?: string[];
   wants?: string;
   brand?: string;
+  max_items_per_offer?: number;
 }
 
 export interface Order {
@@ -105,6 +106,7 @@ export interface ProductCreate {
   category?: string
   bidding_type?: 'none' | 'blind' | 'open'
   wants?: string
+  max_items_per_offer?: number
 }
 
 export interface ProductUpdate {
@@ -120,6 +122,7 @@ export interface ProductUpdate {
   condition?: string
   category?: string
   bidding_type?: 'none' | 'blind' | 'open'
+  max_items_per_offer?: number
 }
 
 export interface OrderCreate {
@@ -171,7 +174,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
+export type TradeStatus = 'pending' | 'pending_multiway' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
 export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
@@ -207,18 +210,23 @@ export interface Trade {
   buyer_meetup_confirmed?: boolean
   seller_meetup_confirmed?: boolean
   transaction_proof_url?: string
+  buyer_met?: boolean
+  seller_met?: boolean
   trade_option?: TradeOption // 'meetup' or 'delivery'
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
   // Delivery state fields
-  delivery_type?: 'standard' | 'express' | 'meetup'
+  delivery_type?: 'standard' | 'express' // Removed meetup - only delivery options
   payment_method?: 'gcash' | 'cod' | 'wallet' | 'online' // online includes GCash/PayMaya via Xendit
   payment_confirmed?: boolean
+  delivery_instructions?: string
   proof_of_delivery?: string | null // Base64 encoded image
   buyer_confirmed_receipt?: boolean
   seller_confirmed_delivery?: boolean
   delivery_estimated_time?: string // Estimated delivery time
+  buyer_location?: string // Buyer coordinates as "lat,lng"
+  seller_location?: string // Seller coordinates as "lat,lng"
 }
 
 // Multi-way/Three-way Trading Types
@@ -276,7 +284,7 @@ export interface TradeCreate {
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'confirm_meetup_done' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number

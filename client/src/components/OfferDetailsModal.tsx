@@ -217,7 +217,26 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }
 
   const toggleCounter = (id: number) => {
-    setSelectedCounterIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setSelectedCounterIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(x => x !== id)
+      }
+      
+      const limit = requested?.max_items_per_offer || 0
+      if (limit > 0 && prev.length >= limit) {
+        toast({
+          id: 'offerdetailsmodal-selection-limit',
+          title: 'Selection Limit Reached',
+          description: `You can only select up to ${limit} items for this trade.`,
+          status: 'warning',
+          duration: 3000,
+          isClosable: true,
+        })
+        return prev
+      }
+      
+      return [...prev, id]
+    })
   }
 
   const [cashDelta, setCashDelta] = useState<string>('')
@@ -555,9 +574,21 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size="md">
           <ModalOverlay />
           <ModalContent>
-            <ModalHeader fontSize="sm">Counter Offer</ModalHeader>
+            <ModalHeader fontSize="sm">
+              Counter Offer
+              {requested?.max_items_per_offer ? (
+                <Badge ml={2} colorScheme="brand" variant="subtle" verticalAlign="middle">
+                  Max {requested.max_items_per_offer} items
+                </Badge>
+              ) : null}
+            </ModalHeader>
             <ModalCloseButton size="sm" />
             <ModalBody fontSize="sm">
+              {selectedCounterIds.length > 0 && (
+                <Text fontSize="xs" color="brand.500" fontWeight="bold" mb={2}>
+                  {selectedCounterIds.length} {requested?.max_items_per_offer ? `/ ${requested.max_items_per_offer}` : ''} items selected
+                </Text>
+              )}
               <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
                 {userInventory.map(p => (
                   <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>

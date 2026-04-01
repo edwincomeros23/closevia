@@ -12,7 +12,7 @@ import {
   Progress,
   Divider,
 } from '@chakra-ui/react'
-import { FiCheckCircle, FiAlertTriangle, FiXCircle, FiAward } from 'react-icons/fi'
+import { FiCheckCircle, FiAlertTriangle, FiXCircle, FiAward, FiInfo } from 'react-icons/fi'
 
 interface TrustFactor {
   label: string
@@ -54,6 +54,7 @@ interface TrustScoreCardProps {
   positivePercent?: number
   tradeStats?: TradeStats
   responseTime?: string
+  hasActiveDispute?: boolean
 }
 
 const statusConfig = {
@@ -62,16 +63,39 @@ const statusConfig = {
   fail: { icon: FiXCircle, color: 'red.500', bg: 'red.50' },
 }
 
-const levelColor = (level?: string) => {
+const getTrustLevel = (score: number) => {
+  if (score >= 80) return 'trusted'
+  if (score >= 60) return 'new'
+  return 'risky'
+}
+
+const levelColor = (level: string) => {
   if (level === 'trusted') return 'green.500'
   if (level === 'new') return 'yellow.500'
   return 'red.500'
 }
 
-const levelTrackColor = (level?: string) => {
+const levelTrackColor = (level: string) => {
   if (level === 'trusted') return 'green.100'
   if (level === 'new') return 'yellow.100'
   return 'red.100'
+}
+
+const levelLabelBadge = (level: string) => {
+  if (level === 'trusted') return '🟢 Highly Trusted'
+  if (level === 'new') return '🟡 Trusted'
+  return '🔴 Needs Improvement'
+}
+
+const getImprovementHint = (label: string, points: number, max: number) => {
+  if (points >= max) return "Excellent! You've secured maximum points for this category."
+  if (label.includes("Verified")) return "Verify your account in settings to gain +15 pts."
+  if (label.includes("Completed trades")) return "Successfully complete more trades to increase this score."
+  if (label.includes("Positive ratings")) return "Gather more positive 5-star ratings from your trade partners."
+  if (label.includes("Clean record") || label.includes("No reports")) return "Avoid user reports by following community guidelines."
+  if (label.includes("Response")) return "Reply to offers and messages on the same day to improve."
+  if (label.includes("success")) return "Avoid cancelling trades you have already accepted."
+  return "Improve this metric to boost your trust score."
 }
 
 const gradeColor = (grade: string) => {
@@ -107,8 +131,10 @@ const formatResponseTime = (raw?: string): { label: string; colorScheme: string 
   return { label: '🐢 Responds in a few days', colorScheme: 'orange' }
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime }) => {
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime, hasActiveDispute }) => {
+  const activeLevel = getTrustLevel(score)
   const responseInfo = formatResponseTime(responseTime)
+  
   if (compact) {
     const tooltipLines = factors && factors.length > 0
       ? factors.map(f => `${f.status === 'pass' ? '✔' : f.status === 'warn' ? '⚠' : '✘'} ${f.label} (${f.points}/${f.max})`).join('\n')
@@ -117,11 +143,13 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
       ? `\nConduct: ${conductSummary.letter_grade} (${conductSummary.overall_avg.toFixed(1)}/5)`
       : ''
     const badgeLines = [
+      levelLabelBadge(activeLevel),
       isVerified ? '✔ Verified' : '',
       typeof listingCount === 'number' ? `📦 ${listingCount} listing${listingCount !== 1 ? 's' : ''}` : '',
       typeof tradeCount === 'number' ? `🔁 ${tradeCount} trade${tradeCount !== 1 ? 's' : ''}` : '',
       typeof positivePercent === 'number' && positivePercent > 0 ? `⭐ ${Math.round(positivePercent)}% positive` : '',
       responseInfo ? responseInfo.label : '',
+      hasActiveDispute ? '⚠️ Active Dispute' : '',
     ].filter(Boolean).join('\n')
     const badgeSection = badgeLines ? `\n${badgeLines}` : ''
     return (
@@ -136,8 +164,8 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
             value={score}
             size="40px"
             thickness="10px"
-            color={levelColor(trustLevel)}
-            trackColor={levelTrackColor(trustLevel)}
+            color={levelColor(activeLevel)}
+            trackColor={levelTrackColor(activeLevel)}
           >
             <CircularProgressLabel fontSize="xs" fontWeight="bold">
               {score}
@@ -147,6 +175,13 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
             <Badge colorScheme={conductSummary.letter_grade.startsWith('A') ? 'green' : conductSummary.letter_grade.startsWith('B') ? 'blue' : conductSummary.letter_grade === 'C' ? 'orange' : 'red'} fontSize="xs">
               {conductSummary.letter_grade}
             </Badge>
+          )}
+          {hasActiveDispute && (
+            <Tooltip label="User has an unresolved trade dispute." hasArrow>
+              <Box as="span">
+                <Icon as={FiAlertTriangle} color="orange.500" boxSize={3.5} />
+              </Box>
+            </Tooltip>
           )}
           <Text fontSize="xs" color="gray.600" fontWeight="medium">
             Trust
@@ -168,6 +203,9 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
     >
       {/* Trust Indicator Badges */}
       <HStack spacing={3} mb={4} flexWrap="wrap">
+        <Badge px={2} py={1} borderRadius="full" colorScheme={activeLevel === 'trusted' ? 'green' : activeLevel === 'new' ? 'yellow' : 'red'} fontSize="xs" fontWeight="bold">
+          {levelLabelBadge(activeLevel)}
+        </Badge>
         {isVerified && (
           <Badge px={2} py={1} borderRadius="full" colorScheme="green" fontSize="xs" fontWeight="medium">
             ✔ Verified
@@ -193,6 +231,11 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
             {responseInfo.label}
           </Badge>
         )}
+        {hasActiveDispute && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="orange" variant="solid" fontSize="xs" fontWeight="bold">
+            ⚠️ Active Dispute
+          </Badge>
+        )}
       </HStack>
 
       <HStack spacing={5} align="start">
@@ -202,11 +245,11 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
             value={score}
             size="80px"
             thickness="8px"
-            color={levelColor(trustLevel)}
-            trackColor={levelTrackColor(trustLevel)}
+            color={levelColor(activeLevel)}
+            trackColor={levelTrackColor(activeLevel)}
           >
             <CircularProgressLabel>
-              <Text fontSize="xl" fontWeight="bold" color={levelColor(trustLevel)}>
+              <Text fontSize="xl" fontWeight="bold" color={levelColor(activeLevel)}>
                 {score}
               </Text>
             </CircularProgressLabel>
@@ -218,22 +261,33 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
 
         {/* Factor Breakdown */}
         <VStack align="stretch" spacing={2} flex={1}>
-          <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={1}>
-            Trust Score
-          </Text>
+          <HStack align="center" mb={1} spacing={1}>
+            <Text fontSize="sm" fontWeight="bold" color="gray.700">
+              Trust Score Breakdown
+            </Text>
+            <Tooltip label="Your overall score out of 100 is based on these components. Maximize them by making successful trades and fast responses!" hasArrow>
+              <Box as="span" display="inline-flex"><Icon as={FiInfo} color="gray.400" boxSize={3.5} /></Box>
+            </Tooltip>
+          </HStack>
+          
           {factors && factors.length > 0 ? (
             factors.map((f, i) => {
               const cfg = statusConfig[f.status]
               return (
-                <HStack key={i} spacing={2} py={0.5}>
-                  <Icon as={cfg.icon} color={cfg.color} boxSize={4} flexShrink={0} />
-                  <Text fontSize="sm" color="gray.700" flex={1}>
-                    {f.label}
-                  </Text>
-                  <Text fontSize="xs" color="gray.400" fontWeight="medium" flexShrink={0}>
-                    {f.points}/{f.max}
-                  </Text>
-                </HStack>
+                <Tooltip key={i} label={getImprovementHint(f.label, f.points, f.max)} placement="top" hasArrow>
+                  <Box>
+                    <HStack spacing={2} py={0.5} cursor="pointer">
+                      <Icon as={cfg.icon} color={cfg.color} boxSize={4} flexShrink={0} />
+                      <Text fontSize="sm" color="gray.700" flex={1}>
+                        {f.label}
+                      </Text>
+                      <Text fontSize="xs" color="gray.400" fontWeight="medium" flexShrink={0}>
+                        {f.points}/{f.max}
+                      </Text>
+                    </HStack>
+                    <Progress value={(f.points / f.max) * 100} size="xs" colorScheme={cfg.color.split('.')[0]} borderRadius="full" mt={1} opacity={0.6}/>
+                  </Box>
+                </Tooltip>
               )
             })
           ) : (

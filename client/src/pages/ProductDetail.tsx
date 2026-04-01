@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -804,7 +804,7 @@ const ProductDetail: React.FC = () => {
     try {
       setBoosting(true)
       // For now, boosting is handled via direct API call, but we want to track it
-      const response = await api.post(`/api/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/boost/${product.id}`)
       if (response.data?.success) {
         toast({
           id: 'boost-success',
@@ -1218,6 +1218,18 @@ const ProductDetail: React.FC = () => {
                                 fontSize="xs"
                               >
                                 {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
+                              </Badge>
+                            )}
+                            {product.max_items_per_offer && product.max_items_per_offer > 0 && (
+                              <Badge
+                                colorScheme="brand"
+                                variant="subtle"
+                                borderRadius="full"
+                                px={3}
+                                py={1}
+                                fontSize="xs"
+                              >
+                                Max {product.max_items_per_offer} items per offer
                               </Badge>
                             )}
                           </VStack>
@@ -1635,6 +1647,19 @@ const ProductDetail: React.FC = () => {
                         fontSize="xs"
                       >
                         {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                      </Badge>
+                    )}
+                    {sellerStats?.has_active_dispute && (
+                      <Badge
+                        colorScheme="orange"
+                        variant="solid"
+                        borderRadius="full"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                        fontWeight="bold"
+                      >
+                        ⚠️ Active Dispute
                       </Badge>
                     )}
                   </HStack>

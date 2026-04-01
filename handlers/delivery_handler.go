@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,6 +16,12 @@ import (
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
 )
+
+// BackfillLedgers is an HTTP handler that triggers backfilling missing deliveries
+func (h *DeliveryHandler) BackfillLedgers(c *fiber.Ctx) error {
+	h.BackfillMissingDeliveries()
+	return c.JSON(models.APIResponse{Success: true, Message: "Backfill completed (see logs for details)"})
+}
 
 type DeliveryHandler struct {
 	db *sql.DB
@@ -167,6 +176,14 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
+	// Ensure DB operations cannot hang long enough to trip the frontend timeouts.
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := h.db.PingContext(ctx); err != nil {
+		log.Printf("ApplyAsRider: DB unavailable for user %d: %v", userID, err)
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: "Database unavailable. Please try again."})
+	}
+
 	var payload struct {
 		FullName        string `json:"full_name"`
 		ContactNumber   string `json:"contact_number"`
@@ -203,7 +220,7 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 	// Check if user already has a rider record
 	var existingID int
 	var existingStatus string
-	err := h.db.QueryRow("SELECT id, COALESCE(status, 'pending') FROM riders WHERE user_id = ?", userID).Scan(&existingID, &existingStatus)
+	err := h.db.QueryRowContext(ctx, "SELECT id, COALESCE(status, 'pending') FROM riders WHERE user_id = ?", userID).Scan(&existingID, &existingStatus)
 	if err == nil {
 		switch existingStatus {
 		case "pending", "under_review":
@@ -212,7 +229,7 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You are already an approved rider"})
 		case "rejected":
 			// Allow resubmission
-			_, err = h.db.Exec(`UPDATE riders SET full_name=?, contact_number=?, vehicle_type=?, vehicle_plate=?,
+			_, err = h.db.ExecContext(ctx, `UPDATE riders SET full_name=?, contact_number=?, vehicle_type=?, vehicle_plate=?,
 				license_image_url=?, selfie_image_url=?, status='pending', rejection_reason=NULL,
 				reviewed_at=NULL, reviewed_by=NULL, name=?, updated_at=CURRENT_TIMESTAMP
 				WHERE id=?`,
@@ -231,7 +248,7 @@ func (h *DeliveryHandler) ApplyAsRider(c *fiber.Ctx) error {
 	// Get user name as fallback
 	name := payload.FullName
 
-	result, err := h.db.Exec(`INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active, status,
+	result, err := h.db.ExecContext(ctx, `INSERT INTO riders (user_id, name, vehicle_type, vehicle_plate, phone, is_active, status,
 		full_name, contact_number, license_image_url, selfie_image_url)
 		VALUES (?, ?, ?, ?, ?, FALSE, 'pending', ?, ?, ?, ?)`,
 		userID, name, payload.VehicleType, payload.VehiclePlate, payload.ContactNumber,
@@ -400,16 +417,16 @@ func (h *DeliveryHandler) GetRiderState(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
-		"state":                  state,
-		"rider_id":               riderID,
-		"full_name":              fullName,
-		"message":                message,
-		"rejection_reason":       rejectionReason,
-		"show_welcome":           showWelcome,
-		"free_delivery_slots":    freeDeliverySlots,
-		"completed_deliveries":   completedDeliveries,
-		"rating":                 rating,
-		"first_login_completed":  firstLoginCompleted,
+		"state":                 state,
+		"rider_id":              riderID,
+		"full_name":             fullName,
+		"message":               message,
+		"rejection_reason":      rejectionReason,
+		"show_welcome":          showWelcome,
+		"free_delivery_slots":   freeDeliverySlots,
+		"completed_deliveries":  completedDeliveries,
+		"rating":                rating,
+		"first_login_completed": firstLoginCompleted,
 		"permissions": fiber.Map{
 			"can_view_jobs":     canViewJobs,
 			"can_claim_jobs":    canClaimJobs,
@@ -1642,9 +1659,19 @@ func (h *DeliveryHandler) GetRiderDeliveries(c *fiber.Ctx) error {
 
 	args := []interface{}{riderID}
 
+	// Support friendly status aliases used by the frontend.
+	// Real delivery statuses: pending, claimed, picked_up, in_transit, delivered
 	if statusFilter != "" {
-		query += " AND d.status = ?"
-		args = append(args, statusFilter)
+		switch statusFilter {
+		case "active":
+			// Accept both current and any legacy status values.
+			query += " AND d.status IN ('claimed','picked_up','in_transit','active')"
+		case "completed":
+			query += " AND d.status IN ('delivered','completed')"
+		default:
+			query += " AND d.status = ?"
+			args = append(args, statusFilter)
+		}
 	}
 
 	query += " ORDER BY d.updated_at DESC"
@@ -1677,6 +1704,78 @@ func (h *DeliveryHandler) GetRiderDeliveries(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: deliveries})
+}
+
+func debugEndpointsEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_DEBUG_ENDPOINTS")))
+	return v == "true" || v == "1" || v == "yes"
+}
+
+// DebugRiderJobs returns diagnostic info about the authenticated rider's deliveries.
+// Useful when the UI says "accepted" but Active/Completed tabs are empty.
+func (h *DeliveryHandler) DebugRiderJobs(c *fiber.Ctx) error {
+	if !debugEndpointsEnabled() {
+		return fiber.ErrNotFound
+	}
+
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	var dbName sql.NullString
+	_ = h.db.QueryRowContext(ctx, "SELECT DATABASE()").Scan(&dbName)
+
+	var riderID int
+	if err := h.db.QueryRowContext(ctx, "SELECT id FROM riders WHERE user_id = ?", userID).Scan(&riderID); err != nil {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not registered as a rider"})
+	}
+
+	type StatusCount struct {
+		Status string `json:"status"`
+		Count  int    `json:"count"`
+	}
+	statusCounts := make([]StatusCount, 0)
+	rows, err := h.db.QueryContext(ctx, "SELECT status, COUNT(*) FROM deliveries WHERE rider_id = ? GROUP BY status", riderID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var sc StatusCount
+			if err := rows.Scan(&sc.Status, &sc.Count); err == nil {
+				statusCounts = append(statusCounts, sc)
+			}
+		}
+	}
+
+	type DebugDelivery struct {
+		ID           int           `json:"id"`
+		Status       string        `json:"status"`
+		DeliveryType string        `json:"delivery_type"`
+		TradeID      sql.NullInt64 `json:"trade_id"`
+		UpdatedAt    time.Time     `json:"updated_at"`
+	}
+	latest := make([]DebugDelivery, 0, 20)
+	lrows, lerr := h.db.QueryContext(ctx, "SELECT id, status, delivery_type, trade_id, updated_at FROM deliveries WHERE rider_id = ? ORDER BY updated_at DESC LIMIT 20", riderID)
+	if lerr == nil {
+		defer lrows.Close()
+		for lrows.Next() {
+			var d DebugDelivery
+			if err := lrows.Scan(&d.ID, &d.Status, &d.DeliveryType, &d.TradeID, &d.UpdatedAt); err == nil {
+				latest = append(latest, d)
+			}
+		}
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"db":            dbName.String,
+		"user_id":       userID,
+		"rider_id":      riderID,
+		"status_counts": statusCounts,
+		"latest":        latest,
+	}})
 }
 
 // ClaimDelivery allows a rider to self-claim an available delivery
@@ -2385,4 +2484,46 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 
 		return c.JSON(models.APIResponse{Success: true, Message: "Payment rejected"})
 	}
+}
+
+// BackfillLedgers creates missing ledger entries for existing approved riders (TASK 20)
+func (h *DeliveryHandler) BackfillLedgers(c *fiber.Ctx) error {
+	log.Println("Admin manually triggered ledger backfill")
+
+	// Get all approved riders who don't have a ledger entry
+	rows, err := h.db.Query(`
+		SELECT id FROM riders r
+		WHERE status = 'approved'
+		AND NOT EXISTS (SELECT 1 FROM rider_ledger rl WHERE rl.rider_id = r.id)
+	`)
+	if err != nil {
+		log.Printf("BackfillLedgers: Query failed: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database error during backfill"})
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var riderID int
+		if err := rows.Scan(&riderID); err != nil {
+			log.Printf("BackfillLedgers: Scan error: %v", err)
+			continue
+		}
+
+		_, err = h.db.Exec(`
+			INSERT IGNORE INTO rider_ledger (rider_id, total_cash_collected, remittance_owed, take_home, free_slots_remaining)
+			VALUES (?, 0.00, 0.00, 0.00, 3)
+		`, riderID)
+		if err != nil {
+			log.Printf("BackfillLedgers: Failed for rider %d: %v", riderID, err)
+			continue
+		}
+		count++
+	}
+
+	log.Printf("BackfillLedgers: Successfully created %d new ledger entries", count)
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: fmt.Sprintf("Successfully backfilled %d rider ledgers", count),
+	})
 }

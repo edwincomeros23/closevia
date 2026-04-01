@@ -11,7 +11,8 @@ export interface RiderPermissions {
 }
 
 export interface RiderStateData {
-  state: RiderState
+  state: RiderState | string
+  status?: string
   rider_id?: number
   full_name?: string
   message: string

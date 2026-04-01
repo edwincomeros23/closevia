@@ -149,12 +149,11 @@ func (s *CloudinaryService) uploadStream(reader io.ReadSeeker, originalName, fol
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// For profile pictures, use a unique identifier to avoid caching issues
+	// Use a unique identifier to avoid caching issues and overwriting identical filenames
 	publicID := strings.TrimSuffix(SanitizeFileName(originalName), filepath.Ext(originalName))
-	if folder == "profile-pictures" {
-		// Add timestamp to ensure unique ID for profile pictures (prevents browser caching of old image)
-		publicID = fmt.Sprintf("%s-%d", publicID, time.Now().UnixNano())
-	}
+	// Always add timestamp to ensure unique ID for all uploads (prevents overwriting common names like image.jpg)
+	publicID = fmt.Sprintf("%s-%d", publicID, time.Now().UnixNano())
+
 	fmt.Printf("🖼️  [Cloudinary] Uploading with publicID: %s to folder: %s\n", publicID, folder)
 
 	params := uploader.UploadParams{

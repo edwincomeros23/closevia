@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -46,8 +47,13 @@ func InitDatabase() error {
 		return fmt.Errorf("DB_PASSWORD environment variable is not set (required for hosted database)")
 	}
 
-	var dsn string
+	// Fail fast on network / DB stalls so the API doesn't hang for 15s+.
+	const connectTimeout = "5s"
+	const readTimeout = "15s"
+	const writeTimeout = "15s"
+	commonParams := fmt.Sprintf("timeout=%s&readTimeout=%s&writeTimeout=%s", connectTimeout, readTimeout, writeTimeout)
 
+	var dsn string
 	if isHostedDatabase {
 		// Create TLS config for hosted database
 		tlsConfig, err := createTLSConfig(dbHost, caCertPath)
@@ -59,13 +65,11 @@ func InitDatabase() error {
 			return fmt.Errorf("failed to register TLS config: %v", err)
 		}
 
-		// Create DSN with TLS enabled for hosted database
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom",
-			dbUser, dbPassword, dbHost, dbPort, dbName)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&tls=custom&%s",
+			dbUser, dbPassword, dbHost, dbPort, dbName, commonParams)
 	} else {
-		// Create DSN without TLS for local database (XAMPP)
-		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local",
-			dbUser, dbPassword, dbHost, dbPort, dbName)
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&loc=Local&%s",
+			dbUser, dbPassword, dbHost, dbPort, dbName, commonParams)
 	}
 
 	// Open database connection
@@ -76,13 +80,15 @@ func InitDatabase() error {
 	}
 
 	// Configure connection pool with better resilience
-	DB.SetMaxOpenConns(10)                 // Reduce from 25 to avoid connection spam
-	DB.SetMaxIdleConns(5)                  // Keep fewer idle connections
-	DB.SetConnMaxLifetime(5 * time.Minute) // Refresh connections more frequently
-	DB.SetConnMaxIdleTime(2 * time.Minute) // Close idle connections after 2 min
+	DB.SetMaxOpenConns(10)
+	DB.SetMaxIdleConns(5)
+	DB.SetConnMaxLifetime(5 * time.Minute)
+	DB.SetConnMaxIdleTime(2 * time.Minute)
 
-	// Test the connection
-	if err := DB.Ping(); err != nil {
+	// Test the connection (with timeout to avoid long startup hangs)
+	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := DB.PingContext(pingCtx); err != nil {
 		return fmt.Errorf("failed to ping database: %v", err)
 	}
 
@@ -140,6 +146,18 @@ func CreateTables() error {
 	if err == nil && exists == 0 {
 		log.Println("Adding missing premium_tier column to users table...")
 		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'strikes'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding strikes column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN strikes INT DEFAULT 0")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_suspended'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding is_suspended column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN is_suspended BOOLEAN DEFAULT FALSE")
 	}
 
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
@@ -259,6 +277,8 @@ func CreateTables() error {
 			is_premium BOOLEAN DEFAULT FALSE,
 			premium_tier VARCHAR(20) DEFAULT 'free',
 			verified BOOLEAN DEFAULT FALSE,
+			strikes INT DEFAULT 0,
+			is_suspended BOOLEAN DEFAULT FALSE,
 			last_login TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -638,7 +658,7 @@ func CreateTables() error {
 			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
-		` CREATE TABLE IF NOT EXISTS delivery_stops (
+		`CREATE TABLE IF NOT EXISTS delivery_stops (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			delivery_id INT NOT NULL,
 			stop_number INT NOT NULL,
@@ -662,20 +682,22 @@ func CreateTables() error {
 			INDEX idx_delivery_stop (delivery_id, stop_number),
 			INDEX idx_stop_status (status)
 		)`,
-		`CREATE TABLE IF NOT EXISTS rider_cash_collections (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			rider_id INT NOT NULL,
-			delivery_id INT NOT NULL,
-			stop_id INT NOT NULL,
-			collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
-			amount DECIMAL(10,2) NOT NULL,
-			collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
-			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
-			FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
-			INDEX idx_rider_collections (rider_id, collected_at),
-			INDEX idx_delivery_collections (delivery_id)
-		)`,
+		   // ...existing code...
+			   // Move rider_cash_collections table creation after delivery_stops
+			   `CREATE TABLE IF NOT EXISTS rider_cash_collections (
+				   id INT AUTO_INCREMENT PRIMARY KEY,
+				   rider_id INT NOT NULL,
+				   delivery_id INT NOT NULL,
+				   stop_id INT NOT NULL,
+				   collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
+				   amount DECIMAL(10,2) NOT NULL,
+				   collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				   FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
+				   FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
+				   FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
+				   INDEX idx_rider_collections (rider_id, collected_at),
+				   INDEX idx_delivery_collections (delivery_id)
+			   )`,
 		`CREATE TABLE IF NOT EXISTS rider_ledger (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			rider_id INT NOT NULL UNIQUE,
@@ -742,6 +764,39 @@ func CreateTables() error {
 			INDEX idx_reporter (reporter_id),
 			INDEX idx_reported_user (reported_user_id),
 			INDEX idx_status (status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_disputes (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			raised_by_id INT NOT NULL,
+			reported_user_id INT NOT NULL,
+			reason VARCHAR(100) NOT NULL,
+			description TEXT NOT NULL,
+			evidence_image_1 VARCHAR(500) NULL,
+			evidence_image_2 VARCHAR(500) NULL,
+			status ENUM('pending', 'reviewed', 'resolved', 'dismissed') NOT NULL DEFAULT 'pending',
+			reviewer_id INT NULL,
+			resolution_notes TEXT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (raised_by_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reported_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_disputes_trade (trade_id),
+			INDEX idx_disputes_status (status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_strikes (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			admin_id INT NOT NULL,
+			dispute_id INT NULL,
+			reason TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (dispute_id) REFERENCES trade_disputes(id) ON DELETE SET NULL,
+			INDEX idx_strikes_user (user_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS trade_grades (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1056,6 +1111,9 @@ func ensureTradeColumns() {
 		{"delivery_type", "VARCHAR(20) NULL DEFAULT 'standard'"},
 		{"payment_method", "VARCHAR(20) NULL DEFAULT 'gcash'"},
 		{"payment_confirmed", "BOOLEAN DEFAULT FALSE"},
+		{"xendit_invoice_id", "VARCHAR(255) NULL"},
+		{"xendit_external_id", "VARCHAR(255) NULL"},
+		{"delivery_instructions", "TEXT NULL"},
 		{"proof_of_delivery", "LONGTEXT NULL"},
 		{"buyer_confirmed_receipt", "BOOLEAN DEFAULT FALSE"},
 		{"seller_confirmed_delivery", "BOOLEAN DEFAULT FALSE"},
@@ -1068,6 +1126,8 @@ func ensureTradeColumns() {
 		{"buyer_meetup_time", "VARCHAR(50) NULL"},
 		{"seller_meetup_location", "VARCHAR(500) NULL"},
 		{"seller_meetup_time", "VARCHAR(50) NULL"},
+		{"buyer_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
+		{"seller_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 	}
 
 	for _, col := range columns {

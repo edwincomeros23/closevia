@@ -605,9 +605,9 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 	// Find user by email
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), strikes, is_suspended FROM users WHERE email = ?",
 		login.Email,
-	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
 
 	if err != nil {
 		return c.Status(401).JSON(models.APIResponse{
@@ -621,6 +621,14 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Please verify your email address before logging in.",
+		})
+	}
+
+	// Check for strikes suspension ladder
+	if user.IsSuspended || user.Strikes >= 3 {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Your account has been auto-suspended pending admin review due to multiple strikes or policy violations.",
 		})
 	}
 
@@ -684,9 +692,9 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 	// Check if user exists
 	var user models.User
 	err := h.db.QueryRow(
-		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free') FROM users WHERE email = ?",
+		"SELECT id, slug, name, email, role, verified, profile_picture, language_preference, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), strikes, is_suspended FROM users WHERE email = ?",
 		req.Email,
-	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.Role, &user.Verified, &user.ProfilePicture, &user.LanguagePreference, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
 
 	if err == sql.ErrNoRows {
 		// Generate slug for the new user
@@ -750,6 +758,14 @@ func (h *UserHandler) GoogleLogin(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Database error",
+		})
+	}
+
+	// Check if user is suspended or has 3+ strikes
+	if user.IsSuspended || user.Strikes >= 3 {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Your account has been auto-suspended pending admin review due to multiple strikes or policy violations.",
 		})
 	}
 
@@ -822,6 +838,8 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(push_notifications_enabled, TRUE) AS push_notifications_enabled,
 		        COALESCE(language_preference, 'en') AS language_preference,
 		        COALESCE(premium_tier, 'free') AS premium_tier,
+		        COALESCE(strikes, 0) AS strikes,
+		        COALESCE(is_suspended, FALSE) AS is_suspended,
 		        created_at, updated_at, password_changed_at, last_login
 		 FROM users WHERE id = ?`,
 		userID,
@@ -835,7 +853,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.BackgroundPosition, &user.Department, &user.Badges, &user.IsPremium,
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
-		&user.LanguagePreference, &user.PremiumTier,
+		&user.LanguagePreference, &user.PremiumTier, &user.Strikes, &user.IsSuspended,
 		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &lastLogin,
 	)
 
@@ -2154,50 +2172,57 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	// --- Trust Score Computation (0-100) with detailed breakdown ---
 	var trustFactors []models.TrustFactor
 
-	// 1. Verified account: 15 points
+	// 1. Verified account: 15 points (Verified = 15, Not verified = 0)
 	var verificationStatus string
-	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified') FROM users WHERE id = ?", userID).Scan(&verificationStatus)
+	var isVerifiedBool bool
+	_ = h.db.QueryRow("SELECT COALESCE(verification_status, 'not_verified'), verified FROM users WHERE id = ?", userID).Scan(&verificationStatus, &isVerifiedBool)
 	verifiedPoints := 0
 	verifiedStatus := "fail"
-	switch verificationStatus {
-	case "verified":
+	if verificationStatus == "verified" || isVerifiedBool {
 		verifiedPoints = 15
 		verifiedStatus = "pass"
-	case "pending":
-		verifiedPoints = 5
+	} else if verificationStatus == "pending" {
 		verifiedStatus = "warn"
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Verified account", Status: verifiedStatus, Points: verifiedPoints, Max: 15})
 
-	// 2. Completed trades: 25 points (capped at 20 trades)
-	tradePoints := 0
+	// 2. Completed trades: 15 points (progressive, 0 trades = neutral 5)
+	tradePoints := 5
 	tradeStatus := "warn"
-	if stats.CompletedTrades > 0 {
-		capped := stats.CompletedTrades
-		if capped > 20 {
-			capped = 20
-		}
-		tradePoints = int((float64(capped) / 20.0) * 25.0)
-		if stats.CompletedTrades >= 5 {
-			tradeStatus = "pass"
-		}
+	if stats.CompletedTrades >= 6 {
+		tradePoints = 15
+		tradeStatus = "pass"
+	} else if stats.CompletedTrades >= 3 {
+		tradePoints = 12
+		tradeStatus = "pass"
+	} else if stats.CompletedTrades >= 1 {
+		tradePoints = 8
+		tradeStatus = "warn"
 	}
-	trustFactors = append(trustFactors, models.TrustFactor{Label: "Completed trades", Status: tradeStatus, Points: tradePoints, Max: 25})
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Completed trades", Status: tradeStatus, Points: tradePoints, Max: 15})
 
-	// 3. Positive ratings: 25 points (avg_rating / 5 * 25)
-	ratingPoints := 0
-	ratingStatus := "warn"
-	if stats.AvgRating > 0 {
-		ratingPoints = int((stats.AvgRating / 5.0) * 25.0)
-		if stats.AvgRating >= 4.0 {
+	// 3. Positive ratings: 25 points (based on percentage)
+	ratingPoints := 25 // Default neutral/clean
+	ratingStatus := "pass"
+	var positivePercentVal float64 = 100
+	if stats.TotalFeedback > 0 {
+		positivePercentVal = stats.PositivePercent
+		if positivePercentVal == 100 {
+			ratingPoints = 25
+		} else if positivePercentVal >= 80 {
+			ratingPoints = 18 + int((positivePercentVal-80)/19.0*6.0)
 			ratingStatus = "pass"
-		} else if stats.AvgRating < 2.5 {
+		} else if positivePercentVal >= 60 {
+			ratingPoints = 10 + int((positivePercentVal-60)/19.0*7.0)
+			ratingStatus = "warn"
+		} else {
+			ratingPoints = int(positivePercentVal / 59.0 * 9.0)
 			ratingStatus = "fail"
 		}
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Positive ratings", Status: ratingStatus, Points: ratingPoints, Max: 25})
 
-	// 4. No reports: 20 points (lose points per report)
+	// 4. No reports: 20 points
 	var reportCount int
 	err = h.db.QueryRow("SELECT COUNT(*) FROM reports WHERE reported_user_id = ? AND status IN ('reviewed', 'resolved')", userID).Scan(&reportCount)
 	if err != nil {
@@ -2206,58 +2231,93 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	reportPoints := 20
 	reportStatus := "pass"
 	if reportCount > 0 {
-		reportPoints = 20 - (reportCount * 5)
+		reportPoints -= reportCount * 8
 		if reportPoints < 0 {
 			reportPoints = 0
 		}
-		if reportCount >= 3 {
+		if reportPoints < 10 {
 			reportStatus = "fail"
 		} else {
 			reportStatus = "warn"
 		}
 	}
-	trustFactors = append(trustFactors, models.TrustFactor{Label: "No reports", Status: reportStatus, Points: reportPoints, Max: 20})
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Clean record", Status: reportStatus, Points: reportPoints, Max: 20})
 
-	// 5. Response time: 15 points
-	responsePoints := 0
+	// 5. Response time: 15 points (Faster = better, inactive = minimum 5)
+	responsePoints := 12 // Default moderate for no activity
 	responseStatus := "warn"
 	if avgResponseTimeMinutes.Valid {
 		minutes := int(avgResponseTimeMinutes.Float64)
-		if minutes <= 60 {
+		if minutes <= 360 { // Fast (within hours)
 			responsePoints = 15
 			responseStatus = "pass"
-		} else if minutes <= 360 {
-			responsePoints = 10
+		} else if minutes <= 1440 { // Moderate (within a day)
+			responsePoints = 12
 			responseStatus = "pass"
-		} else if minutes <= 1440 {
+		} else if minutes <= 4320 { // Slow (few days)
+			responsePoints = 9
+			responseStatus = "warn"
+		} else { // Very slow
 			responsePoints = 5
-			responseStatus = "warn"
-		} else {
-			responsePoints = 0
-			responseStatus = "warn"
+			responseStatus = "fail"
 		}
 	}
-	trustFactors = append(trustFactors, models.TrustFactor{Label: "Fast responses", Status: responseStatus, Points: responsePoints, Max: 15})
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Response speed", Status: responseStatus, Points: responsePoints, Max: 15})
+
+	// 6. Trade Success Rate: 10 points
+	var totalAttempted int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed', 'cancelled')", userID).Scan(&totalAttempted)
+	
+	successPoints := 10 // Default neutral if no trades
+	successStatus := "pass"
+	if totalAttempted > 0 {
+		var successCount int
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed')", userID).Scan(&successCount)
+		successRate := (float64(successCount) / float64(totalAttempted)) * 100
+		if successRate >= 90 {
+			successPoints = 10
+		} else if successRate >= 70 {
+			successPoints = 8
+			successStatus = "warn"
+		} else if successRate >= 50 {
+			successPoints = 5
+			successStatus = "warn"
+		} else {
+			successPoints = 2
+			successStatus = "fail"
+		}
+	}
+	trustFactors = append(trustFactors, models.TrustFactor{Label: "Trade success", Status: successStatus, Points: successPoints, Max: 10})
 
 	// Sum all factors
-	totalScore := verifiedPoints + tradePoints + ratingPoints + reportPoints + responsePoints
+	totalScore := verifiedPoints + tradePoints + ratingPoints + reportPoints + responsePoints + successPoints
 	if totalScore > 100 {
 		totalScore = 100
 	}
 	stats.TrustScore = totalScore
 	stats.TrustFactors = trustFactors
 
-	// Determine trust level
+	// Determine trust level based on new requirements
 	if stats.TrustScore >= 80 {
 		stats.TrustLevel = "trusted"
-	} else if stats.TrustScore >= 50 {
-		stats.TrustLevel = "new"
+	} else if stats.TrustScore >= 60 {
+		stats.TrustLevel = "new" // Maps to "Trusted" conceptually in UI
 	} else {
 		stats.TrustLevel = "risky"
 	}
 
 	stats.ReportCount = reportCount
 	stats.HasReports = reportCount > 0
+
+	// Check for active unresolved disputes in multi-way trades
+	var activeDisputeCount int
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM multiway_leg_disputes 
+		WHERE against_user_id = ? AND status IN ('open', 'under_review')
+	`, userID).Scan(&activeDisputeCount)
+	if err == nil {
+		stats.HasActiveDispute = activeDisputeCount > 0
+	}
 
 	// --- Conduct Summary from trade grades ---
 	conductSummary := h.computeConductSummary(userID)

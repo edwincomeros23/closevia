@@ -47,6 +47,7 @@ const Notifications: React.FC = () => {
   const { user } = useAuth()
   const { products } = useProducts()
   const { refreshCounts } = useRealtime()
+  const navigate = useNavigate()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)

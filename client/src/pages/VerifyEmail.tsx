@@ -28,7 +28,7 @@ const VerifyEmail: React.FC = () => {
     const navigate = useNavigate()
     const location = useLocation()
     const toast = useToast()
-    const { login } = useAuth()
+    const { login, completeLogin } = useAuth()
 
     const email: string = (location.state as any)?.email || ''
 
@@ -93,13 +93,14 @@ const VerifyEmail: React.FC = () => {
         try {
             const response = await api.post('/api/auth/verify-email', { email, code })
             if (response.data.success) {
-                const { token } = response.data.data
-                // Store token and update auth state
-                localStorage.setItem('clovia_token', token)
-                api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+                const { token, user } = response.data.data
+                
+                // Use centralized completeLogin to handle state and persistence
+                await completeLogin(token, user)
+                
                 setSuccess(true)
                 toast({
-        id: "verifyemail-email-verified",
+                    id: "verifyemail-email-verified",
                     title: '✅ Email verified!',
                     description: 'Welcome to Clovia!',
                     status: 'success',

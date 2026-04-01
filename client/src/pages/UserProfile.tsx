@@ -51,7 +51,7 @@ import {
   Alert,
   AlertIcon,
 } from '@chakra-ui/react'
-import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera, FiActivity, FiTag } from 'react-icons/fi'
+import { FiMessageSquare, FiHeart, FiShare2, FiStar, FiClock, FiCheckCircle, FiSend, FiCamera, FiActivity, FiTag, FiInfo } from 'react-icons/fi'
 import { FaHeart, FaBuilding, FaGraduationCap, FaStore, FaFileAlt, FaThumbsUp, FaThumbtack } from 'react-icons/fa'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -251,7 +251,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         console.log('🔍 res.data.data:', res.data?.data)
         console.log('🔍 res.data.data.user:', res.data?.data?.user)
 
-        const apiUser = (res.data?.data?.user || res.data?.user || res.data) as Partial<PublicUser>
+        const payload = res.data?.data || res.data
+        const apiUser = (payload?.user || payload) as Partial<PublicUser>
         console.log('🔍 Extracted apiUser:', apiUser)
 
 
@@ -266,26 +267,26 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         })
 
 
-        setUser({
+        const finalizedUser: PublicUser = {
           id: apiUser.id || 0,
-          name: apiUser.name || 'User',
+          name: apiUser.name && apiUser.name.toLowerCase() !== 'user' ? apiUser.name : (apiUser as any).full_name || apiUser.name || 'Anonymous User',
           verified: Boolean(apiUser.verified),
           created_at: (apiUser as any).created_at || new Date().toISOString(),
-          // Prefer profile_picture if provided, fall back to org logo
-          avatar_url: getImageUrl((apiUser as any).profile_picture || (apiUser as any).org_logo_url || null),
-          background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || null),
-          background_position: (apiUser as any).background_position || (apiUser as any).background_position || '50% 50%',
-          // If the current user and API returned an email/name, prefer those
+          // Support multiple field names from different API versions
+          avatar_url: getImageUrl((apiUser as any).profile_picture || (apiUser as any).avatar_url || (apiUser as any).org_logo_url || null),
+          background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || (apiUser as any).background_url || null),
+          background_position: (apiUser as any).background_position || '50% 50%',
           bio: (apiUser as any).bio || 'No bio provided yet.',
           rating: apiUser.rating ?? 4.6,
           rank: apiUser.rank || 'Rising Trader',
-          is_organization: (apiUser as any).is_organization,
-          org_verified: (apiUser as any).org_verified,
+          is_organization: Boolean((apiUser as any).is_organization),
+          org_verified: Boolean((apiUser as any).org_verified),
           org_name: (apiUser as any).org_name,
-          org_logo_url: (apiUser as any).org_logo_url,
           department: (apiUser as any).department || 'Unknown',
           activity_status: (apiUser as any).activity_status || 'inactive',
-        })
+        }
+
+        setUser(finalizedUser)
 
         // Only fetch products if we have a valid ID
         if (apiUser.id) {
@@ -962,9 +963,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <HStack spacing={1.5} align="baseline">
                     <Heading size="lg" color="gray.800" textTransform="capitalize" display="flex" alignItems="center">
                       {user.name}
-                      {(user.verification_status === 'verified' || user.verified) && (
-                        <Icon as={FiCheckCircle} color="teal.500" boxSize={4} ml={2} title="Verified" />
-                      )}
                     </Heading>
                   </HStack>
                   {/* Organization Type tag */}
@@ -1044,9 +1042,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               </HStack>
 
               {/* Verification Depth sub-badges (organization only) */}
-              {user.is_organization && (user.verification_status === 'verified' || user.verified || user.org_verified) && (
-                {/* Organization verification badges removed for redundancy. TrustScoreCard and check icon now serve as the only verification indicators. */}
-              )}
+              {/* Organization verification badges removed for redundancy. TrustScoreCard and check icon now serve as the only verification indicators. */}
 
               {/* Activity & Transparency (organization only) */}
               {user.is_organization && (
@@ -1128,7 +1124,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <Text fontWeight="500" color="gray.800" fontSize="sm">{sellerStats?.trust_score ?? 'N/A'}</Text>
                 </Box>
                 <Box lineHeight="1.4">
-                  <Text color="gray.500" fontSize="xs">Items for Sale</Text>
+                  <Text color="gray.500" fontSize="xs">Active Listings</Text>
                   <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
                 </Box>
                 {/* Department field removed as per request */}
@@ -1139,7 +1135,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
               </SimpleGrid>
 
               {/* Trust Score Card */}
-              {sellerStats && (
+              {sellerStats ? (
                 <Box mb={3}>
                   <TrustScoreCard
                     score={sellerStats.trust_score ?? 0}
@@ -1156,37 +1152,28 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       pending: sellerStats.pending_trades ?? 0,
                     }}
                     responseTime={sellerStats.avg_response_time}
+                    hasActiveDispute={sellerStats.has_active_dispute}
                   />
                 </Box>
-                ) : (
-                  <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4} p={4}>
-                    {mergedTradeActivity.map((trade, idx) => (
-                      <Box key={trade.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4} bg="gray.50">
-                        <Text fontSize="xs" color="gray.500" mb={1}>
-                          Trade #{trade.id || idx}
-                        </Text>
-                        <Text fontSize="sm" color="gray.600" mb={2}>
-                          {/* Label for trade type/status */}
-                          {trade.status ? `Status: ${trade.status}` : 'Trade'}
-                        </Text>
-                        {/* ...existing trade details... */}
-                        {/* Add more trade info here as needed */}
-                      </Box>
-                    ))}
-                  </SimpleGrid>
-                )}
-              {/* Show action buttons only when viewing someone else's profile */}
-              {!(currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id)) && !user.is_organization && (
-                <HStack spacing={3}>
-                  <Button
-                    leftIcon={<Icon as={FiMessageSquare} />}
-                    colorScheme="brand"
-                    onClick={handleSendMessage}
-                  >
-                    Message Seller
-                  </Button>
-                </HStack>
+              ) : (
+                <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4} p={4}>
+                  {mergedTradeActivity.map((trade, idx) => (
+                    <Box key={trade.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4} bg="gray.50">
+                      <Text fontSize="xs" color="gray.500" mb={1}>
+                        Trade #{trade.id || idx}
+                      </Text>
+                      <Text fontSize="sm" color="gray.600" mb={2}>
+                        {/* Label for trade type/status */}
+                        {trade.status ? `Status: ${trade.status}` : 'Trade'}
+                      </Text>
+                      {/* ...existing trade details... */}
+                      {/* Add more trade info here as needed */}
+                    </Box>
+                  ))}
+                </SimpleGrid>
               )}
+              {/* Show action buttons only when viewing someone else's profile */}
+
             </CardBody>
           </Card>
 
@@ -1472,17 +1459,26 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                           bg="white"
                         >
                           <VStack spacing={3} align="stretch">
-                            {/* Product images on top */}
-                            <HStack spacing={2} align="center">
-                              <Box w="55px" h="55px" bg="gray.100" borderRadius="md" overflow="hidden" border="2px" borderColor="blue.200" flexShrink={0}>
-                                <Image src={offeredImage} alt={offeredTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
+                            {/* Product images or Review Photo on top */}
+                            {review?.photo_url ? (
+                              <Box w="100%" h="250px" bg="gray.100" borderRadius="md" overflow="hidden" mb={2} position="relative" border="1px" borderColor="gray.200">
+                                <Image src={review.photo_url} alt="Review attachment" w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
+                                <Badge position="absolute" top="2" right="2" colorScheme="blackAlpha" bg="blackAlpha.600" color="white" border="none">
+                                  {completedDate}
+                                </Badge>
                               </Box>
-                              <Text fontSize="xs" color="gray.400">⇄</Text>
-                              <Box w="55px" h="55px" bg="gray.100" borderRadius="md" overflow="hidden" border="2px" borderColor="green.200" flexShrink={0}>
-                                <Image src={targetImage} alt={targetTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
-                              </Box>
-                              <Text fontSize="xs" color="gray.500" ml="auto" flexShrink={0}>{completedDate}</Text>
-                            </HStack>
+                            ) : (
+                              <HStack spacing={2} align="center">
+                                <Box w="55px" h="55px" bg="gray.100" borderRadius="md" overflow="hidden" border="2px" borderColor="blue.200" flexShrink={0}>
+                                  <Image src={offeredImage} alt={offeredTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
+                                </Box>
+                                <Text fontSize="xs" color="gray.400">⇄</Text>
+                                <Box w="55px" h="55px" bg="gray.100" borderRadius="md" overflow="hidden" border="2px" borderColor="green.200" flexShrink={0}>
+                                  <Image src={targetImage} alt={targetTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
+                                </Box>
+                                <Text fontSize="xs" color="gray.500" ml="auto" flexShrink={0}>{completedDate}</Text>
+                              </HStack>
+                            )}
 
                             {/* Trade details below */}
                             <Box>
