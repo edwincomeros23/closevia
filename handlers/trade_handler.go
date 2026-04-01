@@ -1307,6 +1307,34 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_selection', ?)",
 			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
+
+	case "confirm_meetup_done":
+		log.Printf("=== TRADE MEETUP DONE CONFIRMATION REQUEST ===")
+		log.Printf("User %d confirming meetup happened for trade %d", userID, tradeID)
+
+		column := "buyer_met"
+		if userID == sellerID {
+			column = "seller_met"
+		}
+
+		_, err = h.db.Exec("UPDATE trades SET "+column+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
+		if err != nil {
+			log.Printf("Failed to update meetup done status for trade %d: %v", tradeID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup happened"})
+		}
+
+		// Notify other party
+		var otherUserID int
+		if userID == buyerID {
+			otherUserID = sellerID
+		} else {
+			otherUserID = buyerID
+		}
+		publishToUser(otherUserID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_confirmed_done": true}})
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, "The other party confirmed the meeting took place.")
+		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_confirmed_done', ?)",
+			tradeID, userID, currentStatus, "User confirmed meeting happened")
+
 	case "update_delivery_state":
 		// Handle delivery state updates (payment confirmation, proof of delivery, confirmations)
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")

@@ -1606,6 +1606,36 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
 
+  const handleConfirmMeetupDone = async () => {
+    if (!trade || confirmingMeetup) return
+
+    try {
+      setConfirmingMeetup(true)
+      await api.put(`/api/trades/${trade.id}`, {
+        action: 'confirm_meetup_done',
+      })
+
+      toast({
+        id: "viewtrademodal-meetup-confirmed-done",
+        title: 'Meeting Confirmed',
+        description: 'You have confirmed the meeting took place. You can now leave a review.',
+        status: 'success',
+      })
+
+      // Refresh trade data
+      if (onStatusUpdate) onStatusUpdate()
+    } catch (error: any) {
+      toast({
+        id: "viewtrademodal-error-confirm-meetup-done",
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to confirm meeting',
+        status: 'error',
+      })
+    } finally {
+      setConfirmingMeetup(false)
+    }
+  }
+
   if (!trade) return null
 
 
@@ -2289,9 +2319,59 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Box>
                       )}
 
-                      {/* Leave Review Section - Show only if BOTH confirmed */}
-                      {(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
+                      {/* Waiting for Meetup Hub - Show after location agreed but before meeting confirmed */}
+                      {(buyerMeetupConfirmed && sellerMeetupConfirmed && !((isUserBuyer && trade.buyer_met) || (isUserSeller && trade.seller_met))) && (
+                        <Box
+                          p={4}
+                          bg="blue.50"
+                          borderWidth="1px"
+                          borderColor="blue.200"
+                          borderRadius="lg"
+                          textAlign="center"
+                          mb={2}
+                        >
+                          <VStack spacing={3}>
+                            <Icon as={FaHandshake} color="blue.500" boxSize={8} />
+                            <VStack spacing={1}>
+                              <Text fontWeight="bold" color="blue.700">
+                                Meetup Is Active
+                              </Text>
+                              <Text fontSize="sm" color="blue.600">
+                                Please meet at the agreed location and time. Once you have received your item, confirm below.
+                              </Text>
+                            </VStack>
+                            <Button
+                              colorScheme="blue"
+                              size="lg"
+                              onClick={handleConfirmMeetupDone}
+                              isLoading={confirmingMeetup}
+                              leftIcon={<FaHandshake />}
+                              w="full"
+                              mt={2}
+                              transition="all 0.2s"
+                              _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                            >
+                              Confirm Meeting & Received Item
+                            </Button>
+                          </VStack>
+                        </Box>
+                      )}
+
+                      {/* Leave Review Section - Show only if BOTH confirmed AND user confirmed meeting */}
+                      {(buyerMeetupConfirmed && sellerMeetupConfirmed && ((isUserBuyer && trade.buyer_met) || (isUserSeller && trade.seller_met))) && (
                         <Box>
+                          <Box
+                            p={3}
+                            bg="green.50"
+                            borderLeft="4px"
+                            borderColor="green.500"
+                            borderRadius="md"
+                            mb={4}
+                          >
+                            <Text fontSize="sm" color="green.700" fontWeight="medium">
+                              Meeting Confirmed! Please leave a review to finalize the trade.
+                            </Text>
+                          </Box>
                           <Button
                             colorScheme="green"
                             size="lg"
