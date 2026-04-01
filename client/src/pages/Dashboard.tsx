@@ -97,7 +97,7 @@ import {
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth()
   const { deleteProduct, updateProduct } = useProducts()
-  const { refreshCounts } = useRealtime()
+  const { refreshCounts, setRefreshCallback } = useRealtime()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -758,6 +758,29 @@ const Dashboard: React.FC = () => {
       setMultiWayTradesLoading(false)
     }
   }
+
+  // Register refresh callbacks for all tabs with RealtimeContext
+  useEffect(() => {
+    setRefreshCallback('products', () => {
+      invalidateProducts()
+    })
+    setRefreshCallback('sentOffers', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('receivedOffers', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('ongoingTrades', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('multiway', () => {
+      fetchMultiWayTrades()
+    })
+    setRefreshCallback('history', () => {
+      // Invalidate trades/history data
+      invalidateDashboard()
+    })
+  }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard])
 
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
@@ -3604,11 +3627,6 @@ const Dashboard: React.FC = () => {
                         <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
-                        {user?.is_premium && (
-                          <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
-                            PRO
-                          </Badge>
-                        )}
                       </HStack>
                     </Tab>
                     <Tab
