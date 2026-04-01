@@ -210,8 +210,6 @@ export interface Trade {
   buyer_meetup_confirmed?: boolean
   seller_meetup_confirmed?: boolean
   transaction_proof_url?: string
-  buyer_met?: boolean
-  seller_met?: boolean
   trade_option?: TradeOption // 'meetup' or 'delivery'
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
@@ -284,7 +282,7 @@ export interface TradeCreate {
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'confirm_meetup_done' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number
@@ -463,4 +461,19 @@ export interface ReportCreate {
 export interface ReportUpdate {
   status: 'pending' | 'reviewed' | 'dismissed' | 'resolved'
   reviewer_comment?: string
+}
+
+export interface PeerVotedTag {
+  tag: string
+  count: number
+}
+
+export interface TrustProfile {
+  average_rating: number // 1-5 star scale
+  completed_trade_count: number
+  peer_voted_tags: PeerVotedTag[]
+  phone_verified: boolean // Required
+  id_verified?: boolean // Optional
+  verified_at: string
+  updated_at: string
 }

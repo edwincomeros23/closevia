@@ -38,6 +38,9 @@ import {
   Grid,
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
+import MeetupStatusTracker from './MeetupStatusTracker'
+import MeetupSystemMessage from './MeetupSystemMessage'
+import MeetupActionButtons, { ActionData } from './MeetupActionButtons'
 import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle } from 'react-icons/fa'
 import {
   FiMapPin,
@@ -1083,6 +1086,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const { getProduct } = useProducts()
   const toast = useToast()
   const [messages, setMessages] = useState<TradeMessage[]>([])
+  const [meetupSystemMessages, setMeetupSystemMessages] = useState<any[]>([])
+  const [meetupStatus, setMeetupStatus] = useState<any>(null)
   const [newMessage, setNewMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -1400,11 +1405,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   useEffect(() => {
     if (isOpen && trade) {
       fetchMessages({ showLoading: true })
+      fetchMeetupSystemMessages()
+      fetchMeetupFullStatus()
       fetchProducts()
       fetchMeetupStatus()
 
       // Poll for new messages every 3 seconds without flashing a loader
-      messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
+      messagesPollRef.current = setInterval(() => {
+        fetchMessages({ showLoading: false })
+        fetchMeetupSystemMessages()
+        fetchMeetupFullStatus()
+      }, 3000)
       return () => {
         if (messagesPollRef.current) {
           clearInterval(messagesPollRef.current)
@@ -1413,6 +1424,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       }
     } else {
       setMessages([])
+      setMeetupSystemMessages([])
+      setMeetupStatus(null)
       setNewMessage('')
     }
   }, [isOpen, trade])
@@ -1464,6 +1477,32 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       console.error('Failed to fetch messages:', error)
     } finally {
       if (showLoading) setLoadingMessages(false)
+    }
+  }
+
+  const fetchMeetupSystemMessages = async () => {
+    if (!trade) return
+
+    try {
+      const response = await api.get(`/api/trades/${trade.id}/meetup/messages`)
+      const systemMessages = response.data?.data || []
+      const safeMeetupMessages = Array.isArray(systemMessages) ? systemMessages : []
+      safeMeetupMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      setMeetupSystemMessages(safeMeetupMessages)
+    } catch (error) {
+      console.warn('Failed to fetch meetup system messages:', error)
+    }
+  }
+
+  const fetchMeetupFullStatus = async () => {
+    if (!trade) return
+
+    try {
+      const response = await api.get(`/api/trades/${trade.id}/meetup/status`)
+      const status = response.data?.data
+      setMeetupStatus(status)
+    } catch (error) {
+      console.warn('Failed to fetch meetup status:', error)
     }
   }
 
@@ -1605,36 +1644,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
   }
 
-
-  const handleConfirmMeetupDone = async () => {
-    if (!trade || confirmingMeetup) return
-
-    try {
-      setConfirmingMeetup(true)
-      await api.put(`/api/trades/${trade.id}`, {
-        action: 'confirm_meetup_done',
-      })
-
-      toast({
-        id: "viewtrademodal-meetup-confirmed-done",
-        title: 'Meeting Confirmed',
-        description: 'You have confirmed the meeting took place. You can now leave a review.',
-        status: 'success',
-      })
-
-      // Refresh trade data
-      if (onStatusUpdate) onStatusUpdate()
-    } catch (error: any) {
-      toast({
-        id: "viewtrademodal-error-confirm-meetup-done",
-        title: 'Error',
-        description: error?.response?.data?.error || 'Failed to confirm meeting',
-        status: 'error',
-      })
-    } finally {
-      setConfirmingMeetup(false)
-    }
-  }
 
   if (!trade) return null
 
@@ -2176,6 +2185,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 {/* Chat Tab */}
                 <TabPanel px={0}>
                   <VStack spacing={4} align="stretch" h="500px" display="flex" flexDirection="column">
+                    {/* Meetup Status Tracker - Only for meetup trades */}
+                    {trade?.trade_option === 'meetup' && meetupStatus && (
+                      <Box mb={2}>
+                        <MeetupStatusTracker
+                          currentStage={meetupStatus.stage || 'negotiating'}
+                          scheduledTime={meetupStatus.agreed_time}
+                          scheduledLocation={meetupStatus.agreed_location}
+                        />
+                      </Box>
+                    )}
+
                     {/* Messages Area */}
                     <Box
                       flex={1}
@@ -2190,62 +2210,101 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <Flex justify="center" align="center" h="full">
                           <Spinner />
                         </Flex>
-                      ) : messages.length === 0 ? (
+                      ) : messages.length === 0 && meetupSystemMessages.length === 0 ? (
                         <Flex justify="center" align="center" h="full" direction="column">
                           <Icon as={FaPaperPlane} boxSize={8} color="gray.400" mb={2} />
                           <Text color="gray.500">No messages yet. Start the conversation!</Text>
                         </Flex>
                       ) : (
                         <VStack spacing={3} align="stretch">
-                          {messages.map((msg) => {
-                            const isOwnMessage = msg.sender_id === user?.id
-                            return (
-                              <HStack
-                                key={`msg-${msg.id}`}
-                                justify={isOwnMessage ? 'flex-end' : 'flex-start'}
-                                align="flex-start"
-                                spacing={2}
-                              >
-                                {!isOwnMessage && (
-                                  <Avatar
-                                    name={msg.sender_name || 'User'}
-                                    size="sm"
-                                    bg="brand.500"
-                                    color="white"
-                                  />
-                                )}
-                                <Box
-                                  maxW="70%"
-                                  p={3}
-                                  borderRadius="lg"
-                                  bg={isOwnMessage ? 'brand.500' : 'white'}
-                                  color={isOwnMessage ? 'white' : 'gray.800'}
-                                  borderWidth={isOwnMessage ? 0 : '1px'}
-                                  borderColor={borderColor}
-                                >
-                                  <Text fontSize="sm">{msg.content}</Text>
-                                  <Text
-                                    fontSize="xs"
-                                    color={isOwnMessage ? 'brand.100' : 'gray.500'}
-                                    mt={1}
+                          {/* Display System Messages and Regular Messages Combined */}
+                          {[
+                            ...meetupSystemMessages.map((msg: any) => ({
+                              ...msg,
+                              type: 'system',
+                              timestamp: msg.created_at
+                            })),
+                            ...messages.map((msg: any) => ({
+                              ...msg,
+                              type: 'regular',
+                              timestamp: msg.created_at
+                            }))
+                          ]
+                            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                            .map((item: any) => {
+                              if (item.type === 'system') {
+                                // Render system message
+                                return (
+                                  <Box key={`sys-msg-${item.id}`} w="full">
+                                    <MeetupSystemMessage
+                                      messageType={item.message_type}
+                                      title={item.title}
+                                      description={item.description}
+                                      actions={item.actions ? item.actions.map((action: any) => ({
+                                        label: action.label,
+                                        action: action.action_type,
+                                        variant: action.action_type === 'report_no_show' ? 'danger' : 'primary'
+                                      })) : []}
+                                      tradeID={trade?.id || 0}
+                                      onActionComplete={() => {
+                                        fetchMeetupSystemMessages()
+                                        fetchMeetupFullStatus()
+                                      }}
+                                    />
+                                  </Box>
+                                )
+                              } else {
+                                // Render regular message
+                                const msg = item as TradeMessage
+                                const isOwnMessage = msg.sender_id === user?.id
+                                return (
+                                  <HStack
+                                    key={`msg-${msg.id}`}
+                                    justify={isOwnMessage ? 'flex-end' : 'flex-start'}
+                                    align="flex-start"
+                                    spacing={2}
                                   >
-                                    {new Date(msg.created_at).toLocaleTimeString([], {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}
-                                  </Text>
-                                </Box>
-                                {isOwnMessage && (
-                                  <Avatar
-                                    name={user?.name || 'You'}
-                                    size="sm"
-                                    bg="brand.500"
-                                    color="white"
-                                  />
-                                )}
-                              </HStack>
-                            )
-                          })}
+                                    {!isOwnMessage && (
+                                      <Avatar
+                                        name={msg.sender_name || 'User'}
+                                        size="sm"
+                                        bg="brand.500"
+                                        color="white"
+                                      />
+                                    )}
+                                    <Box
+                                      maxW="70%"
+                                      p={3}
+                                      borderRadius="lg"
+                                      bg={isOwnMessage ? 'brand.500' : 'white'}
+                                      color={isOwnMessage ? 'white' : 'gray.800'}
+                                      borderWidth={isOwnMessage ? 0 : '1px'}
+                                      borderColor={borderColor}
+                                    >
+                                      <Text fontSize="sm">{msg.content}</Text>
+                                      <Text
+                                        fontSize="xs"
+                                        color={isOwnMessage ? 'brand.100' : 'gray.500'}
+                                        mt={1}
+                                      >
+                                        {new Date(msg.created_at).toLocaleTimeString([], {
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </Text>
+                                    </Box>
+                                    {isOwnMessage && (
+                                      <Avatar
+                                        name={user?.name || 'You'}
+                                        size="sm"
+                                        bg="brand.500"
+                                        color="white"
+                                      />
+                                    )}
+                                  </HStack>
+                                )
+                              }
+                            })}
                           <div ref={messagesEndRef} />
                         </VStack>
                       )}
@@ -2319,59 +2378,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Box>
                       )}
 
-                      {/* Waiting for Meetup Hub - Show after location agreed but before meeting confirmed */}
-                      {(buyerMeetupConfirmed && sellerMeetupConfirmed && !((isUserBuyer && trade.buyer_met) || (isUserSeller && trade.seller_met))) && (
-                        <Box
-                          p={4}
-                          bg="blue.50"
-                          borderWidth="1px"
-                          borderColor="blue.200"
-                          borderRadius="lg"
-                          textAlign="center"
-                          mb={2}
-                        >
-                          <VStack spacing={3}>
-                            <Icon as={FaHandshake} color="blue.500" boxSize={8} />
-                            <VStack spacing={1}>
-                              <Text fontWeight="bold" color="blue.700">
-                                Meetup Is Active
-                              </Text>
-                              <Text fontSize="sm" color="blue.600">
-                                Please meet at the agreed location and time. Once you have received your item, confirm below.
-                              </Text>
-                            </VStack>
-                            <Button
-                              colorScheme="blue"
-                              size="lg"
-                              onClick={handleConfirmMeetupDone}
-                              isLoading={confirmingMeetup}
-                              leftIcon={<FaHandshake />}
-                              w="full"
-                              mt={2}
-                              transition="all 0.2s"
-                              _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                            >
-                              Confirm Meeting & Received Item
-                            </Button>
-                          </VStack>
-                        </Box>
-                      )}
-
-                      {/* Leave Review Section - Show only if BOTH confirmed AND user confirmed meeting */}
-                      {(buyerMeetupConfirmed && sellerMeetupConfirmed && ((isUserBuyer && trade.buyer_met) || (isUserSeller && trade.seller_met))) && (
+                      {/* Leave Review Section - Show only if BOTH confirmed */}
+                      {(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
                         <Box>
-                          <Box
-                            p={3}
-                            bg="green.50"
-                            borderLeft="4px"
-                            borderColor="green.500"
-                            borderRadius="md"
-                            mb={4}
-                          >
-                            <Text fontSize="sm" color="green.700" fontWeight="medium">
-                              Meeting Confirmed! Please leave a review to finalize the trade.
-                            </Text>
-                          </Box>
                           <Button
                             colorScheme="green"
                             size="lg"

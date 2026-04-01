@@ -97,7 +97,7 @@ import {
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth()
   const { deleteProduct, updateProduct } = useProducts()
-  const { refreshCounts } = useRealtime()
+  const { refreshCounts, setRefreshCallback } = useRealtime()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -769,6 +769,29 @@ const Dashboard: React.FC = () => {
       setMultiWayTradesLoading(false)
     }
   }
+
+  // Register refresh callbacks for all tabs with RealtimeContext
+  useEffect(() => {
+    setRefreshCallback('products', () => {
+      invalidateProducts()
+    })
+    setRefreshCallback('sentOffers', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('receivedOffers', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('ongoingTrades', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('multiway', () => {
+      fetchMultiWayTrades()
+    })
+    setRefreshCallback('history', () => {
+      // Invalidate trades/history data
+      invalidateDashboard()
+    })
+  }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard])
 
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
@@ -3625,11 +3648,6 @@ const Dashboard: React.FC = () => {
                         <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
-                        {user?.is_premium && (
-                          <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
-                            PRO
-                          </Badge>
-                        )}
                       </HStack>
                     </Tab>
                     <Tab
@@ -4662,161 +4680,24 @@ const Dashboard: React.FC = () => {
                                   >
                                     Cancel Search
                                   </Button>
-                                </VStack>
-                              </Box>
-                            ))}
-                          </SimpleGrid>
-                        </Box>
-                      )}
-
-                      {filteredMultiWayTrades.length > 0 && (
-                        <Box>
-                          {pendingMultiWayTrades.length > 0 && (
-                             <Heading size="sm" mb={3} color="gray.700">
-                               Match Opportunities
-                             </Heading>
-                          )}
-                          {multiWayTradesViewMode === 'list' ? (
-                            <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
-                              <Box
-                                px={4}
-                                py={3}
-                                bg="gray.50"
-                                borderBottomWidth="1px"
-                                borderColor="gray.200"
-                                fontSize="xs"
-                                fontWeight="semibold"
-                                color="gray.600"
-                                textTransform="uppercase"
-                                display={{ base: 'none', md: 'flex' }}
-                              >
-                                What • Chain • Participants • Action
-                              </Box>
-                              {filteredMultiWayTrades.map((trade, idx) => (
-                                <Flex
-                                  key={trade.id}
-                                  align="center"
-                                  gap={{ base: 2, md: 4 }}
-                                  p={3}
-                                  borderBottom={idx < filteredMultiWayTrades.length - 1 ? '1px' : 'none'}
-                                  borderColor={borderColor}
-                                  _hover={{ bg: 'gray.50' }}
-                                  minW={0}
-                                  flexWrap="wrap"
-                                >
-                                  {(() => {
-                                    const summary = getMultiWayTradeSummary(trade)
-                                    return (
-                                  <VStack align="start" spacing={0} flex={1} minW={0}>
-                                    <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }}>
-                                      Trade Loop #{trade.id}
-                                    </Text>
-                                    <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                                      You give: {summary.yourGive}
-                                    </Text>
-                                    <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                                      You get: {summary.yourGet}
-                                    </Text>
-                                    <Text fontSize="xs" color="gray.500" noOfLines={1}>
-                                      Chain: {summary.chainLabel}
-                                    </Text>
-                                    <Text fontSize="xs" color="gray.600">
-                                      {trade.participants?.length || 0} participants
-                                    </Text>
-                                  </VStack>
-                                    )
-                                  })()}
-                                  <HStack spacing={2} flexShrink={0}>
-                                    <Badge colorScheme="purple" variant="subtle" fontSize="2xs" px={2} py={1}>
-                                      {trade.participants?.length || 0} in loop
-                                    </Badge>
-                                    {trade?.initiator_view ? (
-                                      <Button
-                                        size="sm"
-                                        colorScheme="purple"
-                                        variant="outline"
-                                        fontSize={{ base: 'xs', md: 'sm' }}
-                                        px={{ base: 2, md: 3 }}
-                                        onClick={() => {
-                                          if (trade?.loop_type !== 'detected_loop') return
-                                          if (!user?.is_premium) {
-                                            setShowPremiumModal(true)
-                                            return
-                                          }
-                                          void (async () => {
-                                            try {
-                                              setMultiWayManagerLoading(true)
-                                              const loopId = String(trade?.loop_id || trade?.id || '')
-                                              const details = await fetchMultiWayTrade(loopId)
-                                              setSelectedMultiWayTrade(details)
-                                              setMultiWayManagerOpen(true)
-                                            } catch (e) {
-                                              console.error('Failed to load loop details:', e)
-                                              toast({
-                                                id: 'error-load-loop-details',
-                                                title: 'Error',
-                                                description: 'Failed to load trade loop details.',
-                                                status: 'error',
-                                              })
-                                            } finally {
-                                              setMultiWayManagerLoading(false)
-                                            }
-                                          })()
-                                        }}
-                                      >
-                                        View
-                                      </Button>
-                                    ) : (
-                                      <HStack spacing={2}>
-                                        <Button
-                                          size="sm"
-                                          colorScheme="green"
-                                          onClick={() => handleJoinMultiWayTrade(trade)}
-                                          isLoading={multiWayTradeJoining}
-                                          loadingText="Joining..."
-                                          isDisabled={!trade?.can_join}
-                                        >
-                                          Hop In
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          colorScheme="red"
-                                          variant="outline"
-                                          onClick={() => handleDeclineMultiWayTrade(trade, false)}
-                                          isDisabled={!trade?.can_decline}
-                                        >
-                                          Decline
-                                        </Button>
-                                        {trade?.loop_type === 'detected_loop' && !trade?.can_create && !user?.is_premium && (
-                                          <Button
-                                            size="sm"
-                                            colorScheme="purple"
-                                            variant="outline"
-                                            onClick={() => setShowPremiumModal(true)}
-                                          >
-                                            Start a Loop <Badge ml={2} colorScheme="purple" fontSize="10px">Pro</Badge>
-                                          </Button>
-                                        )}
-                                      </HStack>
-                                    )}
-                                  </HStack>
-                                </Flex>
-                              ))}
-                            </Box>
-                          ) : (
-                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                              {filteredMultiWayTrades.map((trade) => {
-                                const participants = Array.isArray(trade?.participants) ? trade.participants : []
-                                // Skip rendering if there aren't enough participants to display
-                                if (participants.length < 2) return null
-                                const summary = getMultiWayTradeSummary(trade)
-                                return (
-                                  <Box key={trade.id || trade.loop_id || trade.chain_id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                                    <MultiWayTradeUI
-                                      participants={trade.participants || []}
-                                      isChain={trade.is_chain}
-                                      yourGive={summary.yourGive}
-                                      yourGet={summary.yourGet}
+                                )}
+                              </HStack>
+                            )}
+                          </HStack>
+                        </Flex>
+                      ))}
+                    </Box>
+                  ) : (
+                    <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                      {filteredMultiWayTrades.map((trade) => {
+                        const summary = getMultiWayTradeSummary(trade)
+                        return (
+                          <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                            <MultiWayTradeUI
+                              participants={trade.participants || []}
+                              isChain={trade.is_chain}
+                              yourGive={summary.yourGive}
+                              yourGet={summary.yourGet}
                               chainLabel={summary.chainLabel}
                               viewMode={trade?.initiator_view ? 'initiator' : 'participant'}
                               initiatorName={trade?.initiator_name}
