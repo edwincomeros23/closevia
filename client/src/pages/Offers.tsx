@@ -314,7 +314,7 @@ const Offers: React.FC = () => {
   const archiveStatuses = ['expired']
 
   // visible lists for the two main tabs (exclude history and active/accepted items)
-  const offersReceivedVisible = incomingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && t.status !== 'accepted' && t.status !== 'active')
+  const offersReceivedVisible = incomingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && t.status !== 'accepted' && t.status !== 'active' && t.status !== 'pending_multiway')
   const offersSentVisible = outgoingSorted.filter(t => !historyStatuses.includes(t.status) && !archiveStatuses.includes(t.status) && t.status !== 'accepted' && t.status !== 'active')
 
   // Priority ranking: countered first, then pending, then others
