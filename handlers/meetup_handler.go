@@ -298,9 +298,7 @@ func (h *MeetupHandler) GetSystemMessages(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Not involved in this trade"})
 	}
 
-	meetupService := services.NewMeetupService(database.DB)
 	var messages []map[string]interface{}
-	var errMsg error
 
 	return c.JSON(fiber.Map{
 		"success":  true,
