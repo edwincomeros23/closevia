@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
@@ -4680,15 +4680,13 @@ const Dashboard: React.FC = () => {
                                   >
                                     Cancel Search
                                   </Button>
-                                )}
-                              </HStack>
-                            )}
-                          </HStack>
-                        </Flex>
-                      ))}
-                    </Box>
-                  ) : (
-                    <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                                </VStack>
+                              </Box>
+                            ))}
+                          </SimpleGrid>
+                        </Box>
+                      )}
+                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
                       {filteredMultiWayTrades.map((trade) => {
                         const summary = getMultiWayTradeSummary(trade)
                         return (
@@ -4742,12 +4740,9 @@ const Dashboard: React.FC = () => {
                         )
                       })}
                     </SimpleGrid>
+                    </VStack>
                   )}
-                </Box>
-              )}
-            </VStack>
-          )}
-        </TabPanel>
+                </TabPanel>
 
                 {/* Trade History Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
