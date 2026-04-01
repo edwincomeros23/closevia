@@ -28,7 +28,7 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
     const fetchSuggestions = async () => {
         try {
             setLoading(true);
-            const res = await api.get(`/products/${product!.id}/suggested-trades`);
+            const res = await api.get(`/api/products/${product!.id}/suggested-trades`);
             if (res.data?.success) {
                 setSuggestions(res.data.data || []);
             }

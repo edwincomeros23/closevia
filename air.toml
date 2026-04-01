@@ -2,8 +2,8 @@ root = "."               # Project root
 tmp_dir = "tmp"           # Temporary build files go here
 
 [build]
-    bin = "main"              # Output binary will be called "main"
-    cmd = "go build -o {{.Output}} {{.Input}}"  # Command Air runs to build
-    exclude = ["tmp/*", "client/*"]  # Paths to completely skip
-    include_only = ["**/*.go"]       # Only watch Go files
-    ignore = ["tmp/*"]               # Ignore changes in tmp/
+    bin = "tmp/main.exe"            # Windows binary
+    cmd = "go build -o tmp/main.exe ."  # Build the whole module
+    exclude = ["tmp/**", "client/**"]
+    include_only = ["**/*.go"]
+    ignore = ["tmp/**", "client/**"]

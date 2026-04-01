@@ -174,7 +174,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
+export type TradeStatus = 'pending' | 'pending_multiway' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
 export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {

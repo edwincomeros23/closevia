@@ -7,10 +7,10 @@ export default defineConfig({
         react(),
         VitePWA({
             registerType: 'autoUpdate',
-            injectRegister: false, // Handled manually in serviceWorkerRegistration.ts
-            manifest: false, // Uses the existing public/manifest.webmanifest
+            injectRegister: false,
+            manifest: false,
             workbox: {
-                maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3MB limit
+                maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
                 runtimeCaching: [
                     {
                         urlPattern: ({ request }) => request.destination === 'document',
@@ -34,7 +34,7 @@ export default defineConfig({
                             cacheName: 'images-cache',
                             expiration: {
                                 maxEntries: 100,
-                                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+                                maxAgeSeconds: 60 * 60 * 24 * 30,
                             },
                         },
                     },
@@ -59,7 +59,7 @@ export default defineConfig({
         },
         proxy: {
             '/api': {
-                target: 'http://localhost:8080',
+                target: 'http://localhost:4000',
                 changeOrigin: true,
                 secure: false,
             },

@@ -292,6 +292,7 @@ func main() {
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
 	organizationHandler := handlers.NewOrganizationHandler()
+	meetupHandler := handlers.NewMeetupHandler(database.DB)
 
 	// Hybrid matcher background refresh (MVP cron-like task).
 	go func() {
@@ -379,7 +380,7 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
-	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
+	products.Post("/boost/:id", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
 	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
@@ -428,18 +429,20 @@ func main() {
 	// Trade routes (order matters: specific paths before :id)
 	trades := api.Group("/trades")
 	trades.Post("/", middleware.AuthMiddleware(), tradeHandler.CreateTrade)
+	trades.Post("", middleware.AuthMiddleware(), tradeHandler.CreateTrade) // Support no trailing slash
 	trades.Get("/", middleware.AuthMiddleware(), tradeHandler.GetTrades)
+	trades.Get("", middleware.AuthMiddleware(), tradeHandler.GetTrades) // Support no trailing slash
 	// Loops endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/loops", middleware.AuthMiddleware(), tradeHandler.GetTradeLoops)
 	trades.Get("/loops/debug/match", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.DebugMultiwayMatch)
 	trades.Get("/loops/notifications", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopNotifications)
 	trades.Post("/loops/notifications/clear", middleware.AuthMiddleware(), tradeHandler.ClearLoopNotifications)
 	trades.Post("/loops/notifications/:id/read", middleware.AuthMiddleware(), tradeHandler.MarkLoopNotificationRead)
-	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Get("/loops/:id", middleware.AuthMiddleware(), tradeHandler.GetTradeLoop)
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
+	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 
@@ -473,6 +476,15 @@ func main() {
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
+
+	// Meetup routes (stage-aware meeting coordination)
+	trades.Post("/:id/meetup/propose", middleware.AuthMiddleware(), meetupHandler.ProposeMeetupTime)
+	trades.Post("/:id/meetup/heading-out", middleware.AuthMiddleware(), meetupHandler.MarkHeadingOut)
+	trades.Post("/:id/meetup/arrived", middleware.AuthMiddleware(), meetupHandler.MarkArrived)
+	trades.Post("/:id/meetup/confirm-completion", middleware.AuthMiddleware(), meetupHandler.ConfirmCompletion)
+	trades.Post("/:id/meetup/report-no-show", middleware.AuthMiddleware(), meetupHandler.ReportNoShow)
+	trades.Get("/:id/meetup/status", middleware.AuthMiddleware(), meetupHandler.GetMeetupStatus)
+	trades.Get("/:id/meetup/messages", middleware.AuthMiddleware(), meetupHandler.GetSystemMessages)
 
 	// Payment routes
 	payments := api.Group("/payments")
@@ -531,6 +543,7 @@ func main() {
 	// Admin multiway chain dashboard & strikes (Phase 3)
 	admin.Get("/multiway-chains", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetChains)
 	admin.Get("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.GetUserStrikes)
+	admin.Post("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminIssueStrike)
 	// Admin leg disputes (Phase 4)
 	admin.Get("/multiway-disputes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetLegDisputes)
 	admin.Put("/multiway-disputes/:disputeId/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminResolveLegDispute)
@@ -541,6 +554,11 @@ func main() {
 	admin.Post("/rider-applications/:id/reject", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminRejectRider)
 	admin.Post("/rider-applications/:id/review", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminMarkUnderReview)
 	admin.Post("/backfill-ledgers", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.BackfillLedgers)
+	// Task 19/20: Rider free slots + remittance lock flow
+	admin.Get("/rider-config", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminGetRiderConfig)
+	admin.Put("/rider-config", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminUpdateRiderConfig)
+	admin.Get("/remittance-payments", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminListRemittancePayments)
+	admin.Post("/remittance-payments/:paymentId/verify", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminVerifyRemittancePayment)
 
 	// Wishlist routes
 	wishlist := api.Group("/wishlist")
@@ -611,6 +629,14 @@ func main() {
 	// Start server
 	// Start background trade timeout scheduler
 	services.StartTradeTimeoutScheduler(database.DB)
+
+	// Start background meetup reminder scheduler (24-hour pre-meetup reminders)
+	reminderService := services.NewMeetupReminderService(database.DB)
+	go func() {
+		log.Println("Starting pre-meetup reminder scheduler...")
+		reminderService.SchedulePreMeetupReminders()
+	}()
+
 	log.Printf("Starting Clovia server on port %s", port)
 	log.Fatal(app.Listen(":" + port))
 }

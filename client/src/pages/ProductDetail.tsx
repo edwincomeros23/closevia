@@ -804,7 +804,7 @@ const ProductDetail: React.FC = () => {
     try {
       setBoosting(true)
       // For now, boosting is handled via direct API call, but we want to track it
-      const response = await api.post(`/api/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/boost/${product.id}`)
       if (response.data?.success) {
         toast({
           id: 'boost-success',
@@ -1625,10 +1625,10 @@ const ProductDetail: React.FC = () => {
                         color="brand.600"
                         _hover={{ textDecoration: 'underline' }}
                       >
-                        {product.seller_name}
+                        {sellerProfile?.name && sellerProfile.name.toLowerCase() !== 'user' ? sellerProfile.name : product.seller_name}
                       </Button>
                     ) : (
-                      <Text color="brand.600" fontWeight="medium">{product.seller_name}</Text>
+                      <Text color="brand.600" fontWeight="medium">{sellerProfile?.name || product.seller_name}</Text>
                     )}
                     {(sellerProfile as any)?.verification_status === 'verified' && (
                       <Badge colorScheme="teal" borderRadius="full" px={2} py={0.5} fontSize="xs">

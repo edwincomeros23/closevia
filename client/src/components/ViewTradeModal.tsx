@@ -38,6 +38,9 @@ import {
   Grid,
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
+import MeetupStatusTracker from './MeetupStatusTracker'
+import MeetupSystemMessage from './MeetupSystemMessage'
+import MeetupActionButtons, { ActionData } from './MeetupActionButtons'
 import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle } from 'react-icons/fa'
 import {
   FiMapPin,
@@ -61,12 +64,24 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
-// Component to update map center - must be defined outside the main component
 const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
   const map = useMap()
   useEffect(() => {
-    map.setView([lat, lng], 16, { animate: true })
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+      map.setView([lat, lng], 16, { animate: true })
+    }, 200)
+    return () => clearTimeout(timer)
   }, [lat, lng, map])
+  return null
+}
+
+const ModalMapFix = () => {
+  const map = useMap()
+  useEffect(() => {
+    const timer = setTimeout(() => map.invalidateSize(), 250)
+    return () => clearTimeout(timer)
+  }, [map])
   return null
 }
 
@@ -1071,6 +1086,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const { getProduct } = useProducts()
   const toast = useToast()
   const [messages, setMessages] = useState<TradeMessage[]>([])
+  const [meetupSystemMessages, setMeetupSystemMessages] = useState<any[]>([])
+  const [meetupStatus, setMeetupStatus] = useState<any>(null)
   const [newMessage, setNewMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -1388,11 +1405,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   useEffect(() => {
     if (isOpen && trade) {
       fetchMessages({ showLoading: true })
+      fetchMeetupSystemMessages()
+      fetchMeetupFullStatus()
       fetchProducts()
       fetchMeetupStatus()
 
       // Poll for new messages every 3 seconds without flashing a loader
-      messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
+      messagesPollRef.current = setInterval(() => {
+        fetchMessages({ showLoading: false })
+        fetchMeetupSystemMessages()
+        fetchMeetupFullStatus()
+      }, 3000)
       return () => {
         if (messagesPollRef.current) {
           clearInterval(messagesPollRef.current)
@@ -1401,6 +1424,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       }
     } else {
       setMessages([])
+      setMeetupSystemMessages([])
+      setMeetupStatus(null)
       setNewMessage('')
     }
   }, [isOpen, trade])
@@ -1452,6 +1477,32 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       console.error('Failed to fetch messages:', error)
     } finally {
       if (showLoading) setLoadingMessages(false)
+    }
+  }
+
+  const fetchMeetupSystemMessages = async () => {
+    if (!trade) return
+
+    try {
+      const response = await api.get(`/api/trades/${trade.id}/meetup/messages`)
+      const systemMessages = response.data?.data || []
+      const safeMeetupMessages = Array.isArray(systemMessages) ? systemMessages : []
+      safeMeetupMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      setMeetupSystemMessages(safeMeetupMessages)
+    } catch (error) {
+      console.warn('Failed to fetch meetup system messages:', error)
+    }
+  }
+
+  const fetchMeetupFullStatus = async () => {
+    if (!trade) return
+
+    try {
+      const response = await api.get(`/api/trades/${trade.id}/meetup/status`)
+      const status = response.data?.data
+      setMeetupStatus(status)
+    } catch (error) {
+      console.warn('Failed to fetch meetup status:', error)
     }
   }
 
@@ -2134,6 +2185,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 {/* Chat Tab */}
                 <TabPanel px={0}>
                   <VStack spacing={4} align="stretch" h="500px" display="flex" flexDirection="column">
+                    {/* Meetup Status Tracker - Only for meetup trades */}
+                    {trade?.trade_option === 'meetup' && meetupStatus && (
+                      <Box mb={2}>
+                        <MeetupStatusTracker
+                          currentStage={meetupStatus.stage || 'negotiating'}
+                          scheduledTime={meetupStatus.agreed_time}
+                          scheduledLocation={meetupStatus.agreed_location}
+                        />
+                      </Box>
+                    )}
+
                     {/* Messages Area */}
                     <Box
                       flex={1}
@@ -2148,62 +2210,101 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <Flex justify="center" align="center" h="full">
                           <Spinner />
                         </Flex>
-                      ) : messages.length === 0 ? (
+                      ) : messages.length === 0 && meetupSystemMessages.length === 0 ? (
                         <Flex justify="center" align="center" h="full" direction="column">
                           <Icon as={FaPaperPlane} boxSize={8} color="gray.400" mb={2} />
                           <Text color="gray.500">No messages yet. Start the conversation!</Text>
                         </Flex>
                       ) : (
                         <VStack spacing={3} align="stretch">
-                          {messages.map((msg) => {
-                            const isOwnMessage = msg.sender_id === user?.id
-                            return (
-                              <HStack
-                                key={`msg-${msg.id}`}
-                                justify={isOwnMessage ? 'flex-end' : 'flex-start'}
-                                align="flex-start"
-                                spacing={2}
-                              >
-                                {!isOwnMessage && (
-                                  <Avatar
-                                    name={msg.sender_name || 'User'}
-                                    size="sm"
-                                    bg="brand.500"
-                                    color="white"
-                                  />
-                                )}
-                                <Box
-                                  maxW="70%"
-                                  p={3}
-                                  borderRadius="lg"
-                                  bg={isOwnMessage ? 'brand.500' : 'white'}
-                                  color={isOwnMessage ? 'white' : 'gray.800'}
-                                  borderWidth={isOwnMessage ? 0 : '1px'}
-                                  borderColor={borderColor}
-                                >
-                                  <Text fontSize="sm">{msg.content}</Text>
-                                  <Text
-                                    fontSize="xs"
-                                    color={isOwnMessage ? 'brand.100' : 'gray.500'}
-                                    mt={1}
+                          {/* Display System Messages and Regular Messages Combined */}
+                          {[
+                            ...meetupSystemMessages.map((msg: any) => ({
+                              ...msg,
+                              type: 'system',
+                              timestamp: msg.created_at
+                            })),
+                            ...messages.map((msg: any) => ({
+                              ...msg,
+                              type: 'regular',
+                              timestamp: msg.created_at
+                            }))
+                          ]
+                            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                            .map((item: any) => {
+                              if (item.type === 'system') {
+                                // Render system message
+                                return (
+                                  <Box key={`sys-msg-${item.id}`} w="full">
+                                    <MeetupSystemMessage
+                                      messageType={item.message_type}
+                                      title={item.title}
+                                      description={item.description}
+                                      actions={item.actions ? item.actions.map((action: any) => ({
+                                        label: action.label,
+                                        action: action.action_type,
+                                        variant: action.action_type === 'report_no_show' ? 'danger' : 'primary'
+                                      })) : []}
+                                      tradeID={trade?.id || 0}
+                                      onActionComplete={() => {
+                                        fetchMeetupSystemMessages()
+                                        fetchMeetupFullStatus()
+                                      }}
+                                    />
+                                  </Box>
+                                )
+                              } else {
+                                // Render regular message
+                                const msg = item as TradeMessage
+                                const isOwnMessage = msg.sender_id === user?.id
+                                return (
+                                  <HStack
+                                    key={`msg-${msg.id}`}
+                                    justify={isOwnMessage ? 'flex-end' : 'flex-start'}
+                                    align="flex-start"
+                                    spacing={2}
                                   >
-                                    {new Date(msg.created_at).toLocaleTimeString([], {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}
-                                  </Text>
-                                </Box>
-                                {isOwnMessage && (
-                                  <Avatar
-                                    name={user?.name || 'You'}
-                                    size="sm"
-                                    bg="brand.500"
-                                    color="white"
-                                  />
-                                )}
-                              </HStack>
-                            )
-                          })}
+                                    {!isOwnMessage && (
+                                      <Avatar
+                                        name={msg.sender_name || 'User'}
+                                        size="sm"
+                                        bg="brand.500"
+                                        color="white"
+                                      />
+                                    )}
+                                    <Box
+                                      maxW="70%"
+                                      p={3}
+                                      borderRadius="lg"
+                                      bg={isOwnMessage ? 'brand.500' : 'white'}
+                                      color={isOwnMessage ? 'white' : 'gray.800'}
+                                      borderWidth={isOwnMessage ? 0 : '1px'}
+                                      borderColor={borderColor}
+                                    >
+                                      <Text fontSize="sm">{msg.content}</Text>
+                                      <Text
+                                        fontSize="xs"
+                                        color={isOwnMessage ? 'brand.100' : 'gray.500'}
+                                        mt={1}
+                                      >
+                                        {new Date(msg.created_at).toLocaleTimeString([], {
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </Text>
+                                    </Box>
+                                    {isOwnMessage && (
+                                      <Avatar
+                                        name={user?.name || 'You'}
+                                        size="sm"
+                                        bg="brand.500"
+                                        color="white"
+                                      />
+                                    )}
+                                  </HStack>
+                                )
+                              }
+                            })}
                           <div ref={messagesEndRef} />
                         </VStack>
                       )}
@@ -2312,6 +2413,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             // @ts-ignore
                             attributionControl={false}
                           >
+                            <ModalMapFix />
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             {selectedLocation && suggestedLocations.find(l => l.name === selectedLocation)?.lat && (
                               <MapUpdater
