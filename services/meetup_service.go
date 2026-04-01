@@ -54,7 +54,7 @@ func (s *MeetupService) GetMeetupStatus(tradeID int) (*models.MeetupStatus, erro
 
 // createMeetupStatus creates a new meetup status record
 func (s *MeetupService) createMeetupStatus(tradeID int) (*models.MeetupStatus, error) {
-	result, err := s.db.Exec(`
+	_, err := s.db.Exec(`
 		INSERT INTO meetup_status (trade_id, stage, created_at, updated_at)
 		VALUES (?, 'negotiating', NOW(), NOW())
 	`, tradeID)
