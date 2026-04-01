@@ -1356,7 +1356,7 @@ const Dashboard: React.FC = () => {
         confirmColorScheme: 'blue'
       })
 
-      const response = await api.post(`/api/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/boost/${product.id}`)
 
       if (response.data?.success) {
         showPopup({

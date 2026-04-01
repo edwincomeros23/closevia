@@ -1578,9 +1578,13 @@ const AddProduct: React.FC = () => {
           </Text>
           {isGenerating && !aiDone ? (
             <Skeleton height="40px" borderRadius="md" />
-          ) : (
+          ) : (formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0) ? (
             <Heading fontSize="3xl" fontWeight="bold">
-              ₱{(formData.estimated_value_min || 0).toLocaleString()} – ₱{(formData.estimated_value_max || 0).toLocaleString()}
+              ₱{Number(formData.estimated_value_min).toLocaleString()} – ₱{Number(formData.estimated_value_max).toLocaleString()}
+            </Heading>
+          ) : (
+            <Heading fontSize="xl" fontWeight="bold" opacity={0.9}>
+              Value Estimate Unavailable
             </Heading>
           )}
           <Text fontSize="xs" opacity={0.85} mt={2}>

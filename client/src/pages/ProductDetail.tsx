@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -804,7 +804,7 @@ const ProductDetail: React.FC = () => {
     try {
       setBoosting(true)
       // For now, boosting is handled via direct API call, but we want to track it
-      const response = await api.post(`/api/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/boost/${product.id}`)
       if (response.data?.success) {
         toast({
           id: 'boost-success',
