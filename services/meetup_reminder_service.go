@@ -78,7 +78,7 @@ func (s *MeetupReminderService) processPreMeetupReminders() {
 
 		// Send reminder to both users
 		mService := NewMeetupService(s.db)
-		err = mService.SendPreMeetupReminder(tradeID, buyerID, sellerID)
+		_, err = mService.SendPreMeetupReminder(tradeID)
 		if err != nil {
 			log.Printf("Error sending pre-meetup reminder for trade %d: %v", tradeID, err)
 		}

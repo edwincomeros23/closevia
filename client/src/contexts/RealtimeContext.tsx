@@ -17,7 +17,18 @@ type RealtimeContextValue = {
   setRefreshCallback: (tabType: 'products' | 'sentOffers' | 'receivedOffers' | 'ongoingTrades' | 'multiway' | 'history', cb: () => void) => void
 }
 
-const RealtimeContext = createContext<RealtimeContextValue>({ offerCount: 0, notificationCount: 0, refreshCounts: () => { } })
+const RealtimeContext = createContext<RealtimeContextValue>({
+  offerCount: 0,
+  notificationCount: 0,
+  refreshCounts: () => { },
+  refreshProducts: () => { },
+  refreshSentOffers: () => { },
+  refreshReceivedOffers: () => { },
+  refreshOngoingTrades: () => { },
+  refreshMultiWayTrades: () => { },
+  refreshHistory: () => { },
+  setRefreshCallback: () => { },
+})
 
 const POLL_INTERVAL_MS = 60000
 

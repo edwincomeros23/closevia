@@ -62,7 +62,6 @@ func (s *MeetupService) createMeetupStatus(tradeID int) (*models.MeetupStatus, e
 		return nil, err
 	}
 
-	id, _ := result.LastInsertId()
 	return s.GetMeetupStatus(tradeID)
 }
 
@@ -529,13 +528,6 @@ func (s *MeetupService) SendPreMeetupReminder(tradeID int) (*models.SystemMessag
 
 // saveSystemMessage saves a system message to the database
 func (s *MeetupService) saveSystemMessage(tradeID int, msg *models.SystemMessage) error {
-	// Convert actions to JSON
-	var actionsJSON interface{}
-	if len(msg.Actions) > 0 {
-		// Convert to JSON (simplified - normally use json.Marshal)
-		actionsJSON = msg.Actions
-	}
-
 	_, err := s.db.Exec(`
 		INSERT INTO meetup_system_messages (trade_id, message_type, title, description, actions, created_at)
 		VALUES (?, ?, ?, ?, JSON_ARRAY(), NOW())
