@@ -1077,6 +1077,8 @@ func ensureTradeColumns() {
 		{"buyer_meetup_time", "VARCHAR(50) NULL"},
 		{"seller_meetup_location", "VARCHAR(500) NULL"},
 		{"seller_meetup_time", "VARCHAR(50) NULL"},
+		{"buyer_met", "BOOLEAN DEFAULT FALSE"},
+		{"seller_met", "BOOLEAN DEFAULT FALSE"},
 	}
 
 	for _, col := range columns {
