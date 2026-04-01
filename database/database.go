@@ -148,6 +148,18 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'strikes'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding strikes column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN strikes INT DEFAULT 0")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_suspended'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding is_suspended column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN is_suspended BOOLEAN DEFAULT FALSE")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing language_preference column to users table...")
@@ -225,6 +237,11 @@ func CreateTables() error {
 	}
 
 	queries := []string{
+		`CREATE TABLE IF NOT EXISTS app_settings (
+			setting_key VARCHAR(100) PRIMARY KEY,
+			setting_value VARCHAR(255) NOT NULL,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+		)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			slug VARCHAR(255) NULL UNIQUE,
@@ -265,6 +282,8 @@ func CreateTables() error {
 			is_premium BOOLEAN DEFAULT FALSE,
 			premium_tier VARCHAR(20) DEFAULT 'free',
 			verified BOOLEAN DEFAULT FALSE,
+			strikes INT DEFAULT 0,
+			is_suspended BOOLEAN DEFAULT FALSE,
 			last_login TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -284,6 +303,7 @@ func CreateTables() error {
 			status ENUM('available', 'sold', 'traded', 'locked') DEFAULT 'available',
 			allow_buying BOOLEAN DEFAULT TRUE,
 			barter_only BOOLEAN DEFAULT FALSE,
+			max_items_per_offer INT DEFAULT 0,
 			location VARCHAR(255),
 			` + "`condition`" + ` VARCHAR(50),
 			suggested_value INT,
@@ -644,7 +664,7 @@ func CreateTables() error {
 			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
-		` CREATE TABLE IF NOT EXISTS delivery_stops (
+		`CREATE TABLE IF NOT EXISTS delivery_stops (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			delivery_id INT NOT NULL,
 			stop_number INT NOT NULL,
@@ -668,20 +688,22 @@ func CreateTables() error {
 			INDEX idx_delivery_stop (delivery_id, stop_number),
 			INDEX idx_stop_status (status)
 		)`,
+		// ...existing code...
+		// Move rider_cash_collections table creation after delivery_stops
 		`CREATE TABLE IF NOT EXISTS rider_cash_collections (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			rider_id INT NOT NULL,
-			delivery_id INT NOT NULL,
-			stop_id INT NOT NULL,
-			collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
-			amount DECIMAL(10,2) NOT NULL,
-			collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
-			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
-			FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
-			INDEX idx_rider_collections (rider_id, collected_at),
-			INDEX idx_delivery_collections (delivery_id)
-		)`,
+				   id INT AUTO_INCREMENT PRIMARY KEY,
+				   rider_id INT NOT NULL,
+				   delivery_id INT NOT NULL,
+				   stop_id INT NOT NULL,
+				   collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
+				   amount DECIMAL(10,2) NOT NULL,
+				   collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				   FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
+				   FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
+				   FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
+				   INDEX idx_rider_collections (rider_id, collected_at),
+				   INDEX idx_delivery_collections (delivery_id)
+			   )`,
 		`CREATE TABLE IF NOT EXISTS rider_ledger (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			rider_id INT NOT NULL UNIQUE,
@@ -748,6 +770,39 @@ func CreateTables() error {
 			INDEX idx_reporter (reporter_id),
 			INDEX idx_reported_user (reported_user_id),
 			INDEX idx_status (status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS trade_disputes (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			raised_by_id INT NOT NULL,
+			reported_user_id INT NOT NULL,
+			reason VARCHAR(100) NOT NULL,
+			description TEXT NOT NULL,
+			evidence_image_1 VARCHAR(500) NULL,
+			evidence_image_2 VARCHAR(500) NULL,
+			status ENUM('pending', 'reviewed', 'resolved', 'dismissed') NOT NULL DEFAULT 'pending',
+			reviewer_id INT NULL,
+			resolution_notes TEXT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (raised_by_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reported_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reviewer_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_disputes_trade (trade_id),
+			INDEX idx_disputes_status (status)
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_strikes (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			user_id INT NOT NULL,
+			admin_id INT NOT NULL,
+			dispute_id INT NULL,
+			reason TEXT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (dispute_id) REFERENCES trade_disputes(id) ON DELETE SET NULL,
+			INDEX idx_strikes_user (user_id)
 		)`,
 		`CREATE TABLE IF NOT EXISTS trade_grades (
 			id INT AUTO_INCREMENT PRIMARY KEY,
@@ -832,6 +887,7 @@ func CreateTables() error {
 	ensureTradeColumns()
 	ensureRiderColumns()
 	ensureDeliveryBatchColumns()
+	ensureAppSettingsDefaults()
 
 	// Seed Mock Rider: Wynry Perian
 	mockRiderEmail := "wynry@clovia.com"
@@ -865,6 +921,14 @@ func CreateTables() error {
 
 	log.Println("Database tables and indexes created successfully")
 	return nil
+}
+
+func ensureAppSettingsDefaults() {
+	// Ensure rider free slots default is present. This powers Task 19/20.
+	_, err := DB.Exec(`INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES ('rider_free_slots_default', '3')`)
+	if err != nil {
+		log.Printf("Warning: failed to seed app_settings defaults: %v", err)
+	}
 }
 
 // ensureUserColumns adds missing columns to the users table if they don't exist
@@ -977,6 +1041,7 @@ func ensureProductColumns() {
 		{"price_reasoning", "TEXT NULL"},
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 		{"boosted_at", "TIMESTAMP NULL"},
+		{"max_items_per_offer", "INT DEFAULT 0"},
 	}
 
 	for _, col := range columns {
@@ -1013,6 +1078,9 @@ func ensureProductColumns() {
 
 	// Update status enum to include all required statuses
 	updateProductStatusEnum()
+
+	// Ensure defaults
+	DB.Exec("UPDATE products SET max_items_per_offer = 0 WHERE max_items_per_offer IS NULL")
 }
 
 // updateProductStatusEnum ensures the status column has all required enum values
@@ -1077,6 +1145,8 @@ func ensureTradeColumns() {
 		{"buyer_meetup_time", "VARCHAR(50) NULL"},
 		{"seller_meetup_location", "VARCHAR(500) NULL"},
 		{"seller_meetup_time", "VARCHAR(50) NULL"},
+		{"buyer_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
+		{"seller_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 	}
 
 	for _, col := range columns {

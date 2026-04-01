@@ -112,6 +112,7 @@ type SellerStats = {
   trust_level?: 'trusted' | 'new' | 'risky'
   report_count?: number
   has_reports?: boolean
+  has_active_dispute?: boolean
   trust_factors?: TrustFactor[]
   conduct_summary?: {
     letter_grade: string
@@ -251,7 +252,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         console.log('🔍 res.data.data:', res.data?.data)
         console.log('🔍 res.data.data.user:', res.data?.data?.user)
 
-        const apiUser = (res.data?.data?.user || res.data?.user || res.data) as Partial<PublicUser>
+        const payload = res.data?.data || res.data
+        const apiUser = (payload?.user || payload) as Partial<PublicUser>
         console.log('🔍 Extracted apiUser:', apiUser)
 
 
@@ -266,26 +268,30 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
         })
 
 
-        setUser({
+        const finalizedUser: PublicUser = {
           id: apiUser.id || 0,
-          name: apiUser.name || 'User',
+          name: (apiUser.name && apiUser.name.trim() !== '' && apiUser.name.toLowerCase() !== 'user') 
+            ? apiUser.name 
+            : ((apiUser as any).full_name && (apiUser as any).full_name.trim() !== '' 
+              ? (apiUser as any).full_name 
+              : 'Trader'),
           verified: Boolean(apiUser.verified),
           created_at: (apiUser as any).created_at || new Date().toISOString(),
-          // Prefer profile_picture if provided, fall back to org logo
-          avatar_url: getImageUrl((apiUser as any).profile_picture || (apiUser as any).org_logo_url || null),
-          background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || null),
-          background_position: (apiUser as any).background_position || (apiUser as any).background_position || '50% 50%',
-          // If the current user and API returned an email/name, prefer those
+          // Support multiple field names from different API versions
+          avatar_url: getImageUrl((apiUser as any).profile_picture || (apiUser as any).avatar_url || (apiUser as any).org_logo_url || null),
+          background_url: getImageUrl((apiUser as any).background_image || (apiUser as any).cover_photo || (apiUser as any).background_url || null),
+          background_position: (apiUser as any).background_position || '50% 50%',
           bio: (apiUser as any).bio || 'No bio provided yet.',
           rating: apiUser.rating ?? 4.6,
           rank: apiUser.rank || 'Rising Trader',
-          is_organization: (apiUser as any).is_organization,
-          org_verified: (apiUser as any).org_verified,
+          is_organization: Boolean((apiUser as any).is_organization),
+          org_verified: Boolean((apiUser as any).org_verified),
           org_name: (apiUser as any).org_name,
-          org_logo_url: (apiUser as any).org_logo_url,
           department: (apiUser as any).department || 'Unknown',
           activity_status: (apiUser as any).activity_status || 'inactive',
-        })
+        }
+
+        setUser(finalizedUser)
 
         // Only fetch products if we have a valid ID
         if (apiUser.id) {
@@ -1151,6 +1157,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       pending: sellerStats.pending_trades ?? 0,
                     }}
                     responseTime={sellerStats.avg_response_time}
+                    hasActiveDispute={sellerStats.has_active_dispute}
                   />
                 </Box>
               ) : (

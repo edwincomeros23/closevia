@@ -126,6 +126,15 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+interface TradeMessage {
+  id: number;
+  trade_id: number;
+  sender_id: number;
+  content: string;
+  image_url?: string;
+  created_at: string;
+}
+
 interface AdminStats {
   total_users: number;
   premium_users: number;
@@ -375,7 +384,7 @@ const UsageCalendar: React.FC<CalendarProps> = ({
         </Button>
       </Flex>
 
-      {/* Day-of-week headers */}
+      {/* Delete Confirmation Alert */}
       <SimpleGrid columns={7} mb={1}>
         {DAY_LABELS.map(d => (
           <Box key={d} textAlign="center" py={1}>
@@ -514,6 +523,20 @@ const AdminDashboard: React.FC = () => {
   const [reportsTotalPages, setReportsTotalPages] = useState(1);
   const [reportsStatusFilter, setReportsStatusFilter] = useState('');
 
+  // Multi-way Disputes state
+  const [multiwayDisputes, setMultiwayDisputes] = useState<any[]>([]);
+  const [multiwayDisputesLoading, setMultiwayDisputesLoading] = useState(false);
+  const [selectedDispute, setSelectedDispute] = useState<any | null>(null);
+  const [disputeChatLogs, setDisputeChatLogs] = useState<TradeMessage[]>([]);
+
+  // Strike History state
+  const [strikeHistoryUser, setStrikeHistoryUser] = useState<User | null>(null);
+  const [strikeHistoryData, setStrikeHistoryData] = useState<any[]>([]);
+  const [strikeHistoryLoading, setStrikeHistoryLoading] = useState(false);
+  const [manualStrikeReason, setManualStrikeReason] = useState('');
+  const [manualStrikeChain, setManualStrikeChain] = useState('');
+  const [manualStrikeLoading, setManualStrikeLoading] = useState(false);
+
   // Multi-way matcher debug state
   const [loopDebugTradeID, setLoopDebugTradeID] = useState('');
   const [loopDebugCompareTradeID, setLoopDebugCompareTradeID] = useState('');
@@ -557,6 +580,25 @@ const AdminDashboard: React.FC = () => {
   const [rejectRiderTarget, setRejectRiderTarget] = useState<RiderAppItem | null>(null);
   const [rejectRiderReason, setRejectRiderReason] = useState('');
   const [rejectRiderLoading, setRejectRiderLoading] = useState(false);
+
+  // Task 19/20: Rider free slots config + remittance payment review
+  type AdminRemittancePayment = {
+    id: number;
+    rider_id: number;
+    rider_user_id: number;
+    rider_name: string;
+    rider_email: string;
+    amount_paid: number;
+    payment_method: string;
+    payment_proof_url: string;
+    status: string;
+    created_at: string;
+  };
+  const [riderFreeSlotsDefault, setRiderFreeSlotsDefault] = useState<number>(3);
+  const [riderConfigLoading, setRiderConfigLoading] = useState(false);
+  const [remittancePayments, setRemittancePayments] = useState<AdminRemittancePayment[]>([]);
+  const [remittanceLoading, setRemittanceLoading] = useState(false);
+  const [verifyRemittanceLoadingId, setVerifyRemittanceLoadingId] = useState<number | null>(null);
 
   const { isOpen: isDayModalOpen, onOpen: openDayModal, onClose: closeDayModal } = useDisclosure();
   const {
@@ -609,6 +651,8 @@ const AdminDashboard: React.FC = () => {
         toast({ id: 'using-demo-data', title: 'Using Demo Data', description: 'Showing mock data while API is unavailable', status: 'info', duration: 5000, isClosable: true });
         return;
       }
+
+      fetchMultiwayDisputes();
 
       const response = await api.get('/api/admin/stats');
       const result = response.data;
@@ -746,6 +790,70 @@ const AdminDashboard: React.FC = () => {
     }
   }, [toast]);
 
+  const fetchRiderConfig = useCallback(async () => {
+    try {
+      setRiderConfigLoading(true);
+      const res = await api.get('/api/admin/rider-config');
+      if (res.data?.success && res.data?.data?.rider_free_slots_default != null) {
+        setRiderFreeSlotsDefault(Number(res.data.data.rider_free_slots_default) || 3);
+      }
+    } catch {
+      // keep default
+    } finally {
+      setRiderConfigLoading(false);
+    }
+  }, []);
+
+  const saveRiderConfig = useCallback(async () => {
+    try {
+      setRiderConfigLoading(true);
+      const value = Number(riderFreeSlotsDefault);
+      const res = await api.put('/api/admin/rider-config', { rider_free_slots_default: value });
+      if (res.data?.success) {
+        toast({ title: 'Saved', description: 'Default free slots updated.', status: 'success', duration: 2500 });
+      } else {
+        toast({ title: 'Save failed', description: res.data?.error || 'Could not update setting', status: 'error', duration: 3000 });
+      }
+    } catch (err: any) {
+      toast({ title: 'Save failed', description: err?.response?.data?.error || err?.message || 'Could not update setting', status: 'error', duration: 3000 });
+    } finally {
+      setRiderConfigLoading(false);
+    }
+  }, [riderFreeSlotsDefault, toast]);
+
+  const fetchRemittancePayments = useCallback(async () => {
+    try {
+      setRemittanceLoading(true);
+      const res = await api.get('/api/admin/remittance-payments?status=pending');
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        setRemittancePayments(res.data.data);
+      } else {
+        setRemittancePayments([]);
+      }
+    } catch {
+      setRemittancePayments([]);
+    } finally {
+      setRemittanceLoading(false);
+    }
+  }, []);
+
+  const approveRemittancePayment = useCallback(async (paymentId: number) => {
+    try {
+      setVerifyRemittanceLoadingId(paymentId);
+      const res = await api.post(`/api/admin/remittance-payments/${paymentId}/verify`, { approve: true });
+      if (res.data?.success) {
+        toast({ title: 'Payment verified', description: 'Rider unlocked and slots refilled.', status: 'success', duration: 3000 });
+        setRemittancePayments(prev => prev.filter(p => p.id !== paymentId));
+      } else {
+        toast({ title: 'Verify failed', description: res.data?.error || 'Could not verify payment', status: 'error', duration: 3000 });
+      }
+    } catch (err: any) {
+      toast({ title: 'Verify failed', description: err?.response?.data?.error || err?.message || 'Could not verify payment', status: 'error', duration: 3000 });
+    } finally {
+      setVerifyRemittanceLoadingId(null);
+    }
+  }, [toast]);
+
   // â"€â"€ Fetch reports for admin â"€â"€
   const fetchAdminReports = useCallback(
     async (page = 1, status = '') => {
@@ -798,6 +906,52 @@ const AdminDashboard: React.FC = () => {
       });
     }
   }, [reportsPage, reportsStatusFilter, fetchAdminReports, toast]);
+
+  // â"€â"€ Fetch Multiway Disputes â"€â"€
+  const fetchMultiwayDisputes = useCallback(async () => {
+    try {
+      setMultiwayDisputesLoading(true);
+      const response = await api.get(`/api/admin/multiway-disputes`);
+      if (response.data.success) {
+        setMultiwayDisputes(Array.isArray(response.data.data) ? response.data.data : []);
+      }
+    } catch (err: any) {
+      console.error('Failed to load multiway disputes', err);
+    } finally {
+      setMultiwayDisputesLoading(false);
+    }
+  }, []);
+
+  const openDisputeDetails = async (dispute: any) => {
+    setSelectedDispute(dispute);
+    try {
+      // Attempt to load chat logs for the specific leg
+      const res = await api.get(`/api/trades/${dispute.leg_id}/messages`);
+      if (res.data.success) {
+        setDisputeChatLogs(Array.isArray(res.data.data) ? res.data.data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch chat logs for dispute');
+    }
+  };
+
+  const resolveDispute = async (id: number, resolution: string, targetUid?: number) => {
+    try {
+      await api.put(`/api/admin/multiway-disputes/${id}/resolve`, {
+        status: 'resolved',
+        resolution,
+        adminNotes: 'Resolved by Admin'
+      });
+      if (targetUid) {
+        await api.post(`/api/admin/users/${targetUid}/suspend`, { reason: 'Dispute resolved against you' });
+      }
+      toast({ title: 'Dispute Resolved', status: 'success' });
+      fetchMultiwayDisputes();
+      setSelectedDispute(null);
+    } catch (err: any) {
+      toast({ title: 'Failed to resolve dispute', description: err.message, status: 'error' });
+    }
+  };
 
   const handleRunLoopDebug = useCallback(async () => {
     const tradeID = Number(loopDebugTradeID);
@@ -963,6 +1117,67 @@ const AdminDashboard: React.FC = () => {
       });
     }
   }, [toast]);
+
+  // â"€â"€ Ban handler â"€â"€
+  const handleToggleBan = useCallback(async (user: User) => {
+    try {
+      const isBanned = user.role === 'banned';
+      await api.put(`/api/admin/users/${user.id}/${isBanned ? 'unsuspend' : 'suspend'}`, { reason: isBanned ? '' : 'Banned by admin' });
+      
+      setUsers(prev => prev.map(u =>
+        u.id === user.id ? { ...u, role: isBanned ? 'user' : 'banned' } : u
+      ));
+
+      toast({
+        title: isBanned ? 'User Unbanned' : 'User Banned',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Action failed',
+        description: err?.message || `Failed to modify user ban status.`,
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    }
+  }, [toast]);
+
+  // â"€â"€ Open Strike History â"€â"€
+  const openStrikeHistory = useCallback(async (user: User) => {
+    setStrikeHistoryUser(user);
+    setStrikeHistoryLoading(true);
+    setStrikeHistoryData([]);
+    try {
+      const response = await api.get(`/api/admin/users/${user.id}/strikes`);
+      if (response.data?.success) {
+        setStrikeHistoryData(Array.isArray(response.data.data) ? response.data.data : []);
+      }
+    } catch (err: any) {
+      toast({ title: 'Failed to load strike history', status: 'error' });
+    } finally {
+      setStrikeHistoryLoading(false);
+    }
+  }, [toast]);
+
+  // â"€â"€ Issue Manual Strike â"€â"€
+  const handleIssueManualStrike = async () => {
+    if (!strikeHistoryUser || !manualStrikeReason.trim()) return;
+    setManualStrikeLoading(true);
+    try {
+      await api.post(`/api/admin/users/${strikeHistoryUser.id}/strikes`, { reason: manualStrikeReason, chain_id: manualStrikeChain || 'manual' });
+      toast({ title: 'Manual strike issued successfully', status: 'success', duration: 3000 });
+      setManualStrikeReason('');
+      setManualStrikeChain('');
+      openStrikeHistory(strikeHistoryUser);
+    } catch (err: any) {
+      toast({ title: 'Failed to issue manual strike', description: err?.message, status: 'error', duration: 4000 });
+    } finally {
+      setManualStrikeLoading(false);
+    }
+  };
 
   // â"€â"€ Fetch campaigns for admin list â"€â"€
   const fetchAdminCampaigns = useCallback(async () => {
@@ -1201,6 +1416,8 @@ const AdminDashboard: React.FC = () => {
       fetchAdminReports(1),
       fetchAdminCampaigns(),
       fetchRiderApplications(),
+      fetchRiderConfig(),
+      fetchRemittancePayments(),
     ]);
 
     // Connection check doesn't need to be in the mount effect but we'll keep it there for simplicity
@@ -1814,6 +2031,269 @@ const AdminDashboard: React.FC = () => {
           </CardBody>
         </Card>
 
+        {/* Multiway Disputes */}
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack>
+                <Icon as={FiAlertTriangle} color="purple.500" boxSize={5} />
+                <Heading size="sm" color={textColor}>Trade Disputes (Multi-Way Chains)</Heading>
+                {multiwayDisputes.filter(d => d.status === 'pending').length > 0 && (
+                  <Badge colorScheme="purple" borderRadius="full" px={2}>{multiwayDisputes.filter(d => d.status === 'pending').length} pending</Badge>
+                )}
+              </HStack>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={fetchMultiwayDisputes} isLoading={multiwayDisputesLoading}>Refresh</Button>
+            </Flex>
+          </CardHeader>
+          <CardBody px={0} pb={2}>
+            {multiwayDisputesLoading ? (
+              <Center py={8}><Spinner color="purple.500" /></Center>
+            ) : multiwayDisputes.length === 0 ? (
+              <Center py={8}><VStack spacing={2}><Icon as={FiShield} boxSize={10} color="gray.300" /><Text color="#64748b">No active disputes</Text></VStack></Center>
+            ) : (
+              <Box overflowX="auto" w="full">
+                <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '700px' }}>
+                  <Thead bg={headerBg}>
+                    <Tr>
+                      <Th color={mutedTextColor} w="50px" px={2}>ID</Th>
+                      <Th color={mutedTextColor} w="120px" px={2}>Leg / Chain</Th>
+                      <Th color={mutedTextColor} w="100px" px={2}>Reporter</Th>
+                      <Th color={mutedTextColor} w="100px" px={2}>Against</Th>
+                      <Th color={mutedTextColor} px={2}>Reason</Th>
+                      <Th color={mutedTextColor} w="90px" px={2}>Status</Th>
+                      <Th color={mutedTextColor} w="76px" px={2}>Action</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {multiwayDisputes.map(dispute => (
+                      <Tr key={dispute.id} _hover={{ bg: hoverBg }} verticalAlign="top">
+                        <Td px={2} fontWeight="bold" color="gray.500" fontSize="xs">#{dispute.id}</Td>
+                        <Td px={2}>
+                          <VStack align="start" spacing={0}>
+                            <Text fontSize="xs" fontWeight="600" isTruncated maxW="110px">Leg #{dispute.leg_index}</Text>
+                            <Text fontSize="2xs" color={mutedTextColor} isTruncated maxW="110px">{dispute.chain_id}</Text>
+                          </VStack>
+                        </Td>
+                        <Td px={2}><Text fontSize="xs" fontWeight="600" isTruncated>{dispute.filer_name}</Text></Td>
+                        <Td px={2}><Text fontSize="xs" fontWeight="600" color="red.600" isTruncated>{dispute.against_name}</Text></Td>
+                        <Td px={2}>
+                          <Badge colorScheme="red" borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize" mb={1}>{dispute.reason}</Badge>
+                          <Text fontSize="2xs" color={mutedTextColor} noOfLines={1} maxW="150px">{dispute.description}</Text>
+                        </Td>
+                        <Td px={2}>
+                          <Badge colorScheme={dispute.status === 'pending' ? 'orange' : 'green'} borderRadius="full" px={1} fontSize="2xs" textTransform="capitalize">{dispute.status}</Badge>
+                        </Td>
+                        <Td px={2}>
+                          <Button size="xs" colorScheme="purple" onClick={() => openDisputeDetails(dispute)}>Inspect</Button>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </ChakraTable>
+              </Box>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* Multiway Dispute Modal */}
+        <Modal isOpen={!!selectedDispute} onClose={() => setSelectedDispute(null)} size="2xl" scrollBehavior="inside">
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Resolve Multi-Way Dispute</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              {selectedDispute && (
+                <VStack align="stretch" spacing={4}>
+                  <Box p={3} bg="gray.50" borderRadius="md" border="1px" borderColor="gray.200">
+                    <HStack justify="space-between" mb={2}>
+                      <Badge colorScheme="purple">Leg #{selectedDispute.leg_index}</Badge>
+                      <Text fontSize="xs" color="gray.500">Chain: {selectedDispute.chain_id}</Text>
+                    </HStack>
+                    <SimpleGrid columns={2} spacing={2} fontSize="sm">
+                      <Text><b>Filed By:</b> {selectedDispute.filer_name}</Text>
+                      <Text><b>Against:</b> {selectedDispute.against_name}</Text>
+                      <Text><b>Reason:</b> {selectedDispute.reason}</Text>
+                      <Text><b>Status:</b> {selectedDispute.status}</Text>
+                    </SimpleGrid>
+                    <Text mt={2} fontSize="sm"><b>Description:</b> {selectedDispute.description}</Text>
+                  </Box>
+
+                  {/* Photo Evidence block */}
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm" mb={2}>Photo Evidence</Text>
+                    {!selectedDispute.evidence_urls || selectedDispute.evidence_urls.length === 0 ? (
+                      <Box p={3} bg="orange.50" borderRadius="md" border="1px" borderColor="orange.200">
+                        <HStack>
+                          <Icon as={FiAlertCircle} color="orange.500" />
+                          <Text fontSize="sm" color="orange.800">No photo evidence uploaded for this dispute.</Text>
+                        </HStack>
+                      </Box>
+                    ) : (
+                      <SimpleGrid columns={[2, 3, 4]} spacing={2}>
+                        {selectedDispute.evidence_urls.map((url: string, idx: number) => (
+                          <Box key={idx} borderRadius="md" overflow="hidden" border="1px" borderColor="gray.200" cursor="pointer" onClick={() => window.open(url, '_blank')}>
+                            <Image src={url} alt={`Evidence ${idx+1}`} fallbackSrc="https://via.placeholder.com/150?text=Error" objectFit="cover" w="full" h="100px" />
+                          </Box>
+                        ))}
+                      </SimpleGrid>
+                    )}
+                  </Box>
+
+                  {/* Chat Logs */}
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm" mb={2}>Leg Chat Logs</Text>
+                    <Box bg="white" border="1px" borderColor="gray.200" borderRadius="md" p={2} maxH="200px" overflowY="auto">
+                      {disputeChatLogs.length === 0 ? (
+                        <Text fontSize="sm" color="gray.500" p={2}>No messages in this leg.</Text>
+                      ) : (
+                        <VStack align="stretch" spacing={2}>
+                          {disputeChatLogs.map(msg => (
+                            <Box key={msg.id} p={2} bg="gray.50" borderRadius="md">
+                              <HStack justify="space-between">
+                                <Text fontSize="xs" fontWeight="bold">{msg.sender_id === selectedDispute.filed_by ? selectedDispute.filer_name : (msg.sender_id === selectedDispute.against_uid ? selectedDispute.against_name : `User ${msg.sender_id}`)}</Text>
+                                <Text fontSize="2xs" color="gray.500">{new Date(msg.created_at).toLocaleString()}</Text>
+                              </HStack>
+                              <Text fontSize="sm" mt={1}>{msg.content}</Text>
+                            </Box>
+                          ))}
+                        </VStack>
+                      )}
+                    </Box>
+                  </Box>
+                </VStack>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              {selectedDispute && selectedDispute.status === 'pending' ? (
+                <HStack spacing={2} w="full" justify="space-between">
+                  <Menu>
+                    <MenuButton as={Button} size="sm" colorScheme="red" rightIcon={<FiChevronDown />}>
+                      Action
+                    </MenuButton>
+                    <MenuList>
+                      <MenuItem onClick={() => resolveDispute(selectedDispute.id, 'cancel_leg', selectedDispute.against_uid)} color="red.500">
+                        Cancel Leg (Issue Strike to Against)
+                      </MenuItem>
+                      <MenuItem onClick={() => resolveDispute(selectedDispute.id, 'cancel_chain', selectedDispute.against_uid)} color="red.500">
+                        Cancel Entire Chain & Strike
+                      </MenuItem>
+                      <MenuItem onClick={() => resolveDispute(selectedDispute.id, 'no_action')}>
+                        Dismiss (No Action)
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+                  <Button size="sm" onClick={() => setSelectedDispute(null)}>Close</Button>
+                </HStack>
+              ) : (
+                <Button size="sm" onClick={() => setSelectedDispute(null)}>Close</Button>
+              )}
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+        {/* Rider Remittance & Free Slots (Task 19/20) */}
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack>
+                <Icon as={FiSettings} color="brand.500" boxSize={5} />
+                <Heading size="sm" color={textColor}>Rider Free Slots & Remittance</Heading>
+              </HStack>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => { fetchRiderConfig(); fetchRemittancePayments(); }} isLoading={riderConfigLoading || remittanceLoading}>
+                Refresh
+              </Button>
+            </Flex>
+          </CardHeader>
+          <CardBody>
+            <VStack align="stretch" spacing={4}>
+              <Box>
+                <Heading size="xs" color={textColor} mb={2}>Default free delivery slots (new riders & refills)</Heading>
+                <HStack spacing={2} wrap="wrap">
+                  <Input
+                    size="sm"
+                    w="170px"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={riderFreeSlotsDefault}
+                    onChange={e => setRiderFreeSlotsDefault(Number(e.target.value))}
+                  />
+                  <Button size="sm" colorScheme="brand" onClick={saveRiderConfig} isLoading={riderConfigLoading}>
+                    Save
+                  </Button>
+                  <Text fontSize="xs" color={mutedTextColor}>
+                    During free slots, remittance is waived. When slots are exhausted and remittance is due, riders get locked.
+                  </Text>
+                </HStack>
+              </Box>
+
+              <Box>
+                <HStack justify="space-between" mb={2}>
+                  <Heading size="xs" color={textColor}>Pending remittance payments</Heading>
+                  <Button size="xs" variant="outline" onClick={fetchRemittancePayments} isLoading={remittanceLoading}>
+                    Refresh list
+                  </Button>
+                </HStack>
+
+                {remittanceLoading ? (
+                  <Center py={6}><Spinner color="teal.500" /></Center>
+                ) : remittancePayments.length === 0 ? (
+                  <Text fontSize="sm" color={mutedTextColor}>No pending remittance payments.</Text>
+                ) : (
+                  <Box overflowX="auto" border="1px" borderColor={borderColor} borderRadius="md">
+                    <ChakraTable variant="simple" size="sm">
+                      <Thead bg={headerBg}>
+                        <Tr>
+                          <Th color={mutedTextColor}>Rider</Th>
+                          <Th color={mutedTextColor}>Amount</Th>
+                          <Th color={mutedTextColor}>Method</Th>
+                          <Th color={mutedTextColor}>Proof</Th>
+                          <Th color={mutedTextColor}>Submitted</Th>
+                          <Th color={mutedTextColor}>Action</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {remittancePayments.map(p => (
+                          <Tr key={p.id} _hover={{ bg: hoverBg }}>
+                            <Td>
+                              <VStack align="start" spacing={0}>
+                                <Text fontWeight="600" fontSize="sm">{p.rider_name || `Rider #${p.rider_id}`}</Text>
+                                <Text fontSize="xs" color={mutedTextColor}>{p.rider_email}</Text>
+                              </VStack>
+                            </Td>
+                            <Td fontWeight="600">₱{Number(p.amount_paid).toFixed(2)}</Td>
+                            <Td fontSize="sm">{p.payment_method || '-'}</Td>
+                            <Td>
+                              {p.payment_proof_url ? (
+                                <Button as="a" href={p.payment_proof_url} target="_blank" rel="noreferrer" size="xs" variant="outline">
+                                  View
+                                </Button>
+                              ) : (
+                                <Text fontSize="sm" color={mutedTextColor}>-</Text>
+                              )}
+                            </Td>
+                            <Td fontSize="xs" color={mutedTextColor}>{p.created_at ? new Date(p.created_at).toLocaleString() : '-'}</Td>
+                            <Td>
+                              <Button
+                                size="xs"
+                                colorScheme="green"
+                                onClick={() => approveRemittancePayment(p.id)}
+                                isLoading={verifyRemittanceLoadingId === p.id}
+                              >
+                                Confirm Received
+                              </Button>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </ChakraTable>
+                  </Box>
+                )}
+              </Box>
+            </VStack>
+          </CardBody>
+        </Card>
+
         {/* Rider Applications */}
         <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
           <CardHeader>
@@ -2040,18 +2520,28 @@ const AdminDashboard: React.FC = () => {
                     <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Email</Th>
                     <Th color={mutedTextColor} w="80px" px={2}>Role</Th>
                     <Th color={mutedTextColor} w="72px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Status</Th>
-                    <Th textAlign="right" color={mutedTextColor} w="76px" px={1}>Act</Th>
+                    <Th textAlign="right" color={mutedTextColor} w="100px" px={1}>Act</Th>
                   </Tr></Thead>
                   <Tbody>
                     {users.map(user => (
                       <Tr key={user.id} _hover={{ bg: hoverBg }}>
                         <Td px={2}><HStack spacing={2}><VerifiedAvatar size="xs" name={user.name} src={user.profile_picture || undefined} isVerified={user.verified || user.verification_status === 'verified' || false} /><VStack spacing={0} align="start" minW={0}><Text fontWeight="600" fontSize="xs" isTruncated maxW="120px">{user.name || 'Unnamed'}</Text><Text fontSize="xs" color={mutedTextColor}>#{user.id}</Text></VStack></HStack></Td>
                         <Td px={2} display={{ base: 'none', md: 'table-cell' }}><Text fontSize="xs" isTruncated maxW="160px">{user.email}</Text></Td>
-                        <Td px={2}><Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : user.role === 'suspended' ? 'red' : 'blue'} fontSize="xs">{user.role}</Tag></Td>
+                        <Td px={2}><Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : user.role === 'banned' ? 'blackAlpha' : user.role === 'suspended' ? 'red' : 'blue'} fontSize="xs">{user.role}</Tag></Td>
                         <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : '—'}</Tag></Td>
                         <Td textAlign="right" px={1}>
                           <HStack spacing={1} justify="flex-end">
-                            {user.role !== 'admin' && <Tooltip label={user.role === 'suspended' ? 'Unsuspend' : 'Suspend'} hasArrow><IconButton aria-label="Toggle suspend" size="xs" colorScheme={user.role === 'suspended' ? 'green' : 'orange'} variant="ghost" icon={user.role === 'suspended' ? <FiCheckCircle /> : <FiXCircle />} onClick={() => handleToggleSuspend(user)} /></Tooltip>}
+                            <Tooltip label="Strike History" hasArrow><IconButton aria-label="Strikes" size="xs" colorScheme="purple" variant="ghost" icon={<FiAlertTriangle />} onClick={() => openStrikeHistory(user)} /></Tooltip>
+                            {user.role !== 'admin' && (
+                              <Tooltip label={user.role === 'suspended' ? 'Unsuspend' : 'Suspend'} hasArrow>
+                                <IconButton aria-label="Toggle suspend" size="xs" colorScheme={user.role === 'suspended' ? 'green' : 'orange'} variant="ghost" icon={user.role === 'suspended' ? <FiCheckCircle /> : <FiXCircle />} onClick={() => handleToggleSuspend(user)} />
+                              </Tooltip>
+                            )}
+                            {user.role !== 'admin' && (
+                              <Tooltip label={user.role === 'banned' ? 'Unban' : 'Ban'} hasArrow>
+                                <IconButton aria-label="Toggle ban" size="xs" colorScheme={user.role === 'banned' ? 'green' : 'blackAlpha'} variant="ghost" icon={user.role === 'banned' ? <FiCheckCircle /> : <FiAlertCircle />} onClick={() => handleToggleBan(user)} />
+                              </Tooltip>
+                            )}
                             <Tooltip label="Delete user" hasArrow><IconButton aria-label="Delete user" size="xs" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteUser(user)} /></Tooltip>
                           </HStack>
                         </Td>

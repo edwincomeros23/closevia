@@ -92,7 +92,7 @@ func (g *TradeGraph) dfs(startNode, currentNode int, adj map[int][]TradeEdge, pa
 		*path = append(*path, edge)
 
 		if edge.ToUser == startNode {
-			// Found a loop — only keep it if within the chain length cap
+			// Found a loop — keep it if within the chain length cap
 			if len(*path) <= MaxChainLength {
 				loop := make([]TradeEdge, len(*path))
 				copy(loop, *path)
@@ -182,7 +182,7 @@ func wantedSignalScore(candidateWants, candidateWantedCategories, candidateDesir
 // Wants text is now a bonus signal, not a hard requirement.
 func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int, excludeUserIDs []int) ([]MultiwayMatch, MultiwayDebugInfo, error) {
 	log.Printf("FindMultiwayMatch: Searching for User3. User1=%d, User2=%d, TradeID=%d", user1ID, user2ID, originalTradeID)
-	const minScore = 45
+	const minScore = 35
 	debug := MultiwayDebugInfo{TradeID: originalTradeID, Threshold: minScore, Candidates: []MultiwayCandidateDebug{}}
 
 	// 1. Get what User 1 offered

@@ -17,8 +17,48 @@ import (
 	"github.com/xashathebest/clovia/models"
 )
 
+// BackfillLedgers is an HTTP handler that triggers backfilling missing deliveries
+func (h *DeliveryHandler) BackfillLedgers(c *fiber.Ctx) error {
+	h.BackfillMissingDeliveries()
+	return c.JSON(models.APIResponse{Success: true, Message: "Backfill completed (see logs for details)"})
+}
+
 type DeliveryHandler struct {
 	db *sql.DB
+}
+
+func (h *DeliveryHandler) getRiderFreeSlotsDefault() int {
+	var v string
+	if err := h.db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = 'rider_free_slots_default'").Scan(&v); err != nil {
+		return 3
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || parsed <= 0 {
+		return 3
+	}
+	return parsed
+}
+
+func (h *DeliveryHandler) isRiderLockedForRemittance(riderID int) (bool, float64) {
+	var isLocked bool
+	var remittanceOwed float64
+	var freeSlotsRemaining int
+	// If there is no ledger row yet, rider isn't locked.
+	if err := h.db.QueryRow(
+		"SELECT COALESCE(is_locked_for_remittance, FALSE), COALESCE(remittance_owed, 0.00), COALESCE(free_slots_remaining, 0) FROM rider_ledger WHERE rider_id = ?",
+		riderID,
+	).Scan(&isLocked, &remittanceOwed, &freeSlotsRemaining); err != nil {
+		return false, 0
+	}
+	// Task 20: lock is enforced when free slots are exhausted AND there is remittance due.
+	if remittanceOwed > 0 && freeSlotsRemaining == 0 {
+		return true, remittanceOwed
+	}
+	// Keep the flag as an informational field (UI may show warnings), but don't block without due.
+	if isLocked && remittanceOwed > 0 {
+		return true, remittanceOwed
+	}
+	return false, remittanceOwed
 }
 
 func NewDeliveryHandler() *DeliveryHandler {
@@ -334,7 +374,7 @@ func (h *DeliveryHandler) GetRiderState(c *fiber.Ctx) error {
 		SELECT id, COALESCE(status,'pending'), COALESCE(full_name,''),
 		       COALESCE(rejection_reason,''), is_active,
 		       COALESCE(first_login_completed, FALSE),
-		       COALESCE(free_delivery_slots, 3),
+			       COALESCE(free_delivery_slots, 3),
 		       COALESCE((SELECT COUNT(*) FROM deliveries WHERE rider_id = riders.id AND status = 'delivered'), 0),
 		       rating
 		FROM riders WHERE user_id = ?`, userID).Scan(
@@ -355,6 +395,14 @@ func (h *DeliveryHandler) GetRiderState(c *fiber.Ctx) error {
 	var state string
 	var message string
 	var canViewJobs, canClaimJobs, canViewEarnings bool
+	var remittanceDue float64
+	var lockedForRemittance bool
+
+	// Sync rider slots view from ledger (single source of truth)
+	// so the rider sees the correct remaining free slots.
+	h.ensureRiderLedger(riderID)
+	_ = h.db.QueryRow("SELECT free_slots_remaining FROM rider_ledger WHERE rider_id = ?", riderID).Scan(&freeDeliverySlots)
+	lockedForRemittance, remittanceDue = h.isRiderLockedForRemittance(riderID)
 
 	switch status {
 	case "pending", "under_review":
@@ -372,8 +420,14 @@ func (h *DeliveryHandler) GetRiderState(c *fiber.Ctx) error {
 		canViewEarnings = false
 
 	case "approved":
-		if !isActive {
-			// Account is locked/suspended
+		if lockedForRemittance {
+			state = "LOCKED"
+			message = fmt.Sprintf("You have ₱%.2f remittance due. Pay now to unlock your next job.", remittanceDue)
+			canViewJobs = false
+			canClaimJobs = false
+			canViewEarnings = true
+		} else if !isActive {
+			// Account is suspended (non-remittance)
 			state = "LOCKED"
 			message = "Your rider account has been suspended. Please contact support."
 			canViewJobs = false
@@ -411,16 +465,18 @@ func (h *DeliveryHandler) GetRiderState(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
-		"state":                 state,
-		"rider_id":              riderID,
-		"full_name":             fullName,
-		"message":               message,
-		"rejection_reason":      rejectionReason,
-		"show_welcome":          showWelcome,
-		"free_delivery_slots":   freeDeliverySlots,
-		"completed_deliveries":  completedDeliveries,
-		"rating":                rating,
-		"first_login_completed": firstLoginCompleted,
+		"state":                    state,
+		"rider_id":                 riderID,
+		"full_name":                fullName,
+		"message":                  message,
+		"rejection_reason":         rejectionReason,
+		"show_welcome":             showWelcome,
+		"free_delivery_slots":      freeDeliverySlots,
+		"remittance_due":           remittanceDue,
+		"is_locked_for_remittance": lockedForRemittance,
+		"completed_deliveries":     completedDeliveries,
+		"rating":                   rating,
+		"first_login_completed":    firstLoginCompleted,
 		"permissions": fiber.Map{
 			"can_view_jobs":     canViewJobs,
 			"can_claim_jobs":    canClaimJobs,
@@ -1467,6 +1523,23 @@ func (h *DeliveryHandler) loadDeliveryItems(d *models.Delivery) {
 func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 
+	// TASK 20: Remittance lock - rider cannot browse/claim while locked
+	if ok {
+		var riderID int
+		err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ? AND is_active = TRUE", userID).Scan(&riderID)
+		if err == nil {
+			h.ensureRiderLedger(riderID)
+			locked, due := h.isRiderLockedForRemittance(riderID)
+			if locked {
+				return c.JSON(models.APIResponse{
+					Success: true,
+					Data:    []models.Delivery{},
+					Message: fmt.Sprintf("You have ₱%.2f remittance due. Pay now to unlock your next job.", due),
+				})
+			}
+		}
+	}
+
 	// Check if rider has an active express delivery (Task 14)
 	// If so, they must not receive new job notifications
 	if ok {
@@ -1791,6 +1864,13 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not registered as an active rider"})
 	}
 
+	// TASK 20: Remittance lock - rider cannot claim jobs while locked
+	h.ensureRiderLedger(riderID)
+	locked, due := h.isRiderLockedForRemittance(riderID)
+	if locked {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("You have ₱%.2f remittance due. Pay now to unlock your next job.", due)})
+	}
+
 	// Atomically claim the delivery -- only succeeds if still pending and unclaimed
 	now := time.Now()
 	result, err := h.db.Exec(`
@@ -2094,10 +2174,11 @@ func (h *DeliveryHandler) ensureRiderLedger(riderID int) {
 	var exists int
 	h.db.QueryRow("SELECT COUNT(*) FROM rider_ledger WHERE rider_id = ?", riderID).Scan(&exists)
 	if exists == 0 {
+		defaultSlots := h.getRiderFreeSlotsDefault()
 		_, err := h.db.Exec(`
 			INSERT INTO rider_ledger (rider_id, total_cash_collected, remittance_owed, take_home, free_slots_remaining)
-			VALUES (?, 0, 0, 0, 3)
-		`, riderID)
+			VALUES (?, 0, 0, 0, ?)
+		`, riderID, defaultSlots)
 		if err != nil {
 			log.Printf("Failed to create rider ledger for rider %d: %v", riderID, err)
 		}
@@ -2314,10 +2395,9 @@ func (h *DeliveryHandler) updateRiderLedger(riderID int, amount float64) {
 		log.Printf("Failed to update rider ledger for rider %d: %v", riderID, err)
 	}
 
-	// TASK 20: Lock rider if remittance threshold reached (e.g., ₱1000)
-	if remittanceOwed >= 1000 && freeSlotsRemaining == 0 {
-		h.db.Exec("UPDATE rider_ledger SET is_locked_for_remittance = TRUE WHERE rider_id = ?", riderID)
-		h.db.Exec("UPDATE riders SET is_active = FALSE WHERE id = ?", riderID)
+	// TASK 20: When free slots are exhausted and remittance is due, lock rider from claiming next job.
+	if freeSlotsRemaining == 0 && remittanceOwed > 0 {
+		_, _ = h.db.Exec("UPDATE rider_ledger SET is_locked_for_remittance = TRUE WHERE rider_id = ?", riderID)
 	}
 }
 
@@ -2368,12 +2448,13 @@ func (h *DeliveryHandler) GetRiderLedger(c *fiber.Ctx) error {
 	if err != nil {
 		// Initialize if doesn't exist
 		h.ensureRiderLedger(riderID)
+		defaultSlots := h.getRiderFreeSlotsDefault()
 		return c.JSON(models.APIResponse{Success: true, Data: models.RiderLedger{
 			RiderID:            riderID,
 			TotalCashCollected: 0,
 			RemittanceOwed:     0,
 			TakeHome:           0,
-			FreeSlotsRemaining: 3,
+			FreeSlotsRemaining: defaultSlots,
 		}})
 	}
 
@@ -2454,18 +2535,16 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 			WHERE id = ?
 		`, userID, now, paymentID)
 
-		// Deduct from remittance owed and unlock rider
+		defaultSlots := h.getRiderFreeSlotsDefault()
+		// Reset remittance to 0 (admin-confirmed), unlock, and refill slots.
 		_, err = h.db.Exec(`
 			UPDATE rider_ledger
-			SET remittance_owed = remittance_owed - ?,
+			SET remittance_owed = 0,
 			    last_remittance_at = ?,
 			    is_locked_for_remittance = FALSE,
-			    free_slots_remaining = 3
+			    free_slots_remaining = ?
 			WHERE rider_id = ?
-		`, amountPaid, now, riderID)
-
-		// Unlock rider account
-		h.db.Exec("UPDATE riders SET is_active = TRUE WHERE id = ?", riderID)
+		`, now, defaultSlots, riderID)
 
 		return c.JSON(models.APIResponse{Success: true, Message: "Payment verified and rider unlocked"})
 	} else {
@@ -2478,4 +2557,94 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 
 		return c.JSON(models.APIResponse{Success: true, Message: "Payment rejected"})
 	}
+}
+
+// AdminGetRiderConfig returns rider system settings (Task 19)
+func (h *DeliveryHandler) AdminGetRiderConfig(c *fiber.Ctx) error {
+	defaultSlots := h.getRiderFreeSlotsDefault()
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_free_slots_default": defaultSlots}})
+}
+
+// AdminUpdateRiderConfig updates rider system settings (Task 19)
+func (h *DeliveryHandler) AdminUpdateRiderConfig(c *fiber.Ctx) error {
+	var payload struct {
+		RiderFreeSlotsDefault int `json:"rider_free_slots_default"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request"})
+	}
+	if payload.RiderFreeSlotsDefault <= 0 || payload.RiderFreeSlotsDefault > 100 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid free slots default"})
+	}
+	_, err := h.db.Exec(`
+		INSERT INTO app_settings (setting_key, setting_value) VALUES ('rider_free_slots_default', ?)
+		ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+	`, strconv.Itoa(payload.RiderFreeSlotsDefault))
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update settings"})
+	}
+	return c.JSON(models.APIResponse{Success: true, Message: "Updated rider free slots default"})
+}
+
+type AdminRemittancePaymentRow struct {
+	ID              int        `json:"id"`
+	RiderID         int        `json:"rider_id"`
+	RiderUserID     int        `json:"rider_user_id"`
+	RiderName       string     `json:"rider_name"`
+	RiderEmail      string     `json:"rider_email"`
+	AmountPaid      float64    `json:"amount_paid"`
+	PaymentMethod   string     `json:"payment_method"`
+	ProofURL        string     `json:"payment_proof_url"`
+	Status          string     `json:"status"`
+	CreatedAt       time.Time  `json:"created_at"`
+	VerifiedBy      *int       `json:"verified_by"`
+	VerifiedAt      *time.Time `json:"verified_at"`
+	RejectionReason string     `json:"rejection_reason"`
+}
+
+// AdminListRemittancePayments lists remittance payment submissions for review (Task 20)
+func (h *DeliveryHandler) AdminListRemittancePayments(c *fiber.Ctx) error {
+	status := strings.TrimSpace(c.Query("status", "pending"))
+	if status == "" {
+		status = "pending"
+	}
+	rows, err := h.db.Query(`
+		SELECT p.id, p.rider_id, r.user_id, COALESCE(r.name,''), COALESCE(u.email,''),
+		       p.amount_paid, COALESCE(p.payment_method,''), COALESCE(p.payment_proof_url,''),
+		       p.status, p.created_at, p.verified_by, p.verified_at, COALESCE(p.rejection_reason,'')
+		FROM rider_remittance_payments p
+		JOIN riders r ON p.rider_id = r.id
+		JOIN users u ON r.user_id = u.id
+		WHERE p.status = ?
+		ORDER BY p.created_at DESC
+	`, status)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch payments"})
+	}
+	defer rows.Close()
+
+	items := make([]AdminRemittancePaymentRow, 0)
+	for rows.Next() {
+		var it AdminRemittancePaymentRow
+		var verifiedBy sql.NullInt64
+		var verifiedAt sql.NullTime
+		if err := rows.Scan(
+			&it.ID, &it.RiderID, &it.RiderUserID, &it.RiderName, &it.RiderEmail,
+			&it.AmountPaid, &it.PaymentMethod, &it.ProofURL,
+			&it.Status, &it.CreatedAt, &verifiedBy, &verifiedAt, &it.RejectionReason,
+		); err != nil {
+			continue
+		}
+		if verifiedBy.Valid {
+			v := int(verifiedBy.Int64)
+			it.VerifiedBy = &v
+		}
+		if verifiedAt.Valid {
+			t := verifiedAt.Time
+			it.VerifiedAt = &t
+		}
+		items = append(items, it)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: items})
 }

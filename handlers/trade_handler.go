@@ -71,14 +71,27 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Delivery address is required when choosing delivery option"})
 	}
 
-	// Check if target product is still available
+	// Check if target product is still available and get selection limit
 	var targetStatus string
-	err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
+	var maxItems int
+	err := h.db.QueryRow("SELECT status, max_items_per_offer FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus, &maxItems)
 	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		}
+		log.Printf("Error fetching target product %d: %v", payload.TargetProductID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate target product"})
 	}
 	if targetStatus != "available" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This product is no longer available for trading"})
+	}
+
+	// Validate selection limit
+	if maxItems > 0 && len(payload.OfferedProductIDs) > maxItems {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   fmt.Sprintf("This product only allows up to %d items per trade offer", maxItems),
+		})
 	}
 
 	// Check if offered products are still available
@@ -86,7 +99,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		var offeredStatus string
 		err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", productID).Scan(&offeredStatus)
 		if err != nil {
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One of your offered products not found"})
+			if err == sql.ErrNoRows {
+				return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One of your offered products not found"})
+			}
+			log.Printf("Error fetching offered product %d: %v", productID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate offered products"})
 		}
 		if offeredStatus != "available" {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "One of your offered products is no longer available"})
@@ -115,7 +132,16 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 
 	// CHECK PREMIUM LIMITS: Non-premium users are limited to 5 pending offers
 	var isPremium bool
-	_ = h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
+	var strikes int
+	_ = h.db.QueryRow("SELECT is_premium, strikes FROM users WHERE id = ?", userID).Scan(&isPremium, &strikes)
+
+	// Strike Ladder Enforcement: 2 strikes = Restricted (cannot post/send new offers)
+	if strikes >= 2 {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Account Restricted: You cannot send new trade offers because you have 2 or more strikes. You can still finish your ongoing trades.",
+		})
+	}
 
 	if !isPremium {
 		var pendingCount int
@@ -138,7 +164,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	var sellerID int
 	if err := tx.QueryRow("SELECT seller_id FROM products WHERE id = ?", payload.TargetProductID).Scan(&sellerID); err != nil {
 		_ = tx.Rollback()
-		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		}
+		log.Printf("Error fetching target product seller_id %d: %v", payload.TargetProductID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate target product"})
 	}
 	if sellerID == userID {
 		_ = tx.Rollback()
@@ -786,7 +816,9 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	}
 
 	query += `,
-          COALESCE(t.meetup_location, '') as meetup_location, t.buyer_meetup_confirmed, t.seller_meetup_confirmed,
+          COALESCE(t.meetup_location, '') as meetup_location, COALESCE(t.buyer_meetup_confirmed, FALSE) as buyer_meetup_confirmed, COALESCE(t.seller_meetup_confirmed, FALSE) as seller_meetup_confirmed,
+          COALESCE(t.buyer_meetup_location, '') as buyer_meetup_location, COALESCE(t.buyer_meetup_time, '') as buyer_meetup_time,
+          COALESCE(t.seller_meetup_location, '') as seller_meetup_location, COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title,
           p.image_url AS product_image_url, p.image_urls AS product_image_urls
         FROM trades t
@@ -813,7 +845,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		var pimg, pimgs sql.NullString
 		var offeredCashNull sql.NullFloat64
 
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
 			// Set offered cash if valid
 			if offeredCashNull.Valid {
 				val := offeredCashNull.Float64
@@ -954,6 +986,9 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 	switch payload.Action {
 	case "accept":
+		if currentStatus != "pending" && currentStatus != "pending_multiway" && currentStatus != "countered" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Trade is no longer pending (" + currentStatus + ")"})
+		}
 		tx, err := h.db.Begin()
 		if err != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
@@ -1072,6 +1107,25 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			offeredBy = "seller"
 		}
 
+		// Check target product item limit
+		var targetProductID int
+		if err := h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade details"})
+		}
+		var maxItems int
+		if err := h.db.QueryRow("SELECT max_items_per_offer FROM products WHERE id = ?", targetProductID).Scan(&maxItems); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load product limits"})
+		}
+		if maxItems > 0 && len(payload.CounterOfferedProductIDs) > maxItems {
+			_ = tx.Rollback()
+			return c.Status(400).JSON(models.APIResponse{
+				Success: false,
+				Error:   fmt.Sprintf("This trade only allows up to %d items per offer", maxItems),
+			})
+		}
+
 		// Replace items in the trade
 		if _, err := tx.Exec("DELETE FROM trade_items WHERE trade_id = ?", tradeID); err != nil {
 			_ = tx.Rollback()
@@ -1116,6 +1170,27 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Only active trades can be marked as complete"})
 		}
 		log.Printf("User %d attempting to complete trade %d", userID, tradeID)
+
+		// Enforce photo evidence rule for meetup and delivery
+		var proofURL sql.NullString
+		var isCamera bool
+		var tradeOption string
+		proofCheckCol := "buyer_proof_url"
+		camCheckCol := "buyer_photo_is_camera"
+		if userID == sellerID {
+			proofCheckCol = "seller_proof_url"
+			camCheckCol = "seller_photo_is_camera"
+		}
+		err = h.db.QueryRow("SELECT "+proofCheckCol+", "+camCheckCol+", COALESCE(trade_option, 'meetup') FROM trades WHERE id = ?", tradeID).Scan(&proofURL, &isCamera, &tradeOption)
+		if err == nil && (tradeOption == "meetup" || tradeOption == "delivery") {
+			if !proofURL.Valid || proofURL.String == "" {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence is mandatory for " + tradeOption + " trades. Please provide a handoff photo."})
+			}
+			if !isCamera {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence must be taken using the in-app camera (no gallery upload)."})
+			}
+		}
+
 		column := "buyer_completed"
 		if userID == sellerID {
 			column = "seller_completed"
@@ -1237,7 +1312,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		var buyerConfirmed, sellerConfirmed bool
 		var buyerLocation, buyerTime, sellerLocation, sellerTime sql.NullString
 		err = h.db.QueryRow(`
-			SELECT buyer_meetup_confirmed, seller_meetup_confirmed,
+			SELECT COALESCE(buyer_meetup_confirmed, FALSE), COALESCE(seller_meetup_confirmed, FALSE),
 			       buyer_meetup_location, buyer_meetup_time,
 			       seller_meetup_location, seller_meetup_time
 			FROM trades WHERE id = ?`, tradeID).Scan(
@@ -1246,8 +1321,13 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			&sellerLocation, &sellerTime)
 
 		if err == nil && buyerConfirmed && sellerConfirmed {
-			// Both parties confirmed - check if selections match
-			if buyerLocation.String == sellerLocation.String && buyerTime.String == sellerTime.String {
+			// Both parties confirmed - check if selections match (tolerant to whitespace/case)
+			bLoc := strings.ToLower(strings.TrimSpace(buyerLocation.String))
+			sLoc := strings.ToLower(strings.TrimSpace(sellerLocation.String))
+			bTime := strings.ToLower(strings.TrimSpace(buyerTime.String))
+			sTime := strings.ToLower(strings.TrimSpace(sellerTime.String))
+
+			if bLoc == sLoc && bTime == sTime {
 				// Selections match! Update trade status to active and set the final meetup details
 				_, err = h.db.Exec(`
 					UPDATE trades
@@ -2369,9 +2449,10 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 	}
 
 	var payload struct {
-		Rating   int    `json:"rating"`
-		Feedback string `json:"feedback"`
-		ProofURL string `json:"proof_url,omitempty"`
+		Rating        int    `json:"rating"`
+		Feedback      string `json:"feedback"`
+		ProofURL      string `json:"transaction_proof_url,omitempty"`
+		IsCameraPhoto bool   `json:"is_camera_photo"`
 	}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
@@ -2382,9 +2463,10 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Rating must be between 1 and 5"})
 	}
 
-	// Fetch trade and verify authorization
+	// Fetch trade details
 	var buyerID, sellerID int
-	err = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID)
+	var tradeOption string
+	err = h.db.QueryRow("SELECT buyer_id, seller_id, COALESCE(trade_option, 'meetup') FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID, &tradeOption)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
 	}
@@ -2392,26 +2474,39 @@ func (h *TradeHandler) CompleteTrade(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 	}
 
+	// Enforce photo evidence rule for meetup and delivery
+	if tradeOption == "meetup" || tradeOption == "delivery" {
+		if payload.ProofURL == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence is mandatory for " + tradeOption + " trades"})
+		}
+		if !payload.IsCameraPhoto {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Photo evidence must be taken using the in-app camera (no gallery upload allowed)"})
+		}
+	}
+
 	// Determine which columns to update based on user role
-	var ratingColumn, feedbackColumn, proofColumn, completedColumn string
+	var ratingColumn, feedbackColumn, proofColumn, cameraFlagColumn, completedColumn string
 	if userID == buyerID {
 		ratingColumn = "buyer_rating"
 		feedbackColumn = "buyer_feedback"
 		proofColumn = "buyer_proof_url"
+		cameraFlagColumn = "buyer_photo_is_camera"
 		completedColumn = "buyer_completed"
 	} else {
 		ratingColumn = "seller_rating"
 		feedbackColumn = "seller_feedback"
 		proofColumn = "seller_proof_url"
+		cameraFlagColumn = "seller_photo_is_camera"
 		completedColumn = "seller_completed"
 	}
 
-	// Update the trade with rating, feedback, proof, and completion status
+	// Update the trade with rating, feedback, proof, camera flag, and completion status
 	if payload.ProofURL != "" {
 		_, err = h.db.Exec(
-			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+proofColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
-			payload.Rating, payload.Feedback, payload.ProofURL, tradeID)
+			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+proofColumn+"=?, "+cameraFlagColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
+			payload.Rating, payload.Feedback, payload.ProofURL, payload.IsCameraPhoto, tradeID)
 	} else {
+		// This path is only reachable for non-meetup/delivery trades if we allow them without photo
 		_, err = h.db.Exec(
 			"UPDATE trades SET "+ratingColumn+"=?, "+feedbackColumn+"=?, "+completedColumn+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?",
 			payload.Rating, payload.Feedback, tradeID)
@@ -2662,6 +2757,11 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			err = rows.Scan(&chainID, &tradeID, &u3ID, &u3PID, &mStatus, &initiatorUserID, &expiresAt, &u1ID, &u2ID, &u2PID, &u1Name, &u2Name, &u3Name, &initiatorName, &u3WantedTitle, &u2Title, &u3Title)
 			if err == nil {
 				if mStatus == "pending_initiator_upgrade" && userID != initiatorUserID {
+					continue
+				}
+
+				// Hide from User A until User C accepts
+				if mStatus == "pending_user3" && userID != initiatorUserID && userID != u3ID {
 					continue
 				}
 
@@ -4747,6 +4847,29 @@ func (h *TradeHandler) GetUserStrikes(c *fiber.Ctx) error {
 	})
 }
 
+// AdminIssueStrike manually adds a strike to a user
+func (h *TradeHandler) AdminIssueStrike(c *fiber.Ctx) error {
+	targetUserID, _ := strconv.Atoi(c.Params("userId"))
+	if targetUserID == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid user ID"})
+	}
+
+	var payload struct {
+		Reason  string `json:"reason"`
+		ChainID string `json:"chain_id"`
+	}
+	if err := c.BodyParser(&payload); err != nil || payload.Reason == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Reason is required"})
+	}
+
+	h.issueStrike(targetUserID, payload.ChainID, payload.Reason)
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "Strike issued successfully",
+	})
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Phase 4: Per-leg dispute isolation, upstream collapse, admin dispute view
 // ──────────────────────────────────────────────────────────────────────────────
@@ -5089,7 +5212,8 @@ func (h *TradeHandler) AdminGetLegDisputes(c *fiber.Ctx) error {
 		       COALESCE(l.leg_index, 0) as leg_index,
 		       COALESCE(p.title, '') as product_title,
 		       COALESCE(l.status, '') as leg_status,
-		       COALESCE(mw.status, '') as chain_status
+		       COALESCE(mw.status, '') as chain_status,
+		       d.evidence_urls
 		FROM multiway_leg_disputes d
 		JOIN users filer ON filer.id = d.filed_by
 		JOIN users against ON against.id = d.against_user_id
@@ -5120,11 +5244,12 @@ func (h *TradeHandler) AdminGetLegDisputes(c *fiber.Ctx) error {
 		var adminNotes string
 		var upstreamCollapse bool
 		var createdAt, resolvedAt time.Time
+		var evidenceJSON sql.RawBytes
 
 		if err := rows.Scan(&id, &chainID, &legID, &filedBy, &againstUID,
 			&reason, &description, &status, &resolutionAction, &upstreamCollapse,
 			&adminNotes, &createdAt, &resolvedAt,
-			&filerName, &againstName, &legIndex, &productTitle, &legStatus, &chainStatus); err != nil {
+			&filerName, &againstName, &legIndex, &productTitle, &legStatus, &chainStatus, &evidenceJSON); err != nil {
 			continue
 		}
 
@@ -5153,6 +5278,13 @@ func (h *TradeHandler) AdminGetLegDisputes(c *fiber.Ctx) error {
 			"leg_status":                  legStatus,
 			"chain_status":                chainStatus,
 			"created_at":                  createdAt.Format("2006-01-02 15:04:05"),
+			"evidence_urls":               nil,
+		}
+		if len(evidenceJSON) > 0 {
+			var evUrls []string
+			if err := json.Unmarshal(evidenceJSON, &evUrls); err == nil {
+				d["evidence_urls"] = evUrls
+			}
 		}
 		if resolutionAction.Valid {
 			d["resolution_action"] = resolutionAction.String

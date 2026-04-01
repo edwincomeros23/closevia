@@ -97,7 +97,7 @@ import {
 const Dashboard: React.FC = () => {
   const { user, loading, isAuthenticated } = useAuth()
   const { deleteProduct, updateProduct } = useProducts()
-  const { refreshCounts } = useRealtime()
+  const { refreshCounts, setRefreshCallback } = useRealtime()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -218,6 +218,7 @@ const Dashboard: React.FC = () => {
   const [multiWayManagerOpen, setMultiWayManagerOpen] = useState(false)
   const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
   const [loopQuota, setLoopQuota] = useState<null | { unlimited: boolean; period: string; used: number; limit: number }>(null)
+  const prevMultiWayLoopIds = useRef<Set<string>>(new Set())
 
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
@@ -720,7 +721,25 @@ const Dashboard: React.FC = () => {
       const response = await api.get('/api/trades/loops', {
         params: { user_id: user?.id }
       })
-      setMultiWayTrades(response.data?.data || [])
+      const newTrades = response.data?.data || []
+      setMultiWayTrades(newTrades)
+
+      // Detect new loops and notify user
+      const newLoopIds = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
+      const prevIds = prevMultiWayLoopIds.current
+      for (const id of newLoopIds) {
+        if (!prevIds.has(id)) {
+          toast({
+            id: `new-loop-${id}`,
+            title: 'New Trade Loop Found!',
+            description: 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
+            status: 'info',
+            duration: 6000,
+            isClosable: true,
+          })
+        }
+      }
+      prevMultiWayLoopIds.current = newLoopIds
 
       // Free tier monthly quota indicator (used for upsells + disabling where needed).
       try {
@@ -739,6 +758,29 @@ const Dashboard: React.FC = () => {
       setMultiWayTradesLoading(false)
     }
   }
+
+  // Register refresh callbacks for all tabs with RealtimeContext
+  useEffect(() => {
+    setRefreshCallback('products', () => {
+      invalidateProducts()
+    })
+    setRefreshCallback('sentOffers', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('receivedOffers', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('ongoingTrades', () => {
+      invalidateOffers()
+    })
+    setRefreshCallback('multiway', () => {
+      fetchMultiWayTrades()
+    })
+    setRefreshCallback('history', () => {
+      // Invalidate trades/history data
+      invalidateDashboard()
+    })
+  }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard])
 
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
@@ -1048,8 +1090,8 @@ const Dashboard: React.FC = () => {
   // Computed stats for offers (excluding completed - those go to Trade History)
   const offersStats = useMemo(() => {
     const buyout = (buyoutOffers || []).length
-    const sentPending = (outgoing || []).filter(t => t.status === 'pending').length
-    const receivedPending = (incoming || []).filter(t => t.status === 'pending' && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
+    const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway').length
+    const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
     const ongoing = (ongoingTradesData || []).length
     return {
       buyout,
@@ -1101,7 +1143,7 @@ const Dashboard: React.FC = () => {
   }, [buyoutOffers, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const sentOffers = useMemo(() => {
-    const active = (outgoing || []).filter(t => t.status === 'pending') // Only show pending offers
+    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1115,7 +1157,7 @@ const Dashboard: React.FC = () => {
   }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const receivedOffers = useMemo(() => {
-    const active = (incoming || []).filter(t => t.status === 'pending') // Only show pending offers
+    const active = (incoming || []).filter(t => t.status === 'pending') // Only show strictly pending offers for received, multiway moves to multiway tab
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1213,6 +1255,7 @@ const Dashboard: React.FC = () => {
   const badgeColor = (status: Trade['status']) => {
     const statusMap: Record<string, { color: string; icon: string }> = {
       'pending': { color: 'yellow', icon: '🕓' },
+      'pending_multiway': { color: 'purple', icon: '🔁' },
       'accepted': { color: 'green', icon: '✓' },
       'declined': { color: 'red', icon: '✗' },
       'cancelled': { color: 'gray', icon: '✗' },
@@ -1226,7 +1269,8 @@ const Dashboard: React.FC = () => {
 
   const getStatusBadge = (status: Trade['status']) => {
     const { color, icon } = badgeColor(status)
-    const statusText = status.charAt(0).toUpperCase() + status.slice(1)
+    let statusText = status.charAt(0).toUpperCase() + status.slice(1)
+    if (status === 'pending_multiway') statusText = 'Multiway Match'
     return (
       <Badge
         colorScheme={color}
@@ -1354,7 +1398,7 @@ const Dashboard: React.FC = () => {
         confirmColorScheme: 'blue'
       })
 
-      const response = await api.post(`/api/products/${product.id}/boost`)
+      const response = await api.post(`/api/products/boost/${product.id}`)
 
       if (response.data?.success) {
         showPopup({
@@ -2105,7 +2149,7 @@ const Dashboard: React.FC = () => {
             >
               View
             </Button>
-            {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
+            {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
               <>
                 <Button
                   size="sm"
@@ -2129,7 +2173,7 @@ const Dashboard: React.FC = () => {
                 </Button>
               </>
             )}
-            {!isIncoming && trade.status === 'pending' && onCancel && (
+            {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
               <Button
                 size="sm"
                 colorScheme="red"
@@ -2154,7 +2198,7 @@ const Dashboard: React.FC = () => {
           >
             View
           </Button>
-          {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
+          {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
             <>
               <Button
                 size="xs"
@@ -2176,7 +2220,7 @@ const Dashboard: React.FC = () => {
               </Button>
             </>
           )}
-          {!isIncoming && trade.status === 'pending' && onCancel && (
+          {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
             <Button
               size="xs"
               colorScheme="red"
@@ -2508,7 +2552,7 @@ const Dashboard: React.FC = () => {
               >
                 View
               </Button>
-              {isIncoming && trade.status === 'pending' && onAccept && onDecline && (
+              {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
                 <>
                   <Button
                     size={{ base: 'xs', md: 'sm' }}
@@ -2535,7 +2579,7 @@ const Dashboard: React.FC = () => {
                   </Button>
                 </>
               )}
-              {!isIncoming && trade.status === 'pending' && onCancel && (
+              {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
                 <Button
                   size={{ base: 'xs', md: 'sm' }}
                   colorScheme="red"
@@ -3583,11 +3627,6 @@ const Dashboard: React.FC = () => {
                         <Icon as={FaExchangeAlt} boxSize={{ base: 4, md: 5 }} />
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display={{ base: 'none', sm: 'block' }}>Multi-Way</Text>
                         <Text fontSize={{ base: 'xs', sm: 'sm', md: 'md' }} display="none">Trade</Text>
-                        {user?.is_premium && (
-                          <Badge colorScheme="purple" fontSize="2xs" px={1} display={{ base: 'none', md: 'inline-flex' }}>
-                            PRO
-                          </Badge>
-                        )}
                       </HStack>
                     </Tab>
                     <Tab

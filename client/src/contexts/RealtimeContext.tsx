@@ -8,6 +8,13 @@ type RealtimeContextValue = {
   offerCount: number
   notificationCount: number
   refreshCounts: () => void
+  refreshProducts: () => void
+  refreshSentOffers: () => void
+  refreshReceivedOffers: () => void
+  refreshOngoingTrades: () => void
+  refreshMultiWayTrades: () => void
+  refreshHistory: () => void
+  setRefreshCallback: (tabType: 'products' | 'sentOffers' | 'receivedOffers' | 'ongoingTrades' | 'multiway' | 'history', cb: () => void) => void
 }
 
 const RealtimeContext = createContext<RealtimeContextValue>({ offerCount: 0, notificationCount: 0, refreshCounts: () => { } })
@@ -21,6 +28,21 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const esRef = useRef<EventSource | null>(null)
   const seenNotifIdsRef = useRef<Set<number>>(new Set())
   const hasInitializedSeenRef = useRef(false)
+  const refreshCallbacksRef = useRef<{
+    products: (() => void) | null
+    sentOffers: (() => void) | null
+    receivedOffers: (() => void) | null
+    ongoingTrades: (() => void) | null
+    multiway: (() => void) | null
+    history: (() => void) | null
+  }>({
+    products: null,
+    sentOffers: null,
+    receivedOffers: null,
+    ongoingTrades: null,
+    multiway: null,
+    history: null,
+  })
   const [offerCount, setOfferCount] = useState(0)
   const [notificationCount, setNotificationCount] = useState(0)
 
@@ -49,6 +71,21 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (newest && !seenNotifIdsRef.current.has(newest.id)) {
           seenNotifIdsRef.current.add(newest.id)
           showNotification(newest.message || 'New notification', newest.type === 'trade_offer' ? 'success' : 'info')
+          
+          // Trigger appropriate tab refreshes based on notification type
+          const notifType = newest.type || ''
+          if (notifType === 'trade_loop' && refreshCallbacksRef.current.multiway) {
+            // Refresh multi-way tab when loop detected
+            refreshCallbacksRef.current.multiway()
+          } else if (notifType === 'trade_offer' || notifType === 'trade_update') {
+            // Refresh offers/trades tabs when trade updates occur
+            if (refreshCallbacksRef.current.receivedOffers) {
+              refreshCallbacksRef.current.receivedOffers()
+            }
+            if (refreshCallbacksRef.current.ongoingTrades) {
+              refreshCallbacksRef.current.ongoingTrades()
+            }
+          }
         }
       }
       if (seenNotifIdsRef.current.size > 50) {
@@ -88,6 +125,13 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
             queryClient.invalidateQueries({ queryKey: ['trades'] })
             refreshCounts()
+            // Refresh received offers and ongoing trades
+            if (refreshCallbacksRef.current.receivedOffers) {
+              refreshCallbacksRef.current.receivedOffers()
+            }
+            if (refreshCallbacksRef.current.ongoingTrades) {
+              refreshCallbacksRef.current.ongoingTrades()
+            }
             break
           case 'trade_updated':
             showNotification(message || `Trade ${data.status || 'updated'}`, 'info')
@@ -95,10 +139,28 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
             queryClient.invalidateQueries({ queryKey: ['trades'] })
             refreshCounts()
+            // Refresh relevant tabs
+            if (refreshCallbacksRef.current.receivedOffers) {
+              refreshCallbacksRef.current.receivedOffers()
+            }
+            if (refreshCallbacksRef.current.ongoingTrades) {
+              refreshCallbacksRef.current.ongoingTrades()
+            }
+            if (data.notification_type === 'trade_loop' && refreshCallbacksRef.current.multiway) {
+              refreshCallbacksRef.current.multiway()
+            }
             break
           case 'notification':
             showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
             refreshCounts()
+            // Detect type from notification and refresh appropriate tab
+            if (data.notification_type === 'trade_loop' && refreshCallbacksRef.current.multiway) {
+              refreshCallbacksRef.current.multiway()
+            } else if (data.notification_type === 'trade_offer' && refreshCallbacksRef.current.receivedOffers) {
+              refreshCallbacksRef.current.receivedOffers()
+            } else if (data.notification_type === 'product_sold' && refreshCallbacksRef.current.products) {
+              refreshCallbacksRef.current.products()
+            }
             break
           case 'trade_message':
             break
@@ -129,8 +191,59 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => clearInterval(interval)
   }, [user, refreshCounts])
 
+  const refreshMultiWayTrades = useCallback(() => {
+    if (refreshCallbacksRef.current.multiway) {
+      refreshCallbacksRef.current.multiway()
+    }
+  }, [])
+
+  const refreshProducts = useCallback(() => {
+    if (refreshCallbacksRef.current.products) {
+      refreshCallbacksRef.current.products()
+    }
+  }, [])
+
+  const refreshSentOffers = useCallback(() => {
+    if (refreshCallbacksRef.current.sentOffers) {
+      refreshCallbacksRef.current.sentOffers()
+    }
+  }, [])
+
+  const refreshReceivedOffers = useCallback(() => {
+    if (refreshCallbacksRef.current.receivedOffers) {
+      refreshCallbacksRef.current.receivedOffers()
+    }
+  }, [])
+
+  const refreshOngoingTrades = useCallback(() => {
+    if (refreshCallbacksRef.current.ongoingTrades) {
+      refreshCallbacksRef.current.ongoingTrades()
+    }
+  }, [])
+
+  const refreshHistory = useCallback(() => {
+    if (refreshCallbacksRef.current.history) {
+      refreshCallbacksRef.current.history()
+    }
+  }, [])
+
+  const setRefreshCallback = useCallback((tabType: 'products' | 'sentOffers' | 'receivedOffers' | 'ongoingTrades' | 'multiway' | 'history', cb: () => void) => {
+    refreshCallbacksRef.current[tabType] = cb
+  }, [])
+
   return (
-    <RealtimeContext.Provider value={{ offerCount, notificationCount, refreshCounts }}>
+    <RealtimeContext.Provider value={{
+      offerCount,
+      notificationCount,
+      refreshCounts,
+      refreshProducts,
+      refreshSentOffers,
+      refreshReceivedOffers,
+      refreshOngoingTrades,
+      refreshMultiWayTrades,
+      refreshHistory,
+      setRefreshCallback,
+    }}>
       {children}
     </RealtimeContext.Provider>
   )

@@ -61,12 +61,24 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
-// Component to update map center - must be defined outside the main component
 const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
   const map = useMap()
   useEffect(() => {
-    map.setView([lat, lng], 16, { animate: true })
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+      map.setView([lat, lng], 16, { animate: true })
+    }, 200)
+    return () => clearTimeout(timer)
   }, [lat, lng, map])
+  return null
+}
+
+const ModalMapFix = () => {
+  const map = useMap()
+  useEffect(() => {
+    const timer = setTimeout(() => map.invalidateSize(), 250)
+    return () => clearTimeout(timer)
+  }, [map])
   return null
 }
 
@@ -2312,6 +2324,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             // @ts-ignore
                             attributionControl={false}
                           >
+                            <ModalMapFix />
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                             {selectedLocation && suggestedLocations.find(l => l.name === selectedLocation)?.lat && (
                               <MapUpdater
