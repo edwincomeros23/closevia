@@ -539,41 +539,6 @@ const Notifications: React.FC = () => {
                   </Card>
                 );
               })
-                                  New
-                                </Badge>
-                              )}
-                            </HStack>
-                            <Badge colorScheme={getNotificationColor(notification.type)} size="sm">
-                              {notification.type}
-                            </Badge>
-                          </VStack>
-                        </HStack>
-                        <Text fontSize="sm" color="gray.500">
-                          {new Date(notification.created_at).toLocaleDateString()}
-                        </Text>
-                      </HStack>
-                    </CardHeader>
-                    <CardBody pt={0}>
-                      <Text color="gray.700" mb={4}>{notification.message}</Text>
-
-                      {!notification.read ? (
-                        <Button
-                          size="sm"
-                          variant="solid"
-                          colorScheme="blue"
-                          onClick={e => { e.stopPropagation(); markAsRead(notification.id); }}
-                        >
-                          Mark as Read
-                        </Button>
-                      ) : (
-                        <Badge colorScheme="green" variant="subtle" px={2} py={1} borderRadius="full" fontSize="xs">
-                          ✓ Read
-                        </Badge>
-                      )}
-                    </CardBody>
-                  </Card>
-                );
-              })
             )}
 
             {/* Pagination Controls are rendered below the Container for spacing */}

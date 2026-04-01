@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"clovia/models"
+	"github.com/xashathebest/clovia/models"
 )
 
 // MeetupService handles meetup stage transitions and confirmations
