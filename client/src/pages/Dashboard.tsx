@@ -678,7 +678,7 @@ const Dashboard: React.FC = () => {
       setMultiWayTrades(newTrades)
 
       // Detect new loops and notify user
-      const newLoopIds = new Set((newTrades || []).map((t: any) => t.loop_id || t.chain_id || t.id))
+      const newLoopIds = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
       const prevIds = prevMultiWayLoopIds.current
       for (const id of newLoopIds) {
         if (!prevIds.has(id)) {
