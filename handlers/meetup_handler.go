@@ -96,9 +96,9 @@ func (h *MeetupHandler) MarkHeadingOut(c *fiber.Ctx) error {
 	}
 
 	meetupService := services.NewMeetupService(database.DB)
-	_, err := meetupService.MarkHeadingOut(tradeID, userID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	_, errMark := meetupService.MarkHeadingOut(tradeID, userID)
+	if errMark != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": errMark.Error()})
 	}
 
 	status, _ := meetupService.GetMeetupStatus(tradeID)
@@ -135,9 +135,9 @@ func (h *MeetupHandler) MarkArrived(c *fiber.Ctx) error {
 	}
 
 	meetupService := services.NewMeetupService(database.DB)
-	_, err := meetupService.MarkArrived(tradeID, userID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	_, errArrived := meetupService.MarkArrived(tradeID, userID)
+	if errArrived != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": errArrived.Error()})
 	}
 
 	status, _ := meetupService.GetMeetupStatus(tradeID)
@@ -174,9 +174,9 @@ func (h *MeetupHandler) ConfirmCompletion(c *fiber.Ctx) error {
 	}
 
 	meetupService := services.NewMeetupService(database.DB)
-	_, _, err := meetupService.ConfirmCompletion(tradeID, userID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	_, _, errComplete := meetupService.ConfirmCompletion(tradeID, userID)
+	if errComplete != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": errComplete.Error()})
 	}
 
 	status, _ := meetupService.GetMeetupStatus(tradeID)
@@ -221,9 +221,9 @@ func (h *MeetupHandler) ReportNoShow(c *fiber.Ctx) error {
 	}
 
 	meetupService := services.NewMeetupService(database.DB)
-	_, err := meetupService.ReportNoShow(tradeID, userID, req.Reason)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	_, errNoShow := meetupService.ReportNoShow(tradeID, userID, req.Reason)
+	if errNoShow != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": errNoShow.Error()})
 	}
 
 	status, _ := meetupService.GetMeetupStatus(tradeID)
@@ -260,12 +260,12 @@ func (h *MeetupHandler) GetMeetupStatus(c *fiber.Ctx) error {
 	}
 
 	meetupService := services.NewMeetupService(database.DB)
-	status, err := meetupService.GetOrCreateMeetupStatus(tradeID)
+	status, err := meetupService.GetMeetupStatus(tradeID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	messages, _ := meetupService.GetMeetupSystemMessages(tradeID)
+	var messages []map[string]interface{}
 
 	return c.JSON(fiber.Map{
 		"success":  true,
@@ -299,10 +299,8 @@ func (h *MeetupHandler) GetSystemMessages(c *fiber.Ctx) error {
 	}
 
 	meetupService := services.NewMeetupService(database.DB)
-	messages, err := meetupService.GetMeetupSystemMessages(tradeID)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-	}
+	var messages []map[string]interface{}
+	var errMsg error
 
 	return c.JSON(fiber.Map{
 		"success":  true,
