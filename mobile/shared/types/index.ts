@@ -388,3 +388,18 @@ export interface ReportUpdate {
     status: 'pending' | 'reviewed' | 'dismissed' | 'resolved'
     reviewer_comment?: string
 }
+
+export interface PeerVotedTag {
+    tag: string
+    count: number
+}
+
+export interface TrustProfile {
+    average_rating: number // 1-5 star scale
+    completed_trade_count: number
+    peer_voted_tags: PeerVotedTag[]
+    phone_verified: boolean // Required
+    id_verified?: boolean // Optional
+    verified_at: string
+    updated_at: string
+}
