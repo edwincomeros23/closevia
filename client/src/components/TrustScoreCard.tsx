@@ -54,6 +54,7 @@ interface TrustScoreCardProps {
   positivePercent?: number
   tradeStats?: TradeStats
   responseTime?: string
+  hasActiveDispute?: boolean
 }
 
 const statusConfig = {
@@ -130,7 +131,7 @@ const formatResponseTime = (raw?: string): { label: string; colorScheme: string 
   return { label: '🐢 Responds in a few days', colorScheme: 'orange' }
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime }) => {
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime, hasActiveDispute }) => {
   const activeLevel = getTrustLevel(score)
   const responseInfo = formatResponseTime(responseTime)
   
@@ -148,6 +149,7 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
       typeof tradeCount === 'number' ? `🔁 ${tradeCount} trade${tradeCount !== 1 ? 's' : ''}` : '',
       typeof positivePercent === 'number' && positivePercent > 0 ? `⭐ ${Math.round(positivePercent)}% positive` : '',
       responseInfo ? responseInfo.label : '',
+      hasActiveDispute ? '⚠️ Active Dispute' : '',
     ].filter(Boolean).join('\n')
     const badgeSection = badgeLines ? `\n${badgeLines}` : ''
     return (
@@ -173,6 +175,13 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
             <Badge colorScheme={conductSummary.letter_grade.startsWith('A') ? 'green' : conductSummary.letter_grade.startsWith('B') ? 'blue' : conductSummary.letter_grade === 'C' ? 'orange' : 'red'} fontSize="xs">
               {conductSummary.letter_grade}
             </Badge>
+          )}
+          {hasActiveDispute && (
+            <Tooltip label="User has an unresolved trade dispute." hasArrow>
+              <Box as="span">
+                <Icon as={FiAlertTriangle} color="orange.500" boxSize={3.5} />
+              </Box>
+            </Tooltip>
           )}
           <Text fontSize="xs" color="gray.600" fontWeight="medium">
             Trust
@@ -220,6 +229,11 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
         {responseInfo && (
           <Badge px={2} py={1} borderRadius="full" colorScheme={responseInfo.colorScheme} fontSize="xs" fontWeight="medium">
             {responseInfo.label}
+          </Badge>
+        )}
+        {hasActiveDispute && (
+          <Badge px={2} py={1} borderRadius="full" colorScheme="orange" variant="solid" fontSize="xs" fontWeight="bold">
+            ⚠️ Active Dispute
           </Badge>
         )}
       </HStack>

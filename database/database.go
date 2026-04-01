@@ -148,6 +148,18 @@ func CreateTables() error {
 		DB.Exec("ALTER TABLE users ADD COLUMN premium_tier VARCHAR(20) NULL DEFAULT 'free'")
 	}
 
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'strikes'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding strikes column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN strikes INT DEFAULT 0")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_suspended'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding is_suspended column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN is_suspended BOOLEAN DEFAULT FALSE")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'language_preference'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing language_preference column to users table...")
@@ -265,6 +277,8 @@ func CreateTables() error {
 			is_premium BOOLEAN DEFAULT FALSE,
 			premium_tier VARCHAR(20) DEFAULT 'free',
 			verified BOOLEAN DEFAULT FALSE,
+			strikes INT DEFAULT 0,
+			is_suspended BOOLEAN DEFAULT FALSE,
 			last_login TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -644,7 +658,7 @@ func CreateTables() error {
 			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
 			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 		)`,
-		` CREATE TABLE IF NOT EXISTS delivery_stops (
+		`CREATE TABLE IF NOT EXISTS delivery_stops (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			delivery_id INT NOT NULL,
 			stop_number INT NOT NULL,
@@ -668,20 +682,22 @@ func CreateTables() error {
 			INDEX idx_delivery_stop (delivery_id, stop_number),
 			INDEX idx_stop_status (status)
 		)`,
-		`CREATE TABLE IF NOT EXISTS rider_cash_collections (
-			id INT AUTO_INCREMENT PRIMARY KEY,
-			rider_id INT NOT NULL,
-			delivery_id INT NOT NULL,
-			stop_id INT NOT NULL,
-			collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
-			amount DECIMAL(10,2) NOT NULL,
-			collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
-			FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
-			FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
-			INDEX idx_rider_collections (rider_id, collected_at),
-			INDEX idx_delivery_collections (delivery_id)
-		)`,
+		   // ...existing code...
+			   // Move rider_cash_collections table creation after delivery_stops
+			   `CREATE TABLE IF NOT EXISTS rider_cash_collections (
+				   id INT AUTO_INCREMENT PRIMARY KEY,
+				   rider_id INT NOT NULL,
+				   delivery_id INT NOT NULL,
+				   stop_id INT NOT NULL,
+				   collection_type ENUM('pickup_fee', 'delivery_fee') NOT NULL,
+				   amount DECIMAL(10,2) NOT NULL,
+				   collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				   FOREIGN KEY (rider_id) REFERENCES riders(id) ON DELETE CASCADE,
+				   FOREIGN KEY (delivery_id) REFERENCES deliveries(id) ON DELETE CASCADE,
+				   FOREIGN KEY (stop_id) REFERENCES delivery_stops(id) ON DELETE CASCADE,
+				   INDEX idx_rider_collections (rider_id, collected_at),
+				   INDEX idx_delivery_collections (delivery_id)
+			   )`,
 		`CREATE TABLE IF NOT EXISTS rider_ledger (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			rider_id INT NOT NULL UNIQUE,
@@ -1110,8 +1126,8 @@ func ensureTradeColumns() {
 		{"buyer_meetup_time", "VARCHAR(50) NULL"},
 		{"seller_meetup_location", "VARCHAR(500) NULL"},
 		{"seller_meetup_time", "VARCHAR(50) NULL"},
-		{"buyer_met", "BOOLEAN DEFAULT FALSE"},
-		{"seller_met", "BOOLEAN DEFAULT FALSE"},
+		{"buyer_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
+		{"seller_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 	}
 
 	for _, col := range columns {

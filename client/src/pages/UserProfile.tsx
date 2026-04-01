@@ -1152,6 +1152,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       pending: sellerStats.pending_trades ?? 0,
                     }}
                     responseTime={sellerStats.avg_response_time}
+                    hasActiveDispute={sellerStats.has_active_dispute}
                   />
                 </Box>
               ) : (

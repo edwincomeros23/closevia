@@ -1220,6 +1220,18 @@ const ProductDetail: React.FC = () => {
                                 {product.bidding_type === 'blind' ? 'Blind Bidding' : 'Open Bidding'}
                               </Badge>
                             )}
+                            {product.max_items_per_offer && product.max_items_per_offer > 0 && (
+                              <Badge
+                                colorScheme="brand"
+                                variant="subtle"
+                                borderRadius="full"
+                                px={3}
+                                py={1}
+                                fontSize="xs"
+                              >
+                                Max {product.max_items_per_offer} items per offer
+                              </Badge>
+                            )}
                           </VStack>
 
                           <VStack spacing={1} align="end" flexShrink={0}>
@@ -1635,6 +1647,19 @@ const ProductDetail: React.FC = () => {
                         fontSize="xs"
                       >
                         {sellerStats.trust_level === 'trusted' ? '🟢 Trusted Trader' : sellerStats.trust_level === 'new' ? '🟡 New Trader' : '🔴 Risky Trader'}
+                      </Badge>
+                    )}
+                    {sellerStats?.has_active_dispute && (
+                      <Badge
+                        colorScheme="orange"
+                        variant="solid"
+                        borderRadius="full"
+                        px={2}
+                        py={0.5}
+                        fontSize="xs"
+                        fontWeight="bold"
+                      >
+                        ⚠️ Active Dispute
                       </Badge>
                     )}
                   </HStack>
