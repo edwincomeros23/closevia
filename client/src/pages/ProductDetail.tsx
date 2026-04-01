@@ -1625,10 +1625,10 @@ const ProductDetail: React.FC = () => {
                         color="brand.600"
                         _hover={{ textDecoration: 'underline' }}
                       >
-                        {product.seller_name}
+                        {sellerProfile?.name && sellerProfile.name.toLowerCase() !== 'user' ? sellerProfile.name : product.seller_name}
                       </Button>
                     ) : (
-                      <Text color="brand.600" fontWeight="medium">{product.seller_name}</Text>
+                      <Text color="brand.600" fontWeight="medium">{sellerProfile?.name || product.seller_name}</Text>
                     )}
                     {(sellerProfile as any)?.verification_status === 'verified' && (
                       <Badge colorScheme="teal" borderRadius="full" px={2} py={0.5} fontSize="xs">

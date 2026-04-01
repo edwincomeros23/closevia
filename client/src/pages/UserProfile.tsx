@@ -270,7 +270,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
 
         const finalizedUser: PublicUser = {
           id: apiUser.id || 0,
-          name: apiUser.name && apiUser.name.toLowerCase() !== 'user' ? apiUser.name : (apiUser as any).full_name || apiUser.name || 'Anonymous User',
+          name: (apiUser.name && apiUser.name.trim() !== '' && apiUser.name.toLowerCase() !== 'user') 
+            ? apiUser.name 
+            : ((apiUser as any).full_name && (apiUser as any).full_name.trim() !== '' 
+              ? (apiUser as any).full_name 
+              : 'Trader'),
           verified: Boolean(apiUser.verified),
           created_at: (apiUser as any).created_at || new Date().toISOString(),
           // Support multiple field names from different API versions
