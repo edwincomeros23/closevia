@@ -19,71 +19,44 @@ func main() {
 	}
 	defer database.CloseDatabase()
 
-	// Check multiway_trades table - simple select
-	fmt.Println("=== MULTIWAY_TRADES (all) ===")
-	rows, err := database.DB.Query(`SELECT * FROM multiway_trades ORDER BY id DESC LIMIT 10`)
+	// Find user "testt"
+	var id1 int
+	var name1 string
+	err := database.DB.QueryRow(`SELECT id, name FROM users WHERE name LIKE '%testt%' LIMIT 1`).Scan(&id1, &name1)
 	if err != nil {
-		fmt.Println("Error:", err)
+		fmt.Println("User 'testt' not found:", err)
 	} else {
-		cols, _ := rows.Columns()
-		fmt.Println("Columns:", cols)
+		fmt.Printf("User A (testt): id=%d name=%s\n", id1, name1)
+	}
+
+	// Check user 55 (Francis)
+	var id2 int
+	var name2 string
+	err = database.DB.QueryRow(`SELECT id, name FROM users WHERE id = 55`).Scan(&id2, &name2)
+	if err != nil {
+		fmt.Println("User 55 not found:", err)
+	} else {
+		fmt.Printf("User B (Francis): id=%d name=%s\n", id2, name2)
+	}
+
+	// Check latest 5 trades
+	fmt.Println("\nLatest 5 trades:")
+	rows, _ := database.DB.Query(`
+		SELECT t.id, t.buyer_id, t.seller_id, t.status, t.created_at,
+		       ub.name, us.name
+		FROM trades t
+		JOIN users ub ON ub.id = t.buyer_id
+		JOIN users us ON us.id = t.seller_id
+		ORDER BY t.id DESC LIMIT 5
+	`)
+	if rows != nil {
 		for rows.Next() {
-			vals := make([]interface{}, len(cols))
-			ptrs := make([]interface{}, len(cols))
-			for i := range vals {
-				ptrs[i] = &vals[i]
-			}
-			rows.Scan(ptrs...)
-			for i, col := range cols {
-				v := vals[i]
-				if b, ok := v.([]byte); ok {
-					v = string(b)
-				}
-				fmt.Printf("  %s: %v\n", col, v)
-			}
-			fmt.Println("---")
+			var tid, bid, sid int
+			var st, ca, bn, sn string
+			rows.Scan(&tid, &bid, &sid, &st, &ca, &bn, &sn)
+			fmt.Printf("  #%d: %s(%d)->%s(%d) status=%s created=%s\n", tid, bn, bid, sn, sid, st, ca)
 		}
 		rows.Close()
-	}
-
-	// Check pending trades for user 55
-	fmt.Println("\n=== TRADES involving user 55 (pending/active) ===")
-	rows2, err := database.DB.Query(`
-		SELECT id, buyer_id, seller_id, status
-		FROM trades
-		WHERE (buyer_id = 55 OR seller_id = 55) AND status IN ('pending', 'pending_multiway', 'active', 'accepted')
-		ORDER BY id DESC
-	`)
-	if err != nil {
-		fmt.Println("Error:", err)
-	} else {
-		for rows2.Next() {
-			var id, buyerID, sellerID int
-			var status string
-			rows2.Scan(&id, &buyerID, &sellerID, &status)
-			fmt.Printf("Trade #%d: buyer=%d -> seller=%d, status=%s\n", id, buyerID, sellerID, status)
-		}
-		rows2.Close()
-	}
-
-	fmt.Println("\n=== LOOP NOTIFICATIONS for user 55 ===")
-	rows3, err := database.DB.Query(`
-		SELECT id, user_id, loop_id, message, is_read
-		FROM trade_loop_notifications
-		WHERE user_id = 55
-		ORDER BY id DESC LIMIT 10
-	`)
-	if err != nil {
-		fmt.Println("Error:", err)
-	} else {
-		for rows3.Next() {
-			var id, userID int
-			var loopID, message string
-			var isRead bool
-			rows3.Scan(&id, &userID, &loopID, &message, &isRead)
-			fmt.Printf("Notif #%d: loop=%s, read=%v, msg=%.80s\n", id, loopID, isRead, message)
-		}
-		rows3.Close()
 	}
 
 	fmt.Println("\nDone.")

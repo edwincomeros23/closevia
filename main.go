@@ -379,7 +379,7 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
-	products.Post("/:id/boost", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
+	products.Post("/boost/:id", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
 	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
 	products.Get("/:id/suggested-trades", middleware.AuthMiddleware(), productHandler.GetSuggestedTrades)
@@ -531,6 +531,7 @@ func main() {
 	// Admin multiway chain dashboard & strikes (Phase 3)
 	admin.Get("/multiway-chains", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetChains)
 	admin.Get("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.GetUserStrikes)
+	admin.Post("/users/:userId/strikes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminIssueStrike)
 	// Admin leg disputes (Phase 4)
 	admin.Get("/multiway-disputes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetLegDisputes)
 	admin.Put("/multiway-disputes/:disputeId/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminResolveLegDispute)

@@ -174,7 +174,7 @@ export interface PaginatedResponse<T> {
   total_pages: number
 }
 
-export type TradeStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
+export type TradeStatus = 'pending' | 'pending_multiway' | 'accepted' | 'declined' | 'countered' | 'active' | 'awaiting_confirmation' | 'completed' | 'auto_completed' | 'cancelled' | 'expired'
 export type TradeOption = 'meetup' | 'delivery'
 
 export interface TradeItem {
@@ -210,6 +210,8 @@ export interface Trade {
   buyer_meetup_confirmed?: boolean
   seller_meetup_confirmed?: boolean
   transaction_proof_url?: string
+  buyer_met?: boolean
+  seller_met?: boolean
   trade_option?: TradeOption // 'meetup' or 'delivery'
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
@@ -282,7 +284,7 @@ export interface TradeCreate {
 }
 
 export interface TradeAction {
-  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
+  action: 'accept' | 'decline' | 'counter' | 'complete' | 'cancel' | 'confirm_meetup_done' | 'request_option_change' | 'approve_option_change' | 'reject_option_change' | 'convert_to_multiway'
   message?: string
   counter_offered_product_ids?: number[]
   counter_offered_cash_amount?: number

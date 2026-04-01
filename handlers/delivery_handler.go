@@ -2485,3 +2485,45 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 		return c.JSON(models.APIResponse{Success: true, Message: "Payment rejected"})
 	}
 }
+
+// BackfillLedgers creates missing ledger entries for existing approved riders (TASK 20)
+func (h *DeliveryHandler) BackfillLedgers(c *fiber.Ctx) error {
+	log.Println("Admin manually triggered ledger backfill")
+
+	// Get all approved riders who don't have a ledger entry
+	rows, err := h.db.Query(`
+		SELECT id FROM riders r
+		WHERE status = 'approved'
+		AND NOT EXISTS (SELECT 1 FROM rider_ledger rl WHERE rl.rider_id = r.id)
+	`)
+	if err != nil {
+		log.Printf("BackfillLedgers: Query failed: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database error during backfill"})
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var riderID int
+		if err := rows.Scan(&riderID); err != nil {
+			log.Printf("BackfillLedgers: Scan error: %v", err)
+			continue
+		}
+
+		_, err = h.db.Exec(`
+			INSERT IGNORE INTO rider_ledger (rider_id, total_cash_collected, remittance_owed, take_home, free_slots_remaining)
+			VALUES (?, 0.00, 0.00, 0.00, 3)
+		`, riderID)
+		if err != nil {
+			log.Printf("BackfillLedgers: Failed for rider %d: %v", riderID, err)
+			continue
+		}
+		count++
+	}
+
+	log.Printf("BackfillLedgers: Successfully created %d new ledger entries", count)
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: fmt.Sprintf("Successfully backfilled %d rider ledgers", count),
+	})
+}
