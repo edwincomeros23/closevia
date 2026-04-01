@@ -581,6 +581,25 @@ const AdminDashboard: React.FC = () => {
   const [rejectRiderReason, setRejectRiderReason] = useState('');
   const [rejectRiderLoading, setRejectRiderLoading] = useState(false);
 
+  // Task 19/20: Rider free slots config + remittance payment review
+  type AdminRemittancePayment = {
+    id: number;
+    rider_id: number;
+    rider_user_id: number;
+    rider_name: string;
+    rider_email: string;
+    amount_paid: number;
+    payment_method: string;
+    payment_proof_url: string;
+    status: string;
+    created_at: string;
+  };
+  const [riderFreeSlotsDefault, setRiderFreeSlotsDefault] = useState<number>(3);
+  const [riderConfigLoading, setRiderConfigLoading] = useState(false);
+  const [remittancePayments, setRemittancePayments] = useState<AdminRemittancePayment[]>([]);
+  const [remittanceLoading, setRemittanceLoading] = useState(false);
+  const [verifyRemittanceLoadingId, setVerifyRemittanceLoadingId] = useState<number | null>(null);
+
   const { isOpen: isDayModalOpen, onOpen: openDayModal, onClose: closeDayModal } = useDisclosure();
   const {
     isOpen: isDeleteDialogOpen,
@@ -768,6 +787,70 @@ const AdminDashboard: React.FC = () => {
       });
     } finally {
       setBackfillLoading(false);
+    }
+  }, [toast]);
+
+  const fetchRiderConfig = useCallback(async () => {
+    try {
+      setRiderConfigLoading(true);
+      const res = await api.get('/api/admin/rider-config');
+      if (res.data?.success && res.data?.data?.rider_free_slots_default != null) {
+        setRiderFreeSlotsDefault(Number(res.data.data.rider_free_slots_default) || 3);
+      }
+    } catch {
+      // keep default
+    } finally {
+      setRiderConfigLoading(false);
+    }
+  }, []);
+
+  const saveRiderConfig = useCallback(async () => {
+    try {
+      setRiderConfigLoading(true);
+      const value = Number(riderFreeSlotsDefault);
+      const res = await api.put('/api/admin/rider-config', { rider_free_slots_default: value });
+      if (res.data?.success) {
+        toast({ title: 'Saved', description: 'Default free slots updated.', status: 'success', duration: 2500 });
+      } else {
+        toast({ title: 'Save failed', description: res.data?.error || 'Could not update setting', status: 'error', duration: 3000 });
+      }
+    } catch (err: any) {
+      toast({ title: 'Save failed', description: err?.response?.data?.error || err?.message || 'Could not update setting', status: 'error', duration: 3000 });
+    } finally {
+      setRiderConfigLoading(false);
+    }
+  }, [riderFreeSlotsDefault, toast]);
+
+  const fetchRemittancePayments = useCallback(async () => {
+    try {
+      setRemittanceLoading(true);
+      const res = await api.get('/api/admin/remittance-payments?status=pending');
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        setRemittancePayments(res.data.data);
+      } else {
+        setRemittancePayments([]);
+      }
+    } catch {
+      setRemittancePayments([]);
+    } finally {
+      setRemittanceLoading(false);
+    }
+  }, []);
+
+  const approveRemittancePayment = useCallback(async (paymentId: number) => {
+    try {
+      setVerifyRemittanceLoadingId(paymentId);
+      const res = await api.post(`/api/admin/remittance-payments/${paymentId}/verify`, { approve: true });
+      if (res.data?.success) {
+        toast({ title: 'Payment verified', description: 'Rider unlocked and slots refilled.', status: 'success', duration: 3000 });
+        setRemittancePayments(prev => prev.filter(p => p.id !== paymentId));
+      } else {
+        toast({ title: 'Verify failed', description: res.data?.error || 'Could not verify payment', status: 'error', duration: 3000 });
+      }
+    } catch (err: any) {
+      toast({ title: 'Verify failed', description: err?.response?.data?.error || err?.message || 'Could not verify payment', status: 'error', duration: 3000 });
+    } finally {
+      setVerifyRemittanceLoadingId(null);
     }
   }, [toast]);
 
@@ -1333,6 +1416,8 @@ const AdminDashboard: React.FC = () => {
       fetchAdminReports(1),
       fetchAdminCampaigns(),
       fetchRiderApplications(),
+      fetchRiderConfig(),
+      fetchRemittancePayments(),
     ]);
 
     // Connection check doesn't need to be in the mount effect but we'll keep it there for simplicity
@@ -2105,6 +2190,109 @@ const AdminDashboard: React.FC = () => {
             </ModalFooter>
           </ModalContent>
         </Modal>
+
+        {/* Rider Remittance & Free Slots (Task 19/20) */}
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+          <CardHeader>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+              <HStack>
+                <Icon as={FiSettings} color="brand.500" boxSize={5} />
+                <Heading size="sm" color={textColor}>Rider Free Slots & Remittance</Heading>
+              </HStack>
+              <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => { fetchRiderConfig(); fetchRemittancePayments(); }} isLoading={riderConfigLoading || remittanceLoading}>
+                Refresh
+              </Button>
+            </Flex>
+          </CardHeader>
+          <CardBody>
+            <VStack align="stretch" spacing={4}>
+              <Box>
+                <Heading size="xs" color={textColor} mb={2}>Default free delivery slots (new riders & refills)</Heading>
+                <HStack spacing={2} wrap="wrap">
+                  <Input
+                    size="sm"
+                    w="170px"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={riderFreeSlotsDefault}
+                    onChange={e => setRiderFreeSlotsDefault(Number(e.target.value))}
+                  />
+                  <Button size="sm" colorScheme="brand" onClick={saveRiderConfig} isLoading={riderConfigLoading}>
+                    Save
+                  </Button>
+                  <Text fontSize="xs" color={mutedTextColor}>
+                    During free slots, remittance is waived. When slots are exhausted and remittance is due, riders get locked.
+                  </Text>
+                </HStack>
+              </Box>
+
+              <Box>
+                <HStack justify="space-between" mb={2}>
+                  <Heading size="xs" color={textColor}>Pending remittance payments</Heading>
+                  <Button size="xs" variant="outline" onClick={fetchRemittancePayments} isLoading={remittanceLoading}>
+                    Refresh list
+                  </Button>
+                </HStack>
+
+                {remittanceLoading ? (
+                  <Center py={6}><Spinner color="teal.500" /></Center>
+                ) : remittancePayments.length === 0 ? (
+                  <Text fontSize="sm" color={mutedTextColor}>No pending remittance payments.</Text>
+                ) : (
+                  <Box overflowX="auto" border="1px" borderColor={borderColor} borderRadius="md">
+                    <ChakraTable variant="simple" size="sm">
+                      <Thead bg={headerBg}>
+                        <Tr>
+                          <Th color={mutedTextColor}>Rider</Th>
+                          <Th color={mutedTextColor}>Amount</Th>
+                          <Th color={mutedTextColor}>Method</Th>
+                          <Th color={mutedTextColor}>Proof</Th>
+                          <Th color={mutedTextColor}>Submitted</Th>
+                          <Th color={mutedTextColor}>Action</Th>
+                        </Tr>
+                      </Thead>
+                      <Tbody>
+                        {remittancePayments.map(p => (
+                          <Tr key={p.id} _hover={{ bg: hoverBg }}>
+                            <Td>
+                              <VStack align="start" spacing={0}>
+                                <Text fontWeight="600" fontSize="sm">{p.rider_name || `Rider #${p.rider_id}`}</Text>
+                                <Text fontSize="xs" color={mutedTextColor}>{p.rider_email}</Text>
+                              </VStack>
+                            </Td>
+                            <Td fontWeight="600">₱{Number(p.amount_paid).toFixed(2)}</Td>
+                            <Td fontSize="sm">{p.payment_method || '-'}</Td>
+                            <Td>
+                              {p.payment_proof_url ? (
+                                <Button as="a" href={p.payment_proof_url} target="_blank" rel="noreferrer" size="xs" variant="outline">
+                                  View
+                                </Button>
+                              ) : (
+                                <Text fontSize="sm" color={mutedTextColor}>-</Text>
+                              )}
+                            </Td>
+                            <Td fontSize="xs" color={mutedTextColor}>{p.created_at ? new Date(p.created_at).toLocaleString() : '-'}</Td>
+                            <Td>
+                              <Button
+                                size="xs"
+                                colorScheme="green"
+                                onClick={() => approveRemittancePayment(p.id)}
+                                isLoading={verifyRemittanceLoadingId === p.id}
+                              >
+                                Confirm Received
+                              </Button>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </ChakraTable>
+                  </Box>
+                )}
+              </Box>
+            </VStack>
+          </CardBody>
+        </Card>
 
         {/* Rider Applications */}
         <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">

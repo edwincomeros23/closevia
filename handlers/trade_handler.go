@@ -76,7 +76,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	var maxItems int
 	err := h.db.QueryRow("SELECT status, max_items_per_offer FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus, &maxItems)
 	if err != nil {
-		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		}
+		log.Printf("Error fetching target product %d: %v", payload.TargetProductID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate target product"})
 	}
 	if targetStatus != "available" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This product is no longer available for trading"})
@@ -85,7 +89,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	// Validate selection limit
 	if maxItems > 0 && len(payload.OfferedProductIDs) > maxItems {
 		return c.Status(400).JSON(models.APIResponse{
-			Success: false, 
+			Success: false,
 			Error:   fmt.Sprintf("This product only allows up to %d items per trade offer", maxItems),
 		})
 	}
@@ -95,7 +99,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		var offeredStatus string
 		err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", productID).Scan(&offeredStatus)
 		if err != nil {
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One of your offered products not found"})
+			if err == sql.ErrNoRows {
+				return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One of your offered products not found"})
+			}
+			log.Printf("Error fetching offered product %d: %v", productID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate offered products"})
 		}
 		if offeredStatus != "available" {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "One of your offered products is no longer available"})
@@ -156,7 +164,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	var sellerID int
 	if err := tx.QueryRow("SELECT seller_id FROM products WHERE id = ?", payload.TargetProductID).Scan(&sellerID); err != nil {
 		_ = tx.Rollback()
-		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+		}
+		log.Printf("Error fetching target product seller_id %d: %v", payload.TargetProductID, err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate target product"})
 	}
 	if sellerID == userID {
 		_ = tx.Rollback()
@@ -1365,34 +1377,6 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_selection', ?)",
 			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
-
-	case "confirm_meetup_done":
-		log.Printf("=== TRADE MEETUP DONE CONFIRMATION REQUEST ===")
-		log.Printf("User %d confirming meetup happened for trade %d", userID, tradeID)
-
-		column := "buyer_met"
-		if userID == sellerID {
-			column = "seller_met"
-		}
-
-		_, err = h.db.Exec("UPDATE trades SET "+column+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
-		if err != nil {
-			log.Printf("Failed to update meetup done status for trade %d: %v", tradeID, err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup happened"})
-		}
-
-		// Notify other party
-		var otherUserID int
-		if userID == buyerID {
-			otherUserID = sellerID
-		} else {
-			otherUserID = buyerID
-		}
-		publishToUser(otherUserID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "meetup_confirmed_done": true}})
-		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, "The other party confirmed the meeting took place.")
-		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_confirmed_done', ?)",
-			tradeID, userID, currentStatus, "User confirmed meeting happened")
-
 	case "update_delivery_state":
 		// Handle delivery state updates (payment confirmation, proof of delivery, confirmations)
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")
