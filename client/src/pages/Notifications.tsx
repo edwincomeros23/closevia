@@ -176,13 +176,19 @@ const Notifications: React.FC = () => {
       case 'product':
         return '🛍️'
       case 'trade_offer':
-        return '🔄'
+        return '�'
       case 'trade_update':
+        return '🔄'
+      case 'trade_loop':
         return '🔁'
+      case 'similar_item':
+        return '💡'
+      case 'popular_item':
+        return '🔥'
       case 'report':
         return '🚨'
       case 'system':
-        return '🔔'
+        return '⚙️'
       case 'trade_loop':
         return '🔄'
       default:
@@ -197,9 +203,15 @@ const Notifications: React.FC = () => {
       case 'product':
         return 'green'
       case 'trade_offer':
-        return 'purple'
+        return 'cyan'
       case 'trade_update':
         return 'orange'
+      case 'trade_loop':
+        return 'purple'
+      case 'similar_item':
+        return 'teal'
+      case 'popular_item':
+        return 'red'
       case 'report':
         return 'red'
       case 'system':
@@ -415,6 +427,12 @@ const Notifications: React.FC = () => {
                   } else {
                     redirectPath = '/offers/buyout';
                   }
+                } else if (notification.type === 'similar_item' || notification.type === 'popular_item') {
+                  // For product notifications, redirect to browse/search
+                  redirectPath = '/browse';
+                } else if (notification.type === 'trade_loop') {
+                  // For trade loops, go to dashboard multi-way tab
+                  redirectPath = '/dashboard?tab=2';
                 } else if (notification.type === 'trade_loop') {
                   redirectPath = '/dashboard?tab=2';
                 }
@@ -427,6 +445,19 @@ const Notifications: React.FC = () => {
                   if (redirectPath) {
                     navigate(redirectPath);
                   }
+                };
+
+                const getNotificationTitle = (type: string) => {
+                  const titleMap: Record<string, string> = {
+                    'trade_offer': '📬 Trade Offer',
+                    'trade_update': '🔄 Trade Update',
+                    'trade_loop': '🔁 Trade Loop Found',
+                    'similar_item': '💡 Item Match',
+                    'popular_item': '🔥 Trending Item',
+                    'report': '⚠️ Report',
+                    'system': '⚙️ System',
+                  };
+                  return titleMap[type] || type.replace('_', ' ').toUpperCase();
                 };
 
                 return (
@@ -444,13 +475,10 @@ const Notifications: React.FC = () => {
                     <CardHeader pb={2}>
                       <HStack justify="space-between" align="start" flexWrap="wrap" gap={2}>
                         <HStack spacing={3} align="start" minW={0} flex={1}>
-                          <Text fontSize="2xl">
-                            {getNotificationIcon(notification.type)}
-                          </Text>
                           <VStack align="start" spacing={1} minW={0}>
                             <HStack spacing={2} flexWrap="wrap">
                               <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }} noOfLines={1}>
-                                {notification.type.replace('_', ' ').toUpperCase()}
+                                {getNotificationTitle(notification.type)}
                               </Text>
                               {!notification.read && (
                                 <Badge colorScheme="red" size="sm">
@@ -459,7 +487,7 @@ const Notifications: React.FC = () => {
                               )}
                             </HStack>
                             <Badge colorScheme={getNotificationColor(notification.type)} size="sm">
-                              {notification.type}
+                              {notification.type.replace('_', ' ')}
                             </Badge>
                           </VStack>
                         </HStack>
@@ -471,19 +499,47 @@ const Notifications: React.FC = () => {
                     <CardBody pt={0}>
                       <Text color="gray.700" mb={4}>{notification.message}</Text>
 
-                      {!notification.read ? (
-                        <Button
-                          size="sm"
-                          variant="solid"
-                          colorScheme="blue"
-                          onClick={e => { e.stopPropagation(); markAsRead(notification.id); }}
-                        >
-                          Mark as Read
-                        </Button>
-                      ) : (
-                        <Badge colorScheme="green" variant="subtle" px={2} py={1} borderRadius="full" fontSize="xs">
-                          ✓ Read
-                        </Badge>
+                      {redirectPath && (
+                        <HStack spacing={2}>
+                          {!notification.read ? (
+                            <Button
+                              size="sm"
+                              variant="solid"
+                              colorScheme="blue"
+                              onClick={e => { e.stopPropagation(); handleNotificationClick(); }}
+                            >
+                              View & Mark as Read
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              colorScheme="blue"
+                              onClick={e => { e.stopPropagation(); handleNotificationClick(); }}
+                            >
+                              View
+                            </Button>
+                          )}
+                        </HStack>
+                      )}
+
+                      {!redirectPath && (
+                        <>
+                          {!notification.read ? (
+                            <Button
+                              size="sm"
+                              variant="solid"
+                              colorScheme="blue"
+                              onClick={e => { e.stopPropagation(); markAsRead(notification.id); }}
+                            >
+                              Mark as Read
+                            </Button>
+                          ) : (
+                            <Badge colorScheme="green" variant="subtle" px={2} py={1} borderRadius="full" fontSize="xs">
+                              ✓ Read
+                            </Badge>
+                          )}
+                        </>
                       )}
                     </CardBody>
                   </Card>

@@ -4,7 +4,8 @@ import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 export const API_BASE_URL = import.meta.env.VITE_API_URL || (
   import.meta.env.PROD
     ? 'https://clovia-backend.onrender.com'  // Update with your actual Render backend URL
-    : 'http://localhost:4000'                        // Development localhost
+    // In development, use relative baseURL so Vite can proxy `/api`.
+    : ''
 )
 
 const DEBUG_API = localStorage.getItem('debug_api') === 'true'
