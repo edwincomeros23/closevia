@@ -266,6 +266,11 @@ const Offers: React.FC = () => {
           status: 'success',
           duration: 5000
         })
+        
+        // Redirect to dashboard multi-way tab
+        setTimeout(() => {
+          navigate('/dashboard?tab=2')
+        }, 2000)
       }
 
       // Refresh trades after conversion

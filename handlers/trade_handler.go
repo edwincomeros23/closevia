@@ -74,9 +74,15 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	// Check if target product is still available and get selection limit
 	var targetStatus string
 	var maxItems int
-	err := h.db.QueryRow("SELECT status, max_items_per_offer FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus, &maxItems)
+	err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
+	}
+	// Optionally read selection limit (column may not exist in DB yet)
+	var colExists int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'max_items_per_offer'").Scan(&colExists)
+	if colExists > 0 {
+		_ = h.db.QueryRow("SELECT COALESCE(max_items_per_offer, 0) FROM products WHERE id = ?", payload.TargetProductID).Scan(&maxItems)
 	}
 	if targetStatus != "available" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This product is no longer available for trading"})

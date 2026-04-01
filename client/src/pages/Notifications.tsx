@@ -183,6 +183,8 @@ const Notifications: React.FC = () => {
         return '🚨'
       case 'system':
         return '🔔'
+      case 'trade_loop':
+        return '🔄'
       default:
         return '📢'
     }
@@ -201,6 +203,8 @@ const Notifications: React.FC = () => {
       case 'report':
         return 'red'
       case 'system':
+        return 'purple'
+      case 'trade_loop':
         return 'purple'
       default:
         return 'gray'
@@ -411,6 +415,8 @@ const Notifications: React.FC = () => {
                   } else {
                     redirectPath = '/offers/buyout';
                   }
+                } else if (notification.type === 'trade_loop') {
+                  redirectPath = '/dashboard?tab=2';
                 }
                 // Add more types as needed
 
