@@ -292,6 +292,7 @@ func main() {
 	advertisementHandler := handlers.NewAdvertisementHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
+	peerTagHandler := handlers.NewPeerTagHandler()
 	organizationHandler := handlers.NewOrganizationHandler()
 	meetupHandler := handlers.NewMeetupHandler(database.DB)
 
@@ -487,7 +488,14 @@ func main() {
 	trades.Get("/:id/meetup/status", middleware.AuthMiddleware(), meetupHandler.GetMeetupStatus)
 	trades.Get("/:id/meetup/messages", middleware.AuthMiddleware(), meetupHandler.GetSystemMessages)
 
-	// Payment routes
+	// Peer tag routes (post-trade feedback tags)
+	// Specific routes must come before generic :id routes
+	trades.Post("/:id/peer-tags", middleware.AuthMiddleware(), peerTagHandler.CreatePeerTag)
+	trades.Get("/:id/peer-tags/participants", middleware.AuthMiddleware(), peerTagHandler.GetTradeParticipantsTags)
+	trades.Get("/:id/peer-tags", middleware.AuthMiddleware(), peerTagHandler.GetTagsGivenInTrade)
+
+	// User peer tags routes
+	users.Get("/:id/peer-tags", peerTagHandler.GetUserPeerTags) // Public - get peer tags for a user
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.

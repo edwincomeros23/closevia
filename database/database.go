@@ -979,6 +979,31 @@ func CreateTables() error {
 			INDEX idx_reminder_escalation (escalation_id),
 			UNIQUE KEY unique_escalation_milestone (escalation_id, milestone)
 		)`,
+		`CREATE TABLE IF NOT EXISTS peer_tags (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			giver_id INT NOT NULL,
+			receiver_id INT NOT NULL,
+			tag_name VARCHAR(100) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (giver_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_peer_tags_trade (trade_id),
+			INDEX idx_peer_tags_receiver (receiver_id),
+			INDEX idx_peer_tags_giver (giver_id),
+			UNIQUE KEY unique_tag_per_trade (trade_id, giver_id, receiver_id, tag_name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS peer_tag_counts (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			receiver_id INT NOT NULL,
+			tag_name VARCHAR(100) NOT NULL,
+			count INT NOT NULL DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_tag_counts_receiver (receiver_id),
+			UNIQUE KEY unique_user_tag (receiver_id, tag_name)
+		)`,
 	}
 
 	// Execute table creation queries

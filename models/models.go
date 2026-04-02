@@ -950,3 +950,32 @@ type PaginatedEscalationQueue struct {
 	Limit      int                    `json:"limit"`
 	TotalPages int                    `json:"total_pages"`
 }
+
+// PeerTag represents a tag given by one user to another after a completed trade
+type PeerTag struct {
+	ID         int       `json:"id"`
+	TradeID    int       `json:"trade_id"`
+	GiverID    int       `json:"giver_id"`
+	ReceiverID int       `json:"receiver_id"`
+	TagName    string    `json:"tag_name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PeerTagCreate represents the request payload for creating a peer tag
+type PeerTagCreate struct {
+	TradeID int    `json:"trade_id" validate:"required"`
+	TagName string `json:"tag_name" validate:"required,oneof=Item as described On time Friendly Safe meetup spot Smooth delivery Responsive"`
+}
+
+// PeerTagCount represents the count of a specific tag for a user
+type PeerTagCount struct {
+	TagName string `json:"tag_name"`
+	Count   int    `json:"count"`
+}
+
+// PeerTagProfile represents all peer tags and their counts for a user
+type PeerTagProfile struct {
+	UserID int              `json:"user_id"`
+	Tags   []PeerTagCount   `json:"tags"`
+	Total  int              `json:"total"` // Total number of tags given by all peers
+}
