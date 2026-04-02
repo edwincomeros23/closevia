@@ -279,6 +279,7 @@ func main() {
 	tradeHandler := handlers.NewTradeHandler()
 	notificationHandler := handlers.NewNotificationHandler()
 	adminHandler := handlers.NewAdminHandler()
+	escalationHandler := handlers.NewEscalationHandler()
 	commentHandler := handlers.NewCommentHandler()
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
@@ -547,6 +548,12 @@ func main() {
 	// Admin leg disputes (Phase 4)
 	admin.Get("/multiway-disputes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetLegDisputes)
 	admin.Put("/multiway-disputes/:disputeId/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminResolveLegDispute)
+	// Admin escalation management (Phase 5)
+	admin.Get("/escalations/stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.GetEscalationStats)
+	admin.Get("/escalations", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.GetEscalationQueue)
+	admin.Get("/escalations/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.GetEscalationDetail)
+	admin.Post("/escalations/:id/assign", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.AssignEscalation)
+	admin.Post("/escalations/:id/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.ResolveEscalation)
 	// Admin rider verification
 	admin.Get("/rider-applications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminListRiderApplications)
 	admin.Get("/rider-applications/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminGetRiderApplication)
@@ -629,6 +636,9 @@ func main() {
 	// Start server
 	// Start background trade timeout scheduler
 	services.StartTradeTimeoutScheduler(database.DB)
+
+	// Start background escalation SLA scheduler
+	services.StartEscalationSLAScheduler(database.DB)
 
 	// Start background meetup reminder scheduler (24-hour pre-meetup reminders)
 	reminderService := services.NewMeetupReminderService(database.DB)

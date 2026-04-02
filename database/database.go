@@ -925,6 +925,60 @@ func CreateTables() error {
 			INDEX idx_trade_proposals (trade_id),
 			INDEX idx_user_proposals (user_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS dispute_escalations (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			dispute_id INT NOT NULL UNIQUE,
+			trade_id INT NOT NULL,
+			raised_by_id INT NOT NULL,
+			reported_user_id INT NOT NULL,
+			reason VARCHAR(100) NOT NULL,
+			status ENUM('open', 'under_review', 'resolved') NOT NULL DEFAULT 'open',
+			assigned_to_id INT NULL,
+			sla_due_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (dispute_id) REFERENCES trade_disputes(id) ON DELETE CASCADE,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (raised_by_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reported_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_escalations_status (status),
+			INDEX idx_escalations_sla_due (sla_due_at),
+			INDEX idx_escalations_assigned (assigned_to_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS escalation_evidence (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			escalation_id INT NOT NULL,
+			evidence_type ENUM('photo', 'chat_transcript') NOT NULL,
+			evidence_url VARCHAR(500) NULL,
+			evidence_data LONGTEXT NULL,
+			uploaded_by_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (escalation_id) REFERENCES dispute_escalations(id) ON DELETE CASCADE,
+			FOREIGN KEY (uploaded_by_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_evidence_escalation (escalation_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS escalation_resolutions (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			escalation_id INT NOT NULL UNIQUE,
+			resolved_by_admin_id INT NULL,
+			outcome_type ENUM('proceed', 'cancel_return_strike', 'suspend_pending', 'partial_refund', 'warning_only', 'conditional_strike', 'split_resolution') NOT NULL,
+			refund_amount DECIMAL(10,2) NULL,
+			notes TEXT,
+			resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (escalation_id) REFERENCES dispute_escalations(id) ON DELETE CASCADE,
+			FOREIGN KEY (resolved_by_admin_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_resolution_escalation (escalation_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS escalation_reminders (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			escalation_id INT NOT NULL,
+			milestone VARCHAR(20) NOT NULL,
+			notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (escalation_id) REFERENCES dispute_escalations(id) ON DELETE CASCADE,
+			INDEX idx_reminder_escalation (escalation_id),
+			UNIQUE KEY unique_escalation_milestone (escalation_id, milestone)
+		)`,
 	}
 
 	// Execute table creation queries
