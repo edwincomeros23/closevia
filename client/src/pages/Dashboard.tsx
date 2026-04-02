@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
@@ -295,6 +295,17 @@ const Dashboard: React.FC = () => {
       fetchMultiWayTrades()
     }
   }, [user, activeTab])
+
+  // Change tab based on URL param
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam) {
+      const tabIndex = parseInt(tabParam, 10)
+      if (!isNaN(tabIndex)) {
+        setActiveTab(tabIndex)
+      }
+    }
+  }, [searchParams])
 
   // Handle return from Xendit payment redirect
   useEffect(() => {
@@ -1058,6 +1069,7 @@ const Dashboard: React.FC = () => {
       // Refresh trades after conversion
       setTimeout(() => {
         setIsProcessing(false)
+        setActiveTab(2) // Move to Multi-Way tab
         // Optionally refetch trades or let real-time update handle it
       }, 1000)
     } catch (error: any) {
@@ -1143,7 +1155,7 @@ const Dashboard: React.FC = () => {
   }, [buyoutOffers, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const sentOffers = useMemo(() => {
-    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Only show pending offers
+    const active = (outgoing || []).filter(t => t.status === 'pending') // Only show pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1157,7 +1169,7 @@ const Dashboard: React.FC = () => {
   }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const receivedOffers = useMemo(() => {
-    const active = (incoming || []).filter(t => t.status === 'pending') // Only show strictly pending offers for received, multiway moves to multiway tab
+    const active = (incoming || []).filter(t => t.status === 'pending') // Show only pending offers
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1169,6 +1181,15 @@ const Dashboard: React.FC = () => {
     }
     return filtered
   }, [incoming, offersSearch, offersStatusFilter, offersSort, filterTrades])
+
+  const pendingMultiWayTrades = useMemo(() => {
+    const sent = (outgoing || []).filter(t => t.status === 'pending_multiway')
+    const received = (incoming || []).filter(t => t.status === 'pending_multiway')
+    // Combine and remove duplicates by ID if any
+    const all = [...sent, ...received]
+    const unique = Array.from(new Map(all.map(t => [t.id, t])).values())
+    return unique
+  }, [outgoing, incoming])
 
   const ongoingTrades = useMemo(() => {
     const filtered = filterTrades(ongoingTradesData, offersSearch, offersStatusFilter)
@@ -4579,7 +4600,7 @@ const Dashboard: React.FC = () => {
                     <Center py={12}>
                       <Spinner size="lg" color="brand.500" />
                     </Center>
-                  ) : filteredMultiWayTrades.length === 0 ? (
+                  ) : pendingMultiWayTrades.length === 0 && filteredMultiWayTrades.length === 0 ? (
                     multiWayTradesViewMode === 'list' ? (
                       <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={6} textAlign="center">
                         <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
@@ -4613,135 +4634,59 @@ const Dashboard: React.FC = () => {
                         </VStack>
                       </Box>
                     )
-                  ) : multiWayTradesViewMode === 'list' ? (
-                    <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
-                      <Box
-                        px={4}
-                        py={3}
-                        bg="gray.50"
-                        borderBottomWidth="1px"
-                        borderColor="gray.200"
-                        fontSize="xs"
-                        fontWeight="semibold"
-                        color="gray.600"
-                        textTransform="uppercase"
-                        display={{ base: 'none', md: 'flex' }}
-                      >
-                        What • Chain • Participants • Action
-                      </Box>
-                      {filteredMultiWayTrades.map((trade, idx) => (
-                        <Flex
-                          key={trade.id}
-                          align="center"
-                          gap={{ base: 2, md: 4 }}
-                          p={3}
-                          borderBottom={idx < filteredMultiWayTrades.length - 1 ? '1px' : 'none'}
-                          borderColor={borderColor}
-                          _hover={{ bg: 'gray.50' }}
-                          minW={0}
-                          flexWrap="wrap"
-                        >
-                          {(() => {
-                            const summary = getMultiWayTradeSummary(trade)
-                            return (
-                          <VStack align="start" spacing={0} flex={1} minW={0}>
-                            <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }}>
-                              Trade Loop #{trade.id}
-                            </Text>
-                            <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                              You give: {summary.yourGive}
-                            </Text>
-                            <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                              You get: {summary.yourGet}
-                            </Text>
-                            <Text fontSize="xs" color="gray.500" noOfLines={1}>
-                              Chain: {summary.chainLabel}
-                            </Text>
-                            <Text fontSize="xs" color="gray.600">
-                              {trade.participants?.length || 0} participants
-                            </Text>
-                          </VStack>
-                            )
-                          })()}
-                          <HStack spacing={2} flexShrink={0}>
-                            <Badge colorScheme="purple" variant="subtle" fontSize="2xs" px={2} py={1}>
-                              {trade.participants?.length || 0} in loop
-                            </Badge>
-                            {trade?.initiator_view ? (
-                              <Button
-                                size="sm"
-                                colorScheme="purple"
-                                variant="outline"
-                                fontSize={{ base: 'xs', md: 'sm' }}
-                                px={{ base: 2, md: 3 }}
-                                onClick={() => {
-                                  if (trade?.loop_type !== 'detected_loop') return
-                                  if (!user?.is_premium) {
-                                    setShowPremiumModal(true)
-                                    return
-                                  }
-                                  void (async () => {
-                                    try {
-                                      setMultiWayManagerLoading(true)
-                                      const loopId = String(trade?.loop_id || trade?.id || '')
-                                      const details = await fetchMultiWayTrade(loopId)
-                                      setSelectedMultiWayTrade(details)
-                                      setMultiWayManagerOpen(true)
-                                    } catch (e) {
-                                      console.error('Failed to load loop details:', e)
-                                      toast({
-                                        id: 'error-load-loop-details',
-                                        title: 'Error',
-                                        description: 'Failed to load trade loop details.',
-                                        status: 'error',
-                                      })
-                                    } finally {
-                                      setMultiWayManagerLoading(false)
-                                    }
-                                  })()
-                                }}
-                              >
-                                View
-                              </Button>
-                            ) : (
-                              <HStack spacing={2}>
-                                <Button
-                                  size="sm"
-                                  colorScheme="green"
-                                  onClick={() => handleJoinMultiWayTrade(trade)}
-                                  isLoading={multiWayTradeJoining}
-                                  loadingText="Joining..."
-                                  isDisabled={!trade?.can_join}
-                                >
-                                  Hop In
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  colorScheme="red"
-                                  variant="outline"
-                                  onClick={() => handleDeclineMultiWayTrade(trade, false)}
-                                  isDisabled={!trade?.can_decline}
-                                >
-                                  Decline
-                                </Button>
-                                {trade?.loop_type === 'detected_loop' && !trade?.can_create && !user?.is_premium && (
-                                  <Button
-                                    size="sm"
-                                    colorScheme="purple"
-                                    variant="outline"
-                                    onClick={() => setShowPremiumModal(true)}
-                                  >
-                                    Start a Loop <Badge ml={2} colorScheme="purple" fontSize="10px">Pro</Badge>
-                                  </Button>
-                                )}
-                              </HStack>
-                            )}
-                          </HStack>
-                        </Flex>
-                      ))}
-                    </Box>
                   ) : (
-                    <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                    <VStack align="stretch" spacing={6}>
+                      {pendingMultiWayTrades.length > 0 && (
+                        <Box>
+                          <Heading size="sm" mb={3} color="purple.600" display="flex" alignItems="center" gap={2}>
+                            <Icon as={FaClock} /> Finding Matches...
+                          </Heading>
+                          <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                            {pendingMultiWayTrades.map((trade) => (
+                              <Box 
+                                key={`pending-${trade.id}`} 
+                                p={4} 
+                                bg="purple.50" 
+                                borderRadius="lg" 
+                                borderWidth="2px" 
+                                borderColor="purple.200"
+                                borderStyle="dashed"
+                                position="relative"
+                                overflow="hidden"
+                              >
+                                <Badge position="absolute" top={2} right={2} colorScheme="purple">
+                                  Searching
+                                </Badge>
+                                <VStack align="start" spacing={3}>
+                                  <HStack spacing={3}>
+                                    <ProductThumb pid={trade.target_product_id} alt={trade.product_title} size="50px" />
+                                    <VStack align="start" spacing={0}>
+                                      <Text fontWeight="bold" fontSize="sm" noOfLines={1}>
+                                        {trade.product_title}
+                                      </Text>
+                                      <Text fontSize="xs" color="gray.600">
+                                        Status: Waiting for loop match
+                                      </Text>
+                                    </VStack>
+                                  </HStack>
+                                  <Text fontSize="xs" color="purple.700">
+                                    We're looking for other users to complete a trade loop involving your items.
+                                  </Text>
+                                  <Button 
+                                    size="xs" 
+                                    colorScheme="red" 
+                                    variant="ghost" 
+                                    onClick={() => handleCancelTradeClick(trade)}
+                                  >
+                                    Cancel Search
+                                  </Button>
+                                </VStack>
+                              </Box>
+                            ))}
+                          </SimpleGrid>
+                        </Box>
+                      )}
+                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
                       {filteredMultiWayTrades.map((trade) => {
                         const summary = getMultiWayTradeSummary(trade)
                         return (
@@ -4795,6 +4740,7 @@ const Dashboard: React.FC = () => {
                         )
                       })}
                     </SimpleGrid>
+                    </VStack>
                   )}
                 </TabPanel>
 

@@ -74,13 +74,19 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	// Check if target product is still available and get selection limit
 	var targetStatus string
 	var maxItems int
-	err := h.db.QueryRow("SELECT status, max_items_per_offer FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus, &maxItems)
+	err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", payload.TargetProductID).Scan(&targetStatus)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Target product not found"})
 		}
 		log.Printf("Error fetching target product %d: %v", payload.TargetProductID, err)
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate target product"})
+	}
+	// Optionally read selection limit (column may not exist in DB yet)
+	var colExists int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'max_items_per_offer'").Scan(&colExists)
+	if colExists > 0 {
+		_ = h.db.QueryRow("SELECT COALESCE(max_items_per_offer, 0) FROM products WHERE id = ?", payload.TargetProductID).Scan(&maxItems)
 	}
 	if targetStatus != "available" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This product is no longer available for trading"})
@@ -347,6 +353,9 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 		return false, "", "Failed to create loop suggestion", debug, err
 	}
 
+	log.Printf("[MultiWayLoop] ✅ LOOP CREATED: chainID=%s, trade=%d | User1=%d wants-from User2=%d who wants-from User3=%d (%s) | Status=%s",
+		chainID, tradeID, buyerID, sellerID, best.User3ID, best.User3Name, loopStatus)
+
 	if initiatorIsPremium {
 		_, _ = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
 
@@ -402,50 +411,161 @@ func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, initiatorUserID 
 }
 
 func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) {
-	// Get the new product's category and price for filtering
+	// PROACTIVE MULTIWAY DETECTION:
+	// When a product is added, search for complementary products where:
+	// 1. Other users want THIS product (or category)
+	// 2. THIS product's seller wants their product (or category)
+	// Then create multiway suggestions automatically
+
+	var sellerID int
+	var productTitle string
 	var productCategory string
 	var productPrice float64
+	var productWants string
+	var wantedCategories string
+
+	var productIDFromDB int
 	if err := h.db.QueryRow(`
-		SELECT COALESCE(category, ''), COALESCE(price, 0) 
+		SELECT id, COALESCE(seller_id, 0), title, COALESCE(category, ''), COALESCE(price, 0),
+		       COALESCE(wants, ''), COALESCE(wanted_categories, '')
 		FROM products 
 		WHERE id = ?
-	`, productID).Scan(&productCategory, &productPrice); err != nil {
+	`, productID).Scan(&productIDFromDB, &sellerID, &productTitle, &productCategory, &productPrice, &productWants, &wantedCategories); err != nil {
 		log.Printf("autoTriggerMultiwayForNewAvailableProduct: failed to get product details: %v", err)
 		return
 	}
+
+	if sellerID <= 0 {
+		return
+	}
+
+	log.Printf("[ProactiveMultiway] Product added: ID=%d, Title=%s, SellerID=%d, Category=%s", productID, productTitle, sellerID, productCategory)
 
 	// Build price range (±30%)
 	minPrice := productPrice * 0.7
 	maxPrice := productPrice * 1.3
 
-	// Pre-filter pending trades by category match or price range, then take first 50
-	query := `
+	// STRATEGY 1: Find pending trades where target product matches THIS product's category/title
+	query1 := `
 		SELECT DISTINCT t.id, t.seller_id
 		FROM trades t
 		JOIN products p ON p.id = t.target_product_id
 		WHERE t.status = 'pending'
+		AND t.seller_id != ?
 		AND (
 			p.category = ? 
+			OR LOWER(p.title) LIKE LOWER(?)
 			OR (p.price IS NOT NULL AND p.price >= ? AND p.price <= ?)
 		)
 		ORDER BY t.updated_at DESC
-		LIMIT 50
+		LIMIT 20
 	`
-	rows, err := h.db.Query(query, productCategory, minPrice, maxPrice)
+	rows1, err := h.db.Query(query1, sellerID, productCategory, "%"+productTitle+"%", minPrice, maxPrice)
 	if err != nil {
-		log.Printf("autoTriggerMultiwayForNewAvailableProduct: query failed: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var tradeID, sellerID int
-		if err := rows.Scan(&tradeID, &sellerID); err != nil {
-			continue
+		log.Printf("autoTriggerMultiwayForNewAvailableProduct: query1 failed: %v", err)
+	} else {
+		defer rows1.Close()
+		for rows1.Next() {
+			var tradeID, targetSellerID int
+			if err := rows1.Scan(&tradeID, &targetSellerID); err != nil {
+				continue
+			}
+			log.Printf("[ProactiveMultiway] Strategy1: Found trade %d to check", tradeID)
+			h.autoTriggerMultiwayForTrade(tradeID, targetSellerID, "new_available_item_strategy1")
 		}
-		// Natural initiator for auto flow is the target owner (seller/User 2).
-		h.autoTriggerMultiwayForTrade(tradeID, sellerID, "new_available_item")
 	}
+
+	// STRATEGY 2: Find OTHER available products where seller WANTS THIS category/title
+	// AND THIS product's seller wants THAT product's category
+	query2 := `
+		SELECT p.id as other_product_id, p.seller_id as other_seller_id, p.title as other_title
+		FROM products p
+		WHERE p.status = 'available'
+		AND p.seller_id != ?
+		AND (
+			LOWER(p.wants) LIKE LOWER(?)
+			OR LOWER(p.wanted_categories) LIKE LOWER(?)
+			OR LOWER(p.wants) LIKE LOWER(?)
+		)
+		LIMIT 10
+	`
+	rows2, err := h.db.Query(query2, sellerID, "%"+productTitle+"%", "%"+productCategory+"%", "%"+productTitle+"%")
+	if err != nil {
+		log.Printf("autoTriggerMultiwayForNewAvailableProduct: query2 failed: %v", err)
+	} else {
+		defer rows2.Close()
+		for rows2.Next() {
+			var otherProductID, otherSellerID int
+			var otherTitle string
+			if err := rows2.Scan(&otherProductID, &otherSellerID, &otherTitle); err != nil {
+				continue
+			}
+
+			// Check if THIS seller wants THAT product's category
+			var otherCategory string
+			if err := h.db.QueryRow("SELECT COALESCE(category, '') FROM products WHERE id = ?", otherProductID).Scan(&otherCategory); err != nil {
+				continue
+			}
+
+			wantsTheirCategory := false
+			if otherCategory != "" {
+				wantsTheirCategory = (strings.Contains(strings.ToLower(productWants), strings.ToLower(otherCategory)) ||
+					strings.Contains(strings.ToLower(wantedCategories), strings.ToLower(otherCategory)))
+			}
+
+			if wantsTheirCategory {
+				// We found a pair! Create a synthetic trade from the other seller's perspective
+				log.Printf("[ProactiveMultiway] Strategy2: Found complementary pair - Product %d (seller %d wants %s) <-> Product %d (seller %d offers %s)",
+					otherProductID, otherSellerID, otherTitle, productID, sellerID, productTitle)
+
+				// Create a trade suggestion from otherSeller -> sellerID for THIS product
+				// This will trigger multiway detection automatically
+				_ = h.createProactiveTradeForMultiway(otherSellerID, sellerID, productID, otherProductID)
+			}
+		}
+	}
+
+	log.Printf("[ProactiveMultiway] Completed for product ID=%d", productID)
+}
+
+// createProactiveTradeForMultiway creates an internal trade record to trigger multiway detection
+func (h *TradeHandler) createProactiveTradeForMultiway(buyerID, sellerID, targetProductID, offeredProductID int) error {
+	log.Printf("[createProactiveTradeForMultiway] Buyer=%d, Seller=%d, Target=%d, Offered=%d", buyerID, sellerID, targetProductID, offeredProductID)
+
+	// Check if trade already exists
+	var existingID int
+	if err := h.db.QueryRow(`
+		SELECT id FROM trades 
+		WHERE buyer_id = ? AND seller_id = ? AND target_product_id = ? AND status IN ('pending', 'pending_multiway')
+		LIMIT 1
+	`, buyerID, sellerID, targetProductID).Scan(&existingID); err == nil {
+		log.Printf("[createProactiveTradeForMultiway] Trade already exists: %d", existingID)
+		return nil
+	}
+
+	// Create the trade
+	result, err := h.db.Exec(`
+		INSERT INTO trades (buyer_id, seller_id, target_product_id, status, created_at, updated_at)
+		VALUES (?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`, buyerID, sellerID, targetProductID)
+
+	if err != nil {
+		log.Printf("[createProactiveTradeForMultiway] Failed to create trade: %v", err)
+		return err
+	}
+
+	tradeID, _ := result.LastInsertId()
+	log.Printf("[createProactiveTradeForMultiway] Created trade %d", tradeID)
+
+	// Add trade item for offered product
+	_, _ = h.db.Exec(`
+		INSERT INTO trade_items (trade_id, product_id, offered_by, created_at)
+		VALUES (?, ?, 'buyer', CURRENT_TIMESTAMP)
+	`, tradeID, offeredProductID)
+
+	// Trigger multiway detection on this new trade
+	h.autoTriggerMultiwayForTrade(int(tradeID), sellerID, "proactive_multiway_suggestion")
+	return nil
 }
 
 func (h *TradeHandler) recordTradeRejectionSignal(tradeID, rejectorUserID, rejectedUserID int, reason string) {

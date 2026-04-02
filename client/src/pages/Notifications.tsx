@@ -214,6 +214,8 @@ const Notifications: React.FC = () => {
         return 'red'
       case 'system':
         return 'purple'
+      case 'trade_loop':
+        return 'purple'
       default:
         return 'gray'
     }
