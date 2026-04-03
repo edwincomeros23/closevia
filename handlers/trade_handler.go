@@ -181,36 +181,23 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Cannot propose a trade on your own product"})
 	}
 
-	// Insert trade - start with minimal required fields
-	log.Printf("Creating trade with minimal fields first")
-	res, err := tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status) VALUES (?, ?, ?, 'pending')`,
-		userID, sellerID, payload.TargetProductID)
+	// Insert trade with all fields in a single robust call
+	log.Printf("Executing single-step trade insert for trade from %d to %d (seller)", userID, sellerID)
+	res, err := tx.Exec(`
+		INSERT INTO trades 
+		(buyer_id, seller_id, target_product_id, status, trade_option, delivery_address, message, offered_cash_amount, payment_method) 
+		VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
+		userID, sellerID, payload.TargetProductID, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod)
 
 	if err != nil {
-		log.Printf("Basic trade insert failed: %v", err)
+		log.Printf("Trade creation failed: %v", err)
 		_ = tx.Rollback()
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Failed to create basic trade: %v", err)})
-	}
-
-	// Get the trade ID
-	tradeID64, _ := res.LastInsertId()
-	tradeID := int(tradeID64)
-	log.Printf("Basic trade created with ID: %d", tradeID)
-
-	// Now update with the additional fields
-	log.Printf("Updating trade with additional fields")
-	updateQuery := `UPDATE trades SET trade_option = ?, delivery_address = ?, message = ?, offered_cash_amount = ?, payment_method = ? WHERE id = ?`
-	_, err = tx.Exec(updateQuery, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod, tradeID)
-
-	if err != nil {
-		log.Printf("Trade update failed: %v", err)
-		_ = tx.Rollback()
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Failed to update trade: %v", err)})
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade. Please ensure you filled all required fields."})
 	}
 
 	log.Printf("Trade fully created and updated successfully")
-	tradeID64, _ = res.LastInsertId()
-	tradeID = int(tradeID64)
+	tradeID64, _ := res.LastInsertId()
+	tradeID := int(tradeID64)
 
 	// Validate and insert offered items (buyer side)
 	for _, pid := range payload.OfferedProductIDs {
@@ -346,9 +333,9 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 	expiresAt := &expiresTime
 
 	_, err = h.db.Exec(`
-		INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, status, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, chainID, tradeID, initiatorUserID, buyerID, sellerID, best.User3ID, best.User3ProductID, loopStatus, expiresAt)
+		INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, user3_product_id, status, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, chainID, tradeID, initiatorUserID, buyerID, sellerID, best.User3ID, best.User3ProductID, best.User3ProductID, loopStatus, expiresAt)
 	if err != nil {
 		return false, "", "Failed to create loop suggestion", debug, err
 	}
@@ -1076,6 +1063,9 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to decline trade"})
 		}
 
+		// Also cancel any pending multi-way invitations for this trade
+		_, _ = tx.Exec("UPDATE multiway_trades SET status = 'cancelled', updated_at = NOW(), cancelled_at = NOW(), cancelled_by = ? WHERE original_trade_id = ? AND status = 'pending_user3'", userID, tradeID)
+
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit trade decline"})
@@ -1250,6 +1240,9 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel trade"})
 		}
+
+		// Also cancel any pending multi-way invitations for this trade
+		_, _ = tx.Exec("UPDATE multiway_trades SET status = 'cancelled', updated_at = NOW(), cancelled_at = NOW(), cancelled_by = ? WHERE original_trade_id = ? AND status = 'pending_user3'", userID, tradeID)
 
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
@@ -3941,13 +3934,20 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	var user1ID, user2ID, originalTradeID int
 	var user3ProductID sql.NullInt64
 	err = tx.QueryRow(`
-		SELECT user1_id, user2_id, original_trade_id, user3_product_id
+		SELECT user1_id, user2_id, original_trade_id, user3_trade_id
 		FROM multiway_trades
 		WHERE chain_id = ? AND user3_id = ? AND status = 'pending_user3'
 		FOR UPDATE
 	`, chainID, userID).Scan(&user1ID, &user2ID, &originalTradeID, &user3ProductID)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Opportunity not found or already processed"})
+	}
+
+	// Verify original trade is still in pending_multiway status
+	var originalTradeStatus string
+	err = tx.QueryRow("SELECT status FROM trades WHERE id = ?", originalTradeID).Scan(&originalTradeStatus)
+	if err != nil || originalTradeStatus != "pending_multiway" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "The original trade is no longer available for multi-way loop."})
 	}
 
 	// Fetch product IDs from the original trade for leg creation.

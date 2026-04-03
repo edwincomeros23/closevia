@@ -939,6 +939,7 @@ func CreateTables() error {
 	ensureUserColumns()
 	ensureProductColumns()
 	ensureTradeColumns()
+	ensureMultiwayColumns()
 	ensureRiderColumns()
 	ensureDeliveryBatchColumns()
 	ensureAppSettingsDefaults()
@@ -1194,6 +1195,8 @@ func ensureTradeColumns() {
 		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
 		{"option_change_requested", "VARCHAR(20) NULL DEFAULT NULL"},
 		{"net_amount", "DECIMAL(10,2) DEFAULT 0.00"},
+		{"message", "TEXT NULL"},
+		{"offered_cash_amount", "DECIMAL(10,2) NULL"},
 		{"meetup_time", "VARCHAR(50) NULL"},
 		{"buyer_meetup_location", "VARCHAR(500) NULL"},
 		{"buyer_meetup_time", "VARCHAR(50) NULL"},
@@ -1269,7 +1272,7 @@ func ensureTradeColumns() {
 		FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (user3_id) REFERENCES users(id) ON DELETE SET NULL,
 		FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL,
-		INDEX idx_multiway_chain (chain_id),
+		UNIQUE KEY uniq_multiway_chain (chain_id),
 		INDEX idx_multiway_status (status),
 		INDEX idx_multiway_user3 (user3_id),
 		INDEX idx_multiway_expires (expires_at)
@@ -1311,6 +1314,45 @@ func ensureTradeColumns() {
 		} else {
 			log.Println("Added expires_at and cancellation columns to multiway_trades")
 		}
+	}
+}
+
+// ensureMultiwayColumns adds missing tables/columns for Phase 2/3 multi-way trading
+func ensureMultiwayColumns() {
+	// 1. Ensure multiway_trade_legs table exists
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_trade_legs (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		leg_index INT NOT NULL,
+		from_user_id INT NOT NULL,
+		to_user_id INT NOT NULL,
+		product_id INT NOT NULL,
+		handoff_method VARCHAR(20) DEFAULT 'meetup',
+		handoff_location VARCHAR(500) NULL,
+		handoff_time VARCHAR(50) NULL,
+		handoff_photo_url VARCHAR(500) NULL,
+		status ENUM('pending','completed','cancelled','failed') DEFAULT 'pending',
+		completed_at TIMESTAMP NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (chain_id) REFERENCES multiway_trades(chain_id) ON DELETE CASCADE,
+		FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+		INDEX idx_leg_chain (chain_id),
+		INDEX idx_leg_status (status)
+	)`)
+
+	// 2. Unify user3_product_id and user3_trade_id for multiway_trades
+	var exists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'user3_product_id'").Scan(&exists)
+	if exists == 0 {
+		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user3_product_id INT NULL COMMENT 'The specific product ID that User 3 is contributing'")
+	}
+	
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'user3_trade_id'").Scan(&exists)
+	if exists == 0 {
+		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user3_trade_id INT NULL COMMENT 'The specific product ID that User 3 is contributing (Alias)'")
 	}
 }
 
