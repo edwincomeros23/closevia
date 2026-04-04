@@ -123,6 +123,23 @@ const calculateDeliveryFee = (distance: number, type: 'standard' | 'express'): n
   return Math.round(baseFee + surcharge)
 }
 
+const formatTimePH = (time?: string | null): string => {
+  if (!time) return ''
+
+  const parts = time.split(':')
+  if (parts.length < 2) return time
+
+  const hour24 = Number.parseInt(parts[0], 10)
+  const minute = parts[1]
+  if (Number.isNaN(hour24)) return time
+
+  const suffix = hour24 >= 12 ? 'PM' : 'AM'
+  const hour12 = ((hour24 + 11) % 12) + 1
+
+  if (minute === '00') return `${hour12} ${suffix}`
+  return `${hour12}:${minute} ${suffix}`
+}
+
 // Calculate estimated distance between two coordinates (Haversine formula)
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371 // Earth's radius in kilometers
@@ -1096,11 +1113,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [syncingOnlinePayment, setSyncingOnlinePayment] = useState(false)
   const [buyerMeetupConfirmed, setBuyerMeetupConfirmed] = useState(false)
   const [sellerMeetupConfirmed, setSellerMeetupConfirmed] = useState(false)
+  const [buyerMetConfirmed, setBuyerMetConfirmed] = useState(false)
+  const [sellerMetConfirmed, setSellerMetConfirmed] = useState(false)
   // Track each party's meetup selections
   const [buyerMeetupLocation, setBuyerMeetupLocation] = useState<string | null>(null)
   const [buyerMeetupTime, setBuyerMeetupTime] = useState<string | null>(null)
   const [sellerMeetupLocation, setSellerMeetupLocation] = useState<string | null>(null)
   const [sellerMeetupTime, setSellerMeetupTime] = useState<string | null>(null)
+  const [confirmingMeetupDone, setConfirmingMeetupDone] = useState(false)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [deliveryState, setDeliveryState] = useState<DeliveryState>({
     deliveryType: 'standard',
@@ -1131,6 +1151,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const isUserBuyer = !!(trade && currentUserId != null && buyerId != null && buyerId === currentUserId)
   const isUserSeller = !!(trade && currentUserId != null && sellerId != null && sellerId === currentUserId)
+
+  const meetupAgreed = buyerMeetupConfirmed && sellerMeetupConfirmed && buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime
+  const isMeetupActive = meetupAgreed && trade?.status === 'active'
+  const bothMetConfirmed = buyerMetConfirmed && sellerMetConfirmed
+  const userMetConfirmed = (isUserBuyer && buyerMetConfirmed) || (isUserSeller && sellerMetConfirmed)
 
   // Auto-sync online payment status in dev/localhost where webhooks may not arrive.
   useEffect(() => {
@@ -1502,6 +1527,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       setSellerMeetupLocation(tradeData?.seller_meetup_location || null)
       setSellerMeetupTime(tradeData?.seller_meetup_time || null)
 
+	  // Set met confirmation status
+	  setBuyerMetConfirmed(!!tradeData?.buyer_met)
+	  setSellerMetConfirmed(!!tradeData?.seller_met)
+
       // Also set selected location/time if it exists (for display)
       if (tradeData?.meetup_location) {
         setSelectedLocation(tradeData.meetup_location)
@@ -1602,6 +1631,43 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       })
     } finally {
       setConfirmingMeetup(false)
+    }
+  }
+
+  const confirmMeetupDone = async () => {
+    if (!trade || confirmingMeetupDone) return
+
+    try {
+      setConfirmingMeetupDone(true)
+      await api.put(`/api/trades/${trade.id}`, {
+        action: 'confirm_meetup_done',
+      })
+
+      if (isUserBuyer) {
+        setBuyerMetConfirmed(true)
+      } else if (isUserSeller) {
+        setSellerMetConfirmed(true)
+      }
+
+      toast({
+        id: 'viewtrademodal-meetup-done-confirmed',
+        title: 'Confirmed',
+        description: 'Waiting for the other party to confirm they met too.',
+        status: 'success',
+        duration: 3000,
+      })
+
+      await fetchMeetupStatus()
+      onStatusUpdate()
+    } catch (error: any) {
+      toast({
+        id: 'viewtrademodal-meetup-done-failed',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to confirm meetup completion',
+        status: 'error',
+      })
+    } finally {
+      setConfirmingMeetupDone(false)
     }
   }
 
@@ -2274,8 +2340,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     />
                   ) : (
                     <VStack spacing={6} align="stretch">
-                      {/* Status Text - Show only if NOT both confirmed */}
-                      {!(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
+
+                      {!meetupAgreed && (
                         <Box
                           p={3}
                           bg={meetupInfoBg}
@@ -2289,8 +2355,41 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Box>
                       )}
 
-                      {/* Leave Review Section - Show only if BOTH confirmed */}
-                      {(buyerMeetupConfirmed && sellerMeetupConfirmed) && (
+                      {isMeetupActive && !bothMetConfirmed && (
+                        <VStack align="stretch" spacing={3}>
+                          <Box
+                            p={3}
+                            bg={meetupInfoBg}
+                            borderLeft="4px"
+                            borderColor="brand.500"
+                            borderRadius="md"
+                          >
+                            <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
+                              Current Stage: Confirm you met at {buyerMeetupLocation} at {formatTimePH(buyerMeetupTime)}
+                            </Text>
+                          </Box>
+
+                          <Button
+                            colorScheme="green"
+                            size="lg"
+                            onClick={confirmMeetupDone}
+                            isLoading={confirmingMeetupDone}
+                            leftIcon={<FaCheckCircle />}
+                            w="full"
+                            isDisabled={userMetConfirmed}
+                          >
+                            {userMetConfirmed ? 'Confirmed ✓' : 'Confirm You Met'}
+                          </Button>
+
+                          {userMetConfirmed && (
+                            <Text fontSize="xs" color="gray.600" textAlign="center">
+                              Waiting for the other party to confirm.
+                            </Text>
+                          )}
+                        </VStack>
+                      )}
+
+                      {isMeetupActive && bothMetConfirmed && (
                         <Box>
                           <Button
                             colorScheme="green"
@@ -2498,7 +2597,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           {/* Time Input */}
                           <FormControl>
                             <FormLabel fontSize="sm" fontWeight="medium" mb={2}>
-                              Time (24-hour format)
+                              Time
                             </FormLabel>
                             <InputGroup>
                               <InputLeftElement pointerEvents="none">
@@ -2508,7 +2607,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 type="time"
                                 value={selectedTime || ''}
                                 onChange={(e) => setSelectedTime(e.target.value)}
-                                placeholder="e.g., 14:30"
                                 bg="white"
                                 borderWidth="1px"
                                 borderColor={borderColor}
@@ -2535,7 +2633,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   onClick={() => setSelectedTime(time)}
                                   fontWeight="medium"
                                 >
-                                  {time}
+                                  {formatTimePH(time)}
                                 </Button>
                               ))}
                             </HStack>
@@ -2570,7 +2668,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 Select a location and time above, then click submit.
                               </Text>
                               <Text fontSize="xs" color="gray.500" mt={1}>
-                                Both you and {tradingPartner} must agree on the same place and time.
+                                  {formatTimePH(buyerMeetupTime)}
                               </Text>
                             </Box>
                           ) : buyerMeetupConfirmed && sellerMeetupConfirmed ? (
@@ -2593,7 +2691,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   {buyerMeetupLocation}
                                 </Text>
                                 <Text fontSize="sm" color="green.600">
-                                  {buyerMeetupTime}
+                                  {formatTimePH(buyerMeetupTime)}
                                 </Text>
                                 <Text fontSize="xs" color="green.500" mt={2}>
                                   The trade is now active. See you there!
@@ -2630,7 +2728,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       {buyerMeetupLocation}
                                     </Text>
                                     <Text fontSize="xs" color="gray.500">
-                                      {buyerMeetupTime}
+                                      {formatTimePH(buyerMeetupTime)}
                                     </Text>
                                   </Box>
                                   <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
@@ -2641,7 +2739,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                       {sellerMeetupLocation}
                                     </Text>
                                     <Text fontSize="xs" color="gray.500">
-                                      {sellerMeetupTime}
+                                      {formatTimePH(sellerMeetupTime)}
                                     </Text>
                                   </Box>
                                 </SimpleGrid>
@@ -2703,7 +2801,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
                                 <Box textAlign="center">
                                   <Text fontSize="sm" color="green.600" fontWeight="medium">
-                                    You submitted: {isUserBuyer ? buyerMeetupLocation : sellerMeetupLocation} at {isUserBuyer ? buyerMeetupTime : sellerMeetupTime}
+                                    You submitted: {isUserBuyer ? buyerMeetupLocation : sellerMeetupLocation} at {formatTimePH(isUserBuyer ? buyerMeetupTime : sellerMeetupTime)}
                                   </Text>
                                   <Text fontSize="xs" color="gray.500" mt={1}>
                                     Waiting for {tradingPartner} to submit their choice...
@@ -2750,7 +2848,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         >
                           {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed)
                             ? 'Submitted ✓'
-                            : `Submit: ${selectedLocation} at ${selectedTime}`}
+                            : `Submit: ${selectedLocation} at ${formatTimePH(selectedTime)}`}
                         </Button>
                       )}
 
@@ -2793,7 +2891,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       </Modal >
 
 
-      {/* Review Modal - Appears when both parties confirmed meetup */}
+
+      {/* Review Modal */}
       < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="md" isCentered scrollBehavior="inside" >
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl" maxW="500px" mx={4}>

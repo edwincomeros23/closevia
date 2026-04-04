@@ -164,25 +164,133 @@ func normalizeConditionBucket(raw string) string {
 	}
 }
 
+// semanticMatcher checks if two terms match semantically (synonyms, related terms)
+func semanticMatcher(need, have string) bool {
+	need = strings.ToLower(strings.TrimSpace(need))
+	have = strings.ToLower(strings.TrimSpace(have))
+
+	// Direct match
+	if strings.Contains(have, need) || strings.Contains(need, have) {
+		return true
+	}
+
+	// Semantic equivalents
+	equivalents := map[string][]string{
+		"ps5":               {"playstation 5", "playstation", "gaming console", "game console", "console"},
+		"playstation":       {"ps5", "playstation 5", "gaming console", "game console"},
+		"xbox":              {"gaming console", "game console", "console"},
+		"gaming console":    {"ps5", "playstation", "xbox", "console", "game"},
+		"game console":      {"ps5", "playstation", "xbox", "console", "gaming"},
+		"iphone":            {"phone", "mobile", "smartphone", "ios", "apple"},
+		"iphone 15":         {"iphone", "phone", "mobile", "smartphone"},
+		"iphone 15 pro":     {"iphone", "iphone 15", "phone", "mobile", "smartphone"},
+		"iphone 15 pro max": {"iphone", "iphone 15", "phone", "mobile", "smartphone"},
+		"phone":             {"iphone", "mobile", "smartphone", "android"},
+		"mobile":            {"phone", "iphone", "smartphone", "android"},
+		"smartphone":        {"phone", "iphone", "mobile", "android"},
+		"macbook":           {"laptop", "notebook", "computer", "mac"},
+		"macbook pro":       {"macbook", "laptop", "notebook", "computer", "mac"},
+		"macbook air":       {"macbook", "laptop", "notebook", "computer", "mac"},
+		"laptop":            {"macbook", "notebook", "computer", "pc"},
+		"notebook":          {"laptop", "computer", "macbook", "pc"},
+		"camera":            {"dslr", "mirrorless", "photography"},
+		"dslr":              {"camera", "mirrorless", "photography"},
+		"headphones":        {"earbuds", "audio", "headset", "wireless"},
+		"earbuds":           {"headphones", "audio", "wireless"},
+		"watch":             {"smartwatch", "wearable", "timepiece"},
+		"smartwatch":        {"watch", "wearable", "device"},
+		"tablet":            {"ipad", "android tablet", "device"},
+		"ipad":              {"tablet", "device", "apple"},
+	}
+
+	if synList, exists := equivalents[need]; exists {
+		for _, syn := range synList {
+			if strings.Contains(have, syn) {
+				return true
+			}
+		}
+	}
+	if synList, exists := equivalents[have]; exists {
+		for _, syn := range synList {
+			if strings.Contains(need, syn) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func wantedSignalScore(candidateWants, candidateWantedCategories, candidateDesiredProduct, offeredTitle, offeredCategory string) (int, bool) {
 	needleTitle := strings.ToLower(strings.TrimSpace(offeredTitle))
 	needleCategory := strings.ToLower(strings.TrimSpace(offeredCategory))
 	haystack := strings.ToLower(candidateWants + " " + candidateWantedCategories + " " + candidateDesiredProduct)
 
+	// Extract key words from offered title for better matching
+	// E.g., "iPhone 15 Pro Max - Test" => ["iPhone", "15", "Pro", "Max"]
+	offeredKeywords := []string{}
+	titleParts := strings.Split(needleTitle, " ")
+	for _, part := range titleParts {
+		if strings.Contains(part, "-") || strings.Contains(part, "test") {
+			break // Skip everything after dash or "test"
+		}
+		offeredKeywords = append(offeredKeywords, part)
+	}
+
+	// Exact title match (highest priority)
 	if needleTitle != "" && strings.Contains(haystack, needleTitle) {
 		return 18, true
 	}
+
+	// Check if any key word from offered title matches what candidate wants
+	for _, keyword := range offeredKeywords {
+		if len(keyword) > 2 && strings.Contains(haystack, keyword) {
+			return 18, true
+		}
+	}
+
+	// Semantic match on title (e.g., PS5 matches "gaming console")
+	if needleTitle != "" {
+		for _, want := range strings.Split(candidateWants, ",") {
+			if semanticMatcher(needleTitle, strings.TrimSpace(want)) {
+				return 16, true
+			}
+		}
+	}
+
+	// Check semantic match for keywords
+	for _, keyword := range offeredKeywords {
+		if len(keyword) > 2 {
+			for _, want := range strings.Split(candidateWants, ",") {
+				if semanticMatcher(keyword, strings.TrimSpace(want)) {
+					return 16, true
+				}
+			}
+		}
+	}
+
+	// Category match
 	if needleCategory != "" && strings.Contains(haystack, needleCategory) {
 		return 12, true
 	}
+
+	// Semantic match on category
+	if needleCategory != "" {
+		for _, want := range strings.Split(candidateWantedCategories, ",") {
+			if semanticMatcher(needleCategory, strings.TrimSpace(want)) {
+				return 10, true
+			}
+		}
+	}
+
 	return 0, false
 }
 
 // FindMultiwayMatchDetailed runs a tolerant scoring-based multi-way matcher.
 // Wants text is now a bonus signal, not a hard requirement.
 func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int, excludeUserIDs []int) ([]MultiwayMatch, MultiwayDebugInfo, error) {
-	log.Printf("FindMultiwayMatch: Searching for User3. User1=%d, User2=%d, TradeID=%d", user1ID, user2ID, originalTradeID)
-	const minScore = 35
+	log.Printf("[FindMultiwayMatch] Starting search. User1=%d, User2=%d, TradeID=%d", user1ID, user2ID, originalTradeID)
+	const minScore = 30 // Lowered from 35 with improved semantic matching
 	debug := MultiwayDebugInfo{TradeID: originalTradeID, Threshold: minScore, Candidates: []MultiwayCandidateDebug{}}
 
 	// 1. Get what User 1 offered
@@ -265,15 +373,88 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 			continue
 		}
 
+		// STRATEGIC FILTER: Skip User3 if their product doesn't match what User2 wants
+		// This prevents bad matches from scoring higher than good ones
+		user2WantsMatch := false
+		u2Haystack := strings.ToLower(targetWants + " " + targetWantedCat + " " + targetDesiredProd)
+		u3TitleLower := strings.ToLower(strings.TrimSpace(user3ProductTitle))
+		u3CatLower := strings.ToLower(strings.TrimSpace(user3Category))
+
+		// Extract key words from product title (first 1-2 words usually are the product name)
+		// E.g., "PlayStation 5 Console - Test" => extract "PlayStation 5"
+		u3KeyWords := []string{}
+		titleParts := strings.Split(u3TitleLower, " ")
+		for i, part := range titleParts {
+			if strings.Contains(part, "-") || strings.Contains(part, "test") {
+				break // Skip everything after dash or "test"
+			}
+			u3KeyWords = append(u3KeyWords, part)
+			if i >= 2 { // Limit to first 3 words
+				break
+			}
+		}
+
+		// Check if any key word semantically matches what User2 wants
+		for _, keyword := range u3KeyWords {
+			if semanticMatcher(keyword, u2Haystack) {
+				user2WantsMatch = true
+				break
+			}
+		}
+
+		// Check if User3's product semantically matches what User2 wants (full title)
+		if !user2WantsMatch && semanticMatcher(u3TitleLower, u2Haystack) {
+			user2WantsMatch = true
+		}
+
+		// Also check category
+		if !user2WantsMatch && semanticMatcher(u3CatLower, u2Haystack) {
+			user2WantsMatch = true
+		}
+
+		// Check with direct string containment for keywords
+		for _, keyword := range u3KeyWords {
+			if strings.Contains(u2Haystack, keyword) {
+				user2WantsMatch = true
+				break
+			}
+		}
+
+		// Also check with direct string containment (full title and category as fallback)
+		if !user2WantsMatch && (strings.Contains(u2Haystack, u3TitleLower) || strings.Contains(u2Haystack, u3CatLower)) {
+			user2WantsMatch = true
+		}
+
 		for _, up := range u1Prods {
 			score := 0
 			reasons := []string{}
+
+			// If User3's product doesn't match User2's wants, this is not a good match - skip
+			if !user2WantsMatch {
+				reasons = append(reasons, "USER2 DOESN'T WANT THIS PRODUCT - REJECTED")
+				debug.Candidates = append(debug.Candidates, MultiwayCandidateDebug{
+					User3ID:           user3ID,
+					User3Name:         user3Name,
+					User3ProductID:    user3ProductID,
+					User3ProductTitle: user3ProductTitle,
+					OfferedProductID:  up.ID,
+					OfferedTitle:      up.Title,
+					Score:             0,
+					PassedThreshold:   false,
+					Reasons:           reasons,
+				})
+				continue
+			}
 
 			u2Haystack := strings.ToLower(targetWants + " " + targetWantedCat + " " + targetDesiredProd)
 			u3TitleLower := strings.ToLower(strings.TrimSpace(user3ProductTitle))
 			u3CatLower := strings.ToLower(strings.TrimSpace(user3Category))
 
-			if u3TitleLower != "" && strings.Contains(u2Haystack, u3TitleLower) {
+			// Check if U3's product semantically matches U2's wants (STRONG SIGNAL)
+			if semanticMatcher(u3TitleLower, targetWants) {
+				score += 50 // Maximum score for perfect semantic match on wants
+				reasons = append(reasons, "[PERFECT] User 3 product semantically matches User 2's explicit wants (+50)")
+			} else if u3TitleLower != "" && strings.Contains(u2Haystack, u3TitleLower) {
 				score += 35
 				reasons = append(reasons, "User 3 title matched what User 2 wants (+35)")
 			} else if u3CatLower != "" && strings.Contains(u2Haystack, u3CatLower) {
@@ -368,6 +549,7 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 	if len(matches) == 0 {
 		if len(debug.Candidates) == 0 {
 			debug.NoMatchReason = "No available User 3 found in the same category/title as the target product."
+			log.Printf("[FindMultiwayMatch] ❌ NO MATCH (Trade %d): %s", originalTradeID, debug.NoMatchReason)
 		} else {
 			best := 0
 			for _, c := range debug.Candidates {
@@ -379,6 +561,13 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 			if best > 0 {
 				debug.NoMatchReason += " Best score: " + strconv.Itoa(best) + "."
 			}
+			log.Printf("[FindMultiwayMatch] ❌ NO MATCH (Trade %d): %s Found %d candidates", originalTradeID, debug.NoMatchReason, len(debug.Candidates))
+		}
+	} else {
+		log.Printf("[FindMultiwayMatch] ✅ LOOP FOUND (Trade %d): Found %d matching User 3 candidates!", originalTradeID, len(matches))
+		for i, match := range matches {
+			log.Printf("  [%d] User3=%d (%s) has %s, wants your %s | Score: %d",
+				i+1, match.User3ID, match.User3Name, match.User3ProductTitle, match.User1ProductTitle, match.MatchScore)
 		}
 	}
 	return matches, debug, nil

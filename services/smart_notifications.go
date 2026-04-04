@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-
 // SmartNotificationTrigger runs after a product is successfully created.
 // It checks if any of the users who have products listed have wishlisted the
 // new product's category, and fires a notification: "A new item similar to
@@ -46,7 +45,7 @@ func (s *SmartNotificationService) NotifyNewSimilarItem(productID int, sellerID 
 	}
 	defer rows.Close()
 
-	msg := fmt.Sprintf("A new item similar to what you want was just posted: \"%s\"", productTitle)
+	msg := fmt.Sprintf("💡 \"%s\" matches what you want! A new item just posted in this category.", productTitle)
 	for rows.Next() {
 		var uid int
 		var name string

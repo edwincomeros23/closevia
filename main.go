@@ -292,6 +292,7 @@ func main() {
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
 	organizationHandler := handlers.NewOrganizationHandler()
+	meetupHandler := handlers.NewMeetupHandler(database.DB)
 
 	// Hybrid matcher background refresh (MVP cron-like task).
 	go func() {
@@ -476,6 +477,15 @@ func main() {
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
 
+	// Meetup routes (stage-aware meeting coordination)
+	trades.Post("/:id/meetup/propose", middleware.AuthMiddleware(), meetupHandler.ProposeMeetupTime)
+	trades.Post("/:id/meetup/heading-out", middleware.AuthMiddleware(), meetupHandler.MarkHeadingOut)
+	trades.Post("/:id/meetup/arrived", middleware.AuthMiddleware(), meetupHandler.MarkArrived)
+	trades.Post("/:id/meetup/confirm-completion", middleware.AuthMiddleware(), meetupHandler.ConfirmCompletion)
+	trades.Post("/:id/meetup/report-no-show", middleware.AuthMiddleware(), meetupHandler.ReportNoShow)
+	trades.Get("/:id/meetup/status", middleware.AuthMiddleware(), meetupHandler.GetMeetupStatus)
+	trades.Get("/:id/meetup/messages", middleware.AuthMiddleware(), meetupHandler.GetSystemMessages)
+
 	// Payment routes
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
@@ -619,6 +629,14 @@ func main() {
 	// Start server
 	// Start background trade timeout scheduler
 	services.StartTradeTimeoutScheduler(database.DB)
+
+	// Start background meetup reminder scheduler (24-hour pre-meetup reminders)
+	reminderService := services.NewMeetupReminderService(database.DB)
+	go func() {
+		log.Println("Starting pre-meetup reminder scheduler...")
+		reminderService.SchedulePreMeetupReminders()
+	}()
+
 	log.Printf("Starting Clovia server on port %s", port)
 	log.Fatal(app.Listen(":" + port))
 }
