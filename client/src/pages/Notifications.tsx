@@ -429,6 +429,8 @@ const Notifications: React.FC = () => {
                 } else if (notification.type === 'trade_loop') {
                   // For trade loops, go to dashboard multi-way tab
                   redirectPath = '/dashboard?tab=2';
+                } else if (notification.type === 'trade_loop') {
+                  redirectPath = '/dashboard?tab=2';
                 }
                 // Add more types as needed
 

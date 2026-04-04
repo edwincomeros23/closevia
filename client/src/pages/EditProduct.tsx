@@ -21,7 +21,12 @@ import {
   Image as ChakraImage,
   Grid,
   FormHelperText,
+  SimpleGrid,
+  Badge,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react'
+import { CloseIcon } from '@chakra-ui/icons'
 import { ProductUpdate } from '../types'
 import { api } from '../services/api'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
@@ -71,6 +76,15 @@ const EditProduct: React.FC = () => {
       setOriginalProduct(product)
 
       // Pre-fill form with current values
+      let parsedWantedCats: string[] = []
+      try {
+        if (Array.isArray(product.wanted_categories)) {
+          parsedWantedCats = product.wanted_categories
+        } else if (typeof product.wanted_categories === 'string' && product.wanted_categories) {
+          parsedWantedCats = JSON.parse(product.wanted_categories)
+        }
+      } catch { /* ignore parse errors */ }
+
       setFormData({
         title: product.title || '',
         description: product.description || '',
@@ -80,6 +94,8 @@ const EditProduct: React.FC = () => {
         category: product.category || '',
         location: product.location || '',
         max_items_per_offer: product.max_items_per_offer ?? 0,
+        wants: product.wants || '',
+        wanted_categories: parsedWantedCats,
       })
 
       // Load persisted previews for this product
@@ -213,6 +229,8 @@ const EditProduct: React.FC = () => {
       if (formData.category) form.append('category', formData.category)
       if (formData.location) form.append('location', formData.location)
       if (formData.max_items_per_offer !== undefined) form.append('max_items_per_offer', String(formData.max_items_per_offer))
+      if (formData.wants !== undefined) form.append('wants', formData.wants)
+      form.append('wanted_categories', JSON.stringify(formData.wanted_categories || []))
 
       // Add image files from previews that are data URLs (newly uploaded)
       // For existing server URLs, we keep them via image_urls field
@@ -408,6 +426,70 @@ const EditProduct: React.FC = () => {
                     size={{ base: 'md', md: 'lg' }}
                   />
                 </FormControl>
+
+                {/* Desired Exchange */}
+                <Box borderTopWidth="1px" borderColor="green.200" pt={4}>
+                  <Text fontWeight="600" fontSize={{ base: 'sm', md: 'md' }} mb={3}>
+                    What are you looking for? (Optional)
+                  </Text>
+                  <VStack spacing={4} align="stretch">
+                    <FormControl>
+                      <FormLabel fontSize="sm" color="gray.600">Desired Item Categories</FormLabel>
+                      <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={2}>
+                        {PRODUCT_CATEGORIES.map((cat) => {
+                          const isSelected = (formData.wanted_categories || []).includes(cat.value)
+                          return (
+                            <Button
+                              key={cat.value}
+                              size="xs"
+                              variant={isSelected ? 'solid' : 'outline'}
+                              colorScheme={isSelected ? 'brand' : 'gray'}
+                              onClick={() => {
+                                const current = formData.wanted_categories || []
+                                const next = isSelected
+                                  ? current.filter(v => v !== cat.value)
+                                  : [...current, cat.value]
+                                handleInputChange('wanted_categories', next)
+                              }}
+                              rounded="full"
+                            >
+                              {cat.label}
+                            </Button>
+                          )
+                        })}
+                      </SimpleGrid>
+                      {(formData.wanted_categories || []).length > 0 && (
+                        <Wrap mt={2} spacing={1}>
+                          {(formData.wanted_categories || []).map(v => {
+                            const cat = PRODUCT_CATEGORIES.find(c => c.value === v)
+                            return (
+                              <WrapItem key={v}>
+                                <Badge colorScheme="brand" borderRadius="full" px={2} py={1} fontSize="xs" cursor="pointer"
+                                  onClick={() => handleInputChange('wanted_categories', (formData.wanted_categories || []).filter(c => c !== v))}>
+                                  {cat?.label || v} <CloseIcon boxSize="8px" ml={1} />
+                                </Badge>
+                              </WrapItem>
+                            )
+                          })}
+                        </Wrap>
+                      )}
+                      <FormHelperText fontSize="xs" color="gray.500">
+                        Select categories you'd be interested in trading for
+                      </FormHelperText>
+                    </FormControl>
+
+                    <FormControl>
+                      <FormLabel fontSize="sm" color="gray.600">Specific Items (Optional)</FormLabel>
+                      <Input
+                        value={formData.wants || ''}
+                        onChange={(e) => handleInputChange('wants', e.target.value)}
+                        placeholder="e.g., iPhone 13, mechanical keyboard, etc."
+                        size={{ base: 'md', md: 'lg' }}
+                      />
+                      <FormHelperText fontSize="xs" color="gray.500">Specific items you have in mind</FormHelperText>
+                    </FormControl>
+                  </VStack>
+                </Box>
 
                 {/* Offer Item Limit */}
                 <FormControl>

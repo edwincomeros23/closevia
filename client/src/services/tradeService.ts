@@ -164,6 +164,31 @@ export const reinviteTradeLoop = async (loopId: string): Promise<void> => {
 }
 
 /**
+ * Fetch open multiway loops that the current user's products can match into.
+ */
+export const fetchDiscoverableMultiwayLoops = async (): Promise<any[]> => {
+  try {
+    const response = await api.get('/api/trades/multiway/discoverable')
+    return response.data?.data || []
+  } catch (error) {
+    console.error('Failed to fetch discoverable multiway loops:', error)
+    throw error
+  }
+}
+
+/**
+ * Volunteer to join an open multiway chain with a specific product.
+ */
+export const hopIntoMultiwayChain = async (chainId: string, productId: number): Promise<void> => {
+  try {
+    await api.post(`/api/trades/multiway/${chainId}/hop-in`, { product_id: productId })
+  } catch (error) {
+    console.error(`Failed to hop into chain ${chainId}:`, error)
+    throw error
+  }
+}
+
+/**
  * Create a new trade proposal
  */
 export const createTrade = async (tradeData: any): Promise<Trade> => {
@@ -206,6 +231,40 @@ export const fetchTradeMessages = async (tradeId: number): Promise<any[]> => {
     return response.data?.data || []
   } catch (error) {
     console.error(`Failed to fetch messages for trade ${tradeId}:`, error)
+    throw error
+  }
+}
+
+/**
+ * Fetch all legs for an active multiway chain along with health indicator
+ */
+export const getChainLegs = async (chainId: string): Promise<any> => {
+  try {
+    const response = await api.get(`/api/trades/multiway/${chainId}/legs`)
+    return response.data?.data
+  } catch (error) {
+    console.error(`Failed to fetch legs for chain ${chainId}:`, error)
+    throw error
+  }
+}
+
+/**
+ * Set handoff method/location/time for a specific leg (either party in the leg can call this)
+ */
+export const updateLegHandoff = async (
+  legId: number,
+  handoffMethod: 'meetup' | 'delivery',
+  handoffLocation?: string,
+  handoffTime?: string
+): Promise<void> => {
+  try {
+    await api.put(`/api/trades/multiway/legs/${legId}/handoff`, {
+      handoff_method: handoffMethod,
+      handoff_location: handoffLocation,
+      handoff_time: handoffTime,
+    })
+  } catch (error) {
+    console.error(`Failed to update handoff for leg ${legId}:`, error)
     throw error
   }
 }

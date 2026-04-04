@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   Box,
   VStack,
@@ -41,7 +41,12 @@ interface RiderLedger {
   is_locked_for_remittance: boolean
 }
 
-const RemittanceLedger: React.FC = () => {
+type RemittanceLedgerProps = {
+  embedded?: boolean
+  totalEarnings?: number
+}
+
+const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, totalEarnings }) => {
   const navigate = useNavigate()
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
@@ -99,10 +104,11 @@ const RemittanceLedger: React.FC = () => {
     fetchLedger()
   }, [])
 
-  const totalEarnings = ledgerData?.total_cash_collected || 0
+  const totalCashCollected = ledgerData?.total_cash_collected || 0
   const totalFeesDue = ledgerData?.remittance_owed || 0
-  const takeHome = ledgerData?.take_home || 0
+  const computedTotalEarnings = ledgerData?.take_home || 0
   const isLocked = ledgerData?.is_locked_for_remittance || false
+  const totalEarningsToDisplay = typeof totalEarnings === 'number' ? totalEarnings : computedTotalEarnings
 
   const handleRemitFees = async () => {
     if (!selectedPaymentMethod) {
@@ -162,14 +168,14 @@ const RemittanceLedger: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Center h="100vh" bg="#FFFDF1">
+      <Center py={10} bg={embedded ? 'transparent' : '#FFFDF1'}>
         <Spinner size="xl" color="brand.500" />
       </Center>
     )
   }
 
   return (
-    <Box minH="100vh" bg="#FFFDF1" py={6} px={4}>
+    <Box minH={embedded ? 'auto' : '100vh'} bg="#FFFDF1" py={6} px={4}>
       <VStack spacing={6} maxW="md" mx="auto">
         {/* Header */}
         <HStack w="full" justify="space-between">
@@ -195,7 +201,7 @@ const RemittanceLedger: React.FC = () => {
                   Total Cash Collected
                 </Text>
                 <Text fontSize="lg" fontWeight="bold" color="blue.600">
-                  ₱{totalEarnings.toFixed(2)}
+                  ₱{totalCashCollected.toFixed(2)}
                 </Text>
               </VStack>
             </CardBody>
@@ -218,10 +224,10 @@ const RemittanceLedger: React.FC = () => {
             <CardBody p={3}>
               <VStack spacing={1} align="center">
                 <Text fontSize="xs" color="green.800" fontWeight="bold" textAlign="center">
-                  Take-Home
+                  Total Earnings
                 </Text>
                 <Text fontSize="lg" fontWeight="bold" color="green.600">
-                  ₱{takeHome.toFixed(2)}
+                  ₱{totalEarningsToDisplay.toFixed(2)}
                 </Text>
               </VStack>
             </CardBody>
@@ -300,38 +306,42 @@ const RemittanceLedger: React.FC = () => {
           {totalFeesDue > 0 ? `Pay ₱${totalFeesDue.toFixed(2)} Fees Now` : `No Remittance Fees Owed`}
         </Button>
 
-        {/* Navigation Buttons */}
-        <HStack spacing={2} w="full">
-          <Button
-            flex={1}
-            size="sm"
-            variant="outline"
-            colorScheme="brand"
-            onClick={() => navigate('/rider-home')}
-          >
-            📍 Find Batches
-          </Button>
-          <Button
-            flex={1}
-            size="sm"
-            variant="outline"
-            colorScheme="brand"
-            onClick={() => navigate('/rider-home')}
-          >
-            📋 My Jobs
-          </Button>
-        </HStack>
+        {!embedded && (
+          <>
+            {/* Navigation Buttons */}
+            <HStack spacing={2} w="full">
+              <Button
+                flex={1}
+                size="sm"
+                variant="outline"
+                colorScheme="brand"
+                onClick={() => navigate('/rider-home')}
+              >
+                📍 Find Batches
+              </Button>
+              <Button
+                flex={1}
+                size="sm"
+                variant="outline"
+                colorScheme="brand"
+                onClick={() => navigate('/rider-home')}
+              >
+                📋 My Jobs
+              </Button>
+            </HStack>
 
-        {/* Back to Queue */}
-        <Button
-          w="full"
-          variant="ghost"
-          colorScheme="brand"
-          fontSize="sm"
-          onClick={() => navigate('/rider-home')}
-        >
-          ← Back to Queue
-        </Button>
+            {/* Back to Queue */}
+            <Button
+              w="full"
+              variant="ghost"
+              colorScheme="brand"
+              fontSize="sm"
+              onClick={() => navigate('/rider-home')}
+            >
+              ← Back to Queue
+            </Button>
+          </>
+        )}
       </VStack>
 
       {/* Payment Modal */}
