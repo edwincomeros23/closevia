@@ -1331,7 +1331,7 @@ func ensureMultiwayColumns() {
 		handoff_location VARCHAR(500) NULL,
 		handoff_time VARCHAR(50) NULL,
 		handoff_photo_url VARCHAR(500) NULL,
-		status ENUM('pending','completed','cancelled','failed') DEFAULT 'pending',
+		status ENUM('pending','in_progress','completed','cancelled','failed','disputed') DEFAULT 'pending',
 		completed_at TIMESTAMP NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1339,9 +1339,24 @@ func ensureMultiwayColumns() {
 		FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+		UNIQUE KEY uniq_chain_leg (chain_id, leg_index),
 		INDEX idx_leg_chain (chain_id),
 		INDEX idx_leg_status (status)
 	)`)
+
+	// For existing databases: add the unique constraint if it doesn't exist yet.
+	var ukCount int
+	_ = DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trade_legs' AND INDEX_NAME = 'uniq_chain_leg'
+	`).Scan(&ukCount)
+	if ukCount == 0 {
+		if _, err := DB.Exec("ALTER TABLE multiway_trade_legs ADD UNIQUE KEY uniq_chain_leg (chain_id, leg_index)"); err != nil {
+			log.Printf("Warning: could not add unique constraint on (chain_id, leg_index): %v", err)
+		} else {
+			log.Println("Added UNIQUE constraint on multiway_trade_legs(chain_id, leg_index)")
+		}
+	}
 
 	// 2. Unify user3_product_id and user3_trade_id for multiway_trades
 	var exists int
@@ -1354,6 +1369,18 @@ func ensureMultiwayColumns() {
 	if exists == 0 {
 		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user3_trade_id INT NULL COMMENT 'The specific product ID that User 3 is contributing (Alias)'")
 	}
+
+	// 3. Ensure ongoing_deadline column exists (7-day timer after last acceptance)
+	var hasOngoingDeadline int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'ongoing_deadline'").Scan(&hasOngoingDeadline)
+	if hasOngoingDeadline == 0 {
+		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN ongoing_deadline TIMESTAMP NULL COMMENT '7-day deadline after chain becomes active'")
+		log.Println("Added ongoing_deadline column to multiway_trades")
+	}
+
+	// 4. Ensure multiway_trade_legs status ENUM includes 'in_progress' and 'disputed'
+	// (needed for per-leg dispute flow and handoff tracking)
+	_, _ = DB.Exec("ALTER TABLE multiway_trade_legs MODIFY COLUMN status ENUM('pending','in_progress','completed','cancelled','failed','disputed') DEFAULT 'pending'")
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow

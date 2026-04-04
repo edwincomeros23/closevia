@@ -211,6 +211,40 @@ export const fetchTradeMessages = async (tradeId: number): Promise<any[]> => {
 }
 
 /**
+ * Fetch all legs for an active multiway chain along with health indicator
+ */
+export const getChainLegs = async (chainId: string): Promise<any> => {
+  try {
+    const response = await api.get(`/api/trades/multiway/${chainId}/legs`)
+    return response.data?.data
+  } catch (error) {
+    console.error(`Failed to fetch legs for chain ${chainId}:`, error)
+    throw error
+  }
+}
+
+/**
+ * Set handoff method/location/time for a specific leg (either party in the leg can call this)
+ */
+export const updateLegHandoff = async (
+  legId: number,
+  handoffMethod: 'meetup' | 'delivery',
+  handoffLocation?: string,
+  handoffTime?: string
+): Promise<void> => {
+  try {
+    await api.put(`/api/trades/multiway/legs/${legId}/handoff`, {
+      handoff_method: handoffMethod,
+      handoff_location: handoffLocation,
+      handoff_time: handoffTime,
+    })
+  } catch (error) {
+    console.error(`Failed to update handoff for leg ${legId}:`, error)
+    throw error
+  }
+}
+
+/**
  * Send a message in a trade chat
  */
 export const sendTradeMessage = async (
