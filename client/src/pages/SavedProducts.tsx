@@ -325,7 +325,7 @@ const SavedProducts: React.FC = () => {
                       h="120px"
                       w="full"
                       objectFit="cover"
-                      fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                      fallbackSrc="/no-image.svg"
                     />
                     <IconButton
                       aria-label="Remove from saved"

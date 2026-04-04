@@ -1661,6 +1661,16 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 		})
 	}
 
+	// Re-trigger multiway search if category/wants fields changed and product is available
+	if p.Status == "available" {
+		for _, f := range updateFields {
+			if strings.Contains(f, "category") || strings.Contains(f, "wants") {
+				go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(productID)
+				break
+			}
+		}
+	}
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: "Product updated successfully",

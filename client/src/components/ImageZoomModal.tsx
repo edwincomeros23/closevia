@@ -65,7 +65,7 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ isOpen, onClose, imageU
               maxW="100%"
               maxH="90vh"
               objectFit="contain"
-              fallbackSrc="https://via.placeholder.com/800x600?text=Loading+Image..."
+              fallbackSrc="/no-image.svg"
             />
           </Box>
         </ModalBody>

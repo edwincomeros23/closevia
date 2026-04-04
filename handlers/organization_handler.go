@@ -335,15 +335,28 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 
 	pattern := "%" + q + "%"
 	rows, err := h.db.Query(`
-		SELECT o.id, o.name, o.slug, COALESCE(o.description, ''), COALESCE(o.category, ''), COALESCE(o.logo_url, ''),
-		       o.creator_user_id,
-		       COALESCE(SUM(CASE WHEN m.status = 'approved' THEN 1 ELSE 0 END), 0) AS member_count
-		FROM organizations o
-		LEFT JOIN organization_memberships m ON m.organization_id = o.id
-		WHERE o.is_deleted = FALSE
-		  AND (? = '' OR o.name LIKE ? OR o.slug LIKE ? OR o.category LIKE ?)
-		GROUP BY o.id, o.name, o.slug, o.description, o.category, o.logo_url, o.creator_user_id
-		ORDER BY o.created_at DESC
+		SELECT id, name, slug, description, category, logo_url, creator_user_id, member_count
+		FROM (
+			SELECT o.id, o.name, o.slug, COALESCE(o.description, '') as description, COALESCE(o.category, '') as category, 
+			       COALESCE(o.logo_url, '') as logo_url, o.creator_user_id,
+			       COALESCE(SUM(CASE WHEN m.status = 'approved' THEN 1 ELSE 0 END), 0) AS member_count,
+			       o.created_at
+			FROM organizations o
+			LEFT JOIN organization_memberships m ON m.organization_id = o.id
+			WHERE o.is_deleted = FALSE
+			GROUP BY o.id, o.name, o.slug, o.description, o.category, o.logo_url, o.creator_user_id, o.created_at
+
+			UNION ALL
+
+			SELECT id, COALESCE(org_name, name) as name, COALESCE(org_handle, slug) as slug, 
+			       COALESCE(bio, '') as description, COALESCE(org_category, '') as category, 
+			       COALESCE(org_logo_url, profile_picture, '') as logo_url, id as creator_user_id,
+			       0 AS member_count, created_at
+			FROM users
+			WHERE is_organization = TRUE
+		) AS combined
+		WHERE (? = '' OR name LIKE ? OR slug LIKE ? OR category LIKE ?)
+		ORDER BY created_at DESC
 		LIMIT ?
 	`, q, pattern, pattern, pattern, limit)
 	if err != nil {

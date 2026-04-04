@@ -32,7 +32,17 @@ func NewTradeGraph(db *sql.DB) (*TradeGraph, error) {
 		Nodes: make(map[int]bool),
 	}
 
-	rows, err := db.Query("SELECT id, buyer_id, seller_id FROM trades WHERE status IN ('pending', 'pending_multiway')")
+	rows, err := db.Query(`
+		SELECT t.id, t.buyer_id, t.seller_id
+		FROM trades t
+		JOIN users ub ON ub.id = t.buyer_id
+		JOIN users us ON us.id = t.seller_id
+		JOIN products pt ON pt.id = t.target_product_id
+		WHERE t.status IN ('pending', 'pending_multiway')
+		  AND ub.role != 'admin'
+		  AND us.role != 'admin'
+		  AND pt.status = 'available'
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -349,6 +359,7 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		FROM products p
 		JOIN users u ON u.id = p.seller_id
 		WHERE p.status = 'available'
+		  AND u.role != 'admin'
 	`
 	searchRows, err := db.Query(query)
 	if err != nil {
