@@ -120,7 +120,7 @@ func (s *MeetupService) ProposeMeetupDetails(tradeID, userID int, proposedTime t
 			systemMsg = &models.SystemMessage{
 				MessageType: "proposal_mismatch",
 				Title:       "📍 Meetup Details Proposed",
-				Description: fmt.Sprintf("Both users have proposed meetup details. Review and agree on a time and location."),
+				Description: "Both users have proposed meetup details. Review and agree on a time and location.",
 				Actions: []models.Action{
 					{
 						Label:      "💬 Counter Propose",
