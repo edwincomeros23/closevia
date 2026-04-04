@@ -80,7 +80,7 @@ import TradeModal from '../components/TradeModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 import MultiWayTradeUI from '../components/MultiWayTradeUI'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
-import { fetchMultiWayTrade, fetchLoopQuota } from '../services/tradeService'
+import { fetchMultiWayTrade, fetchLoopQuota, fetchDiscoverableMultiwayLoops, hopIntoMultiwayChain } from '../services/tradeService'
 import {
   useDashboardProducts,
   useDashboardOrders,
@@ -216,6 +216,9 @@ const Dashboard: React.FC = () => {
   // Multi-way trade state
   const [multiWayTrades, setMultiWayTrades] = useState<any[]>([])
   const [multiWayTradesLoading, setMultiWayTradesLoading] = useState(false)
+  const [discoverableLoops, setDiscoverableLoops] = useState<any[]>([])
+  const [discoverableLoading, setDiscoverableLoading] = useState(false)
+  const [hoppingInto, setHoppingInto] = useState<string | null>(null)
   const [selectedMultiWayTrade, setSelectedMultiWayTrade] = useState<any>(null)
   const [multiWayTradeJoining, setMultiWayTradeJoining] = useState(false)
   const [showPremiumModal, setShowPremiumModal] = useState(false)
@@ -297,6 +300,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     if (user && activeTab === 2) {
       fetchMultiWayTrades()
+      fetchDiscoverableLoops()
     }
   }, [user, activeTab])
 
@@ -735,7 +739,22 @@ const Dashboard: React.FC = () => {
       const response = await api.get('/api/trades/loops', {
         params: { user_id: user?.id }
       })
-      const newTrades = response.data?.data || []
+      const rawTrades = response.data?.data || []
+      // Deduplicate detected loops that appear in both directions (e.g. loop_123_125 and loop_125_123)
+      const seen = new Map<string, any>()
+      for (const t of rawTrades) {
+        if (t.loop_type === 'detected_loop' && t.loop_id) {
+          // Sort the trade-id parts so both directions map to the same key
+          const parts = String(t.loop_id).split('_')
+          const prefix = parts[0] // 'loop'
+          const sorted = parts.slice(1).sort().join('_')
+          const canonical = `${prefix}_${sorted}`
+          if (!seen.has(canonical)) seen.set(canonical, t)
+        } else {
+          seen.set(t.loop_id || t.chain_id || t.id, t)
+        }
+      }
+      const newTrades = Array.from(seen.values())
       setMultiWayTrades(newTrades)
 
       // Detect new loops and notify user
@@ -773,6 +792,18 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  const fetchDiscoverableLoops = async () => {
+    try {
+      setDiscoverableLoading(true)
+      const data = await fetchDiscoverableMultiwayLoops()
+      setDiscoverableLoops(data || [])
+    } catch {
+      setDiscoverableLoops([])
+    } finally {
+      setDiscoverableLoading(false)
+    }
+  }
+
   // Register refresh callbacks for all tabs with RealtimeContext
   useEffect(() => {
     setRefreshCallback('products', () => {
@@ -795,6 +826,37 @@ const Dashboard: React.FC = () => {
       invalidateDashboard()
     })
   }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard])
+
+  const handleHopIntoDiscoverable = async (trade: any) => {
+    const chainId = String(trade?.chain_id || '')
+    const productId = trade?.you_give_id
+    if (!chainId || !productId) {
+      toast({ id: 'hop-in-missing', title: 'Error', description: 'Missing chain or product info', status: 'error' })
+      return
+    }
+    try {
+      setHoppingInto(chainId)
+      await hopIntoMultiwayChain(chainId, productId)
+      toast({
+        id: `hop-in-success-${chainId}`,
+        title: 'Request sent!',
+        description: 'The participants will be notified. Check back to see if they accept.',
+        status: 'success',
+        duration: 5000,
+      })
+      await fetchDiscoverableLoops()
+      await fetchMultiWayTrades()
+    } catch (error: any) {
+      toast({
+        id: `hop-in-error-${chainId}`,
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to join trade loop',
+        status: 'error',
+      })
+    } finally {
+      setHoppingInto(null)
+    }
+  }
 
   const handleJoinMultiWayTrade = async (trade: any) => {
     try {
@@ -1188,9 +1250,9 @@ const Dashboard: React.FC = () => {
   const pendingMultiWayTrades = useMemo(() => {
     const sent = (outgoing || []).filter(t => t.status === 'pending_multiway')
     const received = (incoming || []).filter(t => t.status === 'pending_multiway')
-    // Combine and remove duplicates by ID if any
     const all = [...sent, ...received]
-    const unique = Array.from(new Map(all.map(t => [t.id, t])).values())
+    // Deduplicate by target_product_id — same product may appear in multiple chains
+    const unique = Array.from(new Map(all.map(t => [t.target_product_id, t])).values())
     return unique
   }, [outgoing, incoming])
 
@@ -4589,11 +4651,67 @@ const Dashboard: React.FC = () => {
                     </Box>
                   )}
 
+                  {/* Open Loops You Can Hop Into */}
+                  {discoverableLoading ? (
+                    <Center py={6}>
+                      <Spinner size="md" color="teal.400" />
+                    </Center>
+                  ) : discoverableLoops.length > 0 && (
+                    <Box mb={6}>
+                      <Heading size="sm" mb={3} color="teal.600" display="flex" alignItems="center" gap={2}>
+                        <Icon as={FaExchangeAlt} /> Open Loops You Can Join
+                      </Heading>
+                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                        {discoverableLoops.map((loop: any) => (
+                          <Box
+                            key={`discoverable-${loop.chain_id}`}
+                            p={4}
+                            bg="teal.50"
+                            borderRadius="lg"
+                            borderWidth="2px"
+                            borderColor="teal.200"
+                            position="relative"
+                          >
+                            <Badge colorScheme="teal" mb={2} fontSize="10px">OPEN LOOP</Badge>
+                            {loop.match_score && (
+                              <Badge colorScheme="green" ml={2} mb={2} fontSize="10px">
+                                {loop.match_score}% match
+                              </Badge>
+                            )}
+                            <VStack align="start" spacing={1} mb={3}>
+                              <Text fontSize="xs" color="gray.500">You give</Text>
+                              <Text fontSize="sm" fontWeight="semibold" color="teal.700" noOfLines={2}>
+                                {loop.you_give_title}
+                              </Text>
+                              <Text fontSize="xs" color="gray.500" mt={1}>You get</Text>
+                              <Text fontSize="sm" fontWeight="semibold" noOfLines={2}>
+                                {loop.you_get_title}
+                              </Text>
+                              <Text fontSize="xs" color="gray.400" mt={1}>
+                                {loop.user1_name} → {loop.user2_name} → You
+                              </Text>
+                            </VStack>
+                            <Button
+                              size="sm"
+                              colorScheme="teal"
+                              width="full"
+                              isLoading={hoppingInto === loop.chain_id}
+                              isDisabled={!!hoppingInto}
+                              onClick={() => handleHopIntoDiscoverable(loop)}
+                            >
+                              Hop In
+                            </Button>
+                          </Box>
+                        ))}
+                      </SimpleGrid>
+                    </Box>
+                  )}
+
                   {multiWayTradesLoading ? (
                     <Center py={12}>
                       <Spinner size="lg" color="brand.500" />
                     </Center>
-                  ) : pendingMultiWayTrades.length === 0 && filteredMultiWayTrades.length === 0 ? (
+                  ) : pendingMultiWayTrades.length === 0 && filteredMultiWayTrades.length === 0 && discoverableLoops.length === 0 ? (
                     multiWayTradesViewMode === 'list' ? (
                       <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={6} textAlign="center">
                         <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />

@@ -140,6 +140,8 @@ type User struct {
 	ActivityStatus              string     `json:"activity_status,omitempty"`
 	Strikes                     int        `json:"strikes"`
 	IsSuspended                 bool       `json:"is_suspended"`
+	NameChangedAt               *time.Time `json:"name_changed_at,omitempty"`
+	PhoneChangedAt              *time.Time `json:"phone_changed_at,omitempty"`
 }
 
 // UserLogin represents login credentials
@@ -975,7 +977,7 @@ type PeerTagCount struct {
 
 // PeerTagProfile represents all peer tags and their counts for a user
 type PeerTagProfile struct {
-	UserID int              `json:"user_id"`
-	Tags   []PeerTagCount   `json:"tags"`
-	Total  int              `json:"total"` // Total number of tags given by all peers
+	UserID int            `json:"user_id"`
+	Tags   []PeerTagCount `json:"tags"`
+	Total  int            `json:"total"` // Total number of tags given by all peers
 }

@@ -189,8 +189,6 @@ const Notifications: React.FC = () => {
         return '🚨'
       case 'system':
         return '⚙️'
-      case 'trade_loop':
-        return '🔄'
       default:
         return '📢'
     }

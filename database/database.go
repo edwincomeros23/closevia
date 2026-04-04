@@ -195,6 +195,19 @@ func CreateTables() error {
 		log.Println("Adding missing password_changed_at column to users table...")
 		DB.Exec("ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP NULL")
 	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'name_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing name_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN name_changed_at TIMESTAMP NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_changed_at TIMESTAMP NULL")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews' AND COLUMN_NAME = 'reply'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing reply columns to reviews table...")
@@ -253,6 +266,8 @@ func CreateTables() error {
 			phone_otp_expires TIMESTAMP NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			password_changed_at TIMESTAMP NULL,
+			name_changed_at TIMESTAMP NULL,
+			phone_changed_at TIMESTAMP NULL,
 			role VARCHAR(10) NOT NULL DEFAULT 'user',
 			is_organization TINYINT(1) NOT NULL DEFAULT 0,
 			org_verified TINYINT(1) NOT NULL DEFAULT 0,

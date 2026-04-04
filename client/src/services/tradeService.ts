@@ -164,6 +164,31 @@ export const reinviteTradeLoop = async (loopId: string): Promise<void> => {
 }
 
 /**
+ * Fetch open multiway loops that the current user's products can match into.
+ */
+export const fetchDiscoverableMultiwayLoops = async (): Promise<any[]> => {
+  try {
+    const response = await api.get('/api/trades/multiway/discoverable')
+    return response.data?.data || []
+  } catch (error) {
+    console.error('Failed to fetch discoverable multiway loops:', error)
+    throw error
+  }
+}
+
+/**
+ * Volunteer to join an open multiway chain with a specific product.
+ */
+export const hopIntoMultiwayChain = async (chainId: string, productId: number): Promise<void> => {
+  try {
+    await api.post(`/api/trades/multiway/${chainId}/hop-in`, { product_id: productId })
+  } catch (error) {
+    console.error(`Failed to hop into chain ${chainId}:`, error)
+    throw error
+  }
+}
+
+/**
  * Create a new trade proposal
  */
 export const createTrade = async (tradeData: any): Promise<Trade> => {
