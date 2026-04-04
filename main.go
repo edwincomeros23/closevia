@@ -279,6 +279,7 @@ func main() {
 	tradeHandler := handlers.NewTradeHandler()
 	notificationHandler := handlers.NewNotificationHandler()
 	adminHandler := handlers.NewAdminHandler()
+	escalationHandler := handlers.NewEscalationHandler()
 	commentHandler := handlers.NewCommentHandler()
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
@@ -291,6 +292,7 @@ func main() {
 	advertisementHandler := handlers.NewAdvertisementHandler()
 	paymentHandler := handlers.NewPaymentHandler(database.DB)
 	activityHandler := handlers.NewActivityHandler()
+	peerTagHandler := handlers.NewPeerTagHandler()
 	organizationHandler := handlers.NewOrganizationHandler()
 	meetupHandler := handlers.NewMeetupHandler(database.DB)
 
@@ -438,16 +440,18 @@ func main() {
 	trades.Get("/loops/notifications", middleware.AuthMiddleware(), tradeHandler.GetTradeLoopNotifications)
 	trades.Post("/loops/notifications/clear", middleware.AuthMiddleware(), tradeHandler.ClearLoopNotifications)
 	trades.Post("/loops/notifications/:id/read", middleware.AuthMiddleware(), tradeHandler.MarkLoopNotificationRead)
+	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Get("/loops/:id", middleware.AuthMiddleware(), tradeHandler.GetTradeLoop)
 	trades.Post("/loops/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptTradeLoop)
 	trades.Post("/loops/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineTradeLoop)
 	trades.Post("/loops/:id/execute", middleware.AuthMiddleware(), tradeHandler.ExecuteTradeLoop)
-	trades.Get("/loops/quota", middleware.AuthMiddleware(), tradeHandler.GetLoopQuota)
 	trades.Post("/loops/:id/cancel", middleware.AuthMiddleware(), tradeHandler.CancelTradeLoop)
 	trades.Post("/loops/:id/reinvite", middleware.AuthMiddleware(), tradeHandler.ReinviteTradeLoop)
 
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
+	trades.Get("/multiway/discoverable", middleware.AuthMiddleware(), tradeHandler.GetDiscoverableMultiwayLoops)
+	trades.Post("/multiway/:id/hop-in", middleware.AuthMiddleware(), tradeHandler.HopIntoMultiwayChain)
 	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
 	trades.Post("/multiway/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineMultiwayChain)
 
@@ -486,7 +490,14 @@ func main() {
 	trades.Get("/:id/meetup/status", middleware.AuthMiddleware(), meetupHandler.GetMeetupStatus)
 	trades.Get("/:id/meetup/messages", middleware.AuthMiddleware(), meetupHandler.GetSystemMessages)
 
-	// Payment routes
+	// Peer tag routes (post-trade feedback tags)
+	// Specific routes must come before generic :id routes
+	trades.Post("/:id/peer-tags", middleware.AuthMiddleware(), peerTagHandler.CreatePeerTag)
+	trades.Get("/:id/peer-tags/participants", middleware.AuthMiddleware(), peerTagHandler.GetTradeParticipantsTags)
+	trades.Get("/:id/peer-tags", middleware.AuthMiddleware(), peerTagHandler.GetTagsGivenInTrade)
+
+	// User peer tags routes
+	users.Get("/:id/peer-tags", peerTagHandler.GetUserPeerTags) // Public - get peer tags for a user
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.
@@ -547,6 +558,12 @@ func main() {
 	// Admin leg disputes (Phase 4)
 	admin.Get("/multiway-disputes", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminGetLegDisputes)
 	admin.Put("/multiway-disputes/:disputeId/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), tradeHandler.AdminResolveLegDispute)
+	// Admin escalation management (Phase 5)
+	admin.Get("/escalations/stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.GetEscalationStats)
+	admin.Get("/escalations", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.GetEscalationQueue)
+	admin.Get("/escalations/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.GetEscalationDetail)
+	admin.Post("/escalations/:id/assign", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.AssignEscalation)
+	admin.Post("/escalations/:id/resolve", middleware.AuthMiddleware(), middleware.AdminMiddleware(), escalationHandler.ResolveEscalation)
 	// Admin rider verification
 	admin.Get("/rider-applications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminListRiderApplications)
 	admin.Get("/rider-applications/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), deliveryHandler.AdminGetRiderApplication)
@@ -629,6 +646,9 @@ func main() {
 	// Start server
 	// Start background trade timeout scheduler
 	services.StartTradeTimeoutScheduler(database.DB)
+
+	// Start background escalation SLA scheduler
+	services.StartEscalationSLAScheduler(database.DB)
 
 	// Start background meetup reminder scheduler (24-hour pre-meetup reminders)
 	reminderService := services.NewMeetupReminderService(database.DB)

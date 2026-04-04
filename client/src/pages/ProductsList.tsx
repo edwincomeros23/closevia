@@ -93,7 +93,7 @@ const ProductsList: React.FC = () => {
           h="100%"
           objectFit="cover"
           loading="lazy"
-          fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          fallbackSrc="/no-image.svg"
           cursor="zoom-in"
           onClick={(e) => {
             e.stopPropagation()

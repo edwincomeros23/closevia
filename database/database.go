@@ -195,6 +195,19 @@ func CreateTables() error {
 		log.Println("Adding missing password_changed_at column to users table...")
 		DB.Exec("ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP NULL")
 	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'name_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing name_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN name_changed_at TIMESTAMP NULL")
+	}
+
+	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_changed_at'").Scan(&exists)
+	if err == nil && exists == 0 {
+		log.Println("Adding missing phone_changed_at column to users table...")
+		DB.Exec("ALTER TABLE users ADD COLUMN phone_changed_at TIMESTAMP NULL")
+	}
+
 	err = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews' AND COLUMN_NAME = 'reply'").Scan(&exists)
 	if err == nil && exists == 0 {
 		log.Println("Adding missing reply columns to reviews table...")
@@ -253,6 +266,8 @@ func CreateTables() error {
 			phone_otp_expires TIMESTAMP NULL,
 			password_hash VARCHAR(255) NOT NULL,
 			password_changed_at TIMESTAMP NULL,
+			name_changed_at TIMESTAMP NULL,
+			phone_changed_at TIMESTAMP NULL,
 			role VARCHAR(10) NOT NULL DEFAULT 'user',
 			is_organization TINYINT(1) NOT NULL DEFAULT 0,
 			org_verified TINYINT(1) NOT NULL DEFAULT 0,
@@ -927,6 +942,85 @@ func CreateTables() error {
 			INDEX idx_trade_proposals (trade_id),
 			INDEX idx_user_proposals (user_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS dispute_escalations (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			dispute_id INT NOT NULL UNIQUE,
+			trade_id INT NOT NULL,
+			raised_by_id INT NOT NULL,
+			reported_user_id INT NOT NULL,
+			reason VARCHAR(100) NOT NULL,
+			status ENUM('open', 'under_review', 'resolved') NOT NULL DEFAULT 'open',
+			assigned_to_id INT NULL,
+			sla_due_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (dispute_id) REFERENCES trade_disputes(id) ON DELETE CASCADE,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (raised_by_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (reported_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_escalations_status (status),
+			INDEX idx_escalations_sla_due (sla_due_at),
+			INDEX idx_escalations_assigned (assigned_to_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS escalation_evidence (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			escalation_id INT NOT NULL,
+			evidence_type ENUM('photo', 'chat_transcript') NOT NULL,
+			evidence_url VARCHAR(500) NULL,
+			evidence_data LONGTEXT NULL,
+			uploaded_by_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (escalation_id) REFERENCES dispute_escalations(id) ON DELETE CASCADE,
+			FOREIGN KEY (uploaded_by_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_evidence_escalation (escalation_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS escalation_resolutions (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			escalation_id INT NOT NULL UNIQUE,
+			resolved_by_admin_id INT NULL,
+			outcome_type ENUM('proceed', 'cancel_return_strike', 'suspend_pending', 'partial_refund', 'warning_only', 'conditional_strike', 'split_resolution') NOT NULL,
+			refund_amount DECIMAL(10,2) NULL,
+			notes TEXT,
+			resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (escalation_id) REFERENCES dispute_escalations(id) ON DELETE CASCADE,
+			FOREIGN KEY (resolved_by_admin_id) REFERENCES users(id) ON DELETE SET NULL,
+			INDEX idx_resolution_escalation (escalation_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS escalation_reminders (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			escalation_id INT NOT NULL,
+			milestone VARCHAR(20) NOT NULL,
+			notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (escalation_id) REFERENCES dispute_escalations(id) ON DELETE CASCADE,
+			INDEX idx_reminder_escalation (escalation_id),
+			UNIQUE KEY unique_escalation_milestone (escalation_id, milestone)
+		)`,
+		`CREATE TABLE IF NOT EXISTS peer_tags (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			trade_id INT NOT NULL,
+			giver_id INT NOT NULL,
+			receiver_id INT NOT NULL,
+			tag_name VARCHAR(100) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE CASCADE,
+			FOREIGN KEY (giver_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_peer_tags_trade (trade_id),
+			INDEX idx_peer_tags_receiver (receiver_id),
+			INDEX idx_peer_tags_giver (giver_id),
+			UNIQUE KEY unique_tag_per_trade (trade_id, giver_id, receiver_id, tag_name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS peer_tag_counts (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			receiver_id INT NOT NULL,
+			tag_name VARCHAR(100) NOT NULL,
+			count INT NOT NULL DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+			INDEX idx_tag_counts_receiver (receiver_id),
+			UNIQUE KEY unique_user_tag (receiver_id, tag_name)
+		)`,
 	}
 
 	// Execute table creation queries
@@ -941,6 +1035,7 @@ func CreateTables() error {
 	ensureUserColumns()
 	ensureProductColumns()
 	ensureTradeColumns()
+	ensureMultiwayColumns()
 	ensureRiderColumns()
 	ensureDeliveryBatchColumns()
 	ensureAppSettingsDefaults()
@@ -1196,6 +1291,8 @@ func ensureTradeColumns() {
 		{"awaiting_confirmation_since", "TIMESTAMP NULL"},
 		{"option_change_requested", "VARCHAR(20) NULL DEFAULT NULL"},
 		{"net_amount", "DECIMAL(10,2) DEFAULT 0.00"},
+		{"message", "TEXT NULL"},
+		{"offered_cash_amount", "DECIMAL(10,2) NULL"},
 		{"meetup_time", "VARCHAR(50) NULL"},
 		{"buyer_meetup_location", "VARCHAR(500) NULL"},
 		{"buyer_meetup_time", "VARCHAR(50) NULL"},
@@ -1273,7 +1370,7 @@ func ensureTradeColumns() {
 		FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (user3_id) REFERENCES users(id) ON DELETE SET NULL,
 		FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL,
-		INDEX idx_multiway_chain (chain_id),
+		UNIQUE KEY uniq_multiway_chain (chain_id),
 		INDEX idx_multiway_status (status),
 		INDEX idx_multiway_user3 (user3_id),
 		INDEX idx_multiway_expires (expires_at)
@@ -1316,6 +1413,72 @@ func ensureTradeColumns() {
 			log.Println("Added expires_at and cancellation columns to multiway_trades")
 		}
 	}
+}
+
+// ensureMultiwayColumns adds missing tables/columns for Phase 2/3 multi-way trading
+func ensureMultiwayColumns() {
+	// 1. Ensure multiway_trade_legs table exists
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS multiway_trade_legs (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		chain_id VARCHAR(255) NOT NULL,
+		leg_index INT NOT NULL,
+		from_user_id INT NOT NULL,
+		to_user_id INT NOT NULL,
+		product_id INT NOT NULL,
+		handoff_method VARCHAR(20) DEFAULT 'meetup',
+		handoff_location VARCHAR(500) NULL,
+		handoff_time VARCHAR(50) NULL,
+		handoff_photo_url VARCHAR(500) NULL,
+		status ENUM('pending','in_progress','completed','cancelled','failed','disputed') DEFAULT 'pending',
+		completed_at TIMESTAMP NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (chain_id) REFERENCES multiway_trades(chain_id) ON DELETE CASCADE,
+		FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+		UNIQUE KEY uniq_chain_leg (chain_id, leg_index),
+		INDEX idx_leg_chain (chain_id),
+		INDEX idx_leg_status (status)
+	)`)
+
+	// For existing databases: add the unique constraint if it doesn't exist yet.
+	var ukCount int
+	_ = DB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.STATISTICS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trade_legs' AND INDEX_NAME = 'uniq_chain_leg'
+	`).Scan(&ukCount)
+	if ukCount == 0 {
+		if _, err := DB.Exec("ALTER TABLE multiway_trade_legs ADD UNIQUE KEY uniq_chain_leg (chain_id, leg_index)"); err != nil {
+			log.Printf("Warning: could not add unique constraint on (chain_id, leg_index): %v", err)
+		} else {
+			log.Println("Added UNIQUE constraint on multiway_trade_legs(chain_id, leg_index)")
+		}
+	}
+
+	// 2. Unify user3_product_id and user3_trade_id for multiway_trades
+	var exists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'user3_product_id'").Scan(&exists)
+	if exists == 0 {
+		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user3_product_id INT NULL COMMENT 'The specific product ID that User 3 is contributing'")
+	}
+	
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'user3_trade_id'").Scan(&exists)
+	if exists == 0 {
+		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user3_trade_id INT NULL COMMENT 'The specific product ID that User 3 is contributing (Alias)'")
+	}
+
+	// 3. Ensure ongoing_deadline column exists (7-day timer after last acceptance)
+	var hasOngoingDeadline int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'ongoing_deadline'").Scan(&hasOngoingDeadline)
+	if hasOngoingDeadline == 0 {
+		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN ongoing_deadline TIMESTAMP NULL COMMENT '7-day deadline after chain becomes active'")
+		log.Println("Added ongoing_deadline column to multiway_trades")
+	}
+
+	// 4. Ensure multiway_trade_legs status ENUM includes 'in_progress' and 'disputed'
+	// (needed for per-leg dispute flow and handoff tracking)
+	_, _ = DB.Exec("ALTER TABLE multiway_trade_legs MODIFY COLUMN status ENUM('pending','in_progress','completed','cancelled','failed','disputed') DEFAULT 'pending'")
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow

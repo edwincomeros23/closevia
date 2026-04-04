@@ -2132,7 +2132,7 @@ const AdminDashboard: React.FC = () => {
                       <SimpleGrid columns={[2, 3, 4]} spacing={2}>
                         {selectedDispute.evidence_urls.map((url: string, idx: number) => (
                           <Box key={idx} borderRadius="md" overflow="hidden" border="1px" borderColor="gray.200" cursor="pointer" onClick={() => window.open(url, '_blank')}>
-                            <Image src={url} alt={`Evidence ${idx+1}`} fallbackSrc="https://via.placeholder.com/150?text=Error" objectFit="cover" w="full" h="100px" />
+                            <Image src={url} alt={`Evidence ${idx+1}`} fallbackSrc="/no-image.svg" objectFit="cover" w="full" h="100px" />
                           </Box>
                         ))}
                       </SimpleGrid>
@@ -2497,7 +2497,7 @@ const AdminDashboard: React.FC = () => {
           <Heading size="sm" color={textColor}>Users</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search users by name, email..." value={usersSearch} onChange={(e) => setUsersSearch(e.target.value)} maxW="300px" />
+            <Input size="sm" placeholder="Search users by name, email..." value={usersSearch} onChange={(e) => setUsersSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminUsers(1, e.currentTarget.value, usersRoleFilter, usersIsVerifiedFilter); }} maxW="300px" />
             <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => { setUsersRoleFilter(e.target.value); fetchAdminUsers(1, usersSearch, e.target.value); }}>
               <option value="admin">Admin</option>
               <option value="user">User</option>
@@ -2566,7 +2566,7 @@ const AdminDashboard: React.FC = () => {
           <Heading size="sm" color={textColor}>Items</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search items by title..." value={productsSearch} onChange={(e) => setProductsSearch(e.target.value)} maxW="300px" />
+            <Input size="sm" placeholder="Search items by title..." value={productsSearch} onChange={(e) => setProductsSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminProducts(1, e.currentTarget.value, productsStatusFilter); }} maxW="300px" />
             <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => { setProductsStatusFilter(e.target.value); fetchAdminProducts(1, productsSearch, e.target.value); }}>
               <option value="available">Available</option>
               <option value="reserved">Reserved</option>

@@ -48,7 +48,7 @@ func (s *MeetupReminderService) processPreMeetupReminders() {
 			AND ms.reminder_sent = 0
 			AND ms.agreed_time IS NOT NULL
 			AND ms.agreed_time >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)
-			AND ms.agreed_time <= DATE_ADD(NOW(), INTERVAL 1 DAY 1 MINUTE)
+			AND ms.agreed_time <= DATE_ADD(NOW(), INTERVAL 1441 MINUTE)
 		LIMIT 50
 	`
 

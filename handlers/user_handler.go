@@ -807,11 +807,13 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	var user models.User
 	var schoolEmailVerifiedAt sql.NullTime
 	var passwordChangedAt sql.NullTime
+	var nameChangedAt sql.NullTime
+	var phoneChangedAt sql.NullTime
 	var lastLogin sql.NullTime
 
 	var slugNull sql.NullString
 	err := h.db.QueryRow(
-		`SELECT id, slug, name, email, role, verified, 
+		`SELECT id, slug, name, email, role, verified,
 		        COALESCE(phone, '') AS phone,
 		        COALESCE(phone_verified, FALSE) AS phone_verified,
 		        COALESCE(is_organization, FALSE) AS is_organization, COALESCE(org_verified, FALSE) AS org_verified, COALESCE(org_name, '') AS org_name,
@@ -826,7 +828,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(bio, '') AS bio,
 		        COALESCE(background_image, '') AS background_image,
 		        COALESCE(background_position, '') AS background_position,
-		        COALESCE(department, '') AS department, 
+		        COALESCE(department, '') AS department,
 		        COALESCE(badges, '[]') AS badges,
 		        COALESCE(is_premium, FALSE) AS is_premium,
 		        COALESCE(verification_status, 'not_verified') AS verification_status,
@@ -840,7 +842,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		        COALESCE(premium_tier, 'free') AS premium_tier,
 		        COALESCE(strikes, 0) AS strikes,
 		        COALESCE(is_suspended, FALSE) AS is_suspended,
-		        created_at, updated_at, password_changed_at, last_login
+		        created_at, updated_at, password_changed_at, name_changed_at, phone_changed_at, last_login
 		 FROM users WHERE id = ?`,
 		userID,
 	).Scan(
@@ -854,7 +856,7 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 		&user.VerificationStatus, &user.SchoolName, &user.SchoolEmail, &schoolEmailVerifiedAt, &user.VerificationRejectionReason,
 		&user.EmailNotificationsEnabled, &user.PushNotificationsEnabled,
 		&user.LanguagePreference, &user.PremiumTier, &user.Strikes, &user.IsSuspended,
-		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &lastLogin,
+		&user.CreatedAt, &user.UpdatedAt, &passwordChangedAt, &nameChangedAt, &phoneChangedAt, &lastLogin,
 	)
 
 	if schoolEmailVerifiedAt.Valid {
@@ -862,6 +864,12 @@ func (h *UserHandler) GetProfile(c *fiber.Ctx) error {
 	}
 	if passwordChangedAt.Valid {
 		user.PasswordChangedAt = &passwordChangedAt.Time
+	}
+	if nameChangedAt.Valid {
+		user.NameChangedAt = &nameChangedAt.Time
+	}
+	if phoneChangedAt.Valid {
+		user.PhoneChangedAt = &phoneChangedAt.Time
 	}
 	if lastLogin.Valid {
 		user.LastLogin = &lastLogin.Time
@@ -1018,6 +1026,57 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		}
 	}
 
+	// Check 30-day cooldown for name change
+	if updateData.Name != nil {
+		newName := strings.TrimSpace(*updateData.Name)
+		if newName != "" {
+			var currentName string
+			var nameChangedAt sql.NullTime
+			err := h.db.QueryRow("SELECT name, COALESCE(name_changed_at, NULL) FROM users WHERE id = ?", userID).Scan(&currentName, &nameChangedAt)
+			if err == nil && newName != currentName {
+				// Name is being changed
+				if nameChangedAt.Valid {
+					// Check if 30 days have passed since last change
+					daysSinceChange := time.Since(nameChangedAt.Time).Hours() / 24
+					if daysSinceChange < 30 {
+						daysRemaining := 30 - int(daysSinceChange)
+						return c.Status(429).JSON(models.APIResponse{
+							Success: false,
+							Error:   fmt.Sprintf("You can only change your name once every 30 days. Please try again in %d days.", daysRemaining),
+							Data: fiber.Map{
+								"days_remaining":  daysRemaining,
+								"last_changed_at": nameChangedAt.Time,
+								"can_change_at":   nameChangedAt.Time.AddDate(0, 0, 30),
+							},
+						})
+					}
+				}
+			}
+		}
+	}
+
+	// Check 30-day cooldown for phone change
+	if updateData.Phone != nil && phoneChanged {
+		var phoneChangedAt sql.NullTime
+		err := h.db.QueryRow("SELECT COALESCE(phone_changed_at, NULL) FROM users WHERE id = ?", userID).Scan(&phoneChangedAt)
+		if err == nil && phoneChangedAt.Valid {
+			// Check if 30 days have passed since last change
+			daysSinceChange := time.Since(phoneChangedAt.Time).Hours() / 24
+			if daysSinceChange < 30 {
+				daysRemaining := 30 - int(daysSinceChange)
+				return c.Status(429).JSON(models.APIResponse{
+					Success: false,
+					Error:   fmt.Sprintf("You can only change your phone number once every 30 days. Please try again in %d days.", daysRemaining),
+					Data: fiber.Map{
+						"days_remaining":  daysRemaining,
+						"last_changed_at": phoneChangedAt.Time,
+						"can_change_at":   phoneChangedAt.Time.AddDate(0, 0, 30),
+					},
+				})
+			}
+		}
+	}
+
 	// Build update query dynamically
 	query := "UPDATE users SET updated_at = CURRENT_TIMESTAMP"
 	var args []interface{}
@@ -1025,6 +1084,12 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 	if updateData.Name != nil {
 		query += ", name = ?"
 		args = append(args, *updateData.Name)
+		// Get current name to check if it's changing
+		var currentName string
+		h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&currentName)
+		if *updateData.Name != currentName {
+			query += ", name_changed_at = CURRENT_TIMESTAMP"
+		}
 	}
 	if updateData.Email != nil {
 		query += ", email = ?"
@@ -1041,6 +1106,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		args = append(args, normalizedPhone)
 		if phoneChanged {
 			query += ", phone_verified = false"
+			query += ", phone_changed_at = CURRENT_TIMESTAMP"
 		}
 	}
 
@@ -2267,7 +2333,7 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	// 6. Trade Success Rate: 10 points
 	var totalAttempted int
 	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed', 'cancelled')", userID).Scan(&totalAttempted)
-	
+
 	successPoints := 10 // Default neutral if no trades
 	successStatus := "pass"
 	if totalAttempted > 0 {

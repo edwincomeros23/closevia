@@ -54,6 +54,7 @@ import {
 } from 'react-icons/fa'
 import { WarningIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'
+import RemittanceLedger from './RemittanceLedger'
 import { Delivery } from '../types'
 import { useRiderState } from '../hooks/useRiderState'
 
@@ -920,23 +921,12 @@ const RiderHome: React.FC = () => {
 
   // ─── RENDER EARNINGS CONTENT ─────────────────────────────────────────
   const renderEarningsContent = () => (
-    <VStack spacing={4} align="stretch" flex={1} pb="80px" px={4} pt={4}>
-      <Heading size="md" color="gray.800">Earnings</Heading>
-      <Card bg="green.50" border="2px" borderColor="green.200">
-        <CardBody>
-          <VStack spacing={2}>
-            <Text fontSize="sm" color="gray.600">Total Earnings</Text>
-            <Text fontSize="3xl" fontWeight="bold" color="green.600">
-              ₱{completedDeliveries.reduce((sum, d) => sum + d.total_cost, 0).toLocaleString()}
-            </Text>
-            <Text fontSize="xs" color="gray.500">{completedDeliveries.length} deliveries completed</Text>
-          </VStack>
-        </CardBody>
-      </Card>
-      <Button variant="outline" colorScheme="brand" onClick={() => navigate('/remittance-ledger')}>
-        View Full Ledger
-      </Button>
-    </VStack>
+    <Box flex={1} overflowY="auto" pb="80px">
+      <RemittanceLedger
+        embedded
+        totalEarnings={completedDeliveries.reduce((sum, d) => sum + d.total_cost, 0)}
+      />
+    </Box>
   )
 
   return (
@@ -974,17 +964,6 @@ const RiderHome: React.FC = () => {
           >
             <Icon as={FaHome} boxSize={5} mb={1} />
             <Text fontSize="xs">Home</Text>
-          </Button>
-          <Button
-            variant="ghost"
-            flexDirection="column"
-            h="60px"
-            flex={1}
-            color={activeTab === 'jobs' ? 'brand.500' : 'gray.500'}
-            onClick={() => setActiveTab('jobs')}
-          >
-            <Icon as={FaTruck} boxSize={5} mb={1} />
-            <Text fontSize="xs">Jobs</Text>
           </Button>
           <Button
             variant="ghost"
