@@ -440,10 +440,13 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 		SELECT DISTINCT t.id, t.seller_id
 		FROM trades t
 		JOIN products p ON p.id = t.target_product_id
+		JOIN users us ON us.id = t.seller_id
 		WHERE t.status = 'pending'
+		AND p.status = 'available'
+		AND us.role != 'admin'
 		AND t.seller_id != ?
 		AND (
-			p.category = ? 
+			p.category = ?
 			OR LOWER(p.title) LIKE LOWER(?)
 			OR (p.price IS NOT NULL AND p.price >= ? AND p.price <= ?)
 		)
@@ -470,7 +473,9 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 	query2 := `
 		SELECT p.id as other_product_id, p.seller_id as other_seller_id, p.title as other_title
 		FROM products p
+		JOIN users u ON u.id = p.seller_id
 		WHERE p.status = 'available'
+		AND u.role != 'admin'
 		AND p.seller_id != ?
 		AND (
 			LOWER(p.wants) LIKE LOWER(?)
@@ -4178,6 +4183,11 @@ func (h *TradeHandler) GetDiscoverableMultiwayLoops(c *fiber.Ctx) error {
 		JOIN trade_items ti ON ti.trade_id = t.id AND ti.offered_by = 'buyer'
 		JOIN products p_offer ON p_offer.id = ti.product_id
 		WHERE m.status = 'pending_user3'
+		  AND t.status IN ('pending', 'pending_multiway', 'accepted')
+		  AND p_target.status = 'available'
+		  AND p_offer.status = 'available'
+		  AND u1.role != 'admin'
+		  AND u2.role != 'admin'
 		  AND m.user1_id != ?
 		  AND m.user2_id != ?
 		  AND (m.user3_id IS NULL OR m.user3_id != ?)

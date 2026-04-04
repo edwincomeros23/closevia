@@ -205,6 +205,9 @@ const Dashboard: React.FC = () => {
   const [productTitles, setProductTitles] = useState<Map<number, string>>(new Map())
   const productImageCache = useRef<Map<number, string | null>>(new Map())
   const notificationCountsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const multiwayAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const multiwayAlertCountRef = useRef(0)
+  const activeTabRef = useRef(0)
 
   // Delivery modals state
   const [deliveryRequestModalOpen, setDeliveryRequestModalOpen] = useState(false)
@@ -804,6 +807,9 @@ const Dashboard: React.FC = () => {
     }
   }
 
+  // Keep activeTabRef in sync so the multiwayAlert callback can read it without stale closures
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+
   // Register refresh callbacks for all tabs with RealtimeContext
   useEffect(() => {
     setRefreshCallback('products', () => {
@@ -820,12 +826,37 @@ const Dashboard: React.FC = () => {
     })
     setRefreshCallback('multiway', () => {
       fetchMultiWayTrades()
+      fetchDiscoverableLoops()
+      invalidateOffers()
     })
     setRefreshCallback('history', () => {
-      // Invalidate trades/history data
       invalidateDashboard()
     })
-  }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard])
+    setRefreshCallback('multiwayAlert', () => {
+      multiwayAlertCountRef.current += 1
+      if (multiwayAlertTimerRef.current) clearTimeout(multiwayAlertTimerRef.current)
+      multiwayAlertTimerRef.current = setTimeout(() => {
+        // Only show toast when user is on the Multi-Way tab (tab index 2)
+        if (activeTabRef.current !== 2) {
+          multiwayAlertCountRef.current = 0
+          return
+        }
+        const count = multiwayAlertCountRef.current
+        multiwayAlertCountRef.current = 0
+        toast({
+          id: 'multiway-loop-alert',
+          title: 'Multiway Loop Found!',
+          description: count > 1
+            ? 'You have a lot of options! Check the loops below.'
+            : 'A new multiway trading opportunity is available.',
+          status: 'success',
+          duration: 5000,
+          isClosable: true,
+          position: 'top-right',
+        })
+      }, 1500)
+    })
+  }, [setRefreshCallback, invalidateProducts, invalidateOffers, invalidateDashboard, toast])
 
   const handleHopIntoDiscoverable = async (trade: any) => {
     const chainId = String(trade?.chain_id || '')
