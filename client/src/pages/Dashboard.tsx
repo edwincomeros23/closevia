@@ -1017,7 +1017,7 @@ const Dashboard: React.FC = () => {
         borderRadius={isLarge ? "0" : "md"}
         loading="lazy"
         bg={isLarge ? "gray.100" : "transparent"}
-        fallbackSrc={isLarge ? "https://via.placeholder.com/300x200?text=No+Image" : "https://via.placeholder.com/40x40?text=?"}
+        fallbackSrc={"/no-image.svg"}
       />
     )
   }
@@ -1843,7 +1843,7 @@ const Dashboard: React.FC = () => {
               borderRadius="lg"
               objectFit="cover"
               loading="lazy"
-              fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+              fallbackSrc="/no-image.svg"
             />
           </Box>
           <CardHeader pb={2}>
@@ -2029,7 +2029,7 @@ const Dashboard: React.FC = () => {
               w="full"
               h="full"
               objectFit="cover"
-              fallbackSrc="https://via.placeholder.com/60?text=No+Image"
+              fallbackSrc="/no-image.svg"
             />
           </Box>
           <VStack align="start" spacing={0} flex={1} minW={0}>
@@ -2362,22 +2362,18 @@ const Dashboard: React.FC = () => {
   }> = React.memo(({ trade, isIncoming, onView, onComplete }) => {
     const userName = isIncoming ? (trade.seller_name || 'Anonymous User') : (trade.buyer_name || 'Anonymous User')
 
-    // Get items offered by the other party
-    // For incoming trades, we want items offered by the buyer (seller is us)
-    // For outgoing trades, we want items offered by the seller (buyer is us)
+    // Trade items are the buyer-offered products (most trades).
+    // Show them as “Their Items” when you are the seller (incoming),
+    // and as “Your Items” when you are the buyer (outgoing).
     const offeredItems = (trade.items || []).filter((i: any) => {
-      const ob = (i?.offered_by ?? i?.offeredBy ?? i?.sender ?? i?.from_user_role ?? '').toLowerCase()
-
-      // If we can't determine who offered it, include it anyway (show all items)
+      const ob = (i?.offered_by ?? i?.offeredBy ?? '').toLowerCase()
+      // If unknown, keep it (better than showing empty)
       if (!ob) return true
-
-      // For incoming: we want items from the buyer
-      if (isIncoming) {
-        return ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
-      }
-      // For outgoing: we want items from the seller
-      return ob === 'seller' || ob === 'from_seller' || ob === 'recipient'
+      return ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
     })
+
+    const leftLabel = isIncoming ? 'Your Item' : 'Their Item'
+    const rightLabel = isIncoming ? 'Their Items' : 'Your Items'
 
     const getOngoingStatusBadge = () => {
       if (trade.status === 'completed') {
@@ -2435,7 +2431,7 @@ const Dashboard: React.FC = () => {
                 size="100%"
               />
               <Badge position="absolute" top={1} left={1} colorScheme="blue" fontSize="2xs" px={1} py={0.5}>
-                Your Item
+                {leftLabel}
               </Badge>
             </Box>
 
@@ -2471,7 +2467,7 @@ const Dashboard: React.FC = () => {
                     </Box>
                   ))}
                   <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                    Their Items{offeredItems.length > 1 ? 's' : ''}
+                    {rightLabel}{offeredItems.length > 1 ? 's' : ''}
                   </Badge>
                 </>
               ) : (
@@ -2480,7 +2476,7 @@ const Dashboard: React.FC = () => {
                     <Text fontSize="xs" color="gray.500">No items</Text>
                   </Box>
                   <Badge position="absolute" top={1} right={1} colorScheme="gray" fontSize="2xs" px={1} py={0.5}>
-                    No Items
+                    {rightLabel}
                   </Badge>
                 </Box>
               )}
@@ -2756,7 +2752,7 @@ const Dashboard: React.FC = () => {
     }
 
     return (
-      <Modal isOpen={popupOpen} onClose={() => setPopupOpen(false)} size="sm" isCentered>
+      <Modal isOpen={popupOpen} onClose={() => setPopupOpen(false)} size="sm" isCentered closeOnOverlayClick={false} closeOnEsc={false}>
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent
           bg="white"
@@ -2782,7 +2778,10 @@ const Dashboard: React.FC = () => {
                     variant="outline"
                     size="md"
                     flex={1}
-                    onClick={popupConfig.onCancel}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      popupConfig.onCancel?.()
+                    }}
                     isDisabled={deleting}
                   >
                     {popupConfig.cancelText}
@@ -2792,7 +2791,10 @@ const Dashboard: React.FC = () => {
                   colorScheme={popupConfig.confirmColorScheme || getColorScheme()}
                   size="md"
                   flex={1}
-                  onClick={popupConfig.onConfirm}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    popupConfig.onConfirm?.()
+                  }}
                   isLoading={deleting}
                   loadingText="Processing..."
                   leftIcon={popupConfig.type === 'success' ? <CheckIcon /> : undefined}

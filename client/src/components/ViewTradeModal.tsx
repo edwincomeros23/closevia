@@ -329,7 +329,6 @@ interface DeliveryTabProps {
   deliveryState: DeliveryState
   setDeliveryState: React.Dispatch<React.SetStateAction<DeliveryState>>
   deliveryOptions: Record<string, { time: string; fee: number; icon: string; description: string }>
-  paymentMethods: Record<string, { label: string; icon: string; color: string }>
   requestedProduct: Product | null
   trade: Trade | null
   distance: number
@@ -348,7 +347,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   deliveryState,
   setDeliveryState,
   deliveryOptions,
-  paymentMethods,
   requestedProduct,
   trade,
   distance,
@@ -373,6 +371,13 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           : deliveryStatus === 'claimed' ? 'blue'
             : 'gray'
 
+  // Auto-confirm COD payment when delivery type is selected
+  useEffect(() => {
+    if (deliveryState.deliveryType && !deliveryState.paymentConfirmed && !confirmingPayment) {
+      handleConfirmPayment()
+    }
+  }, [deliveryState.deliveryType])
+
   const timelineSteps = [
     {
       id: 'setup',
@@ -384,7 +389,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
     {
       id: 'payment',
       title: 'Payment',
-      detail: `${paymentMethods[deliveryState.paymentMethod].label} • ${deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}`,
+      detail: `Cash on Delivery • ${deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}`,
       complete: deliveryState.paymentConfirmed,
       current: deliveryState.paymentConfirmed && !linkedDelivery,
     },
@@ -451,7 +456,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 Payment: {deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}
               </Badge>
               <Badge colorScheme="purple" variant="subtle">
-                Method: {paymentMethods[deliveryState.paymentMethod].label}
+                Method: Cash on Delivery
               </Badge>
               <Badge colorScheme="brand" variant="subtle">Total: P{totalCost.toFixed(2)}</Badge>
             </HStack>
@@ -492,199 +497,70 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
       </Card>
 
       <Card variant="outline" borderColor="blue.200">
-        <CardBody>
-          <VStack spacing={3} align="stretch">
-            <VStack spacing={4} align="stretch">
-              <Text fontWeight="semibold" fontSize="md">Choose Delivery Option</Text>
+        <CardBody py={2} px={4}>
+          <VStack spacing={2} align="stretch">
+            {/* Compact Header with Distance */}
+            <HStack justify="space-between" align="center">
+              <Text fontSize="sm" fontWeight="semibold">Delivery {distance.toFixed(1)}km</Text>
+              <Text fontSize="xs" color="gray.500">Pick one:</Text>
+            </HStack>
 
-              {/* Distance Information */}
-              <Box bg="blue.50" p={3} borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
-                <HStack spacing={2}>
-                  <Icon as={FaMapMarkerAlt} color="blue.500" />
-                  <VStack align="start" spacing={0}>
-                    <Text fontSize="sm" fontWeight="medium">
-                      Delivery Distance: {distance.toFixed(1)} km
-                    </Text>
-                    <Text fontSize="xs" color="gray.600">
-                      Prices calculated based on location distance
-                    </Text>
-                  </VStack>
-                </HStack>
-              </Box>
-
-              {/* Delivery Options Grid - Now 2 columns instead of 3 */}
-              <Grid templateColumns="repeat(2, 1fr)" gap={4}>
-                {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
-                  <Card
-                    key={`delivery-${type}`}
-                    cursor="pointer"
-                    borderWidth="2px"
-                    borderColor={deliveryState.deliveryType === type ? 'blue.500' : 'gray.200'}
-                    bg={deliveryState.deliveryType === type ? 'blue.50' : 'white'}
-                    onClick={() => {
-                      const newState = type as DeliveryState['deliveryType']
-                      setDeliveryState(prev => ({ ...prev, deliveryType: newState }))
-                      saveDeliveryState({ deliveryType: newState })
-                    }}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: deliveryState.deliveryType === type ? 'blue.600' : 'blue.300',
-                      shadow: 'lg',
-                      transform: 'translateY(-2px)'
-                    }}
-                    shadow={deliveryState.deliveryType === type ? 'md' : 'sm'}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3}>
-                        <Text fontSize="2xl" mb={1}>{option.icon}</Text>
-                        <VStack spacing={1}>
-                          <Text fontSize="sm" fontWeight="bold" color={deliveryState.deliveryType === type ? 'blue.700' : 'gray.700'}>
-                            {type.charAt(0).toUpperCase() + type.slice(1)} Delivery
-                          </Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">{option.time}</Text>
-                          <Text fontSize="xs" color="gray.500" textAlign="center">{option.description}</Text>
-                        </VStack>
-                        <Badge
-                          colorScheme={deliveryState.deliveryType === type ? 'blue' : 'gray'}
-                          fontSize="sm"
-                          px={3}
-                          py={1}
-                          borderRadius="full"
-                        >
-                          ₱{option.fee}
-                        </Badge>
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                ))}
-              </Grid>
-
-              <Box>
-                <FormLabel fontWeight="semibold" mb={2} fontSize="sm">Delivery Instructions</FormLabel>
-                <Textarea
-                  value={deliveryState.deliveryInstructions}
-                  onChange={(e) => setDeliveryState(prev => ({ ...prev, deliveryInstructions: e.target.value }))}
-                  onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
-                  placeholder="e.g., Landmark: Red gate, Leave with guard, Do not leave in rain..."
+            {/* Compact Delivery Options - Buttons */}
+            <HStack spacing={2}>
+              {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
+                <Button
+                  key={`delivery-${type}`}
                   size="sm"
-                  rows={3}
-                  bg="white"
-                  borderWidth="1px"
+                  colorScheme={deliveryState.deliveryType === type ? 'blue' : 'gray'}
+                  variant={deliveryState.deliveryType === type ? 'solid' : 'outline'}
+                  onClick={() => {
+                    const newState = type as DeliveryState['deliveryType']
+                    setDeliveryState(prev => ({ ...prev, deliveryType: newState }))
+                    saveDeliveryState({ deliveryType: newState })
+                  }}
+                  flex={1}
+                  fontSize="xs"
+                  py={1}
+                >
+                  <VStack spacing={0}>
+                    <Text fontSize="lg">{option.icon}</Text>
+                    <Text>{type === 'standard' ? 'Std' : 'Exp'}</Text>
+                    <Text>₱{option.fee}</Text>
+                  </VStack>
+                </Button>
+              ))}
+            </HStack>
+
+            {/* Instructions - Optional compact textarea */}
+            <Box>
+              <Textarea
+                value={deliveryState.deliveryInstructions}
+                onChange={(e) => setDeliveryState(prev => ({ ...prev, deliveryInstructions: e.target.value }))}
+                onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
+                placeholder="Delivery notes (optional)"
+                size="sm"
+                rows={2}
                 />
                 <Text fontSize="xs" color="gray.500" mt={1}>{deliveryState.deliveryInstructions.length}/200 characters</Text>
               </Box>
             </VStack>
-          </VStack>
         </CardBody>
       </Card>
 
       <Card variant="outline" borderColor="green.200">
-        <CardBody>
-          <VStack spacing={4} align="stretch">
-            <VStack spacing={2} align="start">
-              <Text fontWeight="semibold" fontSize="md">Choose Payment Method</Text>
-              <Text fontSize="sm" color="gray.600">
-                Total: ₱{(requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee}
-                (Item: ₱{requestedProduct?.price || 0} + Delivery: ₱{deliveryOptions[deliveryState.deliveryType].fee})
-              </Text>
-            </VStack>
-
-            <VStack spacing={3} align="stretch">
-              {Object.entries(paymentMethods).map(([method, details]: [string, any]) => (
-                <Card
-                  key={`payment-${method}`}
-                  cursor={deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
-                  borderWidth="2px"
-                  borderColor={deliveryState.paymentMethod === method ? `${details.color}.400` : 'gray.200'}
-                  bg={deliveryState.paymentMethod === method ? `${details.color}.50` : 'white'}
-                  opacity={deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1}
-                  onClick={() => {
-                    if (deliveryState.paymentConfirmed) return
-                    const newMethod = method as DeliveryState['paymentMethod']
-                    setDeliveryState(prev => ({ ...prev, paymentMethod: newMethod }))
-                    saveDeliveryState({ paymentMethod: newMethod })
-                  }}
-                  transition="all 0.2s"
-                  _hover={{
-                    borderColor: deliveryState.paymentConfirmed ? undefined : `${details.color}.300`,
-                    shadow: deliveryState.paymentConfirmed ? undefined : 'md'
-                  }}
-                >
-                  <CardBody p={4}>
-                    <HStack justify="space-between">
-                      <HStack spacing={3}>
-                        <Text fontSize="xl">{details.icon}</Text>
-                        <VStack align="start" spacing={0}>
-                          <Text fontWeight="semibold" fontSize="sm">{details.label}</Text>
-                          <Text fontSize="xs" color="gray.500">
-                            {method === 'cod' && 'Pay when you receive the item'}
-                            {method === 'online' && 'Secure checkout via Xendit gateway'}
-                          </Text>
-                        </VStack>
-                      </HStack>
-                      {deliveryState.paymentMethod === method && (
-                        <Badge colorScheme={details.color} borderRadius="full">
-                          <Icon as={FiCheck} boxSize={3} />
-                        </Badge>
-                      )}
-                    </HStack>
-                  </CardBody>
-                </Card>
-              ))}
-            </VStack>
-
-            <VStack spacing={3}>
-              {/* Payment Information */}
-              {deliveryState.paymentMethod === 'online' && !deliveryState.paymentConfirmed && (
-                <Box bg="blue.50" p={3} borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
-                  <VStack align="start" spacing={1}>
-                    <Text fontSize="sm" fontWeight="medium" color="blue.800">
-                      🔒 Secure Online Payment
-                    </Text>
-                    <Text fontSize="xs" color="blue.600">
-                      You will be redirected to Xendit's secure checkout page to complete payment
-                    </Text>
-
-                    {isUserBuyer && syncingOnlinePayment && (
-                      <HStack spacing={2} pt={1}>
-                        <Spinner size="xs" />
-                        <Text fontSize="xs" color="blue.700">Checking payment status…</Text>
-                      </HStack>
-                    )}
-                  </VStack>
-                </Box>
-              )}
-
-              <Button
-                colorScheme={deliveryState.paymentMethod === 'online' ? 'blue' : 'green'}
-                size="lg"
-                onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
-                isLoading={confirmingPayment}
-                loadingText={deliveryState.paymentMethod === 'online' ? 'Redirecting to Xendit...' : 'Confirming...'}
-                leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
-                w="full"
-                _hover={{
-                  transform: deliveryState.paymentConfirmed ? 'none' : 'translateY(-2px)',
-                  shadow: deliveryState.paymentConfirmed ? 'none' : 'lg'
-                }}
-              >
-                {deliveryState.paymentConfirmed
-                  ? `✅ Payment Confirmed`
-                  : deliveryState.paymentMethod === 'online'
-                    ? 'Proceed to Xendit Checkout'
-                    : `Confirm ${paymentMethods[deliveryState.paymentMethod].label}`}
-              </Button>
-
-              {!isUserBuyer && (
-                <Text fontSize="xs" color="gray.600" textAlign="center">
-                  Only the buyer can complete payment for this trade.
-                </Text>
-              )}
-
-
-            </VStack>
-          </VStack>
+        <CardBody py={2} px={4}>
+          <HStack justify="space-between" align="center">
+            <HStack spacing={2}>
+              <Text fontSize="lg">💵</Text>
+              <VStack align="start" spacing={0}>
+                <Text fontSize="sm" fontWeight="semibold">Cash on Delivery</Text>
+                <Text fontSize="xs" color="gray.500">Have exact change ready</Text>
+              </VStack>
+            </HStack>
+            <Text fontSize="sm" fontWeight="bold" color="green.600">
+              ₱{((requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee).toFixed(2)}
+            </Text>
+          </HStack>
         </CardBody>
       </Card>
 
@@ -834,9 +710,11 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
           throw new Error(uploadRes.data?.error || 'Upload failed: invalid response')
         }
         
+        // Extract URL (try both possible response structures for backwards compatibility)
         uploadedProofUrl = uploadRes.data?.data?.url
+        
         if (!uploadedProofUrl) {
-          throw new Error('Upload succeeded but no image URL was returned. Please try again.')
+          throw new Error(uploadRes.data?.error || 'Upload succeeded but no image URL was returned. Please try again.')
         }
       }
 
@@ -1151,13 +1029,25 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [deliveryState, setDeliveryState] = useState<DeliveryState>({
     deliveryType: 'standard',
-    paymentMethod: 'online',
+    paymentMethod: 'cod',
     paymentConfirmed: false,
     buyerConfirmedReceipt: false,
     sellerConfirmedDelivery: false,
     deliveryInstructions: '',
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
+  
+  // Auto-confirm COD payment when delivery type is selected
+  useEffect(() => {
+    if (deliveryState.deliveryType && !deliveryState.paymentConfirmed) {
+      setDeliveryState(prev => ({
+        ...prev,
+        paymentConfirmed: true,
+        paymentMethod: 'cod',
+      }))
+    }
+  }, [deliveryState.deliveryType, deliveryState.paymentConfirmed])
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -1288,10 +1178,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
   }), [distance])
 
-  const paymentMethods = {
-    cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
-    online: { label: 'Online Payment (Xendit)', icon: '💳', color: 'blue' },
-  }
   const tradingPartner = isUserBuyer
     ? trade?.seller_name || `User #${trade?.seller_id}`
     : trade?.buyer_name || `User #${trade?.buyer_id}`
@@ -1544,6 +1430,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const response = await api.get(`/api/trades/${trade.id}`)
       const tradeData = response.data?.data
 
+      // Keep the modal header/status badge consistent with the latest backend state.
+      // This prevents UI mismatches like "WAITING FOR MEETUP" while showing "You Both Agreed!".
+      if (tradeData && onTradeUpdate) {
+        onTradeUpdate(tradeData)
+      }
+
       // Set confirmation status based on backend data
       setBuyerMeetupConfirmed(!!(tradeData?.buyer_meetup_confirmed || tradeData?.meetup_confirmed_by_buyer))
       setSellerMeetupConfirmed(!!(tradeData?.seller_meetup_confirmed || tradeData?.meetup_confirmed_by_seller))
@@ -1706,31 +1598,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     try {
       setConfirmingPayment(true)
 
-      // Xendit Online Checkout Pipeline
-      if (deliveryState.paymentMethod === 'online') {
-        const xenditResponse = await api.post(`/api/payments/trade/${trade?.id}`)
-        if (xenditResponse.data?.success && xenditResponse.data?.data?.checkout_url) {
-          const externalId = xenditResponse.data?.data?.external_id
-          if (externalId && trade?.id) {
-            sessionStorage.setItem(`xendit_external_id_trade_${trade.id}`, externalId)
-          }
-
-          // Redirect the user securely to Xendit's hosted checkout page
-          window.location.href = xenditResponse.data.data.checkout_url
-          return // Stop execution, let the redirect happen. Webhook will confirm payment async.
-        }
-      }
-
-      // Traditional Manual Payment Confirmation (e.g. COD)
+      // Confirm COD payment
       await api.put(`/api/trades/${trade?.id}`, {
         action: 'update_delivery_state',
         payment_confirmed: true,
-        payment_method: deliveryState.paymentMethod as any,
+        payment_method: 'cod',
       })
 
       setDeliveryState(prev => ({
         ...prev,
         paymentConfirmed: true,
+        paymentMethod: 'cod',
       }))
 
       // Update local trade state
@@ -1738,7 +1616,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         const updatedTrade: Trade = {
           ...trade,
           payment_confirmed: true,
-          payment_method: deliveryState.paymentMethod as any,
+          payment_method: 'cod',
         }
         onTradeUpdate(updatedTrade)
       }
@@ -1748,15 +1626,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
       toast({
         id: "viewtrademodal-payment-confirmed",
-        title: 'Payment confirmed',
-        description: 'Your payment has been secured',
+        title: 'Ready for handoff',
+        description: 'Ready to receive the item. Have your money ready!',
         status: 'success',
         duration: 2000,
       })
     } catch (error: any) {
       toast({
         id: "viewtrademodal-payment-failed",
-        title: 'Payment failed',
+        title: 'Confirmation failed',
         description: error?.response?.data?.error || 'Please try again',
         status: 'error',
         duration: 4000,
@@ -2086,7 +1964,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     h="150px"
                                     objectFit="cover"
                                     borderRadius="md"
-                                    fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                    fallbackSrc="/no-image.svg"
                                   />
                                   <Text fontWeight="semibold">{requestedProduct.title}</Text>
                                   <Text fontSize="sm" color="gray.600" noOfLines={2}>
@@ -2127,7 +2005,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         h="150px"
                                         objectFit="cover"
                                         borderRadius="md"
-                                        fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                        fallbackSrc="/no-image.svg"
                                       />
                                       <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
                                         {product.title}
@@ -2351,7 +2229,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       deliveryState={deliveryState}
                       setDeliveryState={setDeliveryState}
                       deliveryOptions={deliveryOptions}
-                      paymentMethods={paymentMethods}
                       requestedProduct={requestedProduct}
                       trade={trade}
                       distance={distance}
@@ -2379,56 +2256,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
                             Current Stage: Waiting for both parties to confirm location
                           </Text>
-                        </Box>
-                      )}
-
-                      {isMeetupActive && !bothMetConfirmed && (
-                        <VStack align="stretch" spacing={3}>
-                          <Box
-                            p={3}
-                            bg={meetupInfoBg}
-                            borderLeft="4px"
-                            borderColor="brand.500"
-                            borderRadius="md"
-                          >
-                            <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
-                              Current Stage: Confirm you met at {buyerMeetupLocation} at {formatTimePH(buyerMeetupTime)}
-                            </Text>
-                          </Box>
-
-                          <Button
-                            colorScheme="green"
-                            size="lg"
-                            onClick={confirmMeetupDone}
-                            isLoading={confirmingMeetupDone}
-                            leftIcon={<FaCheckCircle />}
-                            w="full"
-                            isDisabled={userMetConfirmed}
-                          >
-                            {userMetConfirmed ? 'Confirmed ✓' : 'Confirm You Met'}
-                          </Button>
-
-                          {userMetConfirmed && (
-                            <Text fontSize="xs" color="gray.600" textAlign="center">
-                              Waiting for the other party to confirm.
-                            </Text>
-                          )}
-                        </VStack>
-                      )}
-
-                      {isMeetupActive && bothMetConfirmed && (
-                        <Box>
-                          <Button
-                            colorScheme="green"
-                            size="lg"
-                            onClick={() => setIsReviewModalOpen(true)}
-                            leftIcon={<FaStar />}
-                            w="full"
-                            transition="all 0.2s"
-                            _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                          >
-                            ✓ Leave Review & Complete Trade
-                          </Button>
                         </Box>
                       )}
 
@@ -2702,28 +2529,76 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             // Both submitted - check if they match
                             buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime ? (
                               // MATCH - Success!
-                              <Box
-                                p={4}
-                                bg="green.100"
-                                borderRadius="md"
-                                borderWidth="2px"
-                                borderColor="green.400"
-                                textAlign="center"
-                              >
-                                <Icon as={FaCheckCircle} color="green.500" boxSize={8} mb={2} />
-                                <Text fontWeight="bold" color="green.700" fontSize="md">
-                                  You Both Agreed!
-                                </Text>
-                                <Text fontSize="sm" color="green.600" mt={1}>
-                                  {buyerMeetupLocation}
-                                </Text>
-                                <Text fontSize="sm" color="green.600">
-                                  {formatTimePH(buyerMeetupTime)}
-                                </Text>
-                                <Text fontSize="xs" color="green.500" mt={2}>
-                                  The trade is now active. See you there!
-                                </Text>
-                              </Box>
+                              <VStack spacing={3} align="stretch">
+                                <Box
+                                  p={4}
+                                  bg="green.100"
+                                  borderRadius="md"
+                                  borderWidth="2px"
+                                  borderColor="green.400"
+                                  textAlign="center"
+                                >
+                                  <Icon as={FaCheckCircle} color="green.500" boxSize={8} mb={2} />
+                                  <Text fontWeight="bold" color="green.700" fontSize="md">
+                                    You Both Agreed!
+                                  </Text>
+                                  <Text fontSize="sm" color="green.600" mt={1}>
+                                    {buyerMeetupLocation}
+                                  </Text>
+                                  <Text fontSize="sm" color="green.600">
+                                    {formatTimePH(buyerMeetupTime)}
+                                  </Text>
+                                  <Text fontSize="xs" color="green.500" mt={2}>
+                                    Meetup agreed. Proceed to confirm you met.
+                                  </Text>
+                                </Box>
+
+                                {!bothMetConfirmed ? (
+                                  <VStack align="stretch" spacing={3}>
+                                    <Box
+                                      p={3}
+                                      bg={meetupInfoBg}
+                                      borderLeft="4px"
+                                      borderColor="brand.500"
+                                      borderRadius="md"
+                                    >
+                                      <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
+                                        Current Stage: Confirm you met at {buyerMeetupLocation} at {formatTimePH(buyerMeetupTime)}
+                                      </Text>
+                                    </Box>
+
+                                    <Button
+                                      colorScheme="green"
+                                      size="lg"
+                                      onClick={confirmMeetupDone}
+                                      isLoading={confirmingMeetupDone}
+                                      leftIcon={<FaCheckCircle />}
+                                      w="full"
+                                      isDisabled={userMetConfirmed}
+                                    >
+                                      {userMetConfirmed ? 'Confirmed ✓' : 'Confirm You Met'}
+                                    </Button>
+
+                                    {userMetConfirmed && (
+                                      <Text fontSize="xs" color="gray.600" textAlign="center">
+                                        Waiting for the other party to confirm.
+                                      </Text>
+                                    )}
+                                  </VStack>
+                                ) : (
+                                  <Button
+                                    colorScheme="green"
+                                    size="lg"
+                                    onClick={() => setIsReviewModalOpen(true)}
+                                    leftIcon={<FaStar />}
+                                    w="full"
+                                    transition="all 0.2s"
+                                    _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                                  >
+                                    ✓ Leave Review & Complete Trade
+                                  </Button>
+                                )}
+                              </VStack>
                             ) : (
                               // NO MATCH - Need to coordinate
                               <VStack spacing={3}>

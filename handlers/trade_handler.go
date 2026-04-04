@@ -1501,20 +1501,59 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
 	case "confirm_meetup_done":
 		// Each party confirms they met and completed the handoff (pre-condition for leaving reviews)
-		if currentStatus != "active" {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Only active trades can confirm meetup completion"})
+		// Be tolerant to client/backend status desync: allow this action as long as meetup was agreed.
+		if currentStatus == "cancelled" || currentStatus == "declined" || currentStatus == "completed" || currentStatus == "auto_completed" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This trade can no longer confirm meetup completion"})
 		}
 
 		var tradeOption, meetupLocation, meetupTime string
-		err = h.db.QueryRow("SELECT COALESCE(trade_option, 'meetup'), COALESCE(meetup_location, ''), COALESCE(meetup_time, '') FROM trades WHERE id = ?", tradeID).Scan(&tradeOption, &meetupLocation, &meetupTime)
+		var buyerConfirmed, sellerConfirmed bool
+		var buyerLocation, buyerTime, sellerLocation, sellerTime sql.NullString
+		err = h.db.QueryRow(`
+			SELECT COALESCE(trade_option, 'meetup'),
+			       COALESCE(meetup_location, ''), COALESCE(meetup_time, ''),
+			       COALESCE(buyer_meetup_confirmed, FALSE), COALESCE(seller_meetup_confirmed, FALSE),
+			       buyer_meetup_location, buyer_meetup_time,
+			       seller_meetup_location, seller_meetup_time
+			FROM trades WHERE id = ?`, tradeID).Scan(
+			&tradeOption,
+			&meetupLocation, &meetupTime,
+			&buyerConfirmed, &sellerConfirmed,
+			&buyerLocation, &buyerTime,
+			&sellerLocation, &sellerTime,
+		)
 		if err != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade details"})
 		}
 		if tradeOption != "meetup" {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This action is only available for meetup trades"})
 		}
-		if strings.TrimSpace(meetupLocation) == "" || strings.TrimSpace(meetupTime) == "" {
+
+		// Ensure meetup was actually agreed (both confirmed + matching selections)
+		if !buyerConfirmed || !sellerConfirmed {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup must be agreed before confirming you met"})
+		}
+
+		bLoc := strings.ToLower(strings.TrimSpace(buyerLocation.String))
+		sLoc := strings.ToLower(strings.TrimSpace(sellerLocation.String))
+		bTime := strings.ToLower(strings.TrimSpace(buyerTime.String))
+		sTime := strings.ToLower(strings.TrimSpace(sellerTime.String))
+		if bLoc == "" || bTime == "" || sLoc == "" || sTime == "" || bLoc != sLoc || bTime != sTime {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup selections must match before confirming you met"})
+		}
+
+		// Ensure final meetup fields exist; if not, backfill them from the agreed selections.
+		if strings.TrimSpace(meetupLocation) == "" || strings.TrimSpace(meetupTime) == "" {
+			meetupLocation = buyerLocation.String
+			meetupTime = buyerTime.String
+			_, _ = h.db.Exec("UPDATE trades SET meetup_location=?, meetup_time=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", meetupLocation, meetupTime, tradeID)
+		}
+
+		// Auto-promote to active if needed so review/completion flows don't get blocked.
+		if currentStatus != "active" {
+			_, _ = h.db.Exec("UPDATE trades SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('cancelled','declined','completed','auto_completed')", tradeID)
+			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
+			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
 		}
 
 		column := "buyer_met"
@@ -2304,6 +2343,14 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
+	// Check if proof URL columns exist (older DBs may not have them yet)
+	proofColsExist := false
+	{
+		var cnt int
+		_ = h.db.QueryRow(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME IN ('buyer_proof_url', 'seller_proof_url')`).Scan(&cnt)
+		proofColsExist = cnt >= 2
+	}
+
 	query := `
 		SELECT
 			t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status,
@@ -2315,7 +2362,19 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 			p.image_urls AS product_image_urls,
 			t.buyer_rating, t.seller_rating,
 			COALESCE(t.buyer_feedback, '') as buyer_feedback,
-			COALESCE(t.seller_feedback, '') as seller_feedback
+			COALESCE(t.seller_feedback, '') as seller_feedback`
+
+	if proofColsExist {
+		query += `,
+			COALESCE(t.buyer_proof_url, '') as buyer_proof_url,
+			COALESCE(t.seller_proof_url, '') as seller_proof_url`
+	} else {
+		query += `,
+			'' as buyer_proof_url,
+			'' as seller_proof_url`
+	}
+
+	query += `
 		FROM trades t
 		JOIN users ub ON ub.id = t.buyer_id
 		JOIN users us ON us.id = t.seller_id
@@ -2349,6 +2408,8 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 		SellerRating   *int        `json:"seller_rating,omitempty"`
 		BuyerFeedback  string      `json:"buyer_feedback,omitempty"`
 		SellerFeedback string      `json:"seller_feedback,omitempty"`
+		BuyerProofURL  string      `json:"buyer_proof_url,omitempty"`
+		SellerProofURL string      `json:"seller_proof_url,omitempty"`
 		Items          []fiber.Map `json:"items"`
 	}
 
@@ -2359,6 +2420,7 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 		var t PublicTrade
 		var pimg, pimgs sql.NullString
 		var completedAt sql.NullTime
+		var buyerProofURL, sellerProofURL sql.NullString
 
 		if err := rows.Scan(
 			&t.ID, &t.BuyerID, &t.SellerID, &t.ProductID, &t.Status, &t.Message,
@@ -2367,9 +2429,17 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 			&pimg, &pimgs,
 			&t.BuyerRating, &t.SellerRating,
 			&t.BuyerFeedback, &t.SellerFeedback,
+			&buyerProofURL, &sellerProofURL,
 		); err != nil {
 			log.Printf("⚠️ GetUserTradeHistory: scan error: %v", err)
 			continue
+		}
+
+		if buyerProofURL.Valid {
+			t.BuyerProofURL = buyerProofURL.String
+		}
+		if sellerProofURL.Valid {
+			t.SellerProofURL = sellerProofURL.String
 		}
 
 		if completedAt.Valid {
@@ -4202,13 +4272,13 @@ func (h *TradeHandler) GetDiscoverableMultiwayLoops(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	type openChain struct {
-		chainID      string
-		origTradeID  int
-		u1ID, u2ID   int
+		chainID        string
+		origTradeID    int
+		u1ID, u2ID     int
 		u1Name, u2Name string
-		u2WantsTitle string
-		u1OfferTitle string
-		expiresAt    string
+		u2WantsTitle   string
+		u1OfferTitle   string
+		expiresAt      string
 	}
 	var chains []openChain
 	for rows.Next() {
