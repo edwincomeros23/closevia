@@ -397,6 +397,8 @@ func CreateTables() error {
 			meetup_location VARCHAR(500) NULL,
 			buyer_meetup_confirmed BOOLEAN DEFAULT FALSE,
 			seller_meetup_confirmed BOOLEAN DEFAULT FALSE,
+			buyer_met BOOLEAN DEFAULT FALSE,
+			seller_met BOOLEAN DEFAULT FALSE,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1199,6 +1201,8 @@ func ensureTradeColumns() {
 		{"buyer_meetup_time", "VARCHAR(50) NULL"},
 		{"seller_meetup_location", "VARCHAR(500) NULL"},
 		{"seller_meetup_time", "VARCHAR(50) NULL"},
+		{"buyer_met", "BOOLEAN DEFAULT FALSE"},
+		{"seller_met", "BOOLEAN DEFAULT FALSE"},
 		{"buyer_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 		{"seller_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 	}

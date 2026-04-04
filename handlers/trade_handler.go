@@ -883,7 +883,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	// Build query dynamically to handle missing columns
 	query := `
         SELECT
-          t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
+		  t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, COALESCE(t.message, '') as message, t.offered_cash_amount, t.created_at, t.updated_at,
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
@@ -939,6 +939,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
           COALESCE(t.meetup_location, '') as meetup_location, COALESCE(t.buyer_meetup_confirmed, FALSE) as buyer_meetup_confirmed, COALESCE(t.seller_meetup_confirmed, FALSE) as seller_meetup_confirmed,
           COALESCE(t.buyer_meetup_location, '') as buyer_meetup_location, COALESCE(t.buyer_meetup_time, '') as buyer_meetup_time,
           COALESCE(t.seller_meetup_location, '') as seller_meetup_location, COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
+		  COALESCE(t.buyer_met, FALSE) as buyer_met, COALESCE(t.seller_met, FALSE) as seller_met,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title,
           p.image_url AS product_image_url, p.image_urls AS product_image_urls
         FROM trades t
@@ -965,7 +966,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		var pimg, pimgs sql.NullString
 		var offeredCashNull sql.NullFloat64
 
-		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
+		if err := rows.Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs); err == nil {
 			// Set offered cash if valid
 			if offeredCashNull.Valid {
 				val := offeredCashNull.Float64
@@ -1497,6 +1498,54 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_selection', ?)",
 			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
+	case "confirm_meetup_done":
+		// Each party confirms they met and completed the handoff (pre-condition for leaving reviews)
+		if currentStatus != "active" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Only active trades can confirm meetup completion"})
+		}
+
+		var tradeOption, meetupLocation, meetupTime string
+		err = h.db.QueryRow("SELECT COALESCE(trade_option, 'meetup'), COALESCE(meetup_location, ''), COALESCE(meetup_time, '') FROM trades WHERE id = ?", tradeID).Scan(&tradeOption, &meetupLocation, &meetupTime)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade details"})
+		}
+		if tradeOption != "meetup" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This action is only available for meetup trades"})
+		}
+		if strings.TrimSpace(meetupLocation) == "" || strings.TrimSpace(meetupTime) == "" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup must be agreed before confirming you met"})
+		}
+
+		column := "buyer_met"
+		if userID == sellerID {
+			column = "seller_met"
+		}
+		if _, err := h.db.Exec("UPDATE trades SET "+column+"=TRUE, updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID); err != nil {
+			log.Printf("Failed to confirm meetup done for trade %d: %v", tradeID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm meetup completion"})
+		}
+
+		// Notify the other party
+		otherUserID := buyerID
+		confirmerName := "seller"
+		if userID == buyerID {
+			otherUserID = sellerID
+			confirmerName = "buyer"
+		}
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, fmt.Sprintf("The %s confirmed they met you for the meetup trade.", confirmerName))
+		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_done', ?)", tradeID, userID, currentStatus, "Confirmed met")
+
+		// If both confirmed, let both clients know reviews can proceed
+		var bm, sm bool
+		_ = h.db.QueryRow("SELECT COALESCE(buyer_met, FALSE), COALESCE(seller_met, FALSE) FROM trades WHERE id = ?", tradeID).Scan(&bm, &sm)
+		if bm && sm {
+			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "met_confirmed": true}})
+			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "met_confirmed": true}})
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", buyerID, "Both parties confirmed they met. You can now leave a review.")
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", sellerID, "Both parties confirmed they met. You can now leave a review.")
+		}
+
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"buyer_met": bm, "seller_met": sm}})
 	case "update_delivery_state":
 		// Handle delivery state updates (payment confirmation, proof of delivery, confirmations)
 		log.Printf("=== DELIVERY STATE UPDATE REQUEST ===")
@@ -2064,7 +2113,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	// Build query dynamically for single trade
 	query := `
         SELECT
-          t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
+		  t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, COALESCE(t.message, '') as message, t.offered_cash_amount, t.created_at, t.updated_at,
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
@@ -2121,6 +2170,8 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
           COALESCE(t.buyer_meetup_time, '') as buyer_meetup_time,
           COALESCE(t.seller_meetup_location, '') as seller_meetup_location,
           COALESCE(t.seller_meetup_time, '') as seller_meetup_time,
+					COALESCE(t.buyer_met, FALSE) as buyer_met,
+					COALESCE(t.seller_met, FALSE) as seller_met,
           ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title
         FROM trades t
         JOIN users ub ON ub.id = t.buyer_id
@@ -2131,7 +2182,12 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	var deliveryType, paymentMethod, deliveryInstructions string
 	var paymentConfirmed, buyerConfirmedReceipt, sellerConfirmedDelivery bool
 	var proofOfDelivery sql.NullString
-	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &tr.OfferedCash, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.MeetupTime, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+	var offeredCashNull sql.NullFloat64
+	err = h.db.QueryRow(query, tradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt, &tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt, &tr.TradeOption, &tr.DeliveryAddress, &deliveryType, &paymentMethod, &paymentConfirmed, &deliveryInstructions, &proofOfDelivery, &buyerConfirmedReceipt, &sellerConfirmedDelivery, &tr.MeetupLocation, &tr.MeetupTime, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed, &tr.BuyerMeetupLocation, &tr.BuyerMeetupTime, &tr.SellerMeetupLocation, &tr.SellerMeetupTime, &tr.BuyerMet, &tr.SellerMet, &tr.BuyerName, &tr.SellerName, &tr.ProductTitle)
+	if offeredCashNull.Valid {
+		val := offeredCashNull.Float64
+		tr.OfferedCash = &val
+	}
 	tr.DeliveryType = deliveryType
 	tr.PaymentMethod = paymentMethod
 	tr.PaymentConfirmed = paymentConfirmed
