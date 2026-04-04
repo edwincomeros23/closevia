@@ -829,14 +829,20 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
           headers: { 'Content-Type': 'multipart/form-data' },
         })
         
+        console.log('Upload response:', uploadRes.data)
+        
         // Validate upload succeeded and has URL
         if (!uploadRes.data?.success) {
           throw new Error(uploadRes.data?.error || 'Upload failed: invalid response')
         }
         
-        uploadedProofUrl = uploadRes.data?.data?.url
+        // Try multiple possible response structures
+        uploadedProofUrl = uploadRes.data?.data?.url || uploadRes.data?.url
+        console.log('Extracted URL:', uploadedProofUrl)
+        
         if (!uploadedProofUrl) {
-          throw new Error('Upload succeeded but no image URL was returned. Please try again.')
+          console.error('Full upload response:', JSON.stringify(uploadRes.data, null, 2))
+          throw new Error('Upload succeeded but no image URL was returned. Response: ' + JSON.stringify(uploadRes.data))
         }
       }
 
