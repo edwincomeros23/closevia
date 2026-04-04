@@ -2660,7 +2660,7 @@ const Dashboard: React.FC = () => {
     }
 
     return (
-      <Modal isOpen={popupOpen} onClose={() => setPopupOpen(false)} size="sm" isCentered>
+      <Modal isOpen={popupOpen} onClose={() => setPopupOpen(false)} size="sm" isCentered closeOnOverlayClick={false} closeOnEsc={false}>
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent
           bg="white"
@@ -2686,7 +2686,10 @@ const Dashboard: React.FC = () => {
                     variant="outline"
                     size="md"
                     flex={1}
-                    onClick={popupConfig.onCancel}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      popupConfig.onCancel?.()
+                    }}
                     isDisabled={deleting}
                   >
                     {popupConfig.cancelText}
@@ -2696,7 +2699,10 @@ const Dashboard: React.FC = () => {
                   colorScheme={popupConfig.confirmColorScheme || getColorScheme()}
                   size="md"
                   flex={1}
-                  onClick={popupConfig.onConfirm}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    popupConfig.onConfirm?.()
+                  }}
                   isLoading={deleting}
                   loadingText="Processing..."
                   leftIcon={popupConfig.type === 'success' ? <CheckIcon /> : undefined}

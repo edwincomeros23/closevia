@@ -234,7 +234,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
               justify={{ base: 'flex-start', md: 'space-between' }}
               align="flex-start"
               w="full"
-              minW={loopLength > 3 && { base: `${loopLength * 95}px`, md: 'auto' }}
+              minW={loopLength > 3 ? { base: `${loopLength * 95}px`, md: 'auto' } : undefined}
             >
               {validParticipants.map((participant, index) => {
                 const avatarColor = getAvatarColor(index)
@@ -301,7 +301,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             </Button>
 
             {viewMode === 'participant' && loopType === 'detected_loop' && !canCreate && (
-              <Tooltip label={proNudgeText || "Pro members can initiate. Upgrade to unlock."} placement={{ base: 'bottom', md: 'top' }} hasArrow>
+              <Tooltip label={proNudgeText || "Pro members can initiate. Upgrade to unlock."} placement="top" hasArrow>
                 <Button
                   size={{ base: 'sm', md: 'md' }}
                   colorScheme="purple"
