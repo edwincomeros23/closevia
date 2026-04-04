@@ -1483,9 +1483,9 @@ func (h *UserHandler) GetOrganizationByHandle(c *fiber.Ctx) error {
 		       created_at,
 		       updated_at
 		FROM users
-		WHERE is_organization = TRUE AND org_handle = ?
+		WHERE is_organization = TRUE AND (org_handle = ? OR slug = ?)
 		LIMIT 1
-	`, handle).Scan(
+	`, handle, handle).Scan(
 		&org.ID,
 		&slugNull,
 		&org.Name,

@@ -145,19 +145,22 @@ const Home: React.FC = () => {
     const fetchSuggestions = async () => {
       setSuggestionsLoading(true)
       try {
-        const [productRes, userRes] = await Promise.all([
+        const [productRes, userRes, orgRes] = await Promise.all([
           api.get(`/api/products/search-suggestions?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}`),
           api.get(`/api/users/search?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}&limit=5`),
+          api.get(`/api/organizations?q=${encodeURIComponent(debouncedSuggestionTerm.trim())}&limit=5`),
         ])
         if (!cancelled && productRes.data?.success && productRes.data?.data) {
           const users = userRes.data?.success && Array.isArray(userRes.data?.data) ? userRes.data.data : []
-          const merged: SearchSuggestions = {
+          const organizations = orgRes.data?.success && Array.isArray(orgRes.data?.data) ? orgRes.data.data : []
+          const merged: SearchSuggestions & { organizations?: any[] } = {
             ...productRes.data.data,
             users,
+            organizations,
           }
           setSuggestions(merged)
           const d = merged
-          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0 || (d.users?.length || 0) > 0
+          const hasResults = d.products?.length > 0 || d.categories?.length > 0 || d.tags?.length > 0 || d.brands?.length > 0 || (d.users?.length || 0) > 0 || (d.organizations?.length || 0) > 0
           setShowSuggestions(hasResults)
         }
       } catch {
@@ -527,8 +530,16 @@ const Home: React.FC = () => {
   )
 
   const organizationSuggestions = useMemo(
-    () => (suggestions.users || []).filter((u) => u.is_organization),
-    [suggestions.users]
+    () => {
+      const userOrgs = (suggestions.users || []).filter((u) => u.is_organization);
+      const communityOrgs = (suggestions as any).organizations || [];
+      // Combine and add a flag to distinguish them if needed
+      return [
+        ...userOrgs.map(u => ({ ...u, type: 'user_org' })),
+        ...communityOrgs.map((o: any) => ({ ...o, is_organization: true, type: 'community_org' }))
+      ];
+    },
+    [suggestions.users, (suggestions as any).organizations]
   )
 
   // Add state for offer sorting
@@ -792,8 +803,9 @@ const Home: React.FC = () => {
                         {organizationSuggestions.map((u, i) => (
                           <Box key={`o-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.org_name || u.name, 'user', u.id, u)}>
                             <HStack spacing={3}>
-                              <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.org_name || u.name} />
+                              <Avatar size="xs" src={getImageUrl(u.org_logo_url || u.logo_url || u.profile_picture)} name={u.org_name || u.name} />
                               <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.org_name || u.name}</Text>
+                              {(u as any).type === 'community_org' && <Badge size="xs" colorScheme="purple" fontSize="10px">Community</Badge>}
                             </HStack>
                           </Box>
                         ))}

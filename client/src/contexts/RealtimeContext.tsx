@@ -14,7 +14,7 @@ type RealtimeContextValue = {
   refreshOngoingTrades: () => void
   refreshMultiWayTrades: () => void
   refreshHistory: () => void
-  setRefreshCallback: (tabType: 'products' | 'sentOffers' | 'receivedOffers' | 'ongoingTrades' | 'multiway' | 'history', cb: () => void) => void
+  setRefreshCallback: (tabType: 'products' | 'sentOffers' | 'receivedOffers' | 'ongoingTrades' | 'multiway' | 'history' | 'multiwayAlert', cb: () => void) => void
 }
 
 const RealtimeContext = createContext<RealtimeContextValue>({
@@ -46,6 +46,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     ongoingTrades: (() => void) | null
     multiway: (() => void) | null
     history: (() => void) | null
+    multiwayAlert: (() => void) | null
   }>({
     products: null,
     sentOffers: null,
@@ -53,6 +54,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     ongoingTrades: null,
     multiway: null,
     history: null,
+    multiwayAlert: null,
   })
   const [offerCount, setOfferCount] = useState(0)
   const [notificationCount, setNotificationCount] = useState(0)
@@ -81,14 +83,17 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         )[0]
         if (newest && !seenNotifIdsRef.current.has(newest.id)) {
           seenNotifIdsRef.current.add(newest.id)
-          showNotification(newest.message || 'New notification', newest.type === 'trade_offer' ? 'success' : 'info')
-          
+
           // Trigger appropriate tab refreshes based on notification type
           const notifType = newest.type || ''
-          if (notifType === 'trade_loop' && refreshCallbacksRef.current.multiway) {
-            // Refresh multi-way tab when loop detected
-            refreshCallbacksRef.current.multiway()
-          } else if (notifType === 'trade_offer' || notifType === 'trade_update') {
+          if (notifType === 'trade_loop') {
+            // Refresh multi-way tab — do NOT show global toast; Dashboard handles it
+            if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
+            if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
+          } else {
+            showNotification(newest.message || 'New notification', notifType === 'trade_offer' ? 'success' : 'info')
+          }
+          if (notifType === 'trade_offer' || notifType === 'trade_update') {
             // Refresh offers/trades tabs when trade updates occur
             if (refreshCallbacksRef.current.receivedOffers) {
               refreshCallbacksRef.current.receivedOffers()
@@ -144,33 +149,40 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               refreshCallbacksRef.current.ongoingTrades()
             }
             break
+          case 'multiway_opportunity':
+            // Multiway loop found for this user — refresh data, let Dashboard show the alert
+            if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
+            if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
+            break
           case 'trade_updated':
-            showNotification(message || `Trade ${data.status || 'updated'}`, 'info')
+            if (data.notification_type === 'trade_loop') {
+              // Multiway update — refresh data, let Dashboard show the alert (no global toast)
+              if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
+              if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
+            } else {
+              showNotification(message || `Trade ${data.status || 'updated'}`, 'info')
+            }
             // Invalidate offers/trades cache so updated trade appears immediately
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
             queryClient.invalidateQueries({ queryKey: ['trades'] })
             refreshCounts()
-            // Refresh relevant tabs
-            if (refreshCallbacksRef.current.receivedOffers) {
-              refreshCallbacksRef.current.receivedOffers()
-            }
-            if (refreshCallbacksRef.current.ongoingTrades) {
-              refreshCallbacksRef.current.ongoingTrades()
-            }
-            if (data.notification_type === 'trade_loop' && refreshCallbacksRef.current.multiway) {
-              refreshCallbacksRef.current.multiway()
-            }
+            if (refreshCallbacksRef.current.receivedOffers) refreshCallbacksRef.current.receivedOffers()
+            if (refreshCallbacksRef.current.ongoingTrades) refreshCallbacksRef.current.ongoingTrades()
             break
           case 'notification':
-            showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
             refreshCounts()
-            // Detect type from notification and refresh appropriate tab
-            if (data.notification_type === 'trade_loop' && refreshCallbacksRef.current.multiway) {
-              refreshCallbacksRef.current.multiway()
-            } else if (data.notification_type === 'trade_offer' && refreshCallbacksRef.current.receivedOffers) {
-              refreshCallbacksRef.current.receivedOffers()
-            } else if (data.notification_type === 'product_sold' && refreshCallbacksRef.current.products) {
-              refreshCallbacksRef.current.products()
+            if (data.notification_type === 'trade_loop') {
+              // Multiway notification — let Dashboard handle the toast, not a global popup
+              if (refreshCallbacksRef.current.multiway) refreshCallbacksRef.current.multiway()
+              if (refreshCallbacksRef.current.multiwayAlert) refreshCallbacksRef.current.multiwayAlert()
+            } else if (data.notification_type === 'trade_offer') {
+              showNotification(message || 'New notification', 'success')
+              if (refreshCallbacksRef.current.receivedOffers) refreshCallbacksRef.current.receivedOffers()
+            } else if (data.notification_type === 'product_sold') {
+              showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
+              if (refreshCallbacksRef.current.products) refreshCallbacksRef.current.products()
+            } else {
+              showNotification(message || 'New notification', data.alert ? 'alert' : 'success')
             }
             break
           case 'trade_message':
@@ -238,7 +250,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [])
 
-  const setRefreshCallback = useCallback((tabType: 'products' | 'sentOffers' | 'receivedOffers' | 'ongoingTrades' | 'multiway' | 'history', cb: () => void) => {
+  const setRefreshCallback = useCallback((tabType: 'products' | 'sentOffers' | 'receivedOffers' | 'ongoingTrades' | 'multiway' | 'history' | 'multiwayAlert', cb: () => void) => {
     refreshCallbacksRef.current[tabType] = cb
   }, [])
 
