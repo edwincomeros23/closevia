@@ -1326,32 +1326,34 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                           transition="all 0.2s"
                           position="relative"
                         >
-                          <Box position="relative">
-                            <Image
-                              src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
-                              alt={product.title}
-                              h="180px"
-                              w="100%"
-                              objectFit="cover"
-                            />
-                            <Box position="absolute" top="2" right="2">
-                              <IconButton
-                                aria-label="Save item"
-                                icon={savedProductIds.has(product.id) ? <FaHeart /> : <FiHeart />}
-                                size="sm"
-                                borderRadius="full"
-                                bg="white"
-                                color={savedProductIds.has(product.id) ? 'red.500' : 'gray.600'}
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleSave(product.id) }}
-                                _hover={{ color: savedProductIds.has(product.id) ? 'red.600' : 'red.500', bg: 'white' }}
+                          <RouterLink to={getProductUrl(product)} style={{ textDecoration: 'none' }}>
+                            <Box position="relative" cursor="pointer">
+                              <Image
+                                src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
+                                alt={product.title}
+                                h="180px"
+                                w="100%"
+                                objectFit="cover"
                               />
+                              <Box position="absolute" top="2" right="2">
+                                <IconButton
+                                  aria-label="Save item"
+                                  icon={savedProductIds.has(product.id) ? <FaHeart /> : <FiHeart />}
+                                  size="sm"
+                                  borderRadius="full"
+                                  bg="white"
+                                  color={savedProductIds.has(product.id) ? 'red.500' : 'gray.600'}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggleSave(product.id) }}
+                                  _hover={{ color: savedProductIds.has(product.id) ? 'red.600' : 'red.500', bg: 'white' }}
+                                />
+                              </Box>
+                              <Box position="absolute" top="2" left="2">
+                                <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
+                                  {product.status}
+                                </Badge>
+                              </Box>
                             </Box>
-                            <Box position="absolute" top="2" left="2">
-                              <Badge colorScheme={product.status === 'available' ? 'green' : 'red'}>
-                                {product.status}
-                              </Badge>
-                            </Box>
-                          </Box>
+                          </RouterLink>
 
                           <Box p={3}>
                             <RouterLink to={getProductUrl(product)} style={{ textDecoration: 'none' }}>
