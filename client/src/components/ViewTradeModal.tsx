@@ -828,7 +828,16 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
         const uploadRes = await api.post('/api/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
+        
+        // Validate upload succeeded and has URL
+        if (!uploadRes.data?.success) {
+          throw new Error(uploadRes.data?.error || 'Upload failed: invalid response')
+        }
+        
         uploadedProofUrl = uploadRes.data?.data?.url
+        if (!uploadedProofUrl) {
+          throw new Error('Upload succeeded but no image URL was returned. Please try again.')
+        }
       }
 
       await api.put(`/api/trades/${trade.id}/complete`, {
@@ -860,7 +869,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       toast({
         id: "viewtrademodal-error",
         title: 'Error',
-        description: error?.response?.data?.error || 'Failed to submit review',
+        description: error?.message || error?.response?.data?.error || 'Failed to submit review',
         status: 'error',
       })
     } finally {

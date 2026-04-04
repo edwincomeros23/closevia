@@ -156,25 +156,34 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
         },
       })
 
-      const imageUrl = response.data?.data?.url || response.data?.url
-      if (imageUrl) {
-        setTransactionProof(imageUrl)
-        toast({
-        id: "tradecompletionmodal-image-uploaded",
-          title: 'Image uploaded',
-          description: 'Transaction proof uploaded successfully',
-          status: 'success',
-        })
+      // Check if response indicates success
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || 'Upload failed: invalid response')
       }
+
+      const imageUrl = response.data?.data?.url
+      if (!imageUrl) {
+        throw new Error('Upload succeeded but no image URL was returned. Please try again.')
+      }
+
+      setTransactionProof(imageUrl)
+      toast({
+        id: "tradecompletionmodal-image-uploaded",
+        title: 'Image uploaded',
+        description: 'Transaction proof uploaded successfully',
+        status: 'success',
+      })
     } catch (error: any) {
       // Upload failed — non-blocking. User can still submit without proof.
       const isServiceUnavailable = error?.response?.status === 503
+      const errorMessage = error?.message || error?.response?.data?.error || 'Failed to upload image'
+      
       toast({
         id: "tradecompletionmodal-toast-4",
         title: isServiceUnavailable ? 'Image upload unavailable' : 'Upload failed',
         description: isServiceUnavailable
           ? 'Image upload service is not configured. You can still submit your completion without a proof photo.'
-          : (error?.response?.data?.error || 'Failed to upload image. You can still submit without a proof photo.'),
+          : errorMessage,
         status: 'warning',
         duration: 5000,
         isClosable: true,
