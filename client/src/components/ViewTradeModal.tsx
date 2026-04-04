@@ -329,7 +329,6 @@ interface DeliveryTabProps {
   deliveryState: DeliveryState
   setDeliveryState: React.Dispatch<React.SetStateAction<DeliveryState>>
   deliveryOptions: Record<string, { time: string; fee: number; icon: string; description: string }>
-  paymentMethods: Record<string, { label: string; icon: string; color: string }>
   requestedProduct: Product | null
   trade: Trade | null
   distance: number
@@ -348,7 +347,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   deliveryState,
   setDeliveryState,
   deliveryOptions,
-  paymentMethods,
   requestedProduct,
   trade,
   distance,
@@ -384,7 +382,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
     {
       id: 'payment',
       title: 'Payment',
-      detail: `${paymentMethods[deliveryState.paymentMethod].label} • ${deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}`,
+      detail: `Cash on Delivery • ${deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}`,
       complete: deliveryState.paymentConfirmed,
       current: deliveryState.paymentConfirmed && !linkedDelivery,
     },
@@ -451,7 +449,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 Payment: {deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}
               </Badge>
               <Badge colorScheme="purple" variant="subtle">
-                Method: {paymentMethods[deliveryState.paymentMethod].label}
+                Method: Cash on Delivery
               </Badge>
               <Badge colorScheme="brand" variant="subtle">Total: P{totalCost.toFixed(2)}</Badge>
             </HStack>
@@ -582,86 +580,57 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
         <CardBody>
           <VStack spacing={4} align="stretch">
             <VStack spacing={2} align="start">
-              <Text fontWeight="semibold" fontSize="md">Choose Payment Method</Text>
+              <Text fontWeight="semibold" fontSize="md">Payment Method</Text>
               <Text fontSize="sm" color="gray.600">
                 Total: ₱{(requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee}
                 (Item: ₱{requestedProduct?.price || 0} + Delivery: ₱{deliveryOptions[deliveryState.deliveryType].fee})
               </Text>
+              {deliveryOptions[deliveryState.deliveryType].fee > 0 && (
+                <Text fontSize="xs" color="amber.600" fontWeight="medium">
+                  💡 Delivery fee split 50/50 with seller
+                </Text>
+              )}
             </VStack>
 
-            <VStack spacing={3} align="stretch">
-              {Object.entries(paymentMethods).map(([method, details]: [string, any]) => (
-                <Card
-                  key={`payment-${method}`}
-                  cursor={deliveryState.paymentConfirmed ? 'not-allowed' : 'pointer'}
-                  borderWidth="2px"
-                  borderColor={deliveryState.paymentMethod === method ? `${details.color}.400` : 'gray.200'}
-                  bg={deliveryState.paymentMethod === method ? `${details.color}.50` : 'white'}
-                  opacity={deliveryState.paymentConfirmed && deliveryState.paymentMethod !== method ? 0.5 : 1}
-                  onClick={() => {
-                    if (deliveryState.paymentConfirmed) return
-                    const newMethod = method as DeliveryState['paymentMethod']
-                    setDeliveryState(prev => ({ ...prev, paymentMethod: newMethod }))
-                    saveDeliveryState({ paymentMethod: newMethod })
-                  }}
-                  transition="all 0.2s"
-                  _hover={{
-                    borderColor: deliveryState.paymentConfirmed ? undefined : `${details.color}.300`,
-                    shadow: deliveryState.paymentConfirmed ? undefined : 'md'
-                  }}
-                >
-                  <CardBody p={4}>
-                    <HStack justify="space-between">
-                      <HStack spacing={3}>
-                        <Text fontSize="xl">{details.icon}</Text>
-                        <VStack align="start" spacing={0}>
-                          <Text fontWeight="semibold" fontSize="sm">{details.label}</Text>
-                          <Text fontSize="xs" color="gray.500">
-                            {method === 'cod' && 'Pay when you receive the item'}
-                            {method === 'online' && 'Secure checkout via Xendit gateway'}
-                          </Text>
-                        </VStack>
-                      </HStack>
-                      {deliveryState.paymentMethod === method && (
-                        <Badge colorScheme={details.color} borderRadius="full">
-                          <Icon as={FiCheck} boxSize={3} />
-                        </Badge>
-                      )}
-                    </HStack>
-                  </CardBody>
-                </Card>
-              ))}
-            </VStack>
+            {/* COD Only - Minimal UI */}
+            <Box 
+              bg="green.50" 
+              border="2px solid" 
+              borderColor="green.300" 
+              borderRadius="lg" 
+              p={4}
+            >
+              <VStack spacing={3} align="stretch">
+                <HStack justify="space-between">
+                  <HStack spacing={3}>
+                    <Text fontSize="2xl">💵</Text>
+                    <VStack align="start" spacing={0}>
+                      <Text fontWeight="bold" fontSize="md">Cash on Delivery</Text>
+                      <Text fontSize="sm" color="gray.600">Pay when you receive</Text>
+                    </VStack>
+                  </HStack>
+                  <Icon as={FiCheck} boxSize={6} color="green.500" />
+                </HStack>
+                
+                <Box bg="white" p={3} borderRadius="md" borderLeftWidth="4px" borderLeftColor="green.400">
+                  <Text fontSize="sm" fontWeight="semibold" color="green.700">
+                    ✓ Ready your money
+                  </Text>
+                  <Text fontSize="xs" color="gray.600" mt={1}>
+                    Have exact change ready for the handoff
+                  </Text>
+                </Box>
+              </VStack>
+            </Box>
 
             <VStack spacing={3}>
-              {/* Payment Information */}
-              {deliveryState.paymentMethod === 'online' && !deliveryState.paymentConfirmed && (
-                <Box bg="blue.50" p={3} borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
-                  <VStack align="start" spacing={1}>
-                    <Text fontSize="sm" fontWeight="medium" color="blue.800">
-                      🔒 Secure Online Payment
-                    </Text>
-                    <Text fontSize="xs" color="blue.600">
-                      You will be redirected to Xendit's secure checkout page to complete payment
-                    </Text>
-
-                    {isUserBuyer && syncingOnlinePayment && (
-                      <HStack spacing={2} pt={1}>
-                        <Spinner size="xs" />
-                        <Text fontSize="xs" color="blue.700">Checking payment status…</Text>
-                      </HStack>
-                    )}
-                  </VStack>
-                </Box>
-              )}
-
               <Button
-                colorScheme={deliveryState.paymentMethod === 'online' ? 'blue' : 'green'}
+                colorScheme="green"
                 size="lg"
                 onClick={handleConfirmPayment}
                 isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
                 isLoading={confirmingPayment}
-                loadingText={deliveryState.paymentMethod === 'online' ? 'Redirecting to Xendit...' : 'Confirming...'}
+                loadingText="Confirming..."
                 leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
                 w="full"
                 _hover={{
@@ -671,9 +640,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               >
                 {deliveryState.paymentConfirmed
                   ? `✅ Payment Confirmed`
-                  : deliveryState.paymentMethod === 'online'
-                    ? 'Proceed to Xendit Checkout'
-                    : `Confirm ${paymentMethods[deliveryState.paymentMethod].label}`}
+                  : 'Ready to Pay on Delivery'}
               </Button>
 
               {!isUserBuyer && (
@@ -1153,7 +1120,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [deliveryState, setDeliveryState] = useState<DeliveryState>({
     deliveryType: 'standard',
-    paymentMethod: 'online',
+    paymentMethod: 'cod',
     paymentConfirmed: false,
     buyerConfirmedReceipt: false,
     sellerConfirmedDelivery: false,
@@ -1290,10 +1257,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
   }), [distance])
 
-  const paymentMethods = {
-    cod: { label: 'Cash on Delivery', icon: '💵', color: 'green' },
-    online: { label: 'Online Payment (Xendit)', icon: '💳', color: 'blue' },
-  }
   const tradingPartner = isUserBuyer
     ? trade?.seller_name || `User #${trade?.seller_id}`
     : trade?.buyer_name || `User #${trade?.buyer_id}`
@@ -1708,31 +1671,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     try {
       setConfirmingPayment(true)
 
-      // Xendit Online Checkout Pipeline
-      if (deliveryState.paymentMethod === 'online') {
-        const xenditResponse = await api.post(`/api/payments/trade/${trade?.id}`)
-        if (xenditResponse.data?.success && xenditResponse.data?.data?.checkout_url) {
-          const externalId = xenditResponse.data?.data?.external_id
-          if (externalId && trade?.id) {
-            sessionStorage.setItem(`xendit_external_id_trade_${trade.id}`, externalId)
-          }
-
-          // Redirect the user securely to Xendit's hosted checkout page
-          window.location.href = xenditResponse.data.data.checkout_url
-          return // Stop execution, let the redirect happen. Webhook will confirm payment async.
-        }
-      }
-
-      // Traditional Manual Payment Confirmation (e.g. COD)
+      // Confirm COD payment
       await api.put(`/api/trades/${trade?.id}`, {
         action: 'update_delivery_state',
         payment_confirmed: true,
-        payment_method: deliveryState.paymentMethod as any,
+        payment_method: 'cod',
       })
 
       setDeliveryState(prev => ({
         ...prev,
         paymentConfirmed: true,
+        paymentMethod: 'cod',
       }))
 
       // Update local trade state
@@ -1740,7 +1689,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         const updatedTrade: Trade = {
           ...trade,
           payment_confirmed: true,
-          payment_method: deliveryState.paymentMethod as any,
+          payment_method: 'cod',
         }
         onTradeUpdate(updatedTrade)
       }
@@ -1750,15 +1699,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
       toast({
         id: "viewtrademodal-payment-confirmed",
-        title: 'Payment confirmed',
-        description: 'Your payment has been secured',
+        title: 'Ready for handoff',
+        description: 'Ready to receive the item. Have your money ready!',
         status: 'success',
         duration: 2000,
       })
     } catch (error: any) {
       toast({
         id: "viewtrademodal-payment-failed",
-        title: 'Payment failed',
+        title: 'Confirmation failed',
         description: error?.response?.data?.error || 'Please try again',
         status: 'error',
         duration: 4000,
@@ -2353,7 +2302,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       deliveryState={deliveryState}
                       setDeliveryState={setDeliveryState}
                       deliveryOptions={deliveryOptions}
-                      paymentMethods={paymentMethods}
                       requestedProduct={requestedProduct}
                       trade={trade}
                       distance={distance}
