@@ -2331,22 +2331,18 @@ const Dashboard: React.FC = () => {
   }> = React.memo(({ trade, isIncoming, onView, onComplete }) => {
     const userName = isIncoming ? (trade.seller_name || 'Anonymous User') : (trade.buyer_name || 'Anonymous User')
 
-    // Get items offered by the other party
-    // For incoming trades, we want items offered by the buyer (seller is us)
-    // For outgoing trades, we want items offered by the seller (buyer is us)
+    // Trade items are the buyer-offered products (most trades).
+    // Show them as “Their Items” when you are the seller (incoming),
+    // and as “Your Items” when you are the buyer (outgoing).
     const offeredItems = (trade.items || []).filter((i: any) => {
-      const ob = (i?.offered_by ?? i?.offeredBy ?? i?.sender ?? i?.from_user_role ?? '').toLowerCase()
-
-      // If we can't determine who offered it, include it anyway (show all items)
+      const ob = (i?.offered_by ?? i?.offeredBy ?? '').toLowerCase()
+      // If unknown, keep it (better than showing empty)
       if (!ob) return true
-
-      // For incoming: we want items from the buyer
-      if (isIncoming) {
-        return ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
-      }
-      // For outgoing: we want items from the seller
-      return ob === 'seller' || ob === 'from_seller' || ob === 'recipient'
+      return ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
     })
+
+    const leftLabel = isIncoming ? 'Your Item' : 'Their Item'
+    const rightLabel = isIncoming ? 'Their Items' : 'Your Items'
 
     const getOngoingStatusBadge = () => {
       if (trade.status === 'completed') {
@@ -2404,7 +2400,7 @@ const Dashboard: React.FC = () => {
                 size="100%"
               />
               <Badge position="absolute" top={1} left={1} colorScheme="blue" fontSize="2xs" px={1} py={0.5}>
-                Your Item
+                {leftLabel}
               </Badge>
             </Box>
 
@@ -2440,7 +2436,7 @@ const Dashboard: React.FC = () => {
                     </Box>
                   ))}
                   <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                    Their Items{offeredItems.length > 1 ? 's' : ''}
+                    {rightLabel}{offeredItems.length > 1 ? 's' : ''}
                   </Badge>
                 </>
               ) : (
@@ -2449,7 +2445,7 @@ const Dashboard: React.FC = () => {
                     <Text fontSize="xs" color="gray.500">No items</Text>
                   </Box>
                   <Badge position="absolute" top={1} right={1} colorScheme="gray" fontSize="2xs" px={1} py={0.5}>
-                    No Items
+                    {rightLabel}
                   </Badge>
                 </Box>
               )}
