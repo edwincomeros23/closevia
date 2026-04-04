@@ -1250,9 +1250,9 @@ const Dashboard: React.FC = () => {
   const pendingMultiWayTrades = useMemo(() => {
     const sent = (outgoing || []).filter(t => t.status === 'pending_multiway')
     const received = (incoming || []).filter(t => t.status === 'pending_multiway')
-    // Combine and remove duplicates by ID if any
     const all = [...sent, ...received]
-    const unique = Array.from(new Map(all.map(t => [t.id, t])).values())
+    // Deduplicate by target_product_id — same product may appear in multiple chains
+    const unique = Array.from(new Map(all.map(t => [t.target_product_id, t])).values())
     return unique
   }, [outgoing, incoming])
 

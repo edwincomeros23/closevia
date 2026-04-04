@@ -2784,6 +2784,34 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade graph"})
 	}
 
+	// Load declined loop IDs for this user so we can skip them below.
+	// Store as canonical form (sorted trade IDs) to handle DFS direction variance.
+	declinedLoops := map[string]bool{}
+	if dRows, dErr := h.db.Query(
+		"SELECT loop_id FROM trade_loop_agreements WHERE user_id = ? AND status = 'declined'", userID,
+	); dErr == nil {
+		defer dRows.Close()
+		for dRows.Next() {
+			var raw string
+			if dRows.Scan(&raw) == nil {
+				parts := strings.Split(raw, "_")
+				if len(parts) > 1 && parts[0] == "loop" {
+					sorted := make([]string, len(parts)-1)
+					copy(sorted, parts[1:])
+					// simple insertion sort — loop IDs are short
+					for i := 1; i < len(sorted); i++ {
+						for j := i; j > 0 && sorted[j] < sorted[j-1]; j-- {
+							sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
+						}
+					}
+					declinedLoops["loop_"+strings.Join(sorted, "_")] = true
+				} else {
+					declinedLoops[raw] = true
+				}
+			}
+		}
+	}
+
 	allLoops := graph.FindTradeLoops()
 	expiresAt := time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	for _, loopEdges := range allLoops {
@@ -2828,6 +2856,19 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		}
 
 		loopID := strings.Join(loopTradeParts, "_")
+
+		// Skip loops the user has already declined (compare using canonical sorted ID).
+		canonicalParts := make([]string, len(loopTradeParts)-1)
+		copy(canonicalParts, loopTradeParts[1:])
+		for i := 1; i < len(canonicalParts); i++ {
+			for j := i; j > 0 && canonicalParts[j] < canonicalParts[j-1]; j-- {
+				canonicalParts[j], canonicalParts[j-1] = canonicalParts[j-1], canonicalParts[j]
+			}
+		}
+		if declinedLoops["loop_"+strings.Join(canonicalParts, "_")] {
+			continue
+		}
+
 		userLoops = append(userLoops, map[string]interface{}{
 			"id":                loopID,
 			"loop_id":           loopID,
