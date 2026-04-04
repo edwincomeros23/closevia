@@ -250,7 +250,7 @@ const LandingProductCard = ({ image, name, desc }: { image: string; name: string
 const LandingPage: React.FC = () => {
   const navigate = useNavigate()
   const handleGetStarted = () => {
-    navigate('/home')
+    navigate('/login')
   }
 
   return (
@@ -288,9 +288,9 @@ const LandingPage: React.FC = () => {
               mb={4}
               maxW="700px"
             >
-              Trade Smarter For{' '}
-              <Text as="span" color={C.accentLight}>Every</Text>{' '}
-              Community.
+              Start Your Trading{' '}
+              <Text as="span" color={C.accentLight}>Journey</Text>{' '}
+              Today.
             </Heading>
 
             {/* Decorative line */}
@@ -303,35 +303,9 @@ const LandingPage: React.FC = () => {
               lineHeight="1.8"
               mb={8}
             >
-              Your one-stop platform for seamless item exchanges. Discover, trade,
-              and connect with others in your community — effortlessly.
+              We're just getting started! Join our growing community of traders
+              and discover a smarter way to exchange items locally.
             </Text>
-
-            <HStack spacing={4} mb={10} flexWrap="wrap" justify="center">
-              <Button
-                bg="transparent"
-                border="1px solid"
-                borderColor="whiteAlpha.400"
-                color={C.white}
-                borderRadius="full"
-                px={6}
-                size="md"
-                leftIcon={<Icon as={FiPlay} />}
-                _hover={{ borderColor: C.accentLight, color: C.accentLight }}
-                transition="all 0.2s"
-              >
-                Watch Our Video
-              </Button>
-              <HStack spacing={3} color={C.textMuted}>
-                <Flex w={10} h={10} borderRadius="full" bg={C.accent} align="center" justify="center">
-                  <Icon as={FiPhone} color={C.white} boxSize={4} />
-                </Flex>
-                <VStack align="start" spacing={0}>
-                  <Text fontSize="xs" color={C.textMuted}>Call Us Now:</Text>
-                  <Text fontSize="sm" color={C.white} fontWeight="semibold">+123-456-7890</Text>
-                </VStack>
-              </HStack>
-            </HStack>
           </Flex>
         </Container>
       </Box>
@@ -368,16 +342,15 @@ const LandingPage: React.FC = () => {
                 </HStack>
 
                 <Text fontSize="sm" color={C.textMuted} lineHeight="1.8" mb={6}>
-                  "CloviaPH transformed how I trade items in my campus. The process
-                  is seamless, secure, and I've connected with amazing people in
-                  my community. Highly recommended!"
+                  "This is exactly what our community needed! Easy to use, simple way
+                  to exchange items. Excited to see where this goes."
                 </Text>
 
                 <HStack spacing={3}>
-                  <Avatar size="sm" name="Estelle Darcy" bg={C.accent} color={C.white} />
+                  <Avatar size="sm" name="Early Adopter" bg={C.accent} color={C.white} />
                   <VStack align="start" spacing={0}>
-                    <Text fontSize="sm" fontWeight="bold" color={C.white}>Estelle Darcy</Text>
-                    <Text fontSize="xs" color={C.textMuted}>Verified Trader</Text>
+                    <Text fontSize="sm" fontWeight="bold" color={C.white}>Community Member</Text>
+                    <Text fontSize="xs" color={C.textMuted}>Early User</Text>
                   </VStack>
                 </HStack>
 
@@ -453,10 +426,10 @@ const LandingPage: React.FC = () => {
                 boxShadow="xl"
               >
                 <Text fontSize="3xl" fontWeight="bold" color={C.white}>
-                  25+
+                  &beta;
                 </Text>
                 <Text fontSize="xs" color={C.white} fontWeight="semibold">
-                  Universities<br />Connected
+                  Beta Launch<br />2026
                 </Text>
               </Box>
             </Box>
@@ -464,15 +437,15 @@ const LandingPage: React.FC = () => {
             {/* Right - text */}
             <VStack flex={1} align="start" spacing={5}>
               <Heading fontSize={{ base: '2xl', md: '4xl' }} lineHeight="1.2">
-                Where Trades Find{' '}
-                <Text as="span" color={C.accent}>Their People.</Text>
+                Building the{' '}
+                <Text as="span" color={C.accent}>Future</Text>{' '}
+                of Trading.
               </Heading>
               <Text fontSize="sm" color="gray.600" lineHeight="1.8">
-                CloviaPH is revolutionizing the way students and communities exchange goods.
-                Our platform makes it easy to discover items you need and trade what you
-                no longer use — all within a trusted, local network. Whether it's textbooks,
-                electronics, or everyday essentials, we bring people together through
-                seamless, secure bartering.
+                We're a new platform dedicated to making local item exchange simple,
+                safe, and accessible. Our mission is to help communities reduce waste
+                and discover value in what they already have. Join us as we grow and
+                build together.
               </Text>
               <Button
                 bg={C.accent}
@@ -486,7 +459,7 @@ const LandingPage: React.FC = () => {
                 transition="all 0.2s"
                 onClick={handleGetStarted}
               >
-                Learn More
+                Get Started Today
               </Button>
             </VStack>
           </Flex>
@@ -498,11 +471,12 @@ const LandingPage: React.FC = () => {
         <Container maxW="1200px">
           <VStack spacing={3} mb={10} textAlign="center">
             <Heading fontSize={{ base: '2xl', md: '4xl' }}>
-              Our Best Traded{' '}<Text as="span" color={C.accentLight}>Items</Text>
+              Popular{' '}<Text as="span" color={C.accentLight}>Items</Text>{' '}
+              Being Traded
             </Heading>
             <Text fontSize="sm" color={C.textMuted} maxW="600px">
-              Popular items being exchanged in our community right now. From tech gadgets to study
-              essentials, find what you need.
+              See what our early community members are trading. From tech to essentials,
+              discover what's available now.
             </Text>
           </VStack>
 
@@ -599,16 +573,16 @@ const LandingPage: React.FC = () => {
           >
             <VStack align={{ base: 'center', md: 'start' }} spacing={2} flex={1}>
               <Heading fontSize={{ base: '2xl', md: '3xl' }} lineHeight="1.2">
-                We Achieved{' '}<Text as="span" color={C.accentLight}>Best</Text>
-                <br />From Trading
+                Early Stage{' '}<Text as="span" color={C.accentLight}>Growth</Text>
+                <br />
               </Heading>
             </VStack>
 
             <SimpleGrid columns={{ base: 2, md: 4 }} spacing={8} flex={2}>
-              <StatCard value="256k+" label="Happy Traders" />
-              <StatCard value="98%" label="Satisfaction" />
-              <StatCard value="308+" label="Item Categories" />
-              <StatCard value="20+" label="Communities" />
+              <StatCard value="100+" label="Early Users" />
+              <StatCard value="50+" label="Active Trades" />
+              <StatCard value="15+" label="Categories" />
+              <StatCard value="5" label="Communities" />
             </SimpleGrid>
           </Flex>
         </Container>
@@ -619,11 +593,11 @@ const LandingPage: React.FC = () => {
         <Container maxW="1200px">
           <VStack spacing={6} textAlign="center">
             <Heading fontSize={{ base: 'xl', md: '3xl' }}>
-              Ready to Start{' '}<Text as="span" color={C.accentLight}>Trading?</Text>
+              Be Part of Something{' '}<Text as="span" color={C.accentLight}>New</Text>
             </Heading>
             <Text fontSize="sm" color={C.textMuted} maxW="500px">
-              Join thousands of community members already trading on CloviaPH.
-              Sign up today and discover a smarter way to exchange.
+              We're building a community-driven trading platform. Join us early and help shape
+              the future of local exchanges.
             </Text>
             <HStack spacing={4} flexWrap="wrap" justify={{ base: 'center', md: 'flex-start' }}>
               <Button
