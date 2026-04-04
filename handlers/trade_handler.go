@@ -873,7 +873,7 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 	// Build query dynamically to handle missing columns
 	query := `
         SELECT
-          t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
+          t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, COALESCE(t.message, ''), t.offered_cash_amount, t.created_at, t.updated_at,
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
@@ -2060,7 +2060,7 @@ func (h *TradeHandler) GetTrade(c *fiber.Ctx) error {
 	// Build query dynamically for single trade
 	query := `
         SELECT
-          t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, t.message, t.offered_cash_amount, t.created_at, t.updated_at,
+          t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, COALESCE(t.message, ''), t.offered_cash_amount, t.created_at, t.updated_at,
           t.buyer_completed, t.seller_completed, t.completed_at`
 
 	// Check if trade_option column exists
@@ -4057,6 +4057,209 @@ func (h *TradeHandler) GetMultiwayOpportunities(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: opportunities})
 }
 
+// GetDiscoverableMultiwayLoops returns pending_user3 chains that match the current user's products.
+// Any user can discover open loops they can volunteer to join.
+func (h *TradeHandler) GetDiscoverableMultiwayLoops(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	// Get all pending_user3 chains where the current user is not already a participant
+	// Also exclude original_trade_ids where the user already has a hop-in record (parallel chain)
+	rows, err := h.db.Query(`
+		SELECT m.chain_id, m.original_trade_id, m.user1_id, m.user2_id,
+		       u1.name AS user1_name, u2.name AS user2_name,
+		       p_target.title AS user2_wants_title,
+		       p_offer.title AS user1_offer_title,
+		       DATE_FORMAT(DATE_ADD(m.created_at, INTERVAL 48 HOUR), '%Y-%m-%d %H:%i:%s') AS expires_at
+		FROM multiway_trades m
+		JOIN trades t ON t.id = m.original_trade_id
+		JOIN users u1 ON u1.id = m.user1_id
+		JOIN users u2 ON u2.id = m.user2_id
+		JOIN products p_target ON p_target.id = t.target_product_id
+		JOIN trade_items ti ON ti.trade_id = t.id AND ti.offered_by = 'buyer'
+		JOIN products p_offer ON p_offer.id = ti.product_id
+		WHERE m.status = 'pending_user3'
+		  AND m.user1_id != ?
+		  AND m.user2_id != ?
+		  AND (m.user3_id IS NULL OR m.user3_id != ?)
+		  AND m.original_trade_id NOT IN (
+		      SELECT original_trade_id FROM multiway_trades
+		      WHERE user3_id = ? AND status IN ('pending_user3', 'accepted', 'completed')
+		  )
+	`, userID, userID, userID, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load discoverable loops"})
+	}
+	defer rows.Close()
+
+	type openChain struct {
+		chainID      string
+		origTradeID  int
+		u1ID, u2ID   int
+		u1Name, u2Name string
+		u2WantsTitle string
+		u1OfferTitle string
+		expiresAt    string
+	}
+	var chains []openChain
+	for rows.Next() {
+		var oc openChain
+		if err := rows.Scan(&oc.chainID, &oc.origTradeID, &oc.u1ID, &oc.u2ID,
+			&oc.u1Name, &oc.u2Name, &oc.u2WantsTitle, &oc.u1OfferTitle, &oc.expiresAt); err == nil {
+			chains = append(chains, oc)
+		}
+	}
+
+	var results []fiber.Map
+	for _, chain := range chains {
+		matches, _, err := services.FindMultiwayMatchDetailed(h.db, chain.u1ID, chain.u2ID, chain.origTradeID, []int{})
+		if err != nil {
+			continue
+		}
+		for _, m := range matches {
+			if m.User3ID == userID {
+				results = append(results, fiber.Map{
+					"chain_id":          chain.chainID,
+					"original_trade_id": chain.origTradeID,
+					"loop_type":         "discoverable",
+					"is_chain":          true,
+					"user1_name":        chain.u1Name,
+					"user2_name":        chain.u2Name,
+					"you_give_title":    m.User3ProductTitle,
+					"you_give_id":       m.User3ProductID,
+					"you_get_title":     m.User1ProductTitle,
+					"chain_label":       chain.u1Name + " → " + chain.u2Name + " → You",
+					"match_score":       m.MatchScore,
+					"expires_at":        chain.expiresAt,
+					"can_join":          true,
+					"participants": []fiber.Map{
+						{"user_name": chain.u1Name, "product_title": chain.u1OfferTitle, "status": "pending"},
+						{"user_name": chain.u2Name, "product_title": chain.u2WantsTitle, "status": "pending"},
+						{"user_name": "You", "product_title": m.User3ProductTitle, "status": "pending"},
+					},
+				})
+				break
+			}
+		}
+	}
+
+	if results == nil {
+		results = []fiber.Map{}
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: results})
+}
+
+// HopIntoMultiwayChain allows a user whose product matches a pending_user3 chain to volunteer to join.
+// Creates a parallel chain record so user1/user2 can choose to accept the volunteer as their user3.
+func (h *TradeHandler) HopIntoMultiwayChain(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	chainID := c.Params("id")
+
+	var payload struct {
+		ProductID int `json:"product_id"`
+	}
+	if err := c.BodyParser(&payload); err != nil || payload.ProductID == 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "product_id is required"})
+	}
+
+	// Get chain details
+	var u1ID, u2ID, origTradeID, existingU3ID int
+	var mStatus string
+	err := h.db.QueryRow(`
+		SELECT user1_id, user2_id, original_trade_id, user3_id, status
+		FROM multiway_trades WHERE chain_id = ?
+	`, chainID).Scan(&u1ID, &u2ID, &origTradeID, &existingU3ID, &mStatus)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Chain not found"})
+	}
+	if mStatus != "pending_user3" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This chain is no longer open to join"})
+	}
+	if u1ID == userID || u2ID == userID || existingU3ID == userID {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You are already part of this chain"})
+	}
+
+	// Verify the product belongs to this user and is available
+	var productTitle string
+	var productOwnerID int
+	err = h.db.QueryRow(`
+		SELECT seller_id, title FROM products WHERE id = ? AND status = 'available'
+	`, payload.ProductID).Scan(&productOwnerID, &productTitle)
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Product not found or not available"})
+	}
+	if productOwnerID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Product does not belong to you"})
+	}
+
+	// Validate match score >= 30 using the same matching algorithm
+	matches, _, err := services.FindMultiwayMatchDetailed(h.db, u1ID, u2ID, origTradeID, []int{})
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate match"})
+	}
+	validMatch := false
+	for _, m := range matches {
+		if m.User3ID == userID && m.User3ProductID == payload.ProductID {
+			validMatch = true
+			break
+		}
+	}
+	if !validMatch {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Your product does not meet the requirements for this trade loop"})
+	}
+
+	// Prevent duplicate hop-in requests for the same original trade
+	var existingHopIn int
+	_ = h.db.QueryRow(`
+		SELECT COUNT(*) FROM multiway_trades
+		WHERE original_trade_id = ? AND user3_id = ? AND status = 'pending_user3'
+	`, origTradeID, userID).Scan(&existingHopIn)
+	if existingHopIn > 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You already have a pending request to join this trade loop"})
+	}
+
+	// Create a new chain record for this volunteer (parallel to the existing chain)
+	// user3_trade_id mirrors user3_product_id to match the pattern AcceptMultiwayChain reads
+	newChainID := fmt.Sprintf("chain_%d_%d_%d_%d", origTradeID, u1ID, u2ID, userID)
+	expiresAt := time.Now().Add(48 * time.Hour)
+	_, err = h.db.Exec(`
+		INSERT INTO multiway_trades
+		  (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, user3_product_id, status, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_user3', ?)
+		ON DUPLICATE KEY UPDATE status='pending_user3', user3_product_id=?, user3_trade_id=?, updated_at=NOW()
+	`, newChainID, origTradeID, u2ID, u1ID, u2ID, userID, payload.ProductID, payload.ProductID, expiresAt,
+		payload.ProductID, payload.ProductID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to register hop-in"})
+	}
+
+	// Lock user's product to prevent it from being traded elsewhere while pending
+	_, _ = h.db.Exec("UPDATE products SET status='locked' WHERE id=? AND status='available'", payload.ProductID)
+
+	// Get user's name for notifications
+	var userName string
+	_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&userName)
+
+	// Notify user1 and user2 that someone volunteered to join
+	msg := fmt.Sprintf("%s wants to join your multiway trade loop with: %s", userName, productTitle)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", u1ID, msg)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", u2ID, msg)
+	publishNotification(u1ID, msg)
+	publishNotification(u2ID, msg)
+	go h.rebuildTradeLoopCacheForUsers([]int{u1ID, u2ID, userID})
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "You've requested to join this trade loop! The participants will be notified.",
+	})
+}
+
 // AcceptMultiwayChain is when User 3 accepts the opportunity
 func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -4091,10 +4294,13 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Opportunity not found or already processed"})
 	}
 
-	// Verify original trade is still in pending_multiway status
+	// Verify original trade is in a state that can proceed with multiway.
+	// pending/accepted = auto-detected loop (never manually converted)
+	// pending_multiway = manually converted by user
 	var originalTradeStatus string
 	err = tx.QueryRow("SELECT status FROM trades WHERE id = ?", originalTradeID).Scan(&originalTradeStatus)
-	if err != nil || originalTradeStatus != "pending_multiway" {
+	validForMultiway := originalTradeStatus == "pending_multiway" || originalTradeStatus == "pending" || originalTradeStatus == "accepted"
+	if err != nil || !validForMultiway {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "The original trade is no longer available for multi-way loop."})
 	}
 
@@ -4196,6 +4402,26 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	// Commit DB changes before side effects (notifications/cache rebuild).
 	if err := tx.Commit(); err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit transaction"})
+	}
+
+	// Cancel any other parallel pending chains for the same original trade (e.g. hop-in volunteers)
+	// and unlock their products so they don't remain stuck as locked.
+	otherRows, qErr := h.db.Query(`
+		SELECT chain_id, user3_product_id FROM multiway_trades
+		WHERE original_trade_id = ? AND chain_id != ? AND status = 'pending_user3'
+	`, originalTradeID, chainID)
+	if qErr == nil {
+		defer otherRows.Close()
+		for otherRows.Next() {
+			var otherChainID string
+			var otherPID sql.NullInt64
+			if scanErr := otherRows.Scan(&otherChainID, &otherPID); scanErr == nil {
+				_, _ = h.db.Exec("UPDATE multiway_trades SET status='cancelled' WHERE chain_id=?", otherChainID)
+				if otherPID.Valid && otherPID.Int64 > 0 {
+					_, _ = h.db.Exec("UPDATE products SET status='available' WHERE id=? AND status='locked'", otherPID.Int64)
+				}
+			}
+		}
 	}
 
 	// Notify User 1 and User 2
