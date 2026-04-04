@@ -4262,13 +4262,13 @@ func (h *TradeHandler) GetDiscoverableMultiwayLoops(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	type openChain struct {
-		chainID      string
-		origTradeID  int
-		u1ID, u2ID   int
+		chainID        string
+		origTradeID    int
+		u1ID, u2ID     int
 		u1Name, u2Name string
-		u2WantsTitle string
-		u1OfferTitle string
-		expiresAt    string
+		u2WantsTitle   string
+		u1OfferTitle   string
+		expiresAt      string
 	}
 	var chains []openChain
 	for rows.Next() {
