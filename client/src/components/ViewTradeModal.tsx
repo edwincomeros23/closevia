@@ -1430,6 +1430,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const response = await api.get(`/api/trades/${trade.id}`)
       const tradeData = response.data?.data
 
+      // Keep the modal header/status badge consistent with the latest backend state.
+      // This prevents UI mismatches like "WAITING FOR MEETUP" while showing "You Both Agreed!".
+      if (tradeData && onTradeUpdate) {
+        onTradeUpdate(tradeData)
+      }
+
       // Set confirmation status based on backend data
       setBuyerMeetupConfirmed(!!(tradeData?.buyer_meetup_confirmed || tradeData?.meetup_confirmed_by_buyer))
       setSellerMeetupConfirmed(!!(tradeData?.seller_meetup_confirmed || tradeData?.meetup_confirmed_by_seller))
@@ -1958,7 +1964,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     h="150px"
                                     objectFit="cover"
                                     borderRadius="md"
-                                    fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                    fallbackSrc="/no-image.svg"
                                   />
                                   <Text fontWeight="semibold">{requestedProduct.title}</Text>
                                   <Text fontSize="sm" color="gray.600" noOfLines={2}>
@@ -1999,7 +2005,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         h="150px"
                                         objectFit="cover"
                                         borderRadius="md"
-                                        fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                        fallbackSrc="/no-image.svg"
                                       />
                                       <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
                                         {product.title}
@@ -2250,56 +2256,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
                             Current Stage: Waiting for both parties to confirm location
                           </Text>
-                        </Box>
-                      )}
-
-                      {isMeetupActive && !bothMetConfirmed && (
-                        <VStack align="stretch" spacing={3}>
-                          <Box
-                            p={3}
-                            bg={meetupInfoBg}
-                            borderLeft="4px"
-                            borderColor="brand.500"
-                            borderRadius="md"
-                          >
-                            <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
-                              Current Stage: Confirm you met at {buyerMeetupLocation} at {formatTimePH(buyerMeetupTime)}
-                            </Text>
-                          </Box>
-
-                          <Button
-                            colorScheme="green"
-                            size="lg"
-                            onClick={confirmMeetupDone}
-                            isLoading={confirmingMeetupDone}
-                            leftIcon={<FaCheckCircle />}
-                            w="full"
-                            isDisabled={userMetConfirmed}
-                          >
-                            {userMetConfirmed ? 'Confirmed ✓' : 'Confirm You Met'}
-                          </Button>
-
-                          {userMetConfirmed && (
-                            <Text fontSize="xs" color="gray.600" textAlign="center">
-                              Waiting for the other party to confirm.
-                            </Text>
-                          )}
-                        </VStack>
-                      )}
-
-                      {isMeetupActive && bothMetConfirmed && (
-                        <Box>
-                          <Button
-                            colorScheme="green"
-                            size="lg"
-                            onClick={() => setIsReviewModalOpen(true)}
-                            leftIcon={<FaStar />}
-                            w="full"
-                            transition="all 0.2s"
-                            _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-                          >
-                            ✓ Leave Review & Complete Trade
-                          </Button>
                         </Box>
                       )}
 
@@ -2573,28 +2529,76 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             // Both submitted - check if they match
                             buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime ? (
                               // MATCH - Success!
-                              <Box
-                                p={4}
-                                bg="green.100"
-                                borderRadius="md"
-                                borderWidth="2px"
-                                borderColor="green.400"
-                                textAlign="center"
-                              >
-                                <Icon as={FaCheckCircle} color="green.500" boxSize={8} mb={2} />
-                                <Text fontWeight="bold" color="green.700" fontSize="md">
-                                  You Both Agreed!
-                                </Text>
-                                <Text fontSize="sm" color="green.600" mt={1}>
-                                  {buyerMeetupLocation}
-                                </Text>
-                                <Text fontSize="sm" color="green.600">
-                                  {formatTimePH(buyerMeetupTime)}
-                                </Text>
-                                <Text fontSize="xs" color="green.500" mt={2}>
-                                  The trade is now active. See you there!
-                                </Text>
-                              </Box>
+                              <VStack spacing={3} align="stretch">
+                                <Box
+                                  p={4}
+                                  bg="green.100"
+                                  borderRadius="md"
+                                  borderWidth="2px"
+                                  borderColor="green.400"
+                                  textAlign="center"
+                                >
+                                  <Icon as={FaCheckCircle} color="green.500" boxSize={8} mb={2} />
+                                  <Text fontWeight="bold" color="green.700" fontSize="md">
+                                    You Both Agreed!
+                                  </Text>
+                                  <Text fontSize="sm" color="green.600" mt={1}>
+                                    {buyerMeetupLocation}
+                                  </Text>
+                                  <Text fontSize="sm" color="green.600">
+                                    {formatTimePH(buyerMeetupTime)}
+                                  </Text>
+                                  <Text fontSize="xs" color="green.500" mt={2}>
+                                    Meetup agreed. Proceed to confirm you met.
+                                  </Text>
+                                </Box>
+
+                                {!bothMetConfirmed ? (
+                                  <VStack align="stretch" spacing={3}>
+                                    <Box
+                                      p={3}
+                                      bg={meetupInfoBg}
+                                      borderLeft="4px"
+                                      borderColor="brand.500"
+                                      borderRadius="md"
+                                    >
+                                      <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
+                                        Current Stage: Confirm you met at {buyerMeetupLocation} at {formatTimePH(buyerMeetupTime)}
+                                      </Text>
+                                    </Box>
+
+                                    <Button
+                                      colorScheme="green"
+                                      size="lg"
+                                      onClick={confirmMeetupDone}
+                                      isLoading={confirmingMeetupDone}
+                                      leftIcon={<FaCheckCircle />}
+                                      w="full"
+                                      isDisabled={userMetConfirmed}
+                                    >
+                                      {userMetConfirmed ? 'Confirmed ✓' : 'Confirm You Met'}
+                                    </Button>
+
+                                    {userMetConfirmed && (
+                                      <Text fontSize="xs" color="gray.600" textAlign="center">
+                                        Waiting for the other party to confirm.
+                                      </Text>
+                                    )}
+                                  </VStack>
+                                ) : (
+                                  <Button
+                                    colorScheme="green"
+                                    size="lg"
+                                    onClick={() => setIsReviewModalOpen(true)}
+                                    leftIcon={<FaStar />}
+                                    w="full"
+                                    transition="all 0.2s"
+                                    _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                                  >
+                                    ✓ Leave Review & Complete Trade
+                                  </Button>
+                                )}
+                              </VStack>
                             ) : (
                               // NO MATCH - Need to coordinate
                               <VStack spacing={3}>

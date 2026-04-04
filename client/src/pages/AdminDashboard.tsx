@@ -2132,7 +2132,7 @@ const AdminDashboard: React.FC = () => {
                       <SimpleGrid columns={[2, 3, 4]} spacing={2}>
                         {selectedDispute.evidence_urls.map((url: string, idx: number) => (
                           <Box key={idx} borderRadius="md" overflow="hidden" border="1px" borderColor="gray.200" cursor="pointer" onClick={() => window.open(url, '_blank')}>
-                            <Image src={url} alt={`Evidence ${idx+1}`} fallbackSrc="https://via.placeholder.com/150?text=Error" objectFit="cover" w="full" h="100px" />
+                            <Image src={url} alt={`Evidence ${idx+1}`} fallbackSrc="/no-image.svg" objectFit="cover" w="full" h="100px" />
                           </Box>
                         ))}
                       </SimpleGrid>

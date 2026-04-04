@@ -2145,7 +2145,7 @@ const ProductDetail: React.FC = () => {
                       h="60px"
                       objectFit="cover"
                       borderRadius="8px"
-                      fallbackSrc="https://via.placeholder.com/60x60?text=?"
+                      fallbackSrc="/no-image.svg"
                     />
                   )}
                   <VStack align="start" spacing={0} flex={1} minW={0}>

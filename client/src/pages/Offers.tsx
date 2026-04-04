@@ -434,7 +434,7 @@ const Offers: React.FC = () => {
         alt={alt ?? 'Product Image'}
         boxSize="40px"
         objectFit="cover"
-        fallbackSrc="https://via.placeholder.com/40x40?text=?"
+        fallbackSrc="/no-image.svg"
       />
     )
   }
