@@ -136,7 +136,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
     <VStack spacing={3} align="stretch" w="full">
       {/* Main Message - Collapsed View */}
       <Box
-        p={4}
+        p={{ base: 3, md: 4 }}
         bg={loopBg}
         borderRadius="lg"
         borderWidth="2px"
@@ -146,8 +146,8 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
         transition="all 0.2s"
         _hover={{ shadow: 'md' }}
       >
-        <HStack justify="space-between" align="center">
-          <VStack align="start" spacing={1} flex={1}>
+        <Flex justify="space-between" align="flex-start" gap={2}>
+          <VStack align="start" spacing={1} flex={1} minW={0}>
             <Text fontSize="sm" fontWeight="bold" color={useColorModeValue('blue.900', 'blue.100')}>
               {viewMode === 'initiator'
                 ? 'Loop Status Tracker'
@@ -161,13 +161,13 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                 Initiated by: {initiatorName}
               </Text>
             )}
-            <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
+            <Text fontSize={{ base: 'xs', md: 'sm' }} color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
               You give: {yourGive || 'Item in your trade offer'}
             </Text>
-            <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
+            <Text fontSize={{ base: 'xs', md: 'sm' }} color={useColorModeValue('blue.800', 'blue.200')} noOfLines={1}>
               You get: {yourGet || 'Matched item from the loop'}
             </Text>
-            <Text fontSize="xs" color={useColorModeValue('blue.700', 'blue.300')} noOfLines={1}>
+            <Text fontSize={{ base: 'xs', md: 'sm' }} color={useColorModeValue('blue.700', 'blue.300')} noOfLines={2} wordBreak="break-word">
               Chain: {chainLabel || 'Participants connected in a closed loop'}
             </Text>
             <HStack spacing={1}>
@@ -193,8 +193,9 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             transition="transform 0.2s"
             transform={isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}
             boxSize={5}
+            flexShrink={0}
           />
-        </HStack>
+        </Flex>
       </Box>
 
       {/* Expanded View - Participant Details */}
@@ -226,19 +227,20 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             overflowX={{ base: 'auto', md: 'visible' }}
             overflowY="visible"
             pb={2}
+            w="full"
           >
             <HStack
-              spacing={3}
-              justify="space-between"
+              spacing={{ base: 2, md: 3 }}
+              justify={{ base: 'flex-start', md: 'space-between' }}
               align="flex-start"
               w="full"
-              minW={loopLength > 3 ? `${loopLength * 110}px` : 'auto'}
+              minW={loopLength > 3 ? { base: `${loopLength * 95}px`, md: 'auto' } : undefined}
             >
               {validParticipants.map((participant, index) => {
                 const avatarColor = getAvatarColor(index)
 
                 return (
-                  <VStack key={`participant-${participant.id}`} spacing={1} minW="100px">
+                  <VStack key={`participant-${participant.id}`} spacing={1} minW={{ base: '85px', md: '100px' }} w={{ base: 'auto', md: 'full' }}>
                     {/* Participant Card */}
                     <Card
                       variant="outline"
@@ -252,7 +254,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                         bg: useColorModeValue('blue.50', 'blue.900'),
                       }}
                     >
-                      <CardBody p={2}>
+                      <CardBody p={{ base: 1.5, md: 2 }}>
                         {/* Avatar */}
                         <Avatar
                           name={participant.user_name}
@@ -272,7 +274,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                         <Text fontSize="2xs" color="gray.600" textAlign="center" noOfLines={2} mt={1}>
                           {participant.product_title}
                         </Text>
-                        <Badge mt={1} colorScheme={statusColor(participant.status)} fontSize="9px" textTransform="capitalize">
+                        <Badge mt={1} colorScheme={statusColor(participant.status)} fontSize="9px" textTransform="capitalize" w="full" textAlign="center">
                           {participant.status || 'pending'}
                         </Badge>
                       </CardBody>
@@ -287,7 +289,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
           <VStack spacing={2} w="full">
             <Button
               colorScheme={viewMode === 'initiator' ? 'purple' : 'green'}
-              size="sm"
+              size={{ base: 'sm', md: 'md' }}
               onClick={onOpen}
               isLoading={isLoading}
               loadingText={viewMode === 'initiator' ? 'Opening...' : 'Joining...'}
@@ -301,32 +303,32 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             {viewMode === 'participant' && loopType === 'detected_loop' && !canCreate && (
               <Tooltip label={proNudgeText || "Pro members can initiate. Upgrade to unlock."} placement="top" hasArrow>
                 <Button
-                  size="sm"
+                  size={{ base: 'sm', md: 'md' }}
                   colorScheme="purple"
                   variant="outline"
                   onClick={() => onStartLoop?.()}
                   w="full"
                   fontWeight="bold"
                 >
-                  <HStack spacing={2}>
+                  <HStack spacing={{ base: 1, md: 2 }} justify="center">
                     <span>Start a Loop</span>
-                    <Badge colorScheme="purple" fontSize="10px">
+                    <Badge colorScheme="purple" fontSize={{ base: '8px', md: '10px' }}>
                       Pro
                     </Badge>
                   </HStack>
                 </Button>
               </Tooltip>
             )}
-            
+
             {(canDecline || isChain) && (
-              <HStack spacing={2} w="full">
+              <VStack spacing={2} w="full">
                 {canDecline && (
                   <Button
                     colorScheme="red"
                     variant="outline"
-                    size="sm"
+                    size={{ base: 'sm', md: 'md' }}
                     onClick={() => onDecline?.(false)}
-                    flex={1}
+                    w="full"
                     fontWeight="bold"
                   >
                     Decline
@@ -336,17 +338,17 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
                   <Button
                     colorScheme="brand"
                     variant="ghost"
-                    size="sm"
+                    size={{ base: 'sm', md: 'md' }}
                     onClick={() => onDecline?.(true)}
-                    flex={1}
-                    fontSize="xs"
+                    w="full"
+                    fontSize={{ base: 'xs', md: 'sm' }}
                     fontWeight="bold"
                     leftIcon={<Icon as={FaLightbulb} />}
                   >
                     Find Next Match
                   </Button>
                 )}
-              </HStack>
+              </VStack>
             )}
           </VStack>
 
@@ -359,15 +361,15 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
       </Collapse>
 
       {/* Join Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="md" isCentered>
+      <Modal isOpen={isOpen} onClose={onClose} size={{ base: 'full', md: 'md' }} isCentered>
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent>
+        <ModalContent mx={{ base: 4, md: 0 }} borderRadius={{ base: 'xl', md: 'md' }}>
           <ModalHeader>
             <VStack align="start" spacing={1}>
-              <Heading size="md" color={useColorModeValue('gray.800', 'gray.100')}>
+              <Heading size={{ base: 'sm', md: 'md' }} color={useColorModeValue('gray.800', 'gray.100')}>
                 {viewMode === 'initiator' ? 'Loop Status Tracker' : 'Join Trade Loop'}
               </Heading>
-              <Text fontSize="sm" color="gray.600">
+              <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.600">
                 {viewMode === 'initiator'
                   ? `Track your ${loopLength}-way loop participants`
                   : `You're about to join a ${loopLength}-way trade loop`}
@@ -450,8 +452,8 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
             </VStack>
           </ModalBody>
 
-          <ModalFooter gap={2}>
-            <Button variant="outline" onClick={onClose}>
+          <ModalFooter gap={2} flexDirection={{ base: 'column', md: 'row' }}>
+            <Button variant="outline" onClick={onClose} w={{ base: 'full', md: 'auto' }}>
               Cancel
             </Button>
             <Button
@@ -466,6 +468,7 @@ const MultiWayTradeUI: React.FC<MultiWayTradeUIProps> = ({
               }}
               isLoading={isLoading}
               loadingText={viewMode === 'initiator' ? 'Opening...' : 'Joining...'}
+              w={{ base: 'full', md: 'auto' }}
             >
               {viewMode === 'initiator' ? 'Open Details' : 'Confirm & Hop In'}
             </Button>

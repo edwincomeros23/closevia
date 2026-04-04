@@ -48,6 +48,7 @@ const Sidebar: React.FC = () => {
   const { notificationCount } = useRealtime()
   const { user, logout } = useAuth()
   const [riderStatus, setRiderStatus] = useState<{ is_rider: boolean; status?: string } | null>(null)
+  const [touchStart, setTouchStart] = useState<number | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -74,6 +75,38 @@ const Sidebar: React.FC = () => {
       mounted = false
     }
   }, [user])
+
+  // Handle swipe to open menu
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    // Only detect swipe from left edge (first 50px)
+    if (e.touches[0].clientX < 50) {
+      setTouchStart(e.touches[0].clientX)
+    }
+  }, [])
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+    if (touchStart === null) return
+
+    const touchEnd = e.changedTouches[0].clientX
+    const diff = touchEnd - touchStart
+
+    // If swiped right more than 80px, open menu
+    if (diff > 80) {
+      onOpen()
+    }
+
+    setTouchStart(null)
+  }, [touchStart, onOpen])
+
+  useEffect(() => {
+    document.addEventListener('touchstart', handleTouchStart, false)
+    document.addEventListener('touchend', handleTouchEnd, false)
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart, false)
+      document.removeEventListener('touchend', handleTouchEnd, false)
+    }
+  }, [handleTouchStart, handleTouchEnd])
 
   // Memoize callback handlers to prevent unnecessary re-renders
   const handleLogoClick = useCallback(() => {
@@ -151,10 +184,9 @@ const Sidebar: React.FC = () => {
   return (
     <>
       {/* Drawer for mobile */}
-      <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
+      <Drawer isOpen={isOpen} placement="left" onClose={onClose} closeOnOverlayClick={true}>
         <DrawerOverlay />
-        <DrawerContent display="flex" flexDirection="column" h="100%">
-          <DrawerCloseButton position="absolute" right={3} top={3} zIndex={10} />
+        <DrawerContent display="flex" flexDirection="column" h="100%" sx={{ '& [data-testid="chakra-modal.close-button"]': { display: 'none' } }}>
 
           {/* Clean Header - Just Logo */}
           <DrawerHeader borderBottom="2px solid" borderColor={borderColor} py={4}>

@@ -713,19 +713,22 @@ const ProductDetail: React.FC = () => {
       return
     }
     if (!product || isVoting) return
+
+    // Show immediate feedback to user
     setIsVoting(true)
+    toast({
+      id: 'vote-recording',
+      title: 'Recording your vote...',
+      status: 'info',
+      duration: 1000,
+      isClosable: false,
+    })
+
     try {
       const response = await api.post(`/api/products/${product.id}/vote`, { vote: voteType })
       const data = response.data?.data
       setVotes(data?.votes || { under: 0, over: 0 })
       setUserVote(data?.user_vote || voteType)
-      toast({
-        id: 'vote-recorded',
-        title: 'Vote recorded',
-        status: 'success',
-        duration: 2000,
-        isClosable: true,
-      })
     } catch (err: unknown) {
       let description = 'Failed to submit vote'
       if (axios.isAxiosError(err)) {
@@ -1106,6 +1109,7 @@ const ProductDetail: React.FC = () => {
                             color={userVote === 'under' ? 'white' : 'white'}
                             onClick={() => handleVote('under')}
                             isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
+                            isLoading={isVoting}
                           >
                             Too low
                           </Button>
@@ -1122,6 +1126,7 @@ const ProductDetail: React.FC = () => {
                             color={userVote === 'over' ? 'white' : 'white'}
                             onClick={() => handleVote('over')}
                             isDisabled={Boolean(product.price === null || product.price === undefined || isOwner)}
+                            isLoading={isVoting}
                           >
                             Too high
                           </Button>
