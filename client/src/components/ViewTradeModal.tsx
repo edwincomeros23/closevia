@@ -753,6 +753,9 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const meetupInfoBg = useColorModeValue('blue.50', 'blue.900')
 
+  const tradeOption = (trade?.trade_option || 'meetup') as TradeOption
+  const proofRequired = tradeOption === 'meetup' || tradeOption === 'delivery'
+
   useEffect(() => {
     if (trade) {
       fetchCompletionStatus()
@@ -803,6 +806,16 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       return
     }
 
+    if (proofRequired && !proofFile) {
+      toast({
+        id: 'viewtrademodal-proof-required',
+        title: 'Proof image required',
+        description: 'Please upload a proof image before submitting your review.',
+        status: 'warning',
+      })
+      return
+    }
+
     try {
       setSubmitting(true)
 
@@ -821,7 +834,9 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
       await api.put(`/api/trades/${trade.id}/complete`, {
         rating,
         feedback: feedback.trim(),
-        proof_url: uploadedProofUrl || undefined,
+        // Backend expects these keys
+        transaction_proof_url: uploadedProofUrl || undefined,
+        is_camera_photo: true,
       })
 
       toast({
@@ -987,7 +1002,9 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
 
               {/* Proof Image */}
               <FormControl>
-                <FormLabel fontSize="sm" fontWeight="semibold">Proof Image (Optional)</FormLabel>
+                <FormLabel fontSize="sm" fontWeight="semibold">
+                  Proof Image {proofRequired ? '(Required)' : '(Optional)'}
+                </FormLabel>
                 {proofImage ? (
                   <VStack spacing={3} align="stretch">
                     <Box position="relative" w="full" maxW="200px">
@@ -1036,6 +1053,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
                 <Input
                   type="file"
                   accept="image/*"
+                  capture="environment"
                   display="none"
                   id="proof-upload-review"
                   onChange={handleProofUpload}
@@ -1048,7 +1066,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
                 size="lg"
                 onClick={submitReview}
                 isLoading={submitting}
-                isDisabled={!rating || !feedback.trim()}
+                isDisabled={!rating || !feedback.trim() || (proofRequired && !proofFile)}
                 w="full"
                 transition="all 0.2s"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
