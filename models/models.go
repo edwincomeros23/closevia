@@ -323,12 +323,12 @@ type Trade struct {
 	BuyerConfirmedReceipt   bool   `json:"buyer_confirmed_receipt"`
 	SellerConfirmedDelivery bool   `json:"seller_confirmed_delivery"`
 	// Review and proof fields
-	BuyerRating    *int   `json:"buyer_rating,omitempty"`
-	SellerRating   *int   `json:"seller_rating,omitempty"`
-	BuyerFeedback  string `json:"buyer_feedback,omitempty"`
-	SellerFeedback string `json:"seller_feedback,omitempty"`
-	BuyerProofURL  string `json:"buyer_proof_url,omitempty"`
-	SellerProofURL string `json:"seller_proof_url,omitempty"`
+	BuyerRating         *int   `json:"buyer_rating,omitempty"`
+	SellerRating        *int   `json:"seller_rating,omitempty"`
+	BuyerFeedback       string `json:"buyer_feedback,omitempty"`
+	SellerFeedback      string `json:"seller_feedback,omitempty"`
+	BuyerProofURL       string `json:"buyer_proof_url,omitempty"`
+	SellerProofURL      string `json:"seller_proof_url,omitempty"`
 	BuyerPhotoIsCamera  bool   `json:"buyer_photo_is_camera"`
 	SellerPhotoIsCamera bool   `json:"seller_photo_is_camera"`
 	// Meetup-related fields
@@ -728,24 +728,24 @@ type TrustFactor struct {
 
 // SellerStats represents seller statistics for display on product pages
 type SellerStats struct {
-	UserID          int                 `json:"user_id"`
-	AvgRating       float64             `json:"avg_rating"`
-	PositivePercent float64             `json:"positive_percent"`
-	TotalTrades     int                 `json:"total_trades"`
-	AvgResponseTime string              `json:"avg_response_time"`
-	TotalFeedback   int                 `json:"total_feedback"`
-	ResponseMetric  string              `json:"response_metric,omitempty"`   // "excellent", "good", etc.
-	MemberSinceYear int                 `json:"member_since_year,omitempty"` // Year user joined
-	CompletedTrades int                 `json:"completed_trades,omitempty"`
-	CancelledTrades int                 `json:"cancelled_trades,omitempty"`
-	PendingTrades   int                 `json:"pending_trades,omitempty"`
-	TrustScore      int                 `json:"trust_score"`               // 0-100 calculated trust score
-	TrustLevel      string              `json:"trust_level"`               // "trusted", "new", "risky"
-	ReportCount     int                 `json:"report_count"`              // Number of reviewed/resolved reports
-	HasReports      bool                `json:"has_reports"`               // Whether user has been reported
-	TrustFactors    []TrustFactor       `json:"trust_factors,omitempty"`   // Detailed breakdown of trust score
-	ConductSummary  *UserConductSummary `json:"conduct_summary,omitempty"` // Trade quality & conduct grades
-	HasActiveDispute bool                `json:"has_active_dispute"`      // Whether user has an active unresolved dispute
+	UserID           int                 `json:"user_id"`
+	AvgRating        float64             `json:"avg_rating"`
+	PositivePercent  float64             `json:"positive_percent"`
+	TotalTrades      int                 `json:"total_trades"`
+	AvgResponseTime  string              `json:"avg_response_time"`
+	TotalFeedback    int                 `json:"total_feedback"`
+	ResponseMetric   string              `json:"response_metric,omitempty"`   // "excellent", "good", etc.
+	MemberSinceYear  int                 `json:"member_since_year,omitempty"` // Year user joined
+	CompletedTrades  int                 `json:"completed_trades,omitempty"`
+	CancelledTrades  int                 `json:"cancelled_trades,omitempty"`
+	PendingTrades    int                 `json:"pending_trades,omitempty"`
+	TrustScore       int                 `json:"trust_score"`               // 0-100 calculated trust score
+	TrustLevel       string              `json:"trust_level"`               // "trusted", "new", "risky"
+	ReportCount      int                 `json:"report_count"`              // Number of reviewed/resolved reports
+	HasReports       bool                `json:"has_reports"`               // Whether user has been reported
+	TrustFactors     []TrustFactor       `json:"trust_factors,omitempty"`   // Detailed breakdown of trust score
+	ConductSummary   *UserConductSummary `json:"conduct_summary,omitempty"` // Trade quality & conduct grades
+	HasActiveDispute bool                `json:"has_active_dispute"`        // Whether user has an active unresolved dispute
 }
 
 // Report represents a trader report for policy violations
@@ -866,4 +866,116 @@ type UserConductSummary struct {
 	Categories       []ConductGrade `json:"categories"`
 	CancellationRate float64        `json:"cancellation_rate"` // 0.0-1.0
 	DisputeRate      float64        `json:"dispute_rate"`      // 0.0-1.0
+}
+
+// DisputeEscalation represents an escalation case for admin review
+type DisputeEscalation struct {
+	ID             int       `json:"id"`
+	DisputeID      int       `json:"dispute_id"`
+	TradeID        int       `json:"trade_id"`
+	RaisedByID     int       `json:"raised_by_id"`
+	ReportedUserID int       `json:"reported_user_id"`
+	Reason         string    `json:"reason"`
+	Status         string    `json:"status"` // open, under_review, resolved
+	AssignedToID   *int      `json:"assigned_to_id"`
+	SLADueAt       time.Time `json:"sla_due_at"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// EscalationQueueItem represents a summary item in the admin queue
+type EscalationQueueItem struct {
+	ID               int       `json:"id"`
+	DisputeID        int       `json:"dispute_id"`
+	TradeID          int       `json:"trade_id"`
+	RaisedByName     string    `json:"raised_by_name"`
+	RaisedByID       int       `json:"raised_by_id"`
+	ReportedUserName string    `json:"reported_user_name"`
+	ReportedUserID   int       `json:"reported_user_id"`
+	Reason           string    `json:"reason"`
+	Status           string    `json:"status"`
+	AssignedToID     *int      `json:"assigned_to_id"`
+	AssignedToName   *string   `json:"assigned_to_name"`
+	SLADueAt         time.Time `json:"sla_due_at"`
+	SLAStatus        string    `json:"sla_status"` // on_track, warning, overdue
+	CreatedAt        time.Time `json:"created_at"`
+	HoursUntilDue    float64   `json:"hours_until_due"`
+	IsOverdue        bool      `json:"is_overdue"`
+}
+
+// EscalationEvidence represents a piece of evidence attached to an escalation
+type EscalationEvidence struct {
+	ID           int       `json:"id"`
+	EscalationID int       `json:"escalation_id"`
+	EvidenceType string    `json:"evidence_type"` // photo, chat_transcript
+	EvidenceURL  *string   `json:"evidence_url"`
+	EvidenceData *string   `json:"evidence_data"` // JSON for chat transcripts
+	UploadedByID int       `json:"uploaded_by_id"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// EscalationResolution represents the final resolution of an escalation
+type EscalationResolution struct {
+	ID                int       `json:"id"`
+	EscalationID      int       `json:"escalation_id"`
+	ResolvedByAdminID int       `json:"resolved_by_admin_id"`
+	OutcomeType       string    `json:"outcome_type"` // proceed, cancel_return_strike, suspend_pending, partial_refund, warning_only, conditional_strike, split_resolution
+	RefundAmount      *float64  `json:"refund_amount"`
+	Notes             *string   `json:"notes"`
+	ResolvedAt        time.Time `json:"resolved_at"`
+}
+
+// EscalationDetail represents the full detail view of an escalation with evidence and resolution
+type EscalationDetail struct {
+	Escalation *DisputeEscalation    `json:"escalation"`
+	Evidence   []*EscalationEvidence `json:"evidence"`
+	Resolution *EscalationResolution `json:"resolution"`
+}
+
+// EscalationStats represents admin dashboard statistics
+type EscalationStats struct {
+	OpenCount           int     `json:"open_count"`
+	UnderReviewCount    int     `json:"under_review_count"`
+	OverdueCount        int     `json:"overdue_count"`
+	AvgResolutionHours  float64 `json:"avg_resolution_hours"`
+	MedianResolutionHrs float64 `json:"median_resolution_hours"`
+	TotalResolved       int     `json:"total_resolved"`
+}
+
+// EscalationDetail response wrapper
+type PaginatedEscalationQueue struct {
+	Items      []*EscalationQueueItem `json:"items"`
+	Total      int                    `json:"total"`
+	Page       int                    `json:"page"`
+	Limit      int                    `json:"limit"`
+	TotalPages int                    `json:"total_pages"`
+}
+
+// PeerTag represents a tag given by one user to another after a completed trade
+type PeerTag struct {
+	ID         int       `json:"id"`
+	TradeID    int       `json:"trade_id"`
+	GiverID    int       `json:"giver_id"`
+	ReceiverID int       `json:"receiver_id"`
+	TagName    string    `json:"tag_name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PeerTagCreate represents the request payload for creating a peer tag
+type PeerTagCreate struct {
+	TradeID int    `json:"trade_id" validate:"required"`
+	TagName string `json:"tag_name" validate:"required,oneof=Item as described On time Friendly Safe meetup spot Smooth delivery Responsive"`
+}
+
+// PeerTagCount represents the count of a specific tag for a user
+type PeerTagCount struct {
+	TagName string `json:"tag_name"`
+	Count   int    `json:"count"`
+}
+
+// PeerTagProfile represents all peer tags and their counts for a user
+type PeerTagProfile struct {
+	UserID int              `json:"user_id"`
+	Tags   []PeerTagCount   `json:"tags"`
+	Total  int              `json:"total"` // Total number of tags given by all peers
 }

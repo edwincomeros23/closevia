@@ -189,6 +189,8 @@ const Notifications: React.FC = () => {
         return '🚨'
       case 'system':
         return '⚙️'
+      case 'trade_loop':
+        return '🔄'
       default:
         return '📢'
     }
@@ -428,6 +430,8 @@ const Notifications: React.FC = () => {
                   redirectPath = '/browse';
                 } else if (notification.type === 'trade_loop') {
                   // For trade loops, go to dashboard multi-way tab
+                  redirectPath = '/dashboard?tab=2';
+                } else if (notification.type === 'trade_loop') {
                   redirectPath = '/dashboard?tab=2';
                 }
                 // Add more types as needed

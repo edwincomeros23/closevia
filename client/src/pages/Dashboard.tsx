@@ -141,7 +141,11 @@ const Dashboard: React.FC = () => {
   // Combined loading states
   const offersLoading = !sentOffersData && !receivedOffersData && !ongoingTradesData
 
-  const [activeTab, setActiveTab] = useState(0)
+  // Initialize from URL ?tab= param immediately so the correct tab is active on first render
+  const [activeTab, setActiveTab] = useState(() => {
+    const p = new URLSearchParams(window.location.search).get('tab')
+    return p ? parseInt(p, 10) || 0 : 0
+  })
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -228,7 +232,7 @@ const Dashboard: React.FC = () => {
   const defaultOffersViewMode = useBreakpointValue({ base: 'list', md: 'grid' }) as 'grid' | 'list'
   const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
-  const [multiWayChainFilter, setMultiWayChainFilter] = useState<'all' | '3' | '4plus'>('all')
+  const [multiWayChainFilter, setMultiWayChainFilter] = useState<'all' | '3'>('all')
   const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
 
   // Color mode values
@@ -722,8 +726,7 @@ const Dashboard: React.FC = () => {
     }
 
     if (multiWayChainFilter === 'all') return multiWayTrades
-    if (multiWayChainFilter === '3') return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 3)
-    return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) >= 4)
+    return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 3)
   }, [multiWayTrades, multiWayChainFilter])
 
   const fetchMultiWayTrades = async () => {
@@ -1155,7 +1158,7 @@ const Dashboard: React.FC = () => {
   }, [buyoutOffers, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const sentOffers = useMemo(() => {
-    const active = (outgoing || []).filter(t => t.status === 'pending') // Only show pending offers
+    const active = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -1169,7 +1172,7 @@ const Dashboard: React.FC = () => {
   }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   const receivedOffers = useMemo(() => {
-    const active = (incoming || []).filter(t => t.status === 'pending') // Show only pending offers
+    const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
     const filtered = filterTrades(active, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
@@ -2794,9 +2797,7 @@ const Dashboard: React.FC = () => {
       return
     }
     if (activeTab === 2) {
-      const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
-      const currentIndex = filters.indexOf(multiWayChainFilter)
-      setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+      setMultiWayChainFilter(multiWayChainFilter === 'all' ? '3' : 'all')
       return
     }
   }
@@ -3279,7 +3280,7 @@ const Dashboard: React.FC = () => {
                         />
                       </Tooltip>
                       <Tooltip
-                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`}
+                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : '3-way chains'}`}
                         hasArrow
                       >
                         <Button
@@ -3289,16 +3290,14 @@ const Dashboard: React.FC = () => {
                           leftIcon={<FiFilter />}
                           display={{ base: 'none', md: 'inline-flex' }}
                           onClick={() => {
-                            const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
-                            const currentIndex = filters.indexOf(multiWayChainFilter)
-                            setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+                            setMultiWayChainFilter(multiWayChainFilter === 'all' ? '3' : 'all')
                           }}
                         >
                           Filter
                         </Button>
                       </Tooltip>
                       <Tooltip
-                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`}
+                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : '3-way chains'}`}
                         hasArrow
                       >
                         <IconButton
@@ -3309,9 +3308,7 @@ const Dashboard: React.FC = () => {
                           colorScheme="purple"
                           display={{ base: 'inline-flex', md: 'none' }}
                           onClick={() => {
-                            const filters: Array<'all' | '3' | '4plus'> = ['all', '3', '4plus']
-                            const currentIndex = filters.indexOf(multiWayChainFilter)
-                            setMultiWayChainFilter(filters[(currentIndex + 1) % filters.length])
+                            setMultiWayChainFilter(multiWayChainFilter === 'all' ? '3' : 'all')
                           }}
                         />
                       </Tooltip>
@@ -3483,7 +3480,7 @@ const Dashboard: React.FC = () => {
                           : activeTab === 1
                             ? `Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`
                             : activeTab === 2
-                              ? `Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : multiWayChainFilter === '3' ? '3-way chains' : '4+ way chains'}`
+                              ? `Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : '3-way chains'}`
                               : 'Filter: Coming soon'}
                       </MenuItem>
                       <MenuDivider />
@@ -4686,16 +4683,155 @@ const Dashboard: React.FC = () => {
                           </SimpleGrid>
                         </Box>
                       )}
-                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                      {filteredMultiWayTrades.map((trade) => {
-                        const summary = getMultiWayTradeSummary(trade)
-                        return (
-                          <Box key={trade.id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
-                            <MultiWayTradeUI
-                              participants={trade.participants || []}
-                              isChain={trade.is_chain}
-                              yourGive={summary.yourGive}
-                              yourGet={summary.yourGet}
+
+                      {filteredMultiWayTrades.length > 0 && (
+                        <Box>
+                          {pendingMultiWayTrades.length > 0 && (
+                             <Heading size="sm" mb={3} color="gray.700">
+                               Match Opportunities
+                             </Heading>
+                          )}
+                          {multiWayTradesViewMode === 'list' ? (
+                            <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg}>
+                              <Box
+                                px={4}
+                                py={3}
+                                bg="gray.50"
+                                borderBottomWidth="1px"
+                                borderColor="gray.200"
+                                fontSize="xs"
+                                fontWeight="semibold"
+                                color="gray.600"
+                                textTransform="uppercase"
+                                display={{ base: 'none', md: 'flex' }}
+                              >
+                                What • Chain • Participants • Action
+                              </Box>
+                              {filteredMultiWayTrades.map((trade, idx) => (
+                                <Flex
+                                  key={trade.id}
+                                  align="center"
+                                  gap={{ base: 2, md: 4 }}
+                                  p={3}
+                                  borderBottom={idx < filteredMultiWayTrades.length - 1 ? '1px' : 'none'}
+                                  borderColor={borderColor}
+                                  _hover={{ bg: 'gray.50' }}
+                                  minW={0}
+                                  flexWrap="wrap"
+                                >
+                                  {(() => {
+                                    const summary = getMultiWayTradeSummary(trade)
+                                    return (
+                                  <VStack align="start" spacing={0} flex={1} minW={0}>
+                                    <Text fontWeight="semibold" fontSize={{ base: 'sm', md: 'md' }}>
+                                      Trade Loop #{trade.id}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                                      You give: {summary.yourGive}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.600" noOfLines={1}>
+                                      You get: {summary.yourGet}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                                      Chain: {summary.chainLabel}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.600">
+                                      {trade.participants?.length || 0} participants
+                                    </Text>
+                                  </VStack>
+                                    )
+                                  })()}
+                                  <HStack spacing={2} flexShrink={0}>
+                                    <Badge colorScheme="purple" variant="subtle" fontSize="2xs" px={2} py={1}>
+                                      {trade.participants?.length || 0} in loop
+                                    </Badge>
+                                    {trade?.initiator_view ? (
+                                      <Button
+                                        size="sm"
+                                        colorScheme="purple"
+                                        variant="outline"
+                                        fontSize={{ base: 'xs', md: 'sm' }}
+                                        px={{ base: 2, md: 3 }}
+                                        onClick={() => {
+                                          // Premium gate only applies to managing detected loops
+                                          if (trade?.loop_type === 'detected_loop' && !user?.is_premium) {
+                                            setShowPremiumModal(true)
+                                            return
+                                          }
+                                          void (async () => {
+                                            try {
+                                              setMultiWayManagerLoading(true)
+                                              const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+                                              const details = await fetchMultiWayTrade(loopId)
+                                              setSelectedMultiWayTrade(details)
+                                              setMultiWayManagerOpen(true)
+                                            } catch (e) {
+                                              console.error('Failed to load loop details:', e)
+                                              toast({
+                                                id: 'error-load-loop-details',
+                                                title: 'Error',
+                                                description: 'Failed to load trade loop details.',
+                                                status: 'error',
+                                              })
+                                            } finally {
+                                              setMultiWayManagerLoading(false)
+                                            }
+                                          })()
+                                        }}
+                                      >
+                                        View
+                                      </Button>
+                                    ) : (
+                                      <HStack spacing={2}>
+                                        <Button
+                                          size="sm"
+                                          colorScheme="green"
+                                          onClick={() => handleJoinMultiWayTrade(trade)}
+                                          isLoading={multiWayTradeJoining}
+                                          loadingText="Joining..."
+                                          isDisabled={!trade?.can_join}
+                                        >
+                                          Hop In
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          colorScheme="red"
+                                          variant="outline"
+                                          onClick={() => handleDeclineMultiWayTrade(trade, false)}
+                                          isDisabled={!trade?.can_decline}
+                                        >
+                                          Decline
+                                        </Button>
+                                        {trade?.loop_type === 'detected_loop' && !trade?.can_create && !user?.is_premium && (
+                                          <Button
+                                            size="sm"
+                                            colorScheme="purple"
+                                            variant="outline"
+                                            onClick={() => setShowPremiumModal(true)}
+                                          >
+                                            Start a Loop <Badge ml={2} colorScheme="purple" fontSize="10px">Pro</Badge>
+                                          </Button>
+                                        )}
+                                      </HStack>
+                                    )}
+                                  </HStack>
+                                </Flex>
+                              ))}
+                            </Box>
+                          ) : (
+                            <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                              {filteredMultiWayTrades.map((trade) => {
+                                const participants = Array.isArray(trade?.participants) ? trade.participants : []
+                                // Skip rendering if there aren't enough participants to display
+                                if (participants.length < 2) return null
+                                const summary = getMultiWayTradeSummary(trade)
+                                return (
+                                  <Box key={trade.id || trade.loop_id || trade.chain_id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                                    <MultiWayTradeUI
+                                      participants={trade.participants || []}
+                                      isChain={trade.is_chain}
+                                      yourGive={summary.yourGive}
+                                      yourGet={summary.yourGet}
                               chainLabel={summary.chainLabel}
                               viewMode={trade?.initiator_view ? 'initiator' : 'participant'}
                               initiatorName={trade?.initiator_name}
@@ -4710,9 +4846,8 @@ const Dashboard: React.FC = () => {
                               onViewDetails={() => {
                                 void (async () => {
                                   try {
-                                    if (trade?.loop_type !== 'detected_loop') return
                                     setMultiWayManagerLoading(true)
-                                    const loopId = String(trade?.loop_id || trade?.id || '')
+                                    const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
                                     const details = await fetchMultiWayTrade(loopId)
                                     setSelectedMultiWayTrade(details)
                                     setMultiWayManagerOpen(true)
@@ -4740,6 +4875,9 @@ const Dashboard: React.FC = () => {
                         )
                       })}
                     </SimpleGrid>
+                          )}
+                        </Box>
+                      )}
                     </VStack>
                   )}
                 </TabPanel>

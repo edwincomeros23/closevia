@@ -338,3 +338,100 @@ func buildPasswordResetOTPHTML(name, code string) string {
 </html>`, name, displayCode)
 }
 
+// SendEscalationAssignedEmail notifies admin that an escalation has been assigned
+func SendEscalationAssignedEmail(adminEmail, adminName string, escalationID int, caseDetails string) error {
+	subject := fmt.Sprintf("New Escalation Case #%d Assigned to You", escalationID)
+	htmlBody := fmt.Sprintf(`
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family:Arial,sans-serif;background:#F3F4F6;">
+  <table width="100%%" border="0" cellspacing="0" cellpadding="0" style="background:#F3F4F6;">
+    <tr><td style="padding:0;">
+      <table width="600" border="0" cellspacing="0" cellpadding="0" style="margin:30px auto;background:#FFFFFF;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);padding:30px 40px;border-radius:12px 12px 0 0;">
+          <p style="color:#FFFFFF;font-size:20px;font-weight:700;margin:0;">New Escalation Assigned</p>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="color:#374151;font-size:16px;margin:0 0 20px;"><strong>Hi %s,</strong></p>
+          <p style="color:#374151;font-size:15px;margin:0 0 20px;line-height:1.6;">
+            A new dispute escalation has been assigned to you for review and resolution.
+          </p>
+          <div style="background:#FEF3C7;border-left:4px solid #F59E0B;padding:16px;margin:20px 0;border-radius:4px;">
+            <p style="color:#78350F;font-size:14px;margin:0;"><strong>Escalation ID:</strong> #%d</p>
+            <p style="color:#78350F;font-size:14px;margin:8px 0 0;">%s</p>
+          </div>
+          <p style="color:#6B7280;font-size:13px;margin:20px 0;"><strong>Next Steps:</strong></p>
+          <ul style="color:#6B7280;font-size:13px;margin:0;padding-left:20px;">
+            <li>Review all evidence and chat transcripts</li>
+            <li>Interview affected parties if needed</li>
+            <li>Make a resolution decision within the SLA window</li>
+          </ul>
+        </td></tr>
+        <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;text-align:center;">
+          <p style="color:#9CA3AF;font-size:12px;margin:0;">© 2025 Clovia Admin System</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`, adminName, escalationID, caseDetails)
+
+	return sendViaGmailSMTP(adminEmail, subject, htmlBody)
+}
+
+// SendEscalationResolvedEmail notifies both parties of the resolution
+func SendEscalationResolvedEmail(partyEmail, partyName, outcomeType string, notes string) error {
+	subject := "Escalation Case Resolution - Clovia"
+
+	outcomeDisplay := map[string]string{
+		"proceed":              "Case Dismissed",
+		"cancel_return_strike": "Trade Cancelled - Strike Issued",
+		"suspend_pending":      "Account Suspended - Pending Review",
+		"partial_refund":       "Partial Refund Processed",
+		"warning_only":         "Warning Issued",
+		"conditional_strike":   "Conditional Strike Recorded",
+		"split_resolution":     "Shared Responsibility - Both Warned",
+	}
+
+	display := outcomeDisplay[outcomeType]
+	if display == "" {
+		display = outcomeType
+	}
+
+	htmlBody := fmt.Sprintf(`
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family:Arial,sans-serif;background:#F3F4F6;">
+  <table width="100%%" border="0" cellspacing="0" cellpadding="0" style="background:#F3F4F6;">
+    <tr><td style="padding:0;">
+      <table width="600" border="0" cellspacing="0" cellpadding="0" style="margin:30px auto;background:#FFFFFF;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+        <tr><td style="background:linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);padding:30px 40px;border-radius:12px 12px 0 0;">
+          <p style="color:#FFFFFF;font-size:20px;font-weight:700;margin:0;">Escalation Case Resolved</p>
+        </td></tr>
+        <tr><td style="padding:40px;">
+          <p style="color:#374151;font-size:16px;margin:0 0 20px;"><strong>Hi %s,</strong></p>
+          <p style="color:#374151;font-size:15px;margin:0 0 20px;line-height:1.6;">
+            Your dispute escalation case has been reviewed by our admin team and a final decision has been made.
+          </p>
+          <div style="background:#DDD6FE;border-left:4px solid #6366F1;padding:16px;margin:20px 0;border-radius:4px;">
+            <p style="color:#312E81;font-size:14px;margin:0;"><strong>Resolution:</strong> %s</p>
+          </div>
+          <p style="color:#374151;font-size:14px;margin:16px 0;">
+            <strong>Notes from Admin:</strong><br>
+            <span style="color:#6B7280;">%s</span>
+          </p>
+          <p style="color:#6B7280;font-size:13px;margin:20px 0;">
+            If you have any questions about this decision, please contact our support team.
+          </p>
+        </td></tr>
+        <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;text-align:center;">
+          <p style="color:#9CA3AF;font-size:12px;margin:0;">© 2025 Clovia — WMSU Campus Marketplace</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`, partyName, display, notes)
+
+	return sendViaGmailSMTP(partyEmail, subject, htmlBody)
+}
