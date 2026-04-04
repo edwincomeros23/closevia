@@ -75,6 +75,14 @@ func (h *UploadHandler) UploadImage(c *fiber.Ctx) error {
 
 	url, err := services.UploadFileToCloudinary(file, folder)
 	if err != nil {
+		fmt.Printf("❌ [Upload] Cloudinary error: %v (will fallback to local)\n", err)
+	} else if url == "" {
+		// Cloudinary returned success but empty URL — treat as error and fallback
+		fmt.Printf("❌ [Upload] Cloudinary returned empty URL (will fallback to local)\n")
+		err = services.ErrCloudinaryDisabled
+	}
+
+	if err != nil {
 		if err == services.ErrCloudinaryDisabled {
 			// Fallback: save locally
 			uploadsDir := filepath.Join(".", "uploads", folder)
@@ -89,6 +97,7 @@ func (h *UploadHandler) UploadImage(c *fiber.Ctx) error {
 				})
 			}
 			localURL := fmt.Sprintf("/uploads/%s/%s", folder, filename)
+			fmt.Printf("✅ [Upload] Saved locally: %s\n", localURL)
 			return c.Status(201).JSON(fiber.Map{
 				"success": true,
 				"message": "Image uploaded successfully (local)",
@@ -104,6 +113,15 @@ func (h *UploadHandler) UploadImage(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
 			"error":   "Failed to upload image: " + err.Error(),
+		})
+	}
+
+	// Final validation - ensure we have a valid URL
+	if url == "" {
+		fmt.Printf("⚠️ [Upload] URL is empty after Cloudinary upload - this should not happen\n")
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"error":   "Upload succeeded but returned no URL. Please try again.",
 		})
 	}
 

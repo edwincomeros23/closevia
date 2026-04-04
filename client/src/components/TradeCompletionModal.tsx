@@ -163,7 +163,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
       const imageUrl = response.data?.data?.url
       if (!imageUrl) {
-        throw new Error('Upload succeeded but no image URL was returned. Please try again.')
+        throw new Error(response.data?.error || 'Upload succeeded but no image URL was returned. Please try again.')
       }
 
       setTransactionProof(imageUrl)
