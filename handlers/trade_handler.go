@@ -3514,15 +3514,15 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 			limit := 2
 
 			_, _ = h.db.Exec(`
-				INSERT INTO loop_quota_usage (user_id, period, used, limit)
+				INSERT INTO loop_quota_usage (user_id, period, used, `+"`limit`"+`)
 				VALUES (?, ?, 0, ?)
-				ON DUPLICATE KEY UPDATE limit = limit
+				ON DUPLICATE KEY UPDATE `+"`limit`"+` = `+"`limit`"+`
 			`, userID, period, limit)
 
 			res, qErr := h.db.Exec(`
 				UPDATE loop_quota_usage
 				SET used = used + 1
-				WHERE user_id = ? AND period = ? AND used < limit
+				WHERE user_id = ? AND period = ? AND used < `+"`limit`"+`
 			`, userID, period)
 			if qErr != nil {
 				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to enforce loop quota"})
@@ -4449,15 +4449,15 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 		limit := 2
 
 		_, _ = tx.Exec(`
-			INSERT INTO loop_quota_usage (user_id, period, used, limit)
+			INSERT INTO loop_quota_usage (user_id, period, used, `+"`limit`"+`)
 			VALUES (?, ?, 0, ?)
-			ON DUPLICATE KEY UPDATE limit = limit
+			ON DUPLICATE KEY UPDATE `+"`limit`"+` = `+"`limit`"+`
 		`, userID, period, limit)
 
 		res, qErr := tx.Exec(`
 			UPDATE loop_quota_usage
 			SET used = used + 1
-			WHERE user_id = ? AND period = ? AND used < limit
+			WHERE user_id = ? AND period = ? AND used < `+"`limit`"+`
 		`, userID, period)
 		if qErr != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to enforce loop quota"})
