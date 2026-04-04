@@ -2299,6 +2299,14 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "User not found"})
 	}
 
+	// Check if proof URL columns exist (older DBs may not have them yet)
+	proofColsExist := false
+	{
+		var cnt int
+		_ = h.db.QueryRow(`SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trades' AND COLUMN_NAME IN ('buyer_proof_url', 'seller_proof_url')`).Scan(&cnt)
+		proofColsExist = cnt >= 2
+	}
+
 	query := `
 		SELECT
 			t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status,
@@ -2310,7 +2318,19 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 			p.image_urls AS product_image_urls,
 			t.buyer_rating, t.seller_rating,
 			COALESCE(t.buyer_feedback, '') as buyer_feedback,
-			COALESCE(t.seller_feedback, '') as seller_feedback
+			COALESCE(t.seller_feedback, '') as seller_feedback`
+
+	if proofColsExist {
+		query += `,
+			COALESCE(t.buyer_proof_url, '') as buyer_proof_url,
+			COALESCE(t.seller_proof_url, '') as seller_proof_url`
+	} else {
+		query += `,
+			'' as buyer_proof_url,
+			'' as seller_proof_url`
+	}
+
+	query += `
 		FROM trades t
 		JOIN users ub ON ub.id = t.buyer_id
 		JOIN users us ON us.id = t.seller_id
@@ -2344,6 +2364,8 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 		SellerRating   *int        `json:"seller_rating,omitempty"`
 		BuyerFeedback  string      `json:"buyer_feedback,omitempty"`
 		SellerFeedback string      `json:"seller_feedback,omitempty"`
+		BuyerProofURL  string      `json:"buyer_proof_url,omitempty"`
+		SellerProofURL string      `json:"seller_proof_url,omitempty"`
 		Items          []fiber.Map `json:"items"`
 	}
 
@@ -2354,6 +2376,7 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 		var t PublicTrade
 		var pimg, pimgs sql.NullString
 		var completedAt sql.NullTime
+		var buyerProofURL, sellerProofURL sql.NullString
 
 		if err := rows.Scan(
 			&t.ID, &t.BuyerID, &t.SellerID, &t.ProductID, &t.Status, &t.Message,
@@ -2362,9 +2385,17 @@ func (h *TradeHandler) GetUserTradeHistory(c *fiber.Ctx) error {
 			&pimg, &pimgs,
 			&t.BuyerRating, &t.SellerRating,
 			&t.BuyerFeedback, &t.SellerFeedback,
+			&buyerProofURL, &sellerProofURL,
 		); err != nil {
 			log.Printf("⚠️ GetUserTradeHistory: scan error: %v", err)
 			continue
+		}
+
+		if buyerProofURL.Valid {
+			t.BuyerProofURL = buyerProofURL.String
+		}
+		if sellerProofURL.Valid {
+			t.SellerProofURL = sellerProofURL.String
 		}
 
 		if completedAt.Valid {

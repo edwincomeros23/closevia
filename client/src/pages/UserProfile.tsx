@@ -638,7 +638,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     const tradesNeedingReview = new Set<number>()
     mergedTradeActivity.forEach(trade => {
       // Check if trade is completed and current user hasn't reviewed it yet
-      if (trade.status === 'completed' && !trade.review) {
+      const hasBuyerReview = trade.buyer_rating != null
+      const hasSellerReview = trade.seller_rating != null
+      const currentUserHasReviewed =
+        currentUser.id === trade.buyer_id ? hasBuyerReview :
+        currentUser.id === trade.seller_id ? hasSellerReview :
+        false
+
+      if (trade.status === 'completed' && !currentUserHasReviewed) {
         // Only flag if current user is the one who should review
         // (typically the receiver of the item)
         const isReceiver = currentUser.id === trade.buyer_id || currentUser.id === trade.receiver_id
@@ -1444,6 +1451,59 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                         ? new Date(trade.completed_at).toLocaleDateString()
                         : new Date(trade.created_at).toLocaleDateString()
 
+                      const buyerRating = trade.buyer_rating as number | null | undefined
+                      const sellerRating = trade.seller_rating as number | null | undefined
+                      const buyerFeedback = (trade.buyer_feedback || '') as string
+                      const sellerFeedback = (trade.seller_feedback || '') as string
+                      const buyerProofUrl = (trade.buyer_proof_url || '') as string
+                      const sellerProofUrl = (trade.seller_proof_url || '') as string
+
+                      const renderPartyReview = (
+                        label: string,
+                        rating?: number | null,
+                        comment?: string,
+                        proofUrl?: string
+                      ) => {
+                        const hasContent = (rating != null && rating > 0) || !!(comment && comment.trim()) || !!proofUrl
+                        if (!hasContent) return null
+
+                        return (
+                          <Box bg="gray.50" p={2} borderRadius="md" mt={2}>
+                            <HStack spacing={2} mb={1} align="center">
+                              <Text fontSize="xs" fontWeight="bold" color="gray.700">
+                                {label}
+                              </Text>
+                              {rating != null && (
+                                <HStack spacing={0.5}>
+                                  {[1, 2, 3, 4, 5].map((star) => (
+                                    <Icon
+                                      key={`${label}-${star}`}
+                                      as={FiStar}
+                                      boxSize={3}
+                                      color={star <= rating ? 'yellow.400' : 'gray.300'}
+                                      fill={star <= rating ? 'currentColor' : 'none'}
+                                    />
+                                  ))}
+                                  <Text fontSize="xs" color="gray.500" ml={1}>{rating}/5</Text>
+                                </HStack>
+                              )}
+                            </HStack>
+
+                            {comment?.trim() && (
+                              <Text fontSize="xs" color="gray.600" fontStyle="italic">
+                                "{comment.trim()}"
+                              </Text>
+                            )}
+
+                            {proofUrl && (
+                              <Box mt={2} w="120px" h="120px" borderRadius="md" overflow="hidden" border="1px" borderColor="gray.200">
+                                <Image src={proofUrl} alt={`${label} proof`} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
+                              </Box>
+                            )}
+                          </Box>
+                        )
+                      }
+
                       // Target product (what the seller listed)
                       const targetImage = trade.product_image_url || '/placeholder-item.jpg'
                       const targetTitle = trade.product_title || 'Product'
@@ -1510,60 +1570,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                               </HStack>
 
                               {/* Review from trading partner */}
-                              {review && (
-                                <Box bg="gray.50" p={2} borderRadius="md" mt={2}>
-                                  <HStack spacing={2} mb={1}>
-                                    <Text fontSize="xs" fontWeight="bold" color="gray.700">
-                                      {review.reviewer}
-                                    </Text>
-                                    <HStack spacing={0.5}>
-                                      {[1, 2, 3, 4, 5].map((star) => (
-                                        <Icon
-                                          key={`r-${star}`}
-                                          as={FiStar}
-                                          boxSize={3}
-                                          color={star <= review.rating ? 'yellow.400' : 'gray.300'}
-                                          fill={star <= review.rating ? 'currentColor' : 'none'}
-                                        />
-                                      ))}
-                                      <Text fontSize="xs" color="gray.500" ml={1}>{review.rating}/5</Text>
-                                    </HStack>
-                                  </HStack>
-                                  {review.comment && (
-                                    <Text fontSize="xs" color="gray.600" fontStyle="italic">
-                                      "{review.comment}"
-                                    </Text>
-                                  )}
-
-                                  {/* Show existing reply if any */}
-                                  {review.reply && (
-                                    <Box
-                                      mt={3}
-                                      pl={4}
-                                      borderLeft="2px"
-                                      borderColor="brand.200"
-                                      bg="gray.50"
-                                      p={3}
-                                      borderRadius="md"
-                                    >
-                                      <HStack spacing={2} mb={1}>
-                                        <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
-                                        <Text fontSize="sm" fontWeight="semibold" color="brand.600">
-                                          <Box as="span" textTransform="capitalize">{review.reply_author || user?.name || 'Trader'}</Box> replied:
-                                        </Text>
-                                        {review.reply_date && (
-                                          <Text fontSize="xs" color="gray.500">
-                                            {review.reply_date}
-                                          </Text>
-                                        )}
-                                      </HStack>
-                                      <Text fontSize="sm" color="gray.700">
-                                        {review.reply}
-                                      </Text>
-                                    </Box>
-                                  )}
-                                </Box>
-                              )}
+                              {renderPartyReview(`${trade.buyer_name || 'Buyer'} (Buyer)`, buyerRating, buyerFeedback, buyerProofUrl)}
+                              {renderPartyReview(`${trade.seller_name || 'Seller'} (Seller)`, sellerRating, sellerFeedback, sellerProofUrl)}
                             </Box>
 
                             {/* Show existing reply if any */}
