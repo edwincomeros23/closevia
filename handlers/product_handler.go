@@ -295,7 +295,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		}
 	}
 
-	appraisal := services.AppraiseProduct(title, description)
+	// Use AI-enhanced appraisal for intelligent category detection
+	appraisal := services.AppraiseProductWithAI(title, description)
 	category := appraisal.Category
 	if categoryOverride != "" {
 		category = categoryOverride
