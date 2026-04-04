@@ -577,81 +577,19 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
       </Card>
 
       <Card variant="outline" borderColor="green.200">
-        <CardBody>
-          <VStack spacing={4} align="stretch">
-            <VStack spacing={2} align="start">
-              <Text fontWeight="semibold" fontSize="md">Payment Method</Text>
-              <Text fontSize="sm" color="gray.600">
-                Total: ₱{(requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee}
-                (Item: ₱{requestedProduct?.price || 0} + Delivery: ₱{deliveryOptions[deliveryState.deliveryType].fee})
-              </Text>
-              {deliveryOptions[deliveryState.deliveryType].fee > 0 && (
-                <Text fontSize="xs" color="amber.600" fontWeight="medium">
-                  💡 Delivery fee split 50/50 with seller
-                </Text>
-              )}
-            </VStack>
-
-            {/* COD Only - Minimal UI */}
-            <Box 
-              bg="green.50" 
-              border="2px solid" 
-              borderColor="green.300" 
-              borderRadius="lg" 
-              p={4}
-            >
-              <VStack spacing={3} align="stretch">
-                <HStack justify="space-between">
-                  <HStack spacing={3}>
-                    <Text fontSize="2xl">💵</Text>
-                    <VStack align="start" spacing={0}>
-                      <Text fontWeight="bold" fontSize="md">Cash on Delivery</Text>
-                      <Text fontSize="sm" color="gray.600">Pay when you receive</Text>
-                    </VStack>
-                  </HStack>
-                  <Icon as={FiCheck} boxSize={6} color="green.500" />
-                </HStack>
-                
-                <Box bg="white" p={3} borderRadius="md" borderLeftWidth="4px" borderLeftColor="green.400">
-                  <Text fontSize="sm" fontWeight="semibold" color="green.700">
-                    ✓ Ready your money
-                  </Text>
-                  <Text fontSize="xs" color="gray.600" mt={1}>
-                    Have exact change ready for the handoff
-                  </Text>
-                </Box>
+        <CardBody py={2} px={4}>
+          <HStack justify="space-between" align="center">
+            <HStack spacing={2}>
+              <Text fontSize="lg">💵</Text>
+              <VStack align="start" spacing={0}>
+                <Text fontSize="sm" fontWeight="semibold">Cash on Delivery</Text>
+                <Text fontSize="xs" color="gray.500">Have exact change ready</Text>
               </VStack>
-            </Box>
-
-            <VStack spacing={3}>
-              <Button
-                colorScheme="green"
-                size="lg"
-                onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
-                isLoading={confirmingPayment}
-                loadingText="Confirming..."
-                leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
-                w="full"
-                _hover={{
-                  transform: deliveryState.paymentConfirmed ? 'none' : 'translateY(-2px)',
-                  shadow: deliveryState.paymentConfirmed ? 'none' : 'lg'
-                }}
-              >
-                {deliveryState.paymentConfirmed
-                  ? `✅ Payment Confirmed`
-                  : 'Ready to Pay on Delivery'}
-              </Button>
-
-              {!isUserBuyer && (
-                <Text fontSize="xs" color="gray.600" textAlign="center">
-                  Only the buyer can complete payment for this trade.
-                </Text>
-              )}
-
-
-            </VStack>
-          </VStack>
+            </HStack>
+            <Text fontSize="sm" fontWeight="bold" color="green.600">
+              ₱{((requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee).toFixed(2)}
+            </Text>
+          </HStack>
         </CardBody>
       </Card>
 
@@ -1127,6 +1065,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     deliveryInstructions: '',
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
+  
+  // Auto-confirm COD payment when delivery type is selected
+  useEffect(() => {
+    if (deliveryState.deliveryType && !deliveryState.paymentConfirmed) {
+      setDeliveryState(prev => ({
+        ...prev,
+        paymentConfirmed: true,
+        paymentMethod: 'cod',
+      }))
+    }
+  }, [deliveryState.deliveryType, deliveryState.paymentConfirmed])
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cardBg = useColorModeValue('white', 'gray.800')
