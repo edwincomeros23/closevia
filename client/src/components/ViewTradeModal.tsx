@@ -2043,7 +2043,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     h="150px"
                                     objectFit="cover"
                                     borderRadius="md"
-                                    fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                    fallbackSrc="/no-image.svg"
                                   />
                                   <Text fontWeight="semibold">{requestedProduct.title}</Text>
                                   <Text fontSize="sm" color="gray.600" noOfLines={2}>
@@ -2084,7 +2084,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         h="150px"
                                         objectFit="cover"
                                         borderRadius="md"
-                                        fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+                                        fallbackSrc="/no-image.svg"
                                       />
                                       <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
                                         {product.title}

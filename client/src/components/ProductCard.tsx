@@ -156,7 +156,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           h="100%"
           objectFit="cover"
           loading="lazy"
-          fallbackSrc="https://via.placeholder.com/600x600?text=No+Image"
+          fallbackSrc="/no-image.svg"
         />
 
         {/* Top-right image badges */}

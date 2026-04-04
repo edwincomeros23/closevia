@@ -68,7 +68,7 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
                                     <HStack spacing={4}>
                                         <Image
                                             src={getFirstImage(s.image_urls)}
-                                            fallbackSrc="https://via.placeholder.com/80"
+                                            fallbackSrc="/no-image.svg"
                                             boxSize="80px"
                                             objectFit="cover"
                                             rounded="md"

@@ -379,7 +379,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
           w="full" 
           h={imageHeight} 
           objectFit="cover" 
-          fallbackSrc="https://via.placeholder.com/400x300?text=No+Image" 
+          fallbackSrc="/no-image.svg" 
           bg="gray.100"
         />
         <Box p={padding}>
@@ -473,7 +473,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                                 w="80px" 
                                 h="80px" 
                                 objectFit="cover" 
-                                fallbackSrc="https://via.placeholder.com/80x80?text=No+Image" 
+                                fallbackSrc="/no-image.svg" 
                               />
                               <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
                                 <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
@@ -490,7 +490,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                               w="80px" 
                               h="80px" 
                               objectFit="cover" 
-                              fallbackSrc="https://via.placeholder.com/80x80?text=No+Image"
+                              fallbackSrc="/no-image.svg"
                             />
                             <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
                               <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>

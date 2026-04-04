@@ -1496,20 +1496,59 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
 	case "confirm_meetup_done":
 		// Each party confirms they met and completed the handoff (pre-condition for leaving reviews)
-		if currentStatus != "active" {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Only active trades can confirm meetup completion"})
+		// Be tolerant to client/backend status desync: allow this action as long as meetup was agreed.
+		if currentStatus == "cancelled" || currentStatus == "declined" || currentStatus == "completed" || currentStatus == "auto_completed" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This trade can no longer confirm meetup completion"})
 		}
 
 		var tradeOption, meetupLocation, meetupTime string
-		err = h.db.QueryRow("SELECT COALESCE(trade_option, 'meetup'), COALESCE(meetup_location, ''), COALESCE(meetup_time, '') FROM trades WHERE id = ?", tradeID).Scan(&tradeOption, &meetupLocation, &meetupTime)
+		var buyerConfirmed, sellerConfirmed bool
+		var buyerLocation, buyerTime, sellerLocation, sellerTime sql.NullString
+		err = h.db.QueryRow(`
+			SELECT COALESCE(trade_option, 'meetup'),
+			       COALESCE(meetup_location, ''), COALESCE(meetup_time, ''),
+			       COALESCE(buyer_meetup_confirmed, FALSE), COALESCE(seller_meetup_confirmed, FALSE),
+			       buyer_meetup_location, buyer_meetup_time,
+			       seller_meetup_location, seller_meetup_time
+			FROM trades WHERE id = ?`, tradeID).Scan(
+			&tradeOption,
+			&meetupLocation, &meetupTime,
+			&buyerConfirmed, &sellerConfirmed,
+			&buyerLocation, &buyerTime,
+			&sellerLocation, &sellerTime,
+		)
 		if err != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade details"})
 		}
 		if tradeOption != "meetup" {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This action is only available for meetup trades"})
 		}
-		if strings.TrimSpace(meetupLocation) == "" || strings.TrimSpace(meetupTime) == "" {
+
+		// Ensure meetup was actually agreed (both confirmed + matching selections)
+		if !buyerConfirmed || !sellerConfirmed {
 			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup must be agreed before confirming you met"})
+		}
+
+		bLoc := strings.ToLower(strings.TrimSpace(buyerLocation.String))
+		sLoc := strings.ToLower(strings.TrimSpace(sellerLocation.String))
+		bTime := strings.ToLower(strings.TrimSpace(buyerTime.String))
+		sTime := strings.ToLower(strings.TrimSpace(sellerTime.String))
+		if bLoc == "" || bTime == "" || sLoc == "" || sTime == "" || bLoc != sLoc || bTime != sTime {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Meetup selections must match before confirming you met"})
+		}
+
+		// Ensure final meetup fields exist; if not, backfill them from the agreed selections.
+		if strings.TrimSpace(meetupLocation) == "" || strings.TrimSpace(meetupTime) == "" {
+			meetupLocation = buyerLocation.String
+			meetupTime = buyerTime.String
+			_, _ = h.db.Exec("UPDATE trades SET meetup_location=?, meetup_time=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", meetupLocation, meetupTime, tradeID)
+		}
+
+		// Auto-promote to active if needed so review/completion flows don't get blocked.
+		if currentStatus != "active" {
+			_, _ = h.db.Exec("UPDATE trades SET status='active', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('cancelled','declined','completed','auto_completed')", tradeID)
+			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
+			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
 		}
 
 		column := "buyer_met"

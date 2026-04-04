@@ -986,7 +986,7 @@ const Dashboard: React.FC = () => {
         borderRadius={isLarge ? "0" : "md"}
         loading="lazy"
         bg={isLarge ? "gray.100" : "transparent"}
-        fallbackSrc={isLarge ? "https://via.placeholder.com/300x200?text=No+Image" : "https://via.placeholder.com/40x40?text=?"}
+        fallbackSrc={"/no-image.svg"}
       />
     )
   }
@@ -1812,7 +1812,7 @@ const Dashboard: React.FC = () => {
               borderRadius="lg"
               objectFit="cover"
               loading="lazy"
-              fallbackSrc="https://via.placeholder.com/300x200?text=No+Image"
+              fallbackSrc="/no-image.svg"
             />
           </Box>
           <CardHeader pb={2}>
@@ -1998,7 +1998,7 @@ const Dashboard: React.FC = () => {
               w="full"
               h="full"
               objectFit="cover"
-              fallbackSrc="https://via.placeholder.com/60?text=No+Image"
+              fallbackSrc="/no-image.svg"
             />
           </Box>
           <VStack align="start" spacing={0} flex={1} minW={0}>
