@@ -123,6 +123,11 @@ func runTradeTimeoutPass(db *sql.DB) error {
 		log.Printf("expire rematch holds error: %v", err)
 	}
 
+	// Stage 6: Expire active multiway chains past 7-day ongoing deadline
+	if err := expireOngoingMultiwayChains(db); err != nil {
+		log.Printf("expire ongoing multiway chains error: %v", err)
+	}
+
 	return nil
 }
 
@@ -390,6 +395,67 @@ func expireRematchHolds(db *sql.DB) error {
 		}
 
 		log.Printf("Re-match hold expired for chain %s (original: %s)", hold.chainID, hold.originalChainID)
+	}
+
+	return nil
+}
+
+// expireOngoingMultiwayChains finds active chains past their 7-day ongoing
+// deadline and auto-cancels them, restoring the original trade to 'pending'.
+func expireOngoingMultiwayChains(db *sql.DB) error {
+	// Check whether the column exists (migration may not have run yet).
+	var colCount int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'ongoing_deadline'
+	`).Scan(&colCount); err != nil || colCount == 0 {
+		return nil
+	}
+
+	rows, err := db.Query(`
+		SELECT id, chain_id, original_trade_id, user1_id, user2_id, COALESCE(user3_id, 0)
+		FROM multiway_trades
+		WHERE ongoing_deadline IS NOT NULL
+		  AND ongoing_deadline <= NOW()
+		  AND status IN ('user3_accepted', 'active')
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type expired struct {
+		id, tradeID, u1, u2, u3 int
+		chainID                  string
+	}
+	var chains []expired
+	for rows.Next() {
+		var c expired
+		if err := rows.Scan(&c.id, &c.chainID, &c.tradeID, &c.u1, &c.u2, &c.u3); err != nil {
+			continue
+		}
+		chains = append(chains, c)
+	}
+
+	for _, c := range chains {
+		// Cancel the chain
+		_, _ = db.Exec("UPDATE multiway_trades SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW() WHERE id = ?", c.id)
+
+		// Cancel any pending legs
+		_, _ = db.Exec("UPDATE multiway_trade_legs SET status = 'cancelled', updated_at = NOW() WHERE chain_id = ? AND status IN ('pending','in_progress')", c.chainID)
+
+		// Restore the original trade
+		_, _ = db.Exec("UPDATE trades SET status = 'pending', updated_at = NOW() WHERE id = ? AND status IN ('pending_multiway','multiway_active')", c.tradeID)
+
+		// Notify all parties
+		msg := "A multi-way trade has expired because not all legs were completed within 7 days. Your items are available again."
+		for _, uid := range []int{c.u1, c.u2, c.u3} {
+			if uid > 0 {
+				_, _ = db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", uid, msg)
+			}
+		}
+
+		log.Printf("Ongoing multiway chain %s (id=%d) expired after 7-day deadline", c.chainID, c.id)
 	}
 
 	return nil

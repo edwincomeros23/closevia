@@ -123,6 +123,8 @@ export interface ProductUpdate {
   category?: string
   bidding_type?: 'none' | 'blind' | 'open'
   max_items_per_offer?: number
+  wants?: string
+  wanted_categories?: string[]
 }
 
 export interface OrderCreate {
@@ -262,6 +264,7 @@ export interface MultiWayTrade {
   total_value?: number
   status: 'active' | 'completed' | 'cancelled'
   created_at?: string
+  expires_at?: string
 }
 
 export interface TradeLoopNotification {

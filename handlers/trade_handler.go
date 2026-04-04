@@ -181,36 +181,23 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Cannot propose a trade on your own product"})
 	}
 
-	// Insert trade - start with minimal required fields
-	log.Printf("Creating trade with minimal fields first")
-	res, err := tx.Exec(`INSERT INTO trades (buyer_id, seller_id, target_product_id, status) VALUES (?, ?, ?, 'pending')`,
-		userID, sellerID, payload.TargetProductID)
+	// Insert trade with all fields in a single robust call
+	log.Printf("Executing single-step trade insert for trade from %d to %d (seller)", userID, sellerID)
+	res, err := tx.Exec(`
+		INSERT INTO trades 
+		(buyer_id, seller_id, target_product_id, status, trade_option, delivery_address, message, offered_cash_amount, payment_method) 
+		VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
+		userID, sellerID, payload.TargetProductID, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod)
 
 	if err != nil {
-		log.Printf("Basic trade insert failed: %v", err)
+		log.Printf("Trade creation failed: %v", err)
 		_ = tx.Rollback()
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Failed to create basic trade: %v", err)})
-	}
-
-	// Get the trade ID
-	tradeID64, _ := res.LastInsertId()
-	tradeID := int(tradeID64)
-	log.Printf("Basic trade created with ID: %d", tradeID)
-
-	// Now update with the additional fields
-	log.Printf("Updating trade with additional fields")
-	updateQuery := `UPDATE trades SET trade_option = ?, delivery_address = ?, message = ?, offered_cash_amount = ?, payment_method = ? WHERE id = ?`
-	_, err = tx.Exec(updateQuery, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod, tradeID)
-
-	if err != nil {
-		log.Printf("Trade update failed: %v", err)
-		_ = tx.Rollback()
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Failed to update trade: %v", err)})
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade. Please ensure you filled all required fields."})
 	}
 
 	log.Printf("Trade fully created and updated successfully")
-	tradeID64, _ = res.LastInsertId()
-	tradeID = int(tradeID64)
+	tradeID64, _ := res.LastInsertId()
+	tradeID := int(tradeID64)
 
 	// Validate and insert offered items (buyer side)
 	for _, pid := range payload.OfferedProductIDs {
@@ -346,15 +333,18 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 	expiresAt := &expiresTime
 
 	_, err = h.db.Exec(`
-		INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, status, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, chainID, tradeID, initiatorUserID, buyerID, sellerID, best.User3ID, best.User3ProductID, loopStatus, expiresAt)
+		INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, user3_product_id, status, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, chainID, tradeID, initiatorUserID, buyerID, sellerID, best.User3ID, best.User3ProductID /* user3_trade_id is a product ID alias */, best.User3ProductID, loopStatus, expiresAt)
 	if err != nil {
 		return false, "", "Failed to create loop suggestion", debug, err
 	}
 
 	log.Printf("[MultiWayLoop] ✅ LOOP CREATED: chainID=%s, trade=%d | User1=%d wants-from User2=%d who wants-from User3=%d (%s) | Status=%s",
 		chainID, tradeID, buyerID, sellerID, best.User3ID, best.User3Name, loopStatus)
+
+	// Lock user3's product so it can't be offered in other trades while in a pending chain
+	_, _ = h.db.Exec("UPDATE products SET status='locked' WHERE id=? AND status='available'", best.User3ProductID)
 
 	if initiatorIsPremium {
 		_, _ = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
@@ -1190,6 +1180,9 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to decline trade"})
 		}
 
+		// Also cancel any pending multi-way invitations for this trade
+		_, _ = tx.Exec("UPDATE multiway_trades SET status = 'cancelled', updated_at = NOW(), cancelled_at = NOW(), cancelled_by = ? WHERE original_trade_id = ? AND status = 'pending_user3'", userID, tradeID)
+
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit trade decline"})
@@ -1364,6 +1357,9 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel trade"})
 		}
+
+		// Also cancel any pending multi-way invitations for this trade
+		_, _ = tx.Exec("UPDATE multiway_trades SET status = 'cancelled', updated_at = NOW(), cancelled_at = NOW(), cancelled_by = ? WHERE original_trade_id = ? AND status = 'pending_user3'", userID, tradeID)
 
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
@@ -2880,8 +2876,8 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 					continue
 				}
 
-				// Hide from User A until User C accepts
-				if mStatus == "pending_user3" && userID != initiatorUserID && userID != u3ID {
+				// Show to all 3 parties (u1, u2, u3). Hide only if user has no relation to this chain.
+				if mStatus == "pending_user3" && userID != u1ID && userID != u2ID && userID != u3ID {
 					continue
 				}
 
@@ -2900,7 +2896,8 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 					baseParticipantStatus = "joined"
 				}
 
-				isInitiatorView := userID == initiatorUserID
+				// Both original trade parties (u1, u2) see this as initiator view (status card, no hop-in)
+				isInitiatorView := userID == u1ID || userID == u2ID
 				canJoin := userID == u3ID && mStatus == "pending_user3"
 				canDecline := userID == u3ID && mStatus == "pending_user3"
 
@@ -3748,12 +3745,46 @@ func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	loopID := c.Params("id")
 	parts := strings.Split(loopID, "_")
 
+	// Validate loop ID format: must have at least "loop_<tradeID>"
+	if len(parts) < 2 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID format"})
+	}
+
+	// Get calling user for authorization
+	callerID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Unauthorized"})
+	}
+
 	// Prevent executing cancelled loops.
 	var cancelledBy int
 	if err := h.db.QueryRow("SELECT cancelled_by FROM trade_loop_cancellations WHERE loop_id = ? LIMIT 1", loopID).Scan(&cancelledBy); err == nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop has been cancelled."})
 	} else if err != sql.ErrNoRows {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify loop cancellation state"})
+	}
+
+	// Parse and validate all trade IDs first
+	tradeIDs := []int{}
+	for i := 1; i < len(parts); i++ {
+		tid, err := strconv.Atoi(parts[i])
+		if err != nil || tid <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade ID in loop"})
+		}
+		tradeIDs = append(tradeIDs, tid)
+	}
+
+	// Authorization: verify the calling user is a participant in at least one trade in this loop
+	isParticipant := false
+	for _, tid := range tradeIDs {
+		var count int
+		if err := h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE id = ? AND (buyer_id = ? OR seller_id = ?)", tid, callerID, callerID).Scan(&count); err == nil && count > 0 {
+			isParticipant = true
+			break
+		}
+	}
+	if !isParticipant {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
 	}
 
 	// Start transaction
@@ -3763,11 +3794,7 @@ func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	}
 	defer tx.Rollback()
 
-	tradeIDs := []int{}
-	for i := 1; i < len(parts); i++ {
-		tid, _ := strconv.Atoi(parts[i])
-		tradeIDs = append(tradeIDs, tid)
-
+	for _, tid := range tradeIDs {
 		// 1. Update trade status to 'active' (since it's now a multi-way commitment)
 		_, err = tx.Exec("UPDATE trades SET status = 'active' WHERE id = ?", tid)
 		if err != nil {
@@ -4055,13 +4082,20 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	var user1ID, user2ID, originalTradeID int
 	var user3ProductID sql.NullInt64
 	err = tx.QueryRow(`
-		SELECT user1_id, user2_id, original_trade_id, user3_product_id
+		SELECT user1_id, user2_id, original_trade_id, user3_trade_id
 		FROM multiway_trades
 		WHERE chain_id = ? AND user3_id = ? AND status = 'pending_user3'
 		FOR UPDATE
 	`, chainID, userID).Scan(&user1ID, &user2ID, &originalTradeID, &user3ProductID)
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Opportunity not found or already processed"})
+	}
+
+	// Verify original trade is still in pending_multiway status
+	var originalTradeStatus string
+	err = tx.QueryRow("SELECT status FROM trades WHERE id = ?", originalTradeID).Scan(&originalTradeStatus)
+	if err != nil || originalTradeStatus != "pending_multiway" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "The original trade is no longer available for multi-way loop."})
 	}
 
 	// Fetch product IDs from the original trade for leg creation.
@@ -4073,6 +4107,28 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 		WHERE t.id = ?
 		LIMIT 1
 	`, originalTradeID).Scan(&u1ProductID, &u2ProductID)
+
+	// Verify all involved products are still available (prevents double-booking
+	// if a product was traded in a 2-way deal during the pending window).
+	u3PID := 0
+	if user3ProductID.Valid {
+		u3PID = int(user3ProductID.Int64)
+	}
+	for _, pid := range []int{u1ProductID, u2ProductID, u3PID} {
+		if pid <= 0 {
+			continue
+		}
+		var prodStatus string
+		if err := tx.QueryRow("SELECT status FROM products WHERE id = ? FOR UPDATE", pid).Scan(&prodStatus); err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify product availability"})
+		}
+		if prodStatus != "available" && prodStatus != "locked" {
+			return c.Status(409).JSON(models.APIResponse{
+				Success: false,
+				Error:   "One or more items in this chain are no longer available. The chain cannot proceed.",
+			})
+		}
+	}
 
 	// Free tier: enforce monthly quota for auto-match loop hops.
 	if !isPremium {
@@ -4105,7 +4161,7 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 
 	// In a real implementation we would create a 3-way agreement or a special multiway trade record.
 	// For now, let's mark it as accepted and notify participants.
-	_, err = tx.Exec("UPDATE multiway_trades SET status = 'user3_accepted' WHERE chain_id = ?", chainID)
+	_, err = tx.Exec("UPDATE multiway_trades SET status = 'user3_accepted', ongoing_deadline = DATE_ADD(NOW(), INTERVAL 7 DAY) WHERE chain_id = ?", chainID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to accept multi-way chain"})
 	}
@@ -4117,10 +4173,6 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	// Leg 0: User1 → User2 (User1 gives their product to User2)
 	// Leg 1: User2 → User3 (User2 gives their product to User3)
 	// Leg 2: User3 → User1 (User3 gives their product to User1)
-	u3PID := 0
-	if user3ProductID.Valid {
-		u3PID = int(user3ProductID.Int64)
-	}
 	legs := []struct {
 		idx     int
 		from    int
@@ -4157,7 +4209,7 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Message: "You have accepted the multi-way trade opportunity!"})
 }
 
-// DeclineMultiwayChain is when User 3 declines
+// DeclineMultiwayChain allows any participant (User 1, 2, or 3) to decline
 func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
@@ -4170,10 +4222,32 @@ func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 	}
 	_ = c.BodyParser(&payload)
 
-	// Update chain status
-	_, err := h.db.Exec("UPDATE multiway_trades SET status = 'user3_declined' WHERE chain_id = ? AND user3_id = ?", chainID, userID)
+	// Verify the caller is a participant in this chain
+	var chainStatus string
+	err := h.db.QueryRow(`
+		SELECT status FROM multiway_trades
+		WHERE chain_id = ? AND (user1_id = ? OR user2_id = ? OR user3_id = ?)
+	`, chainID, userID, userID, userID).Scan(&chainStatus)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Chain not found or you are not a participant"})
+	}
+
+	// Fetch user3's product before marking declined so we can unlock it
+	var decliningU3PID int
+	_ = h.db.QueryRow("SELECT user3_product_id FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&decliningU3PID)
+
+	// Update chain status — any participant can decline
+	_, err = h.db.Exec(`
+		UPDATE multiway_trades SET status = 'user3_declined', cancelled_by = ?
+		WHERE chain_id = ? AND (user1_id = ? OR user2_id = ? OR user3_id = ?)
+	`, userID, chainID, userID, userID, userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to decline"})
+	}
+
+	// Unlock user3's product now that the chain is declined
+	if decliningU3PID > 0 {
+		_, _ = h.db.Exec("UPDATE products SET status='available' WHERE id=? AND status='locked'", decliningU3PID)
 	}
 
 	if payload.Action == "search_again" {
@@ -4198,24 +4272,28 @@ func (h *TradeHandler) DeclineMultiwayChain(c *fiber.Ctx) error {
 				match := matches[0]
 				newChainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, u1ID, u2ID, match.User3ID)
 				_, _ = h.db.Exec(`
-					INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, status)
-					VALUES (?, ?, ?, ?, ?, ?, 'pending_user3')
-				`, newChainID, tradeID, u2ID, u1ID, u2ID, match.User3ID)
+					INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_product_id, status)
+					VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_user3')
+				`, newChainID, tradeID, u2ID, u1ID, u2ID, match.User3ID, match.User3ProductID)
+
+				// Lock the new user3's product to prevent double-booking
+				_, _ = h.db.Exec("UPDATE products SET status='locked' WHERE id=? AND status='available'", match.User3ProductID)
 
 				// Notify the NEW User 3
 				notifMsg := fmt.Sprintf("Someone wants your %s and has something you like! Check your multi-way opportunities.", match.User3ProductTitle)
 				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", match.User3ID, notifMsg)
 				publishNotification(match.User3ID, notifMsg)
 			} else {
-				// No more participants found. Notify User 1 (final decline)
-				// User 1 sees a normal trade decline (per requirements)
-				_, _ = h.db.Exec("UPDATE trades SET status = 'declined' WHERE id = ?", tradeID)
-				msg := "Your trade offer was declined."
+				// No more participants found — revert the original trade to 'pending'
+				// so the 2-way deal can still proceed. A multiway failure should NOT
+				// kill the base trade.
+				_, _ = h.db.Exec("UPDATE trades SET status = 'pending', updated_at = NOW() WHERE id = ? AND status = 'pending_multiway'", tradeID)
+				msg := "Multi-way matching could not find a third participant. Your original trade offer is still active."
 				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u1ID, msg)
 				publishNotification(u1ID, msg)
 
-				// User 2 sees multiway declined
-				msg2 := "Multi-way matching failed. No more available partners found. Product is available again."
+				// User 2 sees multiway search exhausted
+				msg2 := "Multi-way matching failed. No more available partners found. Your original trade is still active."
 				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", u2ID, msg2)
 				publishNotification(u2ID, msg2)
 			}
@@ -4591,16 +4669,26 @@ func (h *TradeHandler) BackOutChain(c *fiber.Ctx) error {
 		prevRows.Close()
 	}
 
+	// Determine the two users who are still in the trade (not the one who backed out).
+	// Use them as the basis for the re-match so we don't pass the backed-out user as an initiator.
+	var rematch1, rematch2 int
+	if len(remainingUsers) >= 2 {
+		rematch1, rematch2 = remainingUsers[0], remainingUsers[1]
+	} else {
+		// Fallback: shouldn't happen in a 3-way chain, but avoid a zero-ID INSERT.
+		rematch1, rematch2 = u1ID, u2ID
+	}
+
 	rematchResult := "no_match"
-	matches, _ := services.FindMultiwayMatch(h.db, u1ID, u2ID, originalTradeID, excluded)
+	matches, _ := services.FindMultiwayMatch(h.db, rematch1, rematch2, originalTradeID, excluded)
 	if len(matches) > 0 {
 		match := matches[0]
-		newChainID := fmt.Sprintf("chain_%d_%d_%d_%d", originalTradeID, u1ID, u2ID, match.User3ID)
+		newChainID := fmt.Sprintf("chain_%d_%d_%d_%d", originalTradeID, rematch1, rematch2, match.User3ID)
 		expiresAt := time.Now().Add(18 * time.Hour)
 		_, insertErr := h.db.Exec(`
 			INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_product_id, status, expires_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_user3', ?)
-		`, newChainID, originalTradeID, u2ID, u1ID, u2ID, match.User3ID, match.User3ProductID, expiresAt)
+		`, newChainID, originalTradeID, rematch1, rematch1, rematch2, match.User3ID, match.User3ProductID, expiresAt)
 		if insertErr == nil {
 			rematchResult = "found"
 			// Update the hold record.
@@ -4650,7 +4738,7 @@ func (h *TradeHandler) BackOutChain(c *fiber.Ctx) error {
 func (h *TradeHandler) issueStrike(userID int, chainID, reason string) string {
 	// Count existing strikes for this user.
 	var currentStrikes int
-	h.db.QueryRow("SELECT COUNT(*) FROM user_strikes WHERE user_id = ?", userID).Scan(&currentStrikes)
+	h.db.QueryRow("SELECT COUNT(*) FROM user_strikes WHERE user_id = ? AND created_at > NOW() - INTERVAL 6 MONTH", userID).Scan(&currentStrikes)
 
 	newStrikeNumber := currentStrikes + 1
 	var severity, message string

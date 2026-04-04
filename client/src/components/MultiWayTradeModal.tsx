@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Modal,
   ModalOverlay,
@@ -16,7 +16,6 @@ import {
   Divider,
   Image,
   Grid,
-  GridItem,
   Icon,
   Spinner,
   useToast,
@@ -24,12 +23,18 @@ import {
   CardBody,
   Heading,
   Avatar,
-  AvatarGroup,
   useColorModeValue,
   Flex,
   Stack,
+  Progress,
+  Select,
+  Input,
+  FormLabel,
+  FormControl,
+  Collapse,
+  useDisclosure,
 } from '@chakra-ui/react'
-import { FaArrowRight, FaCheck, FaTimes, FaUser, FaBox } from 'react-icons/fa'
+import { FaArrowRight, FaCheck, FaTimes, FaBox, FaClock, FaMapMarkerAlt, FaChevronDown } from 'react-icons/fa'
 import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
 import {
   acceptMultiWayTrade,
@@ -37,6 +42,8 @@ import {
   executeMultiWayTrade,
   cancelTradeLoop,
   reinviteTradeLoop,
+  getChainLegs,
+  updateLegHandoff,
 } from '../services/tradeService'
 
 interface MultiWayTradeModalProps {
@@ -45,6 +52,15 @@ interface MultiWayTradeModalProps {
   multiWayTrade: MultiWayTrade
   onTradeCompleted?: () => void
   canManage?: boolean
+}
+
+/** Format ms remaining as "Xh Ym" or "Expired" */
+function formatTimeLeft(expiresAt: string): string {
+  const diff = new Date(expiresAt).getTime() - Date.now()
+  if (diff <= 0) return 'Expired'
+  const h = Math.floor(diff / 3600000)
+  const m = Math.floor((diff % 3600000) / 60000)
+  return `${h}h ${m}m remaining`
 }
 
 const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
@@ -56,12 +72,63 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 }) => {
   const [loading, setLoading] = useState(false)
   const [selectedAction, setSelectedAction] = useState<'accept' | 'decline' | 'execute' | 'cancel' | 'reinvite' | null>(null)
+  const [timeLeft, setTimeLeft] = useState<string>('')
+  const [legs, setLegs] = useState<any[]>([])
+  const [legForms, setLegForms] = useState<Record<number, { method: 'meetup' | 'delivery'; location: string; time: string }>>({})
+  const [savingLeg, setSavingLeg] = useState<number | null>(null)
+  const { isOpen: isLegsOpen, onToggle: onLegsToggle } = useDisclosure({ defaultIsOpen: false })
   const toast = useToast()
 
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const participantBg = useColorModeValue('blue.50', 'blue.900')
   const participantBorder = useColorModeValue('blue.200', 'blue.700')
+
+  // Countdown timer
+  useEffect(() => {
+    if (!multiWayTrade.expires_at) return
+    const tick = () => setTimeLeft(formatTimeLeft(multiWayTrade.expires_at!))
+    tick()
+    const id = setInterval(tick, 60_000)
+    return () => clearInterval(id)
+  }, [multiWayTrade.expires_at])
+
+  // Fetch legs when the chain is active/accepted
+  useEffect(() => {
+    if (!isOpen) return
+    const chainId = multiWayTrade.loop_id
+    if (!chainId || !['active', 'user3_accepted'].includes(multiWayTrade.status as string)) return
+    getChainLegs(chainId)
+      .then((data) => {
+        const legList: any[] = data?.legs || []
+        setLegs(legList)
+        // Seed form state from existing values
+        const forms: Record<number, { method: 'meetup' | 'delivery'; location: string; time: string }> = {}
+        legList.forEach((leg: any) => {
+          forms[leg.id] = {
+            method: leg.handoff_method || 'meetup',
+            location: leg.handoff_location || '',
+            time: leg.handoff_time || '',
+          }
+        })
+        setLegForms(forms)
+      })
+      .catch(() => {/* non-critical, legs section simply won't render */})
+  }, [isOpen, multiWayTrade.loop_id, multiWayTrade.status])
+
+  const handleSaveLegHandoff = async (legId: number) => {
+    const form = legForms[legId]
+    if (!form) return
+    setSavingLeg(legId)
+    try {
+      await updateLegHandoff(legId, form.method, form.location, form.time)
+      toast({ id: `leg-${legId}-saved`, title: 'Handoff saved', status: 'success', duration: 2000 })
+    } catch {
+      toast({ id: `leg-${legId}-err`, title: 'Failed to save handoff', status: 'error', duration: 3000 })
+    } finally {
+      setSavingLeg(null)
+    }
+  }
 
   const handleAccept = async () => {
     try {
@@ -194,22 +261,24 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
   const statusColorScheme = (status: string) => {
     switch (status) {
-      case 'pending':
-        return 'yellow'
-      case 'accepted':
-        return 'green'
-      case 'declined':
-        return 'red'
-      case 'completed':
-        return 'cyan'
-      default:
-        return 'gray'
+      case 'pending': return 'yellow'
+      case 'accepted': return 'green'
+      case 'declined': return 'red'
+      case 'completed': return 'cyan'
+      case 'in_progress': return 'blue'
+      case 'disputed': return 'orange'
+      default: return 'gray'
     }
   }
 
   const sortedParticipants = [...multiWayTrade.participants].sort(
     (a, b) => a.position_in_loop - b.position_in_loop
   )
+
+  // Chain health indicator — computed from edges
+  const completedLegs = multiWayTrade.edges.filter(e => e.status === 'completed').length
+  const totalLegs = multiWayTrade.edges.length
+  const healthPct = totalLegs > 0 ? Math.round((completedLegs / totalLegs) * 100) : 0
 
   // Show Execute button only when the overall trade is active AND every participant has accepted.
   const canExecute = multiWayTrade.status === 'active' && sortedParticipants.every(p => p.trade_status === 'accepted')
@@ -228,9 +297,36 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 {multiWayTrade.status}
               </Badge>
             </HStack>
-            <Text fontSize="sm" color="gray.600">
-              A successful trade chain that benefits all participants
-            </Text>
+
+            {/* Chain health indicator */}
+            {totalLegs > 0 && (
+              <Box w="full">
+                <HStack justify="space-between" mb={1}>
+                  <Text fontSize="xs" color="gray.600">
+                    {completedLegs} of {totalLegs} legs complete
+                  </Text>
+                  <Text fontSize="xs" fontWeight="bold" color={healthPct === 100 ? 'green.500' : 'blue.500'}>
+                    {healthPct}%
+                  </Text>
+                </HStack>
+                <Progress
+                  value={healthPct}
+                  size="sm"
+                  colorScheme={healthPct === 100 ? 'green' : 'blue'}
+                  borderRadius="full"
+                />
+              </Box>
+            )}
+
+            {/* Expiration countdown */}
+            {timeLeft && (
+              <HStack spacing={1}>
+                <Icon as={FaClock} color={timeLeft === 'Expired' ? 'red.500' : 'orange.400'} boxSize={3} />
+                <Text fontSize="xs" color={timeLeft === 'Expired' ? 'red.500' : 'orange.600'} fontWeight="medium">
+                  {timeLeft}
+                </Text>
+              </HStack>
+            )}
           </VStack>
         </ModalHeader>
 
@@ -288,7 +384,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                   >
                     <CardBody>
                       <VStack align="start" spacing={3}>
-                        {/* Position indicator */}
                         <HStack spacing={2}>
                           <Badge colorScheme="purple">
                             Position {participant.position_in_loop + 1}
@@ -297,14 +392,8 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             {participant.trade_status}
                           </Badge>
                         </HStack>
-
-                        {/* User info */}
                         <HStack spacing={3} w="full">
-                          <Avatar
-                            name={participant.user_name}
-                            size="sm"
-                            bg="brand.500"
-                          />
+                          <Avatar name={participant.user_name} size="sm" bg="brand.500" />
                           <VStack align="start" spacing={0}>
                             <Text fontWeight="semibold">{participant.user_name}</Text>
                             <Text fontSize="xs" color="gray.600">
@@ -312,14 +401,10 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             </Text>
                           </VStack>
                         </HStack>
-
-                        {/* Product info */}
                         <Box w="full">
                           <HStack spacing={2} mb={2}>
                             <Icon as={FaBox} fontSize="sm" />
-                            <Text fontSize="sm" fontWeight="medium">
-                              Product:
-                            </Text>
+                            <Text fontSize="sm" fontWeight="medium">Product:</Text>
                           </HStack>
                           <Box pl={6} borderLeftWidth="2px" borderColor="brand.200">
                             {participant.product_image && (
@@ -340,8 +425,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             </Text>
                           </Box>
                         </Box>
-
-                        {/* Trade link */}
                         <Box w="full" fontSize="xs" color="gray.500">
                           Trade ID: <Badge fontSize="xs">{participant.trade_id}</Badge>
                         </Box>
@@ -351,6 +434,125 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 ))}
               </Grid>
             </Box>
+
+            {/* Per-leg handoff configuration (only for active/accepted chains) */}
+            {legs.length > 0 && (
+              <>
+                <Divider />
+                <Box>
+                  <HStack
+                    justify="space-between"
+                    cursor="pointer"
+                    onClick={onLegsToggle}
+                    mb={isLegsOpen ? 4 : 0}
+                  >
+                    <Heading size="sm">
+                      Arrange Handoffs ({legs.length} legs)
+                    </Heading>
+                    <Icon
+                      as={FaChevronDown}
+                      transition="transform 0.2s"
+                      transform={isLegsOpen ? 'rotate(180deg)' : 'rotate(0deg)'}
+                    />
+                  </HStack>
+                  <Collapse in={isLegsOpen} animateOpacity>
+                    <VStack spacing={4} align="stretch">
+                      {legs.map((leg: any) => (
+                        <Box
+                          key={leg.id}
+                          p={4}
+                          borderWidth="1px"
+                          borderColor={borderColor}
+                          borderRadius="md"
+                        >
+                          <HStack justify="space-between" mb={3}>
+                            <Text fontSize="sm" fontWeight="semibold">
+                              Leg {leg.leg_index + 1}: User {leg.from_user_id} → User {leg.to_user_id}
+                            </Text>
+                            <Badge colorScheme={statusColorScheme(leg.status)}>
+                              {leg.status}
+                            </Badge>
+                          </HStack>
+                          {leg.status !== 'completed' && leg.status !== 'cancelled' && (
+                            <VStack spacing={3} align="stretch">
+                              <FormControl>
+                                <FormLabel fontSize="xs">Handoff method</FormLabel>
+                                <Select
+                                  size="sm"
+                                  value={legForms[leg.id]?.method || 'meetup'}
+                                  onChange={(e) =>
+                                    setLegForms(prev => ({
+                                      ...prev,
+                                      [leg.id]: { ...prev[leg.id], method: e.target.value as 'meetup' | 'delivery' },
+                                    }))
+                                  }
+                                >
+                                  <option value="meetup">Meetup</option>
+                                  <option value="delivery">Delivery</option>
+                                </Select>
+                              </FormControl>
+                              <FormControl>
+                                <FormLabel fontSize="xs">
+                                  <HStack spacing={1}>
+                                    <Icon as={FaMapMarkerAlt} />
+                                    <span>Location / address</span>
+                                  </HStack>
+                                </FormLabel>
+                                <Input
+                                  size="sm"
+                                  placeholder={legForms[leg.id]?.method === 'delivery' ? 'Delivery address' : 'Meetup spot'}
+                                  value={legForms[leg.id]?.location || ''}
+                                  onChange={(e) =>
+                                    setLegForms(prev => ({
+                                      ...prev,
+                                      [leg.id]: { ...prev[leg.id], location: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </FormControl>
+                              <FormControl>
+                                <FormLabel fontSize="xs">
+                                  <HStack spacing={1}>
+                                    <Icon as={FaClock} />
+                                    <span>Date / time</span>
+                                  </HStack>
+                                </FormLabel>
+                                <Input
+                                  size="sm"
+                                  placeholder="e.g. Saturday 3pm"
+                                  value={legForms[leg.id]?.time || ''}
+                                  onChange={(e) =>
+                                    setLegForms(prev => ({
+                                      ...prev,
+                                      [leg.id]: { ...prev[leg.id], time: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </FormControl>
+                              <Button
+                                size="xs"
+                                colorScheme="blue"
+                                alignSelf="flex-end"
+                                isLoading={savingLeg === leg.id}
+                                onClick={() => handleSaveLegHandoff(leg.id)}
+                              >
+                                Save
+                              </Button>
+                            </VStack>
+                          )}
+                          {(leg.handoff_location || leg.handoff_time) && leg.status === 'completed' && (
+                            <VStack align="start" spacing={1} fontSize="xs" color="gray.600">
+                              {leg.handoff_location && <Text>📍 {leg.handoff_location}</Text>}
+                              {leg.handoff_time && <Text>🕐 {leg.handoff_time}</Text>}
+                            </VStack>
+                          )}
+                        </Box>
+                      ))}
+                    </VStack>
+                  </Collapse>
+                </Box>
+              </>
+            )}
 
             {multiWayTrade.total_value && (
               <>
@@ -364,7 +566,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
               </>
             )}
 
-            {/* Info message */}
             <Box bg="blue.50" borderLeftWidth="4px" borderColor="blue.500" p={3} borderRadius="md">
               <Text fontSize="sm" color="blue.900">
                 <strong>How it works:</strong> Once all participants accept, the trades will be automatically synchronized and completed. Everyone gets the product they wanted in this chain!
@@ -406,7 +607,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 Execute Trade
               </Button>
             )}
-
             {canManage && (
               <>
                 <Button
