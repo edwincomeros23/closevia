@@ -76,12 +76,6 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   const isUserSeller = trade && currentUserId === trade.seller_id
   const isPhotoMandatory = trade?.trade_option === 'meetup' || trade?.trade_option === 'delivery'
 
-  useEffect(() => {
-    if (trade && isOpen) {
-      fetchCompletionStatus()
-    }
-  }, [trade, isOpen])
-
   const fetchCompletionStatus = async () => {
     if (!trade) return
 
@@ -112,6 +106,52 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadStatus = async () => {
+      if (trade && isOpen && isMounted) {
+        try {
+          setLoading(true)
+          const response = await api.get(`/api/trades/${trade.id}/completion-status`)
+          
+          if (!isMounted) return
+          
+          setStatus(response.data.data)
+
+          // Check if current user has already submitted
+          if (isUserBuyer && response.data.data.buyer_completed) {
+            setHasSubmitted(true)
+            setRating(response.data.data.buyer_rating || 0)
+            setFeedback(response.data.data.buyer_feedback || '')
+          } else if (isUserSeller && response.data.data.seller_completed) {
+            setHasSubmitted(true)
+            setRating(response.data.data.seller_rating || 0)
+            setFeedback(response.data.data.seller_feedback || '')
+          }
+
+          // Check if both completed for celebration
+          if (response.data.data.buyer_completed && response.data.data.seller_completed) {
+            setShowCelebration(true)
+            setShowFinishButton(true)
+          }
+        } catch (error) {
+          console.error('Failed to fetch completion status:', error)
+        } finally {
+          if (isMounted) {
+            setLoading(false)
+          }
+        }
+      }
+    }
+
+    loadStatus()
+
+    return () => {
+      isMounted = false
+    }
+  }, [trade, isOpen, isUserBuyer, isUserSeller])
 
   const handleSubmitCompletion = () => {
     if (!trade) return
