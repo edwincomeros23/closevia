@@ -261,18 +261,18 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
   const statusColorScheme = (status: string) => {
     switch (status) {
-      case 'pending': return 'yellow'
-      case 'accepted': return 'green'
+      case 'pending': case 'pending_user3': return 'yellow'
+      case 'accepted': case 'user3_accepted': return 'green'
       case 'declined': return 'red'
       case 'completed': return 'cyan'
-      case 'in_progress': return 'blue'
+      case 'in_progress': case 'active': case 'multiway_active': return 'blue'
       case 'disputed': return 'orange'
       default: return 'gray'
     }
   }
 
   const sortedParticipants = [...multiWayTrade.participants].sort(
-    (a, b) => a.position_in_loop - b.position_in_loop
+    (a, b) => ((a as any).position_in_loop ?? (a as any).position ?? 0) - ((b as any).position_in_loop ?? (b as any).position ?? 0)
   )
 
   // Chain health indicator — computed from edges
@@ -386,7 +386,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <VStack align="start" spacing={3}>
                         <HStack spacing={2}>
                           <Badge colorScheme="purple">
-                            Position {participant.position_in_loop + 1}
+                            Position {((participant as any).position_in_loop ?? (participant as any).position ?? idx) + 1}
                           </Badge>
                           <Badge colorScheme={statusColorScheme(participant.trade_status)}>
                             {participant.trade_status}
@@ -425,9 +425,11 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             </Text>
                           </Box>
                         </Box>
-                        <Box w="full" fontSize="xs" color="gray.500">
-                          Trade ID: <Badge fontSize="xs">{participant.trade_id}</Badge>
-                        </Box>
+                        {participant.trade_id && (
+                          <Box w="full" fontSize="xs" color="gray.500">
+                            Trade ID: <Badge fontSize="xs">{participant.trade_id}</Badge>
+                          </Box>
+                        )}
                       </VStack>
                     </CardBody>
                   </Card>
@@ -576,59 +578,81 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
         <ModalFooter borderTopWidth="1px" borderColor={borderColor} gap={3}>
           <Stack direction={{ base: 'column', sm: 'row' }} w="full" spacing={2}>
-            <Button
-              flex={1}
-              variant="ghost"
-              isDisabled={loading}
-              onClick={handleDecline}
-              isLoading={selectedAction === 'decline' && loading}
-              leftIcon={<FaTimes />}
-            >
-              Decline
-            </Button>
-            <Button
-              flex={1}
-              colorScheme="green"
-              isDisabled={loading || multiWayTrade.status !== 'active'}
-              isLoading={selectedAction === 'accept' && loading}
-              onClick={handleAccept}
-              leftIcon={<FaCheck />}
-            >
-              Accept Trade
-            </Button>
-            {canExecute && (
-              <Button
-                flex={1}
-                colorScheme="brand"
-                isDisabled={loading}
-                isLoading={selectedAction === 'execute' && loading}
-                onClick={handleExecute}
-              >
-                Execute Trade
-              </Button>
-            )}
-            {canManage && (
+            {multiWayTrade.status === 'user3_accepted' ? (
+              <>
+                <Badge colorScheme="green" fontSize="sm" px={4} py={2} borderRadius="md" textAlign="center" flex={1}>
+                  All participants have accepted
+                </Badge>
+                {canManage && (
+                  <Button
+                    flex={1}
+                    colorScheme="gray"
+                    variant="outline"
+                    isDisabled={loading}
+                    isLoading={selectedAction === 'cancel' && loading}
+                    onClick={handleCancelLoop}
+                  >
+                    Cancel Loop
+                  </Button>
+                )}
+              </>
+            ) : (
               <>
                 <Button
                   flex={1}
-                  colorScheme="gray"
-                  variant="outline"
+                  variant="ghost"
                   isDisabled={loading}
-                  isLoading={selectedAction === 'cancel' && loading}
-                  onClick={handleCancelLoop}
+                  onClick={handleDecline}
+                  isLoading={selectedAction === 'decline' && loading}
+                  leftIcon={<FaTimes />}
                 >
-                  Cancel Loop
+                  Decline
                 </Button>
                 <Button
                   flex={1}
-                  colorScheme="purple"
-                  variant="outline"
-                  isDisabled={loading}
-                  isLoading={selectedAction === 'reinvite' && loading}
-                  onClick={handleReinviteLoop}
+                  colorScheme="green"
+                  isDisabled={loading || multiWayTrade.status !== 'active'}
+                  isLoading={selectedAction === 'accept' && loading}
+                  onClick={handleAccept}
+                  leftIcon={<FaCheck />}
                 >
-                  Reinvite
+                  Accept Trade
                 </Button>
+                {canExecute && (
+                  <Button
+                    flex={1}
+                    colorScheme="brand"
+                    isDisabled={loading}
+                    isLoading={selectedAction === 'execute' && loading}
+                    onClick={handleExecute}
+                  >
+                    Execute Trade
+                  </Button>
+                )}
+                {canManage && (
+                  <>
+                    <Button
+                      flex={1}
+                      colorScheme="gray"
+                      variant="outline"
+                      isDisabled={loading}
+                      isLoading={selectedAction === 'cancel' && loading}
+                      onClick={handleCancelLoop}
+                    >
+                      Cancel Loop
+                    </Button>
+                    <Button
+                      flex={1}
+                      colorScheme="purple"
+                      variant="outline"
+                      isDisabled={loading}
+                      isLoading={selectedAction === 'reinvite' && loading}
+                      onClick={handleReinviteLoop}
+                    >
+                      Reinvite
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </Stack>
