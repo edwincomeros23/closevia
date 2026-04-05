@@ -406,57 +406,28 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                   />
                 </Box>
 
-                {/* User Profiles - Stack vertically on mobile, horizontal on desktop */}
-                <VStack spacing={{ base: 4, md: 0 }} w="full" justify="center">
-                  <HStack spacing={userProfileSpacing} w="full" justify="center" display={{ base: 'none', md: 'flex' }}>
-                    {renderUserProfile(
-                      trade.buyer_name || `User #${trade.buyer_id}`,
-                      trade.buyer_id,
-                      !!isUserBuyer,
-                      !!(status?.buyer_completed),
-                      status?.buyer_rating
-                    )}
-                    <Box>
-                      <Icon
-                        as={FaHandshake}
-                        color={bothCompleted ? 'green.500' : 'gray.400'}
-                        boxSize={8}
-                      />
-                    </Box>
-                    {renderUserProfile(
-                      trade.seller_name || `User #${trade.seller_id}`,
-                      trade.seller_id,
-                      !!isUserSeller,
-                      !!(status?.seller_completed),
-                      status?.seller_rating
-                    )}
-                  </HStack>
-                  
-                  {/* Mobile stacked view */}
-                  <VStack spacing={3} w="full" display={{ base: 'flex', md: 'none' }}>
-                    {renderUserProfile(
-                      trade.buyer_name || `User #${trade.buyer_id}`,
-                      trade.buyer_id,
-                      !!isUserBuyer,
-                      !!(status?.buyer_completed),
-                      status?.buyer_rating
-                    )}
-                    <Box>
-                      <Icon
-                        as={FaHandshake}
-                        color={bothCompleted ? 'green.500' : 'gray.400'}
-                        boxSize={6}
-                      />
-                    </Box>
-                    {renderUserProfile(
-                      trade.seller_name || `User #${trade.seller_id}`,
-                      trade.seller_id,
-                      !!isUserSeller,
-                      !!(status?.seller_completed),
-                      status?.seller_rating
-                    )}
-                  </VStack>
-                </VStack>
+                {/* User Profiles - Responsive layout */}
+                <Flex flexDirection={{ base: 'column', md: 'row' }} w="full" justify="center" gap={{ base: 4, md: 8 }} align="center">
+                  {renderUserProfile(
+                    trade.buyer_name || `User #${trade.buyer_id}`,
+                    trade.buyer_id,
+                    !!isUserBuyer,
+                    !!(status?.buyer_completed),
+                    status?.buyer_rating
+                  )}
+                  <Icon
+                    as={FaHandshake}
+                    color={bothCompleted ? 'green.500' : 'gray.400'}
+                    boxSize={{ base: 6, md: 8 }}
+                  />
+                  {renderUserProfile(
+                    trade.seller_name || `User #${trade.seller_id}`,
+                    trade.seller_id,
+                    !!isUserSeller,
+                    !!(status?.seller_completed),
+                    status?.seller_rating
+                  )}
+                </Flex>
 
                 <Divider />
 
