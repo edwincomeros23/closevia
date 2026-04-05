@@ -773,6 +773,17 @@ const Dashboard: React.FC = () => {
       const canJoin = trade?.can_join === true
       const canDecline = trade?.can_decline === true
       
+      // Check if all participants have accepted
+      const participants = trade.participants || []
+      const totalParticipants = participants.length
+      const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
+      const allAccepted = totalParticipants > 0 && acceptedCount === totalParticipants
+      
+      // If all participants accepted, skip - move to Ongoing Trades automatically
+      if (allAccepted) {
+        continue
+      }
+      
       if (status === 'pending_user3' && (canJoin || canDecline)) {
         // User is User3 and hasn't responded yet
         needsAction.push(trade)
@@ -5122,6 +5133,30 @@ const Dashboard: React.FC = () => {
                                     const totalParticipants = participants.length
                                     const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
                                     const pendingCount = totalParticipants - acceptedCount
+                                    
+                                    // Find your product and incoming product
+                                    const currentUserID = Number(user?.id || 0)
+                                    const yourParticipant = participants.find((p: any) => Number(p?.user_id) === currentUserID)
+                                    const yourProductImage = yourParticipant?.product_image
+                                    const incomingProductImage = participants.length > 0 
+                                      ? participants[participants.length - 1]?.product_image || participants[0]?.product_image
+                                      : null
+                                    
+                                    // Calculate time remaining
+                                    const expiresAt = trade?.expires_at ? new Date(trade.expires_at).getTime() : null
+                                    const nowTime = Date.now()
+                                    const timeRemaining = expiresAt ? Math.max(0, expiresAt - nowTime) : null
+                                    const daysRemaining = timeRemaining ? Math.ceil(timeRemaining / (1000 * 60 * 60 * 24)) : null
+                                    const hoursRemaining = timeRemaining ? Math.ceil(timeRemaining / (1000 * 60 * 60)) : null
+                                    
+                                    const expiryText = daysRemaining !== null
+                                      ? daysRemaining > 0
+                                        ? `${daysRemaining}d remaining`
+                                        : hoursRemaining !== null && hoursRemaining > 0
+                                        ? `${hoursRemaining}h remaining`
+                                        : 'Expiring soon'
+                                      : 'No expiry'
+                                    
                                     return (
                                       <Box
                                         key={trade.id || trade.loop_id || trade.chain_id}
@@ -5135,27 +5170,92 @@ const Dashboard: React.FC = () => {
                                         _hover={{ borderColor: 'orange.400', transform: 'translateY(-2px)', shadow: 'md' }}
                                         onClick={() => handleViewMultiWayTradeDetails(trade)}
                                       >
-                                        <VStack align="start" spacing={3}>
-                                          <Box>
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Your Item → You Get</Text>
-                                            <Text fontWeight="semibold" fontSize="sm">
-                                              {summary.yourGive} → {summary.yourGet}
+                                        <VStack align="stretch" spacing={3}>
+                                          {/* Item Flow */}
+                                          <HStack spacing={2} justify="center" w="full">
+                                            {yourProductImage ? (
+                                              <Image
+                                                src={yourProductImage}
+                                                alt="Your item"
+                                                maxW="45px"
+                                                maxH="45px"
+                                                borderRadius="md"
+                                                objectFit="cover"
+                                              />
+                                            ) : (
+                                              <Box w="45px" h="45px" bg="gray.200" borderRadius="md" />
+                                            )}
+                                            <Text fontSize="lg" fontWeight="bold" color="orange.500">→</Text>
+                                            {incomingProductImage ? (
+                                              <Image
+                                                src={incomingProductImage}
+                                                alt="Incoming item"
+                                                maxW="45px"
+                                                maxH="45px"
+                                                borderRadius="md"
+                                                objectFit="cover"
+                                              />
+                                            ) : (
+                                              <Box w="45px" h="45px" bg="gray.200" borderRadius="md" />
+                                            )}
+                                          </HStack>
+                                          
+                                          {/* Item names */}
+                                          <Box w="full" textAlign="center">
+                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
+                                              {summary.yourGive}
+                                            </Text>
+                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
+                                              ↓
+                                            </Text>
+                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
+                                              {summary.yourGet}
                                             </Text>
                                           </Box>
+                                          
+                                          {/* Participant Avatars with Status */}
                                           <Box w="full">
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Chain</Text>
-                                            <Text fontSize="xs" noOfLines={2}>{summary.chainLabel}</Text>
+                                            <HStack spacing={1} justify="center" wrap="wrap">
+                                              {participants.map((participant: any, idx: number) => {
+                                                const isAccepted = participant.status !== 'pending'
+                                                return (
+                                                  <Tooltip key={idx} label={`${participant.user_name}: ${isAccepted ? 'Accepted ✓' : 'Pending'}`} fontSize="xs">
+                                                    <Box position="relative">
+                                                      <Avatar
+                                                        name={participant.user_name}
+                                                        size="sm"
+                                                        bg={isAccepted ? 'green.400' : 'orange.300'}
+                                                      />
+                                                      {isAccepted && (
+                                                        <Box
+                                                          position="absolute"
+                                                          bottom="-2px"
+                                                          right="-2px"
+                                                          bg="green.500"
+                                                          borderRadius="full"
+                                                          p="1px"
+                                                          border="2px solid"
+                                                          borderColor={cardBg}
+                                                        >
+                                                          <CheckIcon boxSize={2} color="white" />
+                                                        </Box>
+                                                      )}
+                                                    </Box>
+                                                  </Tooltip>
+                                                )
+                                              })}
+                                            </HStack>
                                           </Box>
-                                          {pendingCount > 0 && (
-                                            <Badge colorScheme="orange" fontSize="xs">
-                                              {acceptedCount} of {totalParticipants} accepted
+                                          
+                                          {/* Progress and Expiry */}
+                                          <HStack spacing={2} w="full" justify="space-between" fontSize="xs">
+                                            <Badge colorScheme="orange" variant="subtle">
+                                              {acceptedCount}/{totalParticipants} accepted
                                             </Badge>
-                                          )}
-                                          {pendingCount === 0 && (
-                                            <Badge colorScheme="green" fontSize="xs">
-                                              All participants accepted ✓
-                                            </Badge>
-                                          )}
+                                            <Text color="gray.500" fontWeight="medium">
+                                              {expiryText}
+                                            </Text>
+                                          </HStack>
                                         </VStack>
                                       </Box>
                                     )
