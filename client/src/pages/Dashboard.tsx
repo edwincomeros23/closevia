@@ -301,9 +301,9 @@ const Dashboard: React.FC = () => {
 
   // Fetch multi-way trades when tab is selected
   useEffect(() => {
-    if (user && activeTab === 2) {
+    if (user && (activeTab === 1 || activeTab === 2)) {
       fetchMultiWayTrades()
-      fetchDiscoverableLoops()
+      if (activeTab === 2) fetchDiscoverableLoops()
     }
   }, [user, activeTab])
 
@@ -760,20 +760,26 @@ const Dashboard: React.FC = () => {
       const newTrades = Array.from(seen.values())
       setMultiWayTrades(newTrades)
 
-      // Detect new loops and notify user
+      // Detect new loops and notify user (batched into a single toast)
       const newLoopIds = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
       const prevIds = prevMultiWayLoopIds.current
+      let newCount = 0
       for (const id of newLoopIds) {
         if (!prevIds.has(id)) {
-          toast({
-            id: `new-loop-${id}`,
-            title: 'New Trade Loop Found!',
-            description: 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
-            status: 'info',
-            duration: 6000,
-            isClosable: true,
-          })
+          newCount++
         }
+      }
+      if (newCount > 0) {
+        toast({
+          id: 'new-loops-batch',
+          title: newCount > 1 ? 'Loops Found!' : 'New Trade Loop Found!',
+          description: newCount > 1
+            ? `You have ${newCount} new multi-way trade options available. Check below to review them.`
+            : 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
+          status: 'info',
+          duration: 6000,
+          isClosable: true,
+        })
       }
       prevMultiWayLoopIds.current = newLoopIds
 
@@ -875,8 +881,11 @@ const Dashboard: React.FC = () => {
         status: 'success',
         duration: 5000,
       })
-      await fetchDiscoverableLoops()
-      await fetchMultiWayTrades()
+      // Optimistically remove from discoverable list, refresh in background
+      setDiscoverableLoops(prev => prev.filter((l: any) => String(l?.chain_id) !== chainId))
+      fetchDiscoverableLoops()
+      fetchMultiWayTrades()
+      invalidateOffers()
     } catch (error: any) {
       toast({
         id: `hop-in-error-${chainId}`,
@@ -921,8 +930,16 @@ const Dashboard: React.FC = () => {
         duration: 3000,
       })
       setSelectedMultiWayTrade(null)
-      // Refresh multi-way trades list
-      await fetchMultiWayTrades()
+      // Optimistically update the trade in-place, then refresh in background
+      const joinedId = tradeIdString
+      setMultiWayTrades(prev => prev.map(t => {
+        const id = String(t?.chain_id || t?.loop_id || t?.id || '')
+        if (id === joinedId) return { ...t, status: 'user3_accepted', can_join: false, can_decline: false }
+        return t
+      }))
+      fetchMultiWayTrades()
+      invalidateOffers()
+      invalidateProducts()
     } catch (error: any) {
       toast({
         id: 'error-join-trade',
@@ -969,8 +986,13 @@ const Dashboard: React.FC = () => {
         duration: 2000,
       })
       setSelectedMultiWayTrade(null)
-      // Refresh multi-way trades list
-      await fetchMultiWayTrades()
+      // Optimistically remove declined trade from list, then refresh in background
+      setMultiWayTrades(prev => prev.filter(t => {
+        const id = String(t?.chain_id || t?.loop_id || t?.id || '')
+        return id !== tradeIdString
+      }))
+      fetchMultiWayTrades()
+      fetchDiscoverableLoops()
     } catch (error: any) {
       toast({
         id: 'error-decline-trade',
@@ -1200,7 +1222,10 @@ const Dashboard: React.FC = () => {
     const buyout = (buyoutOffers || []).length
     const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway').length
     const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
-    const ongoing = (ongoingTradesData || []).length
+    const ongoingMultiway = (multiWayTrades || []).filter((t: any) =>
+      t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
+    ).length
+    const ongoing = (ongoingTradesData || []).length + ongoingMultiway
     return {
       buyout,
       sentPending,
@@ -1208,7 +1233,7 @@ const Dashboard: React.FC = () => {
       ongoing,
       totalPending: sentPending + receivedPending + buyout
     }
-  }, [buyoutOffers, incoming, outgoing, ongoingTradesData])
+  }, [buyoutOffers, incoming, outgoing, ongoingTradesData, multiWayTrades])
 
   // Completed trades count for Trade History tab
   const completedTradesCount = useMemo(() => {
@@ -1284,8 +1309,28 @@ const Dashboard: React.FC = () => {
     const all = [...sent, ...received]
     // Deduplicate by target_product_id — same product may appear in multiple chains
     const unique = Array.from(new Map(all.map(t => [t.target_product_id, t])).values())
-    return unique
-  }, [outgoing, incoming])
+    // Exclude trades that already have an accepted/active multiway chain
+    const acceptedChainTradeIds = new Set(
+      (multiWayTrades || [])
+        .filter((mt: any) => ['user3_accepted', 'active', 'multiway_active'].includes(mt?.status))
+        .flatMap((mt: any) => {
+          const participants = mt?.participants || []
+          return participants.map((p: any) => p?.trade_id).filter(Boolean)
+        })
+    )
+    // Also check by chain_id pattern: chain_{tradeID}_...
+    const acceptedOriginalTradeIds = new Set(
+      (multiWayTrades || [])
+        .filter((mt: any) => ['user3_accepted', 'active', 'multiway_active'].includes(mt?.status))
+        .map((mt: any) => {
+          const cid = String(mt?.chain_id || '')
+          const parts = cid.split('_')
+          return parts.length >= 2 ? Number(parts[1]) : 0
+        })
+        .filter((id: number) => id > 0)
+    )
+    return unique.filter(t => !acceptedChainTradeIds.has(t.id) && !acceptedOriginalTradeIds.has(t.id))
+  }, [outgoing, incoming, multiWayTrades])
 
   const ongoingTrades = useMemo(() => {
     const filtered = filterTrades(ongoingTradesData, offersSearch, offersStatusFilter)
@@ -1299,6 +1344,13 @@ const Dashboard: React.FC = () => {
     }
     return filtered
   }, [ongoingTradesData, offersSearch, offersStatusFilter, offersSort, filterTrades])
+
+  // Accepted multiway trades that should appear in the ongoing trades section
+  const ongoingMultiWayTrades = useMemo(() => {
+    return (multiWayTrades || []).filter((t: any) =>
+      t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
+    )
+  }, [multiWayTrades])
 
   // Unified search handler - clears tab-specific searches when unified search is used
   const handleUnifiedSearchChange = (value: string) => {
@@ -4436,7 +4488,7 @@ const Dashboard: React.FC = () => {
                                 <ProductCardSkeleton key={i} />
                               ))}
                             </SimpleGrid>
-                          ) : ongoingTrades.length === 0 ? (
+                          ) : ongoingTrades.length === 0 && ongoingMultiWayTrades.length === 0 ? (
                             <Fade in={true}>
                               <Box
                                 textAlign="center"
@@ -4592,6 +4644,63 @@ const Dashboard: React.FC = () => {
                                 </HStack>
                               )}
                             </>
+                          )}
+
+                          {/* Accepted Multi-Way Trades in Ongoing */}
+                          {ongoingMultiWayTrades.length > 0 && (
+                            <Box mt={ongoingTrades.length > 0 ? 6 : 0}>
+                              <Heading size="sm" mb={3} color="gray.700">
+                                Multi-Way Loop Trades
+                              </Heading>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                                {ongoingMultiWayTrades.map((trade: any) => {
+                                  const participants = Array.isArray(trade?.participants) ? trade.participants : []
+                                  if (participants.length < 2) return null
+                                  const summary = getMultiWayTradeSummary(trade)
+                                  return (
+                                    <Box key={trade.id || trade.loop_id || trade.chain_id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                                      <MultiWayTradeUI
+                                        participants={trade.participants || []}
+                                        isChain={trade.is_chain}
+                                        yourGive={summary.yourGive}
+                                        yourGet={summary.yourGet}
+                                        chainLabel={summary.chainLabel}
+                                        viewMode={trade?.initiator_view ? 'initiator' : 'participant'}
+                                        initiatorName={trade?.initiator_name}
+                                        canJoin={false}
+                                        canDecline={false}
+                                        loopType={trade?.loop_type}
+                                        loopStatus={trade?.status}
+                                        expiryLabel={trade?.expires_at ? new Date(trade.expires_at).toLocaleString() : undefined}
+                                        onJoinTrade={() => {}}
+                                        onViewDetails={() => {
+                                          void (async () => {
+                                            try {
+                                              setMultiWayManagerLoading(true)
+                                              const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+                                              const details = await fetchMultiWayTrade(loopId)
+                                              setSelectedMultiWayTrade(details)
+                                              setMultiWayManagerOpen(true)
+                                            } catch (e) {
+                                              console.error('Failed to load loop details:', e)
+                                              toast({
+                                                id: 'error-load-loop-details-ongoing',
+                                                title: 'Error',
+                                                description: 'Failed to load trade loop details.',
+                                                status: 'error',
+                                              })
+                                            } finally {
+                                              setMultiWayManagerLoading(false)
+                                            }
+                                          })()
+                                        }}
+                                        isLoading={multiWayManagerLoading}
+                                      />
+                                    </Box>
+                                  )
+                                })}
+                              </SimpleGrid>
+                            </Box>
                           )}
                         </TabPanel>
 
@@ -5463,6 +5572,8 @@ const Dashboard: React.FC = () => {
               canManage={Boolean(user?.is_premium) && !selectedMultiWayTrade?.is_chain}
               onTradeCompleted={() => {
                 void fetchMultiWayTrades()
+                invalidateOffers()
+                invalidateProducts()
               }}
             />
           )}

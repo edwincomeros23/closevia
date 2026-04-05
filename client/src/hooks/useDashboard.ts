@@ -139,11 +139,13 @@ export const useOngoingTrades = () => {
     queryKey: DASHBOARD_QUERY_KEYS.ongoingTrades,
     queryFn: async (): Promise<Trade[]> => {
       // Fetch both directions and both statuses separately (API limitation: single status per request)
-      const [incomingAccepted, incomingActive, outgoingAccepted, outgoingActive] = await Promise.all([
+      const [incomingAccepted, incomingActive, outgoingAccepted, outgoingActive, incomingMultiwayActive, outgoingMultiwayActive] = await Promise.all([
         api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'accepted', limit: 100 } }),
         api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'active', limit: 100 } }),
         api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'accepted', limit: 100 } }),
-        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'active', limit: 100 } })
+        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'active', limit: 100 } }),
+        api.get('/api/trades', { params: { direction: 'incoming', include: 'products', status: 'multiway_active', limit: 100 } }),
+        api.get('/api/trades', { params: { direction: 'outgoing', include: 'products', status: 'multiway_active', limit: 100 } })
       ])
 
       const extractData = (response: any) => {
@@ -154,7 +156,9 @@ export const useOngoingTrades = () => {
         ...extractData(incomingAccepted),
         ...extractData(incomingActive),
         ...extractData(outgoingAccepted),
-        ...extractData(outgoingActive)
+        ...extractData(outgoingActive),
+        ...extractData(incomingMultiwayActive),
+        ...extractData(outgoingMultiwayActive)
       ]
 
       // Deduplicate by trade ID
