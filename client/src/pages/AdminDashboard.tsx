@@ -554,7 +554,7 @@ const AdminDashboard: React.FC = () => {
   const headerBg = useColorModeValue('brand.50', 'brand.900');
   const sidebarBg = useColorModeValue('white', 'gray.800');
   const topBarBg = useColorModeValue('white', 'gray.800');
-  const mainBg = useColorModeValue('gray.50', 'gray.900');
+  const mainBg = useColorModeValue('#FFFDF1', 'gray.900');
   const isMobile = useBreakpointValue({ base: true, lg: false });
 
   const sidebarNav: { id: SectionId; label: string; icon: any; description: string; badge?: number | string }[] = [

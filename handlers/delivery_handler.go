@@ -80,7 +80,7 @@ func (h *DeliveryHandler) isRiderLockedForRemittance(riderID int) (bool, float64
 		return false, 0
 	}
 	// Lock is enforced once the rider reaches the remittance threshold.
-	if remittanceOwed >= riderRemittanceLockThreshold {
+	if remittanceOwed >= h.getRiderRemittanceLockThreshold() {
 		return true, remittanceOwed
 	}
 	// Keep the flag as an informational field, but don't block below threshold.
@@ -2401,7 +2401,7 @@ func (h *DeliveryHandler) updateRiderLedger(riderID int, amount float64) {
 	totalCash += amount
 
 	// Platform takes a fixed tax per fee collection (pickup/delivery)
-	platformCut := riderRemittanceTaxPerCollection
+	platformCut := h.getRiderRemittanceTaxPerCollection()
 	if amount < platformCut {
 		platformCut = amount
 	}
@@ -2420,7 +2420,7 @@ func (h *DeliveryHandler) updateRiderLedger(riderID int, amount float64) {
 	}
 
 	// Lock/unlock rider based on remittance threshold
-	if remittanceOwed >= riderRemittanceLockThreshold {
+	if remittanceOwed >= h.getRiderRemittanceLockThreshold() {
 		_, _ = h.db.Exec("UPDATE rider_ledger SET is_locked_for_remittance = TRUE WHERE rider_id = ?", riderID)
 	} else {
 		_, _ = h.db.Exec("UPDATE rider_ledger SET is_locked_for_remittance = FALSE WHERE rider_id = ?", riderID)
