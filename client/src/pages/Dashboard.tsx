@@ -788,6 +788,45 @@ const Dashboard: React.FC = () => {
     return { needsAction, waitingOnOthers }
   }, [filteredMultiWayTrades])
 
+  // Get loop details from cache or fetch
+  const getOrFetchMultiWayLoopDetails = useCallback(async (loopId: string, cardData?: any) => {
+    const cache = multiWayTradeDetailsCache.current
+    const cacheKey = String(loopId)
+    
+    // Check if already cached and current
+    if (cache.has(cacheKey)) {
+      const cached = cache.get(cacheKey)!
+      const cacheAge = Date.now() - cached.fetchedAt
+      const cardStatus = cardData?.status
+      const cachedStatus = cached.data?.status
+      
+      // Use cache if less than 5 minutes old OR status hasn't changed
+      if (cacheAge < 300000 || cardStatus === cachedStatus) {
+        return cached.data
+      }
+    }
+    
+    // If already fetching, return the existing promise
+    if (preloadingPromises.current.has(cacheKey)) {
+      return preloadingPromises.current.get(cacheKey)
+    }
+    
+    // Fetch and cache
+    const fetchPromise = fetchMultiWayTrade(cacheKey)
+      .then(data => {
+        cache.set(cacheKey, { data, fetchedAt: Date.now() })
+        preloadingPromises.current.delete(cacheKey)
+        return data
+      })
+      .catch(err => {
+        preloadingPromises.current.delete(cacheKey)
+        throw err
+      })
+    
+    preloadingPromises.current.set(cacheKey, fetchPromise)
+    return fetchPromise
+  }, [])
+
   // Memoized handler for viewing trade details
   const handleViewMultiWayTradeDetails = useCallback(async (trade: any) => {
     try {
@@ -891,45 +930,6 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  // Get loop details from cache or fetch
-  const getOrFetchMultiWayLoopDetails = async (loopId: string, cardData?: any) => {
-    const cache = multiWayTradeDetailsCache.current
-    const cacheKey = String(loopId)
-    
-    // Check if already cached and current
-    if (cache.has(cacheKey)) {
-      const cached = cache.get(cacheKey)!
-      const cacheAge = Date.now() - cached.fetchedAt
-      const cardStatus = cardData?.status
-      const cachedStatus = cached.data?.status
-      
-      // Use cache if less than 5 minutes old OR status hasn't changed
-      if (cacheAge < 300000 || cardStatus === cachedStatus) {
-        return cached.data
-      }
-    }
-    
-    // If already fetching, return the existing promise
-    if (preloadingPromises.current.has(cacheKey)) {
-      return preloadingPromises.current.get(cacheKey)
-    }
-    
-    // Fetch and cache
-    const fetchPromise = fetchMultiWayTrade(cacheKey)
-      .then(data => {
-        cache.set(cacheKey, { data, fetchedAt: Date.now() })
-        preloadingPromises.current.delete(cacheKey)
-        return data
-      })
-      .catch(err => {
-        preloadingPromises.current.delete(cacheKey)
-        throw err
-      })
-    
-    preloadingPromises.current.set(cacheKey, fetchPromise)
-    return fetchPromise
-  }
-
   // Preload all loop details in parallel
   const preloadMultiWayLoopDetails = useCallback(async (loops: any[]) => {
     if (!loops || loops.length === 0) return
@@ -950,7 +950,7 @@ const Dashboard: React.FC = () => {
     Promise.allSettled(loadsToFetch).catch(() => {
       // Ignore errors from parallel preloading
     })
-  }, [])
+  }, [getOrFetchMultiWayLoopDetails])
 
   // Keep activeTabRef in sync so the multiwayAlert callback can read it without stale closures
   useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
