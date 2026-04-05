@@ -1292,16 +1292,6 @@ const AdminDashboard: React.FC = () => {
     };
   }, []);
 
-  // Trigger fetch when debounced users search changes
-  useEffect(() => {
-    fetchAdminUsers(1, usersSearch, usersRoleFilter, usersIsVerifiedFilter);
-  }, [usersSearch, usersRoleFilter, usersIsVerifiedFilter, fetchAdminUsers]);
-
-  // Trigger fetch when debounced products search changes
-  useEffect(() => {
-    fetchAdminProducts(1, productsSearch, productsStatusFilter);
-  }, [productsSearch, productsStatusFilter, fetchAdminProducts]);
-
   // â"€â"€ Fetch users for admin list â"€â"€
   const fetchAdminUsers = useCallback(
     async (page = 1, search = '', role = '', verified = '') => {
@@ -1337,6 +1327,51 @@ const AdminDashboard: React.FC = () => {
     },
     [toast],
   );
+
+  // â"€â"€ Fetch products for admin list â"€â"€
+  const fetchAdminProducts = useCallback(
+    async (page = 1, search = '', status = '') => {
+      try {
+        setProductsLoading(true);
+        const params = new URLSearchParams({ page: String(page), limit: '10' });
+        if (search) params.append('search', search);
+        if (status) params.append('status', status);
+
+        const response = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?${params.toString()}`);
+        if (response.data.success && response.data.data) {
+          const data = response.data.data as PaginatedResponse<Product>;
+          setProducts(data.data || []);
+          setProductsPage(data.page || page);
+          setProductsTotalPages(data.total_pages || 1);
+        } else {
+          setProducts([]);
+        }
+      } catch (err: any) {
+        toast({
+          id: "admindashboard-failed-to-load-items",
+          title: 'Failed to load items',
+          description: err?.response?.data?.error || err.message || 'Unable to fetch items',
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+        });
+        setProducts([]);
+      } finally {
+        setProductsLoading(false);
+      }
+    },
+    [toast],
+  );
+
+  // Trigger fetch when debounced users search changes
+  useEffect(() => {
+    fetchAdminUsers(1, usersSearch, usersRoleFilter, usersIsVerifiedFilter);
+  }, [usersSearch, usersRoleFilter, usersIsVerifiedFilter, fetchAdminUsers]);
+
+  // Trigger fetch when debounced products search changes
+  useEffect(() => {
+    fetchAdminProducts(1, productsSearch, productsStatusFilter);
+  }, [productsSearch, productsStatusFilter, fetchAdminProducts]);
 
   // â"€â"€ User management action handlers â"€â"€
   const handleToggleSuspend = useCallback(async (user: User) => {
@@ -1399,41 +1434,6 @@ const AdminDashboard: React.FC = () => {
     setDeleteTarget({ type: 'user', id: user.id, name: user.name });
     openDeleteDialog();
   }, [openDeleteDialog]);
-
-  // â"€â"€ Fetch products for admin list â"€â"€
-  const fetchAdminProducts = useCallback(
-    async (page = 1, search = '', status = '') => {
-      try {
-        setProductsLoading(true);
-        const params = new URLSearchParams({ page: String(page), limit: '10' });
-        if (search) params.append('search', search);
-        if (status) params.append('status', status);
-
-        const response = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?${params.toString()}`);
-        if (response.data.success && response.data.data) {
-          const data = response.data.data as PaginatedResponse<Product>;
-          setProducts(data.data || []);
-          setProductsPage(data.page || page);
-          setProductsTotalPages(data.total_pages || 1);
-        } else {
-          setProducts([]);
-        }
-      } catch (err: any) {
-        toast({
-          id: "admindashboard-failed-to-load-items",
-          title: 'Failed to load items',
-          description: err?.response?.data?.error || err.message || 'Unable to fetch items',
-          status: 'error',
-          duration: 4000,
-          isClosable: true,
-        });
-        setProducts([]);
-      } finally {
-        setProductsLoading(false);
-      }
-    },
-    [toast],
-  );
 
   // Bulk product handlers
   const handleBulkDeleteProducts = useCallback(async () => {
@@ -1934,19 +1934,6 @@ const AdminDashboard: React.FC = () => {
   }, [moderationTarget, fetchAdminReports, reportsPage, reportsStatusFilter, toast]);
 
 
-
-  if (loading) {
-    return (
-      <Container maxW="container.xl" py={8}>
-        <VStack spacing={6} minH="400px" justify="center">
-          <Spinner size="xl" color="blue.500" />
-          <Text fontSize="lg" color="gray.600">Loading admin dashboard...</Text>
-          <Progress size="sm" isIndeterminate colorScheme="blue" w="200px" />
-          <Text fontSize="sm" color="gray.500">This may take a few moments</Text>
-        </VStack>
-      </Container>
-    );
-  }
 
   if (error) {
     return (
