@@ -27,6 +27,7 @@ import {
 import { FaArrowRight, FaCheck, FaTimes, FaClock } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
+import { getProductUrl } from '../utils/productUtils'
 import {
   acceptMultiWayTrade,
   declineMultiWayTrade,
@@ -34,6 +35,11 @@ import {
   cancelTradeLoop,
   reinviteTradeLoop,
 } from '../services/tradeService'
+
+// Helper to get user profile URL using slug if available, otherwise ID
+const getUserProfileUrl = (userId: number, userSlug?: string): string => {
+  return `/profile/${userSlug || userId}`
+}
 
 interface MultiWayTradeModalProps {
   isOpen: boolean
@@ -349,7 +355,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             {/* Avatar - Clickable to open profile */}
                             <Box
                               as="button"
-                              onClick={() => navigate(`/profile/${participant.user_id}`)}
+                              onClick={() => navigate(getUserProfileUrl(participant.user_id, participant.user_slug))}
                               cursor="pointer"
                               _hover={{ opacity: 0.8 }}
                               border="none"
@@ -391,7 +397,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               {participant.product_id ? (
                                 <Box
                                   as="button"
-                                  onClick={() => navigate(`/product/${participant.product_id}`)}
+                                  onClick={() => navigate(getProductUrl({ id: participant.product_id, slug: participant.product_slug } as any))}
                                   cursor="pointer"
                                   color="blue.600"
                                   _hover={{ textDecoration: 'underline' }}
@@ -462,7 +468,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               {/* Avatar - Clickable to open profile */}
                               <Box
                                 as="button"
-                                onClick={() => navigate(`/profile/${participant.user_id}`)}
+                                onClick={() => navigate(getUserProfileUrl(participant.user_id, participant.user_slug))}
                                 cursor="pointer"
                                 _hover={{ opacity: 0.8 }}
                                 border="none"
@@ -504,7 +510,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               {participant.product_id ? (
                                 <Box
                                   as="button"
-                                  onClick={() => navigate(`/product/${participant.product_id}`)}
+                                  onClick={() => navigate(getProductUrl({ id: participant.product_id, slug: participant.product_slug } as any))}
                                   cursor="pointer"
                                   color="blue.600"
                                   _hover={{ textDecoration: 'underline' }}

@@ -308,6 +308,11 @@ const Dashboard: React.FC = () => {
     }
   }, [user, activeTab])
 
+  // Clear summary cache when multiWayTrades updates to prevent stale data
+  useEffect(() => {
+    summaryCache.current.clear()
+  }, [multiWayTrades])
+
   // Change tab based on URL param
   useEffect(() => {
     const tabParam = searchParams.get('tab')
@@ -725,17 +730,37 @@ const Dashboard: React.FC = () => {
     return { yourGive, yourGet, chainLabel }
   }, [user?.id])
 
-  const filteredMultiWayTrades = useMemo(() => {
-    const getChainSize = (trade: any) => {
+  // Cache summary results per trade ID to avoid recalculation
+  const summaryCache = useRef<Map<string, any>>(new Map())
+  const getSummary = useCallback((trade: any) => {
+    const key = String(trade?.id || trade?.loop_id || trade?.chain_id || '')
+    if (!summaryCache.current.has(key)) {
+      summaryCache.current.set(key, getMultiWayTradeSummary(trade))
+    }
+    return summaryCache.current.get(key)
+  }, [getMultiWayTradeSummary])
+
+  // Memoize chain size computation
+  const chainSizeCache = useRef<Map<string, number>>(new Map())
+  const getChainSize = useCallback((trade: any) => {
+    const key = String(trade?.id || trade?.loop_id || trade?.chain_id || '')
+    if (!chainSizeCache.current.has(key)) {
       const participants = Array.isArray(trade?.participants) ? trade.participants.length : 0
-      if (participants > 0) return participants
+      if (participants > 0) {
+        chainSizeCache.current.set(key, participants)
+        return participants
+      }
       const edges = Array.isArray(trade?.edges) ? trade.edges.length : 0
+      chainSizeCache.current.set(key, edges)
       return edges
     }
+    return chainSizeCache.current.get(key) || 0
+  }, [])
 
+  const filteredMultiWayTrades = useMemo(() => {
     if (multiWayChainFilter === 'all') return multiWayTrades
     return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 3)
-  }, [multiWayTrades, multiWayChainFilter])
+  }, [multiWayTrades, multiWayChainFilter, getChainSize])
 
   // Group loops into "Needs Your Action" and "Waiting on Others"
   const groupedMultiWayTrades = useMemo(() => {
@@ -762,6 +787,27 @@ const Dashboard: React.FC = () => {
     
     return { needsAction, waitingOnOthers }
   }, [filteredMultiWayTrades])
+
+  // Memoized handler for viewing trade details
+  const handleViewMultiWayTradeDetails = useCallback(async (trade: any) => {
+    try {
+      setMultiWayManagerLoading(true)
+      const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+      const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
+      setSelectedMultiWayTrade(details)
+      setMultiWayManagerOpen(true)
+    } catch (e) {
+      console.error('Failed to load loop details:', e)
+      toast({
+        id: 'error-load-loop-details',
+        title: 'Error',
+        description: 'Failed to load trade loop details.',
+        status: 'error',
+      })
+    } finally {
+      setMultiWayManagerLoading(false)
+    }
+  }, [getOrFetchMultiWayLoopDetails, toast])
 
   const fetchMultiWayTrades = async () => {
     try {
@@ -4797,27 +4843,7 @@ const Dashboard: React.FC = () => {
                                         loopStatus={trade?.status}
                                         expiryLabel={trade?.expires_at ? new Date(trade.expires_at).toLocaleString() : undefined}
                                         onJoinTrade={() => {}}
-                                        onViewDetails={() => {
-                                          void (async () => {
-                                            try {
-                                              setMultiWayManagerLoading(true)
-                                              const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                              const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
-                                              setSelectedMultiWayTrade(details)
-                                              setMultiWayManagerOpen(true)
-                                            } catch (e) {
-                                              console.error('Failed to load loop details:', e)
-                                              toast({
-                                                id: 'error-load-loop-details-ongoing',
-                                                title: 'Error',
-                                                description: 'Failed to load trade loop details.',
-                                                status: 'error',
-                                              })
-                                            } finally {
-                                              setMultiWayManagerLoading(false)
-                                            }
-                                          })()
-                                        }}
+                                        onViewDetails={() => handleViewMultiWayTradeDetails(trade)}
                                         isLoading={multiWayManagerLoading}
                                       />
                                     </Box>
@@ -5024,26 +5050,7 @@ const Dashboard: React.FC = () => {
                                 </Heading>
                                 <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
                                   {groupedMultiWayTrades.needsAction.map((trade) => {
-                                    const summary = getMultiWayTradeSummary(trade)
-                                    const handleViewDetails = async () => {
-                                      try {
-                                        setMultiWayManagerLoading(true)
-                                        const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                        const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
-                                        setSelectedMultiWayTrade(details)
-                                        setMultiWayManagerOpen(true)
-                                      } catch (e) {
-                                        console.error('Failed to load loop details:', e)
-                                        toast({
-                                          id: 'error-load-loop-details',
-                                          title: 'Error',
-                                          description: 'Failed to load trade loop details.',
-                                          status: 'error',
-                                        })
-                                      } finally {
-                                        setMultiWayManagerLoading(false)
-                                      }
-                                    }
+                                    const summary = getSummary(trade)
                                     return (
                                       <Box
                                         key={trade.id || trade.loop_id || trade.chain_id}
@@ -5055,7 +5062,7 @@ const Dashboard: React.FC = () => {
                                         cursor="pointer"
                                         transition="all 0.2s"
                                         _hover={{ borderColor: 'blue.400', transform: 'translateY(-2px)', shadow: 'md' }}
-                                        onClick={handleViewDetails}
+                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
                                       >
                                         <VStack align="start" spacing={3}>
                                           <Box>
@@ -5097,7 +5104,7 @@ const Dashboard: React.FC = () => {
                                         </VStack>
                                       </Box>
                                     )
-                                  })}
+                                  })}}
                                 </SimpleGrid>
                               </Box>
                             )}
@@ -5110,30 +5117,11 @@ const Dashboard: React.FC = () => {
                                 </Heading>
                                 <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
                                   {groupedMultiWayTrades.waitingOnOthers.map((trade) => {
-                                    const summary = getMultiWayTradeSummary(trade)
+                                    const summary = getSummary(trade)
                                     const participants = trade.participants || []
                                     const totalParticipants = participants.length
                                     const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
                                     const pendingCount = totalParticipants - acceptedCount
-                                    const handleViewDetails = async () => {
-                                      try {
-                                        setMultiWayManagerLoading(true)
-                                        const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                        const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
-                                        setSelectedMultiWayTrade(details)
-                                        setMultiWayManagerOpen(true)
-                                      } catch (e) {
-                                        console.error('Failed to load loop details:', e)
-                                        toast({
-                                          id: 'error-load-loop-details',
-                                          title: 'Error',
-                                          description: 'Failed to load trade loop details.',
-                                          status: 'error',
-                                        })
-                                      } finally {
-                                        setMultiWayManagerLoading(false)
-                                      }
-                                    }
                                     return (
                                       <Box
                                         key={trade.id || trade.loop_id || trade.chain_id}
@@ -5145,7 +5133,7 @@ const Dashboard: React.FC = () => {
                                         cursor="pointer"
                                         transition="all 0.2s"
                                         _hover={{ borderColor: 'orange.400', transform: 'translateY(-2px)', shadow: 'md' }}
-                                        onClick={handleViewDetails}
+                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
                                       >
                                         <VStack align="start" spacing={3}>
                                           <Box>

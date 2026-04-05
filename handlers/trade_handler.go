@@ -3332,13 +3332,14 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 
 		// Fetch names and titles
 		var u1Name, u2Name, u3Name, u1Title, u2Title, u3Title string
-		h.db.QueryRow("SELECT name FROM users WHERE id = ?", u1ID).Scan(&u1Name)
-		h.db.QueryRow("SELECT name FROM users WHERE id = ?", u2ID).Scan(&u2Name)
-		h.db.QueryRow("SELECT name FROM users WHERE id = ?", u3ID).Scan(&u3Name)
+		var u1Slug, u2Slug, u3Slug, u1ProductSlug, u2ProductSlug, u3ProductSlug sql.NullString
+		h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", u1ID).Scan(&u1Name, &u1Slug)
+		h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", u2ID).Scan(&u2Name, &u2Slug)
+		h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", u3ID).Scan(&u3Name, &u3Slug)
 
-		h.db.QueryRow("SELECT title FROM products WHERE id = ?", u3WantedPID).Scan(&u1Title) // U1's product
-		h.db.QueryRow("SELECT title FROM products WHERE id = ?", u2PID).Scan(&u2Title)       // U2's product
-		h.db.QueryRow("SELECT title FROM products WHERE id = ?", u3PID).Scan(&u3Title)       // U3's product
+		h.db.QueryRow("SELECT title, slug FROM products WHERE id = ?", u3WantedPID).Scan(&u1Title, &u1ProductSlug) // U1's product
+		h.db.QueryRow("SELECT title, slug FROM products WHERE id = ?", u2PID).Scan(&u2Title, &u2ProductSlug)       // U2's product
+		h.db.QueryRow("SELECT title, slug FROM products WHERE id = ?", u3PID).Scan(&u3Title, &u3ProductSlug)       // U3's product
 
 		// Check if user is participant
 		if userID != u1ID && userID != u2ID && userID != u3ID {
@@ -3346,9 +3347,21 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 		}
 
 		participantsDetails := []map[string]interface{}{
-			{"user_id": u1ID, "user_name": u1Name, "product_id": u3WantedPID, "product_title": u1Title, "position_in_loop": 0, "trade_id": tID, "trade_status": "accepted"},
-			{"user_id": u2ID, "user_name": u2Name, "product_id": u2PID, "product_title": u2Title, "position_in_loop": 1, "trade_id": tID, "trade_status": "accepted"},
-			{"user_id": u3ID, "user_name": u3Name, "product_id": u3PID, "product_title": u3Title, "position_in_loop": 2, "trade_id": tID, "trade_status": "accepted"},
+			{
+				"user_id": u1ID, "user_name": u1Name, "user_slug": u1Slug.String,
+				"product_id": u3WantedPID, "product_title": u1Title, "product_slug": u1ProductSlug.String,
+				"position_in_loop": 0, "trade_id": tID, "trade_status": "accepted",
+			},
+			{
+				"user_id": u2ID, "user_name": u2Name, "user_slug": u2Slug.String,
+				"product_id": u2PID, "product_title": u2Title, "product_slug": u2ProductSlug.String,
+				"position_in_loop": 1, "trade_id": tID, "trade_status": "accepted",
+			},
+			{
+				"user_id": u3ID, "user_name": u3Name, "user_slug": u3Slug.String,
+				"product_id": u3PID, "product_title": u3Title, "product_slug": u3ProductSlug.String,
+				"position_in_loop": 2, "trade_id": tID, "trade_status": "accepted",
+			},
 		}
 
 		edges := []map[string]interface{}{
@@ -3418,9 +3431,10 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 
 		// Fetch names
 		var u1Name, u2Name, u3Name string
-		_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", u1ID).Scan(&u1Name)
-		_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", u2ID).Scan(&u2Name)
-		_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", u3ID).Scan(&u3Name)
+		var u1Slug, u2Slug, u3Slug sql.NullString
+		_ = h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", u1ID).Scan(&u1Name, &u1Slug)
+		_ = h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", u2ID).Scan(&u2Name, &u2Slug)
+		_ = h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", u3ID).Scan(&u3Name, &u3Slug)
 
 		// Fetch U3's wanted product (which is U1's offered product)
 		var u3WantedPID int
@@ -3431,11 +3445,12 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 			LIMIT 1
 		`, tradeID).Scan(&u3WantedPID)
 
-		// Fetch product titles
+		// Fetch product titles and slugs
 		var u1Title, u2Title, u3Title string
-		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", u3WantedPID).Scan(&u1Title)
-		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", u2PID).Scan(&u2Title)
-		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", u3PID).Scan(&u3Title)
+		var u1ProductSlug, u2ProductSlug, u3ProductSlug sql.NullString
+		_ = h.db.QueryRow("SELECT title, slug FROM products WHERE id = ?", u3WantedPID).Scan(&u1Title, &u1ProductSlug)
+		_ = h.db.QueryRow("SELECT title, slug FROM products WHERE id = ?", u2PID).Scan(&u2Title, &u2ProductSlug)
+		_ = h.db.QueryRow("SELECT title, slug FROM products WHERE id = ?", u3PID).Scan(&u3Title, &u3ProductSlug)
 
 		// Check if user is participant
 		if userID != u1ID && userID != u2ID && userID != u3ID {
@@ -3448,9 +3463,21 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 		_ = h.db.QueryRow("SELECT status FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&status)
 
 		participantsDetails := []map[string]interface{}{
-			{"user_id": u1ID, "user_name": u1Name, "product_id": u3WantedPID, "product_title": u1Title, "position_in_loop": 0, "trade_id": tradeID, "trade_status": "accepted"},
-			{"user_id": u2ID, "user_name": u2Name, "product_id": u2PID, "product_title": u2Title, "position_in_loop": 1, "trade_id": tradeID, "trade_status": "accepted"},
-			{"user_id": u3ID, "user_name": u3Name, "product_id": u3PID, "product_title": u3Title, "position_in_loop": 2, "trade_id": tradeID, "trade_status": "accepted"},
+			{
+				"user_id": u1ID, "user_name": u1Name, "user_slug": u1Slug.String,
+				"product_id": u3WantedPID, "product_title": u1Title, "product_slug": u1ProductSlug.String,
+				"position_in_loop": 0, "trade_id": tradeID, "trade_status": "accepted",
+			},
+			{
+				"user_id": u2ID, "user_name": u2Name, "user_slug": u2Slug.String,
+				"product_id": u2PID, "product_title": u2Title, "product_slug": u2ProductSlug.String,
+				"position_in_loop": 1, "trade_id": tradeID, "trade_status": "accepted",
+			},
+			{
+				"user_id": u3ID, "user_name": u3Name, "user_slug": u3Slug.String,
+				"product_id": u3PID, "product_title": u3Title, "product_slug": u3ProductSlug.String,
+				"position_in_loop": 2, "trade_id": tradeID, "trade_status": "accepted",
+			},
 		}
 
 		edges := []map[string]interface{}{
@@ -3516,9 +3543,10 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 		}
 
 		var fromUserName, toUserName, productTitle string
-		h.db.QueryRow("SELECT name FROM users WHERE id = ?", buyerID).Scan(&fromUserName)
-		h.db.QueryRow("SELECT name FROM users WHERE id = ?", sellerID).Scan(&toUserName)
-		h.db.QueryRow("SELECT title FROM products WHERE id = ?", targetProductID).Scan(&productTitle)
+		var fromUserSlug, toUserSlug, productSlug sql.NullString
+		h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", buyerID).Scan(&fromUserName, &fromUserSlug)
+		h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", sellerID).Scan(&toUserName, &toUserSlug)
+		h.db.QueryRow("SELECT title, slug FROM products WHERE id = ?", targetProductID).Scan(&productTitle, &productSlug)
 
 		if buyerID == userID || sellerID == userID {
 			involvesUser = true
@@ -3527,8 +3555,10 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 		participantsDetails = append(participantsDetails, map[string]interface{}{
 			"user_id":       buyerID,
 			"user_name":     fromUserName,
+			"user_slug":     fromUserSlug.String,
 			"product_id":    targetProductID,
 			"product_title": productTitle,
+			"product_slug":  productSlug.String,
 			"trade_id":      tradeID,
 			"trade_status": func() string {
 				if s, ok := agreementStatusByUser[buyerID]; ok {
