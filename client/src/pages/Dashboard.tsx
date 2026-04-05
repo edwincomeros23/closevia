@@ -4955,13 +4955,43 @@ const Dashboard: React.FC = () => {
                                 <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
                                   {groupedMultiWayTrades.needsAction.map((trade) => {
                                     const summary = getMultiWayTradeSummary(trade)
+                                    const handleViewDetails = async () => {
+                                      try {
+                                        setMultiWayManagerLoading(true)
+                                        const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+                                        const details = await fetchMultiWayTrade(loopId)
+                                        setSelectedMultiWayTrade(details)
+                                        setMultiWayManagerOpen(true)
+                                      } catch (e) {
+                                        console.error('Failed to load loop details:', e)
+                                        toast({
+                                          id: 'error-load-loop-details',
+                                          title: 'Error',
+                                          description: 'Failed to load trade loop details.',
+                                          status: 'error',
+                                        })
+                                      } finally {
+                                        setMultiWayManagerLoading(false)
+                                      }
+                                    }
                                     return (
-                                      <Box key={trade.id || trade.loop_id || trade.chain_id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
+                                      <Box
+                                        key={trade.id || trade.loop_id || trade.chain_id}
+                                        p={4}
+                                        bg={cardBg}
+                                        borderRadius="lg"
+                                        borderWidth="1px"
+                                        borderColor={borderColor}
+                                        cursor="pointer"
+                                        transition="all 0.2s"
+                                        _hover={{ borderColor: 'blue.400', transform: 'translateY(-2px)', shadow: 'md' }}
+                                        onClick={handleViewDetails}
+                                      >
                                         <VStack align="start" spacing={3}>
                                           <Box>
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Your Item ? You Get</Text>
+                                            <Text fontSize="xs" color="gray.500" mb={1}>Your Item → You Get</Text>
                                             <Text fontWeight="semibold" fontSize="sm">
-                                              {summary.yourGive} ? {summary.yourGet}
+                                              {summary.yourGive} → {summary.yourGet}
                                             </Text>
                                           </Box>
                                           <Box w="full">
@@ -4973,7 +5003,10 @@ const Dashboard: React.FC = () => {
                                               size="sm"
                                               colorScheme="green"
                                               flex={1}
-                                              onClick={() => handleJoinMultiWayTrade(trade)}
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleJoinMultiWayTrade(trade)
+                                              }}
                                               isLoading={multiWayTradeJoining}
                                             >
                                               Accept
@@ -4983,7 +5016,10 @@ const Dashboard: React.FC = () => {
                                               colorScheme="red"
                                               variant="outline"
                                               flex={1}
-                                              onClick={() => handleDeclineMultiWayTrade(trade, false)}
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleDeclineMultiWayTrade(trade, false)
+                                              }}
                                             >
                                               Decline
                                             </Button>
@@ -5005,14 +5041,47 @@ const Dashboard: React.FC = () => {
                                 <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
                                   {groupedMultiWayTrades.waitingOnOthers.map((trade) => {
                                     const summary = getMultiWayTradeSummary(trade)
-                                    const pendingCount = (trade.participants || []).filter((p: any) => p.status === 'pending').length
+                                    const participants = trade.participants || []
+                                    const totalParticipants = participants.length
+                                    const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
+                                    const pendingCount = totalParticipants - acceptedCount
+                                    const handleViewDetails = async () => {
+                                      try {
+                                        setMultiWayManagerLoading(true)
+                                        const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+                                        const details = await fetchMultiWayTrade(loopId)
+                                        setSelectedMultiWayTrade(details)
+                                        setMultiWayManagerOpen(true)
+                                      } catch (e) {
+                                        console.error('Failed to load loop details:', e)
+                                        toast({
+                                          id: 'error-load-loop-details',
+                                          title: 'Error',
+                                          description: 'Failed to load trade loop details.',
+                                          status: 'error',
+                                        })
+                                      } finally {
+                                        setMultiWayManagerLoading(false)
+                                      }
+                                    }
                                     return (
-                                      <Box key={trade.id || trade.loop_id || trade.chain_id} p={4} bg={cardBg} borderRadius="lg" borderWidth="1px" borderColor="orange.200">
+                                      <Box
+                                        key={trade.id || trade.loop_id || trade.chain_id}
+                                        p={4}
+                                        bg={cardBg}
+                                        borderRadius="lg"
+                                        borderWidth="1px"
+                                        borderColor="orange.200"
+                                        cursor="pointer"
+                                        transition="all 0.2s"
+                                        _hover={{ borderColor: 'orange.400', transform: 'translateY(-2px)', shadow: 'md' }}
+                                        onClick={handleViewDetails}
+                                      >
                                         <VStack align="start" spacing={3}>
                                           <Box>
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Your Item ? You Get</Text>
+                                            <Text fontSize="xs" color="gray.500" mb={1}>Your Item → You Get</Text>
                                             <Text fontWeight="semibold" fontSize="sm">
-                                              {summary.yourGive} ? {summary.yourGet}
+                                              {summary.yourGive} → {summary.yourGet}
                                             </Text>
                                           </Box>
                                           <Box w="full">
@@ -5021,7 +5090,12 @@ const Dashboard: React.FC = () => {
                                           </Box>
                                           {pendingCount > 0 && (
                                             <Badge colorScheme="orange" fontSize="xs">
-                                              Waiting on {pendingCount} participant{pendingCount !== 1 ? 's' : ''}
+                                              {acceptedCount} of {totalParticipants} accepted
+                                            </Badge>
+                                          )}
+                                          {pendingCount === 0 && (
+                                            <Badge colorScheme="green" fontSize="xs">
+                                              All participants accepted ✓
                                             </Badge>
                                           )}
                                         </VStack>
