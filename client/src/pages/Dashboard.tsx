@@ -5104,7 +5104,7 @@ const Dashboard: React.FC = () => {
                                         </VStack>
                                       </Box>
                                     )
-                                  })}}
+                                  })}
                                 </SimpleGrid>
                               </Box>
                             )}
