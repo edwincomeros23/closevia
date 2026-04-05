@@ -2525,7 +2525,7 @@ const AdminDashboard: React.FC = () => {
     return (
       <VStack spacing={8} pr={20} align="stretch">
         {/* Report Summary Cards */}
-        <Box maxW="5xl">
+        <Box w="full">
           <HStack mb={3} spacing={2}>
             <Icon as={FiAlertTriangle} color="#f43f5e" />
             <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports Overview</Text>
@@ -2563,7 +2563,7 @@ const AdminDashboard: React.FC = () => {
         </Box>
 
         {/* Report Type Breakdown Cards */}
-        <Box maxW="5xl">
+        <Box w="full">
           <HStack mb={3} spacing={2}>
             <Icon as={FiAlertCircle} color="orange.500" />
             <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports by Reason</Text>
@@ -2601,7 +2601,7 @@ const AdminDashboard: React.FC = () => {
         </Box>
 
         {/* User Reports */}
-        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
           <CardHeader>
             <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
               <HStack>
@@ -2752,7 +2752,7 @@ const AdminDashboard: React.FC = () => {
         </Card>
 
         {/* Multiway Disputes */}
-        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
           <CardHeader>
             <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
               <HStack>
@@ -2912,7 +2912,7 @@ const AdminDashboard: React.FC = () => {
         </Modal>
 
         {/* Rider Remittance & Free Slots (Task 19/20) */}
-        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
           <CardHeader>
             <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
               <HStack>
@@ -3057,7 +3057,7 @@ const AdminDashboard: React.FC = () => {
         </Card>
 
         {/* Rider Applications */}
-        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+        <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
           <CardHeader>
             <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
               <HStack>
@@ -3254,7 +3254,7 @@ const AdminDashboard: React.FC = () => {
   const ManagementSection = () => (
     <VStack spacing={8} pr={20} align="stretch">
       {/* Users */}
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
         <CardHeader pb={0}>
           <Heading size="sm" color={textColor}>Users</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
@@ -3323,7 +3323,7 @@ const AdminDashboard: React.FC = () => {
       </Card>
 
       {/* Items */}
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
         <CardHeader pb={0}>
           <Heading size="sm" color={textColor}>Items</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
@@ -3429,7 +3429,7 @@ const AdminDashboard: React.FC = () => {
       <AdvertisementCMS />
 
       {/* Campaigns */}
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
         <CardHeader>
           <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
             <HStack><Icon as={FiStar} color="orange.500" boxSize={5} /><Heading size="sm" color={textColor}>Popup Campaigns</Heading></HStack>
@@ -3501,7 +3501,7 @@ const AdminDashboard: React.FC = () => {
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
       </Card>
 
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
         <CardHeader>
           <HStack>
             <Icon as={FiServer} color="brand.500" boxSize={5} />
@@ -3597,7 +3597,7 @@ const AdminDashboard: React.FC = () => {
         </CardBody>
       </Card>
 
-      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
         <CardHeader><Heading size="sm" color={textColor}>Revenue Breakdown (Last 4 Weeks)</Heading></CardHeader>
         <CardBody>
           <VStack spacing={3} align="stretch">
