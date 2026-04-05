@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   Modal,
   ModalOverlay,
@@ -15,16 +15,11 @@ import {
   Badge,
   Divider,
   Image,
-  Grid,
   Icon,
-  Spinner,
   useToast,
-  Card,
-  CardBody,
   Heading,
   Avatar,
   useColorModeValue,
-  Flex,
   Stack,
   Progress,
   Select,
@@ -33,9 +28,22 @@ import {
   FormControl,
   Collapse,
   useDisclosure,
+  Tag,
+  TagLabel,
+  TagLeftIcon,
 } from '@chakra-ui/react'
-import { FaArrowRight, FaCheck, FaTimes, FaBox, FaClock, FaMapMarkerAlt, FaChevronDown } from 'react-icons/fa'
-import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
+import {
+  FaCheck,
+  FaTimes,
+  FaBox,
+  FaClock,
+  FaMapMarkerAlt,
+  FaChevronDown,
+  FaArrowRight,
+  FaTruck,
+  FaHandshake,
+} from 'react-icons/fa'
+import { MultiWayTrade } from '../types'
 import {
   acceptMultiWayTrade,
   declineMultiWayTrade,
@@ -44,6 +52,7 @@ import {
   reinviteTradeLoop,
   getChainLegs,
   updateLegHandoff,
+  completeLeg,
 } from '../services/tradeService'
 
 interface MultiWayTradeModalProps {
@@ -52,6 +61,7 @@ interface MultiWayTradeModalProps {
   multiWayTrade: MultiWayTrade
   onTradeCompleted?: () => void
   canManage?: boolean
+  currentUserId?: number
 }
 
 /** Format ms remaining as "Xh Ym" or "Expired" */
@@ -63,26 +73,78 @@ function formatTimeLeft(expiresAt: string): string {
   return `${h}h ${m}m remaining`
 }
 
+/** Human-readable label for raw DB status strings */
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    user3_accepted: 'Accepted',
+    active: 'Active',
+    pending_user3: 'Awaiting 3rd Party',
+    pending: 'Pending',
+    accepted: 'Accepted',
+    declined: 'Declined',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+    in_progress: 'In Progress',
+    multiway_active: 'Active',
+    pending_initiator_upgrade: 'Upgrade Required',
+  }
+  return map[status] || status.replace(/_/g, ' ')
+}
+
+function statusColorScheme(status: string): string {
+  switch (status) {
+    case 'pending':
+    case 'pending_user3':
+    case 'pending_initiator_upgrade':
+      return 'yellow'
+    case 'accepted':
+    case 'user3_accepted':
+      return 'green'
+    case 'active':
+    case 'multiway_active':
+    case 'in_progress':
+      return 'blue'
+    case 'declined':
+    case 'cancelled':
+      return 'red'
+    case 'completed':
+      return 'cyan'
+    default:
+      return 'gray'
+  }
+}
+
 const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   isOpen,
   onClose,
   multiWayTrade,
   onTradeCompleted,
   canManage = false,
+  currentUserId,
 }) => {
+  const isActiveChain =
+    multiWayTrade.status === 'active' || multiWayTrade.status === 'user3_accepted'
+
   const [loading, setLoading] = useState(false)
-  const [selectedAction, setSelectedAction] = useState<'accept' | 'decline' | 'execute' | 'cancel' | 'reinvite' | null>(null)
+  const [selectedAction, setSelectedAction] = useState<
+    'accept' | 'decline' | 'execute' | 'cancel' | 'reinvite' | null
+  >(null)
   const [timeLeft, setTimeLeft] = useState<string>('')
   const [legs, setLegs] = useState<any[]>([])
-  const [legForms, setLegForms] = useState<Record<number, { method: 'meetup' | 'delivery'; location: string; time: string }>>({})
+  const [legForms, setLegForms] = useState<
+    Record<number, { method: 'meetup' | 'delivery'; location: string; time: string }>
+  >({})
   const [savingLeg, setSavingLeg] = useState<number | null>(null)
-  const { isOpen: isLegsOpen, onToggle: onLegsToggle } = useDisclosure({ defaultIsOpen: false })
+  const [completingLeg, setCompletingLeg] = useState<number | null>(null)
+  const { isOpen: isLegsOpen, onToggle: onLegsToggle } = useDisclosure({
+    defaultIsOpen: isActiveChain,
+  })
   const toast = useToast()
 
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
-  const participantBg = useColorModeValue('blue.50', 'blue.900')
-  const participantBorder = useColorModeValue('blue.200', 'blue.700')
+  const sectionBg = useColorModeValue('gray.50', 'gray.750')
+  const legCardBg = useColorModeValue('white', 'gray.800')
 
   // Countdown timer
   useEffect(() => {
@@ -93,7 +155,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     return () => clearInterval(id)
   }, [multiWayTrade.expires_at])
 
-  // Fetch legs when the chain is active/accepted
+  // Fetch legs when chain is active
   useEffect(() => {
     if (!isOpen) return
     const chainId = multiWayTrade.loop_id
@@ -102,8 +164,10 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       .then((data) => {
         const legList: any[] = data?.legs || []
         setLegs(legList)
-        // Seed form state from existing values
-        const forms: Record<number, { method: 'meetup' | 'delivery'; location: string; time: string }> = {}
+        const forms: Record<
+          number,
+          { method: 'meetup' | 'delivery'; location: string; time: string }
+        > = {}
         legList.forEach((leg: any) => {
           forms[leg.id] = {
             method: leg.handoff_method || 'meetup',
@@ -113,8 +177,37 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
         })
         setLegForms(forms)
       })
-      .catch(() => {/* non-critical, legs section simply won't render */})
+      .catch(() => {})
   }, [isOpen, multiWayTrade.loop_id, multiWayTrade.status])
+
+  const sortedParticipants = useMemo(
+    () =>
+      [...multiWayTrade.participants].sort(
+        (a, b) =>
+          ((a as any).position_in_loop ?? (a as any).position ?? 0) -
+          ((b as any).position_in_loop ?? (b as any).position ?? 0)
+      ),
+    [multiWayTrade.participants]
+  )
+
+  /** Map userId → userName for quick lookup in leg labels */
+  const userNameMap = useMemo(() => {
+    const map: Record<number, string> = {}
+    sortedParticipants.forEach((p) => {
+      map[p.user_id] = p.user_name
+    })
+    return map
+  }, [sortedParticipants])
+
+  const completedLegs = multiWayTrade.edges.filter((e) => e.status === 'completed').length
+  const totalLegs = multiWayTrade.edges.length
+  const healthPct = totalLegs > 0 ? Math.round((completedLegs / totalLegs) * 100) : 0
+
+  const canExecute =
+    multiWayTrade.status === 'active' &&
+    sortedParticipants.every((p) => p.trade_status === 'accepted')
+
+  // ── handlers ──────────────────────────────────────────────────────────────
 
   const handleSaveLegHandoff = async (legId: number) => {
     const form = legForms[legId]
@@ -124,9 +217,35 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       await updateLegHandoff(legId, form.method, form.location, form.time)
       toast({ id: `leg-${legId}-saved`, title: 'Handoff saved', status: 'success', duration: 2000 })
     } catch {
-      toast({ id: `leg-${legId}-err`, title: 'Failed to save handoff', status: 'error', duration: 3000 })
+      toast({ id: `leg-${legId}-err`, title: 'Failed to save', status: 'error', duration: 3000 })
     } finally {
       setSavingLeg(null)
+    }
+  }
+
+  const handleCompleteLeg = async (legId: number) => {
+    setCompletingLeg(legId)
+    try {
+      await completeLeg(legId)
+      toast({
+        id: `leg-${legId}-complete`,
+        title: 'Confirmed!',
+        description: 'Handoff marked as received.',
+        status: 'success',
+        duration: 3000,
+      })
+      const data = await getChainLegs(multiWayTrade.loop_id)
+      setLegs(data?.legs || [])
+      onTradeCompleted?.()
+    } catch {
+      toast({
+        id: `leg-${legId}-complete-err`,
+        title: 'Failed to confirm',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setCompletingLeg(null)
     }
   }
 
@@ -135,17 +254,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setLoading(true)
       setSelectedAction('accept')
       await acceptMultiWayTrade(multiWayTrade.loop_id)
-      toast({
-        id: "multiwaytrademodal-success",
-        title: 'Success',
-        description: 'You accepted this multi-way trade opportunity',
-        status: 'success',
-      })
+      toast({ id: 'mwt-accept', title: 'Trade accepted!', status: 'success' })
       onTradeCompleted?.()
       onClose()
     } catch (error: any) {
       toast({
-        id: "multiwaytrademodal-error",
+        id: 'mwt-accept-err',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to accept trade',
         status: 'error',
@@ -161,16 +275,11 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setLoading(true)
       setSelectedAction('decline')
       await declineMultiWayTrade(multiWayTrade.loop_id)
-      toast({
-        id: "multiwaytrademodal-declined",
-        title: 'Declined',
-        description: 'You declined this multi-way trade',
-        status: 'info',
-      })
+      toast({ id: 'mwt-decline', title: 'Trade declined', status: 'info' })
       onClose()
     } catch (error: any) {
       toast({
-        id: "multiwaytrademodal-error-2",
+        id: 'mwt-decline-err',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to decline trade',
         status: 'error',
@@ -186,17 +295,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setLoading(true)
       setSelectedAction('execute')
       await executeMultiWayTrade(multiWayTrade.loop_id)
-      toast({
-        id: "multiwaytrademodal-success-2",
-        title: 'Success',
-        description: 'Multi-way trade executed successfully!',
-        status: 'success',
-      })
+      toast({ id: 'mwt-execute', title: 'Trade executed!', status: 'success' })
       onTradeCompleted?.()
       onClose()
     } catch (error: any) {
       toast({
-        id: "multiwaytrademodal-error-3",
+        id: 'mwt-execute-err',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to execute trade',
         status: 'error',
@@ -212,17 +316,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setLoading(true)
       setSelectedAction('cancel')
       await cancelTradeLoop(multiWayTrade.loop_id)
-      toast({
-        id: "multiwaytrademodal-cancel-success",
-        title: 'Loop cancelled',
-        description: 'This multi-way loop has been cancelled.',
-        status: 'info',
-      })
+      toast({ id: 'mwt-cancel', title: 'Loop cancelled', status: 'info' })
       onTradeCompleted?.()
       onClose()
     } catch (error: any) {
       toast({
-        id: "multiwaytrademodal-cancel-error",
+        id: 'mwt-cancel-err',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to cancel loop',
         status: 'error',
@@ -238,17 +337,12 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
       setLoading(true)
       setSelectedAction('reinvite')
       await reinviteTradeLoop(multiWayTrade.loop_id)
-      toast({
-        id: "multiwaytrademodal-reinvite-success",
-        title: 'Loop reinvited',
-        description: 'Participants can hop in again.',
-        status: 'success',
-      })
+      toast({ id: 'mwt-reinvite', title: 'Loop reinvited', status: 'success' })
       onTradeCompleted?.()
       onClose()
     } catch (error: any) {
       toast({
-        id: "multiwaytrademodal-reinvite-error",
+        id: 'mwt-reinvite-err',
         title: 'Error',
         description: error?.response?.data?.error || 'Failed to reinvite loop',
         status: 'error',
@@ -259,104 +353,118 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
     }
   }
 
-  const statusColorScheme = (status: string) => {
-    switch (status) {
-      case 'pending': case 'pending_user3': return 'yellow'
-      case 'accepted': case 'user3_accepted': return 'green'
-      case 'declined': return 'red'
-      case 'completed': return 'cyan'
-      case 'in_progress': case 'active': case 'multiway_active': return 'blue'
-      case 'disputed': return 'orange'
-      default: return 'gray'
-    }
-  }
-
-  const sortedParticipants = [...multiWayTrade.participants].sort(
-    (a, b) => ((a as any).position_in_loop ?? (a as any).position ?? 0) - ((b as any).position_in_loop ?? (b as any).position ?? 0)
-  )
-
-  // Chain health indicator — computed from edges
-  const completedLegs = multiWayTrade.edges.filter(e => e.status === 'completed').length
-  const totalLegs = multiWayTrade.edges.length
-  const healthPct = totalLegs > 0 ? Math.round((completedLegs / totalLegs) * 100) : 0
-
-  // Show Execute button only when the overall trade is active AND every participant has accepted.
-  const canExecute = multiWayTrade.status === 'active' && sortedParticipants.every(p => p.trade_status === 'accepted')
+  // ── render ─────────────────────────────────────────────────────────────────
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="2xl" isCentered scrollBehavior="inside">
       <ModalOverlay backdropFilter="blur(4px)" />
-      <ModalContent bg={cardBg} maxH="90vh" overflowY="auto">
-        <ModalHeader borderBottomWidth="1px" borderColor={borderColor}>
-          <VStack align="start" spacing={2}>
-            <HStack justify="space-between" w="full">
-              <Heading size="md">
-                {sortedParticipants.length}-Way Trade Chain
-              </Heading>
-              <Badge colorScheme={statusColorScheme(multiWayTrade.status)}>
-                {multiWayTrade.status}
-              </Badge>
-            </HStack>
+      <ModalContent bg={cardBg} maxH="90vh">
+        {/* ── Header ── */}
+        <ModalHeader borderBottomWidth="1px" borderColor={borderColor} pb={4}>
+          <HStack justify="space-between" align="flex-start">
+            <VStack align="start" spacing={1}>
+              <Heading size="md">{sortedParticipants.length}-Way Trade Chain</Heading>
+              <HStack spacing={2} flexWrap="wrap">
+                <Badge colorScheme={statusColorScheme(multiWayTrade.status)} px={2} py={0.5} borderRadius="full">
+                  {statusLabel(multiWayTrade.status)}
+                </Badge>
+                {timeLeft && (
+                  <Tag size="sm" colorScheme={timeLeft === 'Expired' ? 'red' : 'orange'} variant="subtle">
+                    <TagLeftIcon as={FaClock} />
+                    <TagLabel>{timeLeft}</TagLabel>
+                  </Tag>
+                )}
+              </HStack>
+            </VStack>
+            <ModalCloseButton position="relative" top={0} right={0} />
+          </HStack>
 
-            {/* Chain health indicator */}
-            {totalLegs > 0 && (
-              <Box w="full">
-                <HStack justify="space-between" mb={1}>
-                  <Text fontSize="xs" color="gray.600">
-                    {completedLegs} of {totalLegs} legs complete
-                  </Text>
-                  <Text fontSize="xs" fontWeight="bold" color={healthPct === 100 ? 'green.500' : 'blue.500'}>
-                    {healthPct}%
-                  </Text>
-                </HStack>
-                <Progress
-                  value={healthPct}
-                  size="sm"
-                  colorScheme={healthPct === 100 ? 'green' : 'blue'}
-                  borderRadius="full"
-                />
-              </Box>
-            )}
-
-            {/* Expiration countdown */}
-            {timeLeft && (
-              <HStack spacing={1}>
-                <Icon as={FaClock} color={timeLeft === 'Expired' ? 'red.500' : 'orange.400'} boxSize={3} />
-                <Text fontSize="xs" color={timeLeft === 'Expired' ? 'red.500' : 'orange.600'} fontWeight="medium">
-                  {timeLeft}
+          {/* Progress bar */}
+          {isActiveChain && totalLegs > 0 && (
+            <Box mt={3}>
+              <HStack justify="space-between" mb={1}>
+                <Text fontSize="xs" color="gray.500">
+                  Handoffs confirmed: {completedLegs} / {totalLegs}
+                </Text>
+                <Text fontSize="xs" fontWeight="bold" color={healthPct === 100 ? 'green.500' : 'blue.500'}>
+                  {healthPct}%
                 </Text>
               </HStack>
-            )}
-          </VStack>
+              <Progress
+                value={healthPct}
+                size="sm"
+                colorScheme={healthPct === 100 ? 'green' : 'blue'}
+                borderRadius="full"
+              />
+            </Box>
+          )}
         </ModalHeader>
 
-        <ModalCloseButton />
+        <ModalBody py={5} overflowY="auto">
+          <VStack spacing={5} align="stretch">
 
-        <ModalBody py={6}>
-          <VStack spacing={6} align="stretch">
-            {/* Trade Chain Visualization */}
+            {/* ── Trade Flow ── */}
             <Box>
-              <Heading size="sm" mb={4}>
+              <Text fontWeight="semibold" fontSize="sm" color="gray.500" mb={3} textTransform="uppercase" letterSpacing="wide">
                 Trade Flow
-              </Heading>
-              <VStack spacing={3} align="start" pl={4}>
+              </Text>
+              <VStack spacing={3} align="stretch">
                 {multiWayTrade.edges.map((edge, idx) => (
-                  <Box key={idx} w="full">
-                    <HStack spacing={2} mb={2}>
-                      <Badge colorScheme="blue" variant="subtle">
-                        Trade {idx + 1}
-                      </Badge>
-                      <Text fontSize="sm" fontWeight="medium">
-                        {edge.from_user_name} offers to {edge.to_user_name}
-                      </Text>
-                    </HStack>
-                    <HStack spacing={3} pl={4}>
-                      <Icon as={FaBox} color="orange.500" />
-                      <Text fontSize="sm" color="gray.600">
-                        {edge.product_title}
-                      </Text>
-                      <Badge size="sm" colorScheme={statusColorScheme(edge.status || 'pending')}>
-                        {edge.status || 'pending'}
+                  <Box
+                    key={idx}
+                    p={3}
+                    borderWidth="1px"
+                    borderColor={borderColor}
+                    borderRadius="lg"
+                    bg={sectionBg}
+                  >
+                    <HStack spacing={3}>
+                      {/* Product image */}
+                      {(edge as any).product_image ? (
+                        <Image
+                          src={(edge as any).product_image}
+                          alt={edge.product_title}
+                          boxSize="52px"
+                          objectFit="cover"
+                          borderRadius="md"
+                          flexShrink={0}
+                        />
+                      ) : (
+                        <Box
+                          boxSize="52px"
+                          borderRadius="md"
+                          bg="gray.200"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          flexShrink={0}
+                        >
+                          <Icon as={FaBox} color="gray.400" />
+                        </Box>
+                      )}
+
+                      {/* Product + participants */}
+                      <VStack align="start" spacing={0.5} flex={1} minW={0}>
+                        <Text fontWeight="semibold" fontSize="sm" noOfLines={1}>
+                          {edge.product_title}
+                        </Text>
+                        <HStack spacing={1} fontSize="xs" color="gray.500" flexWrap="wrap">
+                          <Avatar name={edge.from_user_name} size="2xs" />
+                          <Text fontWeight="medium" color="gray.700">{edge.from_user_name}</Text>
+                          <Icon as={FaArrowRight} boxSize={2.5} />
+                          <Avatar name={edge.to_user_name} size="2xs" />
+                          <Text fontWeight="medium" color="gray.700">{edge.to_user_name}</Text>
+                        </HStack>
+                      </VStack>
+
+                      {/* Status badge */}
+                      <Badge
+                        colorScheme={statusColorScheme(edge.status || 'pending')}
+                        flexShrink={0}
+                        borderRadius="full"
+                        px={2}
+                      >
+                        {statusLabel(edge.status || 'pending')}
                       </Badge>
                     </HStack>
                   </Box>
@@ -366,78 +474,50 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
             <Divider />
 
-            {/* Participants Details */}
+            {/* ── Participants ── */}
             <Box>
-              <Heading size="sm" mb={4}>
+              <Text fontWeight="semibold" fontSize="sm" color="gray.500" mb={3} textTransform="uppercase" letterSpacing="wide">
                 Participants ({sortedParticipants.length})
-              </Heading>
-              <Grid
-                templateColumns={{ base: '1fr', md: '1fr 1fr' }}
-                gap={4}
-              >
+              </Text>
+              <VStack spacing={2} align="stretch">
                 {sortedParticipants.map((participant, idx) => (
-                  <Card
+                  <HStack
                     key={idx}
-                    bg={participantBg}
-                    borderColor={participantBorder}
+                    p={3}
                     borderWidth="1px"
+                    borderColor={borderColor}
+                    borderRadius="lg"
+                    spacing={3}
+                    bg={sectionBg}
                   >
-                    <CardBody>
-                      <VStack align="start" spacing={3}>
-                        <HStack spacing={2}>
-                          <Badge colorScheme="purple">
-                            Position {((participant as any).position_in_loop ?? (participant as any).position ?? idx) + 1}
-                          </Badge>
-                          <Badge colorScheme={statusColorScheme(participant.trade_status)}>
-                            {participant.trade_status}
-                          </Badge>
-                        </HStack>
-                        <HStack spacing={3} w="full">
-                          <Avatar name={participant.user_name} size="sm" bg="brand.500" />
-                          <VStack align="start" spacing={0}>
-                            <Text fontWeight="semibold">{participant.user_name}</Text>
-                            <Text fontSize="xs" color="gray.600">
-                              User ID: {participant.user_id}
-                            </Text>
-                          </VStack>
-                        </HStack>
-                        <Box w="full">
-                          <HStack spacing={2} mb={2}>
-                            <Icon as={FaBox} fontSize="sm" />
-                            <Text fontSize="sm" fontWeight="medium">Product:</Text>
-                          </HStack>
-                          <Box pl={6} borderLeftWidth="2px" borderColor="brand.200">
-                            {participant.product_image && (
-                              <Image
-                                src={participant.product_image}
-                                alt={participant.product_title}
-                                maxH="80px"
-                                objectFit="cover"
-                                borderRadius="md"
-                                mb={2}
-                              />
-                            )}
-                            <Text fontSize="sm" fontWeight="semibold">
-                              {participant.product_title}
-                            </Text>
-                            <Text fontSize="xs" color="gray.600">
-                              Product ID: {participant.product_id}
-                            </Text>
-                          </Box>
-                        </Box>
-                        {participant.trade_id && (
-                          <Box w="full" fontSize="xs" color="gray.500">
-                            Trade ID: <Badge fontSize="xs">{participant.trade_id}</Badge>
-                          </Box>
+                    <Avatar name={participant.user_name} size="sm" bg="brand.500" color="white" />
+                    <VStack align="start" spacing={0} flex={1} minW={0}>
+                      <HStack spacing={2}>
+                        <Text fontWeight="semibold" fontSize="sm">
+                          {participant.user_name}
+                        </Text>
+                        {participant.user_id === currentUserId && (
+                          <Badge colorScheme="purple" fontSize="2xs">You</Badge>
                         )}
-                      </VStack>
-                    </CardBody>
-                  </Card>
+                      </HStack>
+                      <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                        Offering: {participant.product_title}
+                      </Text>
+                    </VStack>
+                    <Badge
+                      colorScheme={statusColorScheme(participant.trade_status)}
+                      borderRadius="full"
+                      px={2}
+                      flexShrink={0}
+                    >
+                      {statusLabel(participant.trade_status)}
+                    </Badge>
+                  </HStack>
                 ))}
-              </Grid>
+              </VStack>
             </Box>
 
-            {/* Per-leg handoff configuration (only for active/accepted chains) */}
+            {/* ── Per-leg Handoff Coordination (active chains only) ── */}
             {legs.length > 0 && (
               <>
                 <Divider />
@@ -446,110 +526,239 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                     justify="space-between"
                     cursor="pointer"
                     onClick={onLegsToggle}
-                    mb={isLegsOpen ? 4 : 0}
+                    mb={isLegsOpen ? 3 : 0}
+                    _hover={{ opacity: 0.8 }}
                   >
-                    <Heading size="sm">
-                      Arrange Handoffs ({legs.length} legs)
-                    </Heading>
+                    <Text fontWeight="semibold" fontSize="sm" color="gray.500" textTransform="uppercase" letterSpacing="wide">
+                      Arrange Handoffs ({legs.length})
+                    </Text>
                     <Icon
                       as={FaChevronDown}
                       transition="transform 0.2s"
                       transform={isLegsOpen ? 'rotate(180deg)' : 'rotate(0deg)'}
+                      color="gray.400"
                     />
                   </HStack>
+
                   <Collapse in={isLegsOpen} animateOpacity>
                     <VStack spacing={4} align="stretch">
-                      {legs.map((leg: any) => (
-                        <Box
-                          key={leg.id}
-                          p={4}
-                          borderWidth="1px"
-                          borderColor={borderColor}
-                          borderRadius="md"
-                        >
-                          <HStack justify="space-between" mb={3}>
-                            <Text fontSize="sm" fontWeight="semibold">
-                              Leg {leg.leg_index + 1}: User {leg.from_user_id} → User {leg.to_user_id}
-                            </Text>
-                            <Badge colorScheme={statusColorScheme(leg.status)}>
-                              {leg.status}
-                            </Badge>
-                          </HStack>
-                          {leg.status !== 'completed' && leg.status !== 'cancelled' && (
-                            <VStack spacing={3} align="stretch">
-                              <FormControl>
-                                <FormLabel fontSize="xs">Handoff method</FormLabel>
-                                <Select
-                                  size="sm"
-                                  value={legForms[leg.id]?.method || 'meetup'}
-                                  onChange={(e) =>
-                                    setLegForms(prev => ({
-                                      ...prev,
-                                      [leg.id]: { ...prev[leg.id], method: e.target.value as 'meetup' | 'delivery' },
-                                    }))
-                                  }
-                                >
-                                  <option value="meetup">Meetup</option>
-                                  <option value="delivery">Delivery</option>
-                                </Select>
-                              </FormControl>
-                              <FormControl>
-                                <FormLabel fontSize="xs">
-                                  <HStack spacing={1}>
+                      {/* Instruction note */}
+                      <Box
+                        bg={useColorModeValue('blue.50', 'blue.900')}
+                        borderLeftWidth="3px"
+                        borderColor="blue.400"
+                        p={3}
+                        borderRadius="md"
+                      >
+                        <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')}>
+                          Both parties in each leg can propose a handoff method. Coordinate with each other and save when you agree.
+                        </Text>
+                      </Box>
+
+                      {legs.map((leg: any) => {
+                        const fromName = userNameMap[leg.from_user_id] || `User ${leg.from_user_id}`
+                        const toName = userNameMap[leg.to_user_id] || `User ${leg.to_user_id}`
+                        const isGiver = currentUserId === leg.from_user_id
+                        const isReceiver = currentUserId === leg.to_user_id
+                        const isInvolved = isGiver || isReceiver
+                        const isDone = leg.status === 'completed' || leg.status === 'cancelled'
+
+                        return (
+                          <Box
+                            key={leg.id}
+                            borderWidth="1px"
+                            borderColor={isDone ? 'green.200' : borderColor}
+                            borderRadius="lg"
+                            overflow="hidden"
+                            bg={legCardBg}
+                          >
+                            {/* Leg header */}
+                            <HStack
+                              px={4}
+                              py={2.5}
+                              bg={isDone ? useColorModeValue('green.50', 'green.900') : useColorModeValue('gray.50', 'gray.750')}
+                              borderBottomWidth="1px"
+                              borderColor={isDone ? 'green.200' : borderColor}
+                              justify="space-between"
+                            >
+                              <HStack spacing={2}>
+                                <Avatar name={fromName} size="2xs" />
+                                <Text fontSize="sm" fontWeight="semibold">{fromName}</Text>
+                                <Icon as={FaArrowRight} boxSize={3} color="gray.400" />
+                                <Avatar name={toName} size="2xs" />
+                                <Text fontSize="sm" fontWeight="semibold">{toName}</Text>
+                                {isGiver && <Badge colorScheme="orange" fontSize="2xs">You give</Badge>}
+                                {isReceiver && <Badge colorScheme="teal" fontSize="2xs">You receive</Badge>}
+                              </HStack>
+                              <Badge colorScheme={statusColorScheme(leg.status)} borderRadius="full" px={2}>
+                                {statusLabel(leg.status)}
+                              </Badge>
+                            </HStack>
+
+                            {/* Completed summary */}
+                            {isDone && (
+                              <HStack px={4} py={3} spacing={4} flexWrap="wrap">
+                                {leg.handoff_method && (
+                                  <HStack spacing={1} fontSize="sm" color="gray.600">
+                                    <Icon as={leg.handoff_method === 'delivery' ? FaTruck : FaHandshake} />
+                                    <Text textTransform="capitalize">{leg.handoff_method}</Text>
+                                  </HStack>
+                                )}
+                                {leg.handoff_location && (
+                                  <HStack spacing={1} fontSize="sm" color="gray.600">
                                     <Icon as={FaMapMarkerAlt} />
-                                    <span>Location / address</span>
+                                    <Text>{leg.handoff_location}</Text>
                                   </HStack>
-                                </FormLabel>
-                                <Input
-                                  size="sm"
-                                  placeholder={legForms[leg.id]?.method === 'delivery' ? 'Delivery address' : 'Meetup spot'}
-                                  value={legForms[leg.id]?.location || ''}
-                                  onChange={(e) =>
-                                    setLegForms(prev => ({
-                                      ...prev,
-                                      [leg.id]: { ...prev[leg.id], location: e.target.value },
-                                    }))
-                                  }
-                                />
-                              </FormControl>
-                              <FormControl>
-                                <FormLabel fontSize="xs">
-                                  <HStack spacing={1}>
+                                )}
+                                {leg.handoff_time && (
+                                  <HStack spacing={1} fontSize="sm" color="gray.600">
                                     <Icon as={FaClock} />
-                                    <span>Date / time</span>
+                                    <Text>{leg.handoff_time}</Text>
                                   </HStack>
-                                </FormLabel>
-                                <Input
-                                  size="sm"
-                                  placeholder="e.g. Saturday 3pm"
-                                  value={legForms[leg.id]?.time || ''}
-                                  onChange={(e) =>
-                                    setLegForms(prev => ({
-                                      ...prev,
-                                      [leg.id]: { ...prev[leg.id], time: e.target.value },
-                                    }))
-                                  }
-                                />
-                              </FormControl>
-                              <Button
-                                size="xs"
-                                colorScheme="blue"
-                                alignSelf="flex-end"
-                                isLoading={savingLeg === leg.id}
-                                onClick={() => handleSaveLegHandoff(leg.id)}
-                              >
-                                Save
-                              </Button>
-                            </VStack>
-                          )}
-                          {(leg.handoff_location || leg.handoff_time) && leg.status === 'completed' && (
-                            <VStack align="start" spacing={1} fontSize="xs" color="gray.600">
-                              {leg.handoff_location && <Text>📍 {leg.handoff_location}</Text>}
-                              {leg.handoff_time && <Text>🕐 {leg.handoff_time}</Text>}
-                            </VStack>
-                          )}
-                        </Box>
-                      ))}
+                                )}
+                                {leg.status === 'completed' && (
+                                  <HStack spacing={1} fontSize="sm" color="green.600">
+                                    <Icon as={FaCheck} />
+                                    <Text fontWeight="medium">Received</Text>
+                                  </HStack>
+                                )}
+                              </HStack>
+                            )}
+
+                            {/* Handoff form (editable by both parties while pending) */}
+                            {!isDone && (
+                              <Box px={4} py={3}>
+                                {/* Show current saved values as read-only summary if not involved */}
+                                {(leg.handoff_location || leg.handoff_time) && !isInvolved && (
+                                  <HStack spacing={4} flexWrap="wrap" mb={3} fontSize="sm" color="gray.600">
+                                    {leg.handoff_method && (
+                                      <HStack spacing={1}>
+                                        <Icon as={leg.handoff_method === 'delivery' ? FaTruck : FaHandshake} />
+                                        <Text textTransform="capitalize">{leg.handoff_method}</Text>
+                                      </HStack>
+                                    )}
+                                    {leg.handoff_location && (
+                                      <HStack spacing={1}>
+                                        <Icon as={FaMapMarkerAlt} />
+                                        <Text>{leg.handoff_location}</Text>
+                                      </HStack>
+                                    )}
+                                    {leg.handoff_time && (
+                                      <HStack spacing={1}>
+                                        <Icon as={FaClock} />
+                                        <Text>{leg.handoff_time}</Text>
+                                      </HStack>
+                                    )}
+                                  </HStack>
+                                )}
+
+                                {/* Edit form — shown to both parties involved in this leg */}
+                                {isInvolved && (
+                                  <VStack spacing={3} align="stretch">
+                                    <FormControl>
+                                      <FormLabel fontSize="xs" mb={1}>Handoff method</FormLabel>
+                                      <Select
+                                        size="sm"
+                                        value={legForms[leg.id]?.method || 'meetup'}
+                                        onChange={(e) =>
+                                          setLegForms((prev) => ({
+                                            ...prev,
+                                            [leg.id]: {
+                                              ...prev[leg.id],
+                                              method: e.target.value as 'meetup' | 'delivery',
+                                            },
+                                          }))
+                                        }
+                                      >
+                                        <option value="meetup">Meetup in person</option>
+                                        <option value="delivery">Delivery / shipping</option>
+                                      </Select>
+                                    </FormControl>
+
+                                    <FormControl>
+                                      <FormLabel fontSize="xs" mb={1}>
+                                        <HStack spacing={1}>
+                                          <Icon as={FaMapMarkerAlt} />
+                                          <span>
+                                            {legForms[leg.id]?.method === 'delivery'
+                                              ? 'Delivery address'
+                                              : 'Meetup location'}
+                                          </span>
+                                        </HStack>
+                                      </FormLabel>
+                                      <Input
+                                        size="sm"
+                                        placeholder={
+                                          legForms[leg.id]?.method === 'delivery'
+                                            ? 'e.g. 123 Main St, City'
+                                            : 'e.g. SM Mall main entrance'
+                                        }
+                                        value={legForms[leg.id]?.location || ''}
+                                        onChange={(e) =>
+                                          setLegForms((prev) => ({
+                                            ...prev,
+                                            [leg.id]: { ...prev[leg.id], location: e.target.value },
+                                          }))
+                                        }
+                                      />
+                                    </FormControl>
+
+                                    <FormControl>
+                                      <FormLabel fontSize="xs" mb={1}>
+                                        <HStack spacing={1}>
+                                          <Icon as={FaClock} />
+                                          <span>Proposed date &amp; time</span>
+                                        </HStack>
+                                      </FormLabel>
+                                      <Input
+                                        size="sm"
+                                        placeholder="e.g. Saturday April 12, 3pm"
+                                        value={legForms[leg.id]?.time || ''}
+                                        onChange={(e) =>
+                                          setLegForms((prev) => ({
+                                            ...prev,
+                                            [leg.id]: { ...prev[leg.id], time: e.target.value },
+                                          }))
+                                        }
+                                      />
+                                    </FormControl>
+
+                                    <HStack justify="flex-end" spacing={2} pt={1}>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        colorScheme="blue"
+                                        isLoading={savingLeg === leg.id}
+                                        onClick={() => handleSaveLegHandoff(leg.id)}
+                                      >
+                                        Save Proposal
+                                      </Button>
+                                      {isReceiver && (
+                                        <Button
+                                          size="sm"
+                                          colorScheme="green"
+                                          leftIcon={<FaCheck />}
+                                          isLoading={completingLeg === leg.id}
+                                          onClick={() => handleCompleteLeg(leg.id)}
+                                        >
+                                          I Received It
+                                        </Button>
+                                      )}
+                                    </HStack>
+                                  </VStack>
+                                )}
+
+                                {/* Waiting message for non-involved viewers */}
+                                {!isInvolved && (
+                                  <Text fontSize="xs" color="gray.400" fontStyle="italic">
+                                    Waiting for {fromName} and {toName} to coordinate.
+                                  </Text>
+                                )}
+                              </Box>
+                            )}
+                          </Box>
+                        )
+                      })}
                     </VStack>
                   </Collapse>
                 </Box>
@@ -559,42 +768,59 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
             {multiWayTrade.total_value && (
               <>
                 <Divider />
-                <HStack justify="space-between" bg={useColorModeValue('gray.50', 'gray.700')} p={3} borderRadius="md">
-                  <Text fontWeight="semibold">Estimated Total Value:</Text>
+                <HStack
+                  justify="space-between"
+                  bg={sectionBg}
+                  p={3}
+                  borderRadius="md"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                >
+                  <Text fontWeight="semibold" fontSize="sm">
+                    Estimated Total Value
+                  </Text>
                   <Text fontSize="lg" fontWeight="bold" color="green.500">
                     ₱{multiWayTrade.total_value.toFixed(2)}
                   </Text>
                 </HStack>
               </>
             )}
-
-            <Box bg="blue.50" borderLeftWidth="4px" borderColor="blue.500" p={3} borderRadius="md">
-              <Text fontSize="sm" color="blue.900">
-                <strong>How it works:</strong> Once all participants accept, the trades will be automatically synchronized and completed. Everyone gets the product they wanted in this chain!
-              </Text>
-            </Box>
           </VStack>
         </ModalBody>
 
-        <ModalFooter borderTopWidth="1px" borderColor={borderColor} gap={3}>
+        {/* ── Footer ── */}
+        <ModalFooter borderTopWidth="1px" borderColor={borderColor} pt={4}>
           <Stack direction={{ base: 'column', sm: 'row' }} w="full" spacing={2}>
-            {multiWayTrade.status === 'user3_accepted' ? (
+            {isActiveChain ? (
               <>
-                <Badge colorScheme="green" fontSize="sm" px={4} py={2} borderRadius="md" textAlign="center" flex={1}>
-                  All participants have accepted
-                </Badge>
-                {canManage && (
-                  <Button
-                    flex={1}
-                    colorScheme="gray"
-                    variant="outline"
-                    isDisabled={loading}
-                    isLoading={selectedAction === 'cancel' && loading}
-                    onClick={handleCancelLoop}
-                  >
-                    Cancel Loop
-                  </Button>
-                )}
+                <Box
+                  flex={1}
+                  bg={useColorModeValue('green.50', 'green.900')}
+                  borderWidth="1px"
+                  borderColor="green.200"
+                  borderRadius="md"
+                  px={4}
+                  py={2}
+                  display="flex"
+                  alignItems="center"
+                >
+                  <HStack spacing={2}>
+                    <Icon as={FaCheck} color="green.500" boxSize={3} />
+                    <Text fontSize="sm" color={useColorModeValue('green.800', 'green.200')} fontWeight="medium">
+                      All participants accepted — coordinate handoffs above
+                    </Text>
+                  </HStack>
+                </Box>
+                <Button
+                  colorScheme="red"
+                  variant="outline"
+                  size="sm"
+                  isDisabled={loading}
+                  isLoading={selectedAction === 'cancel' && loading}
+                  onClick={handleCancelLoop}
+                >
+                  Cancel Loop
+                </Button>
               </>
             ) : (
               <>
@@ -632,7 +858,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 {canManage && (
                   <>
                     <Button
-                      flex={1}
                       colorScheme="gray"
                       variant="outline"
                       isDisabled={loading}
@@ -642,7 +867,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       Cancel Loop
                     </Button>
                     <Button
-                      flex={1}
                       colorScheme="purple"
                       variant="outline"
                       isDisabled={loading}
