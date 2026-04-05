@@ -3625,6 +3625,7 @@ const AdminDashboard: React.FC = () => {
             position="fixed"
             top={0}
             left={0}
+            ml={40}
             overflowY="auto"
             zIndex={20}
             boxShadow="sm"
@@ -3645,7 +3646,7 @@ const AdminDashboard: React.FC = () => {
         </Drawer>
 
         {/* â"€â"€ Main Content â"€â"€ */}
-        <Box flex={1} ml={isMobile ? 0 : '260px'} display="flex" flexDirection="column">
+        <Box flex={1} ml={isMobile ? 0 : '300px'} display="flex" flexDirection="column">
 
           {/* Top Bar */}
           <Box
