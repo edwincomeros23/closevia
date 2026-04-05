@@ -368,6 +368,13 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		WHERE p.status = 'available'
 		  AND u.role != 'admin'
 		  AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM trades t
+		    WHERE (t.target_product_id = p.id OR t.id IN (
+		      SELECT trade_id FROM trade_items WHERE product_id = p.id
+		    ))
+		    AND t.status IN ('pending', 'pending_multiway', 'accepted', 'active', 'multiway_active')
+		  )
 	`
 	// DB-level pre-filter: narrow candidates to products matching what User2 wants
 	var queryArgs []interface{}
