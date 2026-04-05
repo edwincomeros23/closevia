@@ -3923,7 +3923,7 @@ const Dashboard: React.FC = () => {
                             <ProductListRow
                               key={product.id}
                               product={product}
-                              showActions={product.status !== 'traded' && product.status !== 'sold'}
+                              showActions={true}
                               isSelected={selectedProductIds.has(product.id)}
                               onToggleSelect={() => toggleProductSelection(product.id)}
                               onDelete={() => handleDeleteProductClick(product)}

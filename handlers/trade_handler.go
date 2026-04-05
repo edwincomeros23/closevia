@@ -343,8 +343,9 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 	log.Printf("[MultiWayLoop] ✅ LOOP CREATED: chainID=%s, trade=%d | User1=%d wants-from User2=%d who wants-from User3=%d (%s) | Status=%s",
 		chainID, tradeID, buyerID, sellerID, best.User3ID, best.User3Name, loopStatus)
 
-	// Lock user3's product so it can't be offered in other trades while in a pending chain
-	_, _ = h.db.Exec("UPDATE products SET status='locked' WHERE id=? AND status='available'", best.User3ProductID)
+	// FIX BUG 1: Do NOT lock user3's product here
+	// Product locking should only happen when User3 explicitly accepts the multiway suggestion
+	// This makes multiway detection passive - just a notification/suggestion, not a commitment
 
 	if initiatorIsPremium {
 		_, _ = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
@@ -1127,6 +1128,44 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			newStatus = "accepted"
 		}
 
+		// FIX BUG 2: Find and decline all other pending offers on the same target product
+		var targetProductID int
+		if err := tx.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID); err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get target product"})
+		}
+
+		// Get all other pending trades targeting this product (exclude the current one)
+		rows, err := tx.Query(`
+			SELECT id FROM trades 
+			WHERE target_product_id = ? AND id != ? AND status = 'pending'
+		`, targetProductID, tradeID)
+		if err != nil {
+			_ = tx.Rollback()
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to check other pending offers"})
+		}
+		defer rows.Close()
+
+		// Decline all other pending offers and unlock their products
+		var otherTradeIDs []int
+		for rows.Next() {
+			var otherID int
+			if err := rows.Scan(&otherID); err == nil {
+				otherTradeIDs = append(otherTradeIDs, otherID)
+			}
+		}
+		rows.Close()
+
+		for _, otherID := range otherTradeIDs {
+			// Decline the other trade
+			_, _ = tx.Exec("UPDATE trades SET status='declined', updated_at=CURRENT_TIMESTAMP WHERE id = ?", otherID)
+			// Unlock products from the declined trade
+			_, _ = tx.Exec(`
+				UPDATE products SET status='available' 
+				WHERE id IN (SELECT product_id FROM trade_items WHERE trade_id = ?)
+			`, otherID)
+		}
+
 		// Update trade status
 		_, err = tx.Exec("UPDATE trades SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id = ?", newStatus, tradeID)
 		if err != nil {
@@ -1150,6 +1189,16 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&pid)
 		var productTitle string
 		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productTitle)
+
+		// FIX BUG 2: Notify buyers whose offers were auto-declined
+		for _, otherID := range otherTradeIDs {
+			var otherBuyerID int
+			_ = h.db.QueryRow("SELECT buyer_id FROM trades WHERE id = ?", otherID).Scan(&otherBuyerID)
+			msgToDeclinedBuyer := fmt.Sprintf("Your offer for %s has been automatically declined because another offer was accepted for this item.", productTitle)
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherBuyerID, msgToDeclinedBuyer)
+			publishToUser(otherBuyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": otherID, "status": "declined"}})
+		}
+
 		convID, _ := ensureConversation(pid, buyerID, sellerID)
 		_, _, _ = saveMessage(convID, userID, "Trade accepted for "+productTitle+".")
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'accepted', ?)", tradeID, userID, currentStatus, payload.Message)
@@ -4551,6 +4600,9 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 
 	// Update original trade status to multiway_active
 	_, _ = tx.Exec("UPDATE trades SET status = 'multiway_active' WHERE id = (SELECT original_trade_id FROM multiway_trades WHERE chain_id = ?)", chainID)
+
+	// FIX BUG 1: Lock user3's product now that they have explicitly accepted the suggestion
+	_, _ = tx.Exec("UPDATE products SET status='locked' WHERE id=? AND status='available'", u3PID)
 
 	// Create per-leg records for the 3 handoffs (Phase 2: per-leg tracking).
 	// Leg 0: User1 → User2 (User1 gives their product to User2)
