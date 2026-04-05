@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaLocationArrow } from 'react-icons/fa'
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner, Flex } from '@chakra-ui/react'
+import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaLocationArrow, FaBoxOpen } from 'react-icons/fa'
+import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
@@ -18,6 +19,7 @@ interface TradeModalProps {
 
 const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductId }) => {
   const { user, refreshUser } = useAuth()
+  const navigate = useNavigate()
   const toast = useToast()
   const { showNotification } = useNotification()
   const queryClient = useQueryClient()
@@ -322,16 +324,41 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
               </VStack>
               {/* Scrollable grid: shows 2 full rows + small peek of 3rd; scroll when overflowing */}
               <Box maxH="244px" overflowY="auto" pr={2}>
-                <Grid templateColumns="repeat(auto-fill, minmax(100px, 150px))" gap={3} gridAutoRows="120px" justifyContent="start">
-                  {userProducts.map((p) => (
-                    <Box key={p.id} minH="120px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
-                      <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="50px" objectFit="cover" loading="lazy" />
-                      <Box p={2}>
-                        <Text fontSize="sm" noOfLines={2} wordBreak="break-word">{p.title}</Text>
+                {userProducts.length === 0 ? (
+                  <Flex direction="column" align="center" justify="center" h="244px" gap={4} p={6} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+                    <Icon as={FaBoxOpen} boxSize={12} color="gray.400" />
+                    <VStack spacing={2} textAlign="center">
+                      <Text fontWeight="semibold" fontSize="md" color="gray.700">
+                        You don't have items available to trade at the moment
+                      </Text>
+                      <Text fontSize="sm" color="gray.600">
+                        Add an item to start trading with the community
+                      </Text>
+                      <Button
+                        size="sm"
+                        colorScheme="brand"
+                        mt={2}
+                        onClick={() => {
+                          onClose()
+                          navigate('/dashboard?tab=my-items')
+                        }}
+                      >
+                        Add Item Now
+                      </Button>
+                    </VStack>
+                  </Flex>
+                ) : (
+                  <Grid templateColumns="repeat(auto-fill, minmax(100px, 150px))" gap={3} gridAutoRows="120px" justifyContent="start">
+                    {userProducts.map((p) => (
+                      <Box key={p.id} minH="120px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
+                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="50px" objectFit="cover" loading="lazy" />
+                        <Box p={2}>
+                          <Text fontSize="sm" noOfLines={2} wordBreak="break-word">{p.title}</Text>
+                        </Box>
                       </Box>
-                    </Box>
-                  ))}
-                </Grid>
+                    ))}
+                  </Grid>
+                )}
               </Box>
 
               <FormControl>

@@ -251,8 +251,10 @@ export interface TradeLoop {
 export interface MultiWayTradeParticipant {
   user_id: number
   user_name: string
+  user_slug?: string
   product_id: number
   product_title: string
+  product_slug?: string
   product_image?: string
   trade_id: number
   trade_status: TradeStatus
@@ -437,6 +439,87 @@ export interface DeliveryUpdate {
   latitude?: number
   longitude?: number
   estimated_eta?: string
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BATCH DELIVERY TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type BatchStatus = 'pending' | 'collecting_addons' | 'ready' | 'in_progress' | 'completed' | 'cancelled'
+
+export interface BatchDelivery {
+  id: number
+  rider_id: number
+  status: BatchStatus
+  anchor_delivery_id: number
+  batch_name?: string
+  total_slots_used: number
+  total_distance_km: number
+  estimated_minutes: number
+  optimized_route: number[] // delivery IDs in geographic order
+  total_rider_commission: number
+  total_clovia_commission: number
+  claimed_at: string
+  started_at?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+  deliveries?: Delivery[] // populated deliveries in batch
+}
+
+export interface BatchDeliveryMapping {
+  batch_id: number
+  delivery_id: number
+  route_order: number
+  is_anchor: boolean
+}
+
+export interface RiderSlotLedger {
+  rider_id: number
+  free_slots_total: number
+  free_slots_remaining: number
+  current_batch_slots_used: number
+  cash_collected_current_batch: number
+  remittance_owed: number
+  remittance_threshold: number
+  is_locked_for_batching: boolean
+  locked_reason?: string
+}
+
+export interface BatchAddonSuggestion {
+  suggested_delivery_id: number
+  distance_from_anchor_km: number
+  route_detour_percent: number
+  score: number
+}
+
+export interface ClaimBatchRequest {
+  anchor_delivery_id: number
+  addon_delivery_ids: number[]
+}
+
+export interface RemitCashRequest {
+  batch_id: number
+  amount: number
+  payment_method: 'cash' | 'bank_transfer' | 'e_wallet'
+  payment_reference: string
+  proof_url: string
+}
+
+export interface BatchRemittanceHistory {
+  id: number
+  rider_id: number
+  batch_id: number
+  cash_amount_remitted: number
+  clovia_commission_15_percent: number
+  rider_take_home: number
+  payment_method: string
+  payment_reference: string
+  proof_url?: string
+  slots_unlocked_count: number
+  status: 'pending' | 'verified' | 'failed'
+  created_at: string
+  updated_at: string
 }
 
 export interface Report {

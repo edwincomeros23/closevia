@@ -26,7 +26,7 @@ import {
   IconButton,
 } from '@chakra-ui/react'
 import { CheckCircleIcon, WarningIcon, CloseIcon } from '@chakra-ui/icons'
-import { FaMapMarkerAlt, FaQrcode, FaCamera, FaPhone, FaSync, FaRedo } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaCamera, FaPhone, FaSync, FaRedo } from 'react-icons/fa'
 import { api } from '../services/api'
 import { Delivery } from '../types'
 
@@ -53,11 +53,9 @@ const TaskStepper: React.FC = () => {
   const [delivery, setDelivery] = useState<Delivery | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
-  const [qrScanned, setQrScanned] = useState(false)
   const [photoCaptured, setPhotoCaptured] = useState(false)
   const [deliveryNotes, setDeliveryNotes] = useState('')
-  // Phase 3 - Task 15 & 16: Store QR and photo data for backend submission
-  const [scannedQRCode, setScannedQRCode] = useState('')
+  // Phase 3 - Task 15 & 16: Store photo data for backend submission
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState('')
   // Task 16: Real camera capture states
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
@@ -144,20 +142,6 @@ const TaskStepper: React.FC = () => {
     return STATUS_PROGRESSION[currentIdx + 1]
   }
 
-  const handleQrScan = async () => {
-    // Simulate QR scanning - in production this would use a camera
-    const scannedCode = `DELIVERY-${delivery?.id}-${Date.now()}`
-    setQrScanned(true)
-    toast({
-        id: "taskstepper-qr-scanned",
-      title: 'QR Scanned',
-      description: 'Task verified at location',
-      status: 'success',
-      duration: 2000,
-    })
-    // Store QR code for submission
-    setScannedQRCode(scannedCode)
-  }
 
   // Task 16: Open camera for photo capture
   const handleCapturePhoto = () => {
@@ -279,13 +263,8 @@ const TaskStepper: React.FC = () => {
 
     setUpdating(true)
     try {
-      // Build update payload with QR and photo data
+      // Build update payload with photo data
       const payload: Record<string, any> = { status: nextStatus }
-
-      // Include QR code if scanned
-      if (qrScanned && scannedQRCode) {
-        payload.qr_code = scannedQRCode
-      }
 
       // Include photo URL if captured (required for delivery step)
       if (photoCaptured && capturedPhotoUrl) {
@@ -305,9 +284,7 @@ const TaskStepper: React.FC = () => {
       })
 
       // Reset verification state
-      setQrScanned(false)
       setPhotoCaptured(false)
-      setScannedQRCode('')
       setCapturedPhotoUrl('')
       setDeliveryNotes('')
       // Clear photo preview
@@ -534,27 +511,9 @@ const TaskStepper: React.FC = () => {
                 {currentTask.type === 'delivery' && (
                   <Tabs variant="soft-rounded" colorScheme="brand" size="sm">
                     <TabList>
-                      <Tab>QR Scan</Tab>
                       <Tab>Photo</Tab>
-                      <Tab>Confirm</Tab>
                     </TabList>
                     <TabPanels>
-                      <TabPanel>
-                        <VStack spacing={3} align="stretch">
-                          <Button
-                            colorScheme={qrScanned ? 'green' : 'brand'}
-                            leftIcon={<Icon as={FaQrcode} />}
-                            onClick={handleQrScan}
-                            w="full"
-                          >
-                            {qrScanned ? 'QR Scanned' : 'Scan QR Code'}
-                          </Button>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">
-                            Point camera at task QR for verification
-                          </Text>
-                        </VStack>
-                      </TabPanel>
-
                       <TabPanel>
                         <VStack spacing={3} align="stretch">
                           {/* Hidden file input for camera capture */}
@@ -655,18 +614,6 @@ const TaskStepper: React.FC = () => {
                           </Text>
                         </VStack>
                       </TabPanel>
-
-                      <TabPanel>
-                        <VStack spacing={3} align="stretch">
-                          <Textarea
-                            placeholder="Add delivery notes..."
-                            value={deliveryNotes}
-                            onChange={(e) => setDeliveryNotes(e.target.value)}
-                            size="sm"
-                            rows={3}
-                          />
-                        </VStack>
-                      </TabPanel>
                     </TabPanels>
                   </Tabs>
                 )}
@@ -681,7 +628,7 @@ const TaskStepper: React.FC = () => {
                   onClick={handleCompleteTask}
                   isLoading={updating}
                   loadingText="Updating..."
-                  isDisabled={currentTask.type === 'delivery' && getNextStatus() === 'delivered' && !qrScanned && !deliveryNotes}
+                  isDisabled={currentTask.type === 'delivery' && getNextStatus() === 'delivered' && !photoCaptured}
                 >
                   {getButtonLabel()}
                 </Button>

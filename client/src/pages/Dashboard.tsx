@@ -308,6 +308,11 @@ const Dashboard: React.FC = () => {
     }
   }, [user, activeTab])
 
+  // Clear summary cache when multiWayTrades updates to prevent stale data
+  useEffect(() => {
+    summaryCache.current.clear()
+  }, [multiWayTrades])
+
   // Change tab based on URL param
   useEffect(() => {
     const tabParam = searchParams.get('tab')
@@ -725,17 +730,37 @@ const Dashboard: React.FC = () => {
     return { yourGive, yourGet, chainLabel }
   }, [user?.id])
 
-  const filteredMultiWayTrades = useMemo(() => {
-    const getChainSize = (trade: any) => {
+  // Cache summary results per trade ID to avoid recalculation
+  const summaryCache = useRef<Map<string, any>>(new Map())
+  const getSummary = useCallback((trade: any) => {
+    const key = String(trade?.id || trade?.loop_id || trade?.chain_id || '')
+    if (!summaryCache.current.has(key)) {
+      summaryCache.current.set(key, getMultiWayTradeSummary(trade))
+    }
+    return summaryCache.current.get(key)
+  }, [getMultiWayTradeSummary])
+
+  // Memoize chain size computation
+  const chainSizeCache = useRef<Map<string, number>>(new Map())
+  const getChainSize = useCallback((trade: any) => {
+    const key = String(trade?.id || trade?.loop_id || trade?.chain_id || '')
+    if (!chainSizeCache.current.has(key)) {
       const participants = Array.isArray(trade?.participants) ? trade.participants.length : 0
-      if (participants > 0) return participants
+      if (participants > 0) {
+        chainSizeCache.current.set(key, participants)
+        return participants
+      }
       const edges = Array.isArray(trade?.edges) ? trade.edges.length : 0
+      chainSizeCache.current.set(key, edges)
       return edges
     }
+    return chainSizeCache.current.get(key) || 0
+  }, [])
 
+  const filteredMultiWayTrades = useMemo(() => {
     if (multiWayChainFilter === 'all') return multiWayTrades
     return (multiWayTrades || []).filter((trade: any) => getChainSize(trade) === 3)
-  }, [multiWayTrades, multiWayChainFilter])
+  }, [multiWayTrades, multiWayChainFilter, getChainSize])
 
   // Group loops into "Needs Your Action" and "Waiting on Others"
   const groupedMultiWayTrades = useMemo(() => {
@@ -747,6 +772,17 @@ const Dashboard: React.FC = () => {
       const status = trade?.status || ''
       const canJoin = trade?.can_join === true
       const canDecline = trade?.can_decline === true
+      
+      // Check if all participants have accepted
+      const participants = trade.participants || []
+      const totalParticipants = participants.length
+      const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
+      const allAccepted = totalParticipants > 0 && acceptedCount === totalParticipants
+      
+      // If all participants accepted, skip - move to Ongoing Trades automatically
+      if (allAccepted) {
+        continue
+      }
       
       if (status === 'pending_user3' && (canJoin || canDecline)) {
         // User is User3 and hasn't responded yet
@@ -763,90 +799,8 @@ const Dashboard: React.FC = () => {
     return { needsAction, waitingOnOthers }
   }, [filteredMultiWayTrades])
 
-  const fetchMultiWayTrades = async () => {
-    try {
-      setMultiWayTradesLoading(true)
-      const response = await api.get('/api/trades/loops', {
-        params: { user_id: user?.id }
-      })
-      const rawTrades = response.data?.data || []
-      // Deduplicate detected loops that appear in both directions (e.g. loop_123_125 and loop_125_123)
-      const seen = new Map<string, any>()
-      for (const t of rawTrades) {
-        if (t.loop_type === 'detected_loop' && t.loop_id) {
-          // Sort the trade-id parts so both directions map to the same key
-          const parts = String(t.loop_id).split('_')
-          const prefix = parts[0] // 'loop'
-          const sorted = parts.slice(1).sort().join('_')
-          const canonical = `${prefix}_${sorted}`
-          if (!seen.has(canonical)) seen.set(canonical, t)
-        } else {
-          seen.set(t.loop_id || t.chain_id || t.id, t)
-        }
-      }
-      const newTrades = Array.from(seen.values())
-      setMultiWayTrades(newTrades)
-      
-      // Preload details for all trades in background
-      preloadMultiWayLoopDetails(newTrades)
-
-      // Detect new loops and notify user (batched into a single toast)
-      const newLoopIds = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
-      const prevIds = prevMultiWayLoopIds.current
-      let newCount = 0
-      for (const id of newLoopIds) {
-        if (!prevIds.has(id)) {
-          newCount++
-        }
-      }
-      if (newCount > 0) {
-        toast({
-          id: 'new-loops-batch',
-          title: newCount > 1 ? 'Loops Found!' : 'New Trade Loop Found!',
-          description: newCount > 1
-            ? `You have ${newCount} new multi-way trade options available. Check below to review them.`
-            : 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
-          status: 'info',
-          duration: 6000,
-          isClosable: true,
-        })
-      }
-      prevMultiWayLoopIds.current = newLoopIds
-
-      // Free tier monthly quota indicator (used for upsells + disabling where needed).
-      try {
-        const quota = await fetchLoopQuota()
-        setLoopQuota(quota)
-      } catch (quotaErr) {
-        // Non-fatal: multi-way loops can still render without quota info.
-        console.error('Failed to fetch loop quota:', quotaErr)
-      }
-    } catch (error: any) {
-      console.error('Failed to fetch multi-way trades:', error)
-      const msg = error?.response?.data?.error || 'Failed to load multi-way trades'
-      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: msg, status: 'error' })
-      setMultiWayTrades([])
-    } finally {
-      setMultiWayTradesLoading(false)
-    }
-  }
-
-  const fetchDiscoverableLoops = async () => {
-    try {
-      setDiscoverableLoading(true)
-      const data = await fetchDiscoverableMultiwayLoops()
-      setDiscoverableLoops(data || [])
-      // Preload details for all loops in background
-      preloadMultiWayLoopDetails(data || [])
-    } catch {
-      setDiscoverableLoops([])
-    } finally {
-      setDiscoverableLoading(false)
-    }
-  }
-
   // Get loop details from cache or fetch
-  const getOrFetchMultiWayLoopDetails = async (loopId: string, cardData?: any) => {
+  const getOrFetchMultiWayLoopDetails = useCallback(async (loopId: string, cardData?: any) => {
     const cache = multiWayTradeDetailsCache.current
     const cacheKey = String(loopId)
     
@@ -882,6 +836,89 @@ const Dashboard: React.FC = () => {
     
     preloadingPromises.current.set(cacheKey, fetchPromise)
     return fetchPromise
+  }, [])
+
+  // Memoized handler for viewing trade details
+  const handleViewMultiWayTradeDetails = useCallback(async (trade: any) => {
+    try {
+      setMultiWayManagerLoading(true)
+      const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
+      const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
+      setSelectedMultiWayTrade(details)
+      setMultiWayManagerOpen(true)
+    } catch (e) {
+      console.error('Failed to load loop details:', e)
+      toast({
+        id: 'error-load-loop-details',
+        title: 'Error',
+        description: 'Failed to load trade loop details.',
+        status: 'error',
+      })
+    } finally {
+      setMultiWayManagerLoading(false)
+    }
+  }, [getOrFetchMultiWayLoopDetails, toast])
+
+  const fetchMultiWayTrades = async () => {
+    try {
+      setMultiWayTradesLoading(true)
+      const response = await api.get('/api/trades/loops', {
+        params: { user_id: user?.id }
+      })
+      const rawTrades = response.data?.data || []
+      // Deduplicate detected loops that appear in both directions (e.g. loop_123_125 and loop_125_123)
+      const seen = new Map<string, any>()
+      for (const t of rawTrades) {
+        if (t.loop_type === 'detected_loop' && t.loop_id) {
+          // Sort the trade-id parts so both directions map to the same key
+          const parts = String(t.loop_id).split('_')
+          const prefix = parts[0] // 'loop'
+          const sorted = parts.slice(1).sort().join('_')
+          const canonical = `${prefix}_${sorted}`
+          if (!seen.has(canonical)) seen.set(canonical, t)
+        } else {
+          seen.set(t.loop_id || t.chain_id || t.id, t)
+        }
+      }
+      const newTrades = Array.from(seen.values())
+      setMultiWayTrades(newTrades)
+      
+      // Preload details for all trades in background
+      preloadMultiWayLoopDetails(newTrades)
+      
+      // Store new trade IDs for later comparison
+      prevMultiWayLoopIds.current = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
+
+      // Free tier monthly quota indicator (used for upsells + disabling where needed).
+      try {
+        const quota = await fetchLoopQuota()
+        setLoopQuota(quota)
+      } catch (quotaErr) {
+        // Non-fatal: multi-way loops can still render without quota info.
+        console.error('Failed to fetch loop quota:', quotaErr)
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch multi-way trades:', error)
+      const msg = error?.response?.data?.error || 'Failed to load multi-way trades'
+      toast({ id: 'error-load-multi-way-trades', title: 'Error', description: msg, status: 'error' })
+      setMultiWayTrades([])
+    } finally {
+      setMultiWayTradesLoading(false)
+    }
+  }
+
+  const fetchDiscoverableLoops = async () => {
+    try {
+      setDiscoverableLoading(true)
+      const data = await fetchDiscoverableMultiwayLoops()
+      setDiscoverableLoops(data || [])
+      // Preload details for all loops in background
+      preloadMultiWayLoopDetails(data || [])
+    } catch {
+      setDiscoverableLoops([])
+    } finally {
+      setDiscoverableLoading(false)
+    }
   }
 
   // Preload all loop details in parallel
@@ -904,10 +941,39 @@ const Dashboard: React.FC = () => {
     Promise.allSettled(loadsToFetch).catch(() => {
       // Ignore errors from parallel preloading
     })
-  }, [])
+  }, [getOrFetchMultiWayLoopDetails])
 
   // Keep activeTabRef in sync so the multiwayAlert callback can read it without stale closures
   useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+
+  // Notify about new visible loops (only those that actually appear in UI)
+  useEffect(() => {
+    const visibleLoops = [...groupedMultiWayTrades.needsAction, ...groupedMultiWayTrades.waitingOnOthers]
+    const visibleIds = new Set(visibleLoops.map((t: any) => String(t.loop_id || t.chain_id || t.id)))
+    const prevIds = prevMultiWayLoopIds.current
+    
+    let newCount = 0
+    for (const id of visibleIds) {
+      if (!prevIds.has(id)) {
+        newCount++
+      }
+    }
+    
+    if (newCount > 0) {
+      toast({
+        id: 'new-loops-batch',
+        title: newCount > 1 ? 'Loops Found!' : 'New Trade Loop Found!',
+        description: newCount > 1
+          ? `You have ${newCount} new multi-way trade options available. Check below to review them.`
+          : 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
+        status: 'info',
+        duration: 6000,
+        isClosable: true,
+      })
+    }
+    
+    prevMultiWayLoopIds.current = visibleIds
+  }, [groupedMultiWayTrades.needsAction, groupedMultiWayTrades.waitingOnOthers, toast])
 
   // Register refresh callbacks for all tabs with RealtimeContext
   useEffect(() => {
@@ -4822,27 +4888,7 @@ const Dashboard: React.FC = () => {
                                         loopStatus={trade?.status}
                                         expiryLabel={trade?.expires_at ? new Date(trade.expires_at).toLocaleString() : undefined}
                                         onJoinTrade={() => {}}
-                                        onViewDetails={() => {
-                                          void (async () => {
-                                            try {
-                                              setMultiWayManagerLoading(true)
-                                              const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                              const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
-                                              setSelectedMultiWayTrade(details)
-                                              setMultiWayManagerOpen(true)
-                                            } catch (e) {
-                                              console.error('Failed to load loop details:', e)
-                                              toast({
-                                                id: 'error-load-loop-details-ongoing',
-                                                title: 'Error',
-                                                description: 'Failed to load trade loop details.',
-                                                status: 'error',
-                                              })
-                                            } finally {
-                                              setMultiWayManagerLoading(false)
-                                            }
-                                          })()
-                                        }}
+                                        onViewDetails={() => handleViewMultiWayTradeDetails(trade)}
                                         isLoading={multiWayManagerLoading}
                                       />
                                     </Box>
@@ -5049,26 +5095,7 @@ const Dashboard: React.FC = () => {
                                 </Heading>
                                 <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
                                   {groupedMultiWayTrades.needsAction.map((trade) => {
-                                    const summary = getMultiWayTradeSummary(trade)
-                                    const handleViewDetails = async () => {
-                                      try {
-                                        setMultiWayManagerLoading(true)
-                                        const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                        const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
-                                        setSelectedMultiWayTrade(details)
-                                        setMultiWayManagerOpen(true)
-                                      } catch (e) {
-                                        console.error('Failed to load loop details:', e)
-                                        toast({
-                                          id: 'error-load-loop-details',
-                                          title: 'Error',
-                                          description: 'Failed to load trade loop details.',
-                                          status: 'error',
-                                        })
-                                      } finally {
-                                        setMultiWayManagerLoading(false)
-                                      }
-                                    }
+                                    const summary = getSummary(trade)
                                     return (
                                       <Box
                                         key={trade.id || trade.loop_id || trade.chain_id}
@@ -5080,7 +5107,7 @@ const Dashboard: React.FC = () => {
                                         cursor="pointer"
                                         transition="all 0.2s"
                                         _hover={{ borderColor: 'blue.400', transform: 'translateY(-2px)', shadow: 'md' }}
-                                        onClick={handleViewDetails}
+                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
                                       >
                                         <VStack align="start" spacing={3}>
                                           <Box>
@@ -5135,30 +5162,35 @@ const Dashboard: React.FC = () => {
                                 </Heading>
                                 <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
                                   {groupedMultiWayTrades.waitingOnOthers.map((trade) => {
-                                    const summary = getMultiWayTradeSummary(trade)
+                                    const summary = getSummary(trade)
                                     const participants = trade.participants || []
                                     const totalParticipants = participants.length
                                     const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
                                     const pendingCount = totalParticipants - acceptedCount
-                                    const handleViewDetails = async () => {
-                                      try {
-                                        setMultiWayManagerLoading(true)
-                                        const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                        const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
-                                        setSelectedMultiWayTrade(details)
-                                        setMultiWayManagerOpen(true)
-                                      } catch (e) {
-                                        console.error('Failed to load loop details:', e)
-                                        toast({
-                                          id: 'error-load-loop-details',
-                                          title: 'Error',
-                                          description: 'Failed to load trade loop details.',
-                                          status: 'error',
-                                        })
-                                      } finally {
-                                        setMultiWayManagerLoading(false)
-                                      }
-                                    }
+                                    
+                                    // Find your product and incoming product
+                                    const currentUserID = Number(user?.id || 0)
+                                    const yourParticipant = participants.find((p: any) => Number(p?.user_id) === currentUserID)
+                                    const yourProductImage = yourParticipant?.product_image
+                                    const incomingProductImage = participants.length > 0 
+                                      ? participants[participants.length - 1]?.product_image || participants[0]?.product_image
+                                      : null
+                                    
+                                    // Calculate time remaining
+                                    const expiresAt = trade?.expires_at ? new Date(trade.expires_at).getTime() : null
+                                    const nowTime = Date.now()
+                                    const timeRemaining = expiresAt ? Math.max(0, expiresAt - nowTime) : null
+                                    const daysRemaining = timeRemaining ? Math.ceil(timeRemaining / (1000 * 60 * 60 * 24)) : null
+                                    const hoursRemaining = timeRemaining ? Math.ceil(timeRemaining / (1000 * 60 * 60)) : null
+                                    
+                                    const expiryText = daysRemaining !== null
+                                      ? daysRemaining > 0
+                                        ? `${daysRemaining}d remaining`
+                                        : hoursRemaining !== null && hoursRemaining > 0
+                                        ? `${hoursRemaining}h remaining`
+                                        : 'Expiring soon'
+                                      : 'No expiry'
+                                    
                                     return (
                                       <Box
                                         key={trade.id || trade.loop_id || trade.chain_id}
@@ -5170,29 +5202,94 @@ const Dashboard: React.FC = () => {
                                         cursor="pointer"
                                         transition="all 0.2s"
                                         _hover={{ borderColor: 'orange.400', transform: 'translateY(-2px)', shadow: 'md' }}
-                                        onClick={handleViewDetails}
+                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
                                       >
-                                        <VStack align="start" spacing={3}>
-                                          <Box>
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Your Item → You Get</Text>
-                                            <Text fontWeight="semibold" fontSize="sm">
-                                              {summary.yourGive} → {summary.yourGet}
+                                        <VStack align="stretch" spacing={3}>
+                                          {/* Item Flow */}
+                                          <HStack spacing={2} justify="center" w="full">
+                                            {yourProductImage ? (
+                                              <Image
+                                                src={yourProductImage}
+                                                alt="Your item"
+                                                maxW="45px"
+                                                maxH="45px"
+                                                borderRadius="md"
+                                                objectFit="cover"
+                                              />
+                                            ) : (
+                                              <Box w="45px" h="45px" bg="gray.200" borderRadius="md" />
+                                            )}
+                                            <Text fontSize="lg" fontWeight="bold" color="orange.500">→</Text>
+                                            {incomingProductImage ? (
+                                              <Image
+                                                src={incomingProductImage}
+                                                alt="Incoming item"
+                                                maxW="45px"
+                                                maxH="45px"
+                                                borderRadius="md"
+                                                objectFit="cover"
+                                              />
+                                            ) : (
+                                              <Box w="45px" h="45px" bg="gray.200" borderRadius="md" />
+                                            )}
+                                          </HStack>
+                                          
+                                          {/* Item names */}
+                                          <Box w="full" textAlign="center">
+                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
+                                              {summary.yourGive}
+                                            </Text>
+                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
+                                              ↓
+                                            </Text>
+                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
+                                              {summary.yourGet}
                                             </Text>
                                           </Box>
+                                          
+                                          {/* Participant Avatars with Status */}
                                           <Box w="full">
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Chain</Text>
-                                            <Text fontSize="xs" noOfLines={2}>{summary.chainLabel}</Text>
+                                            <HStack spacing={1} justify="center" wrap="wrap">
+                                              {participants.map((participant: any, idx: number) => {
+                                                const isAccepted = participant.status !== 'pending'
+                                                return (
+                                                  <Tooltip key={idx} label={`${participant.user_name}: ${isAccepted ? 'Accepted ✓' : 'Pending'}`} fontSize="xs">
+                                                    <Box position="relative">
+                                                      <Avatar
+                                                        name={participant.user_name}
+                                                        size="sm"
+                                                        bg={isAccepted ? 'green.400' : 'orange.300'}
+                                                      />
+                                                      {isAccepted && (
+                                                        <Box
+                                                          position="absolute"
+                                                          bottom="-2px"
+                                                          right="-2px"
+                                                          bg="green.500"
+                                                          borderRadius="full"
+                                                          p="1px"
+                                                          border="2px solid"
+                                                          borderColor={cardBg}
+                                                        >
+                                                          <CheckIcon boxSize={2} color="white" />
+                                                        </Box>
+                                                      )}
+                                                    </Box>
+                                                  </Tooltip>
+                                                )
+                                              })}
+                                            </HStack>
                                           </Box>
-                                          {pendingCount > 0 && (
-                                            <Badge colorScheme="orange" fontSize="xs">
-                                              {acceptedCount} of {totalParticipants} accepted
+                                          
+                                          {/* Progress and Expiry */}
+                                          <HStack spacing={2} w="full" justify="space-between" fontSize="xs">
+                                            <Badge colorScheme="orange" variant="subtle">
+                                              {acceptedCount}/{totalParticipants} accepted
                                             </Badge>
-                                          )}
-                                          {pendingCount === 0 && (
-                                            <Badge colorScheme="green" fontSize="xs">
-                                              All participants accepted ✓
-                                            </Badge>
-                                          )}
+                                            <Text color="gray.500" fontWeight="medium">
+                                              {expiryText}
+                                            </Text>
+                                          </HStack>
                                         </VStack>
                                       </Box>
                                     )
@@ -5640,6 +5737,7 @@ const Dashboard: React.FC = () => {
               }}
               multiWayTrade={selectedMultiWayTrade}
               canManage={Boolean(user?.is_premium) && !selectedMultiWayTrade?.is_chain}
+              currentUserId={user?.id}
               onTradeCompleted={() => {
                 void fetchMultiWayTrades()
                 invalidateOffers()

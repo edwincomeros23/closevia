@@ -16,7 +16,7 @@ import {
   Heading,
 } from '@chakra-ui/react';
 import { api } from '../services/api';
-import { Campaign } from '../pages/AdminDashboard';
+import type { Campaign } from '../pages/AdminDashboard';
 import { useAuth } from '../contexts/AuthContext';
 
 const GlobalPopup: React.FC = () => {

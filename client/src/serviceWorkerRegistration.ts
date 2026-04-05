@@ -15,6 +15,23 @@ export const isRunningStandalone = (): boolean => {
 
 export const registerServiceWorker = (): void => {
   if (!import.meta.env.PROD) {
+    // If a service worker was previously registered (e.g. after running a production build),
+    // it may continue to serve cached assets and make localhost appear "stuck" on old UI.
+    // In dev, proactively unregister and clear caches.
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          regs.forEach((r) => r.unregister())
+        })
+      }
+      if ('caches' in window) {
+        caches.keys().then((keys) => {
+          keys.forEach((k) => caches.delete(k))
+        })
+      }
+    } catch {
+      // ignore
+    }
     return
   }
 
