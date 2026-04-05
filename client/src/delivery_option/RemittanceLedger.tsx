@@ -242,13 +242,13 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
                 How Cash Collection Works
               </Text>
               <Text fontSize="xs" color="blue.800">
-                • Clovia takes a 15% commission per delivery.
+                • Each pickup/delivery fee includes a ₱2 platform tax (counts toward Remittance Owed).
               </Text>
               <Text fontSize="xs" color="blue.800">
                 • Your ledger updates automatically after completing a job.
               </Text>
               <Text fontSize="xs" color="blue.800">
-                • ₱1000 limit: Your account will be locked from claiming new batches until you remit fees.
+                • ₱50 limit: You’ll be locked from claiming new batches until you remit.
               </Text>
             </VStack>
           </CardBody>
@@ -280,12 +280,8 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
               <Heading size="sm" color="gray.700">Ledger Details</Heading>
               <Divider />
               <HStack justify="space-between" fontSize="sm">
-                <Text color="gray.600">Free Slots Remaining:</Text>
-                <Badge colorScheme={ledgerData?.free_slots_remaining ? "green" : "red"}>{ledgerData?.free_slots_remaining}</Badge>
-              </HStack>
-              <HStack justify="space-between" fontSize="sm">
-                <Text color="gray.600">Total Free Slots Used:</Text>
-                <Text fontWeight="bold">{ledgerData?.total_free_slots_used}</Text>
+                <Text color="gray.600">Remittance Threshold:</Text>
+                <Badge colorScheme="orange">₱50</Badge>
               </HStack>
               <HStack justify="space-between" fontSize="sm">
                 <Text color="gray.600">Last Remittance:</Text>
