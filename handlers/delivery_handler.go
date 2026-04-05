@@ -28,8 +28,8 @@ type DeliveryHandler struct {
 }
 
 const (
-	riderRemittanceTaxPerCollection = 2.0
-	riderRemittanceLockThreshold    = 50.0
+	defaultRemittanceTaxPerCollection = 2.0
+	defaultRemittanceLockThreshold    = 50.0
 )
 
 func (h *DeliveryHandler) getRiderFreeSlotsDefault() int {
@@ -40,6 +40,30 @@ func (h *DeliveryHandler) getRiderFreeSlotsDefault() int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil || parsed <= 0 {
 		return 3
+	}
+	return parsed
+}
+
+func (h *DeliveryHandler) getRiderRemittanceTaxPerCollection() float64 {
+	var v string
+	if err := h.db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = 'rider_remittance_tax_per_collection'").Scan(&v); err != nil {
+		return defaultRemittanceTaxPerCollection
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || parsed <= 0 {
+		return defaultRemittanceTaxPerCollection
+	}
+	return parsed
+}
+
+func (h *DeliveryHandler) getRiderRemittanceLockThreshold() float64 {
+	var v string
+	if err := h.db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = 'rider_remittance_lock_threshold'").Scan(&v); err != nil {
+		return defaultRemittanceLockThreshold
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || parsed <= 0 {
+		return defaultRemittanceLockThreshold
 	}
 	return parsed
 }
@@ -2544,13 +2568,21 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 // AdminGetRiderConfig returns rider system settings (Task 19)
 func (h *DeliveryHandler) AdminGetRiderConfig(c *fiber.Ctx) error {
 	defaultSlots := h.getRiderFreeSlotsDefault()
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_free_slots_default": defaultSlots}})
+	taxPerCollection := h.getRiderRemittanceTaxPerCollection()
+	lockThreshold := h.getRiderRemittanceLockThreshold()
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"rider_free_slots_default":            defaultSlots,
+		"rider_remittance_tax_per_collection": taxPerCollection,
+		"rider_remittance_lock_threshold":     lockThreshold,
+	}})
 }
 
 // AdminUpdateRiderConfig updates rider system settings (Task 19)
 func (h *DeliveryHandler) AdminUpdateRiderConfig(c *fiber.Ctx) error {
 	var payload struct {
-		RiderFreeSlotsDefault int `json:"rider_free_slots_default"`
+		RiderFreeSlotsDefault           int     `json:"rider_free_slots_default"`
+		RiderRemittanceTaxPerCollection float64 `json:"rider_remittance_tax_per_collection"`
+		RiderRemittanceLockThreshold    float64 `json:"rider_remittance_lock_threshold"`
 	}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request"})
@@ -2558,14 +2590,23 @@ func (h *DeliveryHandler) AdminUpdateRiderConfig(c *fiber.Ctx) error {
 	if payload.RiderFreeSlotsDefault <= 0 || payload.RiderFreeSlotsDefault > 100 {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid free slots default"})
 	}
+	if payload.RiderRemittanceTaxPerCollection <= 0 || payload.RiderRemittanceTaxPerCollection > 100 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid remittance tax per collection"})
+	}
+	if payload.RiderRemittanceLockThreshold <= 0 || payload.RiderRemittanceLockThreshold > 1000 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid remittance lock threshold"})
+	}
 	_, err := h.db.Exec(`
-		INSERT INTO app_settings (setting_key, setting_value) VALUES ('rider_free_slots_default', ?)
+		INSERT INTO app_settings (setting_key, setting_value) VALUES 
+			('rider_free_slots_default', ?),
+			('rider_remittance_tax_per_collection', ?),
+			('rider_remittance_lock_threshold', ?)
 		ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
-	`, strconv.Itoa(payload.RiderFreeSlotsDefault))
+	`, strconv.Itoa(payload.RiderFreeSlotsDefault), fmt.Sprintf("%.2f", payload.RiderRemittanceTaxPerCollection), fmt.Sprintf("%.2f", payload.RiderRemittanceLockThreshold))
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update settings"})
 	}
-	return c.JSON(models.APIResponse{Success: true, Message: "Updated rider free slots default"})
+	return c.JSON(models.APIResponse{Success: true, Message: "Updated rider configuration"})
 }
 
 type AdminRemittancePaymentRow struct {

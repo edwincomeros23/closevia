@@ -72,6 +72,7 @@ import {
   Image,
   ModalFooter,
   Checkbox,
+  FormLabel,
 } from '@chakra-ui/react';
 import {
   FiUsers,
@@ -407,7 +408,9 @@ const AdminDashboard: React.FC = () => {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersPage, setUsersPage] = useState(1);
   const [usersTotalPages, setUsersTotalPages] = useState(1);
+  const [usersSearchInput, setUsersSearchInput] = useState('');
   const [usersSearch, setUsersSearch] = useState('');
+  const usersSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [usersRoleFilter, setUsersRoleFilter] = useState('');
   const [usersIsVerifiedFilter, setUsersIsVerifiedFilter] = useState('');
 
@@ -415,7 +418,9 @@ const AdminDashboard: React.FC = () => {
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsPage, setProductsPage] = useState(1);
   const [productsTotalPages, setProductsTotalPages] = useState(1);
+  const [productsSearchInput, setProductsSearchInput] = useState('');
   const [productsSearch, setProductsSearch] = useState('');
+  const productsSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [productsStatusFilter, setProductsStatusFilter] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set());
   const [isSelectingProducts, setIsSelectingProducts] = useState(false);
@@ -501,7 +506,9 @@ const AdminDashboard: React.FC = () => {
   const [riderApplications, setRiderApplications] = useState<RiderAppItem[]>([]);
   const [riderAppsLoading, setRiderAppsLoading] = useState(false);
   const [riderStatusFilter, setRiderStatusFilter] = useState('');
+  const [riderSearchInput, setRiderSearchInput] = useState('');
   const [riderSearchQuery, setRiderSearchQuery] = useState('');
+  const riderSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedRiderApp, setSelectedRiderApp] = useState<RiderAppItem | null>(null);
   const [rejectRiderTarget, setRejectRiderTarget] = useState<RiderAppItem | null>(null);
   const [rejectRiderReason, setRejectRiderReason] = useState('');
@@ -521,6 +528,8 @@ const AdminDashboard: React.FC = () => {
     created_at: string;
   };
   const [riderFreeSlotsDefault, setRiderFreeSlotsDefault] = useState<number>(3);
+  const [riderRemittanceTaxPerCollection, setRiderRemittanceTaxPerCollection] = useState<number>(2.0);
+  const [riderRemittanceLockThreshold, setRiderRemittanceLockThreshold] = useState<number>(50.0);
   const [riderConfigLoading, setRiderConfigLoading] = useState(false);
   const [remittancePayments, setRemittancePayments] = useState<AdminRemittancePayment[]>([]);
   const [remittanceLoading, setRemittanceLoading] = useState(false);
@@ -1026,11 +1035,13 @@ const AdminDashboard: React.FC = () => {
     try {
       setRiderConfigLoading(true);
       const res = await api.get('/api/admin/rider-config');
-      if (res.data?.success && res.data?.data?.rider_free_slots_default != null) {
+      if (res.data?.success && res.data?.data) {
         setRiderFreeSlotsDefault(Number(res.data.data.rider_free_slots_default) || 3);
+        setRiderRemittanceTaxPerCollection(Number(res.data.data.rider_remittance_tax_per_collection) || 2.0);
+        setRiderRemittanceLockThreshold(Number(res.data.data.rider_remittance_lock_threshold) || 50.0);
       }
     } catch {
-      // keep default
+      // keep defaults
     } finally {
       setRiderConfigLoading(false);
     }
@@ -1039,10 +1050,13 @@ const AdminDashboard: React.FC = () => {
   const saveRiderConfig = useCallback(async () => {
     try {
       setRiderConfigLoading(true);
-      const value = Number(riderFreeSlotsDefault);
-      const res = await api.put('/api/admin/rider-config', { rider_free_slots_default: value });
+      const res = await api.put('/api/admin/rider-config', {
+        rider_free_slots_default: Number(riderFreeSlotsDefault),
+        rider_remittance_tax_per_collection: Number(riderRemittanceTaxPerCollection),
+        rider_remittance_lock_threshold: Number(riderRemittanceLockThreshold),
+      });
       if (res.data?.success) {
-        toast({ title: 'Saved', description: 'Default free slots updated.', status: 'success', duration: 2500 });
+        toast({ title: 'Saved', description: 'Rider configuration updated.', status: 'success', duration: 2500 });
       } else {
         toast({ title: 'Save failed', description: res.data?.error || 'Could not update setting', status: 'error', duration: 3000 });
       }
@@ -1051,7 +1065,7 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setRiderConfigLoading(false);
     }
-  }, [riderFreeSlotsDefault, toast]);
+  }, [riderFreeSlotsDefault, riderRemittanceTaxPerCollection, riderRemittanceLockThreshold, toast]);
 
   const fetchRemittancePayments = useCallback(async () => {
     try {
@@ -1246,6 +1260,45 @@ const AdminDashboard: React.FC = () => {
     }
   }, [loopDebugTradeID, loopDebugCompareTradeID, toast]);
 
+  // â"€â"€ Debounced search handlers â"€â"€
+  const handleUsersSearch = useCallback((searchValue: string) => {
+    setUsersSearchInput(searchValue);
+    if (usersSearchDebounceRef.current) {
+      clearTimeout(usersSearchDebounceRef.current);
+    }
+    usersSearchDebounceRef.current = setTimeout(() => {
+      setUsersSearch(searchValue);
+    }, 500);
+  }, []);
+
+  const handleProductsSearch = useCallback((searchValue: string) => {
+    setProductsSearchInput(searchValue);
+    if (productsSearchDebounceRef.current) {
+      clearTimeout(productsSearchDebounceRef.current);
+    }
+    productsSearchDebounceRef.current = setTimeout(() => {
+      setProductsSearch(searchValue);
+    }, 500);
+  }, []);
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (usersSearchDebounceRef.current) clearTimeout(usersSearchDebounceRef.current);
+      if (productsSearchDebounceRef.current) clearTimeout(productsSearchDebounceRef.current);
+    };
+  }, []);
+
+  // Trigger fetch when debounced users search changes
+  useEffect(() => {
+    fetchAdminUsers(1, usersSearch, usersRoleFilter, usersIsVerifiedFilter);
+  }, [usersSearch]);
+
+  // Trigger fetch when debounced products search changes
+  useEffect(() => {
+    fetchAdminProducts(1, productsSearch);
+  }, [productsSearch]);
+
   // â"€â"€ Fetch users for admin list â"€â"€
   const fetchAdminUsers = useCallback(
     async (page = 1, search = usersSearch, role = usersRoleFilter, verified = usersIsVerifiedFilter) => {
@@ -1281,6 +1334,68 @@ const AdminDashboard: React.FC = () => {
     },
     [toast],
   );
+
+  // â"€â"€ User management action handlers â"€â"€
+  const handleToggleSuspend = useCallback(async (user: User) => {
+    const isSuspended = user.role === 'suspended';
+    const action = isSuspended ? 'unsuspend' : 'suspend';
+    const confirmed = window.confirm(`${isSuspended ? 'Unsuspend' : 'Suspend'} ${user.name}?`);
+    if (!confirmed) return;
+
+    try {
+      setUsersLoading(true);
+      const endpoint = isSuspended ? `/api/admin/users/${user.id}/unsuspend` : `/api/admin/users/${user.id}/suspend`;
+      await api.put(endpoint);
+      toast({
+        title: `User ${isSuspended ? 'unsuspended' : 'suspended'}`,
+        status: 'success',
+        duration: 3000,
+      });
+      fetchAdminUsers(usersPage);
+    } catch (err: any) {
+      toast({
+        title: `Failed to ${action} user`,
+        description: err?.response?.data?.error || 'Error',
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [usersPage, fetchAdminUsers, toast]);
+
+  const handleToggleBan = useCallback(async (user: User) => {
+    const isBanned = user.role === 'banned';
+    const action = isBanned ? 'unban' : 'ban';
+    const confirmed = window.confirm(`${isBanned ? 'Unban' : 'Ban'} ${user.name}?`);
+    if (!confirmed) return;
+
+    try {
+      setUsersLoading(true);
+      const endpoint = isBanned ? `/api/admin/users/${user.id}/unban` : `/api/admin/users/${user.id}/ban`;
+      await api.put(endpoint);
+      toast({
+        title: `User ${isBanned ? 'unbanned' : 'banned'}`,
+        status: 'success',
+        duration: 3000,
+      });
+      fetchAdminUsers(usersPage);
+    } catch (err: any) {
+      toast({
+        title: `Failed to ${action} user`,
+        description: err?.response?.data?.error || 'Error',
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [usersPage, fetchAdminUsers, toast]);
+
+  const askDeleteUser = useCallback((user: User) => {
+    setDeleteTarget({ type: 'user', id: user.id, name: user.name });
+    openDeleteDialog();
+  }, [openDeleteDialog]);
 
   // â"€â"€ Fetch products for admin list â"€â"€
   const fetchAdminProducts = useCallback(
@@ -1441,100 +1556,6 @@ const AdminDashboard: React.FC = () => {
     }
   }, [selectedProductIds, toast, fetchAdminProducts, productsPage]);
 
-  // â"€â"€ Suspend handler â"€â"€
-  const handleToggleSuspend = useCallback(async (user: User) => {
-    try {
-      const isSuspended = user.role === 'suspended';
-      const endpoint = `/api/admin/users/${user.id}/${isSuspended ? 'unsuspend' : 'suspend'}`;
-
-      await api.put(endpoint);
-
-      // Update local state without full refresh
-      setUsers(prev => prev.map(u =>
-        u.id === user.id ? { ...u, role: isSuspended ? 'user' : 'suspended' } : u
-      ));
-
-      toast({
-        id: "admindashboard-toast-13",
-        title: isSuspended ? 'User Unsuspended' : 'User Suspended',
-        description: `Successfully ${isSuspended ? 'restored' : 'suspended'} ${user.name}'s account.`,
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (err: any) {
-      toast({
-        id: "admindashboard-action-failed",
-        title: 'Action failed',
-        description: err?.response?.data?.error || `Failed to modify user status.`,
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      });
-    }
-  }, [toast]);
-
-  // â"€â"€ Ban handler â"€â"€
-  const handleToggleBan = useCallback(async (user: User) => {
-    try {
-      const isBanned = user.role === 'banned';
-      await api.put(`/api/admin/users/${user.id}/${isBanned ? 'unsuspend' : 'suspend'}`, { reason: isBanned ? '' : 'Banned by admin' });
-      
-      setUsers(prev => prev.map(u =>
-        u.id === user.id ? { ...u, role: isBanned ? 'user' : 'banned' } : u
-      ));
-
-      toast({
-        title: isBanned ? 'User Unbanned' : 'User Banned',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (err: any) {
-      toast({
-        title: 'Action failed',
-        description: err?.message || `Failed to modify user ban status.`,
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      });
-    }
-  }, [toast]);
-
-  // â"€â"€ Open Strike History â"€â"€
-  const openStrikeHistory = useCallback(async (user: User) => {
-    setStrikeHistoryUser(user);
-    setStrikeHistoryLoading(true);
-    setStrikeHistoryData([]);
-    try {
-      const response = await api.get(`/api/admin/users/${user.id}/strikes`);
-      if (response.data?.success) {
-        setStrikeHistoryData(Array.isArray(response.data.data) ? response.data.data : []);
-      }
-    } catch (err: any) {
-      toast({ title: 'Failed to load strike history', status: 'error' });
-    } finally {
-      setStrikeHistoryLoading(false);
-    }
-  }, [toast]);
-
-  // â"€â"€ Issue Manual Strike â"€â"€
-  const handleIssueManualStrike = async () => {
-    if (!strikeHistoryUser || !manualStrikeReason.trim()) return;
-    setManualStrikeLoading(true);
-    try {
-      await api.post(`/api/admin/users/${strikeHistoryUser.id}/strikes`, { reason: manualStrikeReason, chain_id: manualStrikeChain || 'manual' });
-      toast({ title: 'Manual strike issued successfully', status: 'success', duration: 3000 });
-      setManualStrikeReason('');
-      setManualStrikeChain('');
-      openStrikeHistory(strikeHistoryUser);
-    } catch (err: any) {
-      toast({ title: 'Failed to issue manual strike', description: err?.message, status: 'error', duration: 4000 });
-    } finally {
-      setManualStrikeLoading(false);
-    }
-  };
-
   // â"€â"€ Fetch campaigns for admin list â"€â"€
   const fetchAdminCampaigns = useCallback(async () => {
     try {
@@ -1638,6 +1659,21 @@ const AdminDashboard: React.FC = () => {
 
 
 
+  // Debounced search handler
+  const handleRiderSearch = useCallback((searchValue: string) => {
+    setRiderSearchInput(searchValue);
+    
+    // Clear previous timeout
+    if (riderSearchDebounceRef.current) {
+      clearTimeout(riderSearchDebounceRef.current);
+    }
+    
+    // Set new timeout for debounced search
+    riderSearchDebounceRef.current = setTimeout(() => {
+      setRiderSearchQuery(searchValue);
+    }, 500);
+  }, []);
+
   // ── Fetch rider applications ──
   const fetchRiderApplications = useCallback(async (silent = false) => {
     try {
@@ -1696,12 +1732,24 @@ const AdminDashboard: React.FC = () => {
 
 
 
-  // â"€â"€ Delete handlers â"€â"€
-  const askDeleteUser = useCallback((user: User) => {
-    setDeleteTarget({ type: 'user', id: user.id, name: user.name || user.email });
-    openDeleteDialog();
-  }, [openDeleteDialog]);
+  // â"€â"€ Open Strike History â"€â"€
+  const openStrikeHistory = useCallback(async (user: User) => {
+    setStrikeHistoryUser(user);
+    setStrikeHistoryLoading(true);
+    setStrikeHistoryData([]);
+    try {
+      const response = await api.get(`/api/admin/users/${user.id}/strikes`);
+      if (response.data?.success) {
+        setStrikeHistoryData(Array.isArray(response.data.data) ? response.data.data : []);
+      }
+    } catch (err: any) {
+      toast({ title: 'Failed to load strike history', status: 'error' });
+    } finally {
+      setStrikeHistoryLoading(false);
+    }
+  }, [toast]);
 
+  // â"€â"€ Delete handlers â"€â"€
   const askDeleteProduct = useCallback((product: Product) => {
     setDeleteTarget({
       type: 'product',
@@ -1822,6 +1870,15 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     fetchRiderApplications();
   }, [riderStatusFilter, riderSearchQuery, fetchRiderApplications]);
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (riderSearchDebounceRef.current) {
+        clearTimeout(riderSearchDebounceRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     fetchDailyStats(calYear, calMonth);
@@ -2466,9 +2523,9 @@ const AdminDashboard: React.FC = () => {
     const [expandedReportId, setExpandedReportId] = React.useState<number | null>(null);
     const toggleExpand = (id: number) => setExpandedReportId(prev => prev === id ? null : id);
     return (
-      <VStack spacing={8} align="stretch">
+      <VStack spacing={8} pr={20} align="stretch">
         {/* Report Summary Cards */}
-        <Box>
+        <Box maxW="5xl">
           <HStack mb={3} spacing={2}>
             <Icon as={FiAlertTriangle} color="#f43f5e" />
             <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports Overview</Text>
@@ -2506,7 +2563,7 @@ const AdminDashboard: React.FC = () => {
         </Box>
 
         {/* Report Type Breakdown Cards */}
-        <Box>
+        <Box maxW="5xl">
           <HStack mb={3} spacing={2}>
             <Icon as={FiAlertCircle} color="orange.500" />
             <Text fontWeight="700" color={textColor} fontSize="sm" textTransform="uppercase" letterSpacing="wide">Reports by Reason</Text>
@@ -2882,12 +2939,54 @@ const AdminDashboard: React.FC = () => {
                     onChange={e => setRiderFreeSlotsDefault(Number(e.target.value))}
                   />
                   <Button size="sm" colorScheme="brand" onClick={saveRiderConfig} isLoading={riderConfigLoading}>
-                    Save
+                    Save All
                   </Button>
                   <Text fontSize="xs" color={mutedTextColor}>
                     During free slots, remittance is waived. When slots are exhausted and remittance is due, riders get locked.
                   </Text>
                 </HStack>
+              </Box>
+
+              <Box borderTop="1px" borderColor={borderColor} pt={4}>
+                <Heading size="xs" color={textColor} mb={3}>Remittance Calculation Settings</Heading>
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <Box>
+                    <FormLabel fontSize="xs" fontWeight="600" color={textColor} mb={2}>
+                      Tax per delivery collection (₱)
+                    </FormLabel>
+                    <Input
+                      size="sm"
+                      type="number"
+                      step={0.5}
+                      min={0.1}
+                      max={100}
+                      value={riderRemittanceTaxPerCollection}
+                      onChange={e => setRiderRemittanceTaxPerCollection(Number(e.target.value))}
+                      placeholder="e.g., 2.0"
+                    />
+                    <Text fontSize="xs" color={mutedTextColor} mt={1}>
+                      Amount collected per delivery that becomes remittance owed
+                    </Text>
+                  </Box>
+                  <Box>
+                    <FormLabel fontSize="xs" fontWeight="600" color={textColor} mb={2}>
+                      Remittance lock threshold (₱)
+                    </FormLabel>
+                    <Input
+                      size="sm"
+                      type="number"
+                      step={1}
+                      min={1}
+                      max={1000}
+                      value={riderRemittanceLockThreshold}
+                      onChange={e => setRiderRemittanceLockThreshold(Number(e.target.value))}
+                      placeholder="e.g., 50.0"
+                    />
+                    <Text fontSize="xs" color={mutedTextColor} mt={1}>
+                      Amount of remittance owed before rider gets locked
+                    </Text>
+                  </Box>
+                </SimpleGrid>
               </Box>
 
               <Box>
@@ -2975,7 +3074,7 @@ const AdminDashboard: React.FC = () => {
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
                 </Select>
-                <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchQuery} onChange={e => setRiderSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
+                <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchInput} onChange={e => handleRiderSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
                 <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchRiderApplications()} isLoading={riderAppsLoading}>Refresh</Button>
               </HStack>
             </Flex>
@@ -3153,14 +3252,14 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ SECTION: Management â"€â"€
   const ManagementSection = () => (
-    <VStack spacing={8} align="stretch">
+    <VStack spacing={8} pr={20} align="stretch">
       {/* Users */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" maxW="5xl">
         <CardHeader pb={0}>
           <Heading size="sm" color={textColor}>Users</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search users by name, email..." value={usersSearch} onChange={(e) => setUsersSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminUsers(1, e.currentTarget.value, usersRoleFilter, usersIsVerifiedFilter); }} maxW="300px" />
+            <Input size="sm" placeholder="Search users by name, email..." value={usersSearchInput} onChange={(e) => handleUsersSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminUsers(1, usersSearchInput, usersRoleFilter, usersIsVerifiedFilter); }} maxW="300px" />
             <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => { setUsersRoleFilter(e.target.value); fetchAdminUsers(1, usersSearch, e.target.value); }}>
               <option value="admin">Admin</option>
               <option value="user">User</option>
@@ -3190,19 +3289,19 @@ const AdminDashboard: React.FC = () => {
                       <Tr key={user.id} _hover={{ bg: hoverBg }}>
                         <Td px={2}><HStack spacing={2}><VerifiedAvatar size="xs" name={user.name} src={user.profile_picture || undefined} isVerified={user.verified || user.verification_status === 'verified' || false} /><VStack spacing={0} align="start" minW={0}><Text fontWeight="600" fontSize="xs" isTruncated maxW="120px">{user.name || 'Unnamed'}</Text><Text fontSize="xs" color={mutedTextColor}>#{user.id}</Text></VStack></HStack></Td>
                         <Td px={2} display={{ base: 'none', md: 'table-cell' }}><Text fontSize="xs" isTruncated maxW="160px">{user.email}</Text></Td>
-                        <Td px={2}><Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : user.role === 'banned' ? 'blackAlpha' : user.role === 'suspended' ? 'red' : 'blue'} fontSize="xs">{user.role}</Tag></Td>
-                        <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : '—'}</Tag></Td>
+                        <Td px={2}><Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : user.role === 'banned' ? 'blackAlpha' : user.role === 'suspended' ? 'red' : 'blue'} fontSize="xs">{user.role || 'user'}</Tag></Td>
+                        <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : 'Unverified'}</Tag></Td>
                         <Td textAlign="right" px={1}>
                           <HStack spacing={1} justify="flex-end">
                             <Tooltip label="Strike History" hasArrow><IconButton aria-label="Strikes" size="xs" colorScheme="purple" variant="ghost" icon={<FiAlertTriangle />} onClick={() => openStrikeHistory(user)} /></Tooltip>
                             {user.role !== 'admin' && (
-                              <Tooltip label={user.role === 'suspended' ? 'Unsuspend' : 'Suspend'} hasArrow>
-                                <IconButton aria-label="Toggle suspend" size="xs" colorScheme={user.role === 'suspended' ? 'green' : 'orange'} variant="ghost" icon={user.role === 'suspended' ? <FiCheckCircle /> : <FiXCircle />} onClick={() => handleToggleSuspend(user)} />
+                              <Tooltip label={(user.role === 'suspended') ? 'Unsuspend' : 'Suspend'} hasArrow>
+                                <IconButton aria-label="Toggle suspend" size="xs" colorScheme={(user.role === 'suspended') ? 'green' : 'orange'} variant="ghost" icon={(user.role === 'suspended') ? <FiCheckCircle /> : <FiXCircle />} onClick={() => handleToggleSuspend(user)} />
                               </Tooltip>
                             )}
                             {user.role !== 'admin' && (
-                              <Tooltip label={user.role === 'banned' ? 'Unban' : 'Ban'} hasArrow>
-                                <IconButton aria-label="Toggle ban" size="xs" colorScheme={user.role === 'banned' ? 'green' : 'blackAlpha'} variant="ghost" icon={user.role === 'banned' ? <FiCheckCircle /> : <FiAlertCircle />} onClick={() => handleToggleBan(user)} />
+                              <Tooltip label={(user.role === 'banned') ? 'Unban' : 'Ban'} hasArrow>
+                                <IconButton aria-label="Toggle ban" size="xs" colorScheme={(user.role === 'banned') ? 'green' : 'blackAlpha'} variant="ghost" icon={(user.role === 'banned') ? <FiCheckCircle /> : <FiAlertCircle />} onClick={() => handleToggleBan(user)} />
                               </Tooltip>
                             )}
                             <Tooltip label="Delete user" hasArrow><IconButton aria-label="Delete user" size="xs" colorScheme="red" variant="ghost" icon={<FiTrash2 />} onClick={() => askDeleteUser(user)} /></Tooltip>
@@ -3229,7 +3328,7 @@ const AdminDashboard: React.FC = () => {
           <Heading size="sm" color={textColor}>Items</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search items by title..." value={productsSearch} onChange={(e) => setProductsSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminProducts(1, e.currentTarget.value, productsStatusFilter); }} maxW="300px" />
+            <Input size="sm" placeholder="Search items by title..." value={productsSearchInput} onChange={(e) => handleProductsSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminProducts(1, productsSearchInput, productsStatusFilter); }} maxW="300px" />
             <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => { setProductsStatusFilter(e.target.value); fetchAdminProducts(1, productsSearch, e.target.value); }}>
               <option value="available">Available</option>
               <option value="reserved">Reserved</option>

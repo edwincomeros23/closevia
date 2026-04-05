@@ -2471,6 +2471,66 @@ func (h *UserHandler) UnsuspendUser(c *fiber.Ctx) error {
 	})
 }
 
+// BanUser sets a user's role to 'banned' (admin only)
+func (h *UserHandler) BanUser(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	// Ensure we don't ban the main admin accidentally
+	if userID == "1" {
+		return c.Status(400).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Cannot ban the primary admin account",
+		})
+	}
+
+	result, err := h.db.Exec("UPDATE users SET role = 'banned', updated_at = NOW() WHERE id = ?", userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to ban user: " + err.Error(),
+		})
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "User has been banned successfully",
+	})
+}
+
+// UnbanUser restores a banned user's role to 'user' (admin only)
+func (h *UserHandler) UnbanUser(c *fiber.Ctx) error {
+	userID := c.Params("id")
+
+	result, err := h.db.Exec("UPDATE users SET role = 'user', updated_at = NOW() WHERE id = ?", userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Failed to unban user: " + err.Error(),
+		})
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return c.Status(404).JSON(models.APIResponse{
+			Success: false,
+			Error:   "User not found",
+		})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Message: "User has been unbanned successfully",
+	})
+}
+
 // computeConductSummary builds a UserConductSummary for a given user from trade_grades
 func (h *UserHandler) computeConductSummary(userID int) *models.UserConductSummary {
 	rows, err := h.db.Query(`

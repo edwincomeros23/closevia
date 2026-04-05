@@ -550,6 +550,8 @@ func main() {
 	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
 	admin.Put("/users/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.SuspendUser)
 	admin.Put("/users/:id/unsuspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.UnsuspendUser)
+	admin.Put("/users/:id/ban", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.BanUser)
+	admin.Put("/users/:id/unban", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.UnbanUser)
 	admin.Delete("/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.DeleteUser)
 	// Admin: school ID verification review
 	admin.Get("/verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListVerifications)
