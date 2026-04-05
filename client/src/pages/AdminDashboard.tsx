@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
@@ -365,6 +366,8 @@ const UsageCalendar: React.FC<CalendarProps> = ({
 // â"€â"€â"€ Main Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const AdminDashboard: React.FC = () => {
   type SectionId = 'overview' | 'moderation' | 'management' | 'system';
+  
+  const navigate = useNavigate();
 
   const formatYMD = (date: Date) => {
     const yyyy = date.getFullYear();
@@ -2654,7 +2657,7 @@ const AdminDashboard: React.FC = () => {
                             <Td px={2} fontWeight="bold" color="gray.500" fontSize="xs">#{report.id}</Td>
                             <Td px={2}>
                               <VStack align="start" spacing={0}>
-                                <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px">
+                                <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px" cursor="pointer" color="brand.500" onClick={(e) => { e.stopPropagation(); navigate(`/user/${report.reporter_id}`); }} _hover={{ textDecoration: 'underline' }}>
                                   {report.reporter_name || `User #${report.reporter_id}`}
                                 </Text>
                                 <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reporter_id}</Text>
@@ -2662,7 +2665,7 @@ const AdminDashboard: React.FC = () => {
                             </Td>
                             <Td px={2}>
                               <VStack align="start" spacing={0}>
-                                <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px" color="red.600">
+                                <Text fontSize="xs" fontWeight="600" isTruncated maxW="90px" cursor="pointer" color="red.600" onClick={(e) => { e.stopPropagation(); navigate(`/user/${report.reported_user_id}`); }} _hover={{ textDecoration: 'underline' }}>
                                   {report.reported_name || `User #${report.reported_user_id}`}
                                 </Text>
                                 <Text fontSize="2xs" color={mutedTextColor}>ID: {report.reported_user_id}</Text>
@@ -2682,7 +2685,7 @@ const AdminDashboard: React.FC = () => {
                                   </Text>
                                 )}
                                 {report.product_title && (
-                                  <Text fontSize="2xs" color="brand.500" isTruncated maxW="180px">
+                                  <Text fontSize="2xs" color="brand.500" isTruncated maxW="180px" cursor="pointer" onClick={(e) => { e.stopPropagation(); report.product_id && navigate(`/product/${report.product_id}`); }} _hover={{ textDecoration: 'underline' }}>
                                     📦 {report.product_title}
                                   </Text>
                                 )}
