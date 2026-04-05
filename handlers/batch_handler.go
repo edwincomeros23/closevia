@@ -114,8 +114,11 @@ func (h *DeliveryHandler) ClaimBatch(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch rider ledger"})
 	}
 
-	if ledger.IsLockedForBatching {
-		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Account locked: remittance owed exceeds threshold"})
+	// Enforce remittance lock based on rider ledger (₱50 threshold)
+	h.ensureRiderLedger(riderID)
+	locked, due := h.isRiderLockedForRemittance(riderID)
+	if locked {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Account locked: remittance owed ₱%.2f (pay to unlock)", due)})
 	}
 
 	// Calculate slots needed
@@ -291,7 +294,7 @@ func (h *DeliveryHandler) GetRiderSlots(c *fiber.Ctx) error {
 	// Initialize ledger if not exists
 	_, err = h.db.ExecContext(ctx,
 		`INSERT IGNORE INTO rider_slot_ledger (rider_id, free_slots_total, free_slots_remaining, remittance_threshold) 
-		 VALUES (?, 3, 3, 1000.00)`,
+		 VALUES (?, 3, 3, 50.00)`,
 		riderID)
 
 	var ledger RiderSlotLedger
@@ -306,6 +309,18 @@ func (h *DeliveryHandler) GetRiderSlots(c *fiber.Ctx) error {
 
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch slot ledger"})
+	}
+
+	// Keep remittance owed/lock state consistent with rider ledger rules
+	h.ensureRiderLedger(riderID)
+	locked, due := h.isRiderLockedForRemittance(riderID)
+	ledger.RemittanceThreshold = 50.0
+	ledger.RemittanceOwed = due
+	ledger.IsLockedForBatching = locked
+	if locked {
+		ledger.LockedReason = fmt.Sprintf("Remittance owed ₱%.2f (threshold ₱50.00)", due)
+	} else {
+		ledger.LockedReason = ""
 	}
 
 	return c.JSON(models.APIResponse{
