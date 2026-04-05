@@ -228,6 +228,8 @@ const Dashboard: React.FC = () => {
   const [multiWayManagerLoading, setMultiWayManagerLoading] = useState(false)
   const [loopQuota, setLoopQuota] = useState<null | { unlimited: boolean; period: string; used: number; limit: number }>(null)
   const prevMultiWayLoopIds = useRef<Set<string>>(new Set())
+  const multiWayTradeDetailsCache = useRef<Map<string, { data: any; fetchedAt: number }>>(new Map())
+  const preloadingPromises = useRef<Map<string, Promise<any>>>(new Map())
 
   const [isZoomOpen, setIsZoomOpen] = useState(false)
   const [zoomImageUrl, setZoomImageUrl] = useState('')
@@ -784,6 +786,9 @@ const Dashboard: React.FC = () => {
       }
       const newTrades = Array.from(seen.values())
       setMultiWayTrades(newTrades)
+      
+      // Preload details for all trades in background
+      preloadMultiWayLoopDetails(newTrades)
 
       // Detect new loops and notify user (batched into a single toast)
       const newLoopIds = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
@@ -831,12 +836,75 @@ const Dashboard: React.FC = () => {
       setDiscoverableLoading(true)
       const data = await fetchDiscoverableMultiwayLoops()
       setDiscoverableLoops(data || [])
+      // Preload details for all loops in background
+      preloadMultiWayLoopDetails(data || [])
     } catch {
       setDiscoverableLoops([])
     } finally {
       setDiscoverableLoading(false)
     }
   }
+
+  // Get loop details from cache or fetch
+  const getOrFetchMultiWayLoopDetails = async (loopId: string, cardData?: any) => {
+    const cache = multiWayTradeDetailsCache.current
+    const cacheKey = String(loopId)
+    
+    // Check if already cached and current
+    if (cache.has(cacheKey)) {
+      const cached = cache.get(cacheKey)!
+      const cacheAge = Date.now() - cached.fetchedAt
+      const cardStatus = cardData?.status
+      const cachedStatus = cached.data?.status
+      
+      // Use cache if less than 5 minutes old OR status hasn't changed
+      if (cacheAge < 300000 || cardStatus === cachedStatus) {
+        return cached.data
+      }
+    }
+    
+    // If already fetching, return the existing promise
+    if (preloadingPromises.current.has(cacheKey)) {
+      return preloadingPromises.current.get(cacheKey)
+    }
+    
+    // Fetch and cache
+    const fetchPromise = fetchMultiWayTrade(cacheKey)
+      .then(data => {
+        cache.set(cacheKey, { data, fetchedAt: Date.now() })
+        preloadingPromises.current.delete(cacheKey)
+        return data
+      })
+      .catch(err => {
+        preloadingPromises.current.delete(cacheKey)
+        throw err
+      })
+    
+    preloadingPromises.current.set(cacheKey, fetchPromise)
+    return fetchPromise
+  }
+
+  // Preload all loop details in parallel
+  const preloadMultiWayLoopDetails = useCallback(async (loops: any[]) => {
+    if (!loops || loops.length === 0) return
+    
+    const loadsToFetch = loops.map(async (loop) => {
+      const loopId = String(loop?.chain_id || loop?.loop_id || loop?.id || '')
+      if (!loopId) return
+      
+      try {
+        await getOrFetchMultiWayLoopDetails(loopId, loop)
+      } catch (error) {
+        console.error(`Failed to preload loop ${loopId}:`, error)
+        // Non-critical - modal can still open with partial data
+      }
+    })
+    
+    // Don't wait for all - just start them in parallel
+    Promise.allSettled(loadsToFetch).catch(() => {
+      // Ignore errors from parallel preloading
+    })
+  }, [])
 
   // Keep activeTabRef in sync so the multiwayAlert callback can read it without stale closures
   useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
@@ -4732,7 +4800,7 @@ const Dashboard: React.FC = () => {
                                             try {
                                               setMultiWayManagerLoading(true)
                                               const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                              const details = await fetchMultiWayTrade(loopId)
+                                              const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
                                               setSelectedMultiWayTrade(details)
                                               setMultiWayManagerOpen(true)
                                             } catch (e) {
@@ -4959,7 +5027,7 @@ const Dashboard: React.FC = () => {
                                       try {
                                         setMultiWayManagerLoading(true)
                                         const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                        const details = await fetchMultiWayTrade(loopId)
+                                        const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
                                         setSelectedMultiWayTrade(details)
                                         setMultiWayManagerOpen(true)
                                       } catch (e) {
@@ -5049,7 +5117,7 @@ const Dashboard: React.FC = () => {
                                       try {
                                         setMultiWayManagerLoading(true)
                                         const loopId = String(trade?.chain_id || trade?.loop_id || trade?.id || '')
-                                        const details = await fetchMultiWayTrade(loopId)
+                                        const details = await getOrFetchMultiWayLoopDetails(loopId, trade)
                                         setSelectedMultiWayTrade(details)
                                         setMultiWayManagerOpen(true)
                                       } catch (e) {
