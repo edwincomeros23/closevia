@@ -270,6 +270,20 @@ export const updateLegHandoff = async (
 }
 
 /**
+ * Mark a multiway chain leg as received/completed (called by the receiver).
+ */
+export const completeLeg = async (legId: number, handoffPhotoUrl?: string): Promise<void> => {
+  try {
+    await api.post(`/api/trades/multiway/legs/${legId}/complete`, {
+      handoff_photo_url: handoffPhotoUrl,
+    })
+  } catch (error) {
+    console.error(`Failed to complete leg ${legId}:`, error)
+    throw error
+  }
+}
+
+/**
  * Send a message in a trade chat
  */
 export const sendTradeMessage = async (
