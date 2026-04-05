@@ -88,7 +88,6 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiCalendar,
-  FiFileText,
   FiMenu,
   FiAlertTriangle,
   FiSettings,
@@ -118,13 +117,13 @@ import ConnectionStatus from '../components/ConnectionStatus';
 import ErrorBoundary from '../components/ErrorBoundary';
 import VerifiedAvatar from '../components/VerifiedAvatar';
 import AdvertisementCMS from '../components/AdvertisementCMS';
-import { User, Product, PaginatedResponse, APIResponse } from '../types';
+import { User, Product, Trade, PaginatedResponse, APIResponse } from '../types';
+
+const ADMIN_STATS_CACHE_KEY = 'clovia_admin_stats_cache_v1';
+const ADMIN_STATS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const ADMIN_STATS_REQUEST_TIMEOUT_MS = 12_000;
 
 // â"€â"€â"€ PDF / DOCX imports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
-import { saveAs } from 'file-saver';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 interface TradeMessage {
@@ -135,6 +134,22 @@ interface TradeMessage {
   image_url?: string;
   created_at: string;
 }
+
+type OverviewDimensions = {
+  products: boolean;
+  trades: boolean;
+  categories: boolean;
+};
+
+interface OverviewCategoryRow {
+  category: string;
+  total: number;
+  available: number;
+  premium: number;
+  last_created_at: string;
+}
+
+const OVERVIEW_TABLE_PAGE_SIZE = 10;
 
 interface AdminStats {
   total_users: number;
@@ -197,135 +212,6 @@ const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-
-// â"€â"€â"€ Export helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-function buildReportRows(stats: AdminStats) {
-  return [
-    ['Total Users', stats.total_users?.toLocaleString() ?? '0'],
-    ['Premium Users', stats.premium_users?.toLocaleString() ?? '0'],
-    ['Verified Users', stats.verified_users?.toLocaleString() ?? '0'],
-    ['Suspended Users', stats.suspended_users?.toLocaleString() ?? '0'],
-    ['Active Listings', stats.active_listings?.toLocaleString() ?? '0'],
-    ['Total Completed Trades', stats.total_trades?.toLocaleString() ?? '0'],
-    ['Total Income', formatCurrency(stats.total_income ?? 0)],
-    ['New Users Today', stats.new_users_today?.toLocaleString() ?? '0'],
-    ['New Listings Today', stats.new_listings_today?.toLocaleString() ?? '0'],
-    ['Pending Approvals', stats.pending_approvals?.toLocaleString() ?? '0'],
-    ['Reports Filed', stats.reports_filed?.toLocaleString() ?? '0'],
-    ['Storage Usage', `${(stats.storage_usage_mb ?? 0).toFixed(1)} MB`],
-  ];
-}
-
-function exportToPDF(stats: AdminStats) {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const now = new Date();
-  const pageW = doc.internal.pageSize.getWidth();
-
-  // â"€â"€ Header band â"€â"€
-  doc.setFillColor(49, 130, 206); // blue.500
-  doc.rect(0, 0, pageW, 32, 'F');
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Clovia Admin â€" Site Usage Report', pageW / 2, 14, { align: 'center' });
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Generated: ${now.toLocaleString('en-PH')}`, pageW / 2, 22, { align: 'center' });
-  doc.text(`Data as of: ${stats.last_updated ?? now.toLocaleString('en-PH')}`, pageW / 2, 28, { align: 'center' });
-
-  // â"€â"€ Section: Core Metrics â"€â"€
-  doc.setTextColor(30, 30, 30);
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Core Metrics', 14, 42);
-
-  // usable width = page width minus margins (14 left + 14 right)
-  const usableW = pageW - 28;
-  const col0W = usableW * 0.58; // 58% for label column
-  const col1W = usableW * 0.42; // 42% for value column
-
-  autoTable(doc, {
-    startY: 46,
-    head: [['Metric', 'Value']],
-    body: buildReportRows(stats),
-    theme: 'striped',
-    tableWidth: usableW,
-    headStyles: { fillColor: [49, 130, 206], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-    bodyStyles: { fontSize: 10, overflow: 'linebreak' },
-    alternateRowStyles: { fillColor: [235, 244, 255] },
-    columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: col0W },
-      1: { halign: 'right', cellWidth: col1W },
-    },
-    margin: { left: 14, right: 14 },
-  });
-
-  // â"€â"€ Section: Revenue Breakdown â"€â"€
-  const afterTable = (doc as any).lastAutoTable.finalY + 10;
-  if (stats.revenue_breakdown && stats.revenue_breakdown.length > 0) {
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(30, 30, 30);
-    doc.text('Revenue Breakdown (Last 4 Weeks)', 14, afterTable);
-
-    autoTable(doc, {
-      startY: afterTable + 4,
-      head: [['Period', 'Revenue (PHP)']],
-      body: stats.revenue_breakdown.map(r => [r.period, formatCurrency(r.amount)]),
-      theme: 'striped',
-      tableWidth: usableW,
-      headStyles: { fillColor: [56, 178, 172], textColor: 255, fontStyle: 'bold', fontSize: 10 },
-      bodyStyles: { fontSize: 10, overflow: 'linebreak' },
-      alternateRowStyles: { fillColor: [240, 255, 254] },
-      columnStyles: {
-        0: { fontStyle: 'bold', cellWidth: col0W },
-        1: { halign: 'right', cellWidth: col1W },
-      },
-      margin: { left: 14, right: 14 },
-    });
-  }
-
-  // â"€â"€ Footer â"€â"€
-  const pageCount = (doc as any).internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text(`Page ${i} of ${pageCount}  â€¢  Clovia Admin Report`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
-  }
-
-  doc.save(`clovia-report-${now.toISOString().slice(0, 10)}.pdf`);
-}
-
-async function exportToExcel(stats: AdminStats) {
-  const now = new Date();
-
-  // Create workbook
-  const wb = XLSX.utils.book_new();
-
-  // Core Metrics sheet
-  const coreData = buildReportRows(stats).map(row => ({
-    Metric: row[0],
-    Value: row[1]
-  }));
-  const wsCore = XLSX.utils.json_to_sheet(coreData);
-  XLSX.utils.book_append_sheet(wb, wsCore, 'Core Metrics');
-
-  // Revenue Breakdown sheet
-  if (stats.revenue_breakdown && stats.revenue_breakdown.length > 0) {
-    const revenueData = stats.revenue_breakdown.map(r => ({
-      Period: r.period,
-      'Revenue (PHP)': r.amount
-    }));
-    const wsRev = XLSX.utils.json_to_sheet(revenueData);
-    XLSX.utils.book_append_sheet(wb, wsRev, 'Revenue Breakdown');
-  }
-
-  // Generate Excel file
-  XLSX.writeFile(wb, `clovia-report-${now.toISOString().slice(0, 10)}.xlsx`);
-}
 
 // â"€â"€â"€ Calendar Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 interface CalendarProps {
@@ -478,6 +364,20 @@ const UsageCalendar: React.FC<CalendarProps> = ({
 // â"€â"€â"€ Main Component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const AdminDashboard: React.FC = () => {
   type SectionId = 'overview' | 'moderation' | 'management' | 'system';
+
+  const formatYMD = (date: Date) => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const getDefaultOverviewDates = () => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 7);
+    return { start: formatYMD(start), end: formatYMD(end) };
+  };
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -488,6 +388,7 @@ const AdminDashboard: React.FC = () => {
   const [isUsingMockData, setIsUsingMockData] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showConnectionAlert, setShowConnectionAlert] = useState(false);
+  const didKickoffSecondaryFetchesRef = useRef(false);
 
   // Calendar state
   const now = new Date();
@@ -518,6 +419,28 @@ const AdminDashboard: React.FC = () => {
   const [productsStatusFilter, setProductsStatusFilter] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set());
   const [isSelectingProducts, setIsSelectingProducts] = useState(false);
+
+  // Overview: quick data explorer (Products / Trades / Categories)
+  const defaults = getDefaultOverviewDates();
+  const [overviewStartDate, setOverviewStartDate] = useState<string>(defaults.start);
+  const [overviewEndDate, setOverviewEndDate] = useState<string>(defaults.end);
+  const [overviewDims, setOverviewDims] = useState<OverviewDimensions>({
+    products: true,
+    trades: false,
+    categories: false,
+  });
+  const [overviewDataLoading, setOverviewDataLoading] = useState(false);
+  const [overviewRevenue, setOverviewRevenue] = useState<number | null>(null);
+  const [overviewRevenueLoading, setOverviewRevenueLoading] = useState(false);
+  const [overviewProductsData, setOverviewProductsData] = useState<Product[]>([]);
+  const [overviewProductsPage, setOverviewProductsPage] = useState(1);
+  const [overviewProductsTotalPages, setOverviewProductsTotalPages] = useState(1);
+  const [overviewProductsTotal, setOverviewProductsTotal] = useState(0);
+  const [overviewTradesData, setOverviewTradesData] = useState<Trade[]>([]);
+  const [overviewTradesPage, setOverviewTradesPage] = useState(1);
+  const [overviewTradesTotalPages, setOverviewTradesTotalPages] = useState(1);
+  const [overviewTradesTotal, setOverviewTradesTotal] = useState(0);
+  const [overviewCategoriesData, setOverviewCategoriesData] = useState<OverviewCategoryRow[]>([]);
 
   // Reports state
   const [reports, setReports] = useState<any[]>([]);
@@ -642,22 +565,28 @@ const AdminDashboard: React.FC = () => {
   }, []);
 
   // â"€â"€ Fetch main stats â"€â"€
-  const fetchAdminStats = useCallback(async (useMockDataFallback = false) => {
+  const fetchAdminStats = useCallback(async (
+    opts: boolean | { useMockDataFallback?: boolean; background?: boolean } = false
+  ) => {
+    const options = typeof opts === 'boolean' ? { useMockDataFallback: opts } : opts;
+    const useMockDataFallback = !!options.useMockDataFallback;
+    const background = !!options.background;
+
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       setError(null);
       setIsUsingMockData(false);
 
       if (useMockDataFallback) {
         setStats(mockAdminStats);
         setIsUsingMockData(true);
-        toast({ id: 'using-demo-data', title: 'Using Demo Data', description: 'Showing mock data while API is unavailable', status: 'info', duration: 5000, isClosable: true });
+        if (!background) {
+          toast({ id: 'using-demo-data', title: 'Using Demo Data', description: 'Showing mock data while API is unavailable', status: 'info', duration: 5000, isClosable: true });
+        }
         return;
       }
 
-      fetchMultiwayDisputes();
-
-      const response = await api.get('/api/admin/stats');
+      const response = await api.get('/api/admin/stats', { timeout: ADMIN_STATS_REQUEST_TIMEOUT_MS });
       const result = response.data;
 
       if (result.success) {
@@ -667,20 +596,250 @@ const AdminDashboard: React.FC = () => {
         } else {
           setStats(result.data);
           setIsUsingMockData(false);
+
+          try {
+            sessionStorage.setItem(
+              ADMIN_STATS_CACHE_KEY,
+              JSON.stringify({ ts: Date.now(), data: result.data })
+            );
+          } catch {
+            // ignore cache write errors
+          }
         }
       } else {
         throw new Error(result.error || 'Failed to fetch admin statistics');
       }
     } catch (err: any) {
-      // Fall back to mock data on failure
-      setStats(mockAdminStats);
-      setIsUsingMockData(true);
-      setRetryCount(prev => prev + 1);
-      toast({ id: 'error', title: 'Using demo data', description: 'Could not reach server — showing demo data', status: 'warning', duration: 5000, isClosable: true });
+      const status = err?.response?.status as number | undefined;
+      const apiMessage = err?.response?.data?.error || err?.message || 'Unable to fetch admin statistics';
+
+      // Auth errors should NOT trigger demo mode.
+      if (status === 401 || status === 403) {
+        setError('Not authorized');
+        setIsUsingMockData(false);
+        if (!background) {
+          toast({
+            id: 'admin-stats-unauthorized',
+            title: 'Not authorized',
+            description: 'Please sign in with an admin account to view dashboard stats.',
+            status: 'error',
+            duration: 6000,
+            isClosable: true,
+          });
+        }
+        return;
+      }
+
+      const shouldFallbackToMock = !err?.response || (typeof status === 'number' && (status >= 500 || status === 429));
+
+      if (shouldFallbackToMock) {
+        // Fall back to mock data only when API is unreachable or server is failing.
+        setStats(mockAdminStats);
+        setIsUsingMockData(true);
+        if (!background) {
+          setRetryCount(prev => prev + 1);
+          toast({
+            id: 'admin-stats-demo-fallback',
+            title: 'Using demo data',
+            description: 'Could not reach server — showing demo data',
+            status: 'warning',
+            duration: 5000,
+            isClosable: true,
+          });
+        }
+      } else {
+        setError(String(apiMessage));
+        setIsUsingMockData(false);
+        if (!background) {
+          setRetryCount(prev => prev + 1);
+          toast({
+            id: 'admin-stats-error',
+            title: 'Could not load admin stats',
+            description: String(apiMessage),
+            status: 'error',
+            duration: 6000,
+            isClosable: true,
+          });
+        }
+      }
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, [toast]);
+
+  const getEndExclusiveYMD = useCallback((ymd: string): string => {
+    const parts = ymd.split('-').map(Number);
+    if (parts.length !== 3) return ymd;
+    const [y, m, d] = parts;
+    if (!y || !m || !d) return ymd;
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + 1);
+    const yyyy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const fetchOverviewProductsPage = useCallback(async (page: number) => {
+    const params = new URLSearchParams();
+    if (overviewStartDate) params.set('start', overviewStartDate);
+    if (overviewEndDate) params.set('end', getEndExclusiveYMD(overviewEndDate));
+    params.set('page', String(page));
+    params.set('limit', String(OVERVIEW_TABLE_PAGE_SIZE));
+
+    const resp = await api.get<APIResponse<PaginatedResponse<Product>>>(`/api/admin/products?${params.toString()}`);
+    if (resp.data?.success) {
+      const data = resp.data.data;
+      setOverviewProductsData(data?.data || []);
+      setOverviewProductsPage(data?.page || page);
+      setOverviewProductsTotalPages(data?.total_pages || 1);
+      setOverviewProductsTotal(data?.total || 0);
+    } else {
+      setOverviewProductsData([]);
+      setOverviewProductsPage(1);
+      setOverviewProductsTotalPages(1);
+      setOverviewProductsTotal(0);
+    }
+  }, [getEndExclusiveYMD, overviewEndDate, overviewStartDate]);
+
+  const fetchOverviewTradesPage = useCallback(async (page: number) => {
+    const params = new URLSearchParams();
+    if (overviewStartDate) params.set('start', overviewStartDate);
+    if (overviewEndDate) params.set('end', getEndExclusiveYMD(overviewEndDate));
+    params.set('page', String(page));
+    params.set('limit', String(OVERVIEW_TABLE_PAGE_SIZE));
+
+    const resp = await api.get<APIResponse<PaginatedResponse<Trade>>>(`/api/admin/trades?${params.toString()}`);
+    if (resp.data?.success) {
+      const data = resp.data.data;
+      setOverviewTradesData(data?.data || []);
+      setOverviewTradesPage(data?.page || page);
+      setOverviewTradesTotalPages(data?.total_pages || 1);
+      setOverviewTradesTotal(data?.total || 0);
+    } else {
+      setOverviewTradesData([]);
+      setOverviewTradesPage(1);
+      setOverviewTradesTotalPages(1);
+      setOverviewTradesTotal(0);
+    }
+  }, [getEndExclusiveYMD, overviewEndDate, overviewStartDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!overviewStartDate || !overviewEndDate) {
+        setOverviewRevenue(null);
+        setOverviewRevenueLoading(false);
+        return;
+      }
+
+      setOverviewRevenueLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set('start', overviewStartDate);
+        params.set('end', overviewEndDate); // inclusive for revenue endpoint
+        const resp = await api.get<APIResponse<{ revenue: number }>>(`/api/admin/revenue?${params.toString()}`);
+        if (cancelled) return;
+        if (resp.data?.success) {
+          const raw = (resp.data.data as any)?.revenue;
+          setOverviewRevenue(typeof raw === 'number' ? raw : Number(raw || 0));
+        } else {
+          setOverviewRevenue(null);
+        }
+      } catch {
+        if (!cancelled) setOverviewRevenue(null);
+      } finally {
+        if (!cancelled) setOverviewRevenueLoading(false);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [overviewEndDate, overviewStartDate]);
+
+  const fetchOverviewDataTables = useCallback(async () => {
+    const anySelected = overviewDims.products || overviewDims.trades || overviewDims.categories;
+    if (!anySelected) {
+      toast({ id: 'overview-no-dimensions', title: 'Select at least one option', status: 'warning', duration: 2500, isClosable: true });
+      return;
+    }
+
+    setOverviewDataLoading(true);
+    try {
+      const common = new URLSearchParams();
+      if (overviewStartDate) common.set('start', overviewStartDate);
+      if (overviewEndDate) common.set('end', getEndExclusiveYMD(overviewEndDate));
+
+      if (overviewDims.products) {
+        await fetchOverviewProductsPage(1);
+      } else {
+        setOverviewProductsData([]);
+        setOverviewProductsPage(1);
+        setOverviewProductsTotalPages(1);
+        setOverviewProductsTotal(0);
+      }
+
+      if (overviewDims.trades) {
+        await fetchOverviewTradesPage(1);
+      } else {
+        setOverviewTradesData([]);
+        setOverviewTradesPage(1);
+        setOverviewTradesTotalPages(1);
+        setOverviewTradesTotal(0);
+      }
+
+      if (overviewDims.categories) {
+        const params = new URLSearchParams(common);
+        params.set('limit', '50');
+        const resp = await api.get<APIResponse<OverviewCategoryRow[]>>(`/api/admin/categories?${params.toString()}`);
+        if (resp.data?.success && Array.isArray(resp.data.data)) setOverviewCategoriesData(resp.data.data);
+        else setOverviewCategoriesData([]);
+      } else {
+        setOverviewCategoriesData([]);
+      }
+    } catch (err: any) {
+      toast({
+        id: 'overview-data-fetch-failed',
+        title: 'Failed to fetch data',
+        description: err?.response?.data?.error || err.message || 'Unable to fetch data',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
+    } finally {
+      setOverviewDataLoading(false);
+    }
+  }, [fetchOverviewProductsPage, fetchOverviewTradesPage, getEndExclusiveYMD, overviewDims, overviewEndDate, overviewStartDate, toast]);
+
+  // Auto-fetch overview tables when options/date range change
+  useEffect(() => {
+    const anySelected = overviewDims.products || overviewDims.trades || overviewDims.categories;
+
+    if (!anySelected) {
+      setOverviewProductsData([]);
+      setOverviewProductsPage(1);
+      setOverviewProductsTotalPages(1);
+      setOverviewProductsTotal(0);
+
+      setOverviewTradesData([]);
+      setOverviewTradesPage(1);
+      setOverviewTradesTotalPages(1);
+      setOverviewTradesTotal(0);
+
+      setOverviewCategoriesData([]);
+      return;
+    }
+
+    const t = setTimeout(() => {
+      // Safe: we only call this when at least one option is selected.
+      fetchOverviewDataTables();
+    }, 200);
+
+    return () => clearTimeout(t);
+  }, [fetchOverviewDataTables, overviewDims, overviewEndDate, overviewStartDate]);
 
   // â"€â"€ Fetch calendar daily stats â"€â"€
   const fetchDailyStats = useCallback(async (year: number, month: number) => {
@@ -742,28 +901,98 @@ const AdminDashboard: React.FC = () => {
     await fetchAdminStats();
   }, [fetchAdminStats]);
 
-  // â"€â"€ Export handlers â"€â"€
-  const handleExportPDF = useCallback(async () => {
-    if (!stats) return;
-    setExportLoading(true);
-    try {
-      exportToPDF(stats);
-      toast({ id: 'pdf-exported-successfully', title: 'PDF exported successfully', status: 'success', duration: 3000, isClosable: true });
-    } catch (e) {
-      toast({ id: 'pdf-export-failed', title: 'PDF export failed', status: 'error', duration: 3000, isClosable: true });
-    } finally {
-      setExportLoading(false);
+  const handleExportRevenue = useCallback(async () => {
+    if (!stats) {
+      toast({ id: 'overview-export-no-stats', title: 'Stats are still loading', status: 'info', duration: 2500, isClosable: true });
+      return;
     }
-  }, [stats, toast]);
 
-  const handleExportExcel = useCallback(async () => {
-    if (!stats) return;
+    const totalIncome = Number(stats.total_income || 0);
+    const revenueBySourceEntries = stats.revenue_by_source ? Object.entries(stats.revenue_by_source) : [];
+    const hasAnyRevenue = totalIncome > 0 || revenueBySourceEntries.some(([, v]) => Number(v || 0) !== 0);
+
+    if (!hasAnyRevenue) {
+      toast({ id: 'overview-export-no-revenue', title: 'No revenue data available', status: 'warning', duration: 2500, isClosable: true });
+      return;
+    }
+
     setExportLoading(true);
     try {
-      await exportToExcel(stats);
-      toast({ id: 'excel-exported-successfully', title: 'Excel exported successfully', status: 'success', duration: 3000, isClosable: true });
-    } catch (e) {
-      toast({ id: 'excel-export-failed', title: 'Excel export failed', status: 'error', duration: 3000, isClosable: true });
+      const formatPhpPdf = (amount: number) => {
+        const n = Number(amount || 0);
+        return `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      };
+
+      const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+        import('jspdf'),
+        import('jspdf-autotable'),
+      ]);
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const now = new Date();
+      const title = 'Clovia Admin — Revenue Report';
+      const generated = now.toLocaleString('en-PH');
+
+      const pageW = pdf.internal.pageSize.getWidth();
+      const usableW = pageW - 28;
+
+      // Header band
+      pdf.setFillColor(49, 130, 206);
+      pdf.rect(0, 0, pageW, 22, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(14);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(title, pageW / 2, 13, { align: 'center' });
+
+      pdf.setTextColor(60);
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(`Generated: ${generated}`, 14, 30);
+
+      // Total income
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(30);
+      pdf.text('Total Income', 14, 40);
+      pdf.setFontSize(16);
+      pdf.text(formatPhpPdf(totalIncome), 14, 48);
+
+      // Revenue by Source
+      pdf.setFontSize(12);
+      pdf.text('Revenue by Source', 14, 60);
+
+      const sourceRows = revenueBySourceEntries.length > 0
+        ? revenueBySourceEntries.map(([source, amount]) => {
+          const label = String(source || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+          return [label, formatPhpPdf(Number(amount || 0))];
+        })
+        : [['No revenue sources', '']];
+
+      autoTable(pdf, {
+        startY: 64,
+        head: [['Source', 'Amount (PHP)']],
+        body: sourceRows,
+        theme: 'striped',
+        tableWidth: usableW,
+        headStyles: { fillColor: [49, 130, 206], textColor: 255, fontStyle: 'bold', fontSize: 10 },
+        bodyStyles: { fontSize: 10, overflow: 'linebreak' },
+        columnStyles: { 1: { halign: 'right' } },
+        margin: { left: 14, right: 14 },
+      });
+
+      const filename = `clovia-revenue-${now.toISOString().slice(0, 10)}.pdf`;
+      pdf.save(filename);
+
+      toast({ id: 'overview-exported-revenue-pdf', title: 'Revenue PDF downloaded', status: 'success', duration: 2500, isClosable: true });
+    } catch (e: any) {
+      toast({
+        id: 'overview-export-failed',
+        title: 'Export failed',
+        description: e?.message || 'Unable to export revenue PDF',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+      });
     } finally {
       setExportLoading(false);
     }
@@ -1535,17 +1764,26 @@ const AdminDashboard: React.FC = () => {
   }, [deleteTarget, toast, closeDeleteDialog]);
 
   useEffect(() => {
-    // Initial data fetch - only once on mount
-    Promise.allSettled([
-      fetchAdminStats(),
-      fetchAdminUsers(1),
-      fetchAdminProducts(1),
-      fetchAdminReports(1),
-      fetchAdminCampaigns(),
-      fetchRiderApplications(),
-      fetchRiderConfig(),
-      fetchRemittancePayments(),
-    ]);
+    // Warm-start from cache (instant render), then refresh stats in background.
+    try {
+      const raw = sessionStorage.getItem(ADMIN_STATS_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { ts?: number; data?: AdminStats };
+        if (parsed?.data && typeof parsed.ts === 'number' && Date.now() - parsed.ts < ADMIN_STATS_CACHE_TTL_MS) {
+          setStats(parsed.data);
+          setIsUsingMockData(false);
+          setError(null);
+          setLoading(false);
+          fetchAdminStats({ background: true });
+        } else {
+          fetchAdminStats();
+        }
+      } else {
+        fetchAdminStats();
+      }
+    } catch {
+      fetchAdminStats();
+    }
 
     // Connection check doesn't need to be in the mount effect but we'll keep it there for simplicity
     checkConnection();
@@ -1553,6 +1791,32 @@ const AdminDashboard: React.FC = () => {
     return () => clearInterval(connectionInterval);
     // Empty dependency array prevents re-runs when filter functions change
   }, []);
+
+  // Once core stats are available, load secondary admin data (lists/queues) in the background.
+  useEffect(() => {
+    if (!stats || didKickoffSecondaryFetchesRef.current) return;
+    didKickoffSecondaryFetchesRef.current = true;
+    Promise.allSettled([
+      fetchAdminUsers(1),
+      fetchAdminProducts(1),
+      fetchAdminReports(1),
+      fetchAdminCampaigns(),
+      fetchRiderApplications(),
+      fetchRiderConfig(),
+      fetchRemittancePayments(),
+      fetchMultiwayDisputes(),
+    ]);
+  }, [
+    stats,
+    fetchAdminUsers,
+    fetchAdminProducts,
+    fetchAdminReports,
+    fetchAdminCampaigns,
+    fetchRiderApplications,
+    fetchRiderConfig,
+    fetchRemittancePayments,
+    fetchMultiwayDisputes,
+  ]);
 
   // Separate effect for rider filter changes - doesn't trigger full dashboard refresh
   useEffect(() => {
@@ -1757,6 +2021,278 @@ const AdminDashboard: React.FC = () => {
   // â"€â"€ SECTION: Overview â"€â"€
   const OverviewSection = () => (
     <VStack spacing={8} pr={20} align="stretch">
+      {/* Data explorer (fetch products / trades / categories) */}
+      <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
+        <CardHeader pb={2}>
+          <HStack>
+            <Icon as={FiGrid} color="brand.500" />
+            <Heading size="sm" color={textColor}>Data Explorer</Heading>
+          </HStack>
+        </CardHeader>
+        <CardBody pt={2}>
+          <Flex gap={3} wrap="wrap" align="center" justify="space-between">
+            <HStack spacing={3} wrap="wrap">
+              <HStack spacing={2}>
+                <Icon as={FiCalendar} color={mutedTextColor} />
+                <Tooltip
+                  hasArrow
+                  placement="top"
+                  label={
+                    overviewRevenueLoading
+                      ? 'Revenue: loading...'
+                      : overviewRevenue === null
+                        ? 'Select start and end dates to view revenue'
+                        : `Revenue: ${formatCurrency(overviewRevenue || 0)}`
+                  }
+                >
+                  <HStack spacing={2}>
+                    <Input
+                      type="date"
+                      size="sm"
+                      value={overviewStartDate}
+                      onChange={(e) => setOverviewStartDate(e.target.value)}
+                      w={{ base: 'full', sm: '170px' }}
+                    />
+                    <Text fontSize="sm" color={mutedTextColor} fontWeight="600">to</Text>
+                    <Input
+                      type="date"
+                      size="sm"
+                      value={overviewEndDate}
+                      onChange={(e) => setOverviewEndDate(e.target.value)}
+                      w={{ base: 'full', sm: '170px' }}
+                    />
+                  </HStack>
+                </Tooltip>
+              </HStack>
+
+              <HStack spacing={4} wrap="wrap">
+                <Text fontSize="sm" color={mutedTextColor} fontWeight="600">Options:</Text>
+                <Checkbox isChecked={overviewDims.products} onChange={(e) => setOverviewDims(prev => ({ ...prev, products: e.target.checked }))}>
+                  Products
+                </Checkbox>
+                <Checkbox isChecked={overviewDims.trades} onChange={(e) => setOverviewDims(prev => ({ ...prev, trades: e.target.checked }))}>
+                  Trades
+                </Checkbox>
+                <Checkbox isChecked={overviewDims.categories} onChange={(e) => setOverviewDims(prev => ({ ...prev, categories: e.target.checked }))}>
+                  Categories
+                </Checkbox>
+              </HStack>
+            </HStack>
+
+            <HStack spacing={2}>
+              <Button
+                size="sm"
+                leftIcon={<FiPrinter />}
+                colorScheme="brand"
+                variant="outline"
+                onClick={handleExportRevenue}
+                isLoading={exportLoading}
+                loadingText="Preparing…"
+              >
+                Export
+              </Button>
+            </HStack>
+          </Flex>
+
+          {overviewDataLoading ? (
+            <Center py={8}><Spinner color="brand.500" /></Center>
+          ) : (
+            <VStack align="stretch" spacing={6} mt={4}>
+              {overviewDims.products && (
+                <Box>
+                  <HStack mb={2} justify="space-between">
+                    <Text fontWeight="700" fontSize="sm" color={textColor}>Products</Text>
+                    <Text fontSize="xs" color={mutedTextColor}>
+                      {overviewProductsTotal ? `${overviewProductsTotal.toLocaleString()} total` : `${overviewProductsData.length} rows`} 
+                      {overviewProductsTotalPages > 1 ? ` • Page ${overviewProductsPage}/${overviewProductsTotalPages}` : ''}
+                    </Text>
+                  </HStack>
+                  {overviewProductsData.length === 0 ? (
+                    <Text fontSize="sm" color={mutedTextColor}>No products found for the selected range.</Text>
+                  ) : (
+                    <Box overflowX="auto" w="full">
+                      <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '680px' }}>
+                        <Thead bg={headerBg}>
+                          <Tr>
+                            <Th w="64px" px={2} color={mutedTextColor}>#</Th>
+                            <Th px={2} color={mutedTextColor}>Title</Th>
+                            <Th w="110px" px={2} color={mutedTextColor}>Status</Th>
+                            <Th w="180px" px={2} color={mutedTextColor}>Seller</Th>
+                            <Th w="120px" px={2} color={mutedTextColor}>Created</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {overviewProductsData.map((p) => (
+                            <Tr key={p.id} _hover={{ bg: hoverBg }}>
+                              <Td px={2} fontSize="xs" color={mutedTextColor} fontWeight="700">#{p.id}</Td>
+                              <Td px={2}>
+                                <Text fontSize="sm" fontWeight="600" noOfLines={1}>{p.title}</Text>
+                              </Td>
+                              <Td px={2}>
+                                <Badge borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize" colorScheme={p.status === 'available' ? 'green' : p.status === 'locked' ? 'orange' : 'gray'}>
+                                  {p.status}
+                                </Badge>
+                              </Td>
+                              <Td px={2}>
+                                <Text fontSize="sm" noOfLines={1}>{p.seller_name || `User #${p.seller_id}`}</Text>
+                              </Td>
+                              <Td px={2} fontSize="sm" color={mutedTextColor}>{p.created_at ? new Date(p.created_at).toLocaleDateString() : '-'}</Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </ChakraTable>
+                    </Box>
+                  )}
+
+                  {overviewProductsTotalPages > 1 && (
+                    <Flex mt={3} justify="flex-end">
+                      <HStack spacing={2}>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => fetchOverviewProductsPage(Math.max(1, overviewProductsPage - 1))}
+                          isDisabled={overviewDataLoading || overviewProductsPage <= 1}
+                        >
+                          Prev
+                        </Button>
+                        <Text fontSize="xs" color={mutedTextColor}>
+                          Page {overviewProductsPage} of {overviewProductsTotalPages}
+                        </Text>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => fetchOverviewProductsPage(Math.min(overviewProductsTotalPages, overviewProductsPage + 1))}
+                          isDisabled={overviewDataLoading || overviewProductsPage >= overviewProductsTotalPages}
+                        >
+                          Next
+                        </Button>
+                      </HStack>
+                    </Flex>
+                  )}
+                </Box>
+              )}
+
+              {overviewDims.trades && (
+                <Box>
+                  <HStack mb={2} justify="space-between">
+                    <Text fontWeight="700" fontSize="sm" color={textColor}>Trades</Text>
+                    <Text fontSize="xs" color={mutedTextColor}>
+                      {overviewTradesTotal ? `${overviewTradesTotal.toLocaleString()} total` : `${overviewTradesData.length} rows`}
+                      {overviewTradesTotalPages > 1 ? ` • Page ${overviewTradesPage}/${overviewTradesTotalPages}` : ''}
+                    </Text>
+                  </HStack>
+                  {overviewTradesData.length === 0 ? (
+                    <Text fontSize="sm" color={mutedTextColor}>No trades found for the selected range.</Text>
+                  ) : (
+                    <Box overflowX="auto" w="full">
+                      <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '760px' }}>
+                        <Thead bg={headerBg}>
+                          <Tr>
+                            <Th w="64px" px={2} color={mutedTextColor}>#</Th>
+                            <Th w="120px" px={2} color={mutedTextColor}>Status</Th>
+                            <Th w="110px" px={2} color={mutedTextColor}>Option</Th>
+                            <Th px={2} color={mutedTextColor}>Product</Th>
+                            <Th w="180px" px={2} color={mutedTextColor}>Buyer</Th>
+                            <Th w="180px" px={2} color={mutedTextColor}>Seller</Th>
+                            <Th w="120px" px={2} color={mutedTextColor}>Created</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {overviewTradesData.map((t) => (
+                            <Tr key={t.id} _hover={{ bg: hoverBg }}>
+                              <Td px={2} fontSize="xs" color={mutedTextColor} fontWeight="700">#{t.id}</Td>
+                              <Td px={2}>
+                                <Badge borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize" colorScheme={t.status === 'completed' ? 'green' : t.status === 'active' ? 'blue' : t.status === 'pending' ? 'orange' : 'gray'}>
+                                  {t.status}
+                                </Badge>
+                              </Td>
+                              <Td px={2}>
+                                <Badge borderRadius="full" px={2} fontSize="2xs" textTransform="capitalize" colorScheme={t.trade_option === 'delivery' ? 'purple' : 'teal'}>
+                                  {t.trade_option || 'meetup'}
+                                </Badge>
+                              </Td>
+                              <Td px={2}>
+                                <Text fontSize="sm" noOfLines={1}>{t.product_title || `Product #${t.target_product_id}`}</Text>
+                              </Td>
+                              <Td px={2}><Text fontSize="sm" noOfLines={1}>{t.buyer_name || `User #${t.buyer_id}`}</Text></Td>
+                              <Td px={2}><Text fontSize="sm" noOfLines={1}>{t.seller_name || `User #${t.seller_id}`}</Text></Td>
+                              <Td px={2} fontSize="sm" color={mutedTextColor}>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '-'}</Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </ChakraTable>
+                    </Box>
+                  )}
+
+                  {overviewTradesTotalPages > 1 && (
+                    <Flex mt={3} justify="flex-end">
+                      <HStack spacing={2}>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => fetchOverviewTradesPage(Math.max(1, overviewTradesPage - 1))}
+                          isDisabled={overviewDataLoading || overviewTradesPage <= 1}
+                        >
+                          Prev
+                        </Button>
+                        <Text fontSize="xs" color={mutedTextColor}>
+                          Page {overviewTradesPage} of {overviewTradesTotalPages}
+                        </Text>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          onClick={() => fetchOverviewTradesPage(Math.min(overviewTradesTotalPages, overviewTradesPage + 1))}
+                          isDisabled={overviewDataLoading || overviewTradesPage >= overviewTradesTotalPages}
+                        >
+                          Next
+                        </Button>
+                      </HStack>
+                    </Flex>
+                  )}
+                </Box>
+              )}
+
+              {overviewDims.categories && (
+                <Box>
+                  <HStack mb={2} justify="space-between">
+                    <Text fontWeight="700" fontSize="sm" color={textColor}>Categories</Text>
+                    <Text fontSize="xs" color={mutedTextColor}>{overviewCategoriesData.length} rows</Text>
+                  </HStack>
+                  {overviewCategoriesData.length === 0 ? (
+                    <Text fontSize="sm" color={mutedTextColor}>No categories found for the selected range.</Text>
+                  ) : (
+                    <Box overflowX="auto" w="full">
+                      <ChakraTable variant="simple" size="sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: '640px' }}>
+                        <Thead bg={headerBg}>
+                          <Tr>
+                            <Th px={2} color={mutedTextColor}>Category</Th>
+                            <Th w="90px" px={2} color={mutedTextColor} isNumeric>Total</Th>
+                            <Th w="110px" px={2} color={mutedTextColor} isNumeric>Available</Th>
+                            <Th w="95px" px={2} color={mutedTextColor} isNumeric>Premium</Th>
+                            <Th w="130px" px={2} color={mutedTextColor}>Last</Th>
+                          </Tr>
+                        </Thead>
+                        <Tbody>
+                          {overviewCategoriesData.map((r) => (
+                            <Tr key={r.category} _hover={{ bg: hoverBg }}>
+                              <Td px={2}><Text fontSize="sm" fontWeight="600" noOfLines={1}>{r.category}</Text></Td>
+                              <Td px={2} isNumeric fontSize="sm">{(r.total || 0).toLocaleString()}</Td>
+                              <Td px={2} isNumeric fontSize="sm">{(r.available || 0).toLocaleString()}</Td>
+                              <Td px={2} isNumeric fontSize="sm">{(r.premium || 0).toLocaleString()}</Td>
+                              <Td px={2} fontSize="sm" color={mutedTextColor}>{r.last_created_at ? new Date(r.last_created_at).toLocaleDateString() : '-'}</Td>
+                            </Tr>
+                          ))}
+                        </Tbody>
+                      </ChakraTable>
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </VStack>
+          )}
+        </CardBody>
+      </Card>
+
       {/* User metrics group */}
       <Box>
         <HStack mb={4} spacing={2}>
@@ -3047,13 +3583,6 @@ const AdminDashboard: React.FC = () => {
               <HStack spacing={2} mr={20}>
                 <Button onClick={handleBackfillLedgers} size="sm" colorScheme="orange" variant="solid" isLoading={backfillLoading}>Sync Legacy Ledgers</Button>
                 <Button leftIcon={<FiRefreshCw />} onClick={handleRefresh} size="sm" colorScheme="brand" variant="outline" isLoading={loading}>Refresh</Button>
-                <Menu>
-                  <MenuButton as={Button} leftIcon={<FiPrinter />} rightIcon={<FiChevronDown />} size="sm" colorScheme="brand" isLoading={exportLoading} loadingText="Exporting…">Export</MenuButton>
-                  <MenuList shadow="lg" borderRadius="lg">
-                    <MenuItem icon={<FiFileText />} onClick={handleExportPDF}>Export as PDF</MenuItem>
-                    <MenuItem icon={<FiFileText />} onClick={handleExportExcel}>Export as Excel</MenuItem>
-                  </MenuList>
-                </Menu>
               </HStack>
             </Flex>
             <Collapse in={showConnectionAlert}>

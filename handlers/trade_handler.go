@@ -2956,7 +2956,7 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 
 // selectBestLoopsPerProduct filters loops to keep only the best loop per product
 // Priority: Fewest participants > Recently active users > Most recently created
-func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interface{}) []map[string]interface{} {
+func selectBestLoopsPerProduct(db *sql.DB, _ int, loops []map[string]interface{}) []map[string]interface{} {
 	// Map: product_id -> best loop
 	bestByProduct := make(map[int]map[string]interface{})
 

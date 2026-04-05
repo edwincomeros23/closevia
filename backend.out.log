@@ -1,0 +1,75 @@
+
+ ┌───────────────────────────────────────────────────┐ 
+ │                   Fiber v2.52.9                   │ 
+ │               http://127.0.0.1:4000               │ 
+ │       (bound on host 0.0.0.0 and port 4000)       │ 
+ │                                                   │ 
+ │ Handlers ........... 725  Processes ........... 1 │ 
+ │ Prefork ....... Disabled  PID ............. 13976 │ 
+ └───────────────────────────────────────────────────┘ 
+
+18:37:13 | 200 |            0s | 127.0.0.1 | GET | /api/version | -
+18:38:00 | 401 |    128.1724ms | 127.0.0.1 | POST | /api/auth/login | -
+18:38:11 | 200 |       528.2µs | 127.0.0.1 | GET | /health | -
+18:38:11 | 200 |    133.3996ms | 127.0.0.1 | GET | /api/trades/count | -
+18:38:11 | 200 |    129.0934ms | 127.0.0.1 | GET | /api/notifications | -
+18:38:41 | 200 |      7.5761ms | 127.0.0.1 | GET | /health | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:39:04 | 404 |       664.3µs | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+18:39:11 | 200 |    133.5754ms | 127.0.0.1 | GET | /api/trades/count | -
+18:39:11 | 200 |    137.3683ms | 127.0.0.1 | GET | /api/notifications | -
+18:39:11 | 200 |            0s | 127.0.0.1 | GET | /health | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:39:14 | 404 |      3.0371ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:39:15 | 404 |       532.1µs | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:39:16 | 404 |     11.0584ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+18:39:42 | 200 |            0s | 127.0.0.1 | GET | /health | -
+18:39:48 | 401 |    129.7174ms | 127.0.0.1 | POST | /api/auth/login | -
+18:40:12 | 200 |            0s | 127.0.0.1 | GET | /health | -
+18:40:12 | 200 |    132.9417ms | 127.0.0.1 | GET | /api/trades/count | -
+18:40:12 | 200 |    141.8016ms | 127.0.0.1 | GET | /api/notifications | -
+18:40:42 | 200 |            0s | 127.0.0.1 | GET | /health | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:40:52 | 404 |      1.5142ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:40:53 | 404 |     14.5265ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:41:11 | 404 |      3.1111ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:41:11 | 404 |      1.1331ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+18:41:12 | 200 |            0s | 127.0.0.1 | GET | /health | -
+18:41:12 | 200 |    128.7383ms | 127.0.0.1 | GET | /api/notifications | -
+18:41:12 | 200 |    128.8869ms | 127.0.0.1 | GET | /api/trades/count | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:41:30 | 404 |      8.8127ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:41:32 | 404 |       552.8µs | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+18:41:42 | 200 |     52.7456ms | 127.0.0.1 | GET | /health | -
+18:42:12 | 200 |    130.7804ms | 127.0.0.1 | GET | /api/notifications | -
+18:42:12 | 200 |    142.2808ms | 127.0.0.1 | GET | /api/trades/count | -
+18:42:12 | 200 |            0s | 127.0.0.1 | GET | /health | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:42:20 | 404 |      7.0218ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:42:21 | 404 |      41.432ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+18:42:42 | 200 |            0s | 127.0.0.1 | GET | /health | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:42:49 | 404 |     44.8084ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:42:50 | 404 |     18.2244ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+18:43:12 | 200 |        51.1µs | 127.0.0.1 | GET | /health | -
+18:43:12 | 200 |       650.3ms | 127.0.0.1 | GET | /api/notifications | -
+18:43:12 | 200 |    651.6166ms | 127.0.0.1 | GET | /api/trades/count | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:43:19 | 404 |     16.9734ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:43:21 | 404 |       526.7µs | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:43:23 | 404 |      1.8492ms | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:43:25 | 404 |       538.6µs | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg
+18:43:42 | 200 |            0s | 127.0.0.1 | GET | /health | -
+❌ Fiber error handler: Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg (path: /uploads/profile-pictures/1775280713322691700_profile.jpg)
+18:43:47 | 404 |       362.6µs | 127.0.0.1 | GET | /uploads/profile-pictures/1775280713322691700_profile.jpg | Cannot GET /uploads/profile-pictures/1775280713322691700_profile.jpg

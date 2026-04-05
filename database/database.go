@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -47,8 +48,11 @@ func InitDatabase() error {
 		return fmt.Errorf("DB_PASSWORD environment variable is not set (required for hosted database)")
 	}
 
-	// Fail fast on network / DB stalls so the API doesn't hang for 15s+.
-	const connectTimeout = "5s"
+	// Driver-level timeouts. Hosted DBs can be slower to establish connections.
+	connectTimeout := "5s"
+	if isHostedDatabase {
+		connectTimeout = "10s"
+	}
 	const readTimeout = "15s"
 	const writeTimeout = "15s"
 	commonParams := fmt.Sprintf("timeout=%s&readTimeout=%s&writeTimeout=%s", connectTimeout, readTimeout, writeTimeout)
@@ -85,11 +89,34 @@ func InitDatabase() error {
 	DB.SetConnMaxLifetime(5 * time.Minute)
 	DB.SetConnMaxIdleTime(2 * time.Minute)
 
-	// Test the connection (with timeout to avoid long startup hangs)
-	pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := DB.PingContext(pingCtx); err != nil {
-		return fmt.Errorf("failed to ping database: %v", err)
+	// Test the connection (configurable timeout + small retry) to avoid flaky startups on slow networks.
+	pingTimeout := 15 * time.Second
+	if v := os.Getenv("DB_PING_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			pingTimeout = d
+		}
+	}
+	pingRetries := 2
+	if v := os.Getenv("DB_PING_RETRIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			pingRetries = n
+		}
+	}
+
+	var pingErr error
+	for attempt := 0; attempt <= pingRetries; attempt++ {
+		pingCtx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		pingErr = DB.PingContext(pingCtx)
+		cancel()
+		if pingErr == nil {
+			break
+		}
+		if attempt < pingRetries {
+			time.Sleep(time.Duration(250*(attempt+1)) * time.Millisecond)
+		}
+	}
+	if pingErr != nil {
+		return fmt.Errorf("failed to ping database (timeout=%s, retries=%d): %v", pingTimeout.String(), pingRetries, pingErr)
 	}
 
 	// Test a simple query to verify we're connected to the right database
@@ -1462,7 +1489,7 @@ func ensureMultiwayColumns() {
 	if exists == 0 {
 		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user3_product_id INT NULL COMMENT 'The specific product ID that User 3 is contributing'")
 	}
-	
+
 	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'user3_trade_id'").Scan(&exists)
 	if exists == 0 {
 		_, _ = DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user3_trade_id INT NULL COMMENT 'The specific product ID that User 3 is contributing (Alias)'")
