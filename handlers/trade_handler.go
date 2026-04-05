@@ -2943,6 +2943,112 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 	return nil
 }
 
+// selectBestLoopsPerProduct filters loops to keep only the best loop per product
+// Priority: Fewest participants > Recently active users > Most recently created
+func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interface{}) []map[string]interface{} {
+	// Map: product_id -> best loop
+	bestByProduct := make(map[int]map[string]interface{})
+	
+	for _, loop := range loops {
+		// Get participants array
+		participants, ok := loop["participants"].([]map[string]interface{})
+		if !ok || len(participants) == 0 {
+			continue
+		}
+		
+		// Get loop creation time for tiebreaker
+		createdAt := time.Now()
+		if chainID, ok := loop["chain_id"].(string); ok {
+			var createdStr string
+			_ = db.QueryRow("SELECT created_at FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&createdStr)
+			if parsedTime, err := time.Parse("2006-01-02 15:04:05", createdStr); err == nil {
+				createdAt = parsedTime
+			}
+		}
+		
+		// Get loop length (participant count)
+		loopLength := len(participants)
+		
+		// For each participant, figure out if they're active and recently active
+		participantActivityScore := 0
+		for _, p := range participants {
+			if pID, ok := p["id"].(float64); ok {
+				var lastActive time.Time
+				_ = db.QueryRow("SELECT updated_at FROM users WHERE id = ?", int(pID)).Scan(&lastActive)
+				// Recently active = within 7 days
+				if time.Since(lastActive) < 7*24*time.Hour {
+					participantActivityScore++
+				}
+			}
+		}
+		
+		// Get target products involved in this loop to map to products
+		// For detected loops, use products from trades
+		if loopType, ok := loop["loop_type"].(string); ok && loopType == "detected_loop" {
+			if edges, ok := loop["edges"].([]map[string]interface{}); ok {
+				for _, edge := range edges {
+					if tradeID, ok := edge["trade_id"].(float64); ok {
+						var targetProductID int
+						_ = db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", int(tradeID)).Scan(&targetProductID)
+						
+						// Compare with existing best for this product
+						if existing, exists := bestByProduct[targetProductID]; exists {
+							// Keep existing if it has fewer participants
+							existingLen := existing["loop_length"].(int)
+							if loopLength < existingLen {
+								bestByProduct[targetProductID] = loop
+							} else if loopLength == existingLen {
+								// Tiebreaker: newer loops win
+								if existingCreated, ok := existing["created_at"].(time.Time); ok && createdAt.After(existingCreated) {
+									bestByProduct[targetProductID] = loop
+								}
+							}
+						} else {
+							loop["created_at"] = createdAt
+							loop["activity_score"] = participantActivityScore
+							bestByProduct[targetProductID] = loop
+						}
+					}
+				}
+			}
+		} else if loopType, ok := loop["loop_type"].(string); ok && loopType == "invited_chain" {
+			// For invited chains, map to the target product of the original trade
+			if chainID, ok := loop["chain_id"].(string); ok {
+				var targetProductID int
+				_ = db.QueryRow(`
+					SELECT t.target_product_id FROM multiway_trades m
+					JOIN trades t ON m.original_trade_id = t.id
+					WHERE m.chain_id = ?
+				`, chainID).Scan(&targetProductID)
+				
+				if targetProductID > 0 {
+					if existing, exists := bestByProduct[targetProductID]; exists {
+						existingLen := existing["loop_length"].(int)
+						if loopLength < existingLen {
+							bestByProduct[targetProductID] = loop
+						} else if loopLength == existingLen {
+							if existingCreated, ok := existing["created_at"].(time.Time); ok && createdAt.After(existingCreated) {
+								bestByProduct[targetProductID] = loop
+							}
+						}
+					} else {
+						loop["created_at"] = createdAt
+						loop["activity_score"] = participantActivityScore
+						bestByProduct[targetProductID] = loop
+					}
+				}
+			}
+		}
+	}
+	
+	// Return only the best loops
+	result := make([]map[string]interface{}, 0, len(bestByProduct))
+	for _, loop := range bestByProduct {
+		result = append(result, loop)
+	}
+	return result
+}
+
 // GetTradeLoops returns all possible multi-way trading loops the authenticated user is involved in
 func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -3175,13 +3281,16 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		}
 	}
 
+	// Filter to keep only the best loop per product
+	bestLoops := selectBestLoopsPerProduct(h.db, userID, userLoops)
+
 	if isPremium {
-		_ = h.saveLoopCacheForUser(userID, userLoops)
+		_ = h.saveLoopCacheForUser(userID, bestLoops)
 	}
 
 	return c.JSON(models.APIResponse{
 		Success: true,
-		Data:    userLoops,
+		Data:    bestLoops,
 	})
 }
 
