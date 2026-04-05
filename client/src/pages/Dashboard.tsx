@@ -885,38 +885,9 @@ const Dashboard: React.FC = () => {
       
       // Preload details for all trades in background
       preloadMultiWayLoopDetails(newTrades)
-
-      // Filter out fully accepted trades (they won't show in UI)
-      const visibleTrades = newTrades.filter((trade: any) => {
-        const participants = trade.participants || []
-        const totalParticipants = participants.length
-        const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
-        const allAccepted = totalParticipants > 0 && acceptedCount === totalParticipants
-        return !allAccepted
-      })
-
-      // Detect new loops and notify user (batched into a single toast)
-      const newLoopIds = new Set((visibleTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
-      const prevIds = prevMultiWayLoopIds.current
-      let newCount = 0
-      for (const id of newLoopIds) {
-        if (!prevIds.has(id)) {
-          newCount++
-        }
-      }
-      if (newCount > 0) {
-        toast({
-          id: 'new-loops-batch',
-          title: newCount > 1 ? 'Loops Found!' : 'New Trade Loop Found!',
-          description: newCount > 1
-            ? `You have ${newCount} new multi-way trade options available. Check below to review them.`
-            : 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
-          status: 'info',
-          duration: 6000,
-          isClosable: true,
-        })
-      }
-      prevMultiWayLoopIds.current = newLoopIds
+      
+      // Store new trade IDs for later comparison
+      prevMultiWayLoopIds.current = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
 
       // Free tier monthly quota indicator (used for upsells + disabling where needed).
       try {
@@ -974,6 +945,35 @@ const Dashboard: React.FC = () => {
 
   // Keep activeTabRef in sync so the multiwayAlert callback can read it without stale closures
   useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
+
+  // Notify about new visible loops (only those that actually appear in UI)
+  useEffect(() => {
+    const visibleLoops = [...groupedMultiWayTrades.needsAction, ...groupedMultiWayTrades.waitingOnOthers]
+    const visibleIds = new Set(visibleLoops.map((t: any) => String(t.loop_id || t.chain_id || t.id)))
+    const prevIds = prevMultiWayLoopIds.current
+    
+    let newCount = 0
+    for (const id of visibleIds) {
+      if (!prevIds.has(id)) {
+        newCount++
+      }
+    }
+    
+    if (newCount > 0) {
+      toast({
+        id: 'new-loops-batch',
+        title: newCount > 1 ? 'Loops Found!' : 'New Trade Loop Found!',
+        description: newCount > 1
+          ? `You have ${newCount} new multi-way trade options available. Check below to review them.`
+          : 'A new multi-way trade opportunity is available. Check the Multi-Way section to join.',
+        status: 'info',
+        duration: 6000,
+        isClosable: true,
+      })
+    }
+    
+    prevMultiWayLoopIds.current = visibleIds
+  }, [groupedMultiWayTrades.needsAction, groupedMultiWayTrades.waitingOnOthers, toast])
 
   // Register refresh callbacks for all tabs with RealtimeContext
   useEffect(() => {
