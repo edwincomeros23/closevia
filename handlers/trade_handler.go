@@ -4153,6 +4153,14 @@ func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	}
 	defer tx.Rollback()
 
+	// If this is a chain_ or auto_ loop, update the multiway_trades status to 'active'
+	if strings.HasPrefix(loopID, "chain_") || strings.HasPrefix(loopID, "auto_") {
+		_, err = tx.Exec("UPDATE multiway_trades SET status = 'active' WHERE chain_id = ? OR loop_id = ?", loopID, loopID)
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update multiway chain status"})
+		}
+	}
+
 	for _, tid := range tradeIDs {
 		// 1. Update trade status to 'active' (since it's now a multi-way commitment)
 		_, err = tx.Exec("UPDATE trades SET status = 'active' WHERE id = ?", tid)

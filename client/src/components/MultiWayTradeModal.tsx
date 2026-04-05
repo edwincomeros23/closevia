@@ -21,8 +21,11 @@ import {
   useColorModeValue,
   Flex,
   Stack,
+  Skeleton,
+  useDisclosure,
 } from '@chakra-ui/react'
 import { FaArrowRight, FaCheck, FaTimes, FaClock } from 'react-icons/fa'
+import { useNavigate } from 'react-router-dom'
 import { MultiWayTrade, MultiWayTradeParticipant } from '../types'
 import {
   acceptMultiWayTrade,
@@ -59,6 +62,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [loading, setLoading] = useState(false)
   const [selectedAction, setSelectedAction] = useState<'accept' | 'decline' | 'execute' | 'cancel' | 'reinvite' | null>(null)
   const [timeLeft, setTimeLeft] = useState<string>('')
+  const navigate = useNavigate()
   const toast = useToast()
 
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -216,14 +220,9 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
         <ModalHeader borderBottomWidth="1px" borderColor={borderColor}>
           <VStack align="start" spacing={2} w="full">
             <HStack justify="space-between" w="full">
-              <Box>
-                <Heading size="md">
-                  {sortedParticipants.length}-Way Trade Loop
-                </Heading>
-                <Text fontSize="xs" color="gray.600" mt={1}>
-                  Click on participant avatars to learn more
-                </Text>
-              </Box>
+              <Heading size="md">
+                {sortedParticipants.length}-Way Trade Loop
+              </Heading>
             </HStack>
 
             {/* Expiration countdown - simple and clean */}
@@ -313,7 +312,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                             position="relative"
                             borderRadius="full"
                             borderWidth="3px"
-                            borderColor={isAccepted ? 'green.400' : 'orange.300'}
+                            borderColor={isAccepted ? 'green.400' : 'gray.300'}
                             bg={cardBg}
                             p={2}
                             w="110px"
@@ -331,7 +330,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               top="-12px"
                               right="-12px"
                               borderRadius="full"
-                              bg={isAccepted ? 'green.500' : 'orange.400'}
+                              bg={isAccepted ? 'green.500' : 'gray.400'}
                               w="32px"
                               h="32px"
                               display="flex"
@@ -344,15 +343,25 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               borderWidth="2px"
                               borderColor={cardBg}
                             >
-                              {isAccepted ? '✓' : '⏳'}
+                              {isAccepted ? '✓' : '●'}
                             </Box>
 
-                            {/* Avatar */}
-                            <Avatar
-                              name={participant.user_name}
-                              size="lg"
-                              bg="brand.500"
-                            />
+                            {/* Avatar - Clickable to open profile */}
+                            <Box
+                              as="button"
+                              onClick={() => navigate(`/profile/${participant.user_id}`)}
+                              cursor="pointer"
+                              _hover={{ opacity: 0.8 }}
+                              border="none"
+                              p={0}
+                              bg="transparent"
+                            >
+                              <Avatar
+                                name={participant.user_name}
+                                size="lg"
+                                bg="brand.500"
+                              />
+                            </Box>
 
                             {/* Name */}
                             <Text fontSize="11px" fontWeight="semibold" textAlign="center" noOfLines={2}>
@@ -362,6 +371,11 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
                           {/* Product Info Below Node */}
                           <Box w="full" textAlign="center">
+                            {/* "Gives:" label */}
+                            <Text fontSize="9px" fontWeight="bold" color="gray.600" mb={1}>
+                              Gives:
+                            </Text>
+                            
                             {participant.product_image && (
                               <Image
                                 src={participant.product_image}
@@ -374,7 +388,23 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               />
                             )}
                             <Text fontSize="10px" fontWeight="medium" noOfLines={2} color="gray.700">
-                              {participant.product_title}
+                              {participant.product_id ? (
+                                <Box
+                                  as="button"
+                                  onClick={() => navigate(`/product/${participant.product_id}`)}
+                                  cursor="pointer"
+                                  color="blue.600"
+                                  _hover={{ textDecoration: 'underline' }}
+                                  fontWeight="semibold"
+                                  border="none"
+                                  p={0}
+                                  bg="transparent"
+                                >
+                                  {participant.product_title}
+                                </Box>
+                              ) : (
+                                participant.product_title
+                              )}
                             </Text>
                           </Box>
                         </Box>
@@ -397,7 +427,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               position="relative"
                               borderRadius="lg"
                               borderWidth="3px"
-                              borderColor={isAccepted ? 'green.400' : 'orange.300'}
+                              borderColor={isAccepted ? 'green.400' : 'gray.300'}
                               bg={cardBg}
                               p={2}
                               w="100px"
@@ -413,7 +443,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                                 top="-12px"
                                 right="-12px"
                                 borderRadius="full"
-                                bg={isAccepted ? 'green.500' : 'orange.400'}
+                                bg={isAccepted ? 'green.500' : 'gray.400'}
                                 w="28px"
                                 h="28px"
                                 display="flex"
@@ -426,19 +456,34 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                                 borderWidth="2px"
                                 borderColor={cardBg}
                               >
-                                {isAccepted ? '✓' : '⏳'}
+                                {isAccepted ? '✓' : '●'}
                               </Box>
 
-                              {/* Avatar */}
-                              <Avatar
-                                name={participant.user_name}
-                                size="md"
-                                bg="brand.500"
-                              />
+                              {/* Avatar - Clickable to open profile */}
+                              <Box
+                                as="button"
+                                onClick={() => navigate(`/profile/${participant.user_id}`)}
+                                cursor="pointer"
+                                _hover={{ opacity: 0.8 }}
+                                border="none"
+                                p={0}
+                                bg="transparent"
+                              >
+                                <Avatar
+                                  name={participant.user_name}
+                                  size="md"
+                                  bg="brand.500"
+                                />
+                              </Box>
 
                               {/* Name */}
                               <Text fontSize="10px" fontWeight="semibold" textAlign="center" noOfLines={2}>
                                 {participant.user_name}
+                              </Text>
+
+                              {/* "Gives:" label */}
+                              <Text fontSize="8px" fontWeight="bold" color="gray.600">
+                                Gives:
                               </Text>
 
                               {/* Product */}
@@ -454,8 +499,25 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                               )}
                             </Box>
 
+                            {/* Clickable product name */}
                             <Text fontSize="9px" fontWeight="medium" textAlign="center" noOfLines={2} w="100px">
-                              {participant.product_title}
+                              {participant.product_id ? (
+                                <Box
+                                  as="button"
+                                  onClick={() => navigate(`/product/${participant.product_id}`)}
+                                  cursor="pointer"
+                                  color="blue.600"
+                                  _hover={{ textDecoration: 'underline' }}
+                                  fontWeight="semibold"
+                                  border="none"
+                                  p={0}
+                                  bg="transparent"
+                                >
+                                  {participant.product_title}
+                                </Box>
+                              ) : (
+                                participant.product_title
+                              )}
                             </Text>
                           </VStack>
 
@@ -481,7 +543,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
             {/* Info Box */}
             <Box bg="blue.50" borderLeftWidth="4px" borderColor="blue.500" p={3} borderRadius="md">
               <Text fontSize="sm" color="blue.900">
-                <strong>Trade Loop:</strong> {sortedParticipants.length}-way exchange. ✓ means accepted, ⏳ means pending.
+                <strong>Trade Loop:</strong> {sortedParticipants.length}-way exchange. <strong>✓ = Accepted</strong> • <strong>● = Pending</strong>
               </Text>
             </Box>
           </VStack>

@@ -1463,9 +1463,11 @@ const Dashboard: React.FC = () => {
   }, [ongoingTradesData, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   // Accepted multiway trades that should appear in the ongoing trades section
+  // ONLY show trades when ALL participants have accepted (status='active' or 'multiway_active')
+  // Do NOT show 'user3_accepted' status - that means only User 3 has responded
   const ongoingMultiWayTrades = useMemo(() => {
     return (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
+      t?.status === 'active' || t?.status === 'multiway_active'
     )
   }, [multiWayTrades])
 
