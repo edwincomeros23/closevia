@@ -147,7 +147,6 @@ const Dashboard: React.FC = () => {
     return p ? parseInt(p, 10) || 0 : 0
   })
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [boosting, setBoosting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -1523,7 +1522,7 @@ const Dashboard: React.FC = () => {
           title: 'Boost Successful!',
           message: response.data.message || 'Your listing has been boosted.',
           confirmText: 'Awesome',
-          onConfirm: () => setPopupOpen(false),
+          onConfirm: () => closePopup(),
           icon: FaCheckCircle,
           confirmColorScheme: 'green'
         })
@@ -1537,7 +1536,7 @@ const Dashboard: React.FC = () => {
         title: 'Boost Failed',
         message: error.response?.data?.error || error.message || 'An error occurred while boosting the product',
         confirmText: 'Okay',
-        onConfirm: () => setPopupOpen(false),
+        onConfirm: () => closePopup(),
         icon: FaTimes,
         confirmColorScheme: 'red'
       })
@@ -1549,15 +1548,14 @@ const Dashboard: React.FC = () => {
       toast({ id: 'cannot-delete-locked', title: 'Cannot delete', description: 'Locked products cannot be deleted. Please unlock it first.', status: 'warning', duration: 3000, isClosable: true })
       return
     }
-    setProductToDelete(product)
     showPopup({
       type: 'warning',
       title: 'Delete Product',
       message: `Are you sure you want to delete "${product.title}"? All offers and related data for this item will be permanently removed.`,
       confirmText: 'Delete Product',
       cancelText: 'Cancel',
-      onConfirm: () => handleConfirmDelete(),
-      onCancel: () => setPopupOpen(false),
+      onConfirm: () => handleConfirmDelete(product),
+      onCancel: () => closePopup(),
       icon: WarningIcon,
       confirmColorScheme: 'red'
     })
@@ -1599,7 +1597,7 @@ const Dashboard: React.FC = () => {
           invalidateProducts()
           invalidateOffers()
           setSelectedProductIds(new Set())
-          setPopupOpen(false)
+          closePopup()
           toast({ id: 'deleted', title: 'Deleted', description: `${deletableIds.length} product(s) deleted`, status: 'success', duration: 3000, isClosable: true })
         } catch (e: any) {
           toast({ id: 'error-delete-products', title: 'Error', description: e?.message || 'Failed to delete some products', status: 'error', duration: 3000, isClosable: true })
@@ -1607,7 +1605,7 @@ const Dashboard: React.FC = () => {
           setDeleting(false)
         }
       },
-      onCancel: () => setPopupOpen(false),
+      onCancel: () => closePopup(),
       icon: WarningIcon,
       confirmColorScheme: 'red'
     })
@@ -1673,36 +1671,37 @@ const Dashboard: React.FC = () => {
     })
   }
 
-  const handleConfirmDelete = async () => {
-    if (!productToDelete) return
+  const handleConfirmDelete = async (product: Product) => {
+    if (!product) {
+      return
+    }
 
     try {
       setDeleting(true)
-      await deleteProduct(productToDelete.id)
+      await deleteProduct(product.id)
       // Invalidate products cache to refresh data
       invalidateProducts()
       invalidateOffers() // Also invalidate offers since deleting a product affects trades
 
-      setPopupOpen(false)
-      showPopup({
+      // Update popup content without closing/reopening to avoid animation race conditions
+      setPopupConfig({
         type: 'success',
         title: 'Product Deleted',
-        message: `"${productToDelete.title}" has been successfully deleted along with all associated offers.`,
+        message: `"${product.title}" has been successfully deleted along with all associated offers.`,
         confirmText: 'OK',
-        onConfirm: () => setPopupOpen(false),
+        onConfirm: () => closePopup(),
         icon: CheckIcon,
         confirmColorScheme: 'green'
       })
-
-      setProductToDelete(null)
     } catch (error: any) {
-      setPopupOpen(false)
-      showPopup({
+      console.error('Delete error:', error)
+      // Update popup content without closing/reopening
+      setPopupConfig({
         type: 'error',
         title: 'Delete Failed',
         message: error.message || 'Failed to delete the product. Please try again.',
         confirmText: 'OK',
-        onConfirm: () => setPopupOpen(false),
+        onConfirm: () => closePopup(),
         icon: CloseIcon,
         confirmColorScheme: 'red'
       })
@@ -1714,6 +1713,11 @@ const Dashboard: React.FC = () => {
   const showPopup = (config: any) => {
     setPopupConfig(config)
     setPopupOpen(true)
+  }
+
+  const closePopup = () => {
+    setPopupOpen(false)
+    setPopupConfig(null)
   }
 
   const getPaginatedItems = (items: Product[], currentPage: number) => {
@@ -2752,7 +2756,7 @@ const Dashboard: React.FC = () => {
     }
 
     return (
-      <Modal isOpen={popupOpen} onClose={() => setPopupOpen(false)} size="sm" isCentered closeOnOverlayClick={false} closeOnEsc={false}>
+      <Modal isOpen={popupOpen} onClose={closePopup} size="sm" isCentered closeOnOverlayClick={false} closeOnEsc={false}>
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent
           bg="white"
