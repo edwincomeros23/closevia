@@ -295,7 +295,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		}
 	}
 
-	appraisal := services.AppraiseProduct(title, description)
+	// Use AI-enhanced appraisal for intelligent category detection
+	appraisal := services.AppraiseProductWithAI(title, description)
 	category := appraisal.Category
 	if categoryOverride != "" {
 		category = categoryOverride
@@ -1658,6 +1659,16 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 			Success: false,
 			Error:   "Failed to update product",
 		})
+	}
+
+	// Re-trigger multiway search if category/wants fields changed and product is available
+	if p.Status == "available" {
+		for _, f := range updateFields {
+			if strings.Contains(f, "category") || strings.Contains(f, "wants") {
+				go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(productID)
+				break
+			}
+		}
 	}
 
 	return c.JSON(models.APIResponse{

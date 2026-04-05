@@ -32,7 +32,23 @@ func NewTradeGraph(db *sql.DB) (*TradeGraph, error) {
 		Nodes: make(map[int]bool),
 	}
 
-	rows, err := db.Query("SELECT id, buyer_id, seller_id FROM trades WHERE status IN ('pending', 'pending_multiway')")
+	rows, err := db.Query(`
+		SELECT t.id, t.buyer_id, t.seller_id
+		FROM trades t
+		JOIN users ub ON ub.id = t.buyer_id
+		JOIN users us ON us.id = t.seller_id
+		JOIN products pt ON pt.id = t.target_product_id
+		WHERE t.status IN ('pending', 'pending_multiway')
+		  AND ub.role != 'admin'
+		  AND us.role != 'admin'
+		  AND pt.status = 'available'
+		  AND pt.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM trade_items ti
+		    JOIN products tip ON tip.id = ti.product_id
+		    WHERE ti.trade_id = t.id AND tip.status NOT IN ('available', 'locked')
+		  )
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -349,6 +365,15 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		FROM products p
 		JOIN users u ON u.id = p.seller_id
 		WHERE p.status = 'available'
+		  AND u.role != 'admin'
+		  AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM trades t
+		    WHERE (t.target_product_id = p.id OR t.id IN (
+		      SELECT trade_id FROM trade_items WHERE product_id = p.id
+		    ))
+		    AND t.status IN ('pending', 'pending_multiway', 'accepted', 'active', 'multiway_active')
+		  )
 	`
 	searchRows, err := db.Query(query)
 	if err != nil {

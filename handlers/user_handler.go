@@ -1483,9 +1483,9 @@ func (h *UserHandler) GetOrganizationByHandle(c *fiber.Ctx) error {
 		       created_at,
 		       updated_at
 		FROM users
-		WHERE is_organization = TRUE AND org_handle = ?
+		WHERE is_organization = TRUE AND (org_handle = ? OR slug = ?)
 		LIMIT 1
-	`, handle).Scan(
+	`, handle, handle).Scan(
 		&org.ID,
 		&slugNull,
 		&org.Name,
@@ -1838,6 +1838,15 @@ func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 			Error:   "User not found",
 		})
 	}
+
+	// Explicitly clean up user's products, trades, and multiway data before deleting
+	// in case ON DELETE CASCADE constraints are not set on all tables.
+	h.db.Exec("DELETE FROM trade_items WHERE product_id IN (SELECT id FROM products WHERE seller_id = ?)", userID)
+	h.db.Exec("DELETE FROM multiway_trades WHERE user1_id = ? OR user2_id = ? OR user3_id = ? OR initiator_user_id = ?", userID, userID, userID, userID)
+	h.db.Exec("DELETE FROM trade_loop_agreements WHERE user_id = ?", userID)
+	h.db.Exec("DELETE FROM trades WHERE buyer_id = ? OR seller_id = ?", userID, userID)
+	h.db.Exec("DELETE FROM products WHERE seller_id = ?", userID)
+	h.db.Exec("DELETE FROM notifications WHERE user_id = ?", userID)
 
 	result, err := h.db.Exec("DELETE FROM users WHERE id = ?", userID)
 	if err != nil {

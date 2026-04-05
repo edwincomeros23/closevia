@@ -371,6 +371,13 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
           : deliveryStatus === 'claimed' ? 'blue'
             : 'gray'
 
+  // Auto-confirm COD payment when delivery type is selected
+  useEffect(() => {
+    if (deliveryState.deliveryType && !deliveryState.paymentConfirmed && !confirmingPayment) {
+      handleConfirmPayment()
+    }
+  }, [deliveryState.deliveryType])
+
   const timelineSteps = [
     {
       id: 'setup',
@@ -490,168 +497,70 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
       </Card>
 
       <Card variant="outline" borderColor="blue.200">
-        <CardBody>
-          <VStack spacing={3} align="stretch">
-            <VStack spacing={4} align="stretch">
-              <Text fontWeight="semibold" fontSize="md">Choose Delivery Option</Text>
+        <CardBody py={2} px={4}>
+          <VStack spacing={2} align="stretch">
+            {/* Compact Header with Distance */}
+            <HStack justify="space-between" align="center">
+              <Text fontSize="sm" fontWeight="semibold">Delivery {distance.toFixed(1)}km</Text>
+              <Text fontSize="xs" color="gray.500">Pick one:</Text>
+            </HStack>
 
-              {/* Distance Information */}
-              <Box bg="blue.50" p={3} borderRadius="md" borderLeftWidth="4px" borderLeftColor="blue.400">
-                <HStack spacing={2}>
-                  <Icon as={FaMapMarkerAlt} color="blue.500" />
-                  <VStack align="start" spacing={0}>
-                    <Text fontSize="sm" fontWeight="medium">
-                      Delivery Distance: {distance.toFixed(1)} km
-                    </Text>
-                    <Text fontSize="xs" color="gray.600">
-                      Prices calculated based on location distance
-                    </Text>
-                  </VStack>
-                </HStack>
-              </Box>
-
-              {/* Delivery Options Grid - Now 2 columns instead of 3 */}
-              <Grid templateColumns="repeat(2, 1fr)" gap={4}>
-                {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
-                  <Card
-                    key={`delivery-${type}`}
-                    cursor="pointer"
-                    borderWidth="2px"
-                    borderColor={deliveryState.deliveryType === type ? 'blue.500' : 'gray.200'}
-                    bg={deliveryState.deliveryType === type ? 'blue.50' : 'white'}
-                    onClick={() => {
-                      const newState = type as DeliveryState['deliveryType']
-                      setDeliveryState(prev => ({ ...prev, deliveryType: newState }))
-                      saveDeliveryState({ deliveryType: newState })
-                    }}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: deliveryState.deliveryType === type ? 'blue.600' : 'blue.300',
-                      shadow: 'lg',
-                      transform: 'translateY(-2px)'
-                    }}
-                    shadow={deliveryState.deliveryType === type ? 'md' : 'sm'}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3}>
-                        <Text fontSize="2xl" mb={1}>{option.icon}</Text>
-                        <VStack spacing={1}>
-                          <Text fontSize="sm" fontWeight="bold" color={deliveryState.deliveryType === type ? 'blue.700' : 'gray.700'}>
-                            {type.charAt(0).toUpperCase() + type.slice(1)} Delivery
-                          </Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">{option.time}</Text>
-                          <Text fontSize="xs" color="gray.500" textAlign="center">{option.description}</Text>
-                        </VStack>
-                        <Badge
-                          colorScheme={deliveryState.deliveryType === type ? 'blue' : 'gray'}
-                          fontSize="sm"
-                          px={3}
-                          py={1}
-                          borderRadius="full"
-                        >
-                          ₱{option.fee}
-                        </Badge>
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                ))}
-              </Grid>
-
-              <Box>
-                <FormLabel fontWeight="semibold" mb={2} fontSize="sm">Delivery Instructions</FormLabel>
-                <Textarea
-                  value={deliveryState.deliveryInstructions}
-                  onChange={(e) => setDeliveryState(prev => ({ ...prev, deliveryInstructions: e.target.value }))}
-                  onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
-                  placeholder="e.g., Landmark: Red gate, Leave with guard, Do not leave in rain..."
+            {/* Compact Delivery Options - Buttons */}
+            <HStack spacing={2}>
+              {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
+                <Button
+                  key={`delivery-${type}`}
                   size="sm"
-                  rows={3}
-                  bg="white"
-                  borderWidth="1px"
+                  colorScheme={deliveryState.deliveryType === type ? 'blue' : 'gray'}
+                  variant={deliveryState.deliveryType === type ? 'solid' : 'outline'}
+                  onClick={() => {
+                    const newState = type as DeliveryState['deliveryType']
+                    setDeliveryState(prev => ({ ...prev, deliveryType: newState }))
+                    saveDeliveryState({ deliveryType: newState })
+                  }}
+                  flex={1}
+                  fontSize="xs"
+                  py={1}
+                >
+                  <VStack spacing={0}>
+                    <Text fontSize="lg">{option.icon}</Text>
+                    <Text>{type === 'standard' ? 'Std' : 'Exp'}</Text>
+                    <Text>₱{option.fee}</Text>
+                  </VStack>
+                </Button>
+              ))}
+            </HStack>
+
+            {/* Instructions - Optional compact textarea */}
+            <Box>
+              <Textarea
+                value={deliveryState.deliveryInstructions}
+                onChange={(e) => setDeliveryState(prev => ({ ...prev, deliveryInstructions: e.target.value }))}
+                onBlur={() => saveDeliveryState({ deliveryInstructions: deliveryState.deliveryInstructions })}
+                placeholder="Delivery notes (optional)"
+                size="sm"
+                rows={2}
                 />
                 <Text fontSize="xs" color="gray.500" mt={1}>{deliveryState.deliveryInstructions.length}/200 characters</Text>
               </Box>
             </VStack>
-          </VStack>
         </CardBody>
       </Card>
 
       <Card variant="outline" borderColor="green.200">
-        <CardBody>
-          <VStack spacing={4} align="stretch">
-            <VStack spacing={2} align="start">
-              <Text fontWeight="semibold" fontSize="md">Payment Method</Text>
-              <Text fontSize="sm" color="gray.600">
-                Total: ₱{(requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee}
-                (Item: ₱{requestedProduct?.price || 0} + Delivery: ₱{deliveryOptions[deliveryState.deliveryType].fee})
-              </Text>
-              {deliveryOptions[deliveryState.deliveryType].fee > 0 && (
-                <Text fontSize="xs" color="amber.600" fontWeight="medium">
-                  💡 Delivery fee split 50/50 with seller
-                </Text>
-              )}
-            </VStack>
-
-            {/* COD Only - Minimal UI */}
-            <Box 
-              bg="green.50" 
-              border="2px solid" 
-              borderColor="green.300" 
-              borderRadius="lg" 
-              p={4}
-            >
-              <VStack spacing={3} align="stretch">
-                <HStack justify="space-between">
-                  <HStack spacing={3}>
-                    <Text fontSize="2xl">💵</Text>
-                    <VStack align="start" spacing={0}>
-                      <Text fontWeight="bold" fontSize="md">Cash on Delivery</Text>
-                      <Text fontSize="sm" color="gray.600">Pay when you receive</Text>
-                    </VStack>
-                  </HStack>
-                  <Icon as={FiCheck} boxSize={6} color="green.500" />
-                </HStack>
-                
-                <Box bg="white" p={3} borderRadius="md" borderLeftWidth="4px" borderLeftColor="green.400">
-                  <Text fontSize="sm" fontWeight="semibold" color="green.700">
-                    ✓ Ready your money
-                  </Text>
-                  <Text fontSize="xs" color="gray.600" mt={1}>
-                    Have exact change ready for the handoff
-                  </Text>
-                </Box>
+        <CardBody py={2} px={4}>
+          <HStack justify="space-between" align="center">
+            <HStack spacing={2}>
+              <Text fontSize="lg">💵</Text>
+              <VStack align="start" spacing={0}>
+                <Text fontSize="sm" fontWeight="semibold">Cash on Delivery</Text>
+                <Text fontSize="xs" color="gray.500">Have exact change ready</Text>
               </VStack>
-            </Box>
-
-            <VStack spacing={3}>
-              <Button
-                colorScheme="green"
-                size="lg"
-                onClick={handleConfirmPayment}
-                isDisabled={deliveryState.paymentConfirmed || confirmingPayment || !isUserBuyer}
-                isLoading={confirmingPayment}
-                loadingText="Confirming..."
-                leftIcon={deliveryState.paymentConfirmed ? <FiCheck /> : undefined}
-                w="full"
-                _hover={{
-                  transform: deliveryState.paymentConfirmed ? 'none' : 'translateY(-2px)',
-                  shadow: deliveryState.paymentConfirmed ? 'none' : 'lg'
-                }}
-              >
-                {deliveryState.paymentConfirmed
-                  ? `✅ Payment Confirmed`
-                  : 'Ready to Pay on Delivery'}
-              </Button>
-
-              {!isUserBuyer && (
-                <Text fontSize="xs" color="gray.600" textAlign="center">
-                  Only the buyer can complete payment for this trade.
-                </Text>
-              )}
-
-
-            </VStack>
-          </VStack>
+            </HStack>
+            <Text fontSize="sm" fontWeight="bold" color="green.600">
+              ₱{((requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee).toFixed(2)}
+            </Text>
+          </HStack>
         </CardBody>
       </Card>
 
@@ -1127,6 +1036,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     deliveryInstructions: '',
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
+  
+  // Auto-confirm COD payment when delivery type is selected
+  useEffect(() => {
+    if (deliveryState.deliveryType && !deliveryState.paymentConfirmed) {
+      setDeliveryState(prev => ({
+        ...prev,
+        paymentConfirmed: true,
+        paymentMethod: 'cod',
+      }))
+    }
+  }, [deliveryState.deliveryType, deliveryState.paymentConfirmed])
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cardBg = useColorModeValue('white', 'gray.800')

@@ -264,7 +264,7 @@ export interface MultiWayTrade {
   participants: MultiWayTradeParticipant[]
   edges: TradeEdge[]
   total_value?: number
-  status: 'active' | 'completed' | 'cancelled'
+  status: 'active' | 'completed' | 'cancelled' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
   created_at?: string
   expires_at?: string
 }
