@@ -1994,7 +1994,7 @@ const AdminDashboard: React.FC = () => {
         transition="all 0.2s"
         onClick={() => { setActiveSection(item.id); closeSidebar(); }}
       >
-        <HStack spacing={3}>
+        <HStack spacing={3} w="full">
           <Icon as={item.icon} boxSize={5} flexShrink={0} />
           <VStack spacing={0} align="start" flex={1} minW={0}>
             <HStack spacing={2} w="full" noOfLines={1}>
@@ -2014,13 +2014,13 @@ const AdminDashboard: React.FC = () => {
   const SidebarContent = () => (
     <VStack spacing={1} align="stretch" p={4} h="full">
       <Box px={4} pb={4} borderBottom="1px solid" borderColor={borderColor} mb={2}>
-        <HStack spacing={2}>
+        <HStack spacing={2} w="full">
           <Box w={8} h={8} bg="brand.500" borderRadius="lg" display="flex" alignItems="center" justifyContent="center">
             <Icon as={FiShield} color="white" boxSize={4} />
           </Box>
-          <VStack spacing={0} align="start">
-            <Text fontWeight="800" fontSize="sm" color={textColor}>Clovia Admin</Text>
-            <Text fontSize="xs" color={mutedTextColor}>Control Panel</Text>
+          <VStack spacing={0} align="start" flex={1} minW={0}>
+            <Text fontWeight="800" fontSize="sm" color={textColor} whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis" w="full">Clovia Admin</Text>
+            <Text fontSize="xs" color={mutedTextColor} whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis" w="full">Control Panel</Text>
           </VStack>
         </HStack>
       </Box>
