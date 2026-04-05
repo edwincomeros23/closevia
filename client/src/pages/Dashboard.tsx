@@ -5737,6 +5737,7 @@ const Dashboard: React.FC = () => {
               }}
               multiWayTrade={selectedMultiWayTrade}
               canManage={Boolean(user?.is_premium) && !selectedMultiWayTrade?.is_chain}
+              currentUserId={user?.id}
               onTradeCompleted={() => {
                 void fetchMultiWayTrades()
                 invalidateOffers()
