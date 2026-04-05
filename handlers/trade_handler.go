@@ -2948,14 +2948,14 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interface{}) []map[string]interface{} {
 	// Map: product_id -> best loop
 	bestByProduct := make(map[int]map[string]interface{})
-	
+
 	for _, loop := range loops {
 		// Get participants array
 		participants, ok := loop["participants"].([]map[string]interface{})
 		if !ok || len(participants) == 0 {
 			continue
 		}
-		
+
 		// Get loop creation time for tiebreaker
 		createdAt := time.Now()
 		if chainID, ok := loop["chain_id"].(string); ok {
@@ -2965,10 +2965,10 @@ func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interf
 				createdAt = parsedTime
 			}
 		}
-		
+
 		// Get loop length (participant count)
 		loopLength := len(participants)
-		
+
 		// For each participant, figure out if they're active and recently active
 		participantActivityScore := 0
 		for _, p := range participants {
@@ -2981,7 +2981,7 @@ func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interf
 				}
 			}
 		}
-		
+
 		// Get target products involved in this loop to map to products
 		// For detected loops, use products from trades
 		if loopType, ok := loop["loop_type"].(string); ok && loopType == "detected_loop" {
@@ -2990,7 +2990,7 @@ func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interf
 					if tradeID, ok := edge["trade_id"].(float64); ok {
 						var targetProductID int
 						_ = db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", int(tradeID)).Scan(&targetProductID)
-						
+
 						// Compare with existing best for this product
 						if existing, exists := bestByProduct[targetProductID]; exists {
 							// Keep existing if it has fewer participants
@@ -3020,7 +3020,7 @@ func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interf
 					JOIN trades t ON m.original_trade_id = t.id
 					WHERE m.chain_id = ?
 				`, chainID).Scan(&targetProductID)
-				
+
 				if targetProductID > 0 {
 					if existing, exists := bestByProduct[targetProductID]; exists {
 						existingLen := existing["loop_length"].(int)
@@ -3040,7 +3040,7 @@ func selectBestLoopsPerProduct(db *sql.DB, userID int, loops []map[string]interf
 			}
 		}
 	}
-	
+
 	// Return only the best loops
 	result := make([]map[string]interface{}, 0, len(bestByProduct))
 	for _, loop := range bestByProduct {
