@@ -31,7 +31,6 @@ import Organizations from './pages/Organizations'
 import OrganizationProducts from './pages/OrganizationProducts'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
-import AdminDashboard from './pages/AdminDashboard'
 import Premium from './pages/premium'
 import DeliveryOption from './delivery_option/delivery'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -74,6 +73,7 @@ const BatchPreview = lazy(() => import('./delivery_option/BatchPreview').catch((
 const BatchStatus = lazy(() => import('./delivery_option/BatchStatus').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Batch Status</Text></Box> })))
 const RemittanceLedger = lazy(() => import('./delivery_option/RemittanceLedger').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Remittance Ledger</Text></Box> })))
 const TaskStepper = lazy(() => import('./delivery_option/TaskStepper').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Task Stepper</Text></Box> })))
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard').catch(() => ({ default: () => <Box p={4}><Text>Failed to load Admin Dashboard</Text></Box> })))
 
 // Loading overlay component
 const LoadingOverlay: React.FC = () => {
@@ -312,7 +312,9 @@ const AppContent: React.FC = () => {
                 } />
                 <Route path="/admin" element={
                   <PageTransition>
-                    <AdminRoute><AdminDashboard /></AdminRoute>
+                    <Suspense fallback={<Center h="100vh"><Spinner /></Center>}>
+                      <AdminRoute><AdminDashboard /></AdminRoute>
+                    </Suspense>
                   </PageTransition>
                 } />
                 <Route path="/premium" element={

@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,6 +16,10 @@ import (
 
 type AdminHandler struct {
 	db *sql.DB
+
+	statsCacheMu  sync.RWMutex
+	statsCache    *AdminStats
+	statsCacheExp time.Time
 }
 
 type RevenueBreakdown struct {
@@ -52,130 +59,125 @@ func NewAdminHandler() *AdminHandler {
 
 // GetAdminStats returns essential dashboard statistics for admin
 func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
+	// Cache to avoid hammering DB on frequent admin refreshes.
+	// Keeps UX snappy without changing data semantics (short TTL).
+	const cacheTTL = 60 * time.Second
+	h.statsCacheMu.RLock()
+	if h.statsCache != nil && time.Now().Before(h.statsCacheExp) {
+		cached := *h.statsCache
+		h.statsCacheMu.RUnlock()
+		return c.JSON(models.APIResponse{Success: true, Data: cached})
+	}
+	h.statsCacheMu.RUnlock()
+
 	now := time.Now()
+	const perQueryTimeout = 3 * time.Second
+
+	queryInt := func(q string, args ...any) (int, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), perQueryTimeout)
+		defer cancel()
+		var v int
+		err := h.db.QueryRowContext(ctx, q, args...).Scan(&v)
+		return v, err
+	}
+	queryFloat := func(q string, args ...any) (float64, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), perQueryTimeout)
+		defer cancel()
+		var v float64
+		err := h.db.QueryRowContext(ctx, q, args...).Scan(&v)
+		return v, err
+	}
 
 	// ===== ESSENTIAL METRICS =====
-
-	// Total Users
-	var totalUsers int
-	err := h.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&totalUsers)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch total users"})
-	}
-
-	// Premium Users (users with premium listings)
-	var premiumUsers int
-	err = h.db.QueryRow(`
-		SELECT COUNT(DISTINCT u.id) FROM users u
-		JOIN products p ON p.seller_id = u.id
-		WHERE p.is_premium = true AND p.status NOT IN ('sold', 'expired', 'draft')
-	`).Scan(&premiumUsers)
-	if err != nil {
-		premiumUsers = 0
-	}
-
-	// Total Income (from earnings table + fallback to legacy trades)
+	// Avoid a single fragile query: older DBs may be missing tables/columns (earnings, reports, is_premium, etc).
+	// If a metric query fails, we default it to 0 rather than 500 the entire dashboard.
+	var totalUsers, premiumUsers, activeListings, totalTrades int
+	var newUsersToday, newListingsToday, verifiedUsers int
+	var pendingApprovals, pendingVerifications, reportsFiled, suspendedUsers int
 	var totalIncome float64
-	err = h.db.QueryRow(`
-		SELECT COALESCE(
-			(SELECT SUM(amount) FROM earnings),
-			(SELECT SUM(net_amount) FROM trades WHERE status = 'completed')
-		, 0)
-	`).Scan(&totalIncome)
-	if err != nil {
-		totalIncome = 0
+
+	if v, err := queryInt(`SELECT COUNT(*) FROM users`); err == nil {
+		totalUsers = v
 	}
 
-	// Active Listings
-	var activeListings int
-	err = h.db.QueryRow(`
-		SELECT COUNT(*) FROM products
-		WHERE status NOT IN ('sold', 'expired', 'draft', 'locked')
-	`).Scan(&activeListings)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch active listings"})
+	// Premium users: prefer products.is_premium if present.
+	if v, err := queryInt(`
+		SELECT COUNT(DISTINCT seller_id)
+		FROM products
+		WHERE is_premium = true AND status NOT IN ('sold', 'expired', 'draft')
+	`); err == nil {
+		premiumUsers = v
 	}
 
-	// Total Trades/Completed Deals
-	var totalTrades int
-	err = h.db.QueryRow(`SELECT COUNT(*) FROM trades WHERE status = 'completed'`).Scan(&totalTrades)
-	if err != nil {
-		totalTrades = 0
+	// Total income: prefer earnings table if present, else fallback to completed trades.net_amount.
+	if v, err := queryFloat(`SELECT COALESCE(SUM(amount), 0) FROM earnings`); err == nil {
+		totalIncome = v
+	} else if v2, err2 := queryFloat(`SELECT COALESCE(SUM(net_amount), 0) FROM trades WHERE status = 'completed'`); err2 == nil {
+		totalIncome = v2
 	}
 
-	// New Users Today
-	var newUsersToday int
-	err = h.db.QueryRow(`
-		SELECT COUNT(*) FROM users
-		WHERE DATE(created_at) = CURDATE()
-	`).Scan(&newUsersToday)
-	if err != nil {
-		newUsersToday = 0
+	if v, err := queryInt(`SELECT COUNT(*) FROM products WHERE status NOT IN ('sold', 'expired', 'draft', 'locked')`); err == nil {
+		activeListings = v
+	}
+	if v, err := queryInt(`SELECT COUNT(*) FROM trades WHERE status = 'completed'`); err == nil {
+		totalTrades = v
+	}
+	if v, err := queryInt(`SELECT COUNT(*) FROM users WHERE created_at >= CURDATE() AND created_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)`); err == nil {
+		newUsersToday = v
+	}
+	if v, err := queryInt(`SELECT COUNT(*) FROM products WHERE created_at >= CURDATE() AND created_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY)`); err == nil {
+		newListingsToday = v
+	}
+	if v, err := queryInt(`SELECT COUNT(*) FROM users WHERE verified = true`); err == nil {
+		verifiedUsers = v
+	}
+	if v, err := queryInt(`SELECT COUNT(*) FROM products WHERE status = 'pending_approval'`); err == nil {
+		pendingApprovals = v
+	}
+	if v, err := queryInt(`SELECT COUNT(*) FROM users WHERE verification_status = 'pending'`); err == nil {
+		pendingVerifications = v
+	}
+	if v, err := queryInt(`SELECT COUNT(*) FROM reports`); err == nil {
+		reportsFiled = v
+	}
+	// Suspended users: older/newer schemas might use role='suspended' or is_suspended boolean.
+	if v, err := queryInt(`SELECT COUNT(*) FROM users WHERE role = 'suspended'`); err == nil {
+		suspendedUsers = v
+	} else if v2, err2 := queryInt(`SELECT COUNT(*) FROM users WHERE is_suspended = true`); err2 == nil {
+		suspendedUsers = v2
 	}
 
-	// New Listings Today
-	var newListingsToday int
-	err = h.db.QueryRow(`
-		SELECT COUNT(*) FROM products
-		WHERE DATE(created_at) = CURDATE()
-	`).Scan(&newListingsToday)
-	if err != nil {
-		newListingsToday = 0
-	}
-
-	// Verified Users
-	var verifiedUsers int
-	err = h.db.QueryRow(`SELECT COUNT(*) FROM users WHERE verified = true`).Scan(&verifiedUsers)
-	if err != nil {
-		verifiedUsers = 0
-	}
-
-	// Pending Approvals (products awaiting approval)
-	var pendingApprovals int
-	err = h.db.QueryRow(`
-		SELECT COUNT(*) FROM products
-		WHERE status = 'pending_approval'
-	`).Scan(&pendingApprovals)
-	if err != nil {
-		pendingApprovals = 0
-	}
-
-	// Pending ID/COR verifications (users who submitted ID/COR awaiting admin review)
-	var pendingVerifications int
-	err = h.db.QueryRow(`SELECT COUNT(*) FROM users WHERE verification_status = 'pending'`).Scan(&pendingVerifications)
-	if err != nil {
-		pendingVerifications = 0
-	}
-
-	// Reports Filed
-	var reportsFiled int
-	err = h.db.QueryRow(`SELECT COUNT(*) FROM reports`).Scan(&reportsFiled)
-	if err != nil {
-		reportsFiled = 0
-	}
-
-	// Suspended/Banned Users
-	var suspendedUsers int
-	err = h.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'suspended'`).Scan(&suspendedUsers)
-	if err != nil {
-		suspendedUsers = 0
-	}
-
-	// Storage Usage (estimate based on uploaded files - this is a rough calculation)
+	// Storage Usage (prefer information_schema for fast metadata-based estimate)
 	var storageUsageMB float64
-	err = h.db.QueryRow(`
-		SELECT COALESCE(SUM(CASE
-			WHEN image_urls != '[]' THEN LENGTH(image_urls) * 0.001  -- Rough estimate per image
-			ELSE 0.1  -- Base size for products with minimal images
-		END), 0) as estimated_mb FROM products
-	`).Scan(&storageUsageMB)
-	if err != nil {
-		storageUsageMB = 0
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), perQueryTimeout)
+		defer cancel()
+		err := h.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(data_length + index_length) / 1024 / 1024, 0)
+		FROM information_schema.tables
+		WHERE table_schema = DATABASE()
+		`).Scan(&storageUsageMB)
+		if err != nil {
+			// Fallback to legacy estimate if information_schema isn't accessible.
+			ctx2, cancel2 := context.WithTimeout(context.Background(), perQueryTimeout)
+			defer cancel2()
+			_ = h.db.QueryRowContext(ctx2, `
+			SELECT COALESCE(SUM(CASE
+				WHEN image_urls != '[]' THEN LENGTH(image_urls) * 0.001
+				ELSE 0.1
+			END), 0) as estimated_mb FROM products
+			`).Scan(&storageUsageMB)
+		}
 	}
 
 	// Revenue Breakdown (last 30 days by week)
 	var revenueBreakdown []RevenueBreakdown
-	revenueRows, err := h.db.Query(`
+	var revenueRows *sql.Rows
+	var revenueErr error
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), perQueryTimeout)
+		defer cancel()
+		revenueRows, revenueErr = h.db.QueryContext(ctx, `
 		SELECT 
 			DATE_FORMAT(created_at, '%Y-%U') as week,
 			SUM(amount) as revenue
@@ -184,14 +186,22 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		GROUP BY week
 		ORDER BY week DESC
 		LIMIT 4
-	`)
-	if err == nil {
+		`)
+	}
+	if revenueErr == nil && revenueRows != nil {
 		defer revenueRows.Close()
 		for revenueRows.Next() {
 			var rb RevenueBreakdown
 			if err := revenueRows.Scan(&rb.Period, &rb.Amount); err == nil {
-				// Format period as "Week X"
-				rb.Period = "Week " + rb.Period[len(rb.Period)-2:]
+				// Format period as "Week XX" (guard against unexpected short strings)
+				period := strings.TrimSpace(rb.Period)
+				if len(period) >= 2 {
+					rb.Period = "Week " + period[len(period)-2:]
+				} else if period != "" {
+					rb.Period = "Week " + period
+				} else {
+					rb.Period = "Week"
+				}
 				revenueBreakdown = append(revenueBreakdown, rb)
 			}
 		}
@@ -199,35 +209,49 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 
 	// Revenue by Source
 	revenueBySource := map[string]float64{
-		"trade_fee":             0,
+		"trade_fee":            0,
 		"premium_subscription": 0,
-		"riders_remittance":     0,
-		"advertisers_revenue":   0,
-		"google_ads":            0,
+		"riders_remittance":    0,
+		"advertisers_revenue":  0,
+		"google_ads":           0,
 	}
-	sourceRows, err := h.db.Query(`SELECT source_type, SUM(amount) FROM earnings GROUP BY source_type`)
-	if err == nil {
+	var sourceRows *sql.Rows
+	var sourceErr error
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), perQueryTimeout)
+		defer cancel()
+		sourceRows, sourceErr = h.db.QueryContext(ctx, `SELECT source_type, COALESCE(SUM(amount), 0) FROM earnings GROUP BY source_type`)
+	}
+	if sourceErr == nil && sourceRows != nil {
 		defer sourceRows.Close()
 		for sourceRows.Next() {
 			var st string
 			var amt float64
-			sourceRows.Scan(&st, &amt)
+			if err := sourceRows.Scan(&st, &amt); err != nil {
+				continue
+			}
 			revenueBySource[st] = amt
 		}
 	}
 
 	// Recent Activity (last 5 actions)
-	activityRows, err := h.db.Query(`
+	var activityRows *sql.Rows
+	var activityErr error
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), perQueryTimeout)
+		defer cancel()
+		activityRows, activityErr = h.db.QueryContext(ctx, `
 		SELECT 'New User' as action, COUNT(*) as count, MAX(created_at) as latest
-		FROM users WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+		FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
 		UNION ALL
 		SELECT 'New Listing' as action, COUNT(*) as count, MAX(created_at) as latest
-		FROM products WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+		FROM products WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
 		UNION ALL
 		SELECT 'Trade Completed' as action, COUNT(*) as count, MAX(created_at) as latest
-		FROM trades WHERE status = 'completed' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
-	`)
-	if err != nil {
+		FROM trades WHERE status = 'completed' AND created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+		`)
+	}
+	if activityErr != nil {
 		activityRows = nil
 	}
 
@@ -263,6 +287,11 @@ func (h *AdminHandler) GetAdminStats(c *fiber.Ctx) error {
 		RecentActivity:       recentActivity,
 		LastUpdated:          now.Format("2006-01-02 15:04:05"),
 	}
+
+	h.statsCacheMu.Lock()
+	h.statsCache = &stats
+	h.statsCacheExp = time.Now().Add(cacheTTL)
+	h.statsCacheMu.Unlock()
 
 	return c.JSON(models.APIResponse{Success: true, Data: stats})
 }
@@ -405,4 +434,251 @@ func (h *AdminHandler) GetStatsByDate(c *fiber.Ctx) error {
 			"active_listings":  activeListings,
 		},
 	})
+}
+
+func parseAdminDateRange(c *fiber.Ctx) (start *time.Time, end *time.Time, err error) {
+	startStr := c.Query("start", "")
+	endStr := c.Query("end", "")
+
+	if startStr != "" {
+		s, err := time.ParseInLocation("2006-01-02", startStr, time.Local)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid start date")
+		}
+		start = &s
+	}
+	if endStr != "" {
+		e, err := time.ParseInLocation("2006-01-02", endStr, time.Local)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid end date")
+		}
+		end = &e
+	}
+
+	return start, end, nil
+}
+
+// GetAdminRevenue returns revenue summed over an inclusive date range.
+// Query params:
+// - start=YYYY-MM-DD (optional)
+// - end=YYYY-MM-DD (optional, inclusive)
+func (h *AdminHandler) GetAdminRevenue(c *fiber.Ctx) error {
+	startStr := c.Query("start", "")
+	endStr := c.Query("end", "")
+
+	var start *time.Time
+	var endExclusive *time.Time
+
+	if startStr != "" {
+		s, err := time.ParseInLocation("2006-01-02", startStr, time.Local)
+		if err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid start date"})
+		}
+		start = &s
+	}
+	if endStr != "" {
+		e, err := time.ParseInLocation("2006-01-02", endStr, time.Local)
+		if err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid end date"})
+		}
+		ex := e.AddDate(0, 0, 1) // inclusive end -> exclusive upper bound
+		endExclusive = &ex
+	}
+
+	where := "WHERE 1=1"
+	args := make([]interface{}, 0, 2)
+	if start != nil {
+		where += " AND created_at >= ?"
+		args = append(args, *start)
+	}
+	if endExclusive != nil {
+		where += " AND created_at < ?"
+		args = append(args, *endExclusive)
+	}
+
+	var revenue float64
+	if err := h.db.QueryRow("SELECT COALESCE(SUM(amount), 0) FROM earnings "+where, args...).Scan(&revenue); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch revenue"})
+	}
+
+	if revenue == 0 {
+		// Fallback for installs without earnings records.
+		var legacy float64
+		tradeWhere := strings.Replace(where, "WHERE 1=1", "WHERE status = 'completed'", 1)
+		_ = h.db.QueryRow("SELECT COALESCE(SUM(net_amount), 0) FROM trades "+tradeWhere, args...).Scan(&legacy)
+		if legacy > 0 {
+			revenue = legacy
+		}
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"revenue": revenue}})
+}
+
+// GetAdminTrades returns a paginated list of trades for admin usage.
+func (h *AdminHandler) GetAdminTrades(c *fiber.Ctx) error {
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	status := c.Query("status", "")
+	start, end, derr := parseAdminDateRange(c)
+	if derr != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: derr.Error()})
+	}
+
+	where := "WHERE 1=1"
+	args := make([]interface{}, 0, 6)
+	if status != "" {
+		where += " AND t.status = ?"
+		args = append(args, status)
+	}
+	if start != nil {
+		where += " AND t.created_at >= ?"
+		args = append(args, *start)
+	}
+	if end != nil {
+		where += " AND t.created_at < ?"
+		args = append(args, *end)
+	}
+
+	var total int
+	if err := h.db.QueryRow("SELECT COUNT(*) FROM trades t "+where, args...).Scan(&total); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get trade count"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT
+			t.id,
+			t.buyer_id,
+			t.seller_id,
+			t.target_product_id,
+			t.status,
+			COALESCE(t.trade_option, '') AS trade_option,
+			t.created_at,
+			t.updated_at,
+			COALESCE(ub.name, '') AS buyer_name,
+			COALESCE(us.name, '') AS seller_name,
+			COALESCE(p.title, '') AS product_title
+		FROM trades t
+		LEFT JOIN users ub ON ub.id = t.buyer_id
+		LEFT JOIN users us ON us.id = t.seller_id
+		LEFT JOIN products p ON p.id = t.target_product_id
+		`+where+`
+		ORDER BY t.created_at DESC
+		LIMIT ? OFFSET ?
+	`, append(args, limit, offset)...)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get trades"})
+	}
+	defer rows.Close()
+
+	trades := make([]models.Trade, 0, limit)
+	for rows.Next() {
+		var t models.Trade
+		var tradeOption sql.NullString
+		var buyerName sql.NullString
+		var sellerName sql.NullString
+		var productTitle sql.NullString
+		if err := rows.Scan(
+			&t.ID,
+			&t.BuyerID,
+			&t.SellerID,
+			&t.TargetProductID,
+			&t.Status,
+			&tradeOption,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+			&buyerName,
+			&sellerName,
+			&productTitle,
+		); err != nil {
+			continue
+		}
+		if tradeOption.Valid {
+			t.TradeOption = tradeOption.String
+		}
+		if buyerName.Valid {
+			t.BuyerName = buyerName.String
+		}
+		if sellerName.Valid {
+			t.SellerName = sellerName.String
+		}
+		if productTitle.Valid {
+			t.ProductTitle = productTitle.String
+		}
+		trades = append(trades, t)
+	}
+
+	totalPages := (total + limit - 1) / limit
+	return c.JSON(models.APIResponse{Success: true, Data: models.PaginatedResponse{Data: trades, Total: total, Page: page, Limit: limit, TotalPages: totalPages}})
+}
+
+// GetAdminCategories returns aggregated category counts from products.
+func (h *AdminHandler) GetAdminCategories(c *fiber.Ctx) error {
+	limit, _ := strconv.Atoi(c.Query("limit", "50"))
+	if limit <= 0 {
+		limit = 50
+	}
+
+	start, end, derr := parseAdminDateRange(c)
+	if derr != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: derr.Error()})
+	}
+
+	where := "WHERE 1=1"
+	args := make([]interface{}, 0, 4)
+	if start != nil {
+		where += " AND created_at >= ?"
+		args = append(args, *start)
+	}
+	if end != nil {
+		where += " AND created_at < ?"
+		args = append(args, *end)
+	}
+
+	type CategoryRow struct {
+		Category    string    `json:"category"`
+		Total       int       `json:"total"`
+		Available   int       `json:"available"`
+		Premium     int       `json:"premium"`
+		LastCreated time.Time `json:"last_created_at"`
+	}
+
+	rows, err := h.db.Query(`
+		SELECT
+			COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') AS category,
+			COUNT(*) AS total,
+			SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available,
+			SUM(CASE WHEN premium = true THEN 1 ELSE 0 END) AS premium,
+			MAX(created_at) AS last_created_at
+		FROM products
+		`+where+`
+		GROUP BY COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized')
+		ORDER BY total DESC
+		LIMIT ?
+	`, append(args, limit)...)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to get categories"})
+	}
+	defer rows.Close()
+
+	result := make([]CategoryRow, 0, limit)
+	for rows.Next() {
+		var r CategoryRow
+		if err := rows.Scan(&r.Category, &r.Total, &r.Available, &r.Premium, &r.LastCreated); err != nil {
+			continue
+		}
+		result = append(result, r)
+	}
+	if result == nil {
+		result = []CategoryRow{}
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: result})
 }

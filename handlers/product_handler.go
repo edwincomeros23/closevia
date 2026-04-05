@@ -1689,6 +1689,24 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 
 	// Optional status filter for admin (e.g., ?status=available)
 	status := c.Query("status", "")
+	startStr := c.Query("start", "")
+	endStr := c.Query("end", "")
+	var startDate *time.Time
+	var endDate *time.Time
+	if startStr != "" {
+		t, err := time.ParseInLocation("2006-01-02", startStr, time.Local)
+		if err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid start date"})
+		}
+		startDate = &t
+	}
+	if endStr != "" {
+		t, err := time.ParseInLocation("2006-01-02", endStr, time.Local)
+		if err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid end date"})
+		}
+		endDate = &t
+	}
 
 	whereClause := "WHERE 1=1"
 	var args []interface{}
@@ -1696,6 +1714,14 @@ func (h *ProductHandler) GetAdminProducts(c *fiber.Ctx) error {
 	if status != "" {
 		whereClause += " AND p.status = ?"
 		args = append(args, status)
+	}
+	if startDate != nil {
+		whereClause += " AND p.created_at >= ?"
+		args = append(args, *startDate)
+	}
+	if endDate != nil {
+		whereClause += " AND p.created_at < ?"
+		args = append(args, *endDate)
 	}
 
 	// Total count
