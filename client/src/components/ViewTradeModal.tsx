@@ -1419,7 +1419,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
     try {
       if (showLoading) setLoadingMessages(true)
-      const response = await api.get(`/api/trades/${trade.id}/messages`)
+      
+      const response = await Promise.race([
+        api.get(`/api/trades/${trade.id}/messages`),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout')), 10000)
+        )
+      ]) as any
+      
       const data = response.data?.data || []
       const safeMessages = Array.isArray(data) ? data : []
       safeMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
@@ -1428,8 +1435,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const previousCount = previousMessageCountRef.current
       const newMessageCount = safeMessages.length
       
-      if (newMessageCount > previousCount) {
-        // Get the new messages
+      // Only show notification if this is NOT the initial load and there are actually new messages
+      if (previousCount > 0 && newMessageCount > previousCount) {
+        // Get the new messages (only the ones we haven't seen yet)
         const newMessages = safeMessages.slice(previousCount)
         // Check if any new message is from the other user (not the current user)
         const otherUserMessages = newMessages.filter((msg: any) => Number(msg.sender_id) !== currentUserId)
@@ -1440,12 +1448,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
           const messageId = latestMessage.id || `msg-${Date.now()}`
           
           // Show notification for new message from other user at the top
+          const toastId = `new-message-${messageId}`
           toast({
-            id: `new-message-${messageId}`,
+            id: toastId,
             title: `New message from ${senderName}`,
             description: latestMessage.content.substring(0, 60) + (latestMessage.content.length > 60 ? '...' : ''),
             status: 'info',
-            duration: 4000,
+            duration: 3000,
             isClosable: true,
             position: 'top' as const,
           })
@@ -1454,7 +1463,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       
       previousMessageCountRef.current = newMessageCount
       setMessages(safeMessages)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch messages:', error)
     } finally {
       if (showLoading) setLoadingMessages(false)

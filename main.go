@@ -609,6 +609,15 @@ func main() {
 	deliveries.Get("/:id/stops", middleware.AuthMiddleware(), deliveryHandler.GetDeliveryStops)
 	deliveries.Post("/stops/:stopId/update", middleware.AuthMiddleware(), deliveryHandler.UpdateStopStatus)
 
+	// Batch delivery routes (must come after basic delivery routes to avoid shadowing)
+	batches := api.Group("/batches")
+	batches.Post("/claim", middleware.AuthMiddleware(), deliveryHandler.ClaimBatch)
+	batches.Get("/nearby-addons", middleware.AuthMiddleware(), deliveryHandler.GetNearbyAddOns)
+	batches.Get("/rider-slots", middleware.AuthMiddleware(), deliveryHandler.GetRiderSlots)
+	batches.Post("/remit-cash", middleware.AuthMiddleware(), deliveryHandler.RemitCash)
+	batches.Post("/:id/start", middleware.AuthMiddleware(), deliveryHandler.StartBatch)
+	batches.Post("/:id/complete", middleware.AuthMiddleware(), deliveryHandler.CompleteBatch)
+
 	// Generic image upload route (used by TradeCompletionModal, etc.)
 	api.Post("/upload", middleware.AuthMiddleware(), uploadHandler.UploadImage)
 
