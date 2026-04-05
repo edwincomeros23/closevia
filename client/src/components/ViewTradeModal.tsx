@@ -1026,6 +1026,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [confirmingMeetup, setConfirmingMeetup] = useState(false)
+  const [resettingMeetup, setResettingMeetup] = useState(false)
   const [confirmingPayment, setConfirmingPayment] = useState(false)
   const [syncingOnlinePayment, setSyncingOnlinePayment] = useState(false)
   const [buyerMeetupConfirmed, setBuyerMeetupConfirmed] = useState(false)
@@ -1435,15 +1436,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         if (otherUserMessages.length > 0) {
           const latestMessage = otherUserMessages[otherUserMessages.length - 1]
           const senderName = latestMessage.sender_name || 'User'
+          const messageId = latestMessage.id || `msg-${Date.now()}`
           
-          // Show notification for new message from other user
+          // Show notification for new message from other user at the top
           toast({
-            id: `new-message-${trade.id}`,
+            id: `new-message-${messageId}`,
             title: `New message from ${senderName}`,
             description: latestMessage.content.substring(0, 60) + (latestMessage.content.length > 60 ? '...' : ''),
             status: 'info',
             duration: 4000,
             isClosable: true,
+            position: 'top' as const,
           })
         }
       }
@@ -1602,6 +1605,51 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       })
     } finally {
       setConfirmingMeetup(false)
+    }
+  }
+
+  const resetMeetupSelection = async () => {
+    if (!trade) return
+
+    try {
+      setResettingMeetup(true)
+      
+      // Call backend to reset
+      await api.put(`/api/trades/${trade.id}`, {
+        action: 'reset_meetup_selection',
+      })
+
+      // Clear local state immediately so UI is responsive
+      if (isUserBuyer) {
+        setBuyerMeetupConfirmed(false)
+      } else {
+        setSellerMeetupConfirmed(false)
+      }
+      
+      // Clear selected location and time to allow new selection
+      setSelectedLocation(null)
+      setSelectedTime(null)
+
+      toast({
+        id: 'viewtrademodal-reset-selection',
+        title: 'Selection Reset',
+        description: 'Your meetup selection has been cleared. You can now select new options.',
+        status: 'info',
+        duration: 3000,
+      })
+
+      // Refresh meetup status
+      await fetchMeetupStatus()
+    } catch (error: any) {
+      console.error('Failed to reset meetup selection:', error)
+      toast({
+        id: 'viewtrademodal-reset-error',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to reset selection',
+        status: 'error',
+      })
+    } finally {
+      setResettingMeetup(false)
     }
   }
 
@@ -2813,22 +2861,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             colorScheme="orange"
                             variant="outline"
                             size="md"
-                            onClick={async () => {
-                              // Clear local state to allow resubmission
-                              if (isUserBuyer) {
-                                setBuyerMeetupConfirmed(false)
-                              } else {
-                                setSellerMeetupConfirmed(false)
-                              }
-                              // Also clear on backend
-                              try {
-                                await api.put(`/api/trades/${trade.id}`, {
-                                  action: 'reset_meetup_selection',
-                                })
-                              } catch (e) {
-                                console.log('Reset not supported, using local reset')
-                              }
-                            }}
+                            onClick={resetMeetupSelection}
+                            isLoading={resettingMeetup}
                             leftIcon={<Icon as={FaExclamationTriangle} />}
                             w="full"
                           >
@@ -2865,7 +2899,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
               user={user}
               onStatusUpdate={() => {
                 onStatusUpdate()
-                setIsReviewModalOpen(false)
+                // Keep modal open so user can see completion status
               }}
             />
           </ModalBody>

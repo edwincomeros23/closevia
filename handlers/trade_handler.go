@@ -1526,6 +1526,41 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'meetup_selection', ?)",
 			tradeID, userID, currentStatus, "Meetup selection: "+payload.MeetupLocation+" at "+payload.MeetupTime)
+
+	case "reset_meetup_selection":
+		log.Printf("User %d resetting meetup selection for trade %d", userID, tradeID)
+
+		// Allow user to reset their own meetup confirmation so they can change their selection
+		var updateQuery string
+		switch userID {
+		case buyerID:
+			updateQuery = "UPDATE trades SET buyer_meetup_location=NULL, buyer_meetup_time=NULL, buyer_meetup_confirmed=FALSE, updated_at=CURRENT_TIMESTAMP WHERE id = ?"
+		case sellerID:
+			updateQuery = "UPDATE trades SET seller_meetup_location=NULL, seller_meetup_time=NULL, seller_meetup_confirmed=FALSE, updated_at=CURRENT_TIMESTAMP WHERE id = ?"
+		default:
+			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
+		}
+
+		_, err = h.db.Exec(updateQuery, tradeID)
+		if err != nil {
+			log.Printf("Failed to reset meetup selection for trade %d: %v", tradeID, err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to reset meetup selection"})
+		}
+
+		// Notify the other party that the selection was reset
+		var otherUserID int
+		if userID == buyerID {
+			otherUserID = sellerID
+		} else {
+			otherUserID = buyerID
+		}
+		notifMsg := "The other party has changed their meetup selection. Please wait for them to submit a new choice."
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, notifMsg)
+
+		// Publish event to notify both parties
+		publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+		publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID}})
+
 	case "confirm_meetup_done":
 		// Each party confirms they met and completed the handoff (pre-condition for leaving reviews)
 		// Be tolerant to client/backend status desync: allow this action as long as meetup was agreed.
