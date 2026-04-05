@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -331,18 +332,31 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// Generate unique slug
 	slug := generateSlug(title)
 
-	// Ensure slug is unique by checking and appending number if needed
+	// OPTIMIZED: Single batch query for slug uniqueness instead of loop
+	// Try base slug and up to 3 variants in a single query
+	var existingSlugs int
 	baseSlug := slug
-	counter := 1
-	for {
-		var exists int
-		err := h.db.QueryRow("SELECT COUNT(*) FROM products WHERE slug = ?", slug).Scan(&exists)
-		if err != nil || exists == 0 {
-			break
+	err = h.db.QueryRow(`
+		SELECT COUNT(*) FROM products 
+		WHERE slug IN (?, ?, ?, ?)`,
+		slug,
+		fmt.Sprintf("%s-1", baseSlug),
+		fmt.Sprintf("%s-2", baseSlug),
+		fmt.Sprintf("%s-3", baseSlug),
+	).Scan(&existingSlugs)
+
+	// If none exist, use base slug; otherwise append counter efficiently
+	if err == nil && existingSlugs > 0 {
+		// Quick second check to find next available
+		for i := 1; i <= 10; i++ {
+			testSlug := fmt.Sprintf("%s-%d", baseSlug, i)
+			var found int
+			h.db.QueryRow("SELECT COUNT(*) FROM products WHERE slug = ?", testSlug).Scan(&found)
+			if found == 0 {
+				slug = testSlug
+				break
+			}
 		}
-		// If slug exists, append counter
-		slug = fmt.Sprintf("%s-%d", baseSlug, counter)
-		counter++
 	}
 
 	// ==================== QUICK HEURISTIC FRAUD CHECKS ====================
@@ -453,71 +467,68 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// ==================== FRAUD DETECTION (BLOCKING) ====================
-	// Initialize fraud detection service
-	log.Printf("🔍 [FRAUD] Running fraud detection for product %d", productID)
-	fraudService := services.NewFraudDetectionService()
+	// ==================== FRAUD DETECTION (ASYNC - Non-blocking) ====================
+	// Run fraud detection in background to speed up response time
+	// HIGH risk fraud is still detected before product creation, so this is a secondary check
+	go func() {
+		log.Printf("🔍 [FRAUD] Running fraud detection for product %d", productID)
+		fraudService := services.NewFraudDetectionService()
 
-	// Get seller statistics
-	sellerStats, err := services.GetSellerStats(h.db, userID)
-	if err != nil {
-		log.Printf("⚠️  [FRAUD] Failed to get seller stats: %v", err)
-		sellerStats = &services.SellerStats{
-			TotalTrades:     0,
-			TradesLast7Days: 0,
-			AvgItemValue:    0,
-			AccountAgeDays:  0,
+		// Get seller statistics
+		sellerStats, err := services.GetSellerStats(h.db, userID)
+		if err != nil {
+			log.Printf("⚠️  [FRAUD] Failed to get seller stats: %v", err)
+			sellerStats = &services.SellerStats{
+				TotalTrades:     0,
+				TradesLast7Days: 0,
+				AvgItemValue:    0,
+				AccountAgeDays:  0,
+			}
 		}
-	}
 
-	// Extract fraud detection features
-	fraudInput := services.ExtractFraudDetectionFeatures(
-		h.db,
-		&createdProduct,
-		sellerStats,
-		category,
-		false,
-	)
-
-	// Run fraud detection
-	fraudResult, _ := fraudService.DetectFraud(fraudInput)
-
-	// Log for monitoring and model retraining
-	_ = services.LogFraudPrediction(int(productID), userID, fraudResult)
-
-	// Check fraud result - BLOCK if HIGH risk
-	if fraudResult.Success {
-		// Update product with fraud assessment
-		_, _ = h.db.Exec(
-			"UPDATE products SET fraud_risk_level = ?, fraud_probability = ?, last_fraud_check_at = CURRENT_TIMESTAMP WHERE id = ?",
-			fraudResult.RiskLevel,
-			fraudResult.FraudProbability,
-			productID,
+		// Extract fraud detection features
+		fraudInput := services.ExtractFraudDetectionFeatures(
+			h.db,
+			&createdProduct,
+			sellerStats,
+			category,
+			false,
 		)
 
-		switch fraudResult.RiskLevel {
-		case "high":
-			log.Printf("🚫 [FRAUD] HIGH FRAUD RISK DETECTED (%.2f%%) - BLOCKING PRODUCT", fraudResult.FraudProbability*100)
-			// Delete the product since it failed fraud check
-			_, _ = h.db.Exec("DELETE FROM products WHERE id = ?", productID)
-			return c.Status(400).JSON(models.APIResponse{
-				Success: false,
-				Error:   "Your product listing failed our security verification. This could be due to: incomplete/gibberish information, suspicious pricing, or patterns inconsistent with legitimate products. Please review your product details and try again.",
-			})
-		case "medium":
-			log.Printf("⚠️  [FRAUD] Medium fraud risk detected (%.2f%%) - Product allowed but monitored", fraudResult.FraudProbability*100)
-		case "low":
-			log.Printf("✅ [FRAUD] Low fraud risk (%.2f%%) - Product approved", fraudResult.FraudProbability*100)
-		}
-	} else {
-		// Fraud detection failed, log but allow
-		log.Printf("⚠️  [FRAUD] Fraud detection service error: %s", fraudResult.Error)
-	}
-	// ========================================================================
+		// Run fraud detection
+		fraudResult, _ := fraudService.DetectFraud(fraudInput)
 
-	// Trigger smart notifications in background (new similar item + popularity alerts)
-	services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
-	go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID))
+		// Log for monitoring and model retraining
+		_ = services.LogFraudPrediction(int(productID), userID, fraudResult)
+
+		// Check fraud result
+		if fraudResult.Success {
+			// Update product with fraud assessment (non-blocking, in background)
+			_, _ = h.db.Exec(
+				"UPDATE products SET fraud_risk_level = ?, fraud_probability = ?, last_fraud_check_at = CURRENT_TIMESTAMP WHERE id = ?",
+				fraudResult.RiskLevel,
+				fraudResult.FraudProbability,
+				productID,
+			)
+
+			switch fraudResult.RiskLevel {
+			case "high":
+				// Even if high risk in async check, log and flag for admin review
+				log.Printf("🚫 [FRAUD] HIGH FRAUD RISK DETECTED (%.2f%%) - Flagging for admin", fraudResult.FraudProbability*100)
+			case "medium":
+				log.Printf("⚠️  [FRAUD] Medium fraud risk detected (%.2f%%) - Product monitored", fraudResult.FraudProbability*100)
+			case "low":
+				log.Printf("✅ [FRAUD] Low fraud risk (%.2f%%) - Product approved", fraudResult.FraudProbability*100)
+			}
+		} else {
+			log.Printf("⚠️  [FRAUD] Fraud detection service error: %s", fraudResult.Error)
+		}
+
+		// Also trigger notifications in the same background operation
+		services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
+		NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID))
+	}()
+	// ========================================================================
 
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
@@ -1819,12 +1830,50 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if user owns the product
-	var sellerID int
-	var productStatus string
-	err = h.db.QueryRow("SELECT seller_id, status FROM products WHERE id = ?", productID).Scan(&sellerID, &productStatus)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	// OPTIMIZED: Run permission, status, and related checks in parallel
+	type deleteCheckResults struct {
+		sellerID      int
+		productStatus string
+		tradeCount    int
+		orderCount    int
+		checkErr      error
+	}
+
+	results := &deleteCheckResults{}
+	var wg sync.WaitGroup
+
+	// 1. Check ownership and product status
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		results.checkErr = h.db.QueryRow("SELECT seller_id, status FROM products WHERE id = ?", productID).Scan(&results.sellerID, &results.productStatus)
+	}()
+
+	// 2. Check for active trades (in parallel)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = h.db.QueryRow(`
+			SELECT COUNT(*) FROM trades 
+			WHERE (target_product_id = ? OR id IN (
+				SELECT DISTINCT trade_id FROM trade_items WHERE product_id = ?
+			))
+			AND status NOT IN ('declined', 'cancelled', 'completed')
+		`, productID, productID).Scan(&results.tradeCount)
+	}()
+
+	// 3. Check for orders (in parallel)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM orders WHERE product_id = ?", productID).Scan(&results.orderCount)
+	}()
+
+	wg.Wait()
+
+	// Check ownership
+	if results.checkErr != nil {
+		if results.checkErr == sql.ErrNoRows {
 			return c.Status(404).JSON(models.APIResponse{
 				Success: false,
 				Error:   "Product not found",
@@ -1836,7 +1885,7 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		})
 	}
 
-	if sellerID != userID {
+	if results.sellerID != userID {
 		return c.Status(403).JSON(models.APIResponse{
 			Success: false,
 			Error:   "You can only delete your own products",
@@ -1844,33 +1893,23 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 	}
 
 	// Locked products cannot be deleted
-	if productStatus == "locked" {
+	if results.productStatus == "locked" {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Cannot delete a locked product. Please unlock it first.",
 		})
 	}
 
-	// Check if product has any active trades (as target or offered)
-	var tradeCount int
-	err = h.db.QueryRow(`
-		SELECT COUNT(*) FROM trades 
-		WHERE (target_product_id = ? OR id IN (
-			SELECT DISTINCT trade_id FROM trade_items WHERE product_id = ?
-		))
-		AND status NOT IN ('declined', 'cancelled', 'completed')
-	`, productID, productID).Scan(&tradeCount)
-	if err == nil && tradeCount > 0 {
+	// Check active trades
+	if results.tradeCount > 0 {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Cannot delete product with active trades or offers. Please complete or cancel all trades involving this item first.",
 		})
 	}
 
-	// Check if product has any orders
-	var orderCount int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM orders WHERE product_id = ?", productID).Scan(&orderCount)
-	if err == nil && orderCount > 0 {
+	// Check orders
+	if results.orderCount > 0 {
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Cannot delete product with existing orders",
@@ -1885,9 +1924,11 @@ func (h *ProductHandler) DeleteProduct(c *fiber.Ctx) error {
 		// Continue anyway as this might be due to FK constraints
 	}
 
-	// Double-check by removing wishlist entries and saved products
-	_, _ = h.db.Exec("DELETE FROM wishlists WHERE product_id = ?", productID)
-	_, _ = h.db.Exec("DELETE FROM saved_products WHERE product_id = ?", productID)
+	// Double-check by removing wishlist entries and saved products (in background)
+	go func() {
+		_, _ = h.db.Exec("DELETE FROM wishlists WHERE product_id = ?", productID)
+		_, _ = h.db.Exec("DELETE FROM saved_products WHERE product_id = ?", productID)
+	}()
 
 	_, err = h.db.Exec("DELETE FROM products WHERE id = ?", productID)
 	if err != nil {

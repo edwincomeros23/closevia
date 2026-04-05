@@ -602,43 +602,20 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// Find user by email
+	// Find user by email - optimized single query with graceful nullable handling
 	var user models.User
-	err := h.db.QueryRow(
-		"SELECT id, slug, name, email, password_hash, role, verified, COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), strikes, is_suspended FROM users WHERE email = ?",
+
+	err := h.db.QueryRow(`
+		SELECT id, COALESCE(slug, ''), name, email, password_hash, role, verified, 
+		       COALESCE(is_premium, FALSE), COALESCE(premium_tier, 'free'), 
+		       COALESCE(strikes, 0), COALESCE(is_suspended, FALSE)
+		FROM users WHERE email = ?`,
 		login.Email,
-	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
+	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified,
+		&user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
 
-	// Some deployments have older schemas without optional columns (is_premium, premium_tier, strikes, is_suspended).
-	// In that case, fall back to a minimal query and default those fields.
 	if err != nil {
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "unknown column") || strings.Contains(msg, "doesn't exist") {
-			// First fallback: assume slug exists.
-			err2 := h.db.QueryRow(
-				"SELECT id, slug, name, email, password_hash, role, verified FROM users WHERE email = ?",
-				login.Email,
-			).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified)
-			if err2 != nil {
-				// Second fallback: even slug may be missing.
-				err3 := h.db.QueryRow(
-					"SELECT id, name, email, password_hash, role, verified FROM users WHERE email = ?",
-					login.Email,
-				).Scan(&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified)
-				if err3 != nil {
-					return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Invalid credentials"})
-				}
-				user.Slug = ""
-			}
-
-			// Default optional fields that might not exist in older schemas.
-			user.IsPremium = false
-			user.PremiumTier = "free"
-			user.Strikes = 0
-			user.IsSuspended = false
-		} else {
-			return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Invalid credentials"})
-		}
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Invalid credentials"})
 	}
 
 	// Check if user is verified
@@ -665,8 +642,11 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// Update last_login timestamp
-	h.db.Exec("UPDATE users SET last_login = NOW() WHERE id = ?", user.ID)
+	// Update last_login timestamp ASYNCHRONOUSLY (non-blocking)
+	go func() {
+		_, _ = h.db.Exec("UPDATE users SET last_login = NOW() WHERE id = ?", user.ID)
+	}()
+
 	now := time.Now()
 	user.LastLogin = &now
 	user.ActivityStatus = "active_today"
