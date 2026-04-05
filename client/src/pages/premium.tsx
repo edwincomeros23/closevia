@@ -320,7 +320,7 @@ const Premium: React.FC = () => {
                   <Button
                     size="sm"
                     bg="white"
-                    color={currentTier === 'pro' ? 'purple.600' : 'blue.600'}
+                    color="blue.600"
                     _hover={{ bg: 'gray.100' }}
                     leftIcon={<FaCrown />}
                     onClick={() => handleUpgrade('pro')}
