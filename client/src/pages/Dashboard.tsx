@@ -1980,8 +1980,11 @@ const Dashboard: React.FC = () => {
 
   // Reusable Product Card Component - memoized for performance
   const ProductCard = React.memo(({ product, showActions = true }: { product: Product, showActions?: boolean }) => {
+    const normalizedStatus = String(product.status || '').toLowerCase().trim()
+    const isAvailable = normalizedStatus === 'available'
+    const isLocked = normalizedStatus === 'locked'
     // Never show actions for traded/sold items
-    const shouldShowActions = showActions && product.status !== 'traded' && product.status !== 'sold'
+    const shouldShowActions = showActions && normalizedStatus !== 'traded' && normalizedStatus !== 'sold'
     const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id, getProductOffersCount])
     const viewsCount = 0 // TODO: Fetch from API when available
 
@@ -2027,11 +2030,24 @@ const Dashboard: React.FC = () => {
               <Heading size="sm" noOfLines={2} flex={1} mr={2} wordBreak="break-word">
                 {product.title}
               </Heading>
-              {product.premium && (
-                <Badge colorScheme="yellow" variant="solid" fontSize="xs">
-                  Premium
-                </Badge>
-              )}
+              <HStack spacing={2} flexShrink={0}>
+                {product.premium && (
+                  <Badge colorScheme="yellow" variant="solid" fontSize="xs">
+                    Premium
+                  </Badge>
+                )}
+                {shouldShowActions && (
+                  <IconButton
+                    as={RouterLink}
+                    to={`/edit-product/${product.id}`}
+                    aria-label="Edit"
+                    icon={<EditIcon />}
+                    variant="ghost"
+                    colorScheme="brand"
+                    size="sm"
+                  />
+                )}
+              </HStack>
             </Flex>
             <Text color="gray.600" noOfLines={2} fontSize="sm" wordBreak="break-word">
               {product.description}
@@ -2065,7 +2081,7 @@ const Dashboard: React.FC = () => {
               </HStack>
               <HStack spacing={2} align="center" flexWrap="wrap">
                 <Badge
-                  colorScheme={product.status === 'available' ? 'green' : product.status === 'sold' ? 'red' : 'orange'}
+                  colorScheme={isAvailable ? 'green' : normalizedStatus === 'sold' ? 'red' : isLocked ? 'orange' : 'blue'}
                   variant="subtle"
                   fontSize="2xs"
                   px={1.5}
@@ -2112,22 +2128,25 @@ const Dashboard: React.FC = () => {
           {shouldShowActions && (
             <CardFooter pt={0}>
               <HStack spacing={2} w="full">
-                <Button
-                  as={RouterLink}
-                  to={`/edit-product/${product.id}`}
-                  leftIcon={<EditIcon />}
-                  variant="outline"
-                  colorScheme="brand"
-                  size="sm"
-                  flex={1}
-                  _hover={{ transform: 'scale(1.02)' }}
-                  transition="all 0.2s"
-                >
-                  Edit
-                </Button>
+                {isAvailable && (
+                  <Button
+                    size="sm"
+                    colorScheme="yellow"
+                    variant="outline"
+                    leftIcon={<Icon as={FaRegLightbulb} boxSize={3} />}
+                    onClick={() => handleFindTradesClick(product)}
+                    fontSize="sm"
+                    flex={1}
+                    whiteSpace="nowrap"
+                    _hover={{ transform: 'scale(1.02)' }}
+                    transition="all 0.2s"
+                  >
+                    Find Trades
+                  </Button>
+                )}
                 <Tooltip
-                  label={product.status === 'locked' ? 'Cannot delete locked products' : ''}
-                  isDisabled={product.status !== 'locked'}
+                  label={isLocked ? 'Cannot delete locked products' : ''}
+                  isDisabled={!isLocked}
                   hasArrow
                 >
                   <Button
@@ -2137,7 +2156,8 @@ const Dashboard: React.FC = () => {
                     size="sm"
                     flex={1}
                     onClick={() => handleDeleteProductClick(product)}
-                    isDisabled={product.status === 'locked'}
+                    isDisabled={isLocked}
+                    whiteSpace="nowrap"
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
                   >
@@ -2170,7 +2190,10 @@ const Dashboard: React.FC = () => {
     offersCount: number
     viewsCount?: number
   }) => {
-    const statusColor = product.status === 'available' ? 'green' : product.status === 'locked' ? 'orange' : product.status === 'sold' ? 'red' : 'blue'
+    const normalizedStatus = String(product.status || '').toLowerCase().trim()
+    const isAvailable = normalizedStatus === 'available'
+    const isLocked = normalizedStatus === 'locked'
+    const statusColor = isAvailable ? 'green' : isLocked ? 'orange' : normalizedStatus === 'sold' ? 'red' : 'blue'
     return (
       <Box
         p={3}
@@ -2183,7 +2206,7 @@ const Dashboard: React.FC = () => {
           gap={{ base: 2, md: 4 }}
           minW={0}
         >
-          {showActions && (product.status === 'available' || product.status === 'locked') && (
+          {showActions && (isAvailable || isLocked) && (
             <Checkbox
               isChecked={isSelected}
               onChange={onToggleSelect}
@@ -2256,15 +2279,16 @@ const Dashboard: React.FC = () => {
             })()}
             {showActions && (
               <>
-                {product.status === 'available' && (
+                {isAvailable && (
                   <Button
                     size="sm"
                     colorScheme="yellow"
-                    variant="ghost"
+                    variant="outline"
                     leftIcon={<Icon as={FaRegLightbulb} boxSize={3} />}
                     onClick={() => handleFindTradesClick(product)}
                     fontSize="sm"
                     px={3}
+                    whiteSpace="nowrap"
                   >
                     Find Trades
                   </Button>
@@ -2325,14 +2349,15 @@ const Dashboard: React.FC = () => {
               }
               return null
             })()}
-            {product.status === 'available' && (
+            {isAvailable && (
               <Button
                 size="xs"
                 colorScheme="yellow"
-                variant="ghost"
+                variant="outline"
                 leftIcon={<Icon as={FaRegLightbulb} boxSize={3} />}
                 onClick={() => handleFindTradesClick(product)}
                 fontSize="xs"
+                whiteSpace="nowrap"
               >
                 Find Trades
               </Button>
