@@ -1292,16 +1292,16 @@ const AdminDashboard: React.FC = () => {
   // Trigger fetch when debounced users search changes
   useEffect(() => {
     fetchAdminUsers(1, usersSearch, usersRoleFilter, usersIsVerifiedFilter);
-  }, [usersSearch]);
+  }, [usersSearch, usersRoleFilter, usersIsVerifiedFilter, fetchAdminUsers]);
 
   // Trigger fetch when debounced products search changes
   useEffect(() => {
-    fetchAdminProducts(1, productsSearch);
-  }, [productsSearch]);
+    fetchAdminProducts(1, productsSearch, productsStatusFilter);
+  }, [productsSearch, productsStatusFilter, fetchAdminProducts]);
 
   // â"€â"€ Fetch users for admin list â"€â"€
   const fetchAdminUsers = useCallback(
-    async (page = 1, search = usersSearch, role = usersRoleFilter, verified = usersIsVerifiedFilter) => {
+    async (page = 1, search = '', role = '', verified = '') => {
       try {
         setUsersLoading(true);
         const params = new URLSearchParams({ page: String(page), limit: '10' });
@@ -1399,7 +1399,7 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ Fetch products for admin list â"€â"€
   const fetchAdminProducts = useCallback(
-    async (page = 1, search = productsSearch, status = productsStatusFilter) => {
+    async (page = 1, search = '', status = '') => {
       try {
         setProductsLoading(true);
         const params = new URLSearchParams({ page: String(page), limit: '10' });
@@ -2005,15 +2005,15 @@ const AdminDashboard: React.FC = () => {
         onClick={() => { setActiveSection(item.id); closeSidebar(); }}
       >
         <HStack spacing={3}>
-          <Icon as={item.icon} boxSize={5} />
-          <VStack spacing={0} align="start" flex={1}>
-            <HStack spacing={2}>
-              <Text fontWeight={isActive ? '700' : '500'} fontSize="sm">{item.label}</Text>
+          <Icon as={item.icon} boxSize={5} flexShrink={0} />
+          <VStack spacing={0} align="start" flex={1} minW={0}>
+            <HStack spacing={2} w="full" noOfLines={1}>
+              <Text fontWeight={isActive ? '700' : '500'} fontSize="sm" whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis">{item.label}</Text>
               {item.badge ? (
-                <Badge colorScheme="red" borderRadius="full" px={2} fontSize="xs">{item.badge}</Badge>
+                <Badge colorScheme="red" borderRadius="full" px={2} fontSize="xs" whiteSpace="nowrap" flexShrink={0}>{item.badge}</Badge>
               ) : null}
             </HStack>
-            <Text fontSize="xs" color={isActive ? 'brand.500' : 'gray.400'}>{item.description}</Text>
+            <Text fontSize="xs" color={isActive ? 'brand.500' : 'gray.400'} whiteSpace="nowrap" overflow="hidden" textOverflow="ellipsis" w="full">{item.description}</Text>
           </VStack>
         </HStack>
       </Box>
@@ -2022,7 +2022,7 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ Sidebar content â"€â"€
   const SidebarContent = () => (
-    <VStack spacing={1} align="stretch" p={4} ml={20} h="full">
+    <VStack spacing={1} align="stretch" p={4} h="full">
       <Box px={4} pb={4} borderBottom="1px solid" borderColor={borderColor} mb={2}>
         <HStack spacing={2}>
           <Box w={8} h={8} bg="brand.500" borderRadius="lg" display="flex" alignItems="center" justifyContent="center">
@@ -2077,7 +2077,7 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ SECTION: Overview â"€â"€
   const OverviewSection = () => (
-    <VStack spacing={8} pr={20} align="stretch">
+    <VStack spacing={8} pr={20} align="stretch" w="full">
       {/* Data explorer (fetch products / trades / categories) */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl">
         <CardHeader pb={2}>
@@ -2523,7 +2523,7 @@ const AdminDashboard: React.FC = () => {
     const [expandedReportId, setExpandedReportId] = React.useState<number | null>(null);
     const toggleExpand = (id: number) => setExpandedReportId(prev => prev === id ? null : id);
     return (
-      <VStack spacing={8} pr={20} align="stretch">
+      <VStack spacing={8} pr={20} align="stretch" w="full">
         {/* Report Summary Cards */}
         <Box w="full">
           <HStack mb={3} spacing={2}>
@@ -3252,7 +3252,7 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ SECTION: Management â"€â"€
   const ManagementSection = () => (
-    <VStack spacing={8} pr={20} align="stretch">
+    <VStack spacing={8} pr={20} align="stretch" w="full">
       {/* Users */}
       <Card bg={cardBg} border="1px solid" borderColor={borderColor} borderRadius="xl" w="full">
         <CardHeader pb={0}>
@@ -3367,7 +3367,7 @@ const AdminDashboard: React.FC = () => {
                     <Th color={mutedTextColor} px={2}>Item</Th>
                     <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Trader</Th>
                     <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
-                    <Th isNumeric color={mutedTextColor} w="88px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
+                    <Th isNumeric color={mutedTextColor} w="110px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
                     <Th textAlign="right" color={mutedTextColor} w="80px" px={1}></Th>
                   </Tr></Thead>
                   <Tbody>
@@ -3379,7 +3379,7 @@ const AdminDashboard: React.FC = () => {
                           <Td px={2}><Checkbox isChecked={isSelected} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { const newSet = new Set(selectedProductIds); if (e.target.checked) { newSet.add(product.id); } else { newSet.delete(product.id); } setSelectedProductIds(newSet); }} /></Td>
                           <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
                           <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
-                          <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'}>{product.status}</Tag></Td>
+                          <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'} px={2.5} py={1}>{product.status}</Tag></Td>
                           <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : '—'}</Text></Td>
                           <Td textAlign="right">
                             <HStack spacing={1} justify="flex-end">
@@ -3480,7 +3480,7 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ SECTION: System â"€â"€
   const SystemSection = () => (
-    <VStack spacing={8} pr={20} align="stretch">
+    <VStack spacing={8} pr={20} align="stretch" w="full">
       <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
         <MetricCard icon={FiAlertTriangle} color="rose" label="Reports Filed" value={stats!.reports_filed} />
         <MetricCard icon={FiXCircle} color="red" label="Suspended Users" value={stats!.suspended_users} />
@@ -3655,7 +3655,7 @@ const AdminDashboard: React.FC = () => {
         </Drawer>
 
         {/* â"€â"€ Main Content â"€â"€ */}
-        <Box flex={1} ml={isMobile ? 0 : '210px'} display="flex" flexDirection="column">
+        <Box flex={1} ml={isMobile ? 0 : '260px'} display="flex" flexDirection="column">
 
           {/* Top Bar */}
           <Box
