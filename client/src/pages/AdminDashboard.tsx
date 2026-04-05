@@ -71,6 +71,7 @@ import {
   useBreakpointValue,
   Image,
   ModalFooter,
+  Checkbox,
 } from '@chakra-ui/react';
 import {
   FiUsers,
@@ -515,6 +516,8 @@ const AdminDashboard: React.FC = () => {
   const [productsTotalPages, setProductsTotalPages] = useState(1);
   const [productsSearch, setProductsSearch] = useState('');
   const [productsStatusFilter, setProductsStatusFilter] = useState('');
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set());
+  const [isSelectingProducts, setIsSelectingProducts] = useState(false);
 
   // Reports state
   const [reports, setReports] = useState<any[]>([]);
@@ -1084,6 +1087,130 @@ const AdminDashboard: React.FC = () => {
     },
     [toast],
   );
+
+  // Bulk product handlers
+  const handleBulkDeleteProducts = useCallback(async () => {
+    if (selectedProductIds.size === 0) return;
+    
+    const confirmed = window.confirm(`Delete ${selectedProductIds.size} item(s)? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      setIsSelectingProducts(true);
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const productId of selectedProductIds) {
+        try {
+          await api.delete(`/api/admin/products/${productId}`);
+          successCount++;
+        } catch {
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: `Deleted ${successCount} item${successCount !== 1 ? 's' : ''}`,
+          status: 'success',
+          duration: 3000,
+        });
+        setSelectedProductIds(new Set());
+        fetchAdminProducts(productsPage);
+      }
+      
+      if (failCount > 0) {
+        toast({
+          title: `Failed to delete ${failCount} item${failCount !== 1 ? 's' : ''}`,
+          status: 'error',
+          duration: 3000,
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Bulk delete failed',
+        description: err.message,
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setIsSelectingProducts(false);
+    }
+  }, [selectedProductIds, toast, fetchAdminProducts, productsPage]);
+
+  const handleBulkSuspendProducts = useCallback(async () => {
+    if (selectedProductIds.size === 0) return;
+
+    try {
+      setIsSelectingProducts(true);
+      let successCount = 0;
+
+      for (const productId of selectedProductIds) {
+        try {
+          await api.put(`/api/admin/products/${productId}/suspend`);
+          successCount++;
+        } catch {
+          // Continue with next item
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: `Suspended ${successCount} item${successCount !== 1 ? 's' : ''}`,
+          status: 'success',
+          duration: 3000,
+        });
+        setSelectedProductIds(new Set());
+        fetchAdminProducts(productsPage);
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Bulk suspend failed',
+        description: err.message,
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setIsSelectingProducts(false);
+    }
+  }, [selectedProductIds, toast, fetchAdminProducts, productsPage]);
+
+  const handleBulkUnsuspendProducts = useCallback(async () => {
+    if (selectedProductIds.size === 0) return;
+
+    try {
+      setIsSelectingProducts(true);
+      let successCount = 0;
+
+      for (const productId of selectedProductIds) {
+        try {
+          await api.put(`/api/admin/products/${productId}/unsuspend`);
+          successCount++;
+        } catch {
+          // Continue with next item
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: `Unsuspended ${successCount} item${successCount !== 1 ? 's' : ''}`,
+          status: 'success',
+          duration: 3000,
+        });
+        setSelectedProductIds(new Set());
+        fetchAdminProducts(productsPage);
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Bulk unsuspend failed',
+        description: err.message,
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setIsSelectingProducts(false);
+    }
+  }, [selectedProductIds, toast, fetchAdminProducts, productsPage]);
 
   // â"€â"€ Suspend handler â"€â"€
   const handleToggleSuspend = useCallback(async (user: User) => {
@@ -2575,13 +2702,33 @@ const AdminDashboard: React.FC = () => {
             </Select>
             <Button size="sm" onClick={() => fetchAdminProducts(1)}>Search</Button>
           </HStack>
+          {selectedProductIds.size > 0 && (
+            <HStack mt={3} p={3} bg={useColorModeValue('blue.50', 'blue.900')} borderRadius="md" spacing={3}>
+              <Text fontSize="sm" fontWeight="600" color={useColorModeValue('blue.900', 'blue.100')}>
+                {selectedProductIds.size} item{selectedProductIds.size !== 1 ? 's' : ''} selected
+              </Text>
+              <Button size="xs" colorScheme="red" variant="solid" onClick={() => handleBulkDeleteProducts()} isLoading={isSelectingProducts}>
+                Delete Selected
+              </Button>
+              <Button size="xs" colorScheme="orange" variant="solid" onClick={() => handleBulkSuspendProducts()} isLoading={isSelectingProducts}>
+                Suspend Selected
+              </Button>
+              <Button size="xs" colorScheme="green" variant="solid" onClick={() => handleBulkUnsuspendProducts()} isLoading={isSelectingProducts}>
+                Unsuspend Selected
+              </Button>
+              <Button size="xs" variant="outline" onClick={() => setSelectedProductIds(new Set())}>
+                Clear Selection
+              </Button>
+            </HStack>
+          )}
         </CardHeader>
         <CardBody px={0} pb={2}>
           {productsLoading ? <Center py={6}><Spinner color="brand.500" /></Center> : products.length === 0 ? <Text fontSize="sm" color={mutedTextColor} px={4}>No items found.</Text> : (
             <>
               <Box overflowX="auto" w="full">
                 <ChakraTable size="sm" variant="simple" style={{ tableLayout: 'fixed', width: '100%', minWidth: '480px' }}>
-                  <Thead><Tr>
+                  <Thead><Tr bg={headerBg}>
+                    <Th color={mutedTextColor} px={2} w="40px"><Checkbox isChecked={selectedProductIds.size === products.length && products.length > 0} isIndeterminate={selectedProductIds.size > 0 && selectedProductIds.size < products.length} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.checked) { setSelectedProductIds(new Set(products.map(p => p.id))); } else { setSelectedProductIds(new Set()); } }} /></Th>
                     <Th color={mutedTextColor} px={2}>Item</Th>
                     <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Trader</Th>
                     <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
@@ -2591,8 +2738,10 @@ const AdminDashboard: React.FC = () => {
                   <Tbody>
                     {products.map(product => {
                       const isSuspended = product.status === 'suspended';
+                      const isSelected = selectedProductIds.has(product.id);
                       return (
-                        <Tr key={product.id} _hover={{ bg: hoverBg }}>
+                        <Tr key={product.id} _hover={{ bg: hoverBg }} bg={isSelected ? useColorModeValue('blue.50', 'blue.900') : undefined}>
+                          <Td px={2}><Checkbox isChecked={isSelected} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { const newSet = new Set(selectedProductIds); if (e.target.checked) { newSet.add(product.id); } else { newSet.delete(product.id); } setSelectedProductIds(newSet); }} /></Td>
                           <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
                           <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
                           <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'}>{product.status}</Tag></Td>
