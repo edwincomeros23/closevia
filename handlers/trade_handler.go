@@ -443,6 +443,7 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 		JOIN users us ON us.id = t.seller_id
 		WHERE t.status = 'pending'
 		AND p.status = 'available'
+		AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
 		AND us.role != 'admin'
 		AND t.seller_id != ?
 		AND (
@@ -475,6 +476,7 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 		FROM products p
 		JOIN users u ON u.id = p.seller_id
 		WHERE p.status = 'available'
+		AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
 		AND u.role != 'admin'
 		AND p.seller_id != ?
 		AND (
@@ -2943,6 +2945,21 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		}
 	}
 
+	// Load trade IDs that are already part of an accepted/active multiway chain.
+	// These should not appear in match opportunities again.
+	acceptedTradeIDs := map[int]bool{}
+	if atRows, atErr := h.db.Query(
+		"SELECT original_trade_id FROM multiway_trades WHERE status IN ('user3_accepted', 'active', 'pending_user3')",
+	); atErr == nil {
+		defer atRows.Close()
+		for atRows.Next() {
+			var tid int
+			if atRows.Scan(&tid) == nil {
+				acceptedTradeIDs[tid] = true
+			}
+		}
+	}
+
 	allLoops := graph.FindTradeLoops()
 	expiresAt := time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	for _, loopEdges := range allLoops {
@@ -2983,6 +3000,18 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		}
 
 		if !involvesUser {
+			continue
+		}
+
+		// Skip loops where any trade is already part of an accepted multiway chain
+		hasAcceptedTrade := false
+		for _, edge := range loopEdges {
+			if acceptedTradeIDs[edge.TradeID] {
+				hasAcceptedTrade = true
+				break
+			}
+		}
+		if hasAcceptedTrade {
 			continue
 		}
 
@@ -3159,15 +3188,15 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 		}
 
 		participantsDetails := []map[string]interface{}{
-			{"user_id": u1ID, "user_name": u1Name, "product_id": u3WantedPID, "product_title": u1Title, "position": 0},
-			{"user_id": u2ID, "user_name": u2Name, "product_id": u2PID, "product_title": u2Title, "position": 1},
-			{"user_id": u3ID, "user_name": u3Name, "product_id": u3PID, "product_title": u3Title, "position": 2},
+			{"user_id": u1ID, "user_name": u1Name, "product_id": u3WantedPID, "product_title": u1Title, "position_in_loop": 0, "trade_id": tID, "trade_status": "accepted"},
+			{"user_id": u2ID, "user_name": u2Name, "product_id": u2PID, "product_title": u2Title, "position_in_loop": 1, "trade_id": tID, "trade_status": "accepted"},
+			{"user_id": u3ID, "user_name": u3Name, "product_id": u3PID, "product_title": u3Title, "position_in_loop": 2, "trade_id": tID, "trade_status": "accepted"},
 		}
 
 		edges := []map[string]interface{}{
-			{"from_user": u1ID, "to_user": u2ID, "from_user_name": u1Name, "to_user_name": u2Name, "product_title": u2Title},
-			{"from_user": u2ID, "to_user": u3ID, "from_user_name": u2Name, "to_user_name": u3Name, "product_title": u3Title},
-			{"from_user": u3ID, "to_user": u1ID, "from_user_name": u3Name, "to_user_name": u1Name, "product_title": u1Title},
+			{"from_user": u1ID, "to_user": u2ID, "from_user_name": u1Name, "to_user_name": u2Name, "product_title": u2Title, "status": status},
+			{"from_user": u2ID, "to_user": u3ID, "from_user_name": u2Name, "to_user_name": u3Name, "product_title": u3Title, "status": status},
+			{"from_user": u3ID, "to_user": u1ID, "from_user_name": u3Name, "to_user_name": u1Name, "product_title": u1Title, "status": status},
 		}
 
 		return c.JSON(models.APIResponse{
@@ -3255,22 +3284,22 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this multi-way trade"})
 		}
 
-		participantsDetails := []map[string]interface{}{
-			{"user_id": u1ID, "user_name": u1Name, "product_id": u3WantedPID, "product_title": u1Title, "position": 0},
-			{"user_id": u2ID, "user_name": u2Name, "product_id": u2PID, "product_title": u2Title, "position": 1},
-			{"user_id": u3ID, "user_name": u3Name, "product_id": u3PID, "product_title": u3Title, "position": 2},
-		}
-
-		edges := []map[string]interface{}{
-			{"from_user": u1ID, "to_user": u2ID, "from_user_name": u1Name, "to_user_name": u2Name, "product_title": u2Title},
-			{"from_user": u2ID, "to_user": u3ID, "from_user_name": u2Name, "to_user_name": u3Name, "product_title": u3Title},
-			{"from_user": u3ID, "to_user": u1ID, "from_user_name": u3Name, "to_user_name": u1Name, "product_title": u1Title},
-		}
-
 		// If the chain row already exists, prefer its status.
 		status := "pending_user3"
 		chainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, u1ID, u2ID, u3ID)
 		_ = h.db.QueryRow("SELECT status FROM multiway_trades WHERE chain_id = ?", chainID).Scan(&status)
+
+		participantsDetails := []map[string]interface{}{
+			{"user_id": u1ID, "user_name": u1Name, "product_id": u3WantedPID, "product_title": u1Title, "position_in_loop": 0, "trade_id": tradeID, "trade_status": "accepted"},
+			{"user_id": u2ID, "user_name": u2Name, "product_id": u2PID, "product_title": u2Title, "position_in_loop": 1, "trade_id": tradeID, "trade_status": "accepted"},
+			{"user_id": u3ID, "user_name": u3Name, "product_id": u3PID, "product_title": u3Title, "position_in_loop": 2, "trade_id": tradeID, "trade_status": "accepted"},
+		}
+
+		edges := []map[string]interface{}{
+			{"from_user": u1ID, "to_user": u2ID, "from_user_name": u1Name, "to_user_name": u2Name, "product_title": u2Title, "status": status},
+			{"from_user": u2ID, "to_user": u3ID, "from_user_name": u2Name, "to_user_name": u3Name, "product_title": u3Title, "status": status},
+			{"from_user": u3ID, "to_user": u1ID, "from_user_name": u3Name, "to_user_name": u1Name, "product_title": u1Title, "status": status},
+		}
 
 		return c.JSON(models.APIResponse{
 			Success: true,
@@ -3584,15 +3613,15 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 			limit := 2
 
 			_, _ = h.db.Exec(`
-				INSERT INTO loop_quota_usage (user_id, period, used, limit)
+				INSERT INTO loop_quota_usage (user_id, period, used, `+"`limit`"+`)
 				VALUES (?, ?, 0, ?)
-				ON DUPLICATE KEY UPDATE limit = limit
+				ON DUPLICATE KEY UPDATE `+"`limit`"+` = `+"`limit`"+`
 			`, userID, period, limit)
 
 			res, qErr := h.db.Exec(`
 				UPDATE loop_quota_usage
 				SET used = used + 1
-				WHERE user_id = ? AND period = ? AND used < limit
+				WHERE user_id = ? AND period = ? AND used < `+"`limit`"+`
 			`, userID, period)
 			if qErr != nil {
 				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to enforce loop quota"})
@@ -4519,15 +4548,15 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 		limit := 2
 
 		_, _ = tx.Exec(`
-			INSERT INTO loop_quota_usage (user_id, period, used, limit)
+			INSERT INTO loop_quota_usage (user_id, period, used, `+"`limit`"+`)
 			VALUES (?, ?, 0, ?)
-			ON DUPLICATE KEY UPDATE limit = limit
+			ON DUPLICATE KEY UPDATE `+"`limit`"+` = `+"`limit`"+`
 		`, userID, period, limit)
 
 		res, qErr := tx.Exec(`
 			UPDATE loop_quota_usage
 			SET used = used + 1
-			WHERE user_id = ? AND period = ? AND used < limit
+			WHERE user_id = ? AND period = ? AND used < `+"`limit`"+`
 		`, userID, period)
 		if qErr != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to enforce loop quota"})

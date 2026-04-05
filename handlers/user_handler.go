@@ -1839,6 +1839,15 @@ func (h *UserHandler) DeleteUser(c *fiber.Ctx) error {
 		})
 	}
 
+	// Explicitly clean up user's products, trades, and multiway data before deleting
+	// in case ON DELETE CASCADE constraints are not set on all tables.
+	h.db.Exec("DELETE FROM trade_items WHERE product_id IN (SELECT id FROM products WHERE seller_id = ?)", userID)
+	h.db.Exec("DELETE FROM multiway_trades WHERE user1_id = ? OR user2_id = ? OR user3_id = ? OR initiator_user_id = ?", userID, userID, userID, userID)
+	h.db.Exec("DELETE FROM trade_loop_agreements WHERE user_id = ?", userID)
+	h.db.Exec("DELETE FROM trades WHERE buyer_id = ? OR seller_id = ?", userID, userID)
+	h.db.Exec("DELETE FROM products WHERE seller_id = ?", userID)
+	h.db.Exec("DELETE FROM notifications WHERE user_id = ?", userID)
+
 	result, err := h.db.Exec("DELETE FROM users WHERE id = ?", userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{

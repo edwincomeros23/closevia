@@ -42,6 +42,12 @@ func NewTradeGraph(db *sql.DB) (*TradeGraph, error) {
 		  AND ub.role != 'admin'
 		  AND us.role != 'admin'
 		  AND pt.status = 'available'
+		  AND pt.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM trade_items ti
+		    JOIN products tip ON tip.id = ti.product_id
+		    WHERE ti.trade_id = t.id AND tip.status NOT IN ('available', 'locked')
+		  )
 	`)
 	if err != nil {
 		return nil, err
@@ -360,6 +366,7 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		JOIN users u ON u.id = p.seller_id
 		WHERE p.status = 'available'
 		  AND u.role != 'admin'
+		  AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
 	`
 	searchRows, err := db.Query(query)
 	if err != nil {
