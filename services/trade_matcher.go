@@ -43,6 +43,7 @@ func NewTradeGraph(db *sql.DB) (*TradeGraph, error) {
 		  AND us.role != 'admin'
 		  AND pt.status = 'available'
 		  AND pt.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+		  AND t.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
 		  AND NOT EXISTS (
 		    SELECT 1 FROM trade_items ti
 		    JOIN products tip ON tip.id = ti.product_id
@@ -368,7 +369,34 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		  AND u.role != 'admin'
 		  AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
 	`
-	searchRows, err := db.Query(query)
+	// DB-level pre-filter: narrow candidates to products matching what User2 wants
+	var queryArgs []interface{}
+	wantsFilter := strings.TrimSpace(targetWants)
+	wantedCatFilter := strings.TrimSpace(targetWantedCat)
+	desiredProdFilter := strings.TrimSpace(targetDesiredProd)
+
+	if wantsFilter != "" || wantedCatFilter != "" || desiredProdFilter != "" {
+		var orClauses []string
+		if wantsFilter != "" {
+			orClauses = append(orClauses, "LOWER(p.title) LIKE LOWER(?)")
+			queryArgs = append(queryArgs, "%"+wantsFilter+"%")
+		}
+		if wantedCatFilter != "" {
+			orClauses = append(orClauses, "LOWER(p.category) LIKE LOWER(?)")
+			queryArgs = append(queryArgs, "%"+wantedCatFilter+"%")
+		}
+		if desiredProdFilter != "" {
+			orClauses = append(orClauses, "LOWER(p.title) LIKE LOWER(?)")
+			queryArgs = append(queryArgs, "%"+desiredProdFilter+"%")
+		}
+		query += " AND (" + strings.Join(orClauses, " OR ") + ")"
+	} else if targetCat != "" {
+		// Fallback: if no wants specified, at least match by category
+		query += " AND LOWER(p.category) LIKE LOWER(?)"
+		queryArgs = append(queryArgs, "%"+targetCat+"%")
+	}
+	query += " LIMIT 50"
+	searchRows, err := db.Query(query, queryArgs...)
 	if err != nil {
 		return nil, debug, err
 	}
