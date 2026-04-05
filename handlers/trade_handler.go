@@ -1151,11 +1151,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to lock products for trade"})
 		}
 
-		// Auto-cancel other pending trades that involve the same products
-		if err := h.cancelConflictingTrades(tx, tradeID); err != nil {
-			log.Printf("Warning: failed to cancel conflicting trades for trade %d: %v", tradeID, err)
-			// Non-fatal — continue with commit
-		}
+		// TODO: Auto-cancel other pending trades that involve the same products
+		// if err := h.cancelConflictingTrades(tx, tradeID); err != nil {
+		//	log.Printf("Warning: failed to cancel conflicting trades for trade %d: %v", tradeID, err)
+		//	// Non-fatal — continue with commit
+		// }
 
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
