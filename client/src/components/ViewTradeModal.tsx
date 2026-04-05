@@ -887,6 +887,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
               <FormControl isRequired>
                 <FormLabel fontSize="sm" fontWeight="semibold">Feedback</FormLabel>
                 <Textarea
+                  autoFocus
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   placeholder="Share your experience with this trade..."
@@ -2881,7 +2882,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
       {/* Review Modal */}
-      < Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="md" isCentered scrollBehavior="inside" >
+      <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="md" isCentered scrollBehavior="inside">
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl" maxW="500px" mx={4}>
           <ModalHeader>
@@ -2891,7 +2892,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
             </HStack>
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody>
+          <ModalBody py={6} px={6}>
             <ReviewTab
               trade={trade}
               isUserBuyer={isUserBuyer ?? false}
@@ -2904,7 +2905,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
             />
           </ModalBody>
         </ModalContent>
-      </Modal >
+      </Modal>
     </>
   )
 }
