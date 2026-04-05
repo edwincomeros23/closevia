@@ -247,8 +247,7 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		"offered_cash_amount": payload.OfferedCashAmount,
 	}})
 
-	// After creating a trade, check for loops
-	go h.CheckForTradeLoops()
+	// After creating a trade, trigger multiway search
 	go h.autoTriggerMultiwayForTrade(tradeID, sellerID, "trade_created")
 	go h.rebuildTradeLoopCacheForUsers([]int{userID, sellerID})
 
@@ -390,8 +389,15 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 	return true, loopStatus, "Loop found. Upgrade required to initiate invites.", debug, nil
 }
 
-func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, initiatorUserID int, source string) {
-	created, _, msg, _, err := h.evaluateAndCreateMultiwaySuggestion(tradeID, initiatorUserID, source)
+func (h *TradeHandler) autoTriggerMultiwayForTrade(tradeID int, _ int, source string) {
+	// Always use the buyer (trade creator) as the initiator for premium checks,
+	// not the seller who was passed by the caller.
+	var buyerID int
+	if err := h.db.QueryRow("SELECT buyer_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID); err != nil {
+		log.Printf("autoTriggerMultiwayForTrade: could not look up buyer for trade %d: %v", tradeID, err)
+		return
+	}
+	created, _, msg, _, err := h.evaluateAndCreateMultiwaySuggestion(tradeID, buyerID, source)
 	if err != nil {
 		log.Printf("autoTriggerMultiwayForTrade: trade=%d source=%s err=%v", tradeID, source, err)
 		return
@@ -470,100 +476,7 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 		}
 	}
 
-	// STRATEGY 2: Find OTHER available products where seller WANTS THIS category/title
-	// AND THIS product's seller wants THAT product's category
-	query2 := `
-		SELECT p.id as other_product_id, p.seller_id as other_seller_id, p.title as other_title
-		FROM products p
-		JOIN users u ON u.id = p.seller_id
-		WHERE p.status = 'available'
-		AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
-		AND u.role != 'admin'
-		AND p.seller_id != ?
-		AND (
-			LOWER(p.wants) LIKE LOWER(?)
-			OR LOWER(p.wanted_categories) LIKE LOWER(?)
-			OR LOWER(p.wants) LIKE LOWER(?)
-		)
-		LIMIT 10
-	`
-	rows2, err := h.db.Query(query2, sellerID, "%"+productTitle+"%", "%"+productCategory+"%", "%"+productTitle+"%")
-	if err != nil {
-		log.Printf("autoTriggerMultiwayForNewAvailableProduct: query2 failed: %v", err)
-	} else {
-		defer rows2.Close()
-		for rows2.Next() {
-			var otherProductID, otherSellerID int
-			var otherTitle string
-			if err := rows2.Scan(&otherProductID, &otherSellerID, &otherTitle); err != nil {
-				continue
-			}
-
-			// Check if THIS seller wants THAT product's category
-			var otherCategory string
-			if err := h.db.QueryRow("SELECT COALESCE(category, '') FROM products WHERE id = ?", otherProductID).Scan(&otherCategory); err != nil {
-				continue
-			}
-
-			wantsTheirCategory := false
-			if otherCategory != "" {
-				wantsTheirCategory = (strings.Contains(strings.ToLower(productWants), strings.ToLower(otherCategory)) ||
-					strings.Contains(strings.ToLower(wantedCategories), strings.ToLower(otherCategory)))
-			}
-
-			if wantsTheirCategory {
-				// We found a pair! Create a synthetic trade from the other seller's perspective
-				log.Printf("[ProactiveMultiway] Strategy2: Found complementary pair - Product %d (seller %d wants %s) <-> Product %d (seller %d offers %s)",
-					otherProductID, otherSellerID, otherTitle, productID, sellerID, productTitle)
-
-				// Create a trade suggestion from otherSeller -> sellerID for THIS product
-				// This will trigger multiway detection automatically
-				_ = h.createProactiveTradeForMultiway(otherSellerID, sellerID, productID, otherProductID)
-			}
-		}
-	}
-
 	log.Printf("[ProactiveMultiway] Completed for product ID=%d", productID)
-}
-
-// createProactiveTradeForMultiway creates an internal trade record to trigger multiway detection
-func (h *TradeHandler) createProactiveTradeForMultiway(buyerID, sellerID, targetProductID, offeredProductID int) error {
-	log.Printf("[createProactiveTradeForMultiway] Buyer=%d, Seller=%d, Target=%d, Offered=%d", buyerID, sellerID, targetProductID, offeredProductID)
-
-	// Check if trade already exists
-	var existingID int
-	if err := h.db.QueryRow(`
-		SELECT id FROM trades 
-		WHERE buyer_id = ? AND seller_id = ? AND target_product_id = ? AND status IN ('pending', 'pending_multiway')
-		LIMIT 1
-	`, buyerID, sellerID, targetProductID).Scan(&existingID); err == nil {
-		log.Printf("[createProactiveTradeForMultiway] Trade already exists: %d", existingID)
-		return nil
-	}
-
-	// Create the trade
-	result, err := h.db.Exec(`
-		INSERT INTO trades (buyer_id, seller_id, target_product_id, status, created_at, updated_at)
-		VALUES (?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-	`, buyerID, sellerID, targetProductID)
-
-	if err != nil {
-		log.Printf("[createProactiveTradeForMultiway] Failed to create trade: %v", err)
-		return err
-	}
-
-	tradeID, _ := result.LastInsertId()
-	log.Printf("[createProactiveTradeForMultiway] Created trade %d", tradeID)
-
-	// Add trade item for offered product
-	_, _ = h.db.Exec(`
-		INSERT INTO trade_items (trade_id, product_id, offered_by, created_at)
-		VALUES (?, ?, 'buyer', CURRENT_TIMESTAMP)
-	`, tradeID, offeredProductID)
-
-	// Trigger multiway detection on this new trade
-	h.autoTriggerMultiwayForTrade(int(tradeID), sellerID, "proactive_multiway_suggestion")
-	return nil
 }
 
 func (h *TradeHandler) recordTradeRejectionSignal(tradeID, rejectorUserID, rejectedUserID int, reason string) {
@@ -662,7 +575,7 @@ func (h *TradeHandler) saveLoopCacheForUser(userID int, loops []map[string]inter
 		_, _ = h.db.Exec(`
 			INSERT INTO trade_loop_cache
 			(user_id, loop_id, loop_type, loop_length, score, payload_json, expires_at)
-			VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+			VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 2 MINUTE))
 		`, userID, loopID, loopType, loopLength, score, string(payloadBytes))
 	}
 
@@ -1061,6 +974,63 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		}
 	}
 
+	// Also include multiway-active trades where user is User3 (not buyer/seller on original trade).
+	// This ensures all 3 participants see the trade in "Ongoing Trades" after everyone accepts.
+	if status == "multiway_active" || status == "" {
+		mwRows, mwErr := h.db.Query(`
+			SELECT t.id FROM trades t
+			JOIN multiway_trades m ON m.original_trade_id = t.id
+			WHERE m.user3_id = ? AND m.status = 'active' AND t.status = 'multiway_active'
+		`, userID)
+		if mwErr == nil {
+			defer mwRows.Close()
+			for mwRows.Next() {
+				var mwTradeID int
+				if mwRows.Scan(&mwTradeID) != nil {
+					continue
+				}
+				if tradeMap[mwTradeID] != nil {
+					continue // already included
+				}
+				// Fetch the full trade row for User3
+				var tr models.Trade
+				var pimg, pimgs sql.NullString
+				var offeredCashNull sql.NullFloat64
+				scanErr := h.db.QueryRow(`
+					SELECT t.id, t.buyer_id, t.seller_id, t.target_product_id, t.status, COALESCE(t.message,''), t.offered_cash_amount, t.created_at, t.updated_at,
+					       t.buyer_completed, t.seller_completed, t.completed_at,
+					       COALESCE(t.meetup_location,'') as meetup_location, COALESCE(t.buyer_meetup_confirmed,FALSE), COALESCE(t.seller_meetup_confirmed,FALSE),
+					       ub.name AS buyer_name, us.name AS seller_name, p.title AS product_title, p.image_url, p.image_urls
+					FROM trades t
+					JOIN users ub ON ub.id = t.buyer_id
+					JOIN users us ON us.id = t.seller_id
+					JOIN products p ON p.id = t.target_product_id
+					WHERE t.id = ?
+				`, mwTradeID).Scan(&tr.ID, &tr.BuyerID, &tr.SellerID, &tr.TargetProductID, &tr.Status, &tr.Message, &offeredCashNull, &tr.CreatedAt, &tr.UpdatedAt,
+					&tr.BuyerCompleted, &tr.SellerCompleted, &tr.CompletedAt,
+					&tr.MeetupLocation, &tr.BuyerMeetupConfirmed, &tr.SellerMeetupConfirmed,
+					&tr.BuyerName, &tr.SellerName, &tr.ProductTitle, &pimg, &pimgs)
+				if scanErr != nil {
+					continue
+				}
+				if offeredCashNull.Valid {
+					val := offeredCashNull.Float64
+					tr.OfferedCash = &val
+				}
+				if pimg.Valid && pimg.String != "" {
+					tr.ProductImageURL = pimg.String
+				} else if pimgs.Valid && pimgs.String != "" {
+					if first := extractFirstImage(pimgs.String); first != "" {
+						tr.ProductImageURL = first
+					}
+				}
+				tr.Items = []models.TradeItem{}
+				tradePtrs = append(tradePtrs, &tr)
+				tradeMap[tr.ID] = &tr
+			}
+		}
+	}
+
 	// Convert back to value slice for response
 	trades := make([]models.Trade, 0, len(tradePtrs))
 	for _, tr := range tradePtrs {
@@ -1179,6 +1149,12 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		if err := h.setProductStatusForTrade(tx, tradeID, "locked"); err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to lock products for trade"})
+		}
+
+		// Auto-cancel other pending trades that involve the same products
+		if err := h.cancelConflictingTrades(tx, tradeID); err != nil {
+			log.Printf("Warning: failed to cancel conflicting trades for trade %d: %v", tradeID, err)
+			// Non-fatal — continue with commit
 		}
 
 		if err := tx.Commit(); err != nil {
@@ -3063,6 +3039,11 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify premium status"})
 	}
 
+	// Try cache first — return immediately if fresh cache exists
+	if cached, cacheErr := h.getCachedLoopsForUser(userID); cacheErr == nil && len(cached) > 0 {
+		return c.JSON(models.APIResponse{Success: true, Data: cached})
+	}
+
 	userLoops := []map[string]interface{}{}
 
 	// Discover loop suggestions for all users. All users can create/join loops now.
@@ -3104,7 +3085,7 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	// These should not appear in match opportunities again.
 	acceptedTradeIDs := map[int]bool{}
 	if atRows, atErr := h.db.Query(
-		"SELECT original_trade_id FROM multiway_trades WHERE status IN ('user3_accepted', 'active', 'pending_user3')",
+		"SELECT original_trade_id FROM multiway_trades WHERE status IN ('user3_accepted', 'active', 'pending_user3', 'pending_initiator_upgrade')",
 	); atErr == nil {
 		defer atRows.Close()
 		for atRows.Next() {
@@ -4767,9 +4748,9 @@ func (h *TradeHandler) AcceptMultiwayChain(c *fiber.Ctx) error {
 		}
 	}
 
-	// In a real implementation we would create a 3-way agreement or a special multiway trade record.
-	// For now, let's mark it as accepted and notify participants.
-	_, err = tx.Exec("UPDATE multiway_trades SET status = 'user3_accepted', ongoing_deadline = DATE_ADD(NOW(), INTERVAL 7 DAY) WHERE chain_id = ?", chainID)
+	// All 3 participants have now agreed (User1+User2 via the original trade, User3 here).
+	// Transition to 'active' so it appears in ongoing trades for everyone.
+	_, err = tx.Exec("UPDATE multiway_trades SET status = 'active', ongoing_deadline = DATE_ADD(NOW(), INTERVAL 7 DAY) WHERE chain_id = ?", chainID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to accept multi-way chain"})
 	}
