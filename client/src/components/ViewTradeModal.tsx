@@ -1073,6 +1073,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const previousMessageCountRef = useRef(0)  // Track message count to detect new messages
+  const messagesRequestSeqRef = useRef(0)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const locationTextColor = useColorModeValue('gray.800', 'gray.100')
@@ -1431,8 +1432,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }, [trade?.id, trade?.status, trade?.trade_option, isOpen])
 
   const fetchMessages = async (options?: { showLoading?: boolean }) => {
-    const showLoading = options?.showLoading
+    // Avoid spinner flicker on refresh when we already have messages.
+    const showLoading = !!options?.showLoading && messages.length === 0
     if (!trade) return
+
+    const requestSeq = ++messagesRequestSeqRef.current
 
     try {
       if (showLoading) setLoadingMessages(true)
@@ -1447,6 +1451,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const data = response.data?.data || []
       const safeMessages = Array.isArray(data) ? data : []
       safeMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+      // Ignore stale/out-of-order responses (common on mobile networks)
+      if (requestSeq !== messagesRequestSeqRef.current) return
       
       // Check if there are new messages from the other user
       const previousCount = previousMessageCountRef.current
@@ -1478,12 +1485,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         }
       }
       
-      previousMessageCountRef.current = newMessageCount
+      // Never allow the tracker to move backwards (prevents duplicate toasts)
+      previousMessageCountRef.current = Math.max(previousCount, newMessageCount)
       setMessages(safeMessages)
     } catch (error: any) {
       console.error('Failed to fetch messages:', error)
     } finally {
-      if (showLoading) setLoadingMessages(false)
+      // Only the most recent request is allowed to clear the loading state.
+      if (showLoading && requestSeq === messagesRequestSeqRef.current) setLoadingMessages(false)
     }
   }
 
