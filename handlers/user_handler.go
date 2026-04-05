@@ -609,11 +609,36 @@ func (h *UserHandler) Login(c *fiber.Ctx) error {
 		login.Email,
 	).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified, &user.IsPremium, &user.PremiumTier, &user.Strikes, &user.IsSuspended)
 
+	// Some deployments have older schemas without optional columns (is_premium, premium_tier, strikes, is_suspended).
+	// In that case, fall back to a minimal query and default those fields.
 	if err != nil {
-		return c.Status(401).JSON(models.APIResponse{
-			Success: false,
-			Error:   "Invalid credentials",
-		})
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unknown column") || strings.Contains(msg, "doesn't exist") {
+			// First fallback: assume slug exists.
+			err2 := h.db.QueryRow(
+				"SELECT id, slug, name, email, password_hash, role, verified FROM users WHERE email = ?",
+				login.Email,
+			).Scan(&user.ID, &user.Slug, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified)
+			if err2 != nil {
+				// Second fallback: even slug may be missing.
+				err3 := h.db.QueryRow(
+					"SELECT id, name, email, password_hash, role, verified FROM users WHERE email = ?",
+					login.Email,
+				).Scan(&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.Verified)
+				if err3 != nil {
+					return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Invalid credentials"})
+				}
+				user.Slug = ""
+			}
+
+			// Default optional fields that might not exist in older schemas.
+			user.IsPremium = false
+			user.PremiumTier = "free"
+			user.Strikes = 0
+			user.IsSuspended = false
+		} else {
+			return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Invalid credentials"})
+		}
 	}
 
 	// Check if user is verified

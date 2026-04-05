@@ -74,62 +74,8 @@ type RemitCashRequest struct {
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// toRad converts degrees to radians (used by haversineDistance in delivery_handler.go)
 func toRadians(deg float64) float64 {
 	return deg * (math.Pi / 180)
-}
-
-// calculateOptimalRoute orders deliveries by geographic proximity
-func calculateOptimalRoute(deliveries []map[string]interface{}) []int {
-	if len(deliveries) <= 1 {
-		ids := make([]int, len(deliveries))
-		for i, d := range deliveries {
-			ids[i] = int(d["id"].(float64))
-		}
-		return ids
-	}
-
-	// Start with first delivery
-	route := []int{int(deliveries[0]["id"].(float64))}
-	remaining := deliveries[1:]
-	lastLat := deliveries[0]["pickup_latitude"].(float64)
-	lastLon := deliveries[0]["pickup_longitude"].(float64)
-
-	// Nearest neighbor algorithm
-	for len(remaining) > 0 {
-		nearest := 0
-		minDist := math.MaxFloat64
-
-		for i, d := range remaining {
-			lat := d["pickup_latitude"].(float64)
-			lon := d["pickup_longitude"].(float64)
-
-			// Calculate distance using Haversine formula (duplicate here to avoid dependency)
-			const R = 6371 // Earth radius in km
-			phi1 := toRadians(lastLat)
-			phi2 := toRadians(lat)
-			deltaPhi := toRadians(lat - lastLat)
-			deltaLambda := toRadians(lon - lastLon)
-
-			a := math.Sin(deltaPhi/2)*math.Sin(deltaPhi/2) +
-				math.Cos(phi1)*math.Cos(phi2)*math.Sin(deltaLambda/2)*math.Sin(deltaLambda/2)
-			c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-			dist := R * c
-
-			if dist < minDist {
-				minDist = dist
-				nearest = i
-			}
-		}
-
-		route = append(route, int(remaining[nearest]["id"].(float64)))
-		lastLat = remaining[nearest]["pickup_latitude"].(float64)
-		lastLon = remaining[nearest]["pickup_longitude"].(float64)
-
-		remaining = append(remaining[:nearest], remaining[nearest+1:]...)
-	}
-
-	return route
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

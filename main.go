@@ -26,21 +26,36 @@ func debugEndpointsEnabled() bool {
 	return v == "true" || v == "1" || v == "yes"
 }
 
+func envBool(key string, defaultVal bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if v == "" {
+		return defaultVal
+	}
+	switch v {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return defaultVal
+	}
+}
+
 func main() {
-	// Load .env file only in local development (Render sets PORT automatically)
-	// This prevents a committed .env from overriding Render dashboard env vars
-	if os.Getenv("PORT") == "" {
-		// Prefer a developer-specific override file if present, then fallback to .env.
-		// This avoids breaking local dev when .env contains hosted DB settings.
-		if err := godotenv.Load(".env.local"); err == nil {
-			log.Println("Loaded .env.local file for local development")
-		} else if err := godotenv.Load(); err != nil {
-			log.Println("No .env file found, using system environment variables")
-		} else {
-			log.Println("Loaded .env file for local development")
-		}
-	} else {
-		log.Println("Running in hosted environment, skipping .env file load")
+	// Load developer env files if present.
+	// NOTE: godotenv.Load does NOT override already-set environment variables.
+	// This makes it safe even when PORT (or other vars) are set by the shell/host.
+	loadedAny := false
+	if err := godotenv.Load(".env.local"); err == nil {
+		loadedAny = true
+		log.Println("Loaded .env.local file")
+	}
+	if err := godotenv.Load(); err == nil {
+		loadedAny = true
+		log.Println("Loaded .env file")
+	}
+	if !loadedAny {
+		log.Println("No .env files found, using system environment variables")
 	}
 
 	// Initialize database
@@ -49,9 +64,18 @@ func main() {
 	}
 	defer database.CloseDatabase()
 
-	// Create database tables
-	if err := database.CreateTables(); err != nil {
-		log.Fatal("Failed to create database tables:", err)
+	// Auto-migration (CreateTables) can be extremely slow on hosted DBs (ALTER TABLE on large tables).
+	// Default behavior:
+	// - local DB: run CreateTables
+	// - hosted DB (DB_CA_CERT set): skip unless explicitly enabled
+	runCreateTables := os.Getenv("DB_CA_CERT") == ""
+	runCreateTables = envBool("RUN_CREATE_TABLES", runCreateTables)
+	if runCreateTables {
+		if err := database.CreateTables(); err != nil {
+			log.Fatal("Failed to create database tables:", err)
+		}
+	} else {
+		log.Println("Skipping database.CreateTables() (set RUN_CREATE_TABLES=true to enable)")
 	}
 
 	// Create Fiber app
@@ -521,6 +545,7 @@ func main() {
 	admin.Get("/stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminStats)
 	admin.Get("/daily-stats", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetDailyStats)
 	admin.Get("/stats-by-date", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetStatsByDate)
+	admin.Get("/revenue", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminRevenue)
 	// Admin user management
 	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
 	admin.Put("/users/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.SuspendUser)
@@ -537,6 +562,10 @@ func main() {
 	// Admin product management
 	admin.Get("/products", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.GetAdminProducts)
 	admin.Delete("/products/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), productHandler.DeleteProductAdmin)
+	// Admin trade management
+	admin.Get("/trades", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminTrades)
+	// Admin category aggregates
+	admin.Get("/categories", middleware.AuthMiddleware(), middleware.AdminMiddleware(), adminHandler.GetAdminCategories)
 	// Admin reports management
 	admin.Get("/reports", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReports)
 	admin.Get("/reports/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), reportHandler.GetReportByID)

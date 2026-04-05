@@ -1,0 +1,84 @@
+2026/04/05 18:37:12 Loaded .env file
+2026/04/05 18:37:13 Successfully connected to MySQL database: defaultdb (Host: mysql-35b52f24-exssasha-e8a2.h.aivencloud.com:27138)
+2026/04/05 18:37:13 Skipping database.CreateTables() (set RUN_CREATE_TABLES=true to enable)
+2026/04/05 18:37:13 CORS Origins configured: http://localhost:5173,http://localhost:5174,http://localhost:3000,https://cloviaph.netlify.app,https://cloviaph.site,https://closevia.onrender.com
+2026/04/05 18:37:13 Backend version: xendit-sync-all-405-fix
+2026/04/05 18:37:13 Starting Clovia server on port 4000
+2026/04/05 18:37:13 ✅ Escalation SLA Scheduler started (runs every 1 hour)
+2026/04/05 18:37:13 Starting pre-meetup reminder scheduler...
+2026/04/05 18:37:13 [FindMultiwayMatch] Starting search. User1=37, User2=55, TradeID=168
+2026/04/05 18:37:16 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 168): Found 2 matching User 3 candidates!
+2026/04/05 18:37:16   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your Apple iPhone | Score: 57
+2026/04/05 18:37:16   [2] User3=60 (Oreo ) has Nike shoe, wants your Apple iPhone | Score: 30
+2026/04/05 18:37:19 [FindMultiwayMatch] Starting search. User1=52, User2=55, TradeID=138
+2026/04/05 18:37:19 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 138): Found 1 matching User 3 candidates!
+2026/04/05 18:37:19   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your iPhone 15 Pro Max | Score: 46
+2026/04/05 18:37:22 [FindMultiwayMatch] Starting search. User1=55, User2=59, TradeID=179
+2026/04/05 18:37:22 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 179): Found 1 matching User 3 candidates!
+2026/04/05 18:37:22   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your Sansevieria P299 | Score: 46
+2026/04/05 18:37:25 [FindMultiwayMatch] Starting search. User1=59, User2=55, TradeID=120
+2026/04/05 18:37:26 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 120): Found 1 matching User 3 candidates!
+2026/04/05 18:37:26   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your PlayStation 5 Console | Score: 46
+2026/04/05 18:37:28 [FindMultiwayMatch] Starting search. User1=63, User2=55, TradeID=171
+2026/04/05 18:37:31 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 171): Found 2 matching User 3 candidates!
+2026/04/05 18:37:31   [1] User3=60 (Oreo ) has Nike shoe, wants your White Headphones | Score: 60
+2026/04/05 18:37:31   [2] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your White Headphones | Score: 46
+2026/04/05 18:37:34 [FindMultiwayMatch] Starting search. User1=49, User2=55, TradeID=169
+2026/04/05 18:37:35 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 169): Found 1 matching User 3 candidates!
+2026/04/05 18:37:35   [1] User3=60 (Oreo ) has Nike shoe, wants your Watch | Score: 53
+2026/04/05 18:37:37 [FindMultiwayMatch] Starting search. User1=37, User2=55, TradeID=168
+2026/04/05 18:37:39 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 168): Found 2 matching User 3 candidates!
+2026/04/05 18:37:39   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your Apple iPhone | Score: 57
+2026/04/05 18:37:39   [2] User3=60 (Oreo ) has Nike shoe, wants your Apple iPhone | Score: 30
+2026/04/05 18:37:40 [FindMultiwayMatch] Starting search. User1=55, User2=49, TradeID=167
+2026/04/05 18:37:43 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 167): Found 1 matching User 3 candidates!
+2026/04/05 18:37:43   [1] User3=60 (Oreo ) has Nike shoe, wants your Maroon Penshoppe Hoodie | Score: 91
+2026/04/05 18:37:48 [FindMultiwayMatch] Starting search. User1=52, User2=55, TradeID=115
+[mysql] 2026/04/05 18:38:03 packets.go:58 read tcp 192.168.1.149:54599->139.59.120.177:27138: i/o timeout
+2026/04/05 18:38:05 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=117
+2026/04/05 18:38:06 [FindMultiwayMatch] ❌ NO MATCH (Trade 117): Candidates found, but none met the minimum score threshold. Best score: 26. Found 14 candidates
+2026/04/05 18:38:06 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=116
+2026/04/05 18:38:06 [FindMultiwayMatch] ❌ NO MATCH (Trade 116): Candidates found, but none met the minimum score threshold. Best score: 26. Found 14 candidates
+2026/04/05 18:38:06 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=117
+2026/04/05 18:38:07 [FindMultiwayMatch] ❌ NO MATCH (Trade 117): Candidates found, but none met the minimum score threshold. Best score: 26. Found 14 candidates
+2026/04/05 18:38:07 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=116
+2026/04/05 18:38:07 [FindMultiwayMatch] ❌ NO MATCH (Trade 116): Candidates found, but none met the minimum score threshold. Best score: 26. Found 14 candidates
+2026/04/05 18:43:08 [FindMultiwayMatch] Starting search. User1=37, User2=55, TradeID=168
+2026/04/05 18:43:08 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 168): Found 2 matching User 3 candidates!
+2026/04/05 18:43:08   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your Apple iPhone | Score: 57
+2026/04/05 18:43:08   [2] User3=60 (Oreo ) has Nike shoe, wants your Apple iPhone | Score: 30
+2026/04/05 18:43:10 [FindMultiwayMatch] Starting search. User1=52, User2=55, TradeID=138
+2026/04/05 18:43:10 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 138): Found 1 matching User 3 candidates!
+2026/04/05 18:43:10   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your iPhone 15 Pro Max | Score: 46
+2026/04/05 18:43:11 [FindMultiwayMatch] Starting search. User1=55, User2=59, TradeID=179
+2026/04/05 18:43:11 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 179): Found 1 matching User 3 candidates!
+2026/04/05 18:43:11   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your Sansevieria P299 | Score: 46
+2026/04/05 18:43:12 [FindMultiwayMatch] Starting search. User1=59, User2=55, TradeID=120
+2026/04/05 18:43:12 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 120): Found 1 matching User 3 candidates!
+2026/04/05 18:43:12   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your PlayStation 5 Console | Score: 46
+2026/04/05 18:43:13 [FindMultiwayMatch] Starting search. User1=63, User2=55, TradeID=171
+2026/04/05 18:43:13 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 171): Found 2 matching User 3 candidates!
+2026/04/05 18:43:13   [1] User3=60 (Oreo ) has Nike shoe, wants your White Headphones | Score: 60
+2026/04/05 18:43:13   [2] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your White Headphones | Score: 46
+2026/04/05 18:43:14 [FindMultiwayMatch] Starting search. User1=49, User2=55, TradeID=169
+2026/04/05 18:43:14 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 169): Found 1 matching User 3 candidates!
+2026/04/05 18:43:15   [1] User3=60 (Oreo ) has Nike shoe, wants your Watch | Score: 53
+2026/04/05 18:43:15 [FindMultiwayMatch] Starting search. User1=37, User2=55, TradeID=168
+2026/04/05 18:43:16 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 168): Found 2 matching User 3 candidates!
+2026/04/05 18:43:16   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your Apple iPhone | Score: 57
+2026/04/05 18:43:16   [2] User3=60 (Oreo ) has Nike shoe, wants your Apple iPhone | Score: 30
+2026/04/05 18:43:16 [FindMultiwayMatch] Starting search. User1=55, User2=49, TradeID=167
+2026/04/05 18:43:17 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 167): Found 1 matching User 3 candidates!
+2026/04/05 18:43:17   [1] User3=60 (Oreo ) has Nike shoe, wants your Maroon Penshoppe Hoodie | Score: 91
+2026/04/05 18:43:17 [FindMultiwayMatch] Starting search. User1=52, User2=55, TradeID=115
+2026/04/05 18:43:18 [FindMultiwayMatch] ✅ LOOP FOUND (Trade 115): Found 1 matching User 3 candidates!
+2026/04/05 18:43:18   [1] User3=49 (sekody B Leonardo) has Karaoke Microphone & Spea, wants your iPhone 15 Pro Max | Score: 46
+2026/04/05 18:43:21 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=117
+2026/04/05 18:43:21 [FindMultiwayMatch] ❌ NO MATCH (Trade 117): Candidates found, but none met the minimum score threshold. Best score: 26. Found 15 candidates
+2026/04/05 18:43:21 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=116
+2026/04/05 18:43:22 [FindMultiwayMatch] ❌ NO MATCH (Trade 116): Candidates found, but none met the minimum score threshold. Best score: 26. Found 15 candidates
+2026/04/05 18:43:22 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=117
+2026/04/05 18:43:23 [FindMultiwayMatch] ❌ NO MATCH (Trade 117): Candidates found, but none met the minimum score threshold. Best score: 26. Found 15 candidates
+2026/04/05 18:43:23 [FindMultiwayMatch] Starting search. User1=100, User2=101, TradeID=116
+2026/04/05 18:43:23 [FindMultiwayMatch] ❌ NO MATCH (Trade 116): Candidates found, but none met the minimum score threshold. Best score: 26. Found 15 candidates
+exit status 0xffffffff
