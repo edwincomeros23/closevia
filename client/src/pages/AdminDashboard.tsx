@@ -122,8 +122,8 @@ import AdvertisementCMS from '../components/AdvertisementCMS';
 import { User, Product, Trade, PaginatedResponse, APIResponse } from '../types';
 
 const ADMIN_STATS_CACHE_KEY = 'clovia_admin_stats_cache_v1';
-const ADMIN_STATS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
-const ADMIN_STATS_REQUEST_TIMEOUT_MS = 12_000;
+const ADMIN_STATS_CACHE_TTL_MS = 1 * 60 * 1000; // 1 minute
+const ADMIN_STATS_REQUEST_TIMEOUT_MS = 8_000;
 
 // â"€â"€â"€ PDF / DOCX imports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -1959,6 +1959,40 @@ const AdminDashboard: React.FC = () => {
     );
   }
 
+  // Skeleton loading state
+  if (loading && !stats) {
+    return (
+      <Box minH="100vh" bg={mainBg} display="flex">
+        {/* Sidebar Skeleton */}
+        {!isMobile && (
+          <Box w="330px" minH="100vh" bg={sidebarBg} borderRight="1px solid" borderColor={borderColor} position="fixed" top={0} left={0} ml={20} overflowY="auto" zIndex={20} boxShadow="sm" p={4}>
+            <Skeleton height="60px" mb={6} borderRadius="lg" />
+            <VStack spacing={3} align="stretch">
+              {[1, 2, 3, 4].map(i => (
+                <Skeleton key={i} height="80px" borderRadius="lg" />
+              ))}
+            </VStack>
+          </Box>
+        )}
+        {/* Main Content Skeleton */}
+        <Box flex={1} ml={isMobile ? 0 : '350px'} p={6}>
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4} mb={8}>
+            {[1, 2, 3, 4].map(i => (
+              <Box key={i} p={4} bg={cardBg} borderRadius="xl" border="1px solid" borderColor={borderColor}>
+                <Skeleton height="24px" width="60%" mb={2} />
+                <Skeleton height="40px" />
+              </Box>
+            ))}
+          </SimpleGrid>
+          <Box bg={cardBg} borderRadius="xl" border="1px solid" borderColor={borderColor} p={6}>
+            <Skeleton height="30px" width="200px" mb={4} />
+            <Skeleton height="300px" />
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
   if (!stats) {
     return (
       <Container maxW="container.xl" py={8}>
@@ -3617,7 +3651,7 @@ const AdminDashboard: React.FC = () => {
         {/* â"€â"€ Desktop Sidebar â"€â"€ */}
         {!isMobile && (
           <Box
-            w="260px"
+            w="330px"
             minH="100vh"
             bg={sidebarBg}
             borderRight="1px solid"
@@ -3625,7 +3659,7 @@ const AdminDashboard: React.FC = () => {
             position="fixed"
             top={0}
             left={0}
-            ml={40}
+            ml={20}
             overflowY="auto"
             zIndex={20}
             boxShadow="sm"
@@ -3637,7 +3671,7 @@ const AdminDashboard: React.FC = () => {
         {/* â"€â"€ Mobile Sidebar Drawer â"€â"€ */}
         <Drawer isOpen={isSidebarOpen} placement="left" onClose={closeSidebar}>
           <DrawerOverlay />
-          <DrawerContent maxW="260px">
+          <DrawerContent maxW="330px">
             <DrawerCloseButton />
             <DrawerBody p={0} pt={8}>
               <SidebarContent />
@@ -3646,7 +3680,7 @@ const AdminDashboard: React.FC = () => {
         </Drawer>
 
         {/* â"€â"€ Main Content â"€â"€ */}
-        <Box flex={1} ml={isMobile ? 0 : '300px'} display="flex" flexDirection="column">
+        <Box flex={1} ml={isMobile ? 0 : '350px'} display="flex" flexDirection="column">
 
           {/* Top Bar */}
           <Box
