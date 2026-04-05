@@ -64,11 +64,18 @@ L.Icon.Default.mergeOptions({
 const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
   const map = useMap()
   useEffect(() => {
-    const timer = setTimeout(() => {
-      map.invalidateSize()
-      map.setView([lat, lng], 16, { animate: true })
-    }, 200)
-    return () => clearTimeout(timer)
+    // Multiple calls to ensure map updates properly
+    const timers = [
+      setTimeout(() => {
+        map.invalidateSize()
+        map.setView([lat, lng], 16, { animate: true })
+      }, 100),
+      setTimeout(() => {
+        map.invalidateSize()
+        map.setView([lat, lng], 16, { animate: true })
+      }, 300),
+    ]
+    return () => timers.forEach(t => clearTimeout(t))
   }, [lat, lng, map])
   return null
 }
@@ -76,8 +83,13 @@ const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
 const ModalMapFix = () => {
   const map = useMap()
   useEffect(() => {
-    const timer = setTimeout(() => map.invalidateSize(), 250)
-    return () => clearTimeout(timer)
+    // Multiple invalidateSize calls with increasing delays to ensure map renders
+    const timers = [
+      setTimeout(() => map.invalidateSize(), 100),
+      setTimeout(() => map.invalidateSize(), 300),
+      setTimeout(() => map.invalidateSize(), 600),
+    ]
+    return () => timers.forEach(t => clearTimeout(t))
   }, [map])
   return null
 }
@@ -1036,6 +1048,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     deliveryInstructions: '',
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
+  const [mapInitKey, setMapInitKey] = useState(0)  // Force map re-render
+  
+  // Force map to reinitialize when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setMapInitKey(prev => prev + 1)
+    }
+  }, [isOpen])
   
   // Auto-confirm COD payment when delivery type is selected
   useEffect(() => {
@@ -1050,6 +1070,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const previousMessageCountRef = useRef(0)  // Track message count to detect new messages
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const locationTextColor = useColorModeValue('gray.800', 'gray.100')
@@ -1337,6 +1358,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   // Fetch trade messages
   useEffect(() => {
     if (isOpen && trade) {
+      // Reset message count tracker when opening a new trade
+      previousMessageCountRef.current = 0
+      
       fetchMessages({ showLoading: true })
       fetchProducts()
       fetchMeetupStatus()
@@ -1397,6 +1421,34 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const data = response.data?.data || []
       const safeMessages = Array.isArray(data) ? data : []
       safeMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      
+      // Check if there are new messages from the other user
+      const previousCount = previousMessageCountRef.current
+      const newMessageCount = safeMessages.length
+      
+      if (newMessageCount > previousCount) {
+        // Get the new messages
+        const newMessages = safeMessages.slice(previousCount)
+        // Check if any new message is from the other user (not the current user)
+        const otherUserMessages = newMessages.filter((msg: any) => Number(msg.sender_id) !== currentUserId)
+        
+        if (otherUserMessages.length > 0) {
+          const latestMessage = otherUserMessages[otherUserMessages.length - 1]
+          const senderName = latestMessage.sender_name || 'User'
+          
+          // Show notification for new message from other user
+          toast({
+            id: `new-message-${trade.id}`,
+            title: `New message from ${senderName}`,
+            description: latestMessage.content.substring(0, 60) + (latestMessage.content.length > 60 ? '...' : ''),
+            status: 'info',
+            duration: 4000,
+            isClosable: true,
+          })
+        }
+      }
+      
+      previousMessageCountRef.current = newMessageCount
       setMessages(safeMessages)
     } catch (error) {
       console.error('Failed to fetch messages:', error)
@@ -2271,6 +2323,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         {/* Locations Grid */}
                         <Box h="250px" mb={4} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
                           <MapContainer
+                            key={mapInitKey}
                             center={[6.9214, 122.0790]}
                             zoom={14}
                             style={{ height: '100%', width: '100%' }}
@@ -2318,10 +2371,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             // textColor is hoisted below as locationTextColor
 
                             // Check if location selection should be locked
-                            const isOtherPartyConfirmed = (isUserBuyer && trade.seller_meetup_confirmed) || (isUserSeller && trade.buyer_meetup_confirmed)
-                            // We can only change selection if neither has confirmed, or if WE are the only one who confirmed (we can change our mind? Actually if we confirmed, we shouldn't change unless we unconfirm).
-                            // Wait, if the other party confirmed, the selection is locked to their choice.
-                            const isLocked = isOtherPartyConfirmed && trade.meetup_location !== undefined
+                            // Lock ONLY if both parties have confirmed (can only negotiate by resetting)
+                            const bothParitiesConfirmed = buyerMeetupConfirmed && sellerMeetupConfirmed
+                            const isLocked = bothParitiesConfirmed && trade.meetup_location !== undefined
 
                             return (
                               <Card
@@ -2339,7 +2391,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                     toast({
                                       id: "location-locked",
                                       title: 'Location Locked',
-                                      description: `The other party has already selected ${trade.meetup_location}. You must accept this location or message them to change it.`,
+                                      description: `Both parties confirmed different locations. Click "Change My Selection" to modify your choice, or message them to negotiate.`,
                                       status: 'warning',
                                       duration: 3000,
                                       isClosable: true,

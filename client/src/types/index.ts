@@ -251,8 +251,10 @@ export interface TradeLoop {
 export interface MultiWayTradeParticipant {
   user_id: number
   user_name: string
+  user_slug?: string
   product_id: number
   product_title: string
+  product_slug?: string
   product_image?: string
   trade_id: number
   trade_status: TradeStatus

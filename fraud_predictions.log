@@ -161,26 +161,18 @@
 {
   "fraud_probability": 0,
   "is_fraud": false,
-  "product_id": 195,
+  "product_id": 245,
   "risk_level": "",
-  "seller_id": 4,
-  "timestamp": "2026-04-04T15:52:48+08:00"
+  "seller_id": 13,
+  "timestamp": "2026-04-04T18:06:25+08:00"
 }
 {
   "fraud_probability": 0,
   "is_fraud": false,
-  "product_id": 196,
+  "product_id": 246,
   "risk_level": "",
-  "seller_id": 41,
-  "timestamp": "2026-04-04T15:52:48+08:00"
-}
-{
-  "fraud_probability": 0,
-  "is_fraud": false,
-  "product_id": 198,
-  "risk_level": "",
-  "seller_id": 55,
-  "timestamp": "2026-04-04T16:02:38+08:00"
+  "seller_id": 13,
+  "timestamp": "2026-04-04T18:38:48+08:00"
 }
 {
   "fraud_probability": 0,
