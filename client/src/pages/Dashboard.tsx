@@ -886,8 +886,17 @@ const Dashboard: React.FC = () => {
       // Preload details for all trades in background
       preloadMultiWayLoopDetails(newTrades)
 
+      // Filter out fully accepted trades (they won't show in UI)
+      const visibleTrades = newTrades.filter((trade: any) => {
+        const participants = trade.participants || []
+        const totalParticipants = participants.length
+        const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
+        const allAccepted = totalParticipants > 0 && acceptedCount === totalParticipants
+        return !allAccepted
+      })
+
       // Detect new loops and notify user (batched into a single toast)
-      const newLoopIds = new Set((newTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
+      const newLoopIds = new Set((visibleTrades || []).map((t: any) => String(t.loop_id || t.chain_id || t.id))) as Set<string>
       const prevIds = prevMultiWayLoopIds.current
       let newCount = 0
       for (const id of newLoopIds) {
