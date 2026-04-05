@@ -1359,27 +1359,44 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   // Fetch trade messages
   useEffect(() => {
-    if (isOpen && trade) {
-      // Reset message count tracker when opening a new trade
-      previousMessageCountRef.current = 0
-      
-      fetchMessages({ showLoading: true })
-      fetchProducts()
-      fetchMeetupStatus()
-
-      // Poll for new messages every 3 seconds without flashing a loader
-      messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
-      return () => {
-        if (messagesPollRef.current) {
-          clearInterval(messagesPollRef.current)
-          messagesPollRef.current = null
-        }
+    // Always stop polling when the modal is closed
+    if (!isOpen) {
+      if (messagesPollRef.current) {
+        clearInterval(messagesPollRef.current)
+        messagesPollRef.current = null
       }
-    } else {
+
+      previousMessageCountRef.current = 0
       setMessages([])
       setNewMessage('')
+      return
     }
-  }, [isOpen, trade])
+
+    // Keep current UI as-is until we have a stable trade id
+    if (!trade?.id) return
+
+    // Reset message count tracker when opening a new trade id
+    previousMessageCountRef.current = 0
+
+    fetchMessages({ showLoading: true })
+    fetchProducts()
+    fetchMeetupStatus()
+
+    // Ensure we never stack multiple polling intervals
+    if (messagesPollRef.current) {
+      clearInterval(messagesPollRef.current)
+      messagesPollRef.current = null
+    }
+
+    // Poll for new messages every 3 seconds without flashing a loader
+    messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
+    return () => {
+      if (messagesPollRef.current) {
+        clearInterval(messagesPollRef.current)
+        messagesPollRef.current = null
+      }
+    }
+  }, [isOpen, trade?.id])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
