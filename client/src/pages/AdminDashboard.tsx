@@ -2012,7 +2012,7 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ Sidebar content â"€â"€
   const SidebarContent = () => (
-    <VStack spacing={1} align="stretch" p={4} h="full">
+    <VStack spacing={1} align="stretch" p={4}>
       <Box px={4} pb={4} borderBottom="1px solid" borderColor={borderColor} mb={2}>
         <HStack spacing={2} w="full">
           <Box w={8} h={8} bg="brand.500" borderRadius="lg" display="flex" alignItems="center" justifyContent="center">
