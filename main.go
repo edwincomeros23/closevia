@@ -164,22 +164,6 @@ func main() {
 
 	log.Printf("Backend version: xendit-sync-all-405-fix")
 
-	// ⚠️ IMPORTANT: SPA routes MUST come early (before most routes)
-	// Serve root path
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendFile("./client/dist/index.html")
-	})
-
-	// Serve index.html for all unmatched non-API routes (SPA catch-all)
-	// This allows React Router to handle all routing on the client side
-	app.Get("/*", func(c *fiber.Ctx) error {
-		// Don't intercept API routes
-		if c.Path() == "/" || !strings.HasPrefix(c.Path(), "/api") {
-			return c.SendFile("./client/dist/index.html")
-		}
-		return nil
-	})
-
 	// Quick sanity-check endpoint to confirm you restarted the backend with latest routes.
 	app.Get("/api/version", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -761,6 +745,23 @@ func main() {
 		log.Println("Starting pre-meetup reminder scheduler...")
 		reminderService.SchedulePreMeetupReminders()
 	}()
+
+	// ⚡ SPA SERVE ROUTES - MUST BE LAST (after all API routes)
+	// Serve root path with index.html
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendFile("./client/dist/index.html")
+	})
+
+	// Serve index.html for all unmatched routes (SPA catch-all)
+	// This allows React Router to handle all routing on the client side
+	// This MUST come after all API routes so they are not intercepted
+	app.Use(func(c *fiber.Ctx) error {
+		// Only serve index.html for non-API routes
+		if !strings.HasPrefix(c.Path(), "/api") && !strings.HasPrefix(c.Path(), "/uploads") {
+			return c.SendFile("./client/dist/index.html")
+		}
+		return c.Next()
+	})
 
 	log.Printf("Starting Clovia server on port %s", port)
 	log.Fatal(app.Listen(":" + port))
