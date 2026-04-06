@@ -557,6 +557,7 @@ type Delivery struct {
 	// Denormalized fields for display
 	UserName       string   `json:"user_name,omitempty"`
 	RiderName      string   `json:"rider_name,omitempty"`
+	RiderPhone     string   `json:"rider_phone,omitempty"`
 	RiderVehicle   string   `json:"rider_vehicle,omitempty"`
 	RiderRating    *float64 `json:"rider_rating,omitempty"`
 	RiderLatitude  *float64 `json:"rider_latitude,omitempty"`

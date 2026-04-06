@@ -2060,8 +2060,8 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 		return
 	}
 
-	// Get buyer-offered items (trade_items are items offered by the buyer in this schema)
-	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
+	// Get buyer-offered items
+	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ? AND offered_by = 'buyer'", tradeID)
 	if err != nil {
 		log.Printf("Failed to get trade items for trade %d: %v", tradeID, err)
 		return

@@ -552,6 +552,7 @@ func main() {
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
+	trades.Get("/:id/deliveries", middleware.AuthMiddleware(), deliveryHandler.GetTradeDeliveries)
 	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
 
 	// Meetup routes (stage-aware meeting coordination)
