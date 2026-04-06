@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +27,233 @@ type PaymentHandler struct {
 
 func NewPaymentHandler(db *sql.DB) *PaymentHandler {
 	return &PaymentHandler{db: db}
+}
+
+func getAppSettingFloat(db *sql.DB, key string, def float64) float64 {
+	var v string
+	if err := db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = ?", key).Scan(&v); err != nil {
+		return def
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || parsed <= 0 {
+		return def
+	}
+	return parsed
+}
+
+func almostEqualMoney(a, b float64) bool {
+	return math.Abs(a-b) < 0.009
+}
+
+func parseRemittanceExternalID(externalID string) (paymentID int, riderID int, ok bool) {
+	// Expected: remittance_<paymentID>_<riderID>_<unix>
+	parts := strings.Split(externalID, "_")
+	if len(parts) < 3 || parts[0] != "remittance" {
+		return 0, 0, false
+	}
+	pID, err1 := strconv.Atoi(parts[1])
+	rID, err2 := strconv.Atoi(parts[2])
+	if err1 != nil || err2 != nil || pID <= 0 || rID <= 0 {
+		return 0, 0, false
+	}
+	return pID, rID, true
+}
+
+func (h *PaymentHandler) handleRemittancePaid(externalID string, paidAmount float64) error {
+	paymentID, riderID, ok := parseRemittanceExternalID(externalID)
+	if !ok {
+		return fmt.Errorf("invalid remittance external_id")
+	}
+
+	tx, err := h.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// Ensure payment exists and belongs to rider
+	var amountPaid float64
+	var status string
+	if scanErr := tx.QueryRow(
+		"SELECT amount_paid, status FROM rider_remittance_payments WHERE id = ? AND rider_id = ?",
+		paymentID, riderID,
+	).Scan(&amountPaid, &status); scanErr != nil {
+		err = scanErr
+		return err
+	}
+	if paidAmount > 0 {
+		amountPaid = paidAmount
+	}
+
+	// Mark payment verified (idempotent)
+	if status != "verified" {
+		if _, execErr := tx.Exec(
+			"UPDATE rider_remittance_payments SET status = 'verified', verified_by = NULL, verified_at = NOW(), payment_method = 'xendit' WHERE id = ? AND rider_id = ?",
+			paymentID, riderID,
+		); execErr != nil {
+			err = execErr
+			return err
+		}
+	}
+
+	threshold := getAppSettingFloat(h.db, "rider_remittance_lock_threshold", 50.0)
+
+	// Reduce remittance owed by amount paid; unlock only if remaining is below threshold.
+	if _, execErr := tx.Exec(`
+		UPDATE rider_ledger
+		SET remittance_owed = GREATEST(0, remittance_owed - ?),
+			last_remittance_at = NOW(),
+			is_locked_for_remittance = CASE
+				WHEN GREATEST(0, remittance_owed - ?) >= ? THEN TRUE
+				ELSE FALSE
+			END
+		WHERE rider_id = ?
+	`, amountPaid, amountPaid, threshold, riderID); execErr != nil {
+		err = execErr
+		return err
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		err = commitErr
+		return err
+	}
+
+	return nil
+}
+
+// CreateRemittanceInvoice generates a Xendit checkout URL for a Rider remittance payment.
+// It supports two allowed amounts:
+// - minimum unlock amount (threshold, or remaining owed if less)
+// - full remittance owed
+func (h *PaymentHandler) CreateRemittanceInvoice(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var riderID int
+	if err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ?", userID).Scan(&riderID); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Rider not found"})
+	}
+
+	var remittanceOwed float64
+	if err := h.db.QueryRow("SELECT COALESCE(remittance_owed, 0.00) FROM rider_ledger WHERE rider_id = ?", riderID).Scan(&remittanceOwed); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Rider ledger not found"})
+	}
+	if remittanceOwed <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "No remittance owed"})
+	}
+
+	threshold := getAppSettingFloat(h.db, "rider_remittance_lock_threshold", 50.0)
+	minUnlock := remittanceOwed
+	if threshold > 0 {
+		minUnlock = math.Min(threshold, remittanceOwed)
+	}
+	fullAmount := remittanceOwed
+
+	var payload struct {
+		Amount float64 `json:"amount"`
+	}
+	_ = c.BodyParser(&payload)
+
+	amountToPay := fullAmount
+	if payload.Amount > 0 {
+		amountToPay = payload.Amount
+	}
+	if !almostEqualMoney(amountToPay, fullAmount) && !almostEqualMoney(amountToPay, minUnlock) {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid remittance payment amount"})
+	}
+
+	// Get user details for invoice
+	var name, email string
+	_ = h.db.QueryRow("SELECT COALESCE(name, ''), COALESCE(email, '') FROM users WHERE id = ?", userID).Scan(&name, &email)
+
+	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	if apiKey == "" {
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: "Xendit is not configured (missing XENDIT_SECRET_KEY)."})
+	}
+	xenditClient := xendit.NewClient(apiKey)
+
+	// Create a pending remittance payment row first (so we can embed its ID into external_id)
+	result, err := h.db.Exec(
+		"INSERT INTO rider_remittance_payments (rider_id, amount_paid, payment_method, payment_proof_url, status) VALUES (?, ?, 'xendit', NULL, 'pending')",
+		riderID, amountToPay,
+	)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to initialize remittance payment"})
+	}
+	paymentID64, _ := result.LastInsertId()
+	paymentID := int(paymentID64)
+	externalID := fmt.Sprintf("remittance_%d_%d_%d", paymentID, riderID, time.Now().Unix())
+	description := fmt.Sprintf("Clovia Rider Remittance (Rider #%d)", riderID)
+
+	// Determine frontend URL dynamically (same strategy as trade invoices)
+	frontendURL := c.Get("Origin")
+	if frontendURL == "" {
+		referer := c.Get("Referer")
+		if referer != "" {
+			frontendURL = referer
+		}
+	}
+	if frontendURL != "" {
+		parsedURL, err := url.Parse(frontendURL)
+		if err == nil {
+			frontendURL = parsedURL.Scheme + "://" + parsedURL.Host
+		}
+	}
+	if frontendURL == "" {
+		if envURL := os.Getenv("FRONTEND_URL"); envURL != "" {
+			frontendURL = envURL
+		} else if os.Getenv("APP_ENV") == "production" {
+			frontendURL = "https://cloviaph.netlify.app"
+		} else {
+			frontendURL = "http://localhost:5173"
+		}
+	}
+
+	successUrl := fmt.Sprintf("%s/remittance-ledger?payment=success&xendit_external_id=%s", frontendURL, url.QueryEscape(externalID))
+	failureUrl := fmt.Sprintf("%s/remittance-ledger?payment=failed&xendit_external_id=%s", frontendURL, url.QueryEscape(externalID))
+
+	currency := "PHP"
+	req := xenditClient.InvoiceApi.CreateInvoice(context.Background()).CreateInvoiceRequest(invoice.CreateInvoiceRequest{
+		ExternalId:  externalID,
+		Amount:      float32(amountToPay),
+		Description: &description,
+		PayerEmail:  &email,
+		Customer: &invoice.CustomerObject{
+			GivenNames: *invoice.NewNullableString(&name),
+			Email:      *invoice.NewNullableString(&email),
+		},
+		SuccessRedirectUrl: &successUrl,
+		FailureRedirectUrl: &failureUrl,
+		Currency:           &currency,
+	})
+
+	resp, _, execErr := req.Execute()
+	if execErr != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate payment link: " + execErr.Error()})
+	}
+
+	checkoutURL := strings.TrimSpace(resp.InvoiceUrl)
+	if checkoutURL == "" {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to generate payment link (missing checkout URL)"})
+	}
+
+	// Store checkout URL for reference (reuse payment_proof_url column)
+	_, _ = h.db.Exec("UPDATE rider_remittance_payments SET payment_proof_url = ? WHERE id = ? AND rider_id = ?", checkoutURL, paymentID, riderID)
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"checkout_url": checkoutURL,
+		"external_id":  externalID,
+		"payment_id":   paymentID,
+		"amount":       amountToPay,
+		"min_unlock":   minUnlock,
+		"full_amount":  fullAmount,
+	}})
 }
 
 // CreateTradeInvoice generates a Xendit checkout URL for a Trade
@@ -235,10 +464,14 @@ func (h *PaymentHandler) CreateTradeInvoice(c *fiber.Ctx) error {
 		"success": true,
 		"data": fiber.Map{
 			"checkout_url": resp.InvoiceUrl,
-			"invoice_id":   func() string { if resp.Id == nil { return "" }; return *resp.Id }(),
-			"external_id":  externalID,
+			"invoice_id": func() string {
+				if resp.Id == nil {
+					return ""
+				}
+				return *resp.Id
+			}(),
+			"external_id": externalID,
 		},
-
 	})
 }
 
@@ -675,10 +908,10 @@ func (h *PaymentHandler) SyncTradePayment(c *fiber.Ctx) error {
 	}
 
 	var (
-		status     string
-		amount     float64
+		status      string
+		amount      float64
 		xExternalID string
-		err        error
+		err         error
 	)
 	if strings.TrimSpace(payload.ExternalID) != "" {
 		status, amount, xExternalID, err = fetchXenditInvoiceByExternalID(apiKey, payload.ExternalID)
@@ -719,6 +952,60 @@ func (h *PaymentHandler) SyncTradePayment(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": true, "status": status, "external_id": xExternalID}})
 }
 
+// SyncRemittancePayment is a fallback for environments where webhooks can't reach the backend (e.g., localhost).
+// It checks invoice status directly from Xendit and, if paid, updates rider ledger and verifies the payment.
+func (h *PaymentHandler) SyncRemittancePayment(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+	// Ensure the caller is a rider
+	var riderID int
+	if err := h.db.QueryRow("SELECT id FROM riders WHERE user_id = ?", userID).Scan(&riderID); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Rider not found"})
+	}
+
+	apiKey := os.Getenv("XENDIT_SECRET_KEY")
+	if apiKey == "" {
+		return c.Status(503).JSON(models.APIResponse{Success: false, Error: "Xendit is not configured (missing XENDIT_SECRET_KEY)."})
+	}
+
+	var payload struct {
+		ExternalID string `json:"external_id"`
+	}
+	_ = c.BodyParser(&payload)
+	if strings.TrimSpace(payload.ExternalID) == "" {
+		payload.ExternalID = c.Query("external_id")
+	}
+	if strings.TrimSpace(payload.ExternalID) == "" {
+		payload.ExternalID = c.Query("xendit_external_id")
+	}
+	if strings.TrimSpace(payload.ExternalID) == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Missing external_id"})
+	}
+	// Basic ownership check: external_id encodes rider_id.
+	_, extRiderID, ok := parseRemittanceExternalID(payload.ExternalID)
+	if !ok || extRiderID != riderID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Forbidden"})
+	}
+
+	status, amount, _, err := fetchXenditInvoiceByExternalID(apiKey, payload.ExternalID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to sync payment: " + err.Error()})
+	}
+
+	paid := status == "PAID" || status == "SETTLED" || status == "COMPLETED" || status == "SUCCEEDED"
+	if !paid {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": false, "status": status}})
+	}
+
+	if err := h.handleRemittancePaid(payload.ExternalID, amount); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to apply remittance payment: " + err.Error()})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"paid": true, "status": status, "external_id": payload.ExternalID}})
+}
+
 // XenditWebhook handles asynchronous payment confirmations
 func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	var payload map[string]interface{}
@@ -731,15 +1018,27 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 	var amount float64
 
 	// Try top-level structure (Invoices)
-	if s, ok := payload["status"].(string); ok { status = s }
-	if e, ok := payload["external_id"].(string); ok { externalID = e }
-	if a, ok := payload["amount"].(float64); ok { amount = a }
+	if s, ok := payload["status"].(string); ok {
+		status = s
+	}
+	if e, ok := payload["external_id"].(string); ok {
+		externalID = e
+	}
+	if a, ok := payload["amount"].(float64); ok {
+		amount = a
+	}
 
 	// Try nested structure (Recurring/Subscriptions)
 	if data, ok := payload["data"].(map[string]interface{}); ok {
-		if s, ok := data["status"].(string); ok { status = s }
-		if e, ok := data["external_id"].(string); ok { externalID = e }
-		if a, ok := data["amount"].(float64); ok { amount = a }
+		if s, ok := data["status"].(string); ok {
+			status = s
+		}
+		if e, ok := data["external_id"].(string); ok {
+			externalID = e
+		}
+		if a, ok := data["amount"].(float64); ok {
+			amount = a
+		}
 	}
 
 	status = strings.ToUpper(status)
@@ -846,6 +1145,10 @@ func (h *PaymentHandler) XenditWebhook(c *fiber.Ctx) error {
 				log.Printf("❌ Earnings Error (User %d): %v\n", userID, err)
 				fmt.Printf("Earnings Error (User %d): %v\n", userID, err)
 			}
+		}
+	} else if strings.HasPrefix(externalID, "remittance_") {
+		if err := h.handleRemittancePaid(externalID, amount); err != nil {
+			log.Printf("Webhook Error: remittance apply failed for external_id=%s: %v", externalID, err)
 		}
 	}
 

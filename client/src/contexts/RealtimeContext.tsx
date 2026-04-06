@@ -66,7 +66,8 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Dev fallback: avoid relying on the Vite proxy for streaming.
     // This prevents EventSource from receiving a non-SSE response from the dev server.
     const { protocol, hostname } = window.location
-    return `${protocol}//${hostname}:4000`
+    const host = hostname === 'localhost' ? '127.0.0.1' : hostname
+    return `${protocol}//${host}:4000`
   }, [])
 
   const refreshCounts = useCallback(async () => {

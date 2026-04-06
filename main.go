@@ -575,6 +575,8 @@ func main() {
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.
 	payments.All("/trade/:id/sync", middleware.AuthMiddleware(), paymentHandler.SyncTradePayment)
+	payments.Post("/remittance-invoice", middleware.AuthMiddleware(), paymentHandler.CreateRemittanceInvoice)
+	payments.All("/remittance/sync", middleware.AuthMiddleware(), paymentHandler.SyncRemittancePayment)
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
