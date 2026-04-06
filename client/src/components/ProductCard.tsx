@@ -199,17 +199,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 </Text>
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
                   <Text display={{ base: 'none', sm: 'block' }} fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
-                    AI Est. ₱{formatPriceCompact(product.estimated_value_min)} – ₱{formatPriceCompact(product.estimated_value_max)}
+                    📊 Market Est. ₱{formatPriceCompact(product.estimated_value_min)} – ₱{formatPriceCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
                   <Text display={{ base: 'block', sm: 'none' }} fontSize="2xs" color="brand.100" lineHeight="1.2" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
-                    AI ₱{formatPriceCompact(product.estimated_value_min)}-₱{formatPriceCompact(product.estimated_value_max)}
+                    📊 Est. ₱{formatPriceCompact(product.estimated_value_min)}-₱{formatPriceCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
                   <Text fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium">
-                    AI Est. range
+                    📊 Market Est. range
                   </Text>
                 )}
               </Box>

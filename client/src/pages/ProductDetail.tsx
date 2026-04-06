@@ -2159,6 +2159,11 @@ const ProductDetail: React.FC = () => {
                           ? `₱${product.price.toFixed(2)}`
                           : 'Est. Value Unavailable'}
                     </Text>
+                    {product.estimated_value_min && product.estimated_value_max && (
+                      <Text fontSize="xs" color="purple.600" fontWeight="600" mt={0.5}>
+                        📊 Market Range Estimate
+                      </Text>
+                    )}
                   </VStack>
                 </HStack>
               )}

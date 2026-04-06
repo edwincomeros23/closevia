@@ -17,8 +17,11 @@ import {
   Textarea,
   useToast,
   VStack,
+  IconButton,
+  Select,
 } from '@chakra-ui/react'
 import { Link as RouterLink, useParams } from 'react-router-dom'
+import { AddIcon, DeleteIcon } from '@chakra-ui/icons'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { getImageUrl } from '../utils/imageUtils'
@@ -36,7 +39,12 @@ const OrganizationProfile: React.FC = () => {
   const [joinLoading, setJoinLoading] = useState(false)
   const [postContent, setPostContent] = useState('')
   const [postCategoryTag, setPostCategoryTag] = useState('')
+  const [postType, setPostType] = useState<'regular' | 'looking_for'>('regular')
+  const [postImages, setPostImages] = useState<File[]>([])
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
   const [posting, setPosting] = useState(false)
+  const [postComments, setPostComments] = useState<{ [postId: number]: any[] }>({})
+  const [commentText, setCommentText] = useState<{ [postId: number]: string }>({})
   const [adminLoading, setAdminLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -144,15 +152,63 @@ const OrganizationProfile: React.FC = () => {
     }
   }
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const validFiles = files.filter(f => f.type.startsWith('image/'))
+    setPostImages(prev => [...prev, ...validFiles])
+    
+    // Create preview URLs
+    validFiles.forEach(file => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreviewUrls(prev => [...prev, reader.result as string])
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const removeImage = (index: number) => {
+    setPostImages(prev => prev.filter((_, i) => i !== index))
+    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleAddComment = async (postId: number) => {
+    if (!handle || !commentText[postId]?.trim()) return
+    try {
+      await api.post(`/api/organizations/${handle}/posts/${postId}/comments`, {
+        content: commentText[postId].trim()
+      })
+      setCommentText(prev => ({ ...prev, [postId]: '' }))
+      fetchFeed()
+      toast({ title: 'Comment added', status: 'success' })
+    } catch (err: any) {
+      toast({ title: 'Failed to add comment', description: err?.response?.data?.error, status: 'error' })
+    }
+  }
+
   const handleCreatePost = async () => {
     if (!handle || !postContent.trim()) return
     setPosting(true)
     try {
-      await api.post(`/api/organizations/${handle}/posts`, {
-        content: postContent.trim(),
-        category_tag: postCategoryTag || communityOrg?.category || '',
+      const formData = new FormData()
+      formData.append('content', postContent.trim())
+      formData.append('category_tag', postCategoryTag || communityOrg?.category || '')
+      formData.append('is_looking_for', postType === 'looking_for' ? 'true' : 'false')
+      
+      // Append images
+      postImages.forEach(file => {
+        formData.append('images', file)
       })
+
+      await api.post(`/api/organizations/${handle}/posts`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      
       setPostContent('')
+      setPostType('regular')
+      setPostImages([])
+      setImagePreviewUrls([])
+      setPostCategoryTag('')
       toast({ title: 'Post published', status: 'success' })
       fetchFeed()
     } catch (err: any) {
@@ -234,7 +290,6 @@ const OrganizationProfile: React.FC = () => {
                 {user && membershipStatus === 'approved' ? <Badge colorScheme="green" px={3} py={1} borderRadius="full">Approved member</Badge> : null}
                 {isCreator ? <Badge colorScheme="purple" px={3} py={1} borderRadius="full">Creator Admin</Badge> : null}
                 {isCreator ? <Button as={RouterLink} to="/organizations/new" size="sm" colorScheme="teal" variant="outline">Create Another Organization</Button> : null}
-                {communityOrg?.slug ? <Button as={RouterLink} to={`/org/${communityOrg.slug}`} size="sm" variant="ghost">View Organization</Button> : null}
               </HStack>
             </VStack>
           </Box>
@@ -246,10 +301,70 @@ const OrganizationProfile: React.FC = () => {
             {(membershipStatus === 'approved' || isCreator) ? (
               <VStack align="stretch" spacing={4}>
                 <Box borderWidth="1px" borderColor="gray.200" borderRadius="lg" p={3}>
-                  <VStack align="stretch" spacing={2}>
+                  <VStack align="stretch" spacing={3}>
                     <Text fontSize="sm" fontWeight="600">Create a post</Text>
-                    <Input value={postCategoryTag} onChange={(e) => setPostCategoryTag(e.target.value)} placeholder="Category tag" size="sm" />
-                    <Textarea value={postContent} onChange={(e) => setPostContent(e.target.value)} placeholder="Share something relevant to this organization" rows={3} />
+                    
+                    {/* Post Type Selection */}
+                    <Select value={postType} onChange={(e) => setPostType(e.target.value as 'regular' | 'looking_for')} size="sm">
+                      <option value="regular">📝 Regular Post</option>
+                      <option value="looking_for">🔍 Looking for Trade</option>
+                    </Select>
+
+                    {postType === 'looking_for' && (
+                      <Box p={2} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
+                        <Text fontSize="xs" color="blue.700">💡 Share what items you're looking for in trades with other members</Text>
+                      </Box>
+                    )}
+
+                    <Input value={postCategoryTag} onChange={(e) => setPostCategoryTag(e.target.value)} placeholder="Category tag (e.g., Cards, Electronics)" size="sm" />
+                    <Textarea value={postContent} onChange={(e) => setPostContent(e.target.value)} placeholder={postType === 'looking_for' ? 'Describe what items or trades you\'re looking for...' : 'Share something relevant to this organization'} rows={3} />
+                    
+                    {/* Image Preview */}
+                    {imagePreviewUrls.length > 0 && (
+                      <Box>
+                        <Text fontSize="xs" fontWeight="600" mb={2}>Attached photos ({imagePreviewUrls.length})</Text>
+                        <HStack spacing={2} wrap="wrap">
+                          {imagePreviewUrls.map((url, idx) => (
+                            <Box key={idx} position="relative" w="80px" h="80px" borderRadius="md" overflow="hidden" borderWidth="1px" borderColor="gray.200">
+                              <Image src={url} alt={`preview-${idx}`} w="full" h="full" objectFit="cover" />
+                              <IconButton
+                                aria-label="remove"
+                                icon={<DeleteIcon />}
+                                size="xs"
+                                colorScheme="red"
+                                position="absolute"
+                                top={0}
+                                right={0}
+                                onClick={() => removeImage(idx)}
+                              />
+                            </Box>
+                          ))}
+                        </HStack>
+                      </Box>
+                    )}
+
+                    {/* File Input */}
+                    <Box>
+                      <Input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={handleImageSelect}
+                        display="none"
+                        id="org-post-images"
+                      />
+                      <Button
+                        as="label"
+                        htmlFor="org-post-images"
+                        size="sm"
+                        variant="outline"
+                        leftIcon={<AddIcon />}
+                        cursor="pointer"
+                      >
+                        Add Photos
+                      </Button>
+                    </Box>
+
                     <HStack justify="space-between">
                       <Text fontSize="xs" color="gray.500">Posts are visible to members in org feed and on your public profile.</Text>
                       <Button colorScheme="teal" size="sm" onClick={handleCreatePost} isLoading={posting}>Publish</Button>
@@ -267,10 +382,60 @@ const OrganizationProfile: React.FC = () => {
                         <Avatar size="xs" src={post.author_profile_picture ? getImageUrl(post.author_profile_picture) : undefined} name={post.author_name} />
                         <Text fontSize="sm" fontWeight="600">{post.author_name}</Text>
                         <Badge colorScheme="gray">{post.category_tag}</Badge>
+                        {post.is_looking_for && <Badge colorScheme="blue">🔍 Looking for</Badge>}
                       </HStack>
                       <Text fontSize="xs" color="gray.500">{new Date(post.created_at).toLocaleString()}</Text>
                     </HStack>
-                    <Text fontSize="sm" color="gray.700" whiteSpace="pre-wrap">{post.content}</Text>
+                    <Text fontSize="sm" color="gray.700" whiteSpace="pre-wrap" mb={post.images && post.images.length > 0 ? 2 : 0}>{post.content}</Text>
+                    
+                    {/* Post Images */}
+                    {post.images && post.images.length > 0 && (
+                      <HStack spacing={2} wrap="wrap" mb={3}>
+                        {post.images.map((img: any, idx: number) => (
+                          <Image key={idx} src={getImageUrl(img)} alt={`post-${idx}`} w="120px" h="120px" objectFit="cover" borderRadius="md" />
+                        ))}
+                      </HStack>
+                    )}
+
+                    {/* Comments Section */}
+                    <Box mt={3} pt={3} borderTopWidth="1px" borderColor="gray.200">
+                      <Text fontSize="xs" fontWeight="600" mb={2}>Comments ({post.comments_count || 0})</Text>
+                      
+                      {/* Comment Input */}
+                      <HStack spacing={2} mb={2}>
+                        <Input
+                          size="sm"
+                          placeholder="Add a comment..."
+                          value={commentText[post.id] || ''}
+                          onChange={(e) => setCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
+                        />
+                        <Button
+                          size="sm"
+                          colorScheme="teal"
+                          variant="outline"
+                          onClick={() => handleAddComment(post.id)}
+                          isDisabled={!commentText[post.id]?.trim()}
+                        >
+                          Reply
+                        </Button>
+                      </HStack>
+
+                      {/* Existing Comments */}
+                      {postComments[post.id] && postComments[post.id].length > 0 && (
+                        <VStack align="stretch" spacing={1}>
+                          {postComments[post.id].map((comment: any) => (
+                            <Box key={comment.id} p={2} bg="gray.50" borderRadius="md">
+                              <HStack spacing={2} mb={1}>
+                                <Avatar size="xs" name={comment.author_name} />
+                                <Text fontSize="xs" fontWeight="600">{comment.author_name}</Text>
+                                <Text fontSize="xs" color="gray.500">{new Date(comment.created_at).toLocaleString()}</Text>
+                              </HStack>
+                              <Text fontSize="xs" color="gray.700">{comment.content}</Text>
+                            </Box>
+                          ))}
+                        </VStack>
+                      )}
+                    </Box>
                   </Box>
                 ))}
               </VStack>

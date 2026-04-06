@@ -1620,7 +1620,7 @@ const AddProduct: React.FC = () => {
           textAlign="center"
         >
           <Text fontSize="xs" fontWeight="medium" color="gray.600" mb={1}>
-            Estimated Value {formData.estimated_value_min ? '(AI Analysis)' : '(Market Range)'}
+            Estimated Value (Market Range)
           </Text>
           {isGenerating && !aiDone ? (
             <Skeleton height="32px" borderRadius="md" />
