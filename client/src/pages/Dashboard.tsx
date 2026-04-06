@@ -2892,7 +2892,7 @@ const Dashboard: React.FC = () => {
           <Box
             position="relative"
             w="full"
-            h="120px"
+            pt="100%"
             overflow="hidden"
             borderTopRadius="md"
             bg="gray.100"
@@ -2909,52 +2909,49 @@ const Dashboard: React.FC = () => {
               size="full"
             />
           </Box>
-          <CardHeader pb={2}>
-            <HStack spacing={2} align="center" flexWrap="wrap">
-              <Heading size="sm" noOfLines={2}>
-                {getProductTitle(trade.target_product_id, trade.product_title)}
-              </Heading>
+          <CardHeader pb={1} pt={2} px={3}>
+            <Heading size="xs" noOfLines={1} fontSize="13px">
+              {getProductTitle(trade.target_product_id, trade.product_title)}
+            </Heading>
+            <HStack spacing={1} mt={0.5}>
+              <Avatar
+                name={userName}
+                size="2xs"
+                bg={isIncoming ? 'blue.500' : 'green.500'}
+                color="white"
+              />
+              <Text fontSize="2xs" color="gray.600" noOfLines={1}>
+                {userName}
+              </Text>
               {trade.trade_option && (
                 <Badge
                   colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
                   variant="subtle"
                   fontSize="2xs"
-                  display="flex"
-                  alignItems="center"
-                  gap={1}
+                  ml="auto"
                 >
-                  {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                  {trade.trade_option === 'meetup' ? '📍' : '🚚'}
                 </Badge>
               )}
             </HStack>
-            <HStack spacing={1} mt={1}>
-              <Avatar
-                name={userName}
-                size="xs"
-                bg={isIncoming ? 'blue.500' : 'green.500'}
-                color="white"
-              />
-              <Text fontSize="xs" color="gray.600" noOfLines={1}>
-                {userName}
-              </Text>
-            </HStack>
           </CardHeader>
-          <CardBody pt={0}>
-            <VStack spacing={2} align="stretch">
-              <Text fontSize="xs" color="gray.500">
+          <CardBody py={1} px={3}>
+            <VStack spacing={1} align="stretch">
+              <Text fontSize="2xs" color="gray.500">
                 {new Date(trade.created_at).toLocaleDateString()}
               </Text>
               {renderOfferedItems(trade)}
             </VStack>
           </CardBody>
-          <CardFooter pt={0}>
-            <HStack spacing={{ base: 1, md: 2 }} w="full" flexWrap="wrap">
+          <CardFooter pt={1} pb={2} px={3} justifyContent="flex-start">
+            <HStack spacing={1} w="full" flexWrap="wrap">
               <Button
-                size={{ base: 'xs', md: 'sm' }}
+                size="xs"
                 variant="outline"
                 colorScheme="brand"
                 flex={1}
-                minW={{ base: '55px', md: '70px' }}
+                minW="45px"
+                fontSize="2xs"
                 onClick={handleViewClick}
                 _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
                 transition="all 0.2s"
@@ -2964,10 +2961,11 @@ const Dashboard: React.FC = () => {
               {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
                 <>
                   <Button
-                    size={{ base: 'xs', md: 'sm' }}
+                    size="xs"
                     colorScheme="green"
                     flex={1}
-                    minW={{ base: '55px', md: '70px' }}
+                    minW="45px"
+                    fontSize="2xs"
                     onClick={handleAcceptClick}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -2975,11 +2973,12 @@ const Dashboard: React.FC = () => {
                     Accept
                   </Button>
                   <Button
-                    size={{ base: 'xs', md: 'sm' }}
+                    size="xs"
                     colorScheme="red"
                     variant="outline"
                     flex={1}
-                    minW={{ base: '55px', md: '70px' }}
+                    minW="45px"
+                    fontSize="2xs"
                     onClick={handleDeclineClick}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -2990,13 +2989,14 @@ const Dashboard: React.FC = () => {
               )}
               {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
                 <Button
-                  size={{ base: 'xs', md: 'sm' }}
+                  size="xs"
                   colorScheme="red"
                   variant="outline"
                   flex={1}
-                  minW={{ base: '55px', md: '70px' }}
+                  minW="45px"
+                  fontSize="2xs"
                   onClick={() => onCancel && onCancel(trade)}
-                  leftIcon={<Icon as={FaTimes} />}
+                  leftIcon={<Icon as={FaTimes} boxSize={2} />}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
                 >
@@ -3005,12 +3005,13 @@ const Dashboard: React.FC = () => {
               )}
               {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
                 <Button
-                  size={{ base: 'xs', md: 'sm' }}
+                  size="xs"
                   colorScheme="blue"
                   flex={1}
-                  minW={{ base: '55px', md: '70px' }}
+                  minW="45px"
+                  fontSize="2xs"
                   onClick={() => onComplete && onComplete(trade)}
-                  leftIcon={<Icon as={FaHandshake} />}
+                  leftIcon={<Icon as={FaHandshake} boxSize={2} />}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
                 >
