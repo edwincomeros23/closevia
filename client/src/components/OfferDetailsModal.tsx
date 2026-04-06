@@ -696,20 +696,29 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         {/* Footer */}
         <Box borderTopWidth="1px" borderColor="gray.200" p={3} bg="white">
           <HStack spacing={2} justify="flex-end">
-            {/* Decline Button */}
-            <Button size="sm" variant="outline" colorScheme="red" onClick={decline}>
-              Decline
-            </Button>
+            {/* Only show action buttons if trade is pending AND user is the buyer (received this offer) */}
+            {effectiveTrade?.status === 'pending' && effectiveTrade?.buyer_id === user?.id ? (
+              <>
+                {/* Decline Button */}
+                <Button size="sm" variant="outline" colorScheme="red" onClick={decline}>
+                  Decline
+                </Button>
 
-            {/* Counter Button */}
-            <Button size="sm" variant="outline" colorScheme="brand" onClick={openCounter}>
-              Counter
-            </Button>
+                {/* Counter Button */}
+                <Button size="sm" variant="outline" colorScheme="brand" onClick={openCounter}>
+                  Counter
+                </Button>
 
-            {/* Accept Button */}
-            <Button size="sm" colorScheme="brand" onClick={accept} isDisabled={disableAccept}>
-              Accept
-            </Button>
+                {/* Accept Button */}
+                <Button size="sm" colorScheme="brand" onClick={accept} isDisabled={disableAccept}>
+                  Accept
+                </Button>
+              </>
+            ) : (
+              <Text fontSize="sm" color="gray.500" fontStyle="italic">
+                No actions available for {effectiveTrade?.status === 'pending' ? 'offers you sent' : `${effectiveTrade?.status} trades`}
+              </Text>
+            )}
           </HStack>
         </Box>
 
