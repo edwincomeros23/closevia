@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import { api } from './api'
 import { useNotification } from '../contexts/NotificationContext'
 

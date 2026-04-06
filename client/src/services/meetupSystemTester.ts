@@ -13,7 +13,7 @@ export interface TestResult {
   details?: string
 }
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:4000'
+const API_BASE = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000'
 
 class MeetupSystemTester {
   private testTradeId: number = 0

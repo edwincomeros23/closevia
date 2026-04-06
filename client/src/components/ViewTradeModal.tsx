@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Modal,
   ModalOverlay,
@@ -1016,6 +1017,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const { user } = useAuth()
   const { getProduct } = useProducts()
   const toast = useToast()
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<TradeMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
@@ -2040,6 +2042,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       borderRadius="md"
                       borderWidth="1px"
                       borderColor={borderColor}
+                      cursor="pointer"
+                      _hover={{ bg: 'gray.100' }}
+                      onClick={() => navigate(`/users/${isUserBuyer ? trade?.seller_id : trade?.buyer_id}`)}
                     >
                       <HStack spacing={4}>
                         <VerifiedAvatar
@@ -2050,7 +2055,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           isVerified={false}
                         />
                         <Box flex={1}>
-                          <Text fontWeight="semibold">{tradingPartner}</Text>
+                          <Text fontWeight="semibold" _hover={{ textDecoration: 'underline' }}>
+                            {tradingPartner}
+                          </Text>
                           <Text fontSize="sm" color="gray.600">
                             Trading Partner
                           </Text>
