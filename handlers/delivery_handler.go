@@ -1674,10 +1674,10 @@ func (h *DeliveryHandler) loadRiderInfo(d *models.Delivery) {
 	}
 
 	err := h.db.QueryRow(`
-		SELECT name, vehicle_type, rating, latitude, longitude
+		SELECT name, vehicle_type, rating, latitude, longitude, COALESCE(phone, '')
 		FROM riders
 		WHERE id = ?
-	`, *d.RiderID).Scan(&d.RiderName, &d.RiderVehicle, &d.RiderRating, &d.RiderLatitude, &d.RiderLongitude)
+	`, *d.RiderID).Scan(&d.RiderName, &d.RiderVehicle, &d.RiderRating, &d.RiderLatitude, &d.RiderLongitude, &d.RiderPhone)
 	if err != nil {
 		log.Printf("Warning: failed to load rider info: %v", err)
 	}
@@ -2271,6 +2271,203 @@ func (h *DeliveryHandler) GetTradeDelivery(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: delivery})
 }
 
+// GetTradeDeliveries returns all delivery legs linked to a specific trade (ordered by created_at ASC).
+func (h *DeliveryHandler) GetTradeDeliveries(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	tradeID, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade ID"})
+	}
+
+	// Verify user is part of this trade
+	var buyerID, sellerID int
+	err = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID).Scan(&buyerID, &sellerID)
+	if err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade not found"})
+	}
+	if userID != buyerID && userID != sellerID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
+	}
+
+	loadDeliveryIDs := func() ([]int, error) {
+		rows, err := h.db.Query("SELECT id FROM deliveries WHERE trade_id = ? ORDER BY created_at ASC", tradeID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		ids := []int{}
+		for rows.Next() {
+			var id int
+			if err := rows.Scan(&id); err != nil {
+				continue
+			}
+			ids = append(ids, id)
+		}
+		return ids, nil
+	}
+
+	ids, err := loadDeliveryIDs()
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch deliveries"})
+	}
+
+	// Backfill: if this is a swap trade (buyer offered items) and only the outbound leg exists,
+	// ensure we also have the return leg (buyer -> seller).
+	if len(ids) > 0 {
+		var buyerOfferedCount int
+		_ = h.db.QueryRow("SELECT COUNT(*) FROM trade_items WHERE trade_id = ? AND offered_by = 'buyer'", tradeID).Scan(&buyerOfferedCount)
+		if buyerOfferedCount > 0 {
+			var buyerLegCount int
+			_ = h.db.QueryRow("SELECT COUNT(*) FROM deliveries WHERE trade_id = ? AND user_id = ?", tradeID, buyerID).Scan(&buyerLegCount)
+			if buyerLegCount == 0 {
+				_, _ = h.autoCreateReturnLegForTrade(tradeID, buyerID, sellerID)
+				ids, _ = loadDeliveryIDs()
+			}
+		}
+	}
+
+	if len(ids) == 0 {
+		// No delivery found — auto-create if this is an active delivery trade
+		var tradeOption string
+		var tradeStatus string
+		_ = h.db.QueryRow("SELECT COALESCE(trade_option, 'meetup'), status FROM trades WHERE id = ?", tradeID).Scan(&tradeOption, &tradeStatus)
+		if tradeOption == "delivery" && (tradeStatus == "active" || tradeStatus == "accepted" || tradeStatus == "awaiting_confirmation") {
+			log.Printf("Auto-creating missing delivery record(s) for trade %d", tradeID)
+			_, createErr := h.autoCreateDeliveryForTrade(tradeID, buyerID, sellerID)
+			if createErr == nil {
+				ids, _ = loadDeliveryIDs()
+			}
+		}
+	}
+
+	if len(ids) == 0 {
+		return c.JSON(models.APIResponse{Success: true, Data: []models.Delivery{}})
+	}
+
+	deliveries := make([]models.Delivery, 0, len(ids))
+	for _, id := range ids {
+		d, err := h.getDeliveryByID(id, 0)
+		if err != nil {
+			continue
+		}
+		deliveries = append(deliveries, *d)
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: deliveries})
+}
+
+// autoCreateReturnLegForTrade creates the missing return leg for a swap trade:
+// buyer -> seller, with buyer-offered items.
+func (h *DeliveryHandler) autoCreateReturnLegForTrade(tradeID, buyerID, sellerID int) (int, error) {
+	// Guard: do not create duplicates
+	var exists int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM deliveries WHERE trade_id = ? AND user_id = ?", tradeID, buyerID).Scan(&exists)
+	if exists > 0 {
+		return 0, nil
+	}
+
+	// Get trade delivery info
+	var deliveryAddress sql.NullString
+	var deliveryType sql.NullString
+	err := h.db.QueryRow(
+		"SELECT delivery_address, delivery_type FROM trades WHERE id = ?", tradeID,
+	).Scan(&deliveryAddress, &deliveryType)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get trade info: %w", err)
+	}
+
+	// Get buyer-offered trade items
+	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ? AND offered_by = 'buyer'", tradeID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get trade items: %w", err)
+	}
+	defer rows.Close()
+
+	var buyerOfferedProductIDs []int
+	for rows.Next() {
+		var pid int
+		if err := rows.Scan(&pid); err != nil {
+			continue
+		}
+		buyerOfferedProductIDs = append(buyerOfferedProductIDs, pid)
+	}
+	if len(buyerOfferedProductIDs) == 0 {
+		return 0, nil
+	}
+
+	// Get seller location
+	var sellerLat, sellerLon sql.NullFloat64
+	var sellerAddr sql.NullString
+	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", sellerID).Scan(&sellerLat, &sellerLon, &sellerAddr)
+
+	// Get buyer location
+	var buyerLat, buyerLon sql.NullFloat64
+	var buyerAddr sql.NullString
+	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon, &buyerAddr)
+
+	// Determine delivery type
+	delType := "standard"
+	if deliveryType.Valid && deliveryType.String != "" {
+		delType = deliveryType.String
+	}
+
+	// Calculate cost
+	var totalCost float64
+	if delType == "express" {
+		totalCost = 60.0
+	} else {
+		totalCost = 30.0
+	}
+
+	pickupAddr := "Buyer location"
+	if buyerAddr.Valid && buyerAddr.String != "" {
+		pickupAddr = buyerAddr.String
+	}
+
+	delAddr := "Seller location"
+	if sellerAddr.Valid && sellerAddr.String != "" {
+		delAddr = sellerAddr.String
+	}
+
+	// Create delivery row
+	result, err := h.db.Exec(`
+		INSERT INTO deliveries (
+			user_id, trade_id, delivery_type, status,
+			pickup_latitude, pickup_longitude, pickup_address,
+			delivery_latitude, delivery_longitude, delivery_address,
+			item_count, total_cost, is_fragile
+		) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+		buyerID, tradeID, delType,
+		buyerLat, buyerLon, pickupAddr,
+		sellerLat, sellerLon, delAddr,
+		len(buyerOfferedProductIDs), totalCost,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert return leg: %w", err)
+	}
+	newID64, _ := result.LastInsertId()
+	newID := int(newID64)
+
+	for _, pid := range buyerOfferedProductIDs {
+		var productName string
+		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productName)
+		_, _ = h.db.Exec(
+			"INSERT INTO delivery_items (delivery_id, product_id, product_name, is_fragile) VALUES (?, ?, ?, FALSE)",
+			newID, pid, productName,
+		)
+	}
+
+	// Notify both parties (best-effort)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", buyerID, "Swap delivery return leg created (you → seller).")
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", sellerID, "Swap delivery return leg created (buyer → you).")
+
+	return newID, nil
+}
+
 // autoCreateDeliveryForTrade creates a missing delivery record for an active delivery trade.
 // This handles trades that were accepted before the auto-creation code was deployed.
 func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID int) (int, error) {
@@ -2285,7 +2482,7 @@ func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID 
 	}
 
 	// Get buyer-offered trade items
-	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
+	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ? AND offered_by = 'buyer'", tradeID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get trade items: %w", err)
 	}

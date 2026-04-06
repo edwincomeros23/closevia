@@ -36,6 +36,7 @@ dist/
 
 # Temporary and Build Files
 tmp/
+*.tsbuildinfo
 *.exe
 *.exe~
 *.dll
