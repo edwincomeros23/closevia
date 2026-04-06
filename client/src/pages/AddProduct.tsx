@@ -28,7 +28,6 @@ import {
   AlertDescription,
   Skeleton,
   Tooltip,
-  Switch,
   Modal,
   ModalOverlay,
   ModalContent,
@@ -84,11 +83,6 @@ import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type
 
 const CONDITION_OPTIONS = ['New', 'Like New', 'Good', 'Used', 'For Parts']
 const MAX_DAILY_AI_REQUESTS = 100
-const QA_MOCK_LOCATION = {
-  label: 'QA Mock Location (Work Network)',
-  latitude: 14.5995,
-  longitude: 120.9842,
-}
 
 // ── Daily Budget Helpers ──────────────────────────────────────────────────
 
@@ -160,6 +154,17 @@ const AddProduct: React.FC = () => {
     setIsCameraOpen(false)
   }, [])
 
+  const openVideoCamera = useCallback(() => {
+    // On mobile, use native file input with video capture
+    if (isMobile) {
+      document.getElementById('vid-camera')?.click()
+      return
+    }
+    // On desktop, use the same camera modal but for video capture
+    // For simplicity, just trigger the gallery upload
+    document.getElementById('vid-upload')?.click()
+  }, [isMobile])
+
   const [currentStep, setCurrentStep] = useState(1)
   const TOTAL_STEPS = 3
 
@@ -216,7 +221,6 @@ const AddProduct: React.FC = () => {
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
-  const [useMockLocation, setUseMockLocation] = useState(false)
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
@@ -227,23 +231,7 @@ const AddProduct: React.FC = () => {
 
   // ── Location ──────────────────────────────────────────────────────────────
 
-  const applyMockLocation = useCallback(() => {
-    setFormData(prev => ({
-      ...prev,
-      location: QA_MOCK_LOCATION.label,
-      latitude: QA_MOCK_LOCATION.latitude,
-      longitude: QA_MOCK_LOCATION.longitude,
-    }))
-    setLocationText(QA_MOCK_LOCATION.label)
-    setLocationDetected(true)
-    setIsGettingLocation(false)
-  }, [])
-
   const detectLocation = useCallback(() => {
-    if (useMockLocation) {
-      applyMockLocation()
-      return
-    }
     if (!navigator.geolocation) return
     setIsGettingLocation(true)
     navigator.geolocation.getCurrentPosition(
@@ -256,12 +244,10 @@ const AddProduct: React.FC = () => {
           )
           const data = await res.json()
           const addr = data.address || {}
-          const parts = [
-            addr.hamlet || addr.village || '',
-            addr.suburb || addr.neighborhood || '',
-            addr.city || addr.town || '',
-            addr.county || '',
-          ].filter(Boolean)
+          // Format: "Barangay Name, City"
+          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || ''
+          const city = addr.city || addr.town || ''
+          const parts = [barangay, city].filter(Boolean)
           const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
           setLocationText(address)
           setFormData(prev => ({ ...prev, location: address }))
@@ -279,26 +265,7 @@ const AddProduct: React.FC = () => {
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     )
-  }, [applyMockLocation, useMockLocation])
-
-  const handleMockLocationToggle = useCallback((enabled: boolean) => {
-    setUseMockLocation(enabled)
-
-    if (enabled) {
-      applyMockLocation()
-      return
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      location: '',
-      latitude: undefined,
-      longitude: undefined,
-    }))
-    setLocationText('')
-    setLocationDetected(false)
-    detectLocation()
-  }, [applyMockLocation, detectLocation])
+  }, [])
 
   useEffect(() => {
     detectLocation()
@@ -1139,45 +1106,62 @@ const AddProduct: React.FC = () => {
         })()
       )}
 
-      {/* Compact Video Upload - Same Row Style */}
-      <HStack spacing={3} align="flex-start">
-        <Box flex={1}>
+      {/* ──────── COMPACT VIDEO UPLOAD - Button Style ──────── */}
+      {!uploadedVideo ? (
+        <Box>
           <Text fontWeight="semibold" color="gray.700" fontSize="sm" mb={2}>
-            📹 Video <Badge colorScheme="gray" ml={2} fontSize="xs" py={1}>Optional</Badge>
+            🎬 Add Video <Badge colorScheme="gray" ml={2} fontSize="xs" py={1}>Optional</Badge>
           </Text>
-          {!uploadedVideo ? (
-            <Box
-              border="2px dashed"
-              borderColor={borderColor}
-              borderRadius="lg"
-              p={3}
-              textAlign="center"
-              cursor="pointer"
-              _hover={{ borderColor: 'brand.400' }}
+          <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
+            <Button
+              leftIcon={<span>📁</span>}
+              colorScheme="brand"
+              variant="outline"
+              size="sm"
               onClick={() => document.getElementById('vid-upload')?.click()}
-              minH="70px"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
+              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
             >
-              <Text fontSize="sm" color="gray.600">Click to add video</Text>
-            </Box>
-          ) : (
-            <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" maxH="100px">
-              <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: '100px', objectFit: 'contain' }} />
-              <IconButton icon={<CloseIcon boxSize={3} />} aria-label="Remove video" size="sm"
-                position="absolute" top={2} right={2} colorScheme="red" onClick={removeVideo} />
-            </Box>
-          )}
+              Upload from Gallery
+            </Button>
+            <Button
+              leftIcon={<span>🎥</span>}
+              colorScheme="brand"
+              variant="outline"
+              size="sm"
+              onClick={openVideoCamera}
+              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+            >
+              Take Video
+            </Button>
+          </HStack>
+          <Text fontSize="xs" color="gray.500" mt={2} textAlign="center">
+            5–15 seconds • MP4/MOV • up to 50MB
+          </Text>
         </Box>
-        <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
-          onChange={e => handleVideoUpload(e.target.files)} />
-      </HStack>
-
-      {/* Helper Text */}
-      <Text fontSize="xs" color="gray.500" px={2}>
-        5–15 seconds • MP4/MOV • up to 50MB
-      </Text>
+      ) : (
+        <Box>
+          <HStack justify="space-between" align="center" mb={2}>
+            <Text fontWeight="semibold" color="gray.700" fontSize="sm">
+              🎬 Video Added
+            </Text>
+            <Button
+              size="xs"
+              colorScheme="red"
+              variant="ghost"
+              onClick={removeVideo}
+            >
+              Remove
+            </Button>
+          </HStack>
+          <Box position="relative" borderRadius="lg" overflow="hidden" bg="black">
+            <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: '150px', objectFit: 'contain' }} />
+          </Box>
+        </Box>
+      )}
+      <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
+        onChange={e => handleVideoUpload(e.target.files)} />
+      <input id="vid-camera" type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
+        onChange={e => handleVideoUpload(e.target.files)} />
     </VStack>
   )
 
@@ -1339,18 +1323,8 @@ const AddProduct: React.FC = () => {
         )}
       </Box>
 
-      {/* ──────── LOCATION BAR (Simple, subtle) ──────── */}
-      <Box bg="gray.100" p={2} borderRadius="md">
-        <HStack justify="space-between" mb={2}>
-          <Text fontSize="xs" color="gray.700" fontWeight="semibold">Use QA Mock Location</Text>
-          <Switch
-            size="sm"
-            colorScheme="orange"
-            isChecked={useMockLocation}
-            onChange={(e) => handleMockLocationToggle(e.target.checked)}
-          />
-        </HStack>
-
+      {/* ──────── LOCATION DETECTOR ──────── */}
+      <Box bg="gray.100" p={3} borderRadius="md">
         {isGettingLocation ? (
           <HStack spacing={2}>
             <Spinner size="sm" color="blue.600" />
@@ -1358,36 +1332,38 @@ const AddProduct: React.FC = () => {
           </HStack>
         ) : locationDetected && locationText ? (
           <HStack justify="space-between" align="center" spacing={2}>
-            <Text fontSize="xs" color="gray.700">
+            <Text fontSize="sm" fontWeight="medium" color="gray.800">
               📍 {locationText}
             </Text>
             <Button
               size="xs"
-              variant="ghost"
+              variant="outline"
               fontSize="9px"
               h="auto"
               py={1}
               onClick={detectLocation}
               isLoading={isGettingLocation}
-              isDisabled={useMockLocation}
               _hover={{ bg: "gray.200" }}
             >
-              Wrong Location?
+              Change
             </Button>
           </HStack>
         ) : (
-          <HStack spacing={2}>
-            <Text fontSize="xs" color="red.600">⚠️ Location access needed</Text>
+          <VStack align="start" spacing={2}>
+            <Text fontSize="xs" color="gray.600" fontWeight="medium">📍 Location</Text>
             <Button
-              size="xs"
+              size="sm"
+              colorScheme="brand"
+              variant="outline"
               onClick={detectLocation}
               isLoading={isGettingLocation}
-              isDisabled={useMockLocation}
-              fontSize="9px"
+              fontSize="sm"
+              w="full"
             >
-              Enable
+              Auto-Detect My Location
             </Button>
-          </HStack>
+            <Text fontSize="9px" color="gray.500">This helps match you with nearby trades</Text>
+          </VStack>
         )}
       </Box>
 
