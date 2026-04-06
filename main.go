@@ -159,15 +159,27 @@ func main() {
 	app.Static("/uploads", "./uploads")
 	app.Static("/uploads/products", "./uploads/products")
 
-	// Add after middleware setup
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "Welcome to Clovia API",
-		})
-	})
+	// Serve React build files with cache headers
+	app.Static("/", "./client/dist")
 
 	log.Printf("Backend version: xendit-sync-all-405-fix")
+
+	// ⚠️ IMPORTANT: SPA routes MUST come early (before most routes)
+	// Serve root path
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendFile("./client/dist/index.html")
+	})
+
+	// Serve index.html for all unmatched non-API routes (SPA catch-all)
+	// This allows React Router to handle all routing on the client side
+	app.Get("/*", func(c *fiber.Ctx) error {
+		// Don't intercept API routes
+		if c.Path() == "/" || !strings.HasPrefix(c.Path(), "/api") {
+			return c.SendFile("./client/dist/index.html")
+		}
+		return nil
+	})
+
 	// Quick sanity-check endpoint to confirm you restarted the backend with latest routes.
 	app.Get("/api/version", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -175,6 +187,9 @@ func main() {
 			"version": "xendit-sync-all-405-fix",
 		})
 	})
+
+	// ⚠️ IMPORTANT: This was moved up before API routes
+	// Previously was: SPA catch-all MUST be last
 
 	// Health check with database connectivity verification (for k6 load tests & monitoring)
 	app.Get("/api/health", func(c *fiber.Ctx) error {
