@@ -141,7 +141,12 @@ const Offers: React.FC = () => {
   }, [loading, incoming, outgoing])
 
   const updateTrade = async (id: number, action: TradeAction) => {
+    // Prevent multiple concurrent requests
+    if (isProcessing) {
+      return
+    }
     try {
+      setIsProcessing(true)
       const response = await api.put(`/api/trades/${id}`, action)
       toast({
         id: "offers-success", title: 'Success', description: 'Offer updated', status: 'success' })
@@ -151,6 +156,8 @@ const Offers: React.FC = () => {
       toast({
         id: "offers-error-2", title: 'Error', description: e?.response?.data?.error || 'Failed to update offer', status: 'error' })
       throw e
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -996,7 +1003,8 @@ const Offers: React.FC = () => {
                             colorScheme="green" 
                             variant="solid"
                             onClick={() => updateTrade(t.id, { action: 'accept' })} 
-                            isDisabled={t.status !== 'pending'}
+                            isDisabled={t.status !== 'pending' || isProcessing}
+                            isLoading={isProcessing}
                             _hover={{ transform: "translateY(-1px)" }}
                           >
                             Accept

@@ -31,6 +31,7 @@ const RealtimeContext = createContext<RealtimeContextValue>({
 })
 
 const POLL_INTERVAL_MS = 60000
+const SSE_MESSAGE_DEDUP_WINDOW = 2000  // Prevent duplicate SSE messages within 2 seconds
 
 export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth()
@@ -39,6 +40,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const esRef = useRef<EventSource | null>(null)
   const seenNotifIdsRef = useRef<Set<number>>(new Set())
   const hasInitializedSeenRef = useRef(false)
+  const recentSSEMessagesRef = useRef<Map<string, number>>(new Map())  // Track recent SSE messages
   const refreshCallbacksRef = useRef<{
     products: (() => void) | null
     sentOffers: (() => void) | null
@@ -144,6 +146,24 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         const payload = JSON.parse(ev.data)
         if (!payload?.type) return
+        
+        // Deduplicate SSE messages: create a unique key and check if we've processed this recently
+        const messageKey = JSON.stringify(payload)
+        const lastProcessedTime = recentSSEMessagesRef.current.get(messageKey)
+        if (lastProcessedTime && Date.now() - lastProcessedTime < SSE_MESSAGE_DEDUP_WINDOW) {
+          // Skip this duplicate message
+          return
+        }
+        recentSSEMessagesRef.current.set(messageKey, Date.now())
+        
+        // Clean up old messages from the map to prevent memory leaks
+        if (recentSSEMessagesRef.current.size > 100) {
+          const oldestEntries = Array.from(recentSSEMessagesRef.current.entries())
+            .sort((a, b) => a[1] - b[1])
+            .slice(0, 50)
+          oldestEntries.forEach(([key]) => recentSSEMessagesRef.current.delete(key))
+        }
+        
         const data = payload.data || {}
         const message = data.message ?? payload.message
         switch (payload.type) {
