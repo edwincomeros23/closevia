@@ -781,33 +781,46 @@ const AddProduct: React.FC = () => {
         <VStack spacing={4}>
           <AddIcon boxSize={6} color="gray.400" />
           
-          {/* Two Button Options - Side by Side */}
-          <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
-            <Button
-              leftIcon={<span>📁</span>}
-              colorScheme="brand"
-              variant="outline"
-              size="sm"
-              onClick={() => document.getElementById('img-upload')?.click()}
-              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
-            >
-              Upload from Gallery
-            </Button>
-            <Button
-              leftIcon={<span>📷</span>}
-              colorScheme="brand"
-              variant="outline"
-              size="sm"
-              onClick={openCamera}
-              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
-            >
-              Take Photo
-            </Button>
-          </HStack>
-
-          <Text fontSize="xs" color="gray.500" mt={2}>
-            JPEG/PNG • max 5MB • up to 8 images
-          </Text>
+          {/* Three Button Options - Side by Side */}
+          <VStack spacing={2} w="full">
+            <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
+              <Button
+                leftIcon={<span>📁</span>}
+                colorScheme="brand"
+                variant="outline"
+                size="sm"
+                onClick={() => document.getElementById('img-upload')?.click()}
+                minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+              >
+                Upload from Gallery
+              </Button>
+              <Button
+                leftIcon={<span>📷</span>}
+                colorScheme="brand"
+                variant="outline"
+                size="sm"
+                onClick={openCamera}
+                minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+              >
+                Take Photo
+              </Button>
+              <Button
+                leftIcon={<span>🎥</span>}
+                colorScheme="brand"
+                variant="outline"
+                size="sm"
+                onClick={openVideoCamera}
+                minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+              >
+                Take Video
+              </Button>
+            </HStack>
+            <HStack spacing={1} fontSize="xs" color="gray.500" justify="center" flexWrap="wrap">
+              <Text>JPEG/PNG • max 5MB • up to 8 images</Text>
+              <Text>•</Text>
+              <Text>MP4/MOV • up to 50MB</Text>
+            </HStack>
+          </VStack>
         </VStack>
       </Box>
       
@@ -1105,63 +1118,6 @@ const AddProduct: React.FC = () => {
           )
         })()
       )}
-
-      {/* ──────── COMPACT VIDEO UPLOAD - Button Style ──────── */}
-      {!uploadedVideo ? (
-        <Box>
-          <Text fontWeight="semibold" color="gray.700" fontSize="sm" mb={2}>
-            🎬 Add Video <Badge colorScheme="gray" ml={2} fontSize="xs" py={1}>Optional</Badge>
-          </Text>
-          <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
-            <Button
-              leftIcon={<span>📁</span>}
-              colorScheme="brand"
-              variant="outline"
-              size="sm"
-              onClick={() => document.getElementById('vid-upload')?.click()}
-              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
-            >
-              Upload from Gallery
-            </Button>
-            <Button
-              leftIcon={<span>🎥</span>}
-              colorScheme="brand"
-              variant="outline"
-              size="sm"
-              onClick={openVideoCamera}
-              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
-            >
-              Take Video
-            </Button>
-          </HStack>
-          <Text fontSize="xs" color="gray.500" mt={2} textAlign="center">
-            5–15 seconds • MP4/MOV • up to 50MB
-          </Text>
-        </Box>
-      ) : (
-        <Box>
-          <HStack justify="space-between" align="center" mb={2}>
-            <Text fontWeight="semibold" color="gray.700" fontSize="sm">
-              🎬 Video Added
-            </Text>
-            <Button
-              size="xs"
-              colorScheme="red"
-              variant="ghost"
-              onClick={removeVideo}
-            >
-              Remove
-            </Button>
-          </HStack>
-          <Box position="relative" borderRadius="lg" overflow="hidden" bg="black">
-            <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: '150px', objectFit: 'contain' }} />
-          </Box>
-        </Box>
-      )}
-      <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
-        onChange={e => handleVideoUpload(e.target.files)} />
-      <input id="vid-camera" type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
-        onChange={e => handleVideoUpload(e.target.files)} />
     </VStack>
   )
 
