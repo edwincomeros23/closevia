@@ -9,6 +9,7 @@ const Trades: React.FC = () => {
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTabIndex, setActiveTabIndex] = useState(0)
+  const [isProcessing, setIsProcessing] = useState(false)
   const toast = useToast()
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -64,7 +65,11 @@ const Trades: React.FC = () => {
   }
 
   const updateTrade = async (id: number, action: TradeAction) => {
+    if (isProcessing) {
+      return
+    }
     try {
+      setIsProcessing(true)
       await api.put(`/api/trades/${id}`, action)
       toast({
         id: "trades-success", title: 'Success', description: 'Trade updated', status: 'success' })
@@ -72,6 +77,8 @@ const Trades: React.FC = () => {
     } catch (e: any) {
       toast({
         id: "trades-error-3", title: 'Error', description: e?.response?.data?.error || 'Failed to update trade', status: 'error' })
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -116,9 +123,9 @@ const Trades: React.FC = () => {
                     <Badge colorScheme={t.status === 'pending' ? 'yellow' : t.status === 'accepted' ? 'green' : t.status === 'declined' ? 'red' : 'purple'}>{t.status}</Badge>
                   </HStack>
                   <HStack mt={3} spacing={3}>
-                    <Button size="sm" colorScheme="green" variant="outline" onClick={() => updateTrade(t.id, { action: 'accept' })}>Accept</Button>
-                    <Button size="sm" colorScheme="red" variant="outline" onClick={() => updateTrade(t.id, { action: 'decline' })}>Decline</Button>
-                    <Button size="sm" variant="ghost" onClick={() => openTrade(t.id)}>Open</Button>
+                    <Button size="sm" colorScheme="green" variant="outline" onClick={() => updateTrade(t.id, { action: 'accept' })} isDisabled={isProcessing} isLoading={isProcessing}>Accept</Button>
+                    <Button size="sm" colorScheme="red" variant="outline" onClick={() => updateTrade(t.id, { action: 'decline' })} isDisabled={isProcessing} isLoading={isProcessing}>Decline</Button>
+                    <Button size="sm" variant="ghost" onClick={() => openTrade(t.id)} isDisabled={isProcessing}>Open</Button>
                   </HStack>
                   {activeTradeId === t.id && (
                     <Box mt={4}>
