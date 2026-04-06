@@ -28,7 +28,6 @@ import UserProfile from './pages/UserProfile'
 import CreateOrganization from './pages/CreateOrganization'
 import OrganizationProfile from './pages/OrganizationProfile'
 import Organizations from './pages/Organizations'
-import OrganizationProducts from './pages/OrganizationProducts'
 import ProductsList from './pages/ProductsList'
 import SavedProducts from './pages/SavedProducts'
 import Premium from './pages/premium'
@@ -283,11 +282,6 @@ const AppContent: React.FC = () => {
                 <Route path="/org/:handle" element={
                   <PageTransition>
                     <OrganizationProfile />
-                  </PageTransition>
-                } />
-                <Route path="/org/:handle/products" element={
-                  <PageTransition>
-                    <OrganizationProducts />
                   </PageTransition>
                 } />
                 <Route path="/settings" element={

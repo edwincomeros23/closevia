@@ -234,7 +234,7 @@ const OrganizationProfile: React.FC = () => {
                 {user && membershipStatus === 'approved' ? <Badge colorScheme="green" px={3} py={1} borderRadius="full">Approved member</Badge> : null}
                 {isCreator ? <Badge colorScheme="purple" px={3} py={1} borderRadius="full">Creator Admin</Badge> : null}
                 {isCreator ? <Button as={RouterLink} to="/organizations/new" size="sm" colorScheme="teal" variant="outline">Create Another Organization</Button> : null}
-                {communityOrg?.slug ? <Button as={RouterLink} to={`/org/${communityOrg.slug}/products`} size="sm" variant="ghost">Related Products</Button> : null}
+                {communityOrg?.slug ? <Button as={RouterLink} to={`/org/${communityOrg.slug}`} size="sm" variant="ghost">View Organization</Button> : null}
               </HStack>
             </VStack>
           </Box>

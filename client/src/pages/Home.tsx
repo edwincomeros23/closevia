@@ -317,7 +317,7 @@ const Home: React.FC = () => {
       // Navigate directly to the organization page
       const orgHandle = matchedOrg.org_handle || matchedOrg.slug
       if (orgHandle) {
-        navigate(`/org/${orgHandle}/products`)
+        navigate(`/org/${orgHandle}`)
         return
       }
     }
@@ -330,7 +330,7 @@ const Home: React.FC = () => {
           const org = response.data.data[0]
           const orgHandle = org.org_handle || org.slug
           if (orgHandle) {
-            navigate(`/org/${orgHandle}/products`)
+            navigate(`/org/${orgHandle}`)
             return
           }
         }
