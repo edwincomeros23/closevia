@@ -23,7 +23,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
   const [tradeMessage, setTradeMessage] = useState('')
   const [submittingTrade, setSubmittingTrade] = useState(false)
   const [cashAmount, setCashAmount] = useState<string>('')
-  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
   
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
@@ -178,7 +177,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
       setTradeMessage('')
       setCashAmount('')
       setTradeOption(null)
-      setShowConfirmModal(false)
       onClose()
     } catch (e: any) {
       const errorMessage = e?.response?.data?.error || 'Failed to send buyout offer'
@@ -472,7 +470,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                   bg={selectedBorder}
                   color="white"
                   isLoading={submittingTrade} 
-                  onClick={() => setShowConfirmModal(true)} 
+                  onClick={submitTrade}
                   isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption || (tradeOption === 'delivery' && !resolvedDeliveryAddress())}
                   fontSize="11px"
                   fontWeight="600"
@@ -497,44 +495,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
           )}
         </ModalBody>
       </ModalContent>
-      {/* Confirmation Modal */}
-      <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} isCentered size="sm">
-        <ModalOverlay />
-        <ModalContent maxW="400px">
-          <ModalHeader fontSize="lg" fontWeight="semibold">Confirm Buyout Offer</ModalHeader>
-          <ModalCloseButton onClick={() => setShowConfirmModal(false)} />
-          <ModalBody pb={6}>
-            <VStack spacing={4} align="stretch">
-              <Text fontSize="12px">Are you sure you want to send this buyout offer?</Text>
-              <Box bg={selectedBg} borderWidth="1px" borderColor={selectedBorder} rounded="md" p={4} textAlign="center">
-                <Text fontSize="10px" color={selectedTextColor} mb={1} fontWeight="600">You are offering to pay</Text>
-                <Text fontSize="2xl" fontWeight="bold" color={selectedBorder}>₱{Number(cashAmount).toFixed(2)}</Text>
-              </Box>
-              <Box>
-                <Text fontSize="11px" fontWeight="600" color={mutedTextColor} textTransform="uppercase" letterSpacing="0.5px">For item:</Text>
-                <Text fontSize="12px" fontWeight="500">{targetProduct?.title}</Text>
-              </Box>
-              <HStack justify="flex-end" mt={4} spacing={3}>
-                <Button variant="ghost" onClick={() => setShowConfirmModal(false)} fontSize="11px" height="36px">Cancel</Button>
-                <Button 
-                  bg={selectedBorder}
-                  color="white"
-                  isLoading={submittingTrade} 
-                  onClick={submitTrade}
-                  fontSize="11px"
-                  fontWeight="600"
-                  height="36px"
-                  leftIcon={<FaCreditCard />}
-                  _hover={{ bg: '#158A63' }}
-                  _active={{ bg: '#0F5A42' }}
-                >
-                  Send Offer
-                </Button>
-              </HStack>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
     </Modal>
   )
 }

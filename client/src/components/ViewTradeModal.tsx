@@ -1648,6 +1648,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         description: error?.response?.data?.error || 'Failed to confirm meetup',
         status: 'error',
       })
+      // Refresh trade data to ensure UI reflects actual backend state
+      await fetchMeetupStatus()
     } finally {
       setConfirmingMeetup(false)
     }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
-import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner, Flex } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaLocationArrow, FaBoxOpen } from 'react-icons/fa'
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Grid, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Spinner, Flex, Link } from '@chakra-ui/react'
+import { FaMapMarkerAlt, FaTruck, FaLocationArrow, FaBoxOpen } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
@@ -30,7 +30,6 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [tradeMessage, setTradeMessage] = useState('')
   const [submittingTrade, setSubmittingTrade] = useState(false)
   const [cashAmount, setCashAmount] = useState<string>('')
-  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
   const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
@@ -42,8 +41,10 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [manualAddress, setManualAddress] = useState('')
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
-  const selectedBg = useColorModeValue('brand.50', 'brand.900')
-  const selectedBorder = useColorModeValue('brand.500', 'brand.400')
+  const selectedBg = '#E1F5EE'
+  const selectedBorder = '#1D9E75'
+  const selectedTextColor = '#1D9E75'
+  const mutedTextColor = useColorModeValue('gray.600', 'gray.400')
 
   const selectedProducts = useMemo(() => userProducts.filter(p => selectedOfferIds.includes(p.id)), [userProducts, selectedOfferIds])
 
@@ -75,7 +76,6 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
     setDetectedLocationLabel('')
     setProfileLocationLabel('')
     setManualAddress('')
-    setDetectingLocation(false)
     setDetectingLocation(false)
     if (user && targetProductId) {
       ; (async () => {
@@ -263,41 +263,41 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} isCentered size="sm">
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>{user ? 'Propose a Trade' : 'Sign in to Continue'}</ModalHeader>
+      <ModalContent maxW="400px">
+        <ModalHeader fontSize="lg" fontWeight="semibold">{user ? 'Propose a Trade' : 'Sign in to Continue'}</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
           {user ? (
-            <VStack spacing={4} align="stretch">
+            <VStack spacing={3} align="stretch">
               {/* Target Product Display */}
               {targetProduct && (
                 <Card variant="outline" bg={useColorModeValue('blue.50', 'blue.900')} borderColor={useColorModeValue('blue.200', 'blue.700')}>
-                  <CardBody p={4}>
-                    <VStack spacing={3} align="stretch">
-                      <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('blue.700', 'blue.200')} textTransform="uppercase">
+                  <CardBody p={3}>
+                    <VStack spacing={2} align="stretch">
+                      <Text fontSize="10px" fontWeight="bold" color={useColorModeValue('blue.700', 'blue.200')} textTransform="uppercase" letterSpacing="0.5px">
                         Trading For
                       </Text>
-                      <HStack spacing={3} align="start">
-                        <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="80px" h="80px" objectFit="cover" rounded="md" loading="lazy" />
-                        <VStack spacing={2} align="start" flex={1}>
-                          <Text fontWeight="semibold" fontSize="sm" wordBreak="break-word">{targetProduct.title}</Text>
-                          <Text fontSize="xs" color="gray.500" noOfLines={2} wordBreak="break-word">{targetProduct.description}</Text>
+                      <HStack spacing={2} align="start">
+                        <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="60px" h="60px" objectFit="cover" rounded="md" loading="lazy" />
+                        <VStack spacing={1} align="start" flex={1}>
+                          <Text fontWeight="600" fontSize="12px" wordBreak="break-word">{targetProduct.title}</Text>
+                          <Text fontSize="10px" color="gray.500" noOfLines={2} wordBreak="break-word">{targetProduct.description}</Text>
                           {targetProduct.bidding_type && targetProduct.bidding_type !== 'none' && (
-                            <HStack spacing={2}>
+                            <HStack spacing={1}>
                               {targetProduct.bidding_type === 'blind' && (
-                                <Badge colorScheme="orange" fontSize="xs">
+                                <Badge colorScheme="orange" fontSize="9px">
                                   Blind Bidding
                                 </Badge>
                               )}
                               {targetProduct.bidding_type === 'open' && (
-                                <Badge colorScheme="green" fontSize="xs">
+                                <Badge colorScheme="green" fontSize="9px">
                                   Open Bidding
                                 </Badge>
                               )}
                             </HStack>
-                          )}
+                          )}}
                         </VStack>
                       </HStack>
                     </VStack>
@@ -305,55 +305,51 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                 </Card>
               )}
 
-              <Divider />
-
+              {/* Item Selection */}
               <VStack align="start" spacing={1} w="full">
-                <Text fontWeight="semibold">
+                <Text fontWeight="600" fontSize="11px" textTransform="uppercase" color={mutedTextColor} letterSpacing="0.5px">
                   Select your items to offer:
                   {targetProduct?.max_items_per_offer ? (
-                    <Badge ml={2} colorScheme="brand" variant="subtle">
-                      Max {targetProduct.max_items_per_offer} items
+                    <Badge ml={2} colorScheme="brand" variant="subtle" fontSize="9px">
+                      Max {targetProduct.max_items_per_offer}
                     </Badge>
                   ) : null}
                 </Text>
                 {selectedOfferIds.length > 0 && (
-                  <Text fontSize="xs" color="brand.500" fontWeight="bold">
-                    {selectedOfferIds.length} {targetProduct?.max_items_per_offer ? `/ ${targetProduct.max_items_per_offer}` : ''} items selected
+                  <Text fontSize="9px" color={selectedTextColor} fontWeight="bold">
+                    {selectedOfferIds.length} {targetProduct?.max_items_per_offer ? `/ ${targetProduct.max_items_per_offer}` : ''} selected
                   </Text>
                 )}
               </VStack>
+
               {/* Scrollable grid: shows 2 full rows + small peek of 3rd; scroll when overflowing */}
-              <Box maxH="244px" overflowY="auto" pr={2}>
+              <Box maxH="200px" overflowY="auto" pr={2}>
                 {userProducts.length === 0 ? (
-                  <Flex direction="column" align="center" justify="center" h="244px" gap={4} p={6} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor={borderColor}>
-                    <Icon as={FaBoxOpen} boxSize={12} color="gray.400" />
-                    <VStack spacing={2} textAlign="center">
-                      <Text fontWeight="semibold" fontSize="md" color="gray.700">
-                        You don't have items available to trade at the moment
-                      </Text>
-                      <Text fontSize="sm" color="gray.600">
-                        Add an item to start trading with the community
+                  <Flex direction="column" align="center" justify="center" h="140px" gap={2} p={4} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+                    <Icon as={FaBoxOpen} boxSize={8} color="gray.400" />
+                    <VStack spacing={1} textAlign="center">
+                      <Text fontWeight="600" fontSize="11px" color="gray.700">
+                        No items available to trade
                       </Text>
                       <Button
-                        size="sm"
+                        size="xs"
                         colorScheme="brand"
-                        mt={2}
                         onClick={() => {
                           onClose()
                           navigate('/dashboard?tab=my-items')
                         }}
                       >
-                        Add Item Now
+                        Add Item
                       </Button>
                     </VStack>
                   </Flex>
                 ) : (
-                  <Grid templateColumns="repeat(auto-fill, minmax(100px, 150px))" gap={3} gridAutoRows="120px" justifyContent="start">
+                  <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2} gridAutoRows="110px" justifyContent="start">
                     {userProducts.map((p) => (
-                      <Box key={p.id} minH="120px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedOfferIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? 'brand.50' : 'white'}>
-                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="50px" objectFit="cover" loading="lazy" />
-                        <Box p={2}>
-                          <Text fontSize="sm" noOfLines={2} wordBreak="break-word">{p.title}</Text>
+                      <Box key={p.id} minH="110px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '0.5px'} borderColor={selectedOfferIds.includes(p.id) ? selectedBorder : borderColor} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? selectedBg : 'white'}>
+                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="45px" objectFit="cover" loading="lazy" />
+                        <Box p={1.5}>
+                          <Text fontSize="10px" noOfLines={2} wordBreak="break-word" fontWeight={selectedOfferIds.includes(p.id) ? '600' : '500'} color={selectedOfferIds.includes(p.id) ? selectedTextColor : 'inherit'}>{p.title}</Text>
                         </Box>
                       </Box>
                     ))}
@@ -361,150 +357,192 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                 )}
               </Box>
 
+              {/* Message Input */}
               <FormControl>
-                <FormLabel fontSize="sm">Message (optional)</FormLabel>
-                <Input placeholder="Add a note for the trader" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} />
+                <FormLabel fontSize="11px" fontWeight="bold" textTransform="uppercase" color={mutedTextColor} letterSpacing="0.5px" mb={1}>
+                  Message (optional)
+                </FormLabel>
+                <Input 
+                  placeholder="Add a note for the trader" 
+                  value={tradeMessage} 
+                  onChange={(e) => setTradeMessage(e.target.value)} 
+                  fontSize="11px"
+                  py={2}
+                />
               </FormControl>
 
+              {/* Cash Amount Input */}
               <FormControl>
-                <FormLabel fontSize="sm">Offer money (optional, PHP)</FormLabel>
-                <Input type="number" placeholder="₱0.00" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} min={0} step="0.01" />
+                <FormLabel fontSize="11px" fontWeight="bold" textTransform="uppercase" color={mutedTextColor} letterSpacing="0.5px" mb={1}>
+                  Offer money (optional, PHP)
+                </FormLabel>
+                <Input 
+                  type="number" 
+                  placeholder="₱0.00" 
+                  value={cashAmount} 
+                  onChange={(e) => setCashAmount(e.target.value)} 
+                  min={0} 
+                  step="0.01"
+                  fontSize="11px"
+                  py={2}
+                />
               </FormControl>
 
-              <Divider />
-
-              {/* Delivery / Meetup Toggle */}
+              {/* Trade Method */}
               <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
+                <FormLabel fontSize="11px" fontWeight="bold" textTransform="uppercase" color={mutedTextColor} letterSpacing="0.5px" mb={2}>
                   Trade Method
                 </FormLabel>
-                <HStack spacing={4} mb={4}>
+                <HStack spacing={2} mb={3}>
                   <Button
                     flex={1}
+                    size="sm"
+                    height="36px"
                     variant={tradeOption === 'meetup' ? 'solid' : 'outline'}
-                    colorScheme={tradeOption === 'meetup' ? 'brand' : 'gray'}
+                    bg={tradeOption === 'meetup' ? selectedBorder : 'transparent'}
+                    color={tradeOption === 'meetup' ? 'white' : 'inherit'}
+                    borderColor={tradeOption === 'meetup' ? selectedBorder : borderColor}
+                    _hover={{ bg: tradeOption === 'meetup' ? '#158A63' : undefined }}
                     onClick={() => setTradeOption('meetup')}
-                    leftIcon={<Icon as={FaMapMarkerAlt} />}
+                    leftIcon={<Icon as={FaMapMarkerAlt} boxSize={4} />}
+                    fontSize="11px"
+                    fontWeight="600"
                   >
                     Meetup
                   </Button>
                   <Button
                     flex={1}
+                    size="sm"
+                    height="36px"
                     variant={tradeOption === 'delivery' ? 'solid' : 'outline'}
-                    colorScheme={tradeOption === 'delivery' ? 'brand' : 'gray'}
+                    bg={tradeOption === 'delivery' ? selectedBorder : 'transparent'}
+                    color={tradeOption === 'delivery' ? 'white' : 'inherit'}
+                    borderColor={tradeOption === 'delivery' ? selectedBorder : borderColor}
+                    _hover={{ bg: tradeOption === 'delivery' ? '#158A63' : undefined }}
                     onClick={() => setTradeOption('delivery')}
-                    leftIcon={<Icon as={FaTruck} />}
+                    leftIcon={<Icon as={FaTruck} boxSize={4} />}
+                    fontSize="11px"
+                    fontWeight="600"
                   >
                     Delivery
                   </Button>
                 </HStack>
                 {tradeOption === 'delivery' && (
-                <>
-                <Text fontSize="xs" color="gray.600" mb={3}>
-                  📦 All trades are fulfilled through our secure delivery service
-                </Text>
+                  <VStack spacing={2} align="stretch">
+                    {/* Location Display */}
+                    {detectedCoords ? (
+                      <Box p={2.5} bg={useColorModeValue('gray.50', 'gray.700')} borderWidth="1px" borderColor={useColorModeValue('gray.200', 'gray.600')} rounded="md">
+                        <HStack justify="space-between" align="center" spacing={2}>
+                          <HStack spacing={2} flex={1} minW={0}>
+                            <Icon as={FaMapMarkerAlt} boxSize={4} color={selectedBorder} flexShrink={0} />
+                            <VStack spacing={0} align="start" minW={0} flex={1}>
+                              <Text fontSize="11px" fontWeight="600" noOfLines={1}>
+                                {detectedLocationLabel || formatCoordinates(detectedCoords.lat, detectedCoords.lng)}
+                              </Text>
+                              <Text fontSize="9px" color={mutedTextColor} noOfLines={1}>
+                                Detected from device
+                              </Text>
+                            </VStack>
+                          </HStack>
+                          <Link
+                            fontSize="9px"
+                            fontWeight="600"
+                            color={selectedBorder}
+                            onClick={() => {
+                              setDetectedCoords(null)
+                              setDetectedLocationLabel('')
+                            }}
+                            textDecoration="none"
+                            _hover={{ textDecoration: 'underline' }}
+                            flexShrink={0}
+                          >
+                            Clear
+                          </Link>
+                        </HStack>
+                      </Box>
+                    ) : user?.latitude && user?.longitude ? (
+                      <Box p={2.5} bg={useColorModeValue('gray.50', 'gray.700')} borderWidth="1px" borderColor={useColorModeValue('gray.200', 'gray.600')} rounded="md">
+                        <HStack justify="space-between" align="center" spacing={2}>
+                          <HStack spacing={2} flex={1} minW={0}>
+                            <Icon as={FaMapMarkerAlt} boxSize={4} color={selectedBorder} flexShrink={0} />
+                            <VStack spacing={0} align="start" minW={0} flex={1}>
+                              <Text fontSize="11px" fontWeight="600" noOfLines={1}>
+                                {profileLocationLabel || formatCoordinates(user.latitude, user.longitude)}
+                              </Text>
+                              <Text fontSize="9px" color={mutedTextColor} noOfLines={1}>
+                                From your profile
+                              </Text>
+                            </VStack>
+                          </HStack>
+                        </HStack>
+                      </Box>
+                    ) : (
+                      <Box p={2.5} bg={useColorModeValue('gray.50', 'gray.700')} borderWidth="1px" borderColor={useColorModeValue('gray.200', 'gray.600')} rounded="md">
+                        <Text fontSize="11px" fontWeight="600" color={mutedTextColor}>No location set</Text>
+                      </Box>
+                    )}
 
-                {/* Delivery Address Display */}
-                <Box>
-                  <FormLabel fontSize="sm">Your Delivery Location</FormLabel>
-                  {detectedCoords ? (
-                    <Box p={3} bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" borderLeftWidth="4px" borderLeftColor="green.500">
-                      <HStack justify="space-between">
-                        <Text fontSize="sm" color="green.900" fontWeight="medium">
-                          📍 {detectedLocationLabel || formatCoordinates(detectedCoords.lat, detectedCoords.lng)}
+                    {/* Detect/Update Location Button */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      w="full"
+                      fontSize="11px"
+                      height="32px"
+                      isLoading={detectingLocation}
+                      loadingText="Detecting..."
+                      onClick={handleDetectLocation}
+                      borderColor={selectedBorder}
+                      color={selectedBorder}
+                      _hover={{ bg: selectedBg }}
+                      leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} boxSize={3.5} />}
+                    >
+                      📍 Detect my location
+                    </Button>
+
+                    {/* Manual Address Entry (only show if no auto-detected location) */}
+                    {!detectedCoords && !(user?.latitude && user?.longitude) && (
+                      <>
+                        <Text fontSize="9px" color={mutedTextColor} textAlign="center">
+                          — or enter address —
                         </Text>
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          colorScheme="red"
-                          onClick={() => {
-                            setDetectedCoords(null)
-                            setDetectedLocationLabel('')
-                          }}
-                        >
-                          Clear
-                        </Button>
-                      </HStack>
-                      <Text fontSize="xs" color="green.700" mt={1}>Location detected from your device</Text>
-                    </Box>
-                  ) : user?.latitude && user?.longitude ? (
-                    <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
-                      <Text fontSize="sm" color="blue.900" fontWeight="medium">
-                        📍 {profileLocationLabel || formatCoordinates(user.latitude, user.longitude)}
-                      </Text>
-                      <Text fontSize="xs" color="blue.700" mt={1}>Current location saved in your profile</Text>
-                    </Box>
-                  ) : (
-                    <>
-                      <VStack spacing={3} align="stretch">
-                        <Box
-                          p={3}
-                          bg="yellow.50"
-                          borderWidth="1px"
-                          borderColor="yellow.200"
-                          rounded="md"
-                          borderLeftWidth="4px"
-                          borderLeftColor="yellow.500"
-                        >
-                          <Text fontSize="sm" color="yellow.900" fontWeight="medium">
-                            Location not set
-                          </Text>
-                          <Text fontSize="xs" color="yellow.700" mt={1}>
-                            Detect your location or enter an address below for delivery
-                          </Text>
-                        </Box>
-                        <Button
-                          leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
-                          size="sm"
-                          colorScheme="brand"
-                          variant="outline"
-                          onClick={handleDetectLocation}
-                          isLoading={detectingLocation}
-                          loadingText="Detecting..."
-                        >
-                          Detect My Location
-                        </Button>
-                        <Text fontSize="xs" color="gray.500" textAlign="center">— or enter address manually —</Text>
                         <Textarea
                           placeholder="e.g., Barangay Maasin, Zamboanga City"
                           value={manualAddress}
                           onChange={(e) => setManualAddress(e.target.value)}
                           size="sm"
                           rows={2}
+                          fontSize="11px"
                           resize="none"
                         />
-                      </VStack>
-                    </>
-                  )}
-
-                  {(detectedCoords || (user?.latitude && user?.longitude)) && (
-                    <Button
-                      leftIcon={detectingLocation ? <Spinner size="xs" /> : <Icon as={FaLocationArrow} />}
-                      size="sm"
-                      colorScheme="brand"
-                      variant="outline"
-                      onClick={handleDetectLocation}
-                      isLoading={detectingLocation}
-                      loadingText="Detecting..."
-                      mt={3}
-                    >
-                      Update Location
-                    </Button>
-                  )}
-                </Box>
-                </>
+                      </>
+                    )}
+                  </VStack>
                 )}
               </FormControl>
 
-              <Divider />
-
-              <HStack justify="flex-end">
-                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+              {/* Action Buttons */}
+              <HStack justify="flex-end" spacing={3} pt={1}>
+                <Button 
+                  variant="ghost" 
+                  onClick={onClose}
+                  fontSize="11px"
+                  height="36px"
+                >
+                  Cancel
+                </Button>
                 <Button
-                  colorScheme="brand"
+                  bg={selectedBorder}
+                  color="white"
                   isLoading={submittingTrade}
                   onClick={submitTrade}
                   isDisabled={selectedOfferIds.length === 0 || !tradeOption || (tradeOption === 'delivery' && !hasDeliveryLocation)}
+                  fontSize="11px"
+                  fontWeight="600"
+                  height="36px"
+                  flex="2"
+                  _hover={{ bg: '#158A63' }}
+                  _active={{ bg: '#0F5A42' }}
                 >
                   Confirm
                 </Button>
@@ -512,16 +550,17 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
             </VStack>
           ) : (
             <VStack spacing={4}>
-              <Text color="gray.600">
+              <Text color="gray.600" fontSize="12px">
                 You need to be signed in to trade or purchase items.
               </Text>
-              <HStack spacing={4} w="full">
+              <HStack spacing={3} w="full">
                 <Button
                   onClick={onClose}
                   as={'a'}
                   href="/login"
                   colorScheme="brand"
                   flex={1}
+                  size="sm"
                 >
                   Sign In
                 </Button>
@@ -531,6 +570,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                   href="/register"
                   variant="outline"
                   flex={1}
+                  size="sm"
                 >
                   Sign Up
                 </Button>
