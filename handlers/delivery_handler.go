@@ -2586,14 +2586,43 @@ func (h *DeliveryHandler) GetRiderLedger(c *fiber.Ctx) error {
 	if err != nil {
 		// Initialize if doesn't exist
 		h.ensureRiderLedger(riderID)
+		threshold := h.getRiderRemittanceLockThreshold()
 		return c.JSON(models.APIResponse{Success: true, Data: models.RiderLedger{
-			RiderID:            riderID,
-			TotalCashCollected: 0,
-			RemittanceOwed:     0,
-			TakeHome:           0,
-			FreeSlotsRemaining: 0,
+			RiderID:                riderID,
+			TotalCashCollected:     0,
+			RemittanceOwed:         0,
+			TakeHome:               0,
+			TotalRemittancePaid:    0,
+			RemittanceThreshold:    threshold,
+			RemittancePaidProgress: 0,
+			FreeSlotsRemaining:     0,
 		}})
 	}
+
+	// Add remittance payment progress indicator (sum of verified payments)
+	var totalPaid float64
+	_ = h.db.QueryRow(
+		"SELECT COALESCE(SUM(amount_paid), 0.00) FROM rider_remittance_payments WHERE rider_id = ? AND status = 'verified'",
+		riderID,
+	).Scan(&totalPaid)
+
+	threshold := h.getRiderRemittanceLockThreshold()
+	paidProgress := 0.0
+	if threshold > 0 {
+		paidProgress = math.Mod(totalPaid, threshold)
+		// If totalPaid is an exact multiple of threshold, show full completion (50/50) instead of 0/50.
+		if paidProgress < 0.009 && totalPaid > 0 {
+			paidProgress = threshold
+		}
+		// Normalize edge cases close to threshold
+		if math.Abs(paidProgress-threshold) < 0.009 {
+			paidProgress = threshold
+		}
+	}
+
+	ledger.TotalRemittancePaid = totalPaid
+	ledger.RemittanceThreshold = threshold
+	ledger.RemittancePaidProgress = paidProgress
 
 	return c.JSON(models.APIResponse{Success: true, Data: ledger})
 }
