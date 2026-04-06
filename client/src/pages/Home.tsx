@@ -307,6 +307,8 @@ const Home: React.FC = () => {
     const term = searchTerm.trim()
     const termLower = term.toLowerCase()
     
+    console.log('🔍 [Search] Term:', term, 'organizationSuggestions:', organizationSuggestions.length)
+    
     // Check if search term matches an organization in current suggestions
     const matchedOrg = organizationSuggestions.find(org => {
       const orgNameLower = (org.org_name || org.name || '').toLowerCase()
@@ -314,9 +316,11 @@ const Home: React.FC = () => {
     })
     
     if (matchedOrg) {
+      console.log('✅ [Search] Found org in suggestions:', matchedOrg)
       // Navigate directly to the organization page
       const orgHandle = matchedOrg.org_handle || matchedOrg.slug
       if (orgHandle) {
+        console.log('🚀 [Search] Navigating to /org/' + orgHandle)
         navigate(`/org/${orgHandle}`)
         return
       }
@@ -325,22 +329,27 @@ const Home: React.FC = () => {
     // Fallback: Check API for organization if not in suggestions
     if (term.length >= 2) {
       try {
+        console.log('📡 [Search] Checking API for organization:', term)
         const response = await api.get(`/api/organizations?q=${encodeURIComponent(term)}&limit=1`)
+        console.log('📡 [Search] API response:', response.data)
         if (response.data?.success && Array.isArray(response.data?.data) && response.data.data.length > 0) {
           const org = response.data.data[0]
           const orgHandle = org.org_handle || org.slug
+          console.log('✅ [Search] Found org from API:', org, 'handle:', orgHandle)
           if (orgHandle) {
+            console.log('🚀 [Search] Navigating to /org/' + orgHandle)
             navigate(`/org/${orgHandle}`)
             return
           }
         }
       } catch (error) {
         // API call failed, continue with product search
-        console.error('Error checking for organization:', error)
+        console.error('❌ [Search] Error checking for organization:', error)
       }
     }
     
     // Otherwise, do a regular product keyword search
+    console.log('🔎 [Search] Falling back to product search for:', term)
     // Detect natural language queries for smart search
     const smartSignals = ['near me', 'nearby', 'cheap', 'budget', 'expensive', 'under ', 'below ', 'above ']
     const isSmartQuery = termLower.split(/\s+/).length >= 2 && smartSignals.some(s => termLower.includes(s))
@@ -359,7 +368,7 @@ const Home: React.FC = () => {
       if (selectedUser?.is_organization) {
         const orgHandle = selectedUser.org_handle || selectedUser.slug
         if (orgHandle) {
-          navigate(`/org/${orgHandle}/products`)
+          navigate(`/org/${orgHandle}`)
           return
         }
       }
