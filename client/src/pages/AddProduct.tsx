@@ -35,6 +35,7 @@ import {
   ModalHeader,
   ModalBody,
   ModalCloseButton,
+  Circle,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
 
@@ -641,7 +642,10 @@ const AddProduct: React.FC = () => {
           !!formData.category &&
           !!formData.location?.trim() &&
           !!formData.wanted_categories && 
-          formData.wanted_categories.length > 0
+          formData.wanted_categories.length > 0 &&
+          !!formData.price &&
+          formData.price > 0 &&
+          !!formData.wants?.trim()
         )
       case 3:
         return true
@@ -678,6 +682,8 @@ const AddProduct: React.FC = () => {
         if (!formData.category) issues.push('Select a category')
         if (!formData.location?.trim()) issues.push('Add a location')
         if (!formData.wanted_categories || formData.wanted_categories.length === 0) issues.push('Select desired categories')
+        if (!formData.price || formData.price <= 0) issues.push('Enter a desired price')
+        if (!formData.wants?.trim()) issues.push('Enter preferred item')
         return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
       case 3:
         return 'Ready to post'
@@ -702,6 +708,16 @@ const AddProduct: React.FC = () => {
     if (uploadedImages.length === 0) {
       toast({
         id: "addproduct-no-images", title: 'Show off your item!', description: 'Upload at least one picture so others can see what you are offering.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
+      return
+    }
+    if (!formData.price || formData.price <= 0) {
+      toast({
+        id: "addproduct-missing-price", title: 'Price required!', description: 'Please enter your desired price.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
+      return
+    }
+    if (!formData.wants?.trim()) {
+      toast({
+        id: "addproduct-missing-wants", title: 'Preferred item required!', description: 'Please specify what item you would like to receive.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
 
@@ -1436,7 +1452,7 @@ const AddProduct: React.FC = () => {
             <FormHelperText fontSize="10px">Choose up to 3 categories.</FormHelperText>
           </FormControl>
           
-          <FormControl>
+          <FormControl isRequired>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
               <Box>
@@ -1467,25 +1483,6 @@ const AddProduct: React.FC = () => {
                   onClick={e => e.stopPropagation()}
                 />
                 <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
-              </Box>
-
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Offer Item Limit</FormLabel>
-                <Select
-                  value={formData.max_items_per_offer}
-                  onChange={e => handleField('max_items_per_offer', Number(e.target.value))}
-                  size="sm"
-                  bg="white"
-                  h="36px"
-                >
-                  <option value={0}>Unlimited Items</option>
-                  <option value={1}>1 Item Only</option>
-                  <option value={2}>Up to 2 Items</option>
-                  <option value={3}>Up to 3 Items</option>
-                  <option value={5}>Up to 5 Items</option>
-                  <option value={10}>Up to 10 Items</option>
-                </Select>
-                <FormHelperText fontSize="10px">Max items a buyer can offer in one go.</FormHelperText>
               </Box>
             </SimpleGrid>
           </FormControl>
@@ -1567,58 +1564,44 @@ const AddProduct: React.FC = () => {
             fontWeight="medium"
           >
             <Text>✨ {formData.item_type || 'Item'}</Text>
-            <Text>•</Text>
-            <Text>{formData.brand || 'Unknown Brand'}</Text>
-            <Text>•</Text>
-            <Badge
-              colorScheme={
-                formData.authenticity_risks === 'High' ? 'red' :
-                  formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
-              }
-              fontSize="xs"
-              variant="subtle"
-            >
-              {formData.authenticity_risks || 'Low'} Risk
-            </Badge>
+            {formData.brand && (
+              <>
+                <Text>•</Text>
+                <Text>{formData.brand}</Text>
+              </>
+            )}
             <Text>•</Text>
             <Text>{formData.condition}</Text>
-            <Text>•</Text>
-            <Text color="gray.600" fontSize="xs">Listed {listingDate}</Text>
           </HStack>
         </Box>
 
-        {/* ──────── ESTIMATED VALUE (Prominent) ──────── */}
+        {/* ──────── ESTIMATED VALUE (Subtle) ──────── */}
         <Box
-          p={4}
-          bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-          borderRadius="xl"
+          p={3}
+          bg="gray.50"
+          borderRadius="lg"
+          borderLeft="3px solid"
+          borderLeftColor="purple.300"
           textAlign="center"
-          color="white"
         >
-          <Text fontSize="xs" fontWeight="medium" opacity={0.9} mb={1}>
-            Estimated Value
+          <Text fontSize="xs" fontWeight="medium" color="gray.600" mb={1}>
+            Estimated Value (AI Analysis)
           </Text>
           {isGenerating && !aiDone ? (
-            <Skeleton height="40px" borderRadius="md" />
+            <Skeleton height="32px" borderRadius="md" />
           ) : (formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0) ? (
-            <Heading fontSize="3xl" fontWeight="bold">
+            <Heading fontSize="2xl" fontWeight="bold" color="gray.800">
               ₱{Number(formData.estimated_value_min).toLocaleString()} – ₱{Number(formData.estimated_value_max).toLocaleString()}
             </Heading>
           ) : (
-            <Heading fontSize="xl" fontWeight="bold" opacity={0.9}>
-              Value Estimate Unavailable
-            </Heading>
+            <Text fontSize="sm" color="gray.600" fontStyle="italic">
+              Value estimate unavailable
+            </Text>
           )}
-          <Text fontSize="xs" opacity={0.85} mt={2}>
-            {isGenerating && !aiDone ? 'Analyzing your product...' : 'Based on AI analysis of product condition and market data'}
-          </Text>
         </Box>
 
         {/* ──────── DESCRIPTION ──────── */}
         <Box>
-          <Heading fontSize="sm" fontWeight="bold" color="gray.800" mb={2}>
-            About this item
-          </Heading>
           <Text
             fontSize="sm"
             color="gray.700"
@@ -1645,9 +1628,9 @@ const AddProduct: React.FC = () => {
           </Box>
           <Box>
             <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Category</Text>
-            <Text fontSize="sm" fontWeight="medium">{formData.category}</Text>
+            <Text fontSize="sm" fontWeight="medium">{formData.category}{formData.item_type ? ` · ${formData.item_type}` : ''}</Text>
           </Box>
-          {formData.authenticity_risks && (
+          {formData.authenticity_risks && formData.authenticity_risks !== 'Low' && (
             <Box>
               <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Authenticity Risk</Text>
               <Badge
@@ -1675,11 +1658,14 @@ const AddProduct: React.FC = () => {
           </Box>
         )}
 
-        {/* ──────── DESIRED ITEMS DISPLAY ──────── */}
+        {/* ──────── TRADE PREFERENCES DISPLAY ──────── */}
         {( (formData.wanted_categories && formData.wanted_categories.length > 0) || formData.wants) && (
           <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
-            <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>🔍 Looking For</Text>
-            <VStack align="stretch" spacing={2}>
+            <VStack align="stretch" spacing={1.5}>
+              <Box>
+                <Text fontSize="xs" fontWeight="bold" color="blue.900">🔍 What I'm Looking For (Trade Preferences)</Text>
+                <Text fontSize="10px" color="blue.700" mt={0.5}>These categories and items will help match you with compatible trades</Text>
+              </Box>
               {formData.wanted_categories && formData.wanted_categories.length > 0 && (
                 <HStack spacing={1.5} flexWrap="wrap">
                   {formData.wanted_categories.map(cat => (
@@ -1737,56 +1723,43 @@ const AddProduct: React.FC = () => {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <Box minH="100vh" bg={pageBg} py={6}>
-      <Box p={6} maxW="3xl" mx="auto">
-        <VStack spacing={5} align="stretch">
-          {/* Enhanced Header with Step Breadcrumb */}
-          <VStack align="start" spacing={3}>
-            <Heading size="lg" color="brand.500">Post a Product</Heading>
+    <Box minH="100vh" bg={pageBg} py={4}>
+      <Box p={{ base: 4, md: 6 }} maxW="3xl" mx="auto">
+        <VStack spacing={3} align="stretch">
+          {/* Compact Header with Minimal Step Indicator */}
+          <HStack justify="space-between" align="center" spacing={3}>
+            <Heading size="sm" color="brand.500">Post a Product</Heading>
             
-            {/* Step Breadcrumb */}
-            <HStack spacing={2} fontSize="sm">
-              {stepLabels.map((step, idx) => (
-                <React.Fragment key={step.number}>
-                  <HStack 
-                    spacing={1.5}
-                    px={3}
-                    py={1.5}
-                    borderRadius="md"
-                    bg={currentStep === step.number ? 'brand.50' : 'transparent'}
-                    border={currentStep === step.number ? '1px solid' : 'none'}
-                    borderColor={currentStep === step.number ? 'brand.300' : 'transparent'}
-                    transition="all 0.2s"
+            {/* Compact Step Dots */}
+            <HStack spacing={1.5}>
+              {stepLabels.map((step) => (
+                <Tooltip key={step.number} label={step.title} placement="top" hasArrow>
+                  <Circle
+                    size={{ base: '28px', sm: '32px' }}
+                    bg={currentStep === step.number ? 'brand.500' : currentStep > step.number ? 'brand.200' : 'gray.200'}
                     cursor={currentStep !== step.number ? 'pointer' : 'default'}
-                    _hover={currentStep !== step.number ? { bg: 'gray.50' } : {}}
                     onClick={() => currentStep > step.number && setCurrentStep(step.number)}
+                    transition="all 0.2s"
+                    _hover={currentStep !== step.number ? { transform: 'scale(1.1)', shadow: 'md' } : {}}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
                   >
                     <Text
-                      fontSize="sm"
-                      fontWeight={currentStep === step.number ? 'bold' : 'medium'}
-                      color={currentStep === step.number ? 'brand.600' : 'gray.600'}
+                      fontSize={{ base: '10px', sm: '12px' }}
+                      fontWeight="bold"
+                      color={currentStep >= step.number ? 'white' : 'gray.600'}
                     >
-                      {step.icon} {step.title}
+                      {currentStep > step.number ? '✓' : step.number}
                     </Text>
-                  </HStack>
-                  {idx < stepLabels.length - 1 && (
-                    <Text color="gray.400" fontWeight="bold">→</Text>
-                  )}
-                </React.Fragment>
+                  </Circle>
+                </Tooltip>
               ))}
             </HStack>
-          </VStack>
-
-          {/* Compact Step Progress Bar */}
-          <Progress
-            value={(currentStep / TOTAL_STEPS) * 100}
-            colorScheme="brand"
-            size="sm"
-            borderRadius="full"
-          />
+          </HStack>
 
           {/* Step Content */}
-          <Box bg={bgColor} p={{ base: 6, md: 8 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
+          <Box bg={bgColor} p={{ base: 4, md: 6 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
             {currentStep === 1 && renderStep1()}
             {currentStep === 2 && renderStep2()}
             {currentStep === 3 && renderStep3()}
