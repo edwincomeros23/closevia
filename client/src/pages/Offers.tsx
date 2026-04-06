@@ -594,111 +594,118 @@ const Offers: React.FC = () => {
       <ScaleFade in={true}>
         <Box
           bg="white"
-          borderWidth="2px"
+          borderWidth="1px"
           borderColor={borderColor}
-          rounded="lg"
+          rounded="md"
           overflow="hidden"
-          boxShadow="md"
+          boxShadow="sm"
           _hover={{
-            boxShadow: 'lg',
-            transform: 'translateY(-4px)',
+            boxShadow: 'md',
+            borderColor: borderColor === 'gray.200' ? 'gray.300' : borderColor,
           }}
-          transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
+          transition="all 0.2s ease"
           h="100%"
           display="flex"
           flexDirection="column"
         >
           {/* Header with badge and status */}
-          <Box p={3} bg="gray.50" borderBottomWidth="1px" borderColor="gray.200">
-            <HStack justify="space-between" mb={2}>
-              <Badge colorScheme="blue" variant="subtle" fontSize="xs">
-                {type === 'received' ? '💬 Received' : type === 'sent' ? '📤 Sent' : '🔄 In Progress'}
+          <Box p={2.5} bg="linear-gradient(135deg, #F7FAFC 0%, #EDF2F7 100%)" borderBottomWidth="1px" borderColor="gray.200">
+            <HStack justify="space-between" spacing={2}>
+              <Badge colorScheme="blue" variant="subtle" fontSize="11px" px={2} py={0.5}>
+                {type === 'received' ? '💬' : type === 'sent' ? '📤' : '🔄'} {type === 'received' ? 'Received' : type === 'sent' ? 'Sent' : 'Progress'}
               </Badge>
               {getStatusBadge(trade.status)}
             </HStack>
           </Box>
 
           {/* Content */}
-          <Box p={4} flex="1" display="flex" flexDirection="column">
-            <VStack align="start" spacing={3} h="100%">
-              <VStack align="start" spacing={1} w="100%">
-                <Text fontWeight="semibold" fontSize="md" noOfLines={2}>
+          <Box p={3} flex="1" display="flex" flexDirection="column" gap={2}>
+            <VStack align="start" spacing={2} h="100%" w="100%">
+              {/* Product Title */}
+              <Box w="100%">
+                <Text fontWeight="600" fontSize="sm" noOfLines={2} color="gray.800">
                   {getProductTitle(trade.target_product_id, trade.product_title)}
                 </Text>
-                {trade.trade_option && (
-                  <Badge 
-                    colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
-                    variant="subtle"
-                    fontSize="xs"
-                    display="flex"
-                    alignItems="center"
-                    gap={1}
-                  >
-                    <Icon as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
-                    {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                  </Badge>
-                )}
-              </VStack>
+              </Box>
 
-              <VStack align="start" spacing={1} w="100%" fontSize="sm" color="gray.600">
-                {type === 'received' && <Text><strong>From:</strong> {trade.buyer_name || 'Anonymous User'}</Text>}
-                {type === 'sent' && <Text><strong>To:</strong> {trade.seller_name || 'Anonymous User'}</Text>}
-                {type === 'progress' && (
-                  <>
-                    <Text><strong>Buyer:</strong> {trade.buyer_name || 'Anonymous User'}</Text>
-                    <Text><strong>Trader:</strong> {trade.seller_name || 'Anonymous User'}</Text>
-                  </>
-                )}
-                <Text fontSize="xs" color="gray.500">{new Date(trade.created_at).toLocaleDateString()}</Text>
-              </VStack>
+              {/* Trade Option Badge */}
+              {trade.trade_option && (
+                <Badge 
+                  colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
+                  variant="outline"
+                  fontSize="10px"
+                  px={2}
+                  py={1}
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  <Icon as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={3} />
+                  {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                </Badge>
+              )}
+
+              {/* User Info */}
+              <Box w="100%" fontSize="11px" color="gray.600">
+                <HStack spacing={1}>
+                  {type === 'received' && <Text>From: <strong>{(trade.buyer_name || 'User').substring(0, 15)}</strong></Text>}
+                  {type === 'sent' && <Text>To: <strong>{(trade.seller_name || 'User').substring(0, 15)}</strong></Text>}
+                  {type === 'progress' && <Text><strong>{(trade.buyer_name || 'Buyer').substring(0, 12)}</strong> ↔ <strong>{(trade.seller_name || 'Seller').substring(0, 12)}</strong></Text>}
+                </HStack>
+                <Text fontSize="10px" color="gray.500" mt={1}>{new Date(trade.created_at).toLocaleDateString()}</Text>
+              </Box>
 
               <Box flex="1" />
 
-              {/* Actions */}
-              <HStack spacing={2} w="100%" pt={2}>
+              {/* Actions - Compact */}
+              <HStack spacing={1.5} w="100%" pt={2}>
                 <Button
-                  size="sm"
+                  size="xs"
                   variant="outline"
                   colorScheme="brand"
                   flex={1}
                   onClick={onViewDetails}
-                  fontSize="xs"
+                  fontSize="11px"
+                  h="28px"
                 >
                   View
                 </Button>
                 {onAction && type !== 'sent' && (
                   <Button
-                    size="sm"
+                    size="xs"
                     colorScheme={onSecondaryAction ? 'green' : 'blue'}
                     variant="solid"
                     flex={1}
                     onClick={onAction}
-                    fontSize="xs"
+                    fontSize="11px"
+                    h="28px"
                     isDisabled={trade.status !== 'pending'}
                   >
-                    {type === 'progress' ? 'Complete' : 'Accept'}
+                    {type === 'progress' ? 'Done' : 'Accept'}
                   </Button>
                 )}
                 {onAction && type === 'sent' && trade.status === 'pending' && (
                   <Button
-                    size="sm"
+                    size="xs"
                     colorScheme="red"
                     variant="outline"
                     flex={1}
                     onClick={onAction}
-                    fontSize="xs"
+                    fontSize="11px"
+                    h="28px"
                   >
                     Cancel
                   </Button>
                 )}
                 {onSecondaryAction && type === 'received' && (
                   <Button
-                    size="sm"
+                    size="xs"
                     colorScheme="red"
                     variant="outline"
-                    fontSize="xs"
+                    fontSize="11px"
                     onClick={onSecondaryAction}
                     isDisabled={trade.status !== 'pending'}
+                    h="28px"
                   >
                     Decline
                   </Button>
@@ -896,7 +903,7 @@ const Offers: React.FC = () => {
             {offersReceivedSorted.length === 0 ? (
               <Text color="gray.500" textAlign="center" py={8}>No offers received.</Text>
             ) : viewMode === 'grid' ? (
-              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={3}>
                 {offersReceivedSorted.map((t) => (
                   <OfferGridCard
                     key={t.id}
@@ -1031,7 +1038,7 @@ const Offers: React.FC = () => {
             {offersSentSorted.length === 0 ? (
               <Text color="gray.500" textAlign="center" py={8}>No offers sent.</Text>
             ) : viewMode === 'grid' ? (
-              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={3}>
                 {offersSentSorted.map((t) => (
                   <OfferGridCard
                     key={t.id}
@@ -1155,7 +1162,7 @@ const Offers: React.FC = () => {
             {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').length === 0 ? (
               <Text color="gray.500" textAlign="center" py={8}>No trades in progress.</Text>
             ) : viewMode === 'grid' ? (
-              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={4}>
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3, xl: 4 }} spacing={3}>
                 {incomingSorted.concat(outgoingSorted).filter(t => t.status === 'accepted' || t.status === 'active').map((t) => (
                   <OfferGridCard
                     key={t.id}
@@ -1370,7 +1377,7 @@ const Offers: React.FC = () => {
           >
             <ModalCloseButton />
             <ModalBody p={6} textAlign="center">
-              <VStack spacing={4}>
+              <VStack spacing={3}>
                 <Icon as={FaTimes} color="red.500" boxSize={8} />
                 <VStack spacing={2}>
                   <Text fontWeight="bold" fontSize="lg" color="gray.800">
@@ -1422,7 +1429,7 @@ const Offers: React.FC = () => {
           >
             <ModalCloseButton />
             <ModalBody p={6}>
-              <VStack spacing={4} align="stretch">
+              <VStack spacing={3} align="stretch">
                 <VStack spacing={2} textAlign="center">
                   <Icon as={FaTimes} color="red.500" boxSize={6} />
                   <Text fontWeight="bold" fontSize="lg" color="gray.800">

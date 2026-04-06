@@ -447,10 +447,10 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
       <ModalContent maxH="90vh" display="flex" flexDirection="column" bg="white" borderRadius="lg" boxShadow="lg">
         {/* Compact Header */}
-        <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" p={4}>
+        <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" p={2.5}>
           <HStack justify="space-between" align="center">
             <VStack align="start" spacing={0}>
-              <Text fontSize="lg" fontWeight="bold" color="gray.900">Offer Details</Text>
+              <Text fontSize="base" fontWeight="bold" color="gray.900">Offer Details</Text>
               <Badge 
                 colorScheme={
                   effectiveTrade?.status === 'pending' ? 'yellow' : 
@@ -467,20 +467,20 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         </Box>
 
         {/* Scrollable Content */}
-        <ModalBody p={4} overflowY="auto" flex={1}>
-          <VStack align="stretch" spacing={4}>
+        <ModalBody p={3} overflowY="auto" flex={1}>
+          <VStack align="stretch" spacing={3}>
             {/* User Info Section */}
-            <Box p={3} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
-              <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>Trade Participant</Text>
-              <VStack align="start" spacing={2} fontSize="sm">
+            <Box p={2.5} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
+              <Text fontSize="10px" fontWeight="bold" color="blue.900" mb={1.5} textTransform="uppercase">Trade Participant</Text>
+              <VStack align="start" spacing={1.5} fontSize="sm">
                 <HStack w="100%" justify="space-between">
-                  <Text fontWeight="semibold">{effectiveTrade?.buyer_id === user?.id ? 'From: ' : 'With: '}{effectiveTrade?.buyer_id === user?.id ? effectiveTrade?.seller_name : effectiveTrade?.buyer_name}</Text>
+                  <Text fontWeight="semibold" fontSize="13px">{effectiveTrade?.buyer_id === user?.id ? 'From: ' : 'With: '}{effectiveTrade?.buyer_id === user?.id ? effectiveTrade?.seller_name : effectiveTrade?.buyer_name}</Text>
                 </HStack>
                 {effectiveTrade?.buyer_id === user?.id && effectiveTrade?.seller_location && (
-                  <Text fontSize="xs" color="gray.600">📍 {effectiveTrade.seller_location || 'Location not specified'}</Text>
+                  <Text fontSize="11px" color="gray.600">📍 {effectiveTrade.seller_location || 'Location not specified'}</Text>
                 )}
                 {effectiveTrade?.buyer_id !== user?.id && effectiveTrade?.buyer_location && (
-                  <Text fontSize="xs" color="gray.600">📍 {effectiveTrade.buyer_location || 'Location not specified'}</Text>
+                  <Text fontSize="11px" color="gray.600">📍 {effectiveTrade.buyer_location || 'Location not specified'}</Text>
                 )}
               </VStack>
             </Box>
@@ -529,13 +529,13 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
             {/* Items Comparison - Compact */}
             <Box>
-              <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>Items</Text>
-              <Grid templateColumns={{ base: '1fr', md: '0.8fr 1fr' }} gap={3}>
+              <Text fontSize="11px" fontWeight="bold" color="gray.700" mb={2} textTransform="uppercase">Items</Text>
+              <Grid templateColumns={{ base: '1fr', md: '0.7fr 1.3fr' }} gap={2}>
                 {/* Your Requested Item */}
                 <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="gray.50">
                   {loading ? (
-                    <Box p={3} textAlign="center">
-                      <Text fontSize="xs" color="gray.500">Loading...</Text>
+                    <Box p={2} textAlign="center">
+                      <Text fontSize="11px" color="gray.500">Loading...</Text>
                     </Box>
                   ) : (
                     <>
@@ -547,7 +547,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                           variant="link" 
                           colorScheme="brand" 
                           w="full" 
-                          fontSize="xs"
+                          fontSize="10px"
+                          size="xs"
+                          py={1.5}
                         >
                           View Product →
                         </Button>
@@ -559,7 +561,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 {/* Their Offered Items */}
                 <Box>
                   {buyerItems.length > 0 ? (
-                    <VStack spacing={2} align="stretch">
+                    <VStack spacing={1.5} align="stretch">
                       {buyerItems.map((item: any, idx: number) => {
                         const product = offered.find(p => p.id === (item.product_id ?? item.productId));
                         const itemId = item.product_id ?? item.productId
@@ -638,9 +640,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </Grid>
             </Box>
             {trade?.message && (
-              <Box p={3} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                <Text fontSize="xs" fontWeight="bold" color="gray.700" mb={1}>Message</Text>
-                <Text fontSize="xs" color="gray.700" lineHeight="1.5" noOfLines={2}>
+              <Box p={2} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                <Text fontSize="10px" fontWeight="bold" color="gray.700" mb={1}>Message</Text>
+                <Text fontSize="11px" color="gray.700" lineHeight="1.4" noOfLines={2}>
                   {trade.message}
                 </Text>
               </Box>
@@ -648,18 +650,18 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
             {/* Trade Method */}
             {effectiveTrade?.trade_option && (
-              <Box borderRadius="md" bg="brand.50" p={3} borderWidth="1px" borderColor="brand.200">
+              <Box borderRadius="md" bg="brand.50" p={2} borderWidth="1px" borderColor="brand.200">
                 <HStack spacing={2}>
-                  <Icon as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={4} color="brand.600" flexShrink={0} />
+                  <Icon as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={3.5} color="brand.600" flexShrink={0} />
                   <VStack align="start" spacing={0} flex={1}>
-                    <Text fontWeight="semibold" fontSize="sm" color="brand.900">
+                    <Text fontWeight="semibold" fontSize="12px" color="brand.900">
                       {effectiveTrade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
                     </Text>
                     {effectiveTrade.trade_option === 'delivery' && effectiveTrade.delivery_address && (
-                      <Text fontSize="xs" color="gray.700">{effectiveTrade.delivery_address}</Text>
+                      <Text fontSize="10px" color="gray.700">{effectiveTrade.delivery_address}</Text>
                     )}
                     {effectiveTrade.trade_option === 'delivery' && (effectiveTrade as any).delivery_fee !== undefined && (
-                      <Text fontSize="xs" color="green.700" fontWeight="semibold">
+                      <Text fontSize="10px" color="green.700" fontWeight="semibold">
                         Delivery Fee: {formatPHP((effectiveTrade as any).delivery_fee)}
                       </Text>
                     )}
@@ -694,29 +696,29 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         </ModalBody>
 
         {/* Footer */}
-        <Box borderTopWidth="1px" borderColor="gray.200" p={3} bg="white">
-          <HStack spacing={2} justify="flex-end">
-            {/* Only show action buttons if trade is pending AND user is the buyer (received this offer) */}
-            {effectiveTrade?.status === 'pending' && effectiveTrade?.buyer_id === user?.id ? (
+        <Box borderTopWidth="1px" borderColor="gray.200" p={2} bg="white">
+          <HStack spacing={1.5} justify="flex-end">
+            {/* Only show action buttons if trade is pending AND user is the seller (received this offer) */}
+            {effectiveTrade?.status === 'pending' && effectiveTrade?.buyer_id !== user?.id ? (
               <>
                 {/* Decline Button */}
-                <Button size="sm" variant="outline" colorScheme="red" onClick={decline}>
+                <Button size="xs" variant="outline" colorScheme="red" onClick={decline} fontSize="11px">
                   Decline
                 </Button>
 
                 {/* Counter Button */}
-                <Button size="sm" variant="outline" colorScheme="brand" onClick={openCounter}>
+                <Button size="xs" variant="outline" colorScheme="brand" onClick={openCounter} fontSize="11px">
                   Counter
                 </Button>
 
                 {/* Accept Button */}
-                <Button size="sm" colorScheme="brand" onClick={accept} isDisabled={disableAccept}>
+                <Button size="xs" colorScheme="brand" onClick={accept} isDisabled={disableAccept} fontSize="11px">
                   Accept
                 </Button>
               </>
             ) : (
-              <Text fontSize="sm" color="gray.500" fontStyle="italic">
-                No actions available for {effectiveTrade?.status === 'pending' ? 'offers you sent' : `${effectiveTrade?.status} trades`}
+              <Text fontSize="11px" color="gray.500" fontStyle="italic">
+                {effectiveTrade?.buyer_id === user?.id ? 'No actions available for offers you sent' : `No actions available for ${effectiveTrade?.status} trades`}
               </Text>
             )}
           </HStack>
