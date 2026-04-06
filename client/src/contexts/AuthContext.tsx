@@ -48,6 +48,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authInitialized, setAuthInitialized] = useState(false)
   const initOnceRef = useRef(false)
   const lastNetworkErrorRef = useRef<number>(0)
+  const restoringRef = useRef(false)
 
   // Wrappers that keep localStorage in sync with React state
   const setToken = (newToken: string | null) => {
@@ -213,13 +214,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Helper to check and restore authentication from stored token
   const restoreAuthentication = async () => {
-    console.log('AuthContext: Restoring authentication from stored token')
-    const storedToken = localStorage.getItem('clovia_token')
-    if (storedToken && !token) {
-      console.log('AuthContext: Found stored token, restoring...')
-      setToken(storedToken)
+    if (restoringRef.current) return
+    restoringRef.current = true
+    try {
+      console.log('AuthContext: Restoring authentication from stored token')
+      const storedToken = localStorage.getItem('clovia_token')
+      if (!storedToken) return
+
+      // Ensure axios is using the stored token
+      if (storedToken !== token) {
+        console.log('AuthContext: Token mismatch or missing in state, restoring...')
+        setToken(storedToken)
+      }
       api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`
-      await fetchUserProfile(storedToken)
+
+      // If user is missing, fetch profile to populate it
+      if (!user) {
+        await fetchUserProfile(storedToken)
+      }
+    } finally {
+      restoringRef.current = false
     }
   }
 

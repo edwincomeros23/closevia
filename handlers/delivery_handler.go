@@ -1348,6 +1348,40 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update delivery"})
 	}
 
+	// Keep rider remittance ledger aligned with the rider's actual job flow.
+	// The rider app advances status through: claimed -> picked_up -> in_transit -> delivered.
+	// We treat pickup and delivered as the two cash-collection points (50/50 split).
+	if update.Status != nil {
+		switch *update.Status {
+		case "picked_up", "delivered":
+			// Ensure ledger exists
+			h.ensureRiderLedger(riderID)
+
+			// Ensure delivery_stops exist (older deliveries may not have them)
+			if err := h.ensureDeliveryStops(deliveryID); err != nil {
+				log.Printf("Warning: failed to ensure delivery stops for delivery %d: %v", deliveryID, err)
+				break
+			}
+
+			// Compute the 50/50 fee split (pickup + drop)
+			var totalCost float64
+			if err := h.db.QueryRow("SELECT total_cost FROM deliveries WHERE id = ?", deliveryID).Scan(&totalCost); err != nil {
+				log.Printf("Warning: failed to load total_cost for delivery %d: %v", deliveryID, err)
+				break
+			}
+			feeAmount := totalCost * 0.5
+
+			stopNumber := 1
+			collectionType := "pickup_fee"
+			if *update.Status == "delivered" {
+				stopNumber = 2
+				collectionType = "delivery_fee"
+			}
+
+			h.logCashCollectionAndUpdateLedger(riderID, deliveryID, stopNumber, collectionType, feeAmount)
+		}
+	}
+
 	// If delivery is marked as "delivered", sync status back to the linked trade
 	if update.Status != nil && *update.Status == "delivered" {
 		var tradeID sql.NullInt64
@@ -1391,6 +1425,103 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 		Message: "Delivery status updated successfully",
 		Data:    delivery,
 	})
+}
+
+// ensureDeliveryStops creates a default 2-stop route if stops are missing.
+// This keeps legacy deliveries compatible with collection/remittance tracking.
+func (h *DeliveryHandler) ensureDeliveryStops(deliveryID int) error {
+	var count int
+	h.db.QueryRow("SELECT COUNT(*) FROM delivery_stops WHERE delivery_id = ?", deliveryID).Scan(&count)
+	if count > 0 {
+		return nil
+	}
+
+	var deliveryUserID int
+	var tradeID sql.NullInt64
+	var pickupAddr, deliveryAddr string
+	var pickupLat, pickupLng, deliveryLat, deliveryLng sql.NullFloat64
+	var totalCost float64
+	if err := h.db.QueryRow(`
+		SELECT user_id, trade_id, pickup_address, delivery_address,
+		       pickup_latitude, pickup_longitude, delivery_latitude, delivery_longitude, total_cost
+		FROM deliveries WHERE id = ?`, deliveryID).Scan(
+		&deliveryUserID, &tradeID, &pickupAddr, &deliveryAddr,
+		&pickupLat, &pickupLng, &deliveryLat, &deliveryLng, &totalCost,
+	); err != nil {
+		return err
+	}
+
+	// Sender (delivery creator)
+	senderName := "Sender"
+	senderPhone := ""
+	_ = h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", deliveryUserID).Scan(&senderName, &senderPhone)
+
+	// Receiver (other trade party when trade-based)
+	receiverName := "Receiver"
+	receiverPhone := ""
+	if tradeID.Valid {
+		var receiverID int
+		_ = h.db.QueryRow("SELECT IF(buyer_id = ?, seller_id, buyer_id) FROM trades WHERE id = ?", deliveryUserID, tradeID.Int64).Scan(&receiverID)
+		_ = h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", receiverID).Scan(&receiverName, &receiverPhone)
+	}
+
+	// Fee split
+	senderFee := totalCost * 0.5
+	receiverFee := totalCost * 0.5
+
+	_, err := h.db.Exec(`
+		INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		                             address, latitude, longitude, fee_amount, status)
+		VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
+		deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = h.db.Exec(`
+		INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		                             address, latitude, longitude, fee_amount, status)
+		VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
+		deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee,
+	)
+	return err
+}
+
+// logCashCollectionAndUpdateLedger logs a pickup/delivery fee collection once and updates the rider ledger.
+func (h *DeliveryHandler) logCashCollectionAndUpdateLedger(riderID, deliveryID, stopNumber int, collectionType string, fallbackAmount float64) {
+	var stopID int
+	var feeAmount float64
+	if err := h.db.QueryRow(
+		"SELECT id, fee_amount FROM delivery_stops WHERE delivery_id = ? AND stop_number = ?",
+		deliveryID, stopNumber,
+	).Scan(&stopID, &feeAmount); err != nil {
+		log.Printf("Warning: failed to load stop for delivery %d stop %d: %v", deliveryID, stopNumber, err)
+		return
+	}
+
+	if feeAmount <= 0 {
+		feeAmount = fallbackAmount
+	}
+
+	var exists int
+	_ = h.db.QueryRow(
+		"SELECT COUNT(*) FROM rider_cash_collections WHERE delivery_id = ? AND stop_id = ? AND collection_type = ?",
+		deliveryID, stopID, collectionType,
+	).Scan(&exists)
+	if exists > 0 {
+		return
+	}
+
+	if _, err := h.db.Exec(`
+		INSERT INTO rider_cash_collections (rider_id, delivery_id, stop_id, collection_type, amount)
+		VALUES (?, ?, ?, ?, ?)
+	`, riderID, deliveryID, stopID, collectionType, feeAmount); err != nil {
+		log.Printf("Failed to log cash collection for rider %d delivery %d: %v", riderID, deliveryID, err)
+		return
+	}
+
+	h.updateRiderLedger(riderID, feeAmount)
 }
 
 // AssignRider assigns a rider to a delivery (for standard deliveries or manual assignment)
@@ -2455,14 +2586,43 @@ func (h *DeliveryHandler) GetRiderLedger(c *fiber.Ctx) error {
 	if err != nil {
 		// Initialize if doesn't exist
 		h.ensureRiderLedger(riderID)
+		threshold := h.getRiderRemittanceLockThreshold()
 		return c.JSON(models.APIResponse{Success: true, Data: models.RiderLedger{
-			RiderID:            riderID,
-			TotalCashCollected: 0,
-			RemittanceOwed:     0,
-			TakeHome:           0,
-			FreeSlotsRemaining: 0,
+			RiderID:                riderID,
+			TotalCashCollected:     0,
+			RemittanceOwed:         0,
+			TakeHome:               0,
+			TotalRemittancePaid:    0,
+			RemittanceThreshold:    threshold,
+			RemittancePaidProgress: 0,
+			FreeSlotsRemaining:     0,
 		}})
 	}
+
+	// Add remittance payment progress indicator (sum of verified payments)
+	var totalPaid float64
+	_ = h.db.QueryRow(
+		"SELECT COALESCE(SUM(amount_paid), 0.00) FROM rider_remittance_payments WHERE rider_id = ? AND status = 'verified'",
+		riderID,
+	).Scan(&totalPaid)
+
+	threshold := h.getRiderRemittanceLockThreshold()
+	paidProgress := 0.0
+	if threshold > 0 {
+		paidProgress = math.Mod(totalPaid, threshold)
+		// If totalPaid is an exact multiple of threshold, show full completion (50/50) instead of 0/50.
+		if paidProgress < 0.009 && totalPaid > 0 {
+			paidProgress = threshold
+		}
+		// Normalize edge cases close to threshold
+		if math.Abs(paidProgress-threshold) < 0.009 {
+			paidProgress = threshold
+		}
+	}
+
+	ledger.TotalRemittancePaid = totalPaid
+	ledger.RemittanceThreshold = threshold
+	ledger.RemittancePaidProgress = paidProgress
 
 	return c.JSON(models.APIResponse{Success: true, Data: ledger})
 }

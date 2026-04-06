@@ -210,17 +210,28 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
   const openCounter = async () => {
     if (!effectiveTrade) return
+    
+    // Reset form fields
+    setCashDelta('')
+    setCounterMsg('')
+    
     try {
       // Load sender (User A) active listings
       const res = await api.get(`/api/products/user/${effectiveTrade.buyer_id}?active=true&page=1&limit=50`)
       const list: Product[] = Array.isArray(res.data?.data?.data) ? res.data.data.data : []
       setUserInventory(list)
-      // Preselect current offered items
-      setSelectedCounterIds(offeredItemIds)
+      
+      // For buyout trades, don't preselect items (they don't have items anyway)
+      // For regular trades, preselect current offered items
+      if (!isBuyout) {
+        setSelectedCounterIds(offeredItemIds)
+      } else {
+        setSelectedCounterIds([])
+      }
       setCounterOpen(true)
     } catch {
       setUserInventory([])
-      setSelectedCounterIds(offeredItemIds)
+      setSelectedCounterIds(isBuyout ? [] : offeredItemIds)
       setCounterOpen(true)
     }
   }
@@ -252,6 +263,12 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const [counterMsg, setCounterMsg] = useState<string>('')
   const { isOpen: isDeclineOpen, onOpen: onDeclineOpen, onClose: onDeclineClose } = useDisclosure()
   const cancelRef = React.useRef<HTMLButtonElement>(null)
+
+  // Check if this is a buyout trade (no items offered, only cash)
+  const isBuyout = useMemo(() => {
+    return (!effectiveTrade?.items || effectiveTrade.items.length === 0) && 
+           (effectiveTrade?.offered_cash_amount && effectiveTrade.offered_cash_amount > 0)
+  }, [effectiveTrade])
 
   const submitCounter = async () => {
     if (!effectiveTrade || isCountering) return
@@ -452,6 +469,48 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         {/* Scrollable Content */}
         <ModalBody p={4} overflowY="auto" flex={1}>
           <VStack align="stretch" spacing={4}>
+            {/* Counter Offer Info - if status is 'countered' */}
+            {effectiveTrade?.status === 'countered' && (
+              <Box p={3} bg="purple.50" borderRadius="md" borderWidth="1px" borderColor="purple.200">
+                <Text fontSize="sm" fontWeight="bold" color="purple.900" mb={2}>📤 Counter Offer Received</Text>
+                <VStack align="start" spacing={2} fontSize="xs" color="purple.800">
+                  {isBuyout ? (
+                    <>
+                      <Text fontWeight="bold">Original Offer: ₱{formatPHP(effectiveTrade?.offered_cash_amount || 0)}</Text>
+                      {effectiveTrade?.counter_offered_cash_amount && (
+                        <Text fontWeight="bold" color="purple.700">
+                          💰 Counter Price: <span style={{ fontSize: '14px', fontWeight: 'bold' }}>₱{formatPHP(effectiveTrade.counter_offered_cash_amount)}</span>
+                        </Text>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {effectiveTrade.counter_offered_product_ids && effectiveTrade.counter_offered_product_ids.length > 0 && (
+                        <VStack align="start" w="full">
+                          <Text fontWeight="bold">Their Items:</Text>
+                          <HStack spacing={2} w="full" wrap="wrap">
+                            {effectiveTrade.counter_offered_product_ids.map((pid: any) => {
+                              const counterProduct = offered.find(p => p.id === pid)
+                              return (
+                                <Badge key={pid} colorScheme="purple" variant="outline">
+                                  {counterProduct?.title || `Product #${pid}`}
+                                </Badge>
+                              )
+                            })}
+                          </HStack>
+                        </VStack>
+                      )}
+                      {effectiveTrade.counter_offered_cash_amount && effectiveTrade.counter_offered_cash_amount > 0 && (
+                        <Text fontWeight="bold">
+                          💰 Additional Cash: ₱{formatPHP(effectiveTrade.counter_offered_cash_amount)}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </VStack>
+              </Box>
+            )}
+
             {/* Items Comparison - Compact */}
             <Box>
               <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>Items</Text>
@@ -578,17 +637,30 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         {/* Footer */}
         <Box borderTopWidth="1px" borderColor="gray.200" p={3} bg="white">
           <HStack spacing={2} justify="flex-end">
-            {/* Action buttons can go here if needed */}
+            {/* Decline Button */}
+            <Button size="sm" variant="outline" colorScheme="red" onClick={decline}>
+              Decline
+            </Button>
+
+            {/* Counter Button */}
+            <Button size="sm" variant="outline" colorScheme="brand" onClick={openCounter}>
+              Counter
+            </Button>
+
+            {/* Accept Button */}
+            <Button size="sm" colorScheme="brand" onClick={accept} isDisabled={disableAccept}>
+              Accept
+            </Button>
           </HStack>
         </Box>
 
         {/* Counter Modal */}
-        <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size="md">
+        <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size={isBuyout ? "sm" : "md"}>
           <ModalOverlay />
           <ModalContent>
             <ModalHeader fontSize="sm">
-              Counter Offer
-              {requested?.max_items_per_offer ? (
+              {isBuyout ? 'Counter Buyout Offer' : 'Counter Offer'}
+              {!isBuyout && requested?.max_items_per_offer ? (
                 <Badge ml={2} colorScheme="brand" variant="subtle" verticalAlign="middle">
                   Max {requested.max_items_per_offer} items
                 </Badge>
@@ -596,31 +668,68 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
             </ModalHeader>
             <ModalCloseButton size="sm" />
             <ModalBody fontSize="sm">
-              {selectedCounterIds.length > 0 && (
-                <Text fontSize="xs" color="brand.500" fontWeight="bold" mb={2}>
-                  {selectedCounterIds.length} {requested?.max_items_per_offer ? `/ ${requested.max_items_per_offer}` : ''} items selected
-                </Text>
-              )}
-              <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
-                {userInventory.map(p => (
-                  <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
-                    <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" loading="lazy" />
-                    <Box p={1}>
-                      <Text fontSize="xs" noOfLines={1}>{p.title}</Text>
-                    </Box>
+              {isBuyout ? (
+                // Buyout counter: only money input
+                <VStack spacing={3} align="stretch">
+                  <Box p={3} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
+                    <Text fontSize="xs" fontWeight="bold" color="blue.700" mb={2}>Original Offer</Text>
+                    <Text fontSize="sm" fontWeight="bold" color="blue.900">
+                      ₱{formatPHP(effectiveTrade?.offered_cash_amount || 0)}
+                    </Text>
                   </Box>
-                ))}
-              </Grid>
-              <VStack spacing={2} mt={4}>
-                <FormControl size="sm">
-                  <FormLabel fontSize="xs">Add Cash</FormLabel>
-                  <input type="number" value={cashDelta} onChange={e => setCashDelta(e.target.value)} min={0} step="100" style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
-                </FormControl>
-                <FormControl size="sm">
-                  <FormLabel fontSize="xs">Message</FormLabel>
-                  <input value={counterMsg} onChange={e => setCounterMsg(e.target.value)} placeholder="Optional..." style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
-                </FormControl>
-              </VStack>
+                  <FormControl isRequired>
+                    <FormLabel fontSize="xs" fontWeight="bold">Your Counter Price (PHP)</FormLabel>
+                    <input 
+                      type="number" 
+                      value={cashDelta} 
+                      onChange={e => setCashDelta(e.target.value)} 
+                      min={0} 
+                      step="100" 
+                      placeholder="Enter your offer price"
+                      style={{ width: '100%', padding: '8px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} 
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel fontSize="xs">Message (optional)</FormLabel>
+                    <Textarea 
+                      value={counterMsg} 
+                      onChange={e => setCounterMsg(e.target.value)} 
+                      placeholder="Add a note..." 
+                      size="sm" 
+                      rows={2}
+                    />
+                  </FormControl>
+                </VStack>
+              ) : (
+                // Regular trade counter: items + money
+                <>
+                  {selectedCounterIds.length > 0 && (
+                    <Text fontSize="xs" color="brand.500" fontWeight="bold" mb={2}>
+                      {selectedCounterIds.length} {requested?.max_items_per_offer ? `/ ${requested.max_items_per_offer}` : ''} items selected
+                    </Text>
+                  )}
+                  <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
+                    {userInventory.map(p => (
+                      <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
+                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" loading="lazy" />
+                        <Box p={1}>
+                          <Text fontSize="xs" noOfLines={1}>{p.title}</Text>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Grid>
+                  <VStack spacing={2} mt={4}>
+                    <FormControl size="sm">
+                      <FormLabel fontSize="xs">Add Cash</FormLabel>
+                      <input type="number" value={cashDelta} onChange={e => setCashDelta(e.target.value)} min={0} step="100" style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
+                    </FormControl>
+                    <FormControl size="sm">
+                      <FormLabel fontSize="xs">Message</FormLabel>
+                      <input value={counterMsg} onChange={e => setCounterMsg(e.target.value)} placeholder="Optional..." style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
+                    </FormControl>
+                  </VStack>
+                </>
+              )}
             </ModalBody>
             <ModalFooter>
               <Button size="sm" variant="ghost" mr={2} onClick={() => setCounterOpen(false)} isDisabled={isCountering}>Cancel</Button>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Grid } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaMoneyBillWave } from 'react-icons/fa'
+import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack, Box, Image, Text, FormControl, FormLabel, Input, HStack, Button, useToast, Divider, Badge, Card, CardBody, Icon, useColorModeValue, Textarea, Grid, Link } from '@chakra-ui/react'
+import { FaMapMarkerAlt, FaTruck, FaCheckCircle, FaCreditCard, FaUsers } from 'react-icons/fa'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotification } from '../contexts/NotificationContext'
 import { api } from '../services/api'
@@ -23,9 +23,7 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
   const [tradeMessage, setTradeMessage] = useState('')
   const [submittingTrade, setSubmittingTrade] = useState(false)
   const [cashAmount, setCashAmount] = useState<string>('')
-  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false)
   const [tradeOption, setTradeOption] = useState<TradeOption | null>(null)
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upfront' | null>(null)
   
   const [hasPendingOfferOnTarget, setHasPendingOfferOnTarget] = useState(false)
   const [loadingPendingCheck, setLoadingPendingCheck] = useState(false)
@@ -36,8 +34,10 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
   
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
-  const selectedBg = useColorModeValue('brand.50', 'brand.900')
-  const selectedBorder = useColorModeValue('brand.500', 'brand.400')
+  const selectedBg = '#E1F5EE'
+  const selectedBorder = '#1D9E75'
+  const selectedTextColor = '#1D9E75'
+  const mutedTextColor = useColorModeValue('gray.600', 'gray.400')
 
   // Fetch target product details
   useEffect(() => {
@@ -65,7 +65,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
     setTradeMessage('')
     setCashAmount(targetProduct && targetProduct.price ? targetProduct.price.toString() : '')
     setTradeOption(null)
-    setPaymentMethod(null)
     setHasPendingOfferOnTarget(false)
     setDetectedCoords(null)
     setDetectedLocationLabel('')
@@ -133,12 +132,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
         id: "buyoutmodal-select-fulfillment-option", title: 'Select fulfillment option', description: 'Please select Meetup or Delivery option.', status: 'warning' })
       return
     }
-    
-    if (!paymentMethod) {
-      toast({
-        id: "buyoutmodal-select-payment-method", title: 'Select payment method', description: 'Please choose your preferred payment method.', status: 'warning' })
-      return
-    }
 
     if (tradeOption === 'delivery' && !resolvedDeliveryAddress()) {
       toast({
@@ -163,6 +156,11 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
       setSubmittingTrade(true)
       const deliveryAddress = resolvedDeliveryAddress()
       
+      // Determine payment method based on trade option:
+      // Meetup = always upfront (cash on spot)
+      // Delivery = cod (rider collects payment)
+      const paymentMethod = tradeOption === 'meetup' ? 'upfront' : 'cod'
+      
       const payload: TradeCreate = {
         target_product_id: targetProductId,
         offered_product_ids: [],
@@ -179,7 +177,6 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
       setTradeMessage('')
       setCashAmount('')
       setTradeOption(null)
-      setShowConfirmModal(false)
       onClose()
     } catch (e: any) {
       const errorMessage = e?.response?.data?.error || 'Failed to send buyout offer'
@@ -231,10 +228,10 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
+    <Modal isOpen={isOpen} onClose={onClose} isCentered size="sm">
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>{user ? 'Make a Buyout Offer' : 'Sign in to Continue'}</ModalHeader>
+      <ModalContent maxW="400px">
+        <ModalHeader fontSize="lg" fontWeight="semibold">{user ? 'Make a Buyout Offer' : 'Sign in to Continue'}</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
           {user ? (
@@ -242,23 +239,23 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
               {/* Target Product Display */}
               {targetProduct && (
                 <Card variant="outline" bg={useColorModeValue('green.50', 'green.900')} borderColor={useColorModeValue('green.200', 'green.700')}>
-                  <CardBody p={4}>
-                    <VStack spacing={3} align="stretch">
+                  <CardBody p={3}>
+                    <VStack spacing={2} align="stretch">
                       <HStack justify="space-between">
-                        <Text fontSize="xs" fontWeight="semibold" color={useColorModeValue('green.700', 'green.200')} textTransform="uppercase">
+                        <Text fontSize="10px" fontWeight="bold" color={useColorModeValue('green.700', 'green.200')} textTransform="uppercase" letterSpacing="0.5px">
                           Buying Out
                         </Text>
                         {targetProduct.price && (
-                          <Badge colorScheme="green" fontSize="sm">
+                          <Badge colorScheme="green" fontSize="xs">
                             ₱{targetProduct.price.toFixed(2)}
                           </Badge>
                         )}
                       </HStack>
-                      <HStack spacing={3} align="start">
-                        <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="80px" h="80px" objectFit="cover" rounded="md" loading="lazy" />
-                        <VStack spacing={2} align="start" flex={1}>
-                          <Text fontWeight="semibold" fontSize="sm">{targetProduct.title}</Text>
-                          <Text fontSize="xs" color="gray.500" noOfLines={2}>{targetProduct.description}</Text>
+                      <HStack spacing={2} align="start">
+                        <Image src={getFirstImage(targetProduct.image_urls)} alt={targetProduct.title} w="60px" h="60px" objectFit="cover" rounded="md" loading="lazy" />
+                        <VStack spacing={1} align="start" flex={1}>
+                          <Text fontWeight="600" fontSize="12px">{targetProduct.title}</Text>
+                          <Text fontSize="10px" color="gray.500" noOfLines={2}>{targetProduct.description}</Text>
                         </VStack>
                       </HStack>
                     </VStack>
@@ -266,54 +263,81 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                 </Card>
               )}
 
-              <Divider />
-
+              {/* Cash Offer Input */}
               <FormControl isRequired>
-                <FormLabel fontSize="sm">Your Cash Offer (PHP)</FormLabel>
-                <HStack>
-                  <Text fontWeight="bold" fontSize="lg" color="green.600">₱</Text>
-                  <Input type="number" placeholder="0.00" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} min={1} step="0.01" size="lg" fontWeight="bold" />
+                <FormLabel fontSize="11px" fontWeight="bold" textTransform="uppercase" color={mutedTextColor} letterSpacing="0.5px" mb={2}>
+                  Your Cash Offer
+                </FormLabel>
+                <HStack spacing={2}>
+                  <Text fontWeight="bold" fontSize="sm" color={selectedTextColor}>₱</Text>
+                  <Input 
+                    type="number" 
+                    placeholder="0.00" 
+                    value={cashAmount} 
+                    onChange={(e) => setCashAmount(e.target.value)} 
+                    min={1} 
+                    step="0.01" 
+                    fontSize="12px"
+                    py={5}
+                  />
                 </HStack>
               </FormControl>
 
+              {/* Message to Trader (optional) */}
               <FormControl>
-                <FormLabel fontSize="sm">Message to Trader (optional)</FormLabel>
-                <Textarea placeholder="Add a note to convince the trader to accept your buyout offer" value={tradeMessage} onChange={(e) => setTradeMessage(e.target.value)} rows={3} />
+                <FormLabel fontSize="11px" fontWeight="bold" textTransform="uppercase" color={mutedTextColor} letterSpacing="0.5px" mb={2}>
+                  Message (Optional)
+                </FormLabel>
+                <Textarea 
+                  placeholder="Add a note to convince the trader..." 
+                  value={tradeMessage} 
+                  onChange={(e) => setTradeMessage(e.target.value)} 
+                  rows={2}
+                  fontSize="11px"
+                  py={3}
+                />
               </FormControl>
 
-              <Divider />
-
-              {/* Trade Option Selection */}
+              {/* Fulfillment & Payment Section */}
               <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Fulfillment Option
+                <FormLabel fontSize="11px" fontWeight="bold" textTransform="uppercase" color={mutedTextColor} letterSpacing="0.5px" mb={3}>
+                  Fulfillment & Payment
                 </FormLabel>
-                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                <Grid templateColumns="repeat(2, 1fr)" gap={3}>
                   {/* Meetup Option */}
                   <Card
                     variant="outline"
                     cursor="pointer"
-                    borderWidth={tradeOption === 'meetup' ? '2px' : '1px'}
+                    borderWidth={tradeOption === 'meetup' ? '2px' : '0.5px'}
                     borderColor={tradeOption === 'meetup' ? selectedBorder : borderColor}
                     bg={tradeOption === 'meetup' ? selectedBg : cardBg}
                     onClick={() => setTradeOption('meetup')}
                     transition="all 0.2s"
                     _hover={{
-                      borderColor: tradeOption === 'meetup' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
+                      shadow: tradeOption === 'meetup' ? 'md' : 'sm',
                     }}
                   >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={tradeOption === 'meetup' ? 'brand.500' : 'gray.100'} color={tradeOption === 'meetup' ? 'white' : 'gray.600'}>
-                          <Icon as={FaMapMarkerAlt} boxSize={6} />
+                    <CardBody p={3}>
+                      <VStack spacing={2} align="center">
+                        <Box 
+                          p={2} 
+                          borderRadius="lg" 
+                          bg={tradeOption === 'meetup' ? selectedBorder : 'gray.200'} 
+                          color={tradeOption === 'meetup' ? 'white' : 'gray.600'}
+                        >
+                          <Icon as={FaUsers} boxSize={5} />
                         </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Meetup</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay in cash during meetup</Text>
-                        </VStack>
-                        {tradeOption === 'meetup' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
+                        <Text fontWeight="600" fontSize="12px" color={tradeOption === 'meetup' ? selectedTextColor : 'inherit'}>
+                          Meetup
+                        </Text>
+                        <Text 
+                          fontSize="10px" 
+                          color={tradeOption === 'meetup' ? selectedTextColor : mutedTextColor}
+                          textAlign="center"
+                          lineHeight="1.3"
+                        >
+                          Meet the seller in person and pay cash upfront on the spot.
+                        </Text>
                       </VStack>
                     </CardBody>
                   </Card>
@@ -322,177 +346,139 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
                   <Card
                     variant="outline"
                     cursor="pointer"
-                    borderWidth={tradeOption === 'delivery' ? '2px' : '1px'}
+                    borderWidth={tradeOption === 'delivery' ? '2px' : '0.5px'}
                     borderColor={tradeOption === 'delivery' ? selectedBorder : borderColor}
                     bg={tradeOption === 'delivery' ? selectedBg : cardBg}
                     onClick={() => setTradeOption('delivery')}
                     transition="all 0.2s"
                     _hover={{
-                      borderColor: tradeOption === 'delivery' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
+                      shadow: tradeOption === 'delivery' ? 'md' : 'sm',
                     }}
                   >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={tradeOption === 'delivery' ? 'brand.500' : 'gray.100'} color={tradeOption === 'delivery' ? 'white' : 'gray.600'}>
-                          <Icon as={FaTruck} boxSize={6} />
+                    <CardBody p={3}>
+                      <VStack spacing={2} align="center">
+                        <Box 
+                          p={2} 
+                          borderRadius="lg" 
+                          bg={tradeOption === 'delivery' ? selectedBorder : 'gray.200'} 
+                          color={tradeOption === 'delivery' ? 'white' : 'gray.600'}
+                        >
+                          <Icon as={FaTruck} boxSize={5} />
                         </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Delivery</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">🚚 Payment method agreed with trader</Text>
-                        </VStack>
-                        {tradeOption === 'delivery' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
+                        <Text fontWeight="600" fontSize="12px" color={tradeOption === 'delivery' ? selectedTextColor : 'inherit'}>
+                          Delivery
+                        </Text>
+                        <Text 
+                          fontSize="10px" 
+                          color={tradeOption === 'delivery' ? selectedTextColor : mutedTextColor}
+                          textAlign="center"
+                          lineHeight="1.3"
+                        >
+                          Rider delivers to you. Prepare the exact amount — no change given.
+                        </Text>
                       </VStack>
                     </CardBody>
                   </Card>
                 </Grid>
 
-                {/* Delivery Address Display (shown when delivery is selected) */}
+                {/* Delivery Location Row (visible only when Delivery is selected) */}
                 {tradeOption === 'delivery' && (
-                  <Box mt={4}>
-                    <FormControl>
-                      <FormLabel fontSize="sm">Delivery Location</FormLabel>
-                      {detectedCoords ? (
-                        <Box p={3} bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" borderLeftWidth="4px" borderLeftColor="green.500">
-                          <HStack justify="space-between" align="start">
-                            <VStack spacing={1} align="start">
-                              <Text fontSize="sm" color="green.900" fontWeight="medium">
-                                📍 {detectedLocationLabel || formatCoordinates(detectedCoords.lat, detectedCoords.lng)}
-                              </Text>
-                              <Text fontSize="xs" color="green.700">Location detected from your device</Text>
-                            </VStack>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              colorScheme="red"
-                              onClick={() => {
-                                setDetectedCoords(null)
-                                setDetectedLocationLabel('')
-                              }}
-                            >
-                              Clear
-                            </Button>
-                          </HStack>
-                        </Box>
-                      ) : user?.latitude && user?.longitude ? (
-                        <Box p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
-                          <Text fontSize="sm" color="blue.900" fontWeight="medium">
-                            📍 {profileLocationLabel || formatCoordinates(user.latitude, user.longitude)}
-                          </Text>
-                          <Text fontSize="xs" color="blue.700" mt={1}>Current location saved in your profile</Text>
-                        </Box>
-                      ) : (
-                        <Box p={3} bg="yellow.50" borderWidth="1px" borderColor="yellow.200" rounded="md" borderLeftWidth="4px" borderLeftColor="yellow.500">
-                          <Text fontSize="sm" color="yellow.900" fontWeight="medium">⚠️ Location not set</Text>
-                          <Text fontSize="xs" color="yellow.700" mt={1}>Detect your location to use delivery</Text>
-                        </Box>
-                      )}
-                    </FormControl>
-                  </Box>
+                  <VStack spacing={2} mt={3} align="stretch">
+                    {/* Location Display */}
+                    <Box 
+                      p={2.5} 
+                      bg={useColorModeValue('gray.50', 'gray.700')} 
+                      borderWidth="1px" 
+                      borderColor={useColorModeValue('gray.200', 'gray.600')} 
+                      rounded="md"
+                    >
+                      <HStack justify="space-between" align="center" spacing={2}>
+                        <HStack spacing={2} flex={1} minW={0}>
+                          <Icon as={FaMapMarkerAlt} boxSize={4} color={selectedBorder} flexShrink={0} />
+                          <VStack spacing={0} align="start" minW={0} flex={1}>
+                            <Text fontSize="11px" fontWeight="600" noOfLines={1}>
+                              {detectedLocationLabel || profileLocationLabel || 'Location not set'}
+                            </Text>
+                            <Text fontSize="9px" color={mutedTextColor} noOfLines={1}>
+                              Detected from your device
+                            </Text>
+                          </VStack>
+                        </HStack>
+                        {(detectedCoords || profileLocationLabel) && (
+                          <Link
+                            fontSize="9px"
+                            fontWeight="600"
+                            color={selectedBorder}
+                            onClick={() => {
+                              setDetectedCoords(null)
+                              setDetectedLocationLabel('')
+                            }}
+                            textDecoration="none"
+                            _hover={{ textDecoration: 'underline' }}
+                            flexShrink={0}
+                          >
+                            Clear
+                          </Link>
+                        )}
+                      </HStack>
+                    </Box>
+
+                    {/* Detect Location Button */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      w="full"
+                      fontSize="11px"
+                      height="32px"
+                      isLoading={detectingLocation}
+                      loadingText="Detecting..."
+                      onClick={handleDetectLocation}
+                      borderColor={selectedBorder}
+                      color={selectedBorder}
+                      _hover={{ bg: selectedBg }}
+                    >
+                      📍 Detect my location
+                    </Button>
+                  </VStack>
                 )}
               </FormControl>
 
-              <Divider />
-
-              {/* Payment Method Selection */}
-              <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="semibold" mb={3}>
-                  Preferred Payment Method
-                </FormLabel>
-                <Text fontSize="xs" color="gray.600" mb={3}>
-                  Choose how you prefer to pay for this buyout.
+              {/* Info Notice */}
+              <Box 
+                p={2.5}
+                bg={useColorModeValue('gray.100', 'gray.700')}
+                borderRadius="md"
+                borderLeft="3px"
+                borderLeftColor={mutedTextColor}
+              >
+                <Text fontSize="10px" color={mutedTextColor} lineHeight="1.4">
+                  Your preference is included in the offer. Trader can accept or propose a different setup in chat.
                 </Text>
-                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
-                  {/* COD Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={paymentMethod === 'cod' ? '2px' : '1px'}
-                    borderColor={paymentMethod === 'cod' ? selectedBorder : borderColor}
-                    bg={paymentMethod === 'cod' ? selectedBg : cardBg}
-                    onClick={() => setPaymentMethod('cod')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: paymentMethod === 'cod' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={paymentMethod === 'cod' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'cod' ? 'white' : 'gray.600'}>
-                          <Icon as={FaMoneyBillWave} boxSize={6} />
-                        </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Cash on Delivery</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay when item arrives</Text>
-                        </VStack>
-                        {paymentMethod === 'cod' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
-                      </VStack>
-                    </CardBody>
-                  </Card>
+              </Box>
 
-                  {/* Upfront Payment Option */}
-                  <Card
-                    variant="outline"
-                    cursor="pointer"
-                    borderWidth={paymentMethod === 'upfront' ? '2px' : '1px'}
-                    borderColor={paymentMethod === 'upfront' ? selectedBorder : borderColor}
-                    bg={paymentMethod === 'upfront' ? selectedBg : cardBg}
-                    onClick={() => setPaymentMethod('upfront')}
-                    transition="all 0.2s"
-                    _hover={{
-                      borderColor: paymentMethod === 'upfront' ? selectedBorder : 'brand.300',
-                      shadow: 'md',
-                      transform: 'translateY(-2px)',
-                    }}
-                  >
-                    <CardBody p={4}>
-                      <VStack spacing={3} align="center">
-                        <Box p={3} borderRadius="full" bg={paymentMethod === 'upfront' ? 'brand.500' : 'gray.100'} color={paymentMethod === 'upfront' ? 'white' : 'gray.600'}>
-                          <Icon as={FaCheckCircle} boxSize={6} />
-                        </Box>
-                        <VStack spacing={1} align="center">
-                          <Text fontWeight="semibold" fontSize="sm">Upfront Payment</Text>
-                          <Text fontSize="xs" color="gray.600" textAlign="center">Pay before shipment</Text>
-                        </VStack>
-                        {paymentMethod === 'upfront' && <Icon as={FaCheckCircle} color="brand.500" boxSize={4} />}
-                      </VStack>
-                    </CardBody>
-                  </Card>
-                </Grid>
-
-                <Box mt={3} p={3} bg="blue.50" borderWidth="1px" borderColor="blue.200" rounded="md" borderLeftWidth="4px" borderLeftColor="blue.500">
-                  <Text fontSize="xs" color="blue.900">
-                    This payment preference is included in your offer. The trader can accept or request a different setup in chat.
-                  </Text>
-                </Box>
-
-                <Button
-                  size="sm"
-                  colorScheme="blue"
-                  mt={3}
-                  isLoading={detectingLocation}
-                  loadingText="Detecting..."
-                  onClick={handleDetectLocation}
-                >
-                  📍 Detect My Location
-                </Button>
-                <Text fontSize="xs" color="gray.600" mt={1}>
-                  For delivery offers, this sets your current barangay-level location.
-                </Text>
-              </FormControl>
-
-              <Divider />
-              <HStack justify="flex-end" spacing={3}>
-                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+              {/* Action Row */}
+              <HStack justify="flex-end" spacing={3} pt={2}>
                 <Button 
-                  colorScheme="green" 
+                  variant="ghost" 
+                  onClick={onClose}
+                  fontSize="11px"
+                  height="36px"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  bg={selectedBorder}
+                  color="white"
                   isLoading={submittingTrade} 
-                  onClick={() => setShowConfirmModal(true)} 
-                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption || !paymentMethod || (tradeOption === 'delivery' && !resolvedDeliveryAddress())}
-                  leftIcon={<FaMoneyBillWave />}
+                  onClick={submitTrade}
+                  isDisabled={!cashAmount || Number(cashAmount) <= 0 || !tradeOption || (tradeOption === 'delivery' && !resolvedDeliveryAddress())}
+                  fontSize="11px"
+                  fontWeight="600"
+                  height="36px"
+                  flex="2"
+                  leftIcon={<FaCreditCard />}
+                  _hover={{ bg: '#158A63' }}
+                  _active={{ bg: '#0F5A42' }}
                 >
                   Confirm Buyout
                 </Button>
@@ -500,40 +486,15 @@ const BuyoutModal: React.FC<BuyoutModalProps> = ({ isOpen, onClose, targetProduc
             </VStack>
           ) : (
             <VStack spacing={4}>
-              <Text color="gray.600">You need to be signed in to purchase items.</Text>
-              <HStack spacing={4} w="full">
-                <Button onClick={onClose} as={'a'} href="/login" colorScheme="brand" flex={1}>Sign In</Button>
-                <Button onClick={onClose} as={'a'} href="/register" variant="outline" flex={1}>Sign Up</Button>
+              <Text color="gray.600" fontSize="12px">You need to be signed in to purchase items.</Text>
+              <HStack spacing={3} w="full">
+                <Button onClick={onClose} as={'a'} href="/login" colorScheme="brand" flex={1} size="sm">Sign In</Button>
+                <Button onClick={onClose} as={'a'} href="/register" variant="outline" flex={1} size="sm">Sign Up</Button>
               </HStack>
             </VStack>
           )}
         </ModalBody>
       </ModalContent>
-      {/* Confirmation dialog: single step, no summary */}
-      <Modal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} isCentered size="sm">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Confirm Buyout Offer</ModalHeader>
-          <ModalCloseButton onClick={() => setShowConfirmModal(false)} />
-          <ModalBody pb={6}>
-            <VStack spacing={4} align="stretch">
-              <Text>Are you sure you want to send this buyout offer?</Text>
-              <Box bg="green.50" borderWidth="1px" borderColor="green.200" rounded="md" p={4} textAlign="center">
-                <Text fontSize="sm" color="green.700" mb={1}>You are offering to pay</Text>
-                <Text fontSize="3xl" fontWeight="bold" color="green.600">₱{Number(cashAmount).toFixed(2)}</Text>
-              </Box>
-              <Box mt={2}>
-                <Text fontSize="sm" fontWeight="semibold">For item:</Text>
-                <Text fontSize="md">{targetProduct?.title}</Text>
-              </Box>
-              <HStack justify="flex-end" mt={4} spacing={3}>
-                <Button variant="ghost" onClick={() => setShowConfirmModal(false)}>Cancel</Button>
-                <Button colorScheme="green" isLoading={submittingTrade} onClick={submitTrade}>Send Offer</Button>
-              </HStack>
-            </VStack>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
     </Modal>
   )
 }

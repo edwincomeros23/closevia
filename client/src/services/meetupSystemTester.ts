@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { API_BASE_URL } from './api'
 
 /**
  * MeetupSystemTester - Comprehensive testing utility for all meetup stage transitions
@@ -13,7 +14,9 @@ export interface TestResult {
   details?: string
 }
 
-const API_BASE = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000'
+// Prefer the same normalized base URL as the main API client.
+// If API_BASE_URL is '' in dev (proxy mode), use the direct backend address.
+const API_BASE = API_BASE_URL || 'http://127.0.0.1:4000'
 
 class MeetupSystemTester {
   private testTradeId: number = 0
