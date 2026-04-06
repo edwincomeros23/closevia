@@ -132,6 +132,26 @@ func main() {
 		return c.Next()
 	})
 
+	// ⚡ OPTIMIZED: Add Cache-Control headers for static assets
+	// This improves repeat visit performance and reduces bandwidth
+	app.Use(func(c *fiber.Ctx) error {
+		path := c.Path()
+
+		// Set cache headers based on file type (extensionless paths are dynamic)
+		if strings.Contains(path, "/uploads/products/") {
+			// ✅ Product images: Cache for 30 days (versioned by upload timestamp)
+			c.Set("Cache-Control", "public, max-age=2592000, immutable") // 30 days
+		} else if strings.Contains(path, "/uploads/") {
+			// ✅ User uploads: Cache for 7 days (profile pics, etc.)
+			c.Set("Cache-Control", "public, max-age=604800, immutable") // 7 days
+		} else if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") {
+			// ✅ Assets (should be versioned by build): Cache for 1 year
+			c.Set("Cache-Control", "public, max-age=31536000, immutable") // 1 year
+		}
+
+		return c.Next()
+	})
+
 	// Serve static files (uploads directory)
 	app.Static("/uploads", "./uploads")
 	app.Static("/uploads/products", "./uploads/products")

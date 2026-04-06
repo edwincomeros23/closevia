@@ -39,6 +39,7 @@ import {
   Grid,
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
+import OptimizedImage from './OptimizedImage'
 import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle, FaCheck } from 'react-icons/fa'
 import {
   FiMapPin,
@@ -2106,14 +2107,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </HStack>
                               {requestedProduct ? (
                                 <>
-                                  <Image
+                                  <OptimizedImage
                                     src={getFirstImage(requestedProduct.image_urls)}
                                     alt={requestedProduct.title}
-                                    w="full"
-                                    h="150px"
+                                    displayWidth="full"
+                                    displayHeight="150px"
                                     objectFit="cover"
                                     borderRadius="md"
                                     fallbackSrc="/no-image.svg"
+                                    width={300}
                                   />
                                   <Text fontWeight="semibold">{requestedProduct.title}</Text>
                                   <Text fontSize="sm" color="gray.600" noOfLines={2}>
@@ -2147,14 +2149,15 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 <SimpleGrid columns={offeredProducts.length > 1 ? 2 : 1} spacing={2}>
                                   {offeredProducts.map((product) => (
                                     <Box key={`offered-${product.id}`}>
-                                      <Image
+                                      <OptimizedImage
                                         src={getFirstImage(product.image_urls)}
                                         alt={product.title}
-                                        w="full"
-                                        h="150px"
+                                        displayWidth="full"
+                                        displayHeight="150px"
                                         objectFit="cover"
                                         borderRadius="md"
                                         fallbackSrc="/no-image.svg"
+                                        width={250}
                                       />
                                       <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
                                         {product.title}

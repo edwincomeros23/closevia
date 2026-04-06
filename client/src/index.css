@@ -1,7 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+/* 
+ * Critical fonts: Load only essential weights (400, 500, 600) for initial render
+ * Other weights (300, 700) loaded defer
+ */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+
+/* 
+ * Defer loading of less critical font weights that aren't needed above-the-fold
+ * Using media query trick to defer CSS parse/rendering
+ */
+@media (prefers-reduced-data: no-preference) {
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;700&display=swap');
+}
 
 :root {
-  font-family: 'Poppins', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   line-height: 1.5;
   font-weight: 400;
 

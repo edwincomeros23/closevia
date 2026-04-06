@@ -26,6 +26,7 @@ import { getProductUrl } from '../utils/productUtils'
 import { formatPHP } from '../utils/currency'
 import FloatingTab from '../components/FloatingTab'
 import ImageZoomModal from '../components/ImageZoomModal'
+import OptimizedImage from '../components/OptimizedImage'
 
 const ProductsList: React.FC = () => {
   const { products, loading, error, searchProducts, clearError } = useProducts()
@@ -83,18 +84,19 @@ const ProductsList: React.FC = () => {
         cursor="zoom-in"
         onClick={(e) => handleImageZoom(e, getFirstImage(p.image_urls), p.title)}
       >
-        <Image
+        <OptimizedImage
           src={getFirstImage(p.image_urls)}
           alt={p.title}
           position="absolute"
           top={0}
           left={0}
-          w="100%"
-          h="100%"
+          displayWidth="100%"
+          displayHeight="100%"
           objectFit="cover"
           loading="lazy"
           fallbackSrc="/no-image.svg"
           cursor="zoom-in"
+          width={300}
           onClick={(e) => {
             e.stopPropagation()
             handleImageZoom(e, getFirstImage(p.image_urls), p.title)

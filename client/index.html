@@ -8,6 +8,19 @@
     <meta name="theme-color" content="#0e7490" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    
+    <!-- Resource hints for critical external resources -->
+    <!-- DNS prefetch for Google Fonts (non-blocking DNS resolution) -->
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    
+    <!-- Preconnect to Google Fonts for faster connection establishment -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <!-- Preload critical Google Font with high priority -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" />
+    
     <title>Clovia</title>
   </head>
   <body>
