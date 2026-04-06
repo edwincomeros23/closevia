@@ -111,11 +111,15 @@ func parseWantedCategories(raw string) models.StringArray {
 func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
+		log.Printf("❌ [CreateProduct] ERROR: Failed to extract userID from context")
 		return c.Status(401).JSON(models.APIResponse{
 			Success: false,
 			Error:   "User not authenticated",
 		})
 	}
+
+	// DEBUG LOG: Track which user is creating the product
+	log.Printf("✅ [CreateProduct] User ID %d attempting to create product", userID)
 
 	// Parse fields
 	title := c.FormValue("title")
@@ -414,6 +418,10 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	}
 
 	productID, _ := result.LastInsertId()
+
+	// DEBUG LOG: Confirm product was created with correct seller_id
+	log.Printf("✅ [CreateProduct] Product #%d successfully created for seller_id=%d | Title: %s",
+		productID, userID, title)
 
 	// Store counterfeit detection results
 	if report.IsSuspicious {
