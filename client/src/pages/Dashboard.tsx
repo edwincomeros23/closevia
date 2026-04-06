@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
@@ -784,8 +784,13 @@ const Dashboard: React.FC = () => {
         continue
       }
       
+      const loopType = trade?.loop_type || ''
+
       if (status === 'pending_user3' && (canJoin || canDecline)) {
         // User is User3 and hasn't responded yet
+        needsAction.push(trade)
+      } else if (loopType === 'detected_loop' && (canJoin || canDecline)) {
+        // Graph-detected cycle: all participants in the trade chain can accept or decline
         needsAction.push(trade)
       } else if (status === 'user3_accepted' || status === 'active') {
         // User has already accepted, now waiting on others
@@ -1215,7 +1220,7 @@ const Dashboard: React.FC = () => {
     }
   }, [invalidateOffers, invalidateDashboard])
 
-  const handleCompleteTradeClick = (trade: Trade) => {
+  const handleCompleteTradeClick = useCallback((trade: Trade) => {
     // Check if meetup is confirmed before allowing completion
     const meetupConfirmed = trade.meetup_confirmed || (trade.buyer_meetup_confirmed && trade.seller_meetup_confirmed)
 
@@ -1235,12 +1240,12 @@ const Dashboard: React.FC = () => {
 
     setSelectedTrade(trade)
     setCompletionModalOpen(true)
-  }
+  }, [toast])
 
-  const handleCancelTradeClick = (trade: Trade) => {
+  const handleCancelTradeClick = useCallback((trade: Trade) => {
     setTradeToCancel(trade)
     setCancelModalOpen(true)
-  }
+  }, [])
 
   const handleConfirmCancel = async () => {
     if (!tradeToCancel) return
@@ -1275,11 +1280,12 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  const handleDeclineTradeClick = (trade: Trade) => {
+  const handleDeclineTradeClick = useCallback((trade: Trade) => {
     setTradeToDecline(trade)
+    setSelectedTrade(trade) // Keep both in sync for the two modals
     setDeclineFeedback('')
     setDeclineModalOpen(true)
-  }
+  }, [])
 
   const handleConfirmDecline = async () => {
     if (!tradeToDecline) return
@@ -1382,9 +1388,12 @@ const Dashboard: React.FC = () => {
     const sentPending = (outgoing || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway').length
     const receivedPending = (incoming || []).filter(t => (t.status === 'pending' || t.status === 'pending_multiway') && (!t.items || t.items.length > 0 || !t.offered_cash_amount)).length // Exclude cash-only
     const ongoingMultiway = (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
+      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'multiway_active'
     ).length
-    const ongoing = (ongoingTradesData || []).length + ongoingMultiway
+    
+    // Deduplicate: status='multiway_active' trades are present in both ongoingTradesData and multiWayTrades
+    const standardActiveCount = (ongoingTradesData || []).filter(t => t.status !== 'multiway_active').length
+    const ongoing = standardActiveCount + ongoingMultiway;
     return {
       buyout,
       sentPending,
@@ -1447,6 +1456,16 @@ const Dashboard: React.FC = () => {
     }
     return filtered
   }, [outgoing, offersSearch, offersStatusFilter, offersSort, filterTrades])
+
+  const handleViewDetails = useCallback((trade: Trade) => {
+    setSelectedTrade(trade)
+    setDetailsOpen(true)
+  }, [])
+
+  const handleAcceptTrade = useCallback((trade: Trade) => {
+    setSelectedTrade(trade)
+    setCompletionModalOpen(true)
+  }, [])
 
   const receivedOffers = useMemo(() => {
     const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
@@ -1516,7 +1535,13 @@ const Dashboard: React.FC = () => {
   }, [outgoing, incoming, multiWayTrades, sentOffers, receivedOffers, ongoingTradesData])
 
   const ongoingTrades = useMemo(() => {
-    const filtered = filterTrades(ongoingTradesData, offersSearch, offersStatusFilter)
+    // Filter out multiway_active trades AND any trade that also appears in multiWayTrades
+    // (trades with 'active' status can exist in both sources, causing duplication)
+    const multiWayIds = new Set((multiWayTrades || []).map((t: any) => t.id).filter(Boolean))
+    const standardOnly = (ongoingTradesData || []).filter(t =>
+      t.status !== 'multiway_active' && !multiWayIds.has(t.id)
+    )
+    const filtered = filterTrades(standardOnly, offersSearch, offersStatusFilter)
     // Sort inline to avoid extra function call
     if (filtered.length > 1) {
       filtered.sort((a, b) => {
@@ -1526,14 +1551,14 @@ const Dashboard: React.FC = () => {
       })
     }
     return filtered
-  }, [ongoingTradesData, offersSearch, offersStatusFilter, offersSort, filterTrades])
+  }, [ongoingTradesData, multiWayTrades, offersSearch, offersStatusFilter, offersSort, filterTrades])
 
   // Accepted multiway trades that should appear in the ongoing trades section
   // ONLY show trades when ALL participants have accepted (status='active' or 'multiway_active')
   // Do NOT show 'user3_accepted' status - that means only User 3 has responded
   const ongoingMultiWayTrades = useMemo(() => {
     return (multiWayTrades || []).filter((t: any) =>
-      t?.status === 'active' || t?.status === 'multiway_active'
+      t?.status === 'pending_user3' || t?.status === 'user3_accepted' || t?.status === 'active' || t?.status === 'multiway_active'
     )
   }, [multiWayTrades])
 
@@ -2471,10 +2496,10 @@ const Dashboard: React.FC = () => {
   }: {
     trade: Trade
     isIncoming: boolean
-    onView: () => void
-    onAccept?: () => void
-    onDecline?: () => void
-    onCancel?: () => void
+    onView: (t: Trade) => void
+    onAccept?: (t: Trade) => void
+    onDecline?: (t: Trade) => void
+    onCancel?: (t: Trade) => void
   }) => {
     const statusColor = badgeColor(trade.status).color
     const userName = isIncoming ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous')
@@ -2529,7 +2554,7 @@ const Dashboard: React.FC = () => {
               colorScheme="brand"
               fontSize="sm"
               px={3}
-              onClick={onView}
+              onClick={() => onView(trade)}
             >
               View
             </Button>
@@ -2541,7 +2566,7 @@ const Dashboard: React.FC = () => {
                   variant="solid"
                   fontSize="sm"
                   px={3}
-                  onClick={onAccept}
+                  onClick={() => onAccept(trade)}
                 >
                   Accept
                 </Button>
@@ -2551,7 +2576,7 @@ const Dashboard: React.FC = () => {
                   variant="outline"
                   fontSize="sm"
                   px={3}
-                  onClick={onDecline}
+                  onClick={() => onDecline(trade)}
                 >
                   Decline
                 </Button>
@@ -2564,7 +2589,7 @@ const Dashboard: React.FC = () => {
                 variant="outline"
                 fontSize="sm"
                 px={3}
-                onClick={onCancel}
+                onClick={() => onCancel(trade)}
               >
                 Cancel
               </Button>
@@ -2578,7 +2603,7 @@ const Dashboard: React.FC = () => {
             variant="outline"
             colorScheme="brand"
             fontSize="xs"
-            onClick={onView}
+            onClick={() => onView(trade)}
           >
             View
           </Button>
@@ -2589,7 +2614,7 @@ const Dashboard: React.FC = () => {
                 colorScheme="green"
                 variant="solid"
                 fontSize="xs"
-                onClick={onAccept}
+                onClick={() => onAccept(trade)}
               >
                 Accept
               </Button>
@@ -2598,7 +2623,7 @@ const Dashboard: React.FC = () => {
                 colorScheme="red"
                 variant="outline"
                 fontSize="xs"
-                onClick={onDecline}
+                onClick={() => onDecline(trade)}
               >
                 Decline
               </Button>
@@ -2610,7 +2635,7 @@ const Dashboard: React.FC = () => {
               colorScheme="red"
               variant="outline"
               fontSize="xs"
-              onClick={onCancel}
+              onClick={() => onCancel(trade)}
             >
               Cancel
             </Button>
@@ -2624,8 +2649,8 @@ const Dashboard: React.FC = () => {
   const OngoingTradeCard: React.FC<{
     trade: Trade
     isIncoming: boolean
-    onView: () => void
-    onComplete?: () => void
+    onView: (t: Trade) => void
+    onComplete?: (t: Trade) => void
   }> = React.memo(({ trade, isIncoming, onView, onComplete }) => {
     const userName = isIncoming ? (trade.seller_name || 'Anonymous User') : (trade.buyer_name || 'Anonymous User')
 
@@ -2672,8 +2697,7 @@ const Dashboard: React.FC = () => {
     const timeAgo = getTimeAgo(trade.updated_at || trade.created_at)
 
     return (
-      <ScaleFade in={true} initialScale={0.95}>
-        <Card
+      <Card
           variant="outline"
           h="100%"
           display="flex"
@@ -2801,7 +2825,7 @@ const Dashboard: React.FC = () => {
               size="sm"
               colorScheme="brand"
               w="full"
-              onClick={onView}
+              onClick={() => onView(trade)}
               leftIcon={<Icon as={ViewIcon} />}
               _hover={{ transform: 'scale(1.02)', shadow: 'md' }}
               transition="all 0.2s"
@@ -2810,7 +2834,6 @@ const Dashboard: React.FC = () => {
             </Button>
           </CardFooter>
         </Card>
-      </ScaleFade>
     )
   })
 
@@ -2833,17 +2856,22 @@ const Dashboard: React.FC = () => {
   const OfferCard: React.FC<{
     trade: Trade
     isIncoming: boolean
-    onView: () => void
-    onAccept?: () => void
-    onDecline?: () => void
-    onCancel?: () => void
-    onComplete?: () => void
+    onView: (t: Trade) => void
+    onAccept?: (t: Trade) => void
+    onDecline?: (t: Trade) => void
+    onCancel?: (t: Trade) => void
+    onComplete?: (t: Trade) => void
   }> = React.memo(({ trade, isIncoming, onView, onAccept, onDecline, onCancel, onComplete }) => {
     const userName = isIncoming ? (trade.buyer_name || 'Anonymous User') : (trade.seller_name || 'Anonymous User')
 
+    const handleViewClick = useCallback(() => onView(trade), [onView, trade])
+    const handleAcceptClick = useCallback(() => onAccept?.(trade), [onAccept, trade])
+    const handleDeclineClick = useCallback(() => onDecline?.(trade), [onDecline, trade])
+    const handleCancelClick = useCallback(() => onCancel?.(trade), [onCancel, trade])
+    const handleCompleteClick = useCallback(() => onComplete?.(trade), [onComplete, trade])
+
     return (
-      <ScaleFade in={true} initialScale={0.95}>
-        <Card
+      <Card
           variant="outline"
           _hover={{
             shadow: "md",
@@ -2876,6 +2904,7 @@ const Dashboard: React.FC = () => {
           >
             <ProductThumb
               pid={trade.target_product_id}
+              src={trade.product_image_url}
               alt={getProductTitle(trade.target_product_id, trade.product_title)}
               size="full"
             />
@@ -2926,7 +2955,7 @@ const Dashboard: React.FC = () => {
                 colorScheme="brand"
                 flex={1}
                 minW={{ base: '55px', md: '70px' }}
-                onClick={onView}
+                onClick={handleViewClick}
                 _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
                 transition="all 0.2s"
               >
@@ -2939,7 +2968,7 @@ const Dashboard: React.FC = () => {
                     colorScheme="green"
                     flex={1}
                     minW={{ base: '55px', md: '70px' }}
-                    onClick={onAccept}
+                    onClick={handleAcceptClick}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
                   >
@@ -2951,7 +2980,7 @@ const Dashboard: React.FC = () => {
                     variant="outline"
                     flex={1}
                     minW={{ base: '55px', md: '70px' }}
-                    onClick={onDecline}
+                    onClick={handleDeclineClick}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
                   >
@@ -2966,7 +2995,7 @@ const Dashboard: React.FC = () => {
                   variant="outline"
                   flex={1}
                   minW={{ base: '55px', md: '70px' }}
-                  onClick={onCancel}
+                  onClick={() => onCancel && onCancel(trade)}
                   leftIcon={<Icon as={FaTimes} />}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
@@ -2980,7 +3009,7 @@ const Dashboard: React.FC = () => {
                   colorScheme="blue"
                   flex={1}
                   minW={{ base: '55px', md: '70px' }}
-                  onClick={onComplete}
+                  onClick={() => onComplete && onComplete(trade)}
                   leftIcon={<Icon as={FaHandshake} />}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
@@ -2991,7 +3020,6 @@ const Dashboard: React.FC = () => {
             </HStack>
           </CardFooter>
         </Card>
-      </ScaleFade>
     )
   })
 
@@ -4327,12 +4355,12 @@ const Dashboard: React.FC = () => {
                             <Box display={{ base: 'none', md: 'inline' }}>Ongoing Trades</Box>
                             <Box display={{ base: 'inline', md: 'none' }}>Ongoing</Box>
                           </HStack>
-                          {offersStats.ongoing > 0 && (
+                          {(ongoingTrades.length + ongoingMultiWayTrades.length) > 0 && (
                             <Badge ml={2} colorScheme="green" borderRadius="full" fontSize="xs">
-                              {offersStats.ongoing}
+                              {ongoingTrades.length + ongoingMultiWayTrades.length}
                             </Badge>
                           )}
-                          {offersStats.ongoing > 0 && (
+                          {(ongoingTrades.length + ongoingMultiWayTrades.length) > 0 && (
                             <Badge ml={2} colorScheme="red" variant="solid" fontSize="2xs">Action</Badge>
                           )}
                         </Tab>
@@ -4396,9 +4424,9 @@ const Dashboard: React.FC = () => {
                                     key={trade.id}
                                     trade={trade}
                                     isIncoming={true}
-                                    onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
-                                    onAccept={() => { setSelectedTrade(trade); setCompletionModalOpen(true) }}
-                                    onDecline={() => handleDeclineTradeClick(trade)}
+                                    onView={handleViewDetails}
+                                    onAccept={handleAcceptTrade}
+                                    onDecline={handleDeclineTradeClick}
                                   />
                                 ))}
                               </Box>
@@ -4436,9 +4464,9 @@ const Dashboard: React.FC = () => {
                                       key={trade.id}
                                       trade={trade}
                                       isIncoming={isIncoming}
-                                      onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
-                                      onAccept={() => { setSelectedTrade(trade); setCompletionModalOpen(true) }}
-                                      onDecline={() => handleDeclineTradeClick(trade)}
+                                      onView={handleViewDetails}
+                                      onAccept={handleAcceptTrade}
+                                      onDecline={handleDeclineTradeClick}
                                     />
                                   )
                                 })}
@@ -4509,8 +4537,8 @@ const Dashboard: React.FC = () => {
                                     key={trade.id}
                                     trade={trade}
                                     isIncoming={false}
-                                    onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
-                                    onCancel={() => handleCancelTradeClick(trade)}
+                                    onView={handleViewDetails}
+                                    onCancel={handleCancelTradeClick}
                                   />
                                 ))}
                               </Box>
@@ -4549,8 +4577,8 @@ const Dashboard: React.FC = () => {
                                       key={trade.id}
                                       trade={trade}
                                       isIncoming={isIncoming}
-                                      onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
-                                      onCancel={() => handleCancelTradeClick(trade)}
+                                      onView={handleViewDetails}
+                                      onCancel={handleCancelTradeClick}
                                     />
                                   )
                                 })}
@@ -4621,9 +4649,9 @@ const Dashboard: React.FC = () => {
                                     key={trade.id}
                                     trade={trade}
                                     isIncoming={true}
-                                    onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
-                                    onAccept={() => updateTrade(trade.id, { action: 'accept' })}
-                                    onDecline={() => handleDeclineTradeClick(trade)}
+                                    onView={handleViewDetails}
+                                    onAccept={handleAcceptTrade}
+                                    onDecline={handleDeclineTradeClick}
                                   />
                                 ))}
                               </Box>
@@ -4661,9 +4689,9 @@ const Dashboard: React.FC = () => {
                                       key={trade.id}
                                       trade={trade}
                                       isIncoming={isIncoming}
-                                      onView={() => { setSelectedTrade(trade); setDetailsOpen(true) }}
-                                      onAccept={() => updateTrade(trade.id, { action: 'accept' })}
-                                      onDecline={() => handleDeclineTradeClick(trade)}
+                                      onView={handleViewDetails}
+                                      onAccept={handleAcceptTrade}
+                                      onDecline={handleDeclineTradeClick}
                                     />
                                   )
                                 })}
@@ -4787,7 +4815,7 @@ const Dashboard: React.FC = () => {
                                         variant="outline"
                                         fontSize={{ base: 'xs', md: 'sm' }}
                                         px={{ base: 2, md: 3 }}
-                                        onClick={() => { setSelectedTrade(trade); setViewTradeModalOpen(true) }}
+                                        onClick={() => handleViewDetails(trade)}
                                       >
                                         View
                                       </Button>
@@ -4829,8 +4857,8 @@ const Dashboard: React.FC = () => {
                                       key={trade.id}
                                       trade={trade}
                                       isIncoming={isIncoming}
-                                      onView={() => { setSelectedTrade(trade); setViewTradeModalOpen(true) }}
-                                      onComplete={() => handleCompleteTradeClick(trade)}
+                                      onView={handleViewDetails}
+                                      onComplete={handleCompleteTradeClick}
                                     />
                                   )
                                 })}

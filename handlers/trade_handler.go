@@ -116,19 +116,18 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		}
 	}
 
-	// Check if user already has a pending trade request for this product
-	// Layer 3 Backend Validation: Only check for pending status (not accepted/counter)
-	// to prevent duplicate offers on the same product
+	// Check if user already has an active trade request for this product (any non-terminal status)
 	var existingTradeID int
 	err = h.db.QueryRow(`
-		SELECT id FROM trades 
-		WHERE buyer_id = ? AND target_product_id = ? AND status = 'pending'
+		SELECT id FROM trades
+		WHERE buyer_id = ? AND target_product_id = ?
+		  AND status IN ('pending', 'countered', 'accepted', 'active', 'pending_multiway', 'multiway_active')
 		LIMIT 1
 	`, userID, payload.TargetProductID).Scan(&existingTradeID)
 
-	// If no error (meaning a row was found), user already has a pending trade request
+	// If no error (meaning a row was found), user already has an active trade request
 	if err == nil {
-		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "You already have a pending offer on this product"})
+		return c.Status(409).JSON(models.APIResponse{Success: false, Error: "You already have an active offer or trade for this product"})
 	}
 	// Any error other than sql.ErrNoRows is a real error
 	if err != sql.ErrNoRows {
@@ -247,9 +246,11 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		"offered_cash_amount": payload.OfferedCashAmount,
 	}})
 
-	// After creating a trade, trigger multiway search
+	// After creating a trade, trigger multiway search.
+	// Note: do NOT call rebuildTradeLoopCacheForUsers here — autoTriggerMultiwayForTrade
+	// clears the cache after a chain is found, and rebuildTradeLoopCacheForUsers would race
+	// to write an incomplete cache (no invited_chain records) back into the DB.
 	go h.autoTriggerMultiwayForTrade(tradeID, sellerID, "trade_created")
-	go h.rebuildTradeLoopCacheForUsers([]int{userID, sellerID})
 
 	return c.Status(201).JSON(models.APIResponse{Success: true, Message: "Trade created", Data: trade})
 }
@@ -377,14 +378,18 @@ func (h *TradeHandler) evaluateAndCreateMultiwaySuggestion(tradeID int, initiato
 		}
 
 		publishToUser(best.User3ID, sseEvent{Type: "multiway_opportunity", Data: fiber.Map{"chain_id": chainID, "source": triggerSource}})
-		go h.rebuildTradeLoopCacheForUsers([]int{buyerID, sellerID, best.User3ID})
+		// Clear stale loop cache so the next GetTradeLoops call runs a full query and returns the new invited_chain.
+		// Do NOT rebuild the cache here — rebuildTradeLoopCacheForUsers only knows about graph/auto_multiway loops
+		// and would write an incomplete cache that hides the invited_chain from all parties.
+		_, _ = h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id IN (?, ?, ?)", buyerID, sellerID, best.User3ID)
 		return true, loopStatus, "Multi-way loop found and invites sent", debug, nil
 	}
 
 	upgradeMsg := "A 3-way loop was found for your trade — upgrade to Pro to start it."
 	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", initiatorUserID, upgradeMsg)
 	publishNotification(initiatorUserID, upgradeMsg)
-	go h.rebuildTradeLoopCacheForUsers([]int{buyerID, sellerID})
+	// Clear stale loop cache so the initiator sees the upgrade prompt on next fetch.
+	_, _ = h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id IN (?, ?)", buyerID, sellerID)
 
 	return true, loopStatus, "Loop found. Upgrade required to initiate invites.", debug, nil
 }
@@ -3239,11 +3244,18 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 
 	if err == nil {
 		defer rows.Close()
+		seenChainIDs := map[string]bool{}
 		for rows.Next() {
 			var chainID, mStatus, expiresAt, u1Name, u2Name, u3Name, initiatorName, u3WantedTitle, u2Title, u3Title string
 			var tradeID, u3ID, u3PID, initiatorUserID, u1ID, u2ID, u2PID int
 			err = rows.Scan(&chainID, &tradeID, &u3ID, &u3PID, &mStatus, &initiatorUserID, &expiresAt, &u1ID, &u2ID, &u2PID, &u1Name, &u2Name, &u3Name, &initiatorName, &u3WantedTitle, &u2Title, &u3Title)
 			if err == nil {
+				// Deduplicate: trade_items JOIN can produce multiple rows per chain if buyer offered multiple products
+				if seenChainIDs[chainID] {
+					continue
+				}
+				seenChainIDs[chainID] = true
+
 				if mStatus == "pending_initiator_upgrade" && userID != initiatorUserID {
 					continue
 				}
