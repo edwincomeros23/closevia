@@ -213,6 +213,21 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
   const activeRingColor = useColorModeValue('brand.50', 'brand.950')
   const lineInactiveColor = useColorModeValue('gray.200', 'gray.700')
 
+  const steps = useMemo(() => {
+    if (trade?.trade_option !== 'delivery') return PROGRESS_STEPS
+
+    // Delivery trades should not display meetup terminology.
+    return PROGRESS_STEPS.map((s) => {
+      if (s.id !== 'meetup_confirmed') return s
+      return {
+        ...s,
+        label: 'Delivery Confirmed',
+        icon: FaTruck,
+        description: 'Delivery option confirmed for both parties',
+      }
+    })
+  }, [trade?.trade_option])
+
   const getTradeProgressStage = (): TradeProgressStage => {
     if (trade?.status === 'completed') return 'completed'
 
@@ -235,19 +250,22 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
   }
 
   const currentStage = getTradeProgressStage()
-  const currentStepIndex = PROGRESS_STEPS.findIndex(s => s.id === currentStage)
+  const currentStepIndex = steps.findIndex(s => s.id === currentStage)
 
   // Fix: Only mark steps as 'active' if they are truly reached
   const getStepStatus = (stepIndex: number): 'completed' | 'active' | 'inactive' => {
     // Step 0 logic depends on trade type
     if (stepIndex === 0) {
       if (trade?.trade_option === 'delivery') {
-        // For delivery trades, step 0 is active when trade becomes active
-        return trade?.status === 'active' ? 'active' : 'inactive'
+        // For delivery trades, step 0 represents confirming delivery method.
+        // Mark it active on acceptance, and completed once trade is active.
+        if (trade?.status === 'active' || trade?.status === 'completed') return 'completed'
+        return trade?.status === 'accepted' ? 'active' : 'inactive'
       } else {
         // For meetup trades, step 0 is active when both parties confirm meetup
         const bothConfirmed = trade?.meetup_confirmed || (trade?.buyer_meetup_confirmed && trade?.seller_meetup_confirmed)
-        return bothConfirmed ? 'active' : 'inactive'
+        if (!bothConfirmed) return 'inactive'
+        return trade?.status === 'active' || trade?.status === 'completed' ? 'completed' : 'active'
       }
     }
 
@@ -269,7 +287,7 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
     <VStack spacing={3} w="full" align="stretch">
       {/* Steps - Horizontal Layout */}
       <HStack spacing={0} w="full" align="center" justify="space-between" position="relative">
-        {PROGRESS_STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const status = getStepStatus(index)
           const stepBg = getStepBg(status)
 
@@ -311,8 +329,8 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
 
         {/* Connecting Lines - Centered */}
         <Box position="absolute" top="50%" transform="translateY(-50%)" left="0" right="0" h="1.5px" display="flex" pointerEvents="none" zIndex={0}>
-          {PROGRESS_STEPS.map((step, index) => {
-            if (index === PROGRESS_STEPS.length - 1) return null
+          {steps.map((step, index) => {
+            if (index === steps.length - 1) return null
 
             const status = getStepStatus(index)
             const lineColor = status === 'completed' ? completedBg : lineInactiveColor
@@ -333,7 +351,7 @@ const TradeProgressIndicator: React.FC<TradeProgressIndicatorProps> = ({ trade }
 
       {/* Current Stage Description */}
       <Text fontSize="sm" color={descriptionColor} fontWeight="medium" textAlign="center" mt={1}>
-        {PROGRESS_STEPS[currentStepIndex]?.description}
+        {steps[currentStepIndex]?.description}
       </Text>
     </VStack>
   )
@@ -1741,6 +1759,31 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   if (!trade) return null
 
 
+  const isDeliveryTrade = trade.trade_option === 'delivery'
+  const deliverySteps = [
+    { status: 'pending', label: 'Pending' },
+    { status: 'claimed', label: 'Claimed' },
+    { status: 'picked_up', label: 'Picked Up' },
+    { status: 'in_transit', label: 'In Transit' },
+    { status: 'delivered', label: 'Delivered' },
+  ] as const
+
+  const deliveryStatus = (linkedDelivery?.status || 'pending') as (typeof deliverySteps)[number]['status']
+  const deliveryStepIndexRaw = deliverySteps.findIndex(s => s.status === deliveryStatus)
+  const deliveryStepIndex = deliveryStepIndexRaw >= 0 ? deliveryStepIndexRaw : 0
+  const deliveryProgress = ((deliveryStepIndex + 1) / deliverySteps.length) * 100
+  const deliveryStatusColorScheme =
+    deliveryStatus === 'delivered'
+      ? 'green'
+      : deliveryStatus === 'in_transit'
+        ? 'orange'
+        : deliveryStatus === 'picked_up'
+          ? 'purple'
+          : deliveryStatus === 'claimed'
+            ? 'blue'
+            : 'gray'
+
+
   const handleConfirmPayment = async () => {
     try {
       setConfirmingPayment(true)
@@ -1981,6 +2024,53 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </Text>
                             </Box>
                           )}
+                        </CardBody>
+                      </Card>
+                    )}
+
+
+                    {/* Delivery status snapshot (aligns with rider job steps) */}
+                    {isDeliveryTrade && (
+                      <Card variant="outline" borderWidth="1px" borderColor="gray.200">
+                        <CardBody p={4}>
+                          <VStack spacing={3} align="stretch">
+                            <HStack spacing={3} align="center">
+                              <Icon as={FaTruck} color="green.600" />
+                              <Text fontWeight="bold" fontSize="sm">Delivery Tracking</Text>
+                              <Badge ml="auto" colorScheme={deliveryStatusColorScheme} fontSize="xs">
+                                {deliveryStatus.replace(/_/g, ' ').toUpperCase()}
+                              </Badge>
+                            </HStack>
+
+                            <Progress value={deliveryProgress} size="sm" borderRadius="full" colorScheme={deliveryStatusColorScheme} />
+
+                            <HStack justify="space-between" align="start" spacing={2}>
+                              {deliverySteps.map((step, idx) => {
+                                const isActive = idx <= deliveryStepIndex
+                                return (
+                                  <VStack key={step.status} spacing={1} flex={1} minW={0}>
+                                    <Box
+                                      w="10px"
+                                      h="10px"
+                                      borderRadius="full"
+                                      bg={isActive ? `${deliveryStatusColorScheme}.500` : 'gray.300'}
+                                    />
+                                    <Text fontSize="2xs" color={isActive ? 'gray.700' : 'gray.500'} textAlign="center" noOfLines={1}>
+                                      {step.label}
+                                    </Text>
+                                  </VStack>
+                                )
+                              })}
+                            </HStack>
+
+                            {linkedDelivery?.rider_name ? (
+                              <Text fontSize="xs" color="gray.600">
+                                Rider: <Text as="span" fontWeight="semibold">{linkedDelivery.rider_name}</Text>
+                              </Text>
+                            ) : (
+                              <Text fontSize="xs" color="gray.600">Waiting for a rider to claim this delivery.</Text>
+                            )}
+                          </VStack>
                         </CardBody>
                       </Card>
                     )}
