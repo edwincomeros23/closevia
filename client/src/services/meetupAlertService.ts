@@ -42,6 +42,8 @@ interface ScheduledAlert {
 class MeetupAlertService {
   private scheduledAlerts: Map<string, ScheduledAlert> = new Map()
   private showNotification: ((msg: string, type?: string) => void) | null = null
+  private lastShownAlertsRef: Map<string, number> = new Map()  // Track last time each alert was shown
+  private readonly ALERT_DEDUP_WINDOW = 1000  // Min 1 second between same alerts
 
   /**
    * Initialize the alert service with notification context
@@ -215,6 +217,19 @@ class MeetupAlertService {
       console.warn('Notification service not initialized')
       return
     }
+
+    // Check if we've shown this exact alert recently
+    const alertKey = `${alertConfig.type}`
+    const lastShownTime = this.lastShownAlertsRef.get(alertKey)
+    const now = Date.now()
+    
+    if (lastShownTime && (now - lastShownTime) < this.ALERT_DEDUP_WINDOW) {
+      // Skip duplicate alert
+      return
+    }
+    
+    // Record that we're showing this alert
+    this.lastShownAlertsRef.set(alertKey, now)
 
     const message = `${alertConfig.title} - ${alertConfig.message}`
     this.showNotification(message, 'info')

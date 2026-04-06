@@ -1079,6 +1079,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const previousMessageCountRef = useRef(0)  // Track message count to detect new messages
   const messagesRequestSeqRef = useRef(0)
+  const shownMessageNotificationsRef = useRef<Set<string>>(new Set())  // Track which message IDs have shown notifications
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const locationTextColor = useColorModeValue('gray.800', 'gray.100')
@@ -1375,6 +1376,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       previousMessageCountRef.current = 0
       setMessages([])
       setNewMessage('')
+      shownMessageNotificationsRef.current.clear()
       return
     }
 
@@ -1383,6 +1385,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
     // Reset message count tracker when opening a new trade id
     previousMessageCountRef.current = 0
+    shownMessageNotificationsRef.current.clear()
 
     fetchMessages({ showLoading: true })
     fetchProducts()
@@ -1474,19 +1477,24 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         if (otherUserMessages.length > 0) {
           const latestMessage = otherUserMessages[otherUserMessages.length - 1]
           const senderName = latestMessage.sender_name || 'User'
-          const messageId = latestMessage.id || `msg-${Date.now()}`
+          const messageId = String(latestMessage.id || `msg-${Date.now()}`)
           
-          // Show notification for new message from other user at the top
-          const toastId = `new-message-${messageId}`
-          toast({
-            id: toastId,
-            title: `New message from ${senderName}`,
-            description: latestMessage.content.substring(0, 60) + (latestMessage.content.length > 60 ? '...' : ''),
-            status: 'info',
-            duration: 3000,
-            isClosable: true,
-            position: 'top' as const,
-          })
+          // Only show notification if we haven't already shown one for this message
+          if (!shownMessageNotificationsRef.current.has(messageId)) {
+            shownMessageNotificationsRef.current.add(messageId)
+            
+            // Show notification for new message from other user at the top
+            const toastId = `new-message-${messageId}`
+            toast({
+              id: toastId,
+              title: `New message from ${senderName}`,
+              description: latestMessage.content.substring(0, 60) + (latestMessage.content.length > 60 ? '...' : ''),
+              status: 'info',
+              duration: 3000,
+              isClosable: true,
+              position: 'top' as const,
+            })
+          }
         }
       }
       

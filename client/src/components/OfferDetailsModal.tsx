@@ -33,6 +33,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const [requestedOption, setRequestedOption] = useState<TradeOption | null>(null)
   const [requestedDeliveryAddress, setRequestedDeliveryAddress] = useState<string>('')
   const [requestingOptionChange, setRequestingOptionChange] = useState(false)
+  const [isAccepting, setIsAccepting] = useState(false)
+  const [isDeclining, setIsDeclining] = useState(false)
+  const [isCountering, setIsCountering] = useState(false)
 
   // Deep debug logs for data structure analysis
   useEffect(() => {
@@ -167,8 +170,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }, [isOpen, effectiveTrade, getProduct, offeredItemIds])
 
   const accept = async () => {
-    if (!effectiveTrade) return
+    if (!effectiveTrade || isAccepting) return
     try {
+      setIsAccepting(true)
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'accept' } as TradeAction)
       toast({
         id: "offerdetailsmodal-offer-accepted", title: 'Offer accepted', status: 'success' })
@@ -177,6 +181,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     } catch (e: any) {
       toast({
         id: "offerdetailsmodal-failed-to-accept", title: 'Failed to accept', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    } finally {
+      setIsAccepting(false)
     }
   }
 
@@ -185,8 +191,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }
 
   const confirmDecline = async () => {
-    if (!effectiveTrade) return
+    if (!effectiveTrade || isDeclining) return
     try {
+      setIsDeclining(true)
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'decline' } as TradeAction)
       toast({
         id: "offerdetailsmodal-offer-declined", title: 'Offer declined', status: 'success' })
@@ -196,6 +203,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     } catch (e: any) {
       toast({
         id: "offerdetailsmodal-failed-to-decline", title: 'Failed to decline', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    } finally {
+      setIsDeclining(false)
     }
   }
 
@@ -245,8 +254,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const cancelRef = React.useRef<HTMLButtonElement>(null)
 
   const submitCounter = async () => {
-    if (!effectiveTrade) return
+    if (!effectiveTrade || isCountering) return
     try {
+      setIsCountering(true)
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'counter', counter_offered_product_ids: selectedCounterIds, message: counterMsg, counter_offered_cash_amount: cashDelta ? Number(cashDelta) : undefined } as TradeAction)
       toast({
         id: "offerdetailsmodal-counter-offer-sent", title: 'Counter offer sent', status: 'success' })
@@ -255,6 +265,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     } catch (e: any) {
       toast({
         id: "offerdetailsmodal-failed-to-counter", title: 'Failed to counter', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    } finally {
+      setIsCountering(false)
     }
   }
 
@@ -611,8 +623,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </VStack>
             </ModalBody>
             <ModalFooter>
-              <Button size="sm" variant="ghost" mr={2} onClick={() => setCounterOpen(false)}>Cancel</Button>
-              <Button size="sm" colorScheme="brand" onClick={submitCounter}>Send</Button>
+              <Button size="sm" variant="ghost" mr={2} onClick={() => setCounterOpen(false)} isDisabled={isCountering}>Cancel</Button>
+              <Button size="sm" colorScheme="brand" onClick={submitCounter} isLoading={isCountering}>Send</Button>
             </ModalFooter>
           </ModalContent>
         </Modal>
@@ -626,9 +638,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 You can send a counter offer instead to negotiate.
               </AlertDialogBody>
               <AlertDialogFooter>
-                <Button ref={cancelRef} size="sm" onClick={onDeclineClose}>Cancel</Button>
-                <Button size="sm" colorScheme="red" onClick={confirmDecline} ml={2}>Decline</Button>
-                <Button size="sm" colorScheme="brand" variant="outline" onClick={openCounter} ml={2}>Counter</Button>
+                <Button ref={cancelRef} size="sm" onClick={onDeclineClose} isDisabled={isDeclining}>Cancel</Button>
+                <Button size="sm" colorScheme="red" onClick={confirmDecline} ml={2} isLoading={isDeclining}>Decline</Button>
+                <Button size="sm" colorScheme="brand" variant="outline" onClick={openCounter} ml={2} isDisabled={isDeclining}>Counter</Button>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialogOverlay>
