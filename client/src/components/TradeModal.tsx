@@ -297,7 +297,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                                 </Badge>
                               )}
                             </HStack>
-                          )}}
+                          )}
                         </VStack>
                       </HStack>
                     </VStack>
