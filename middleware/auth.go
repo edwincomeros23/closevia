@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -42,6 +43,7 @@ func AuthMiddleware() fiber.Handler {
 		// Extract user information from claims
 		userID, ok := claims["user_id"].(float64)
 		if !ok {
+			log.Printf("❌ [AuthMiddleware] JWT claim extraction failed - user_id type: %T", claims["user_id"])
 			return c.Status(401).JSON(fiber.Map{
 				"success": false,
 				"error":   "Invalid token claims",
@@ -50,11 +52,15 @@ func AuthMiddleware() fiber.Handler {
 
 		email, ok := claims["email"].(string)
 		if !ok {
+			log.Printf("❌ [AuthMiddleware] JWT claim extraction failed - email type: %T", claims["email"])
 			return c.Status(401).JSON(fiber.Map{
 				"success": false,
 				"error":   "Invalid token claims",
 			})
 		}
+
+		// DEBUG LOG: Track which user_id is being extracted from the JWT token
+		log.Printf("✅ [AuthMiddleware] User authenticated - user_id=%d, email=%s", int(userID), email)
 
 		// Store user information in context for later use
 		c.Locals("user_id", int(userID))

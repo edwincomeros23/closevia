@@ -457,6 +457,22 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         {/* Scrollable Content */}
         <ModalBody p={4} overflowY="auto" flex={1}>
           <VStack align="stretch" spacing={4}>
+            {/* User Info Section */}
+            <Box p={3} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
+              <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>Trade Participant</Text>
+              <VStack align="start" spacing={2} fontSize="sm">
+                <HStack w="100%" justify="space-between">
+                  <Text fontWeight="semibold">{effectiveTrade?.buyer_id === user?.id ? 'From: ' : 'With: '}{effectiveTrade?.buyer_id === user?.id ? effectiveTrade?.seller_name : effectiveTrade?.buyer_name}</Text>
+                </HStack>
+                {effectiveTrade?.buyer_id === user?.id && effectiveTrade?.seller_location && (
+                  <Text fontSize="xs" color="gray.600">📍 {effectiveTrade.seller_location || 'Location not specified'}</Text>
+                )}
+                {effectiveTrade?.buyer_id !== user?.id && effectiveTrade?.buyer_location && (
+                  <Text fontSize="xs" color="gray.600">📍 {effectiveTrade.buyer_location || 'Location not specified'}</Text>
+                )}
+              </VStack>
+            </Box>
+
             {/* Counter Offer Info - if status is 'countered' */}
             {effectiveTrade?.status === 'countered' && (
               <Box p={3} bg="purple.50" borderRadius="md" borderWidth="1px" borderColor="purple.200">
@@ -510,7 +526,21 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                       <Text fontSize="xs" color="gray.500">Loading...</Text>
                     </Box>
                   ) : (
-                    renderProductCard(requested, { compact: true })
+                    <>
+                      {renderProductCard(requested, { compact: true })}
+                      {requested && (
+                        <Button 
+                          as="a" 
+                          href={getProductUrl(requested)} 
+                          variant="link" 
+                          colorScheme="brand" 
+                          w="full" 
+                          fontSize="xs"
+                        >
+                          View Product →
+                        </Button>
+                      )}
+                    </>
                   )}
                 </Box>
 
@@ -520,40 +550,69 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                     <VStack spacing={2} align="stretch">
                       {buyerItems.map((item: any, idx: number) => {
                         const product = offered.find(p => p.id === (item.product_id ?? item.productId));
+                        const itemId = item.product_id ?? item.productId
                         
                         if (!product) {
                           const itemImg = item.product_image_url || item.productImageUrl || item.image || ''
                           const itemTitle = item.product_title || item.productTitle || 'Unknown Item'
                           return (
-                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" h="80px">
-                              <Image 
-                                src={itemImg} 
-                                alt={itemTitle} 
-                                w="80px" 
-                                h="80px" 
-                                objectFit="cover" 
-                                fallbackSrc="/no-image.svg" 
-                              />
-                              <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
-                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
+                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" flexDir="column" h="auto">
+                              <Box display="flex" h="80px">
+                                <Image 
+                                  src={itemImg} 
+                                  alt={itemTitle} 
+                                  w="80px" 
+                                  h="80px" 
+                                  objectFit="cover" 
+                                  fallbackSrc="/no-image.svg" 
+                                />
+                                <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
+                                  <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
+                                </Box>
                               </Box>
+                              {itemId && (
+                                <Button 
+                                  as="a" 
+                                  href={`/products/${itemId}`} 
+                                  variant="link" 
+                                  colorScheme="brand" 
+                                  w="full" 
+                                  fontSize="2xs"
+                                  p={2}
+                                >
+                                  View →
+                                </Button>
+                              )}
                             </Box>
                           )
                         }
                         
                         return (
-                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" h="80px">
-                            <Image 
-                              src={resolveImage(product)} 
-                              alt={product.title} 
-                              w="80px" 
-                              h="80px" 
-                              objectFit="cover" 
-                              fallbackSrc="/no-image.svg"
-                            />
-                            <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
-                              <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
+                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" flexDir="column" h="auto">
+                            <Box display="flex" h="80px">
+                              <Image 
+                                src={resolveImage(product)} 
+                                alt={product.title} 
+                                w="80px" 
+                                h="80px" 
+                                objectFit="cover" 
+                                fallbackSrc="/no-image.svg"
+                              />
+                              <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
+                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
+                              </Box>
                             </Box>
+                            <Button 
+                              as="a" 
+                              href={getProductUrl(product)} 
+                              variant="link" 
+                              colorScheme="brand" 
+                              w="full" 
+                              fontSize="2xs"
+                              p={2}
+                            >
+                              View →
+                            </Button>
                           </Box>
                         );
                       })}

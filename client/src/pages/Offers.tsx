@@ -659,17 +659,29 @@ const Offers: React.FC = () => {
                 >
                   View
                 </Button>
-                {onAction && (
+                {onAction && type !== 'sent' && (
                   <Button
                     size="sm"
-                    colorScheme={type === 'sent' ? 'red' : onSecondaryAction ? 'green' : 'blue'}
-                    variant={type === 'sent' ? 'outline' : 'solid'}
+                    colorScheme={onSecondaryAction ? 'green' : 'blue'}
+                    variant="solid"
                     flex={1}
                     onClick={onAction}
                     fontSize="xs"
-                    isDisabled={type === 'sent' && trade.status !== 'pending'}
+                    isDisabled={trade.status !== 'pending'}
                   >
-                    {type === 'sent' ? 'Cancel' : type === 'progress' ? 'Complete' : 'Accept'}
+                    {type === 'progress' ? 'Complete' : 'Accept'}
+                  </Button>
+                )}
+                {onAction && type === 'sent' && trade.status === 'pending' && (
+                  <Button
+                    size="sm"
+                    colorScheme="red"
+                    variant="outline"
+                    flex={1}
+                    onClick={onAction}
+                    fontSize="xs"
+                  >
+                    Cancel
                   </Button>
                 )}
                 {onSecondaryAction && type === 'received' && (
