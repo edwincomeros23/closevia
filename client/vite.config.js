@@ -4,7 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 // https://vite.dev/config/
 export default defineConfig({
     plugins: [
-        react(),
+        react({
+            // Enable React 17+ JSX transform
+            jsxRuntime: 'automatic'
+        }),
         VitePWA({
             registerType: 'autoUpdate',
             injectRegister: false,
@@ -141,12 +144,16 @@ export default defineConfig({
             output: {
                 // Manual chunks configuration for optimal splitting
                 manualChunks(id) {
-                    // Separate vendor CSS into its own bundle
+                    // Keep React and React-DOM in main vendor bundle (don't separate!)
+                    if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+                        return 'vendor'; // React must stay in main vendor
+                    }
+                    // Separate other vendors
                     if (id.includes('node_modules')) {
-                        if (id.includes('chakra-ui'))
-                            return 'vendor-chakra';
                         if (id.includes('react-leaflet') || id.includes('leaflet'))
                             return 'vendor-map';
+                        if (id.includes('@chakra-ui'))
+                            return undefined; // Let@chakra-ui load from vendor
                         return 'vendor';
                     }
                     // Split large components into route-based chunks
