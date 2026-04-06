@@ -61,6 +61,7 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
   // Status progression
   const statusSteps: { status: DeliveryStatus; label: string; icon: any }[] = [
     { status: 'pending', label: 'Pending', icon: FaClock },
+    { status: 'claimed', label: 'Claimed', icon: FaTruck },
     { status: 'picked_up', label: 'Picked Up', icon: FaTruck },
     { status: 'in_transit', label: 'In Transit', icon: FaTruck },
     { status: 'delivered', label: 'Delivered', icon: FaCheckCircle },
@@ -68,7 +69,8 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
 
   const getCurrentStepIndex = () => {
     if (!delivery) return 0
-    return statusSteps.findIndex((step) => step.status === delivery.status)
+    const idx = statusSteps.findIndex((step) => step.status === delivery.status)
+    return idx >= 0 ? idx : 0
   }
 
   const fetchDelivery = async () => {
@@ -128,6 +130,8 @@ const DeliveryTracking: React.FC<DeliveryTrackingProps> = ({ isOpen, onClose, de
     switch (status) {
       case 'pending':
         return 'yellow'
+      case 'claimed':
+        return 'blue'
       case 'picked_up':
         return 'purple'
       case 'in_transit':
