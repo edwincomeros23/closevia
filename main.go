@@ -2,6 +2,7 @@ package main
 
 // hallo :3
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -20,6 +21,8 @@ import (
 	"github.com/xashathebest/clovia/models"
 	"github.com/xashathebest/clovia/services"
 )
+
+var startTime = time.Now()
 
 func debugEndpointsEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_DEBUG_ENDPOINTS")))
@@ -173,12 +176,39 @@ func main() {
 		})
 	})
 
-	// Health check
+	// Health check with database connectivity verification (for k6 load tests & monitoring)
+	app.Get("/api/health", func(c *fiber.Ctx) error {
+		// Ping database with 3-second timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		dbErr := database.DB.PingContext(ctx)
+		uptime := time.Since(startTime)
+
+		if dbErr != nil {
+			// DB is down, return 503 Service Unavailable (k6 recognizes this as infrastructure failure)
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"status":  "unhealthy",
+				"uptime":  uptime.String(),
+				"db":      "down",
+				"error":   dbErr.Error(),
+				"version": "xendit-sync-all-405-fix",
+			})
+		}
+
+		// All systems healthy
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"status":  "ok",
+			"uptime":  uptime.String(),
+			"db":      "connected",
+			"version": "xendit-sync-all-405-fix",
+		})
+	})
+
+	// Simple health check endpoint (for basic liveness probes, no DB ping)
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "Clovia API is running",
-			"version": "1.0.0",
+			"status": "ok",
 		})
 	})
 
