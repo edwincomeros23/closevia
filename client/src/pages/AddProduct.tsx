@@ -840,6 +840,32 @@ const AddProduct: React.FC = () => {
       <input id="vid-camera" type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
         onChange={e => handleVideoUpload(e.target.files)} />
 
+      {/* Video Preview */}
+      {uploadedVideo && (
+        <VStack spacing={2} align="stretch" bg="gray.50" p={4} borderRadius="lg" border="1px solid" borderColor="gray.200">
+          <HStack justify="space-between" align="center">
+            <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+              🎥 Video Added
+            </Text>
+            <Button
+              size="xs"
+              colorScheme="red"
+              variant="ghost"
+              onClick={removeVideo}
+            >
+              Remove
+            </Button>
+          </HStack>
+          <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" w="full">
+            <video 
+              src={videoPreviewUrl} 
+              controls 
+              style={{ width: '100%', maxHeight: '200px', objectFit: 'contain' }} 
+            />
+          </Box>
+        </VStack>
+      )}
+
       {/* Image Preview Grid */}
       {uploadedImages.length > 0 && (
         <VStack spacing={3} align="stretch" bg="gray.50" p={4} borderRadius="lg" border="1px solid" borderColor="gray.200">
