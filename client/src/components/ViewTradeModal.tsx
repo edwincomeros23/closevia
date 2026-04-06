@@ -64,16 +64,15 @@ L.Icon.Default.mergeOptions({
 const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
   const map = useMap()
   useEffect(() => {
-    // Multiple calls to ensure map updates properly
     const timers = [
       setTimeout(() => {
         map.invalidateSize()
         map.setView([lat, lng], 16, { animate: true })
-      }, 100),
+      }, 350),
       setTimeout(() => {
         map.invalidateSize()
         map.setView([lat, lng], 16, { animate: true })
-      }, 300),
+      }, 700),
     ]
     return () => timers.forEach(t => clearTimeout(t))
   }, [lat, lng, map])
@@ -83,11 +82,12 @@ const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
 const ModalMapFix = () => {
   const map = useMap()
   useEffect(() => {
-    // Multiple invalidateSize calls with increasing delays to ensure map renders
+    // Delays must exceed Chakra modal open animation (~300ms) so the container
+    // has its final dimensions before Leaflet measures it.
     const timers = [
-      setTimeout(() => map.invalidateSize(), 100),
-      setTimeout(() => map.invalidateSize(), 300),
+      setTimeout(() => map.invalidateSize(), 350),
       setTimeout(() => map.invalidateSize(), 600),
+      setTimeout(() => map.invalidateSize(), 1000),
     ]
     return () => timers.forEach(t => clearTimeout(t))
   }, [map])
@@ -1049,13 +1049,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
   const [mapInitKey, setMapInitKey] = useState(0)  // Force map re-render
+  const [tabIndex, setTabIndex] = useState(0) // Track current tab index to fix map render issues
   
-  // Force map to reinitialize when modal opens
+  // Force map to reinitialize when modal opens or tab changes to Coordination/Map
   useEffect(() => {
     if (isOpen) {
       setMapInitKey(prev => prev + 1)
     }
-  }, [isOpen])
+  }, [isOpen, tabIndex])
   
   // Auto-confirm COD payment when delivery type is selected
   useEffect(() => {
@@ -1465,7 +1466,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const requested = await getProduct(trade.target_product_id)
       setRequestedProduct(requested)
 
-      const offeredIds = (trade.items || []).map((item: any) => item.product_id).filter(Boolean)
+      // Only show items offered by the buyer (offered_by === 'buyer') in the "offered" column.
+      // Some trades may store seller counter-offer items with offered_by === 'seller' — keep them separate.
+      const buyerItems = (trade.items || []).filter((item: any) => {
+        const ob = (item?.offered_by ?? item?.offeredBy ?? '').toLowerCase()
+        return !ob || ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
+      })
+      const offeredIds = buyerItems.map((item: any) => item.product_id).filter(Boolean)
       const offeredResults = await Promise.all(offeredIds.map((pid: number) => getProduct(pid)))
       setOfferedProducts(offeredResults.filter(Boolean) as Product[])
     } catch (error) {
@@ -1805,7 +1812,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
           <ModalCloseButton />
 
           <ModalBody overflowY="auto" flex={1} p={6}>
-            <Tabs colorScheme="brand" defaultIndex={0}>
+            <Tabs colorScheme="brand" index={tabIndex} onChange={(i) => setTabIndex(i)}>
               <TabList>
                 <Tab>Overview</Tab>
                 <Tab>
@@ -2004,7 +2011,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         : 'Requested'}
                                 </Badge>
                                 <Text fontSize="sm" color="gray.600">
-                                  (Your Item)
+                                  ({isUserSeller ? "Your Item" : (isUserBuyer ? tradingPartner + "'s Item" : "Seller's Item")})
                                 </Text>
                               </HStack>
                               {requestedProduct ? (
@@ -2043,7 +2050,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         : 'Offered'}
                                 </Badge>
                                 <Text fontSize="sm" color="gray.600">
-                                  ({tradingPartner}'s Item{offeredProducts.length > 1 ? 's' : ''})
+                                  ({isUserBuyer ? "Your Item" : (isUserSeller ? tradingPartner + "'s Items" : "Buyer's Items")})
                                 </Text>
                               </HStack>
                               {offeredProducts.length > 0 ? (
