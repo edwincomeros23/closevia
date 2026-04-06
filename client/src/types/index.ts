@@ -405,6 +405,7 @@ export interface Delivery {
   // Denormalized fields
   user_name?: string
   rider_name?: string
+  rider_phone?: string
   rider_vehicle?: string
   rider_rating?: number
   rider_latitude?: number

@@ -100,7 +100,7 @@ import { Trade, Product, TradeOption, Delivery } from '../types'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
-import { getFirstImage } from '../utils/imageUtils'
+import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 
 interface TradeMessage {
   id: number
@@ -183,13 +183,7 @@ interface DeliveryState {
   buyerConfirmedReceipt: boolean
   sellerConfirmedDelivery: boolean
   deliveryInstructions: string
-  senderLocation?: string
-  receiverLocation?: string
   distance?: number // Add distance for dynamic pricing
-  assignedRider?: {
-    name: string
-    phone: string
-  }
 }
 
 type TradeProgressStage = 'meetup_confirmed' | 'trade_in_progress' | 'completed'
@@ -373,6 +367,7 @@ interface DeliveryTabProps {
   confirmingPayment: boolean
   syncingOnlinePayment: boolean
   linkedDelivery: Delivery | null
+  linkedDeliveries: Delivery[]
 }
 
 const DeliveryTab: React.FC<DeliveryTabProps> = ({
@@ -391,16 +386,36 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
   confirmingPayment,
   syncingOnlinePayment,
   linkedDelivery,
+  linkedDeliveries,
 }) => {
+  const isSwapTrade = !!trade && Array.isArray(trade.items) && trade.items.some(i => i.offered_by === 'buyer')
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
-  const deliveryCompleted = linkedDelivery?.status === 'delivered'
+  const allLegsDelivered = linkedDeliveries.length > 0
+    ? linkedDeliveries.every(d => d.status === 'delivered')
+    : linkedDelivery?.status === 'delivered'
+  const deliveryCompleted = allLegsDelivered
   const deliveryFee = deliveryOptions[deliveryState.deliveryType].fee
-  const deliveryStatus = linkedDelivery?.status || 'pending'
-  const deliveryStatusColor =
-    deliveryCompleted ? 'green'
-      : deliveryStatus === 'in_transit' ? 'orange'
-        : deliveryStatus === 'picked_up' ? 'purple'
-          : deliveryStatus === 'claimed' ? 'blue'
+  const deliverySteps = [
+    { status: 'pending', label: 'Pending' },
+    { status: 'claimed', label: 'Claimed' },
+    { status: 'picked_up', label: 'Picked Up' },
+    { status: 'in_transit', label: 'In Transit' },
+    { status: 'delivered', label: 'Delivered' },
+  ] as const
+
+  const deliveryStatus = ((linkedDelivery?.status || (deliveryCompleted ? 'delivered' : 'pending')) as (typeof deliverySteps)[number]['status'])
+  const deliveryStepIndexRaw = deliverySteps.findIndex(s => s.status === deliveryStatus)
+  const deliveryStepIndex = deliveryStepIndexRaw >= 0 ? deliveryStepIndexRaw : 0
+  const deliveryProgress = ((deliveryStepIndex + 1) / deliverySteps.length) * 100
+  const deliveryStatusColorScheme =
+    deliveryStatus === 'delivered'
+      ? 'green'
+      : deliveryStatus === 'in_transit'
+        ? 'orange'
+        : deliveryStatus === 'picked_up'
+          ? 'purple'
+          : deliveryStatus === 'claimed'
+            ? 'blue'
             : 'gray'
 
   // Auto-confirm COD payment when delivery type is selected
@@ -410,119 +425,81 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
     }
   }, [deliveryState.deliveryType])
 
-  const timelineSteps = [
-    {
-      id: 'setup',
-      title: 'Setup',
-      detail: `${deliveryOptions[deliveryState.deliveryType].time} • P${deliveryOptions[deliveryState.deliveryType].fee} fee`,
-      complete: Boolean(deliveryState.deliveryType),
-      current: !deliveryState.paymentConfirmed,
-    },
-    {
-      id: 'payment',
-      title: 'Payment',
-      detail: `Cash on Delivery • ${deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}`,
-      complete: deliveryState.paymentConfirmed,
-      current: deliveryState.paymentConfirmed && !linkedDelivery,
-    },
-    {
-      id: 'tracking',
-      title: 'Delivery Tracking',
-      detail: deliveryStatus.replace(/_/g, ' ').toUpperCase(),
-      complete: deliveryCompleted,
-      current: !!linkedDelivery && !deliveryCompleted,
-    },
-    {
-      id: 'completion',
-      title: 'Completion',
-      detail: bothConfirmed ? 'Both parties confirmed' : 'Waiting for final confirmations',
-      complete: bothConfirmed,
-      current: (deliveryCompleted || deliveryState.paymentConfirmed) && !bothConfirmed,
-    },
-  ]
-
   return (
     <VStack spacing={4} align="stretch">
-      {/* Always-visible delivery tracking first for glanceability */}
-      <Card border="2px" borderColor={deliveryCompleted ? 'green.400' : 'blue.400'} borderRadius="lg">
-        <CardBody>
-          <VStack spacing={4} align="stretch">
-            <HStack spacing={3}>
-              <Icon as={FiTruck} boxSize={5} color={deliveryCompleted ? 'green.500' : 'blue.500'} />
-              <Text fontWeight="bold" fontSize="md">Delivery Tracking</Text>
-              <Badge colorScheme={deliveryStatusColor} fontSize="xs" ml="auto">
+      {/* Delivery tracking (same layout as Overview tab) */}
+      <Card variant="outline" borderWidth="1px" borderColor="gray.200">
+        <CardBody p={4}>
+          <VStack spacing={3} align="stretch">
+            <HStack spacing={3} align="center">
+              <Icon as={FaTruck} color="green.600" />
+              <Text fontWeight="bold" fontSize="sm">Delivery Tracking</Text>
+              <Badge ml="auto" colorScheme={deliveryStatusColorScheme} fontSize="xs">
                 {deliveryStatus.replace(/_/g, ' ').toUpperCase()}
               </Badge>
             </HStack>
 
-            <Progress
-              value={deliveryCompleted ? 100 : deliveryState.paymentConfirmed ? 50 : deliveryState.deliveryType ? 25 : 0}
-              size="sm"
-              colorScheme="blue"
-              borderRadius="full"
-            />
+            <Progress value={deliveryProgress} size="sm" borderRadius="full" colorScheme={deliveryStatusColorScheme} />
 
-            <VStack align="stretch" spacing={0}>
-              {timelineSteps.map((step, idx) => {
-                const indicatorBg = step.complete ? 'green.500' : step.current ? 'blue.500' : 'gray.300'
-                const lineColor = step.complete ? 'green.300' : 'gray.200'
-                const isLast = idx === timelineSteps.length - 1
+            <Text fontSize="2xs" color="gray.600">
+              {isSwapTrade ? 'Swap delivery (2 deliveries)' : 'Single delivery (1 delivery)'}
+              {isSwapTrade && linkedDeliveries.length < 2 ? ' • Waiting for return delivery to appear…' : ''}
+            </Text>
+
+            <HStack justify="space-between" align="start" spacing={2}>
+              {deliverySteps.map((step, idx) => {
+                const isActive = idx <= deliveryStepIndex
                 return (
-                  <HStack key={step.id} align="stretch" spacing={3} py={2}>
-                    <VStack spacing={0} minW="14px">
-                      <Box w="12px" h="12px" mt={1} borderRadius="full" bg={indicatorBg} />
-                      {!isLast && <Box w="2px" flex={1} bg={lineColor} mt={1} />}
-                    </VStack>
-                    <VStack align="start" spacing={0} flex={1}>
-                      <Text fontSize="sm" fontWeight={step.current ? 'bold' : 'semibold'}>{step.title}</Text>
-                      <Text fontSize="xs" color="gray.600">{step.detail}</Text>
-                    </VStack>
-                  </HStack>
+                  <VStack key={step.status} spacing={1} flex={1} minW={0}>
+                    <Box
+                      w="10px"
+                      h="10px"
+                      borderRadius="full"
+                      bg={isActive ? `${deliveryStatusColorScheme}.500` : 'gray.300'}
+                    />
+                    <Text fontSize="2xs" color={isActive ? 'gray.700' : 'gray.500'} textAlign="center" noOfLines={1}>
+                      {step.label}
+                    </Text>
+                  </VStack>
                 )
               })}
-            </VStack>
-
-            <HStack spacing={2} flexWrap="wrap">
-              <Badge colorScheme="blue" variant="subtle">Setup: {deliveryState.deliveryType}</Badge>
-              <Badge colorScheme={deliveryState.paymentConfirmed ? 'green' : 'yellow'} variant="subtle">
-                Payment: {deliveryState.paymentConfirmed ? 'Confirmed' : 'Pending'}
-              </Badge>
-              <Badge colorScheme="purple" variant="subtle">
-                Method: Cash on Delivery
-              </Badge>
-              <Badge colorScheme="brand" variant="subtle">Fee: ₱{deliveryFee.toFixed(2)}</Badge>
             </HStack>
 
-            {linkedDelivery?.rider_name ? (
-              <Card variant="outline" borderColor="blue.300" bg="blue.50">
-                <CardBody p={[3, 4]}>
-                  <VStack spacing={2} align="stretch">
-                    <HStack spacing={2} align="start">
-                      <Avatar name={linkedDelivery.rider_name} size={["sm", "md"]} bg="blue.500" color="white" />
-                      <VStack align="start" spacing={0} flex={1} minW={0}>
-                        <Text fontWeight="semibold" fontSize={["xs", "sm"]} noOfLines={1}>{linkedDelivery.rider_name}</Text>
-                        <Text fontSize="xs" color="gray.600">Assigned Rider</Text>
-                      </VStack>
-                      {linkedDelivery.rider_rating && (
-                        <HStack spacing={1} flexShrink={0}>
-                          <Icon as={FaStar} color="yellow.400" boxSize={3} />
-                          <Text fontSize="xs" color="gray.600">{linkedDelivery.rider_rating.toFixed(1)}</Text>
-                        </HStack>
-                      )}
+            {/* Back-to-back swap snapshot */}
+            {linkedDeliveries.length > 1 && trade && (
+              <VStack align="stretch" spacing={1}>
+                {(() => {
+                  const legToBuyer = linkedDeliveries[0]
+                  const legReturnToSeller = linkedDeliveries[1]
+                  const line = (label: string, status: Delivery['status']) => (
+                    <HStack justify="space-between" spacing={3}>
+                      <Text fontSize="2xs" color="gray.600" noOfLines={1}>{label}</Text>
+                      <Text fontSize="2xs" color="gray.600" fontWeight="semibold">
+                        {String(status).replace(/_/g, ' ').toUpperCase()}
+                      </Text>
                     </HStack>
-                    {linkedDelivery.rider_vehicle && (
-                      <HStack spacing={2}>
-                        <Icon as={FiTruck} color="blue.500" boxSize={[3, 4]} />
-                        <Text fontSize={["xs", "sm"]} color="gray.700" noOfLines={1}>{linkedDelivery.rider_vehicle}</Text>
-                      </HStack>
-                    )}
-                  </VStack>
-                </CardBody>
-              </Card>
+                  )
+                  return (
+                    <>
+                      {line('Delivery to Buyer (Seller → Buyer)', legToBuyer.status)}
+                      {line('Return to Seller (Buyer → Seller)', legReturnToSeller.status)}
+                    </>
+                  )
+                })()}
+                {deliveryCompleted && (
+                  <Text fontSize="2xs" color="green.600" fontWeight="semibold">
+                    Both deliveries delivered
+                  </Text>
+                )}
+              </VStack>
+            )}
+
+            {linkedDelivery?.rider_name ? (
+              <Text fontSize="xs" color="gray.600">
+                Rider: <Text as="span" fontWeight="semibold">{linkedDelivery.rider_name}</Text>
+              </Text>
             ) : (
-              <Box p={[2, 3]} bg="yellow.50" borderRadius="md" borderWidth="1px" borderColor="yellow.200">
-                <Text fontSize={["xs", "sm"]} color="yellow.700">Waiting for a rider to be assigned...</Text>
-              </Box>
+              <Text fontSize="xs" color="gray.600">Waiting for a rider to claim this delivery.</Text>
             )}
           </VStack>
         </CardBody>
@@ -542,7 +519,6 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
                 <Button
                   key={`delivery-${type}`}
-                  size={["sm", "md"]}
                   colorScheme={deliveryState.deliveryType === type ? 'blue' : 'gray'}
                   variant={deliveryState.deliveryType === type ? 'solid' : 'outline'}
                   onClick={() => {
@@ -551,15 +527,22 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                     saveDeliveryState({ deliveryType: newState })
                   }}
                   w="100%"
-                  fontSize={["xs", "sm"]}
-                  py={[2, 3]}
+                  py={3}
+                  px={3}
                   h="auto"
+                  minH="56px"
                 >
-                  <VStack spacing={0}>
-                    <Text fontSize={["lg", "2xl"]}>{option.icon}</Text>
-                    <Text>{type === 'standard' ? 'Std' : 'Exp'}</Text>
-                    <Text fontSize={["xs", "sm"]}>₱{option.fee}</Text>
-                  </VStack>
+                  <HStack w="full" justify="space-between" spacing={3} minW={0}>
+                    <HStack spacing={2} minW={0}>
+                      <Text fontSize={["lg", "xl"]} lineHeight="1">{option.icon}</Text>
+                      <Text fontSize={["sm", "md"]} fontWeight="semibold" noOfLines={1}>
+                        {type === 'standard' ? 'Standard' : 'Express'}
+                      </Text>
+                    </HStack>
+                    <Text fontSize={["sm", "md"]} fontWeight="bold" flexShrink={0}>
+                      ₱{option.fee}
+                    </Text>
+                  </HStack>
                 </Button>
               ))}
             </SimpleGrid>
@@ -1072,6 +1055,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     deliveryInstructions: '',
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
+  const [linkedDeliveries, setLinkedDeliveries] = useState<Delivery[]>([])
+  const [userAvatarById, setUserAvatarById] = useState<Record<number, string>>({})
+  const fetchedAvatarUserIdsRef = useRef<Set<number>>(new Set())
   const [mapInitKey, setMapInitKey] = useState(0)  // Force map re-render
   const [tabIndex, setTabIndex] = useState(0) // Track current tab index to fix map render issues
   
@@ -1230,6 +1216,47 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     ? trade?.seller_name || `User #${trade?.seller_id}`
     : trade?.buyer_name || `User #${trade?.buyer_id}`
 
+  const resolveAvatarSrc = (raw?: string | null): string | undefined => {
+    if (!raw) return undefined
+    // Normalize relative paths to backend URL; keep full URLs as-is.
+    return getImageUrl(raw)
+  }
+
+  // Fetch buyer/seller public profile to get profile pictures for avatars.
+  useEffect(() => {
+    if (!isOpen) return
+    if (!trade?.buyer_id || !trade?.seller_id) return
+
+    let cancelled = false
+
+    const fetchAvatarForUser = async (id: number) => {
+      if (!id) return
+      if (fetchedAvatarUserIdsRef.current.has(id)) return
+      fetchedAvatarUserIdsRef.current.add(id)
+
+      try {
+        const res = await api.get(`/api/users/${id}`)
+        const payload = res.data?.data || res.data
+        const apiUser = (payload?.user || payload) as any
+        const rawPic = apiUser?.profile_picture || apiUser?.avatar_url || apiUser?.org_logo_url || apiUser?.logo_url
+        if (!rawPic) return
+
+        if (!cancelled) {
+          setUserAvatarById(prev => ({ ...prev, [id]: rawPic }))
+        }
+      } catch (_) {
+        // Best-effort: keep initials fallback.
+      }
+    }
+
+    fetchAvatarForUser(Number(trade.buyer_id))
+    fetchAvatarForUser(Number(trade.seller_id))
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, trade?.buyer_id, trade?.seller_id])
+
   const suggestedLocations: MeetupLocation[] = [
     { name: 'Meet n Eat', address: 'Gov. Camins Ave, Zamboanga City', type: 'cafe', lat: 6.9150, lng: 122.0630, isPartner: true },
     { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public', lat: 6.9214, lng: 122.0790 },
@@ -1364,12 +1391,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         buyerConfirmedReceipt: trade.buyer_confirmed_receipt || false,
         sellerConfirmedDelivery: trade.seller_confirmed_delivery || false,
         deliveryInstructions: (trade as any).delivery_instructions || '',
-        senderLocation: (trade as any).seller_location || 'Trader location - From product listing',
-        receiverLocation: (trade as any).buyer_location || 'Buyer location - From user profile',
-        assignedRider: {
-          name: 'Wynry Perian (Mock Rider)',
-          phone: '09991234567'
-        }
       }))
 
       console.log('Delivery state loaded:', {
@@ -1434,6 +1455,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   useEffect(() => {
     if (!trade || trade.trade_option !== 'delivery' || !isOpen) {
       setLinkedDelivery(null)
+      setLinkedDeliveries([])
       return
     }
     // Only fetch when trade is active or later
@@ -1443,11 +1465,41 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
     const fetchLinkedDelivery = async () => {
       try {
-        const response = await api.get(`/api/trades/${trade.id}/delivery`)
-        const data = response.data?.data || null
-        setLinkedDelivery(data && data.id ? data : null)
+      let deliveries: Delivery[] = []
+      try {
+        const response = await api.get(`/api/trades/${trade.id}/deliveries`)
+        const data = response.data?.data
+        deliveries = Array.isArray(data) ? data : []
       } catch (e) {
-        console.log('No linked delivery found for trade', trade.id)
+        // Fallback handled below
+      }
+
+      // Fallback: older endpoint (also triggers backend auto-create for missing deliveries)
+      if (!deliveries || deliveries.length === 0) {
+        try {
+          const r = await api.get(`/api/trades/${trade.id}/delivery`)
+          const single: Delivery | null = r.data?.data && (r.data.data as any).id ? (r.data.data as Delivery) : null
+          if (single) {
+            setLinkedDelivery(single)
+            setLinkedDeliveries([single])
+            return
+          }
+        } catch (_) {
+          // Ignore; we'll clear state below.
+        }
+
+        setLinkedDelivery(null)
+        setLinkedDeliveries([])
+        return
+      }
+
+      setLinkedDeliveries(deliveries)
+      const active = deliveries.find(d => d.status !== 'delivered') || deliveries[deliveries.length - 1] || null
+      setLinkedDelivery(active && (active as any).id ? active : null)
+      } catch (e) {
+      console.log('No linked delivery found for trade', trade.id)
+      setLinkedDelivery(null)
+      setLinkedDeliveries([])
       }
     }
 
@@ -1770,28 +1822,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
   const isDeliveryTrade = trade.trade_option === 'delivery'
-  const deliverySteps = [
-    { status: 'pending', label: 'Pending' },
-    { status: 'claimed', label: 'Claimed' },
-    { status: 'picked_up', label: 'Picked Up' },
-    { status: 'in_transit', label: 'In Transit' },
-    { status: 'delivered', label: 'Delivered' },
-  ] as const
-
-  const deliveryStatus = (linkedDelivery?.status || 'pending') as (typeof deliverySteps)[number]['status']
-  const deliveryStepIndexRaw = deliverySteps.findIndex(s => s.status === deliveryStatus)
-  const deliveryStepIndex = deliveryStepIndexRaw >= 0 ? deliveryStepIndexRaw : 0
-  const deliveryProgress = ((deliveryStepIndex + 1) / deliverySteps.length) * 100
-  const deliveryStatusColorScheme =
-    deliveryStatus === 'delivered'
-      ? 'green'
-      : deliveryStatus === 'in_transit'
-        ? 'orange'
-        : deliveryStatus === 'picked_up'
-          ? 'purple'
-          : deliveryStatus === 'claimed'
-            ? 'blue'
-            : 'gray'
 
 
   const handleConfirmPayment = async () => {
@@ -2041,54 +2071,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     )}
 
 
-                    {/* Delivery status snapshot (aligns with rider job steps) */}
-                    {isDeliveryTrade && (
-                      <Card variant="outline" borderWidth="1px" borderColor="gray.200">
-                        <CardBody p={4}>
-                          <VStack spacing={3} align="stretch">
-                            <HStack spacing={3} align="center">
-                              <Icon as={FaTruck} color="green.600" />
-                              <Text fontWeight="bold" fontSize="sm">Delivery Tracking</Text>
-                              <Badge ml="auto" colorScheme={deliveryStatusColorScheme} fontSize="xs">
-                                {deliveryStatus.replace(/_/g, ' ').toUpperCase()}
-                              </Badge>
-                            </HStack>
-
-                            <Progress value={deliveryProgress} size="sm" borderRadius="full" colorScheme={deliveryStatusColorScheme} />
-
-                            <HStack justify="space-between" align="start" spacing={2}>
-                              {deliverySteps.map((step, idx) => {
-                                const isActive = idx <= deliveryStepIndex
-                                return (
-                                  <VStack key={step.status} spacing={1} flex={1} minW={0}>
-                                    <Box
-                                      w="10px"
-                                      h="10px"
-                                      borderRadius="full"
-                                      bg={isActive ? `${deliveryStatusColorScheme}.500` : 'gray.300'}
-                                    />
-                                    <Text fontSize="2xs" color={isActive ? 'gray.700' : 'gray.500'} textAlign="center" noOfLines={1}>
-                                      {step.label}
-                                    </Text>
-                                  </VStack>
-                                )
-                              })}
-                            </HStack>
-
-                            {linkedDelivery?.rider_name ? (
-                              <Text fontSize="xs" color="gray.600">
-                                Rider: <Text as="span" fontWeight="semibold">{linkedDelivery.rider_name}</Text>
-                              </Text>
-                            ) : (
-                              <Text fontSize="xs" color="gray.600">Waiting for a rider to claim this delivery.</Text>
-                            )}
-                          </VStack>
-                        </CardBody>
-                      </Card>
-                    )}
-
-                    {/* Trade Progress Indicator */}
-                    <TradeProgressIndicator trade={trade} />
+                    {/* Trade Progress Indicator (meetup only) */}
+                    {!isDeliveryTrade && <TradeProgressIndicator trade={trade} />}
 
                     {/* Caution Warning */}
                     {trade.trade_option === 'meetup' ? (
@@ -2161,6 +2145,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       <HStack spacing={4}>
                         <VerifiedAvatar
                           name={tradingPartner}
+                          src={resolveAvatarSrc(userAvatarById[Number(isUserBuyer ? trade?.seller_id : trade?.buyer_id)])}
                           size="md"
                           bg={isUserBuyer ? 'green.500' : 'blue.500'}
                           color="white"
@@ -2287,41 +2272,105 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             Delivery Information
                           </Text>
                           <VStack spacing={3} align="stretch">
-                            {/* Sender Address */}
-                            <Card variant="outline" borderColor="blue.300">
-                              <CardBody p={4}>
-                                <HStack spacing={3} mb={2}>
-                                  <Icon as={FaMapMarkerAlt} color="blue.500" boxSize={5} />
-                                  <Text fontWeight="semibold" fontSize="sm">Sender Location</Text>
-                                </HStack>
-                                <Text fontSize="sm" color="gray.700" ml={8}>
-                                  {deliveryState.senderLocation || 'Auto-detecting sender location...'}
-                                </Text>
-                                {isUserSeller && (
-                                  <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
-                                    (Your location - from product listing)
-                                  </Text>
-                                )}
-                              </CardBody>
-                            </Card>
+                            {(() => {
+                              // Deliveries are returned ordered by creation time (first delivery, then return delivery).
+                              // Prefer the ordered list for leg selection to avoid relying on legacy user_id semantics.
+                              const activeLeg = linkedDelivery
+                              const orderedLegs = Array.isArray(linkedDeliveries) ? linkedDeliveries : []
+                              const leg1 = orderedLegs[0] || activeLeg || null
+                              const leg2 = orderedLegs[1] || null
+                              const isSwap = Array.isArray(trade?.items) && trade.items.some(i => i.offered_by === 'buyer')
 
-                            {/* Receiver Address */}
-                            <Card variant="outline" borderColor="green.300">
-                              <CardBody p={4}>
-                                <HStack spacing={3} mb={2}>
-                                  <Icon as={FaMapMarkerAlt} color="green.500" boxSize={5} />
-                                  <Text fontWeight="semibold" fontSize="sm">Receiver Location</Text>
-                                </HStack>
-                                <Text fontSize="sm" color="gray.700" ml={8}>
-                                  {deliveryState.receiverLocation || 'Auto-detecting receiver location...'}
-                                </Text>
-                                {isUserBuyer && (
-                                  <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
-                                    (Your location - from your profile)
-                                  </Text>
-                                )}
-                              </CardBody>
-                            </Card>
+                              const leg1Pickup = leg1?.pickup_address || ''
+                              const leg1Drop = leg1?.delivery_address || trade?.delivery_address || ''
+                              const leg2Pickup = leg2?.pickup_address || ''
+                              const leg2Drop = leg2?.delivery_address || ''
+
+                              const renderAddressPair = (opts: {
+                                senderTitle: string
+                                receiverTitle: string
+                                senderAddress: string
+                                receiverAddress: string
+                                showSenderNote?: boolean
+                                senderNote?: string
+                                showReceiverNote?: boolean
+                                receiverNote?: string
+                              }) => (
+                                <>
+                                  <Card variant="outline" borderColor="blue.300">
+                                    <CardBody p={4}>
+                                      <HStack spacing={3} mb={2}>
+                                        <Icon as={FaMapMarkerAlt} color="blue.500" boxSize={5} />
+                                        <Text fontWeight="semibold" fontSize="sm">{opts.senderTitle}</Text>
+                                      </HStack>
+                                      <Text fontSize="sm" color="gray.700" ml={8}>
+                                        {opts.senderAddress || 'Waiting for delivery to be created...'}
+                                      </Text>
+                                      {opts.showSenderNote && opts.senderNote && (
+                                        <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                          {opts.senderNote}
+                                        </Text>
+                                      )}
+                                    </CardBody>
+                                  </Card>
+
+                                  <Card variant="outline" borderColor="green.300">
+                                    <CardBody p={4}>
+                                      <HStack spacing={3} mb={2}>
+                                        <Icon as={FaMapMarkerAlt} color="green.500" boxSize={5} />
+                                        <Text fontWeight="semibold" fontSize="sm">{opts.receiverTitle}</Text>
+                                      </HStack>
+                                      <Text fontSize="sm" color="gray.700" ml={8}>
+                                        {opts.receiverAddress || 'Waiting for delivery to be created...'}
+                                      </Text>
+                                      {opts.showReceiverNote && opts.receiverNote && (
+                                        <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
+                                          {opts.receiverNote}
+                                        </Text>
+                                      )}
+                                    </CardBody>
+                                  </Card>
+                                </>
+                              )
+
+                              return (
+                                <>
+                                  {isSwap ? (
+                                    <>
+                                      {renderAddressPair({
+                                        senderTitle: 'Delivery to Buyer — Pickup Location (Seller → Buyer)',
+                                        receiverTitle: 'Delivery to Buyer — Drop-off Location (Seller → Buyer)',
+                                        senderAddress: leg1Pickup,
+                                        receiverAddress: leg1Drop,
+                                        showSenderNote: isUserSeller,
+                                        senderNote: '(Your pickup address)',
+                                        showReceiverNote: isUserBuyer,
+                                        receiverNote: '(Your delivery address)',
+                                      })}
+
+                                      {renderAddressPair({
+                                        senderTitle: 'Return to Seller — Pickup Location (Buyer → Seller)',
+                                        receiverTitle: 'Return to Seller — Drop-off Location (Buyer → Seller)',
+                                        senderAddress: leg2Pickup,
+                                        receiverAddress: leg2Drop,
+                                        showSenderNote: isUserBuyer,
+                                        senderNote: '(Your pickup address)',
+                                        showReceiverNote: isUserSeller,
+                                        receiverNote: '(Your delivery address)',
+                                      })}
+                                    </>
+                                  ) : (
+                                    renderAddressPair({
+                                      senderTitle: 'Sender Location',
+                                      receiverTitle: 'Receiver Location',
+                                      senderAddress: leg1Pickup,
+                                      receiverAddress: leg1Drop,
+                                      showSenderNote: isUserSeller,
+                                      senderNote: '(Your pickup address)',
+                                      showReceiverNote: isUserBuyer,
+                                      receiverNote: '(Your delivery address)',
+                                    })
+                                  )}
 
                             {/* Delivery Instructions */}
                             {deliveryState.deliveryInstructions && (
@@ -2343,25 +2392,43 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               <CardBody p={4}>
                                 <HStack spacing={3} mb={2}>
                                   <Avatar
-                                    name="Wynry Perian"
+                                    name={linkedDelivery?.rider_name || 'Rider'}
                                     size="sm"
                                     bg="orange.500"
                                     color="white"
                                   />
-                                  <Box flex={1}>
+                                  <Box flex={1} minW={0}>
                                     <Text fontWeight="semibold" fontSize="sm">Assigned Rider</Text>
-                                    <Text fontSize="sm" color="gray.700">Wynry Perian (Mock Rider)</Text>
+                                    <Text fontSize="sm" color="gray.700" noOfLines={1}>
+                                      {linkedDelivery?.rider_name || 'Waiting for a rider to claim this delivery'}
+                                    </Text>
                                   </Box>
+                                  {linkedDelivery?.rider_rating != null && (
+                                    <HStack spacing={1} flexShrink={0}>
+                                      <Icon as={FaStar} color="yellow.400" boxSize={3} />
+                                      <Text fontSize="xs" color="gray.600">{linkedDelivery.rider_rating.toFixed(1)}</Text>
+                                    </HStack>
+                                  )}
                                 </HStack>
-                                <HStack spacing={2} ml={8} mt={2}>
-                                  <Icon as={FiPhone} color="orange.500" boxSize={4} />
-                                  <Text fontSize="sm" color="gray.700">09991234567</Text>
-                                </HStack>
-                                <Text fontSize="xs" color="gray.500" mt={2} ml={8}>
-                                  🎭 This is a mock rider for demonstration
-                                </Text>
+
+                                {linkedDelivery?.rider_vehicle && (
+                                  <HStack spacing={2} ml={8} mt={2}>
+                                    <Icon as={FiTruck} color="orange.500" boxSize={4} />
+                                    <Text fontSize="sm" color="gray.700" noOfLines={1}>{linkedDelivery.rider_vehicle}</Text>
+                                  </HStack>
+                                )}
+
+                                {linkedDelivery?.rider_phone && (
+                                  <HStack spacing={2} ml={8} mt={2}>
+                                    <Icon as={FiPhone} color="orange.500" boxSize={4} />
+                                    <Text fontSize="sm" color="gray.700">{linkedDelivery.rider_phone}</Text>
+                                  </HStack>
+                                )}
                               </CardBody>
                             </Card>
+                                </>
+                              )
+                            })()}
                           </VStack>
                         </Box>
                       </>
@@ -2396,6 +2463,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <VStack spacing={3} align="stretch">
                           {messages.map((msg) => {
                             const isOwnMessage = msg.sender_id === user?.id
+                            const senderAvatarSrc = isOwnMessage
+                              ? resolveAvatarSrc((user as any)?.profile_picture)
+                              : resolveAvatarSrc(userAvatarById[Number(msg.sender_id)])
                             return (
                               <HStack
                                 key={`msg-${msg.id}`}
@@ -2406,6 +2476,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 {!isOwnMessage && (
                                   <Avatar
                                     name={msg.sender_name || 'User'}
+                                    src={senderAvatarSrc}
                                     size="sm"
                                     bg="brand.500"
                                     color="white"
@@ -2435,6 +2506,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 {isOwnMessage && (
                                   <Avatar
                                     name={user?.name || 'You'}
+                                    src={senderAvatarSrc}
                                     size="sm"
                                     bg="brand.500"
                                     color="white"
@@ -2497,6 +2569,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       confirmingPayment={confirmingPayment}
                       syncingOnlinePayment={syncingOnlinePayment}
                       linkedDelivery={linkedDelivery}
+                      linkedDeliveries={linkedDeliveries}
                     />
                   ) : (
                     <VStack spacing={6} align="stretch">
