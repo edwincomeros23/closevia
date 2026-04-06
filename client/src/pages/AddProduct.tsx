@@ -1501,10 +1501,10 @@ const AddProduct: React.FC = () => {
 
     return (
       <VStack spacing={4} align="stretch">
-        {/* ──────── PRODUCT IMAGES GALLERY ──────── */}
+        {/* ──────── PRODUCT IMAGES GALLERY (Compact) ──────── */}
         <Box>
           {imagePreviewUrls.length > 0 ? (
-            <SimpleGrid columns={{ base: 5, sm: 6 }} spacing={0.5}>
+            <SimpleGrid columns={{ base: 9, sm: 12 }} spacing={0.5}>
               {imagePreviewUrls.map((url, idx) => (
                 <Box
                   key={idx}
@@ -1530,49 +1530,117 @@ const AddProduct: React.FC = () => {
           ) : (
             <Box
               w="full"
-              h="150px"
+              h="100px"
               display="flex"
               alignItems="center"
               justifyContent="center"
-              bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-              color="white"
+              bg="gray.100"
+              color="gray.400"
               borderRadius="lg"
             >
-              <VStack spacing={2}>
-                <Text fontSize="3xl">📚</Text>
-                <Text fontSize="sm" fontWeight="medium">Product Images</Text>
-              </VStack>
+              <Text fontSize="sm">No images</Text>
             </Box>
           )}
         </Box>
 
-        {/* ──────── TITLE ──────── */}
-        <Box>
-          <Heading fontSize="2xl" fontWeight="bold" color="gray.900" mb={2}>
-            {formData.title}
-          </Heading>
+        {/* ──────── CONSOLIDATED PRODUCT DETAILS ──────── */}
+        <Box p={4} bg="white" borderRadius="lg" borderWidth="1px" borderColor="gray.200">
+          <VStack align="stretch" spacing={3}>
+            {/* Title */}
+            <Box>
+              <Heading fontSize="xl" fontWeight="bold" color="gray.900">
+                {formData.title}
+              </Heading>
+            </Box>
 
-          {/* Metadata Ribbon */}
-          <HStack
-            spacing={1.5}
-            p={2.5}
-            bg="gray.100"
-            borderRadius="lg"
-            flexWrap="wrap"
-            fontSize="xs"
-            color="gray.700"
-            fontWeight="medium"
-          >
-            <Text>✨ {formData.item_type || 'Item'}</Text>
-            {formData.brand && (
-              <>
-                <Text>•</Text>
-                <Text>{formData.brand}</Text>
-              </>
+            {/* Description */}
+            {formData.description && (
+              <Box>
+                <Text
+                  fontSize="sm"
+                  color="gray.700"
+                  lineHeight={1.6}
+                  whiteSpace="pre-wrap"
+                  fontFamily="system-ui, -apple-system, sans-serif"
+                >
+                  {formData.description}
+                </Text>
+              </Box>
             )}
-            <Text>•</Text>
-            <Text>{formData.condition}</Text>
-          </HStack>
+
+            {/* Divider */}
+            <Box borderBottomWidth="1px" borderBottomColor="gray.200" />
+
+            {/* Details Grid - Compact */}
+            <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                  Condition
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                  {formData.condition}
+                </Text>
+              </Box>
+
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                  Category
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                  {formData.category}{formData.item_type ? ` · ${formData.item_type}` : ''}
+                </Text>
+              </Box>
+
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                  Location
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                  📍 {formData.location || 'Not detected'}
+                </Text>
+              </Box>
+
+              {/* Type & Brand */}
+              {formData.item_type && (
+                <Box>
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                    Type
+                  </Text>
+                  <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                    ✨ {formData.item_type}
+                  </Text>
+                </Box>
+              )}
+
+              {formData.brand && (
+                <Box>
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                    Brand
+                  </Text>
+                  <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                    {formData.brand}
+                  </Text>
+                </Box>
+              )}
+
+              {formData.authenticity_risks && formData.authenticity_risks !== 'Low' && (
+                <Box>
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                    Authenticity Risk
+                  </Text>
+                  <Badge
+                    colorScheme={
+                      formData.authenticity_risks === 'High' ? 'red' :
+                        formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                    }
+                    fontSize="xs"
+                  >
+                    {formData.authenticity_risks}
+                  </Badge>
+                </Box>
+              )}
+            </SimpleGrid>
+          </VStack>
         </Box>
 
         {/* ──────── ESTIMATED VALUE (Subtle) ──────── */}
@@ -1598,56 +1666,6 @@ const AddProduct: React.FC = () => {
               Value estimate unavailable
             </Text>
           )}
-        </Box>
-
-        {/* ──────── DESCRIPTION ──────── */}
-        <Box>
-          <Text
-            fontSize="sm"
-            color="gray.700"
-            lineHeight={1.7}
-            whiteSpace="pre-wrap"
-            fontFamily="system-ui, -apple-system, sans-serif"
-          >
-            {formData.description}
-          </Text>
-        </Box>
-
-        {/* ──────── KEY DETAILS GRID - Responsive ──────── */}
-        <Box
-          p={3}
-          bg="gray.50"
-          borderRadius="lg"
-          display="grid"
-          gridTemplateColumns={{ base: "1fr", sm: "repeat(2, 1fr)" }}
-          gap={3}
-        >
-          <Box>
-            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Condition</Text>
-            <Text fontSize="sm" fontWeight="medium">{formData.condition}</Text>
-          </Box>
-          <Box>
-            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Category</Text>
-            <Text fontSize="sm" fontWeight="medium">{formData.category}{formData.item_type ? ` · ${formData.item_type}` : ''}</Text>
-          </Box>
-          {formData.authenticity_risks && formData.authenticity_risks !== 'Low' && (
-            <Box>
-              <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Authenticity Risk</Text>
-              <Badge
-                colorScheme={
-                  formData.authenticity_risks === 'High' ? 'red' :
-                    formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
-                }
-                fontSize="xs"
-              >
-                {formData.authenticity_risks}
-              </Badge>
-            </Box>
-          )}
-          <Box>
-            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Location</Text>
-            <Text fontSize="sm" fontWeight="medium">📍 {formData.location || 'Not detected'}</Text>
-          </Box>
         </Box>
 
         {/* ──────── VALUE DISPLAY ──────── */}
