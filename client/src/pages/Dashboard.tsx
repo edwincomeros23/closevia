@@ -95,7 +95,7 @@ import {
 } from '../hooks/useDashboard'
 
 const Dashboard: React.FC = () => {
-  const { user, loading, isAuthenticated } = useAuth()
+  const { user, loading, isAuthenticated, restoreAuthentication } = useAuth()
   const { deleteProduct, updateProduct } = useProducts()
   const { refreshCounts, setRefreshCallback } = useRealtime()
   const navigate = useNavigate()
@@ -294,11 +294,19 @@ const Dashboard: React.FC = () => {
   // Check if user is authenticated, redirect to login if not
   // Only redirect if not loading (to prevent race conditions after login)
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      console.log('Dashboard: Not authenticated, redirecting to login')
-      navigate('/login', { replace: true })
+    if (loading || isAuthenticated) return
+
+    const storedToken = localStorage.getItem('clovia_token')
+    if (storedToken) {
+      // Token exists but AuthContext may still be restoring user/profile.
+      // Avoid bouncing back to /login; attempt restore once and wait.
+      restoreAuthentication().catch(() => { })
+      return
     }
-  }, [isAuthenticated, loading, navigate])
+
+    console.log('Dashboard: Not authenticated, redirecting to login')
+    navigate('/login', { replace: true })
+  }, [isAuthenticated, loading, navigate, restoreAuthentication])
 
   // Fetch multi-way trades when tab is selected
   useEffect(() => {
@@ -1462,10 +1470,40 @@ const Dashboard: React.FC = () => {
     setDetailsOpen(true)
   }, [])
 
-  const handleAcceptTrade = useCallback((trade: Trade) => {
-    setSelectedTrade(trade)
-    setCompletionModalOpen(true)
+  const handleViewOngoingTrade = useCallback(async (trade: Trade) => {
+    let freshTrade: Trade | undefined
+    try {
+      const res = await api.get(`/api/trades/${trade.id}`)
+      freshTrade = res.data?.data
+    } catch {
+      // Non-fatal: fall back to existing trade object
+    }
+
+    setSelectedTrade(freshTrade || trade)
+    setDetailsOpen(false)
+    setViewTradeModalOpen(true)
   }, [])
+
+  const handleAcceptTrade = useCallback(async (trade: Trade) => {
+    try {
+      // Accept the offer, then open Trade Details for both parties
+      await updateTrade(trade.id, { action: 'accept' })
+
+      let freshTrade: Trade | undefined
+      try {
+        const res = await api.get(`/api/trades/${trade.id}`)
+        freshTrade = res.data?.data
+      } catch {
+        // Non-fatal: fall back to existing trade object
+      }
+
+      setSelectedTrade(freshTrade || trade)
+      setCompletionModalOpen(false)
+      setViewTradeModalOpen(true)
+    } catch {
+      // updateTrade already toasts on error
+    }
+  }, [updateTrade])
 
   const receivedOffers = useMemo(() => {
     const active = (incoming || []).filter(t => t.status === 'pending' || t.status === 'pending_multiway') // Include multiway matches
@@ -4857,7 +4895,7 @@ const Dashboard: React.FC = () => {
                                       key={trade.id}
                                       trade={trade}
                                       isIncoming={isIncoming}
-                                      onView={handleViewDetails}
+                                      onView={handleViewOngoingTrade}
                                       onComplete={handleCompleteTradeClick}
                                     />
                                   )
@@ -5711,37 +5749,16 @@ const Dashboard: React.FC = () => {
               invalidateOffers()
               invalidateDashboard()
 
-              // If trade option is delivery, show delivery request modal
-              if (selectedTrade?.trade_option === 'delivery') {
-                // Fetch products for delivery
+              // After accepting, show Trade Details (chat/meetup/delivery) for both parties
+              if (selectedTrade) {
                 try {
-                  const productsToDeliver: Product[] = []
-                  // Get target product
-                  if (selectedTrade.target_product_id) {
-                    const targetRes = await api.get(`/api/products/${selectedTrade.target_product_id}`)
-                    if (targetRes.data?.data) {
-                      productsToDeliver.push(targetRes.data.data)
-                    }
-                  }
-                  // Get items from trade
-                  if (selectedTrade.items && selectedTrade.items.length > 0) {
-                    for (const item of selectedTrade.items) {
-                      try {
-                        const itemRes = await api.get(`/api/products/${item.product_id}`)
-                        if (itemRes.data?.data) {
-                          productsToDeliver.push(itemRes.data.data)
-                        }
-                      } catch (e) {
-                        // Skip if product not found
-                      }
-                    }
-                  }
-                  setProductsForDelivery(productsToDeliver)
-                  setTradeForDelivery(selectedTrade)
-                  setDeliveryRequestModalOpen(true)
-                } catch (error) {
-                  console.error('Failed to fetch products for delivery:', error)
+                  const res = await api.get(`/api/trades/${selectedTrade.id}`)
+                  const freshTrade = res.data?.data
+                  if (freshTrade) setSelectedTrade(freshTrade)
+                } catch {
+                  // Non-fatal
                 }
+                setViewTradeModalOpen(true)
               }
             }}
             onDeclined={() => { invalidateOffers(); invalidateDashboard() }}

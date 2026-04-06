@@ -159,15 +159,11 @@ func main() {
 	app.Static("/uploads", "./uploads")
 	app.Static("/uploads/products", "./uploads/products")
 
-	// Add after middleware setup
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "Welcome to Clovia API",
-		})
-	})
+	// Serve React build files with cache headers
+	app.Static("/", "./client/dist")
 
 	log.Printf("Backend version: xendit-sync-all-405-fix")
+
 	// Quick sanity-check endpoint to confirm you restarted the backend with latest routes.
 	app.Get("/api/version", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -175,6 +171,9 @@ func main() {
 			"version": "xendit-sync-all-405-fix",
 		})
 	})
+
+	// ⚠️ IMPORTANT: This was moved up before API routes
+	// Previously was: SPA catch-all MUST be last
 
 	// Health check with database connectivity verification (for k6 load tests & monitoring)
 	app.Get("/api/health", func(c *fiber.Ctx) error {
@@ -576,6 +575,8 @@ func main() {
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.
 	payments.All("/trade/:id/sync", middleware.AuthMiddleware(), paymentHandler.SyncTradePayment)
+	payments.Post("/remittance-invoice", middleware.AuthMiddleware(), paymentHandler.CreateRemittanceInvoice)
+	payments.All("/remittance/sync", middleware.AuthMiddleware(), paymentHandler.SyncRemittancePayment)
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
@@ -746,6 +747,23 @@ func main() {
 		log.Println("Starting pre-meetup reminder scheduler...")
 		reminderService.SchedulePreMeetupReminders()
 	}()
+
+	// ⚡ SPA SERVE ROUTES - MUST BE LAST (after all API routes)
+	// Serve root path with index.html
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendFile("./client/dist/index.html")
+	})
+
+	// Serve index.html for all unmatched routes (SPA catch-all)
+	// This allows React Router to handle all routing on the client side
+	// This MUST come after all API routes so they are not intercepted
+	app.Use(func(c *fiber.Ctx) error {
+		// Only serve index.html for non-API routes
+		if !strings.HasPrefix(c.Path(), "/api") && !strings.HasPrefix(c.Path(), "/uploads") {
+			return c.SendFile("./client/dist/index.html")
+		}
+		return c.Next()
+	})
 
 	log.Printf("Starting Clovia server on port %s", port)
 	log.Fatal(app.Listen(":" + port))

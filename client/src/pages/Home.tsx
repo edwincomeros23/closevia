@@ -300,13 +300,50 @@ const Home: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, hasSearched])
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     setSelectedCategory('All')
     setShowSuggestions(false)
+    
+    const term = searchTerm.trim()
+    const termLower = term.toLowerCase()
+    
+    // Check if search term matches an organization in current suggestions
+    const matchedOrg = organizationSuggestions.find(org => {
+      const orgNameLower = (org.org_name || org.name || '').toLowerCase()
+      return orgNameLower === termLower
+    })
+    
+    if (matchedOrg) {
+      // Navigate directly to the organization page
+      const orgHandle = matchedOrg.org_handle || matchedOrg.slug
+      if (orgHandle) {
+        navigate(`/org/${orgHandle}/products`)
+        return
+      }
+    }
+    
+    // Fallback: Check API for organization if not in suggestions
+    if (term.length >= 2) {
+      try {
+        const response = await api.get(`/api/organizations?q=${encodeURIComponent(term)}&limit=1`)
+        if (response.data?.success && Array.isArray(response.data?.data) && response.data.data.length > 0) {
+          const org = response.data.data[0]
+          const orgHandle = org.org_handle || org.slug
+          if (orgHandle) {
+            navigate(`/org/${orgHandle}/products`)
+            return
+          }
+        }
+      } catch (error) {
+        // API call failed, continue with product search
+        console.error('Error checking for organization:', error)
+      }
+    }
+    
+    // Otherwise, do a regular product keyword search
     // Detect natural language queries for smart search
-    const term = searchTerm.trim().toLowerCase()
     const smartSignals = ['near me', 'nearby', 'cheap', 'budget', 'expensive', 'under ', 'below ', 'above ']
-    const isSmartQuery = term.split(/\s+/).length >= 2 && smartSignals.some(s => term.includes(s))
+    const isSmartQuery = termLower.split(/\s+/).length >= 2 && smartSignals.some(s => termLower.includes(s))
     setFilters(prev => ({ ...prev, keyword: searchTerm, category: '', page: 1, useSmartSearch: isSmartQuery || undefined }))
     setHasSearched(true)
   }

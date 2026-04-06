@@ -1232,6 +1232,30 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 	if update.Status != nil {
 		requestedStatus := *update.Status
 
+		// Swap ordering enforcement:
+		// If this delivery is the buyer->seller return leg of a trade swap, do not allow starting pickup
+		// until the seller->buyer leg is delivered.
+		if requestedStatus == "picked_up" {
+			var tradeID sql.NullInt64
+			var deliveryOwnerUserID int
+			_ = h.db.QueryRow("SELECT trade_id, user_id FROM deliveries WHERE id = ?", deliveryID).Scan(&tradeID, &deliveryOwnerUserID)
+			if tradeID.Valid {
+				var buyerID, sellerID int
+				_ = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID.Int64).Scan(&buyerID, &sellerID)
+				// Return leg is owned by buyer (buyer sends items back to seller)
+				if deliveryOwnerUserID == buyerID {
+					var remainingFirstLeg int
+					_ = h.db.QueryRow(
+						"SELECT COUNT(*) FROM deliveries WHERE trade_id = ? AND user_id = ? AND status <> 'delivered'",
+						tradeID.Int64, sellerID,
+					).Scan(&remainingFirstLeg)
+					if remainingFirstLeg > 0 {
+						return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Finish the first leg (seller → buyer) before starting the return leg."})
+					}
+				}
+			}
+		}
+
 		// Define valid status progression
 		validTransitions := map[string]string{
 			"claimed":    "picked_up",
@@ -1348,35 +1372,79 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update delivery"})
 	}
 
+	// Keep rider remittance ledger aligned with the rider's actual job flow.
+	// The rider app advances status through: claimed -> picked_up -> in_transit -> delivered.
+	// We treat pickup and delivered as the two cash-collection points (50/50 split).
+	if update.Status != nil {
+		switch *update.Status {
+		case "picked_up", "delivered":
+			// Ensure ledger exists
+			h.ensureRiderLedger(riderID)
+
+			// Ensure delivery_stops exist (older deliveries may not have them)
+			if err := h.ensureDeliveryStops(deliveryID); err != nil {
+				log.Printf("Warning: failed to ensure delivery stops for delivery %d: %v", deliveryID, err)
+				break
+			}
+
+			// Compute the 50/50 fee split (pickup + drop)
+			var totalCost float64
+			if err := h.db.QueryRow("SELECT total_cost FROM deliveries WHERE id = ?", deliveryID).Scan(&totalCost); err != nil {
+				log.Printf("Warning: failed to load total_cost for delivery %d: %v", deliveryID, err)
+				break
+			}
+			feeAmount := totalCost * 0.5
+
+			stopNumber := 1
+			collectionType := "pickup_fee"
+			if *update.Status == "delivered" {
+				stopNumber = 2
+				collectionType = "delivery_fee"
+			}
+
+			h.logCashCollectionAndUpdateLedger(riderID, deliveryID, stopNumber, collectionType, feeAmount)
+		}
+	}
+
 	// If delivery is marked as "delivered", sync status back to the linked trade
 	if update.Status != nil && *update.Status == "delivered" {
 		var tradeID sql.NullInt64
 		_ = h.db.QueryRow("SELECT trade_id FROM deliveries WHERE id = ?", deliveryID).Scan(&tradeID)
 		if tradeID.Valid {
-			log.Printf("Syncing delivery 'delivered' status to trade %d", tradeID.Int64)
+			// Only sync once ALL delivery legs for this trade are delivered.
+			var remaining int
+			_ = h.db.QueryRow(
+				"SELECT COUNT(*) FROM deliveries WHERE trade_id = ? AND status <> 'delivered'",
+				tradeID.Int64,
+			).Scan(&remaining)
+			if remaining > 0 {
+				log.Printf("Trade %d still has %d undelivered leg(s); skipping trade completion sync", tradeID.Int64, remaining)
+			} else {
+				log.Printf("All delivery legs delivered; syncing completion to trade %d", tradeID.Int64)
 
-			// Mark both delivery confirmations and payment on the trade since rider physically delivered
-			_, syncErr := h.db.Exec(`
-				UPDATE trades
-				SET seller_confirmed_delivery = TRUE,
-					buyer_confirmed_receipt = TRUE,
-					payment_confirmed = TRUE,
-					updated_at = CURRENT_TIMESTAMP
-				WHERE id = ?`, tradeID.Int64)
-			if syncErr != nil {
-				log.Printf("Warning: failed to sync delivery status to trade %d: %v", tradeID.Int64, syncErr)
+				// Mark both delivery confirmations and payment on the trade since rider physically delivered
+				_, syncErr := h.db.Exec(`
+					UPDATE trades
+					SET seller_confirmed_delivery = TRUE,
+						buyer_confirmed_receipt = TRUE,
+						payment_confirmed = TRUE,
+						updated_at = CURRENT_TIMESTAMP
+					WHERE id = ?`, tradeID.Int64)
+				if syncErr != nil {
+					log.Printf("Warning: failed to sync delivery status to trade %d: %v", tradeID.Int64, syncErr)
+				}
+
+				// Notify trade parties
+				var buyerID, sellerID int
+				_ = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID.Int64).Scan(&buyerID, &sellerID)
+
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+					buyerID, "Your delivery has arrived! Please confirm receipt and leave a review.")
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
+					sellerID, "The rider has confirmed delivery. The trade can now be completed.")
+
+				log.Printf("Trade %d updated: delivery confirmed by rider", tradeID.Int64)
 			}
-
-			// Notify trade parties
-			var buyerID, sellerID int
-			_ = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID.Int64).Scan(&buyerID, &sellerID)
-
-			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-				buyerID, "Your delivery has arrived! Please confirm receipt and leave a review.")
-			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-				sellerID, "The rider has confirmed delivery. The trade can now be completed.")
-
-			log.Printf("Trade %d updated: delivery confirmed by rider", tradeID.Int64)
 		}
 	}
 
@@ -1391,6 +1459,103 @@ func (h *DeliveryHandler) UpdateDeliveryStatus(c *fiber.Ctx) error {
 		Message: "Delivery status updated successfully",
 		Data:    delivery,
 	})
+}
+
+// ensureDeliveryStops creates a default 2-stop route if stops are missing.
+// This keeps legacy deliveries compatible with collection/remittance tracking.
+func (h *DeliveryHandler) ensureDeliveryStops(deliveryID int) error {
+	var count int
+	h.db.QueryRow("SELECT COUNT(*) FROM delivery_stops WHERE delivery_id = ?", deliveryID).Scan(&count)
+	if count > 0 {
+		return nil
+	}
+
+	var deliveryUserID int
+	var tradeID sql.NullInt64
+	var pickupAddr, deliveryAddr string
+	var pickupLat, pickupLng, deliveryLat, deliveryLng sql.NullFloat64
+	var totalCost float64
+	if err := h.db.QueryRow(`
+		SELECT user_id, trade_id, pickup_address, delivery_address,
+		       pickup_latitude, pickup_longitude, delivery_latitude, delivery_longitude, total_cost
+		FROM deliveries WHERE id = ?`, deliveryID).Scan(
+		&deliveryUserID, &tradeID, &pickupAddr, &deliveryAddr,
+		&pickupLat, &pickupLng, &deliveryLat, &deliveryLng, &totalCost,
+	); err != nil {
+		return err
+	}
+
+	// Sender (delivery creator)
+	senderName := "Sender"
+	senderPhone := ""
+	_ = h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", deliveryUserID).Scan(&senderName, &senderPhone)
+
+	// Receiver (other trade party when trade-based)
+	receiverName := "Receiver"
+	receiverPhone := ""
+	if tradeID.Valid {
+		var receiverID int
+		_ = h.db.QueryRow("SELECT IF(buyer_id = ?, seller_id, buyer_id) FROM trades WHERE id = ?", deliveryUserID, tradeID.Int64).Scan(&receiverID)
+		_ = h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", receiverID).Scan(&receiverName, &receiverPhone)
+	}
+
+	// Fee split
+	senderFee := totalCost * 0.5
+	receiverFee := totalCost * 0.5
+
+	_, err := h.db.Exec(`
+		INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		                             address, latitude, longitude, fee_amount, status)
+		VALUES (?, 1, 'pickup', ?, ?, ?, ?, ?, ?, 'pending')`,
+		deliveryID, senderName, senderPhone, pickupAddr, pickupLat, pickupLng, senderFee,
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = h.db.Exec(`
+		INSERT INTO delivery_stops (delivery_id, stop_number, stop_type, contact_name, contact_phone,
+		                             address, latitude, longitude, fee_amount, status)
+		VALUES (?, 2, 'delivery', ?, ?, ?, ?, ?, ?, 'pending')`,
+		deliveryID, receiverName, receiverPhone, deliveryAddr, deliveryLat, deliveryLng, receiverFee,
+	)
+	return err
+}
+
+// logCashCollectionAndUpdateLedger logs a pickup/delivery fee collection once and updates the rider ledger.
+func (h *DeliveryHandler) logCashCollectionAndUpdateLedger(riderID, deliveryID, stopNumber int, collectionType string, fallbackAmount float64) {
+	var stopID int
+	var feeAmount float64
+	if err := h.db.QueryRow(
+		"SELECT id, fee_amount FROM delivery_stops WHERE delivery_id = ? AND stop_number = ?",
+		deliveryID, stopNumber,
+	).Scan(&stopID, &feeAmount); err != nil {
+		log.Printf("Warning: failed to load stop for delivery %d stop %d: %v", deliveryID, stopNumber, err)
+		return
+	}
+
+	if feeAmount <= 0 {
+		feeAmount = fallbackAmount
+	}
+
+	var exists int
+	_ = h.db.QueryRow(
+		"SELECT COUNT(*) FROM rider_cash_collections WHERE delivery_id = ? AND stop_id = ? AND collection_type = ?",
+		deliveryID, stopID, collectionType,
+	).Scan(&exists)
+	if exists > 0 {
+		return
+	}
+
+	if _, err := h.db.Exec(`
+		INSERT INTO rider_cash_collections (rider_id, delivery_id, stop_id, collection_type, amount)
+		VALUES (?, ?, ?, ?, ?)
+	`, riderID, deliveryID, stopID, collectionType, feeAmount); err != nil {
+		log.Printf("Failed to log cash collection for rider %d delivery %d: %v", riderID, deliveryID, err)
+		return
+	}
+
+	h.updateRiderLedger(riderID, feeAmount)
 }
 
 // AssignRider assigns a rider to a delivery (for standard deliveries or manual assignment)
@@ -1937,6 +2102,21 @@ func (h *DeliveryHandler) ClaimDelivery(c *fiber.Ctx) error {
 		log.Printf("Failed to get delivery details: %v", err)
 	}
 
+	// If this is a swap trade (two legs), auto-claim the return leg (buyer -> seller)
+	// so the rider can complete it back-to-back.
+	if tradeID.Valid {
+		var tBuyerID, tSellerID int
+		_ = h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tradeID.Int64).Scan(&tBuyerID, &tSellerID)
+		// Leg 1 is owned by seller (seller -> buyer). Only auto-claim if we just claimed leg 1.
+		if deliveryUserID == tSellerID {
+			_, _ = h.db.Exec(`
+				UPDATE deliveries
+				SET rider_id = ?, status = 'claimed', claimed_at = ?, updated_at = CURRENT_TIMESTAMP
+				WHERE trade_id = ? AND user_id = ? AND status = 'pending' AND rider_id IS NULL
+			`, riderID, now, tradeID.Int64, tBuyerID)
+		}
+	}
+
 	// Get sender details (delivery creator)
 	var senderName, senderPhone string
 	h.db.QueryRow("SELECT name, COALESCE(phone, '') FROM users WHERE id = ?", deliveryUserID).Scan(&senderName, &senderPhone)
@@ -2052,9 +2232,18 @@ func (h *DeliveryHandler) GetTradeDelivery(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "Not authorized for this trade"})
 	}
 
-	// Find the delivery for this trade
+	// Find the next delivery leg for this trade (prefer undelivered), otherwise return latest.
 	var deliveryID int
-	err = h.db.QueryRow("SELECT id FROM deliveries WHERE trade_id = ? ORDER BY created_at DESC LIMIT 1", tradeID).Scan(&deliveryID)
+	err = h.db.QueryRow(
+		"SELECT id FROM deliveries WHERE trade_id = ? AND status <> 'delivered' ORDER BY created_at ASC LIMIT 1",
+		tradeID,
+	).Scan(&deliveryID)
+	if err == sql.ErrNoRows {
+		err = h.db.QueryRow(
+			"SELECT id FROM deliveries WHERE trade_id = ? ORDER BY created_at DESC LIMIT 1",
+			tradeID,
+		).Scan(&deliveryID)
+	}
 	if err != nil {
 		// No delivery found — auto-create one if this is an active delivery trade
 		var tradeOption string
@@ -2062,7 +2251,7 @@ func (h *DeliveryHandler) GetTradeDelivery(c *fiber.Ctx) error {
 		_ = h.db.QueryRow("SELECT COALESCE(trade_option, 'meetup'), status FROM trades WHERE id = ?", tradeID).Scan(&tradeOption, &tradeStatus)
 
 		if tradeOption == "delivery" && (tradeStatus == "active" || tradeStatus == "accepted" || tradeStatus == "awaiting_confirmation") {
-			log.Printf("Auto-creating missing delivery record for trade %d", tradeID)
+			log.Printf("Auto-creating missing delivery record(s) for trade %d", tradeID)
 			newID, createErr := h.autoCreateDeliveryForTrade(tradeID, buyerID, sellerID)
 			if createErr != nil {
 				log.Printf("Failed to auto-create delivery for trade %d: %v", tradeID, createErr)
@@ -2095,27 +2284,27 @@ func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID 
 		return 0, fmt.Errorf("failed to get trade info: %w", err)
 	}
 
-	// Get trade items
+	// Get buyer-offered trade items
 	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get trade items: %w", err)
 	}
 	defer rows.Close()
 
-	var productIDs []int
+	var buyerOfferedProductIDs []int
 	for rows.Next() {
 		var pid int
 		if err := rows.Scan(&pid); err != nil {
 			continue
 		}
-		productIDs = append(productIDs, pid)
+		buyerOfferedProductIDs = append(buyerOfferedProductIDs, pid)
 	}
 
 	// Also include the target product
 	var targetProductID int
 	_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID)
-	if targetProductID > 0 {
-		productIDs = append(productIDs, targetProductID)
+	if targetProductID <= 0 {
+		return 0, fmt.Errorf("trade %d missing target_product_id", tradeID)
 	}
 
 	// Get seller location for pickup
@@ -2123,9 +2312,10 @@ func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID 
 	var sellerAddr sql.NullString
 	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", sellerID).Scan(&sellerLat, &sellerLon, &sellerAddr)
 
-	// Get buyer location for delivery
+	// Get buyer location (for delivery and for pickup on return leg)
 	var buyerLat, buyerLon sql.NullFloat64
-	_ = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon)
+	var buyerAddr sql.NullString
+	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon, &buyerAddr)
 
 	// Determine delivery type
 	delType := "standard"
@@ -2153,44 +2343,79 @@ func (h *DeliveryHandler) autoCreateDeliveryForTrade(tradeID, buyerID, sellerID 
 		delAddr = deliveryAddress.String
 	}
 
-	// Insert delivery record
-	result, err := h.db.Exec(`
-		INSERT INTO deliveries (
-			user_id, trade_id, delivery_type, status,
-			pickup_latitude, pickup_longitude, pickup_address,
-			delivery_latitude, delivery_longitude, delivery_address,
-			item_count, total_cost, is_fragile
-		) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
-		sellerID, tradeID, delType,
+	createDelivery := func(ownerUserID int, pickupLat, pickupLon sql.NullFloat64, pickupAddress string, dropLat, dropLon sql.NullFloat64, dropAddress string, itemIDs []int) (int, error) {
+		result, err := h.db.Exec(`
+			INSERT INTO deliveries (
+				user_id, trade_id, delivery_type, status,
+				pickup_latitude, pickup_longitude, pickup_address,
+				delivery_latitude, delivery_longitude, delivery_address,
+				item_count, total_cost, is_fragile
+			) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+			ownerUserID, tradeID, delType,
+			pickupLat, pickupLon, pickupAddress,
+			dropLat, dropLon, dropAddress,
+			len(itemIDs), totalCost,
+		)
+		if err != nil {
+			return 0, err
+		}
+		deliveryID64, _ := result.LastInsertId()
+		deliveryID := int(deliveryID64)
+		for _, pid := range itemIDs {
+			var productName string
+			_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productName)
+			_, _ = h.db.Exec(
+				"INSERT INTO delivery_items (delivery_id, product_id, product_name, is_fragile) VALUES (?, ?, ?, FALSE)",
+				deliveryID, pid, productName,
+			)
+		}
+		return deliveryID, nil
+	}
+
+	leg1ID, err := createDelivery(
+		sellerID,
 		sellerLat, sellerLon, pickupAddr,
 		buyerLat, buyerLon, delAddr,
-		len(productIDs), totalCost,
+		[]int{targetProductID},
 	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to insert delivery: %w", err)
+		return 0, fmt.Errorf("failed to insert leg1 delivery: %w", err)
 	}
+	log.Printf("Auto-created leg1 delivery %d for trade %d (seller -> buyer)", leg1ID, tradeID)
 
-	deliveryID64, _ := result.LastInsertId()
-	deliveryID := int(deliveryID64)
-	log.Printf("Auto-created delivery %d for trade %d with %d items", deliveryID, tradeID, len(productIDs))
+	if len(buyerOfferedProductIDs) > 0 {
+		pickupAddr2 := "Buyer location"
+		if buyerAddr.Valid && buyerAddr.String != "" {
+			pickupAddr2 = buyerAddr.String
+		}
+		delAddr2 := "Seller location"
+		if sellerAddr.Valid && sellerAddr.String != "" {
+			delAddr2 = sellerAddr.String
+		}
 
-	// Insert delivery items
-	for _, pid := range productIDs {
-		var productName string
-		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productName)
-		_, _ = h.db.Exec(
-			"INSERT INTO delivery_items (delivery_id, product_id, product_name, is_fragile) VALUES (?, ?, ?, FALSE)",
-			deliveryID, pid, productName,
+		leg2ID, err := createDelivery(
+			buyerID,
+			buyerLat, buyerLon, pickupAddr2,
+			sellerLat, sellerLon, delAddr2,
+			buyerOfferedProductIDs,
 		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to insert leg2 delivery: %w", err)
+		}
+		log.Printf("Auto-created leg2 delivery %d for trade %d (buyer -> seller)", leg2ID, tradeID)
 	}
 
-	// Notify both parties
-	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		buyerID, "Your offer has been accepted! A delivery will be arranged shortly.")
-	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		sellerID, "You accepted the offer. A delivery request is being prepared.")
+	// Notify both parties (best-effort)
+	msgBuyer := "Your offer has been accepted! A delivery will be arranged shortly."
+	msgSeller := "You accepted the offer. A delivery request is being prepared."
+	if len(buyerOfferedProductIDs) > 0 {
+		msgBuyer = "Your offer has been accepted! Swap delivery scheduled (seller → you, then you → seller)."
+		msgSeller = "You accepted the offer. Swap delivery scheduled (you → buyer, then buyer → you)."
+	}
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", buyerID, msgBuyer)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", sellerID, msgSeller)
 
-	return deliveryID, nil
+	return leg1ID, nil
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -2455,14 +2680,43 @@ func (h *DeliveryHandler) GetRiderLedger(c *fiber.Ctx) error {
 	if err != nil {
 		// Initialize if doesn't exist
 		h.ensureRiderLedger(riderID)
+		threshold := h.getRiderRemittanceLockThreshold()
 		return c.JSON(models.APIResponse{Success: true, Data: models.RiderLedger{
-			RiderID:            riderID,
-			TotalCashCollected: 0,
-			RemittanceOwed:     0,
-			TakeHome:           0,
-			FreeSlotsRemaining: 0,
+			RiderID:                riderID,
+			TotalCashCollected:     0,
+			RemittanceOwed:         0,
+			TakeHome:               0,
+			TotalRemittancePaid:    0,
+			RemittanceThreshold:    threshold,
+			RemittancePaidProgress: 0,
+			FreeSlotsRemaining:     0,
 		}})
 	}
+
+	// Add remittance payment progress indicator (sum of verified payments)
+	var totalPaid float64
+	_ = h.db.QueryRow(
+		"SELECT COALESCE(SUM(amount_paid), 0.00) FROM rider_remittance_payments WHERE rider_id = ? AND status = 'verified'",
+		riderID,
+	).Scan(&totalPaid)
+
+	threshold := h.getRiderRemittanceLockThreshold()
+	paidProgress := 0.0
+	if threshold > 0 {
+		paidProgress = math.Mod(totalPaid, threshold)
+		// If totalPaid is an exact multiple of threshold, show full completion (50/50) instead of 0/50.
+		if paidProgress < 0.009 && totalPaid > 0 {
+			paidProgress = threshold
+		}
+		// Normalize edge cases close to threshold
+		if math.Abs(paidProgress-threshold) < 0.009 {
+			paidProgress = threshold
+		}
+	}
+
+	ledger.TotalRemittancePaid = totalPaid
+	ledger.RemittanceThreshold = threshold
+	ledger.RemittancePaidProgress = paidProgress
 
 	return c.JSON(models.APIResponse{Success: true, Data: ledger})
 }

@@ -146,13 +146,16 @@ export default defineConfig({
         // Manual chunks configuration for optimal splitting
         manualChunks(id) {
           // Keep React and React-DOM in main vendor bundle (don't separate!)
+          // React must be available to all components that depend on it
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-            return 'vendor' // React must stay in main vendor
+            return 'vendor'
           }
-          // Separate other vendors
+          // Keep react-leaflet and leaflet with React (they depend on React)
+          if (id.includes('react-leaflet') || id.includes('leaflet')) {
+            return 'vendor' // Don't separate - needs React from vendor
+          }
+          // Keep all other node_modules in vendor too
           if (id.includes('node_modules')) {
-            if (id.includes('react-leaflet') || id.includes('leaflet')) return 'vendor-map'
-            if (id.includes('@chakra-ui')) return undefined // Let@chakra-ui load from vendor
             return 'vendor'
           }
           // Split large components into route-based chunks

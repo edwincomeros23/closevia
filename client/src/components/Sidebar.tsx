@@ -44,6 +44,7 @@ const Sidebar: React.FC = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const iconColor = useColorModeValue('gray.600', 'gray.300')
   const activeIconColor = useColorModeValue('brand.500', 'brand.300')
+  const mobileUserCardBg = useColorModeValue('brand.50', 'gray.700')
   const { isOpen, onOpen, onClose } = useMobileNav()
   const { notificationCount } = useRealtime()
   const { user, logout } = useAuth()
@@ -216,7 +217,7 @@ const Sidebar: React.FC = () => {
                   as={RouterLink}
                   to="/profile"
                   onClick={onClose}
-                  bg={useColorModeValue('brand.50', 'gray.700')}
+                  bg={mobileUserCardBg}
                   p={4}
                   mb={4}
                   borderRadius="lg"

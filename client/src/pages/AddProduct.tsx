@@ -28,13 +28,13 @@ import {
   AlertDescription,
   Skeleton,
   Tooltip,
-  Switch,
   Modal,
   ModalOverlay,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalCloseButton,
+  Circle,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
 
@@ -78,16 +78,12 @@ import FloatingTab from '../components/FloatingTab'
 import { prepareImageForUpload } from '../utils/imageConverter'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
 import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type ImageQualityResult as ClientQualityResult } from '../utils/imageQualityChecker'
+import { getBackupPriceEstimate } from '../utils/priceEstimator'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const CONDITION_OPTIONS = ['New', 'Like New', 'Good', 'Used', 'For Parts']
 const MAX_DAILY_AI_REQUESTS = 100
-const QA_MOCK_LOCATION = {
-  label: 'QA Mock Location (Work Network)',
-  latitude: 14.5995,
-  longitude: 120.9842,
-}
 
 // ── Daily Budget Helpers ──────────────────────────────────────────────────
 
@@ -159,6 +155,17 @@ const AddProduct: React.FC = () => {
     setIsCameraOpen(false)
   }, [])
 
+  const openVideoCamera = useCallback(() => {
+    // On mobile, use native file input with video capture
+    if (isMobile) {
+      document.getElementById('vid-camera')?.click()
+      return
+    }
+    // On desktop, use the same camera modal but for video capture
+    // For simplicity, just trigger the gallery upload
+    document.getElementById('vid-upload')?.click()
+  }, [isMobile])
+
   const [currentStep, setCurrentStep] = useState(1)
   const TOTAL_STEPS = 3
 
@@ -215,7 +222,6 @@ const AddProduct: React.FC = () => {
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
-  const [useMockLocation, setUseMockLocation] = useState(false)
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
@@ -226,23 +232,7 @@ const AddProduct: React.FC = () => {
 
   // ── Location ──────────────────────────────────────────────────────────────
 
-  const applyMockLocation = useCallback(() => {
-    setFormData(prev => ({
-      ...prev,
-      location: QA_MOCK_LOCATION.label,
-      latitude: QA_MOCK_LOCATION.latitude,
-      longitude: QA_MOCK_LOCATION.longitude,
-    }))
-    setLocationText(QA_MOCK_LOCATION.label)
-    setLocationDetected(true)
-    setIsGettingLocation(false)
-  }, [])
-
   const detectLocation = useCallback(() => {
-    if (useMockLocation) {
-      applyMockLocation()
-      return
-    }
     if (!navigator.geolocation) return
     setIsGettingLocation(true)
     navigator.geolocation.getCurrentPosition(
@@ -255,12 +245,10 @@ const AddProduct: React.FC = () => {
           )
           const data = await res.json()
           const addr = data.address || {}
-          const parts = [
-            addr.hamlet || addr.village || '',
-            addr.suburb || addr.neighborhood || '',
-            addr.city || addr.town || '',
-            addr.county || '',
-          ].filter(Boolean)
+          // Format: "Barangay Name, City"
+          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || ''
+          const city = addr.city || addr.town || ''
+          const parts = [barangay, city].filter(Boolean)
           const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
           setLocationText(address)
           setFormData(prev => ({ ...prev, location: address }))
@@ -278,26 +266,7 @@ const AddProduct: React.FC = () => {
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     )
-  }, [applyMockLocation, useMockLocation])
-
-  const handleMockLocationToggle = useCallback((enabled: boolean) => {
-    setUseMockLocation(enabled)
-
-    if (enabled) {
-      applyMockLocation()
-      return
-    }
-
-    setFormData(prev => ({
-      ...prev,
-      location: '',
-      latitude: undefined,
-      longitude: undefined,
-    }))
-    setLocationText('')
-    setLocationDetected(false)
-    detectLocation()
-  }, [applyMockLocation, detectLocation])
+  }, [])
 
   useEffect(() => {
     detectLocation()
@@ -468,8 +437,8 @@ const AddProduct: React.FC = () => {
       toast({
         id: "addproduct-ai-analysis-failed",
         title: 'AI analysis failed',
-        description: err?.response?.data?.error || err.message || 'Could not analyze image. You can fill in details manually.',
-        status: 'warning',
+        description: 'No problem! Just click "Continue" and fill in the product details on the next page.',
+        status: 'info',
         duration: 5000,
         isClosable: true,
         position: 'top-right',
@@ -641,7 +610,10 @@ const AddProduct: React.FC = () => {
           !!formData.category &&
           !!formData.location?.trim() &&
           !!formData.wanted_categories && 
-          formData.wanted_categories.length > 0
+          formData.wanted_categories.length > 0 &&
+          !!formData.price &&
+          formData.price > 0 &&
+          !!formData.wants?.trim()
         )
       case 3:
         return true
@@ -678,6 +650,8 @@ const AddProduct: React.FC = () => {
         if (!formData.category) issues.push('Select a category')
         if (!formData.location?.trim()) issues.push('Add a location')
         if (!formData.wanted_categories || formData.wanted_categories.length === 0) issues.push('Select desired categories')
+        if (!formData.price || formData.price <= 0) issues.push('Enter a desired price')
+        if (!formData.wants?.trim()) issues.push('Enter preferred item')
         return issues.length > 0 ? issues.join(' • ') : 'Complete all required fields'
       case 3:
         return 'Ready to post'
@@ -702,6 +676,16 @@ const AddProduct: React.FC = () => {
     if (uploadedImages.length === 0) {
       toast({
         id: "addproduct-no-images", title: 'Show off your item!', description: 'Upload at least one picture so others can see what you are offering.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
+      return
+    }
+    if (!formData.price || formData.price <= 0) {
+      toast({
+        id: "addproduct-missing-price", title: 'Price required!', description: 'Please enter your desired price.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
+      return
+    }
+    if (!formData.wants?.trim()) {
+      toast({
+        id: "addproduct-missing-wants", title: 'Preferred item required!', description: 'Please specify what item you would like to receive.', status: 'warning', position: 'top', duration: 4000, isClosable: true })
       return
     }
 
@@ -798,33 +782,46 @@ const AddProduct: React.FC = () => {
         <VStack spacing={4}>
           <AddIcon boxSize={6} color="gray.400" />
           
-          {/* Two Button Options - Side by Side */}
-          <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
-            <Button
-              leftIcon={<span>📁</span>}
-              colorScheme="brand"
-              variant="outline"
-              size="sm"
-              onClick={() => document.getElementById('img-upload')?.click()}
-              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
-            >
-              Upload from Gallery
-            </Button>
-            <Button
-              leftIcon={<span>📷</span>}
-              colorScheme="brand"
-              variant="outline"
-              size="sm"
-              onClick={openCamera}
-              minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
-            >
-              Take Photo
-            </Button>
-          </HStack>
-
-          <Text fontSize="xs" color="gray.500" mt={2}>
-            JPEG/PNG • max 5MB • up to 8 images
-          </Text>
+          {/* Three Button Options - Side by Side */}
+          <VStack spacing={2} w="full">
+            <HStack spacing={3} w="full" justify="center" flexWrap={{ base: 'wrap', sm: 'nowrap' }}>
+              <Button
+                leftIcon={<span>📁</span>}
+                colorScheme="brand"
+                variant="outline"
+                size="sm"
+                onClick={() => document.getElementById('img-upload')?.click()}
+                minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+              >
+                Upload from Gallery
+              </Button>
+              <Button
+                leftIcon={<span>📷</span>}
+                colorScheme="brand"
+                variant="outline"
+                size="sm"
+                onClick={openCamera}
+                minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+              >
+                Take Photo
+              </Button>
+              <Button
+                leftIcon={<span>🎥</span>}
+                colorScheme="brand"
+                variant="outline"
+                size="sm"
+                onClick={openVideoCamera}
+                minW={{ base: 'calc(50% - 6px)', sm: 'auto' }}
+              >
+                Take Video
+              </Button>
+            </HStack>
+            <HStack spacing={1} fontSize="xs" color="gray.500" justify="center" flexWrap="wrap">
+              <Text>JPEG/PNG • max 5MB • up to 8 images</Text>
+              <Text>•</Text>
+              <Text>MP4/MOV • up to 50MB</Text>
+            </HStack>
+          </VStack>
         </VStack>
       </Box>
       
@@ -835,6 +832,40 @@ const AddProduct: React.FC = () => {
       {/* Camera Capture Input - Mobile friendly */}
       <input id="img-camera" type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
         onChange={e => handleImageUpload(e.target.files)} />
+
+      {/* Video Upload Input */}
+      <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
+        onChange={e => handleVideoUpload(e.target.files)} />
+
+      {/* Video Capture Input - Mobile friendly */}
+      <input id="vid-camera" type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
+        onChange={e => handleVideoUpload(e.target.files)} />
+
+      {/* Video Preview */}
+      {uploadedVideo && (
+        <VStack spacing={2} align="stretch" bg="gray.50" p={4} borderRadius="lg" border="1px solid" borderColor="gray.200">
+          <HStack justify="space-between" align="center">
+            <Text fontSize="sm" fontWeight="semibold" color="gray.700">
+              🎥 Video Added
+            </Text>
+            <Button
+              size="xs"
+              colorScheme="red"
+              variant="ghost"
+              onClick={removeVideo}
+            >
+              Remove
+            </Button>
+          </HStack>
+          <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" w="full">
+            <video 
+              src={videoPreviewUrl} 
+              controls 
+              style={{ width: '100%', maxHeight: '200px', objectFit: 'contain' }} 
+            />
+          </Box>
+        </VStack>
+      )}
 
       {/* Image Preview Grid */}
       {uploadedImages.length > 0 && (
@@ -1122,46 +1153,6 @@ const AddProduct: React.FC = () => {
           )
         })()
       )}
-
-      {/* Compact Video Upload - Same Row Style */}
-      <HStack spacing={3} align="flex-start">
-        <Box flex={1}>
-          <Text fontWeight="semibold" color="gray.700" fontSize="sm" mb={2}>
-            📹 Video <Badge colorScheme="gray" ml={2} fontSize="xs" py={1}>Optional</Badge>
-          </Text>
-          {!uploadedVideo ? (
-            <Box
-              border="2px dashed"
-              borderColor={borderColor}
-              borderRadius="lg"
-              p={3}
-              textAlign="center"
-              cursor="pointer"
-              _hover={{ borderColor: 'brand.400' }}
-              onClick={() => document.getElementById('vid-upload')?.click()}
-              minH="70px"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-            >
-              <Text fontSize="sm" color="gray.600">Click to add video</Text>
-            </Box>
-          ) : (
-            <Box position="relative" borderRadius="lg" overflow="hidden" bg="black" maxH="100px">
-              <video src={videoPreviewUrl} controls style={{ width: '100%', maxHeight: '100px', objectFit: 'contain' }} />
-              <IconButton icon={<CloseIcon boxSize={3} />} aria-label="Remove video" size="sm"
-                position="absolute" top={2} right={2} colorScheme="red" onClick={removeVideo} />
-            </Box>
-          )}
-        </Box>
-        <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
-          onChange={e => handleVideoUpload(e.target.files)} />
-      </HStack>
-
-      {/* Helper Text */}
-      <Text fontSize="xs" color="gray.500" px={2}>
-        5–15 seconds • MP4/MOV • up to 50MB
-      </Text>
     </VStack>
   )
 
@@ -1323,18 +1314,8 @@ const AddProduct: React.FC = () => {
         )}
       </Box>
 
-      {/* ──────── LOCATION BAR (Simple, subtle) ──────── */}
-      <Box bg="gray.100" p={2} borderRadius="md">
-        <HStack justify="space-between" mb={2}>
-          <Text fontSize="xs" color="gray.700" fontWeight="semibold">Use QA Mock Location</Text>
-          <Switch
-            size="sm"
-            colorScheme="orange"
-            isChecked={useMockLocation}
-            onChange={(e) => handleMockLocationToggle(e.target.checked)}
-          />
-        </HStack>
-
+      {/* ──────── LOCATION DETECTOR ──────── */}
+      <Box bg="gray.100" p={3} borderRadius="md">
         {isGettingLocation ? (
           <HStack spacing={2}>
             <Spinner size="sm" color="blue.600" />
@@ -1342,36 +1323,38 @@ const AddProduct: React.FC = () => {
           </HStack>
         ) : locationDetected && locationText ? (
           <HStack justify="space-between" align="center" spacing={2}>
-            <Text fontSize="xs" color="gray.700">
+            <Text fontSize="sm" fontWeight="medium" color="gray.800">
               📍 {locationText}
             </Text>
             <Button
               size="xs"
-              variant="ghost"
+              variant="outline"
               fontSize="9px"
               h="auto"
               py={1}
               onClick={detectLocation}
               isLoading={isGettingLocation}
-              isDisabled={useMockLocation}
               _hover={{ bg: "gray.200" }}
             >
-              Wrong Location?
+              Change
             </Button>
           </HStack>
         ) : (
-          <HStack spacing={2}>
-            <Text fontSize="xs" color="red.600">⚠️ Location access needed</Text>
+          <VStack align="start" spacing={2}>
+            <Text fontSize="xs" color="gray.600" fontWeight="medium">📍 Location</Text>
             <Button
-              size="xs"
+              size="sm"
+              colorScheme="brand"
+              variant="outline"
               onClick={detectLocation}
               isLoading={isGettingLocation}
-              isDisabled={useMockLocation}
-              fontSize="9px"
+              fontSize="sm"
+              w="full"
             >
-              Enable
+              Auto-Detect My Location
             </Button>
-          </HStack>
+            <Text fontSize="9px" color="gray.500">This helps match you with nearby trades</Text>
+          </VStack>
         )}
       </Box>
 
@@ -1436,7 +1419,7 @@ const AddProduct: React.FC = () => {
             <FormHelperText fontSize="10px">Choose up to 3 categories.</FormHelperText>
           </FormControl>
           
-          <FormControl>
+          <FormControl isRequired>
             <FormLabel fontSize="xs" fontWeight="semibold" color="gray.600">Specific Item / Preference</FormLabel>
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
               <Box>
@@ -1468,25 +1451,6 @@ const AddProduct: React.FC = () => {
                 />
                 <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
               </Box>
-
-              <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Offer Item Limit</FormLabel>
-                <Select
-                  value={formData.max_items_per_offer}
-                  onChange={e => handleField('max_items_per_offer', Number(e.target.value))}
-                  size="sm"
-                  bg="white"
-                  h="36px"
-                >
-                  <option value={0}>Unlimited Items</option>
-                  <option value={1}>1 Item Only</option>
-                  <option value={2}>Up to 2 Items</option>
-                  <option value={3}>Up to 3 Items</option>
-                  <option value={5}>Up to 5 Items</option>
-                  <option value={10}>Up to 10 Items</option>
-                </Select>
-                <FormHelperText fontSize="10px">Max items a buyer can offer in one go.</FormHelperText>
-              </Box>
             </SimpleGrid>
           </FormControl>
         </VStack>
@@ -1504,10 +1468,10 @@ const AddProduct: React.FC = () => {
 
     return (
       <VStack spacing={4} align="stretch">
-        {/* ──────── PRODUCT IMAGES GALLERY ──────── */}
+        {/* ──────── PRODUCT IMAGES GALLERY (Compact) ──────── */}
         <Box>
           {imagePreviewUrls.length > 0 ? (
-            <SimpleGrid columns={{ base: 5, sm: 6 }} spacing={0.5}>
+            <SimpleGrid columns={{ base: 9, sm: 12 }} spacing={0.5}>
               {imagePreviewUrls.map((url, idx) => (
                 <Box
                   key={idx}
@@ -1533,138 +1497,154 @@ const AddProduct: React.FC = () => {
           ) : (
             <Box
               w="full"
-              h="150px"
+              h="100px"
               display="flex"
               alignItems="center"
               justifyContent="center"
-              bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-              color="white"
+              bg="gray.100"
+              color="gray.400"
               borderRadius="lg"
             >
-              <VStack spacing={2}>
-                <Text fontSize="3xl">📚</Text>
-                <Text fontSize="sm" fontWeight="medium">Product Images</Text>
-              </VStack>
+              <Text fontSize="sm">No images</Text>
             </Box>
           )}
         </Box>
 
-        {/* ──────── TITLE ──────── */}
-        <Box>
-          <Heading fontSize="2xl" fontWeight="bold" color="gray.900" mb={2}>
-            {formData.title}
-          </Heading>
+        {/* ──────── CONSOLIDATED PRODUCT DETAILS ──────── */}
+        <Box p={4} bg="white" borderRadius="lg" borderWidth="1px" borderColor="gray.200">
+          <VStack align="stretch" spacing={3}>
+            {/* Title */}
+            <Box>
+              <Heading fontSize="xl" fontWeight="bold" color="gray.900">
+                {formData.title}
+              </Heading>
+            </Box>
 
-          {/* Metadata Ribbon */}
-          <HStack
-            spacing={1.5}
-            p={2.5}
-            bg="gray.100"
-            borderRadius="lg"
-            flexWrap="wrap"
-            fontSize="xs"
-            color="gray.700"
-            fontWeight="medium"
-          >
-            <Text>✨ {formData.item_type || 'Item'}</Text>
-            <Text>•</Text>
-            <Text>{formData.brand || 'Unknown Brand'}</Text>
-            <Text>•</Text>
-            <Badge
-              colorScheme={
-                formData.authenticity_risks === 'High' ? 'red' :
-                  formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
-              }
-              fontSize="xs"
-              variant="subtle"
-            >
-              {formData.authenticity_risks || 'Low'} Risk
-            </Badge>
-            <Text>•</Text>
-            <Text>{formData.condition}</Text>
-            <Text>•</Text>
-            <Text color="gray.600" fontSize="xs">Listed {listingDate}</Text>
-          </HStack>
+            {/* Description */}
+            {formData.description && (
+              <Box>
+                <Text
+                  fontSize="sm"
+                  color="gray.700"
+                  lineHeight={1.6}
+                  whiteSpace="pre-wrap"
+                  fontFamily="system-ui, -apple-system, sans-serif"
+                >
+                  {formData.description}
+                </Text>
+              </Box>
+            )}
+
+            {/* Divider */}
+            <Box borderBottomWidth="1px" borderBottomColor="gray.200" />
+
+            {/* Details Grid - Compact */}
+            <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={3}>
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                  Condition
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                  {formData.condition}
+                </Text>
+              </Box>
+
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                  Category
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                  {formData.category}{formData.item_type ? ` · ${formData.item_type}` : ''}
+                </Text>
+              </Box>
+
+              <Box>
+                <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                  Location
+                </Text>
+                <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                  📍 {formData.location || 'Not detected'}
+                </Text>
+              </Box>
+
+              {/* Type & Brand */}
+              {formData.item_type && (
+                <Box>
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                    Type
+                  </Text>
+                  <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                    ✨ {formData.item_type}
+                  </Text>
+                </Box>
+              )}
+
+              {formData.brand && (
+                <Box>
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                    Brand
+                  </Text>
+                  <Text fontSize="sm" fontWeight="semibold" color="gray.800">
+                    {formData.brand}
+                  </Text>
+                </Box>
+              )}
+
+              {formData.authenticity_risks && formData.authenticity_risks !== 'Low' && (
+                <Box>
+                  <Text fontSize="xs" color="gray.500" fontWeight="bold" textTransform="uppercase" mb={1}>
+                    Authenticity Risk
+                  </Text>
+                  <Badge
+                    colorScheme={
+                      formData.authenticity_risks === 'High' ? 'red' :
+                        formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
+                    }
+                    fontSize="xs"
+                  >
+                    {formData.authenticity_risks}
+                  </Badge>
+                </Box>
+              )}
+            </SimpleGrid>
+          </VStack>
         </Box>
 
-        {/* ──────── ESTIMATED VALUE (Prominent) ──────── */}
-        <Box
-          p={4}
-          bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-          borderRadius="xl"
-          textAlign="center"
-          color="white"
-        >
-          <Text fontSize="xs" fontWeight="medium" opacity={0.9} mb={1}>
-            Estimated Value
-          </Text>
-          {isGenerating && !aiDone ? (
-            <Skeleton height="40px" borderRadius="md" />
-          ) : (formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0) ? (
-            <Heading fontSize="3xl" fontWeight="bold">
-              ₱{Number(formData.estimated_value_min).toLocaleString()} – ₱{Number(formData.estimated_value_max).toLocaleString()}
-            </Heading>
-          ) : (
-            <Heading fontSize="xl" fontWeight="bold" opacity={0.9}>
-              Value Estimate Unavailable
-            </Heading>
-          )}
-          <Text fontSize="xs" opacity={0.85} mt={2}>
-            {isGenerating && !aiDone ? 'Analyzing your product...' : 'Based on AI analysis of product condition and market data'}
-          </Text>
-        </Box>
-
-        {/* ──────── DESCRIPTION ──────── */}
-        <Box>
-          <Heading fontSize="sm" fontWeight="bold" color="gray.800" mb={2}>
-            About this item
-          </Heading>
-          <Text
-            fontSize="sm"
-            color="gray.700"
-            lineHeight={1.7}
-            whiteSpace="pre-wrap"
-            fontFamily="system-ui, -apple-system, sans-serif"
-          >
-            {formData.description}
-          </Text>
-        </Box>
-
-        {/* ──────── KEY DETAILS GRID - Responsive ──────── */}
+        {/* ──────── ESTIMATED VALUE (Subtle) ──────── */}
         <Box
           p={3}
           bg="gray.50"
           borderRadius="lg"
-          display="grid"
-          gridTemplateColumns={{ base: "1fr", sm: "repeat(2, 1fr)" }}
-          gap={3}
+          borderLeft="3px solid"
+          borderLeftColor="purple.300"
+          textAlign="center"
         >
-          <Box>
-            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Condition</Text>
-            <Text fontSize="sm" fontWeight="medium">{formData.condition}</Text>
-          </Box>
-          <Box>
-            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Category</Text>
-            <Text fontSize="sm" fontWeight="medium">{formData.category}</Text>
-          </Box>
-          {formData.authenticity_risks && (
-            <Box>
-              <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Authenticity Risk</Text>
-              <Badge
-                colorScheme={
-                  formData.authenticity_risks === 'High' ? 'red' :
-                    formData.authenticity_risks === 'Medium' ? 'orange' : 'green'
-                }
-                fontSize="xs"
-              >
-                {formData.authenticity_risks}
-              </Badge>
-            </Box>
-          )}
-          <Box>
-            <Text fontSize="xs" color="gray.600" fontWeight="bold" mb={1}>Location</Text>
-            <Text fontSize="sm" fontWeight="medium">📍 {formData.location || 'Not detected'}</Text>
-          </Box>
+          <Text fontSize="xs" fontWeight="medium" color="gray.600" mb={1}>
+            Estimated Value {formData.estimated_value_min ? '(AI Analysis)' : '(Market Range)'}
+          </Text>
+          {isGenerating && !aiDone ? (
+            <Skeleton height="32px" borderRadius="md" />
+          ) : (() => {
+            const aiEstimate = formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0
+              ? { min: formData.estimated_value_min, max: formData.estimated_value_max }
+              : null
+            
+            const fallbackEstimate = !aiEstimate && formData.category && formData.condition
+              ? getBackupPriceEstimate(formData.category, formData.condition)
+              : null
+            
+            const estimate = aiEstimate || fallbackEstimate
+
+            return estimate ? (
+              <Heading fontSize="2xl" fontWeight="bold" color={aiEstimate ? 'gray.800' : 'amber.700'}>
+                ₱{Number(estimate.min).toLocaleString()} – ₱{Number(estimate.max).toLocaleString()}
+              </Heading>
+            ) : (
+              <Text fontSize="sm" color="gray.600" fontStyle="italic">
+                Add product details to see estimate
+              </Text>
+            )
+          })()}
         </Box>
 
         {/* ──────── VALUE DISPLAY ──────── */}
@@ -1675,11 +1655,14 @@ const AddProduct: React.FC = () => {
           </Box>
         )}
 
-        {/* ──────── DESIRED ITEMS DISPLAY ──────── */}
+        {/* ──────── TRADE PREFERENCES DISPLAY ──────── */}
         {( (formData.wanted_categories && formData.wanted_categories.length > 0) || formData.wants) && (
           <Box p={3} bg="blue.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="blue.400">
-            <Text fontSize="xs" fontWeight="bold" color="blue.900" mb={2}>🔍 Looking For</Text>
-            <VStack align="stretch" spacing={2}>
+            <VStack align="stretch" spacing={1.5}>
+              <Box>
+                <Text fontSize="xs" fontWeight="bold" color="blue.900">🔍 What I'm Looking For (Trade Preferences)</Text>
+                <Text fontSize="10px" color="blue.700" mt={0.5}>These categories and items will help match you with compatible trades</Text>
+              </Box>
               {formData.wanted_categories && formData.wanted_categories.length > 0 && (
                 <HStack spacing={1.5} flexWrap="wrap">
                   {formData.wanted_categories.map(cat => (
@@ -1737,56 +1720,43 @@ const AddProduct: React.FC = () => {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <Box minH="100vh" bg={pageBg} py={6}>
-      <Box p={6} maxW="3xl" mx="auto">
-        <VStack spacing={5} align="stretch">
-          {/* Enhanced Header with Step Breadcrumb */}
-          <VStack align="start" spacing={3}>
-            <Heading size="lg" color="brand.500">Post a Product</Heading>
+    <Box minH="100vh" bg={pageBg} py={4}>
+      <Box p={{ base: 4, md: 6 }} maxW="3xl" mx="auto">
+        <VStack spacing={3} align="stretch">
+          {/* Compact Header with Minimal Step Indicator */}
+          <HStack justify="space-between" align="center" spacing={3}>
+            <Heading size="sm" color="brand.500">Post a Product</Heading>
             
-            {/* Step Breadcrumb */}
-            <HStack spacing={2} fontSize="sm">
-              {stepLabels.map((step, idx) => (
-                <React.Fragment key={step.number}>
-                  <HStack 
-                    spacing={1.5}
-                    px={3}
-                    py={1.5}
-                    borderRadius="md"
-                    bg={currentStep === step.number ? 'brand.50' : 'transparent'}
-                    border={currentStep === step.number ? '1px solid' : 'none'}
-                    borderColor={currentStep === step.number ? 'brand.300' : 'transparent'}
-                    transition="all 0.2s"
+            {/* Compact Step Dots */}
+            <HStack spacing={1.5}>
+              {stepLabels.map((step) => (
+                <Tooltip key={step.number} label={step.title} placement="top" hasArrow>
+                  <Circle
+                    size={{ base: '28px', sm: '32px' }}
+                    bg={currentStep === step.number ? 'brand.500' : currentStep > step.number ? 'brand.200' : 'gray.200'}
                     cursor={currentStep !== step.number ? 'pointer' : 'default'}
-                    _hover={currentStep !== step.number ? { bg: 'gray.50' } : {}}
                     onClick={() => currentStep > step.number && setCurrentStep(step.number)}
+                    transition="all 0.2s"
+                    _hover={currentStep !== step.number ? { transform: 'scale(1.1)', shadow: 'md' } : {}}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
                   >
                     <Text
-                      fontSize="sm"
-                      fontWeight={currentStep === step.number ? 'bold' : 'medium'}
-                      color={currentStep === step.number ? 'brand.600' : 'gray.600'}
+                      fontSize={{ base: '10px', sm: '12px' }}
+                      fontWeight="bold"
+                      color={currentStep >= step.number ? 'white' : 'gray.600'}
                     >
-                      {step.icon} {step.title}
+                      {currentStep > step.number ? '✓' : step.number}
                     </Text>
-                  </HStack>
-                  {idx < stepLabels.length - 1 && (
-                    <Text color="gray.400" fontWeight="bold">→</Text>
-                  )}
-                </React.Fragment>
+                  </Circle>
+                </Tooltip>
               ))}
             </HStack>
-          </VStack>
-
-          {/* Compact Step Progress Bar */}
-          <Progress
-            value={(currentStep / TOTAL_STEPS) * 100}
-            colorScheme="brand"
-            size="sm"
-            borderRadius="full"
-          />
+          </HStack>
 
           {/* Step Content */}
-          <Box bg={bgColor} p={{ base: 6, md: 8 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
+          <Box bg={bgColor} p={{ base: 4, md: 6 }} borderRadius="xl" shadow="sm" border="1px" borderColor={borderColor}>
             {currentStep === 1 && renderStep1()}
             {currentStep === 2 && renderStep2()}
             {currentStep === 3 && renderStep3()}

@@ -1,7 +1,23 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios'
 
+function normalizeLoopbackBaseUrl(raw: string): string {
+  try {
+    const u = new URL(raw)
+    // On some Windows setups, `localhost` resolves to IPv6 `::1`,
+    // but the backend may only be listening on IPv4.
+    if (u.hostname === 'localhost' || u.hostname === '::1') {
+      u.hostname = '127.0.0.1'
+    }
+    return u.toString().replace(/\/$/, '')
+  } catch {
+    return raw.replace(/\/$/, '')
+  }
+}
+
 // Use environment variable for API URL, default to localhost for development
-export const API_BASE_URL = import.meta.env.VITE_API_URL || (
+const ENV_API_URL = import.meta.env.VITE_API_URL
+
+export const API_BASE_URL = (ENV_API_URL ? normalizeLoopbackBaseUrl(ENV_API_URL) : '') || (
   import.meta.env.PROD
     ? 'https://clovia-backend.onrender.com'  // Update with your actual Render backend URL
     // In development, use relative baseURL so Vite can proxy `/api`.

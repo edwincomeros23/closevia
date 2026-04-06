@@ -2060,7 +2060,7 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 		return
 	}
 
-	// Get trade items (products being traded)
+	// Get buyer-offered items (trade_items are items offered by the buyer in this schema)
 	rows, err := h.db.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tradeID)
 	if err != nil {
 		log.Printf("Failed to get trade items for trade %d: %v", tradeID, err)
@@ -2068,28 +2068,32 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 	}
 	defer rows.Close()
 
-	var productIDs []int
+	var buyerOfferedProductIDs []int
 	for rows.Next() {
 		var pid int
 		if err := rows.Scan(&pid); err != nil {
 			continue
 		}
-		productIDs = append(productIDs, pid)
+		buyerOfferedProductIDs = append(buyerOfferedProductIDs, pid)
 	}
 
 	// Also include the target product
 	var targetProductID int
 	_ = h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID)
-	productIDs = append(productIDs, targetProductID)
+	if targetProductID <= 0 {
+		log.Printf("Trade %d has no target product id; skipping delivery creation", tradeID)
+		return
+	}
 
 	// Get seller location for pickup
 	var sellerLat, sellerLon sql.NullFloat64
 	var sellerAddr sql.NullString
 	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", sellerID).Scan(&sellerLat, &sellerLon, &sellerAddr)
 
-	// Get buyer location for delivery
+	// Get buyer location (for delivery and for pickup on return leg)
 	var buyerLat, buyerLon sql.NullFloat64
-	_ = h.db.QueryRow("SELECT latitude, longitude FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon)
+	var buyerAddr sql.NullString
+	_ = h.db.QueryRow("SELECT latitude, longitude, COALESCE(bio, '') FROM users WHERE id = ?", buyerID).Scan(&buyerLat, &buyerLon, &buyerAddr)
 
 	// Determine delivery type
 	delType := "standard"
@@ -2117,52 +2121,98 @@ func (h *TradeHandler) createDeliveryForTrade(tradeID, buyerID, sellerID int) {
 		delAddr = deliveryAddress.String
 	}
 
-	// Insert delivery record
-	result, err := h.db.Exec(`
-		INSERT INTO deliveries (
-			user_id, trade_id, delivery_type, status,
-			pickup_latitude, pickup_longitude, pickup_address,
-			delivery_latitude, delivery_longitude, delivery_address,
-			item_count, total_cost, is_fragile
-		) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
-		sellerID, tradeID, delType,
-		sellerLat, sellerLon, pickupAddr,
-		buyerLat, buyerLon, delAddr,
-		len(productIDs), totalCost,
-	)
-	if err != nil {
-		log.Printf("Failed to create delivery for trade %d: %v", tradeID, err)
-		return
-	}
-
-	deliveryID64, _ := result.LastInsertId()
-	deliveryID := int(deliveryID64)
-	log.Printf("Created delivery %d for trade %d", deliveryID, tradeID)
-
-	// Insert delivery items for each product
-	for _, pid := range productIDs {
-		var productName string
-		_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productName)
-		_, err := h.db.Exec(
-			"INSERT INTO delivery_items (delivery_id, product_id, product_name, is_fragile) VALUES (?, ?, ?, FALSE)",
-			deliveryID, pid, productName,
+	// If there are buyer-offered items, this is a swap and should be handled as 2 legs:
+	//   Leg 1: seller -> buyer (target product)
+	//   Leg 2: buyer -> seller (buyer-offered products)
+	// If there are no offered items (cash-only), only create Leg 1.
+	createDelivery := func(ownerUserID int, pickupLat, pickupLon sql.NullFloat64, pickupAddress string, dropLat, dropLon sql.NullFloat64, dropAddress string, itemIDs []int) (int, error) {
+		result, err := h.db.Exec(`
+			INSERT INTO deliveries (
+				user_id, trade_id, delivery_type, status,
+				pickup_latitude, pickup_longitude, pickup_address,
+				delivery_latitude, delivery_longitude, delivery_address,
+				item_count, total_cost, is_fragile
+			) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
+			ownerUserID, tradeID, delType,
+			pickupLat, pickupLon, pickupAddress,
+			dropLat, dropLon, dropAddress,
+			len(itemIDs), totalCost,
 		)
 		if err != nil {
-			log.Printf("Warning: failed to insert delivery item for product %d: %v", pid, err)
+			return 0, err
 		}
+		deliveryID64, _ := result.LastInsertId()
+		deliveryID := int(deliveryID64)
+
+		for _, pid := range itemIDs {
+			var productName string
+			_ = h.db.QueryRow("SELECT title FROM products WHERE id = ?", pid).Scan(&productName)
+			_, itemErr := h.db.Exec(
+				"INSERT INTO delivery_items (delivery_id, product_id, product_name, is_fragile) VALUES (?, ?, ?, FALSE)",
+				deliveryID, pid, productName,
+			)
+			if itemErr != nil {
+				log.Printf("Warning: failed to insert delivery item for product %d: %v", pid, itemErr)
+			}
+		}
+
+		return deliveryID, nil
+	}
+
+	leg1ID, err := createDelivery(
+		sellerID,
+		sellerLat, sellerLon, pickupAddr,
+		buyerLat, buyerLon, delAddr,
+		[]int{targetProductID},
+	)
+	if err != nil {
+		log.Printf("Failed to create leg1 delivery for trade %d: %v", tradeID, err)
+		return
+	}
+	log.Printf("Created leg1 delivery %d for trade %d (seller -> buyer)", leg1ID, tradeID)
+
+	createdIDs := []int{leg1ID}
+	if len(buyerOfferedProductIDs) > 0 {
+		pickupAddr2 := "Buyer location"
+		if buyerAddr.Valid && buyerAddr.String != "" {
+			pickupAddr2 = buyerAddr.String
+		}
+		delAddr2 := "Seller location"
+		if sellerAddr.Valid && sellerAddr.String != "" {
+			delAddr2 = sellerAddr.String
+		}
+
+		leg2ID, err := createDelivery(
+			buyerID,
+			buyerLat, buyerLon, pickupAddr2,
+			sellerLat, sellerLon, delAddr2,
+			buyerOfferedProductIDs,
+		)
+		if err != nil {
+			log.Printf("Failed to create leg2 delivery for trade %d: %v", tradeID, err)
+			return
+		}
+		createdIDs = append(createdIDs, leg2ID)
+		log.Printf("Created leg2 delivery %d for trade %d (buyer -> seller)", leg2ID, tradeID)
 	}
 
 	// Notify both parties
-	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		buyerID, "Your offer has been accepted! A delivery will be arranged shortly.")
-	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)",
-		sellerID, "You accepted the offer. A delivery request is being prepared.")
+	msgBuyer := "Your offer has been accepted! A delivery will be arranged shortly."
+	msgSeller := "You accepted the offer. A delivery request is being prepared."
+	if len(createdIDs) > 1 {
+		msgBuyer = "Your offer has been accepted! Swap delivery scheduled (seller → you, then you → seller)."
+		msgSeller = "You accepted the offer. Swap delivery scheduled (you → buyer, then buyer → you)."
+	}
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", buyerID, msgBuyer)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'delivery_update', ?, FALSE)", sellerID, msgSeller)
 
-	// Send SSE events
-	publishToUser(buyerID, sseEvent{Type: "delivery_created", Data: fiber.Map{"trade_id": tradeID, "delivery_id": deliveryID}})
-	publishToUser(sellerID, sseEvent{Type: "delivery_created", Data: fiber.Map{"trade_id": tradeID, "delivery_id": deliveryID}})
+	// Send SSE events (best-effort)
+	for _, id := range createdIDs {
+		publishToUser(buyerID, sseEvent{Type: "delivery_created", Data: fiber.Map{"trade_id": tradeID, "delivery_id": id}})
+		publishToUser(sellerID, sseEvent{Type: "delivery_created", Data: fiber.Map{"trade_id": tradeID, "delivery_id": id}})
+	}
 
-	log.Printf("Delivery %d for trade %d created successfully with %d items", deliveryID, tradeID, len(productIDs))
+	log.Printf("Trade %d delivery creation complete (created %d leg(s))", tradeID, len(createdIDs))
 }
 
 // GetTradeMessages returns messages for a trade
