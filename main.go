@@ -2,6 +2,7 @@ package main
 
 // hallo :3
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -20,6 +21,8 @@ import (
 	"github.com/xashathebest/clovia/models"
 	"github.com/xashathebest/clovia/services"
 )
+
+var startTime = time.Now()
 
 func debugEndpointsEnabled() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("ENABLE_DEBUG_ENDPOINTS")))
@@ -132,19 +135,51 @@ func main() {
 		return c.Next()
 	})
 
+	// ⚡ OPTIMIZED: Add Cache-Control headers for static assets
+	// This improves repeat visit performance and reduces bandwidth
+	app.Use(func(c *fiber.Ctx) error {
+		path := c.Path()
+
+		// Set cache headers based on file type (extensionless paths are dynamic)
+		if strings.Contains(path, "/uploads/products/") {
+			// ✅ Product images: Cache for 30 days (versioned by upload timestamp)
+			c.Set("Cache-Control", "public, max-age=2592000, immutable") // 30 days
+		} else if strings.Contains(path, "/uploads/") {
+			// ✅ User uploads: Cache for 7 days (profile pics, etc.)
+			c.Set("Cache-Control", "public, max-age=604800, immutable") // 7 days
+		} else if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") {
+			// ✅ Assets (should be versioned by build): Cache for 1 year
+			c.Set("Cache-Control", "public, max-age=31536000, immutable") // 1 year
+		}
+
+		return c.Next()
+	})
+
 	// Serve static files (uploads directory)
 	app.Static("/uploads", "./uploads")
 	app.Static("/uploads/products", "./uploads/products")
 
-	// Add after middleware setup
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "Welcome to Clovia API",
-		})
-	})
+	// Serve React build files with cache headers
+	app.Static("/", "./client/dist")
 
 	log.Printf("Backend version: xendit-sync-all-405-fix")
+
+	// ⚠️ IMPORTANT: SPA routes MUST come early (before most routes)
+	// Serve root path
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendFile("./client/dist/index.html")
+	})
+
+	// Serve index.html for all unmatched non-API routes (SPA catch-all)
+	// This allows React Router to handle all routing on the client side
+	app.Get("/*", func(c *fiber.Ctx) error {
+		// Don't intercept API routes
+		if c.Path() == "/" || !strings.HasPrefix(c.Path(), "/api") {
+			return c.SendFile("./client/dist/index.html")
+		}
+		return nil
+	})
+
 	// Quick sanity-check endpoint to confirm you restarted the backend with latest routes.
 	app.Get("/api/version", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -153,12 +188,42 @@ func main() {
 		})
 	})
 
-	// Health check
+	// ⚠️ IMPORTANT: This was moved up before API routes
+	// Previously was: SPA catch-all MUST be last
+
+	// Health check with database connectivity verification (for k6 load tests & monitoring)
+	app.Get("/api/health", func(c *fiber.Ctx) error {
+		// Ping database with 3-second timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		dbErr := database.DB.PingContext(ctx)
+		uptime := time.Since(startTime)
+
+		if dbErr != nil {
+			// DB is down, return 503 Service Unavailable (k6 recognizes this as infrastructure failure)
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"status":  "unhealthy",
+				"uptime":  uptime.String(),
+				"db":      "down",
+				"error":   dbErr.Error(),
+				"version": "xendit-sync-all-405-fix",
+			})
+		}
+
+		// All systems healthy
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"status":  "ok",
+			"uptime":  uptime.String(),
+			"db":      "connected",
+			"version": "xendit-sync-all-405-fix",
+		})
+	})
+
+	// Simple health check endpoint (for basic liveness probes, no DB ping)
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "Clovia API is running",
-			"version": "1.0.0",
+			"status": "ok",
 		})
 	})
 
@@ -550,6 +615,8 @@ func main() {
 	admin.Get("/users", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.GetUsers)
 	admin.Put("/users/:id/suspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.SuspendUser)
 	admin.Put("/users/:id/unsuspend", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.UnsuspendUser)
+	admin.Put("/users/:id/ban", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.BanUser)
+	admin.Put("/users/:id/unban", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.UnbanUser)
 	admin.Delete("/users/:id", middleware.AuthMiddleware(), middleware.AdminMiddleware(), userHandler.DeleteUser)
 	// Admin: school ID verification review
 	admin.Get("/verifications", middleware.AuthMiddleware(), middleware.AdminMiddleware(), verificationHandler.AdminListVerifications)

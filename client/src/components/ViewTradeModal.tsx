@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Modal,
   ModalOverlay,
@@ -38,7 +39,8 @@ import {
   Grid,
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
-import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle } from 'react-icons/fa'
+import OptimizedImage from './OptimizedImage'
+import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle, FaCheck } from 'react-icons/fa'
 import {
   FiMapPin,
   FiPhone,
@@ -64,16 +66,15 @@ L.Icon.Default.mergeOptions({
 const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
   const map = useMap()
   useEffect(() => {
-    // Multiple calls to ensure map updates properly
     const timers = [
       setTimeout(() => {
         map.invalidateSize()
         map.setView([lat, lng], 16, { animate: true })
-      }, 100),
+      }, 350),
       setTimeout(() => {
         map.invalidateSize()
         map.setView([lat, lng], 16, { animate: true })
-      }, 300),
+      }, 700),
     ]
     return () => timers.forEach(t => clearTimeout(t))
   }, [lat, lng, map])
@@ -83,11 +84,12 @@ const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
 const ModalMapFix = () => {
   const map = useMap()
   useEffect(() => {
-    // Multiple invalidateSize calls with increasing delays to ensure map renders
+    // Delays must exceed Chakra modal open animation (~300ms) so the container
+    // has its final dimensions before Leaflet measures it.
     const timers = [
-      setTimeout(() => map.invalidateSize(), 100),
-      setTimeout(() => map.invalidateSize(), 300),
+      setTimeout(() => map.invalidateSize(), 350),
       setTimeout(() => map.invalidateSize(), 600),
+      setTimeout(() => map.invalidateSize(), 1000),
     ]
     return () => timers.forEach(t => clearTimeout(t))
   }, [map])
@@ -775,218 +777,217 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
   const otherPartyCompleted = isUserBuyer ? completionStatus?.seller_completed : completionStatus?.buyer_completed
 
   return (
-    <VStack spacing={6} align="stretch">
-      {/* Single Heading */}
-      <Text fontWeight="semibold" fontSize="lg">
-        Trade Review & Completion
-      </Text>
-
-      {/* Review Status Cards */}
+    <VStack spacing={5} align="stretch">
+      {/* Review Status Cards - Compact Layout */}
       {completionStatus && (
-        <SimpleGrid columns={2} spacing={4}>
-          <Card bg={completionStatus.buyer_completed ? 'green.50' : 'gray.50'} borderWidth="1px" borderColor={borderColor}>
-            <CardBody>
-              <VStack spacing={3} textAlign="center">
+        <SimpleGrid columns={2} spacing={3}>
+          <Box p={3} bg={completionStatus.buyer_completed ? 'green.50' : 'gray.50'} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+            <VStack spacing={2}>
+              <HStack justify="space-between" w="full">
                 <Text fontWeight="semibold" fontSize="sm">Buyer Review</Text>
-                <Badge colorScheme={completionStatus.buyer_completed ? 'green' : 'gray'}>
-                  {completionStatus.buyer_completed ? '✓ Submitted' : 'Pending'}
-                </Badge>
-                {completionStatus.buyer_rating && (
-                  <VStack spacing={1}>
-                    <HStack spacing={0.5} justify="center">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Icon
-                          key={`buyer-star-${star}`}
-                          as={FaStar}
-                          color={star <= completionStatus.buyer_rating ? 'yellow.400' : 'gray.300'}
-                          boxSize={4}
-                        />
-                      ))}
-                    </HStack>
-                    <Text fontSize="xs" color="gray.600">
-                      {completionStatus.buyer_rating}/5
-                    </Text>
-                  </VStack>
-                )}
-                {completionStatus.buyer_feedback && (
-                  <Text fontSize="xs" color="gray.600" noOfLines={2} fontStyle="italic">
-                    "{completionStatus.buyer_feedback}"
+                <Icon
+                  as={completionStatus.buyer_completed ? FaCheck : FaClock}
+                  color={completionStatus.buyer_completed ? 'green.500' : 'gray.400'}
+                  boxSize={4}
+                />
+              </HStack>
+              {completionStatus.buyer_rating && (
+                <HStack spacing={1} w="full" justify="space-between">
+                  <HStack spacing={0.5}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Icon
+                        key={`buyer-star-${star}`}
+                        as={FaStar}
+                        color={star <= completionStatus.buyer_rating ? 'yellow.400' : 'gray.300'}
+                        boxSize={3}
+                      />
+                    ))}
+                  </HStack>
+                  <Text fontSize="xs" color="gray.600" fontWeight="semibold">
+                    {completionStatus.buyer_rating}/5
                   </Text>
-                )}
-              </VStack>
-            </CardBody>
-          </Card>
+                </HStack>
+              )}
+              {completionStatus.buyer_feedback && (
+                <Text fontSize="xs" color="gray.600" noOfLines={1} fontStyle="italic" w="full">
+                  "{completionStatus.buyer_feedback}"
+                </Text>
+              )}
+            </VStack>
+          </Box>
 
-          <Card bg={completionStatus.seller_completed ? 'green.50' : 'gray.50'} borderWidth="1px" borderColor={borderColor}>
-            <CardBody>
-              <VStack spacing={3} textAlign="center">
+          <Box p={3} bg={completionStatus.seller_completed ? 'green.50' : 'gray.50'} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
+            <VStack spacing={2}>
+              <HStack justify="space-between" w="full">
                 <Text fontWeight="semibold" fontSize="sm">Seller Review</Text>
-                <Badge colorScheme={completionStatus.seller_completed ? 'green' : 'gray'}>
-                  {completionStatus.seller_completed ? '✓ Submitted' : 'Pending'}
-                </Badge>
-                {completionStatus.seller_rating && (
-                  <VStack spacing={1}>
-                    <HStack spacing={0.5} justify="center">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Icon
-                          key={`seller-star-${star}`}
-                          as={FaStar}
-                          color={star <= completionStatus.seller_rating ? 'yellow.400' : 'gray.300'}
-                          boxSize={4}
-                        />
-                      ))}
-                    </HStack>
-                    <Text fontSize="xs" color="gray.600">
-                      {completionStatus.seller_rating}/5
-                    </Text>
-                  </VStack>
-                )}
-                {completionStatus.seller_feedback && (
-                  <Text fontSize="xs" color="gray.600" noOfLines={2} fontStyle="italic">
-                    "{completionStatus.seller_feedback}"
+                <Icon
+                  as={completionStatus.seller_completed ? FaCheck : FaClock}
+                  color={completionStatus.seller_completed ? 'green.500' : 'gray.400'}
+                  boxSize={4}
+                />
+              </HStack>
+              {completionStatus.seller_rating && (
+                <HStack spacing={1} w="full" justify="space-between">
+                  <HStack spacing={0.5}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Icon
+                        key={`seller-star-${star}`}
+                        as={FaStar}
+                        color={star <= completionStatus.seller_rating ? 'yellow.400' : 'gray.300'}
+                        boxSize={3}
+                      />
+                    ))}
+                  </HStack>
+                  <Text fontSize="xs" color="gray.600" fontWeight="semibold">
+                    {completionStatus.seller_rating}/5
                   </Text>
-                )}
-              </VStack>
-            </CardBody>
-          </Card>
+                </HStack>
+              )}
+              {completionStatus.seller_feedback && (
+                <Text fontSize="xs" color="gray.600" noOfLines={1} fontStyle="italic" w="full">
+                  "{completionStatus.seller_feedback}"
+                </Text>
+              )}
+            </VStack>
+          </Box>
         </SimpleGrid>
       )}
 
       {/* Review Form - Only show if current user hasn't completed */}
       {!userHasCompleted && (
-        <Card borderWidth="2px" borderColor="blue.200" bg={meetupInfoBg}>
-          <CardBody>
-            <VStack spacing={5} align="stretch">
-              <Text fontWeight="semibold" fontSize="md">
-                Your Review
-              </Text>
+        <Box borderWidth="2px" borderColor="blue.200" bg={meetupInfoBg} p={4} borderRadius="md">
+          <VStack spacing={4} align="stretch">
+            <Text fontWeight="semibold" fontSize="sm">
+              Your Review
+            </Text>
 
-              {/* Rating */}
-              <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="semibold">Rating</FormLabel>
-                <HStack spacing={2}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Icon
-                      key={star}
-                      as={FaStar}
-                      color={star <= rating ? 'yellow.400' : 'gray.300'}
-                      cursor="pointer"
-                      onClick={() => setRating(star)}
-                      boxSize={7}
-                      transition="all 0.1s"
-                      _hover={{ transform: 'scale(1.1)' }}
-                    />
-                  ))}
-                  <Text fontSize="sm" fontWeight="semibold" ml={2}>
-                    {rating}/5
-                  </Text>
-                </HStack>
-              </FormControl>
-
-              {/* Feedback */}
-              <FormControl isRequired>
-                <FormLabel fontSize="sm" fontWeight="semibold">Feedback</FormLabel>
-                <Textarea
-                  autoFocus
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="Share your experience with this trade..."
-                  rows={4}
-                  borderColor={borderColor}
-                  _focus={{ borderColor: 'brand.500', boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)' }}
-                />
-                <Text fontSize="xs" color="gray.500" mt={1}>
-                  {feedback.length} characters
+            {/* Rating */}
+            <FormControl isRequired>
+              <FormLabel fontSize="xs" fontWeight="semibold">Rating</FormLabel>
+              <HStack spacing={2}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Icon
+                    key={star}
+                    as={FaStar}
+                    color={star <= rating ? 'yellow.400' : 'gray.300'}
+                    cursor="pointer"
+                    onClick={() => setRating(star)}
+                    boxSize={6}
+                    transition="all 0.1s"
+                    _hover={{ transform: 'scale(1.1)' }}
+                  />
+                ))}
+                <Text fontSize="xs" fontWeight="semibold" ml={2}>
+                  {rating}/5
                 </Text>
-              </FormControl>
+              </HStack>
+            </FormControl>
 
-              {/* Proof Image */}
-              <FormControl>
-                <FormLabel fontSize="sm" fontWeight="semibold">
-                  Proof Image {proofRequired ? '(Required)' : '(Optional)'}
-                </FormLabel>
-                {proofImage ? (
-                  <VStack spacing={3} align="stretch">
-                    <Box position="relative" w="full" maxW="200px">
-                      <Image
-                        src={proofImage}
-                        alt="Proof"
-                        w="full"
-                        maxH="150px"
-                        objectFit="cover"
-                        borderRadius="md"
-                        borderWidth="2px"
-                        borderColor="green.300"
-                      />
-                      <Icon
-                        as={FiCheck}
-                        position="absolute"
-                        top={2}
-                        right={2}
-                        color="green.500"
-                        boxSize={6}
-                        bg="white"
-                        borderRadius="full"
-                        p={1}
-                      />
-                    </Box>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      colorScheme="blue"
-                      onClick={() => document.getElementById('proof-upload-review')?.click()}
-                    >
-                      Change Image
-                    </Button>
-                  </VStack>
-                ) : (
+            {/* Feedback */}
+            <FormControl isRequired>
+              <FormLabel fontSize="xs" fontWeight="semibold">Feedback</FormLabel>
+              <Textarea
+                autoFocus
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Share your experience with this trade..."
+                rows={3}
+                fontSize="sm"
+                borderColor={borderColor}
+                _focus={{ borderColor: 'brand.500', boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)' }}
+              />
+              <Text fontSize="xs" color="gray.500" mt={1}>
+                {feedback.length} characters
+              </Text>
+            </FormControl>
+
+            {/* Proof Image */}
+            <FormControl>
+              <FormLabel fontSize="xs" fontWeight="semibold">
+                Proof Image {proofRequired ? '(Required)' : '(Optional)'}
+              </FormLabel>
+              {proofImage ? (
+                <VStack spacing={2} align="stretch">
+                  <Box position="relative" w="full" maxW="150px">
+                    <Image
+                      src={proofImage}
+                      alt="Proof"
+                      w="full"
+                      maxH="120px"
+                      objectFit="cover"
+                      borderRadius="md"
+                      borderWidth="2px"
+                      borderColor="green.300"
+                    />
+                    <Icon
+                      as={FiCheck}
+                      position="absolute"
+                      top={1}
+                      right={1}
+                      color="green.500"
+                      boxSize={5}
+                      bg="white"
+                      borderRadius="full"
+                      p={0.5}
+                    />
+                  </Box>
                   <Button
+                    size="xs"
                     variant="outline"
                     colorScheme="blue"
                     onClick={() => document.getElementById('proof-upload-review')?.click()}
-                    leftIcon={<FiUpload />}
-                    w="full"
                   >
-                    Upload Proof Image
+                    Change Image
                   </Button>
-                )}
-                <Input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  display="none"
-                  id="proof-upload-review"
-                  onChange={handleProofUpload}
-                />
-              </FormControl>
+                </VStack>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  colorScheme="blue"
+                  onClick={() => document.getElementById('proof-upload-review')?.click()}
+                  leftIcon={<FiUpload />}
+                  w="full"
+                >
+                  Upload Proof Image
+                </Button>
+              )}
+              <Input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                display="none"
+                id="proof-upload-review"
+                onChange={handleProofUpload}
+              />
+            </FormControl>
 
-              {/* Submit Button */}
-              <Button
-                colorScheme="green"
-                size="lg"
-                onClick={submitReview}
-                isLoading={submitting}
-                isDisabled={!rating || !feedback.trim() || (proofRequired && !proofFile)}
-                w="full"
-                transition="all 0.2s"
-                _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
-              >
-                Submit Review
-              </Button>
-            </VStack>
-          </CardBody>
-        </Card>
+            {/* Submit Button */}
+            <Button
+              colorScheme="green"
+              size="md"
+              onClick={submitReview}
+              isLoading={submitting}
+              isDisabled={!rating || !feedback.trim() || (proofRequired && !proofFile)}
+              w="full"
+              transition="all 0.2s"
+              _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+            >
+              Submit Review
+            </Button>
+          </VStack>
+        </Box>
       )}
 
       {/* Both Completed Message */}
       {completionStatus?.buyer_completed && completionStatus?.seller_completed && (
-        <Box p={4} bg="green.50" borderRadius="lg" borderWidth="2px" borderColor="green.300" textAlign="center">
-          <Icon as={FiCheck} boxSize={8} color="green.500" mb={3} mx="auto" display="block" />
-          <Text fontWeight="bold" color="green.700" mb={1} fontSize="lg">
+        <Box p={3} bg="green.50" borderRadius="md" borderWidth="2px" borderColor="green.300" textAlign="center">
+          <Icon as={FiCheck} boxSize={6} color="green.500" mb={2} mx="auto" display="block" />
+          <Text fontWeight="bold" color="green.700" mb={1} fontSize="sm">
             Trade Completed Successfully! 🎉
           </Text>
-          <Text fontSize="sm" color="green.600">
-            Both parties have submitted their reviews and feedback. Thank you for using Clovia!
+          <Text fontSize="xs" color="green.600">
+            Both parties have submitted their reviews. Thank you for using Clovia!
           </Text>
         </Box>
       )}
@@ -1017,6 +1018,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const { user } = useAuth()
   const { getProduct } = useProducts()
   const toast = useToast()
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<TradeMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [sendingMessage, setSendingMessage] = useState(false)
@@ -1051,13 +1053,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   })
   const [linkedDelivery, setLinkedDelivery] = useState<Delivery | null>(null)
   const [mapInitKey, setMapInitKey] = useState(0)  // Force map re-render
+  const [tabIndex, setTabIndex] = useState(0) // Track current tab index to fix map render issues
   
-  // Force map to reinitialize when modal opens
+  // Force map to reinitialize when modal opens or tab changes to Coordination/Map
   useEffect(() => {
     if (isOpen) {
       setMapInitKey(prev => prev + 1)
     }
-  }, [isOpen])
+  }, [isOpen, tabIndex])
   
   // Auto-confirm COD payment when delivery type is selected
   useEffect(() => {
@@ -1073,6 +1076,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const previousMessageCountRef = useRef(0)  // Track message count to detect new messages
+  const messagesRequestSeqRef = useRef(0)
   const cardBg = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
   const locationTextColor = useColorModeValue('gray.800', 'gray.100')
@@ -1359,27 +1363,44 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   // Fetch trade messages
   useEffect(() => {
-    if (isOpen && trade) {
-      // Reset message count tracker when opening a new trade
-      previousMessageCountRef.current = 0
-      
-      fetchMessages({ showLoading: true })
-      fetchProducts()
-      fetchMeetupStatus()
-
-      // Poll for new messages every 3 seconds without flashing a loader
-      messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
-      return () => {
-        if (messagesPollRef.current) {
-          clearInterval(messagesPollRef.current)
-          messagesPollRef.current = null
-        }
+    // Always stop polling when the modal is closed
+    if (!isOpen) {
+      if (messagesPollRef.current) {
+        clearInterval(messagesPollRef.current)
+        messagesPollRef.current = null
       }
-    } else {
+
+      previousMessageCountRef.current = 0
       setMessages([])
       setNewMessage('')
+      return
     }
-  }, [isOpen, trade])
+
+    // Keep current UI as-is until we have a stable trade id
+    if (!trade?.id) return
+
+    // Reset message count tracker when opening a new trade id
+    previousMessageCountRef.current = 0
+
+    fetchMessages({ showLoading: true })
+    fetchProducts()
+    fetchMeetupStatus()
+
+    // Ensure we never stack multiple polling intervals
+    if (messagesPollRef.current) {
+      clearInterval(messagesPollRef.current)
+      messagesPollRef.current = null
+    }
+
+    // Poll for new messages every 3 seconds without flashing a loader
+    messagesPollRef.current = setInterval(() => fetchMessages({ showLoading: false }), 3000)
+    return () => {
+      if (messagesPollRef.current) {
+        clearInterval(messagesPollRef.current)
+        messagesPollRef.current = null
+      }
+    }
+  }, [isOpen, trade?.id])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -1414,8 +1435,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }, [trade?.id, trade?.status, trade?.trade_option, isOpen])
 
   const fetchMessages = async (options?: { showLoading?: boolean }) => {
-    const showLoading = options?.showLoading
+    // Avoid spinner flicker on refresh when we already have messages.
+    const showLoading = !!options?.showLoading && messages.length === 0
     if (!trade) return
+
+    const requestSeq = ++messagesRequestSeqRef.current
 
     try {
       if (showLoading) setLoadingMessages(true)
@@ -1430,6 +1454,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const data = response.data?.data || []
       const safeMessages = Array.isArray(data) ? data : []
       safeMessages.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+      // Ignore stale/out-of-order responses (common on mobile networks)
+      if (requestSeq !== messagesRequestSeqRef.current) return
       
       // Check if there are new messages from the other user
       const previousCount = previousMessageCountRef.current
@@ -1461,12 +1488,14 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
         }
       }
       
-      previousMessageCountRef.current = newMessageCount
+      // Never allow the tracker to move backwards (prevents duplicate toasts)
+      previousMessageCountRef.current = Math.max(previousCount, newMessageCount)
       setMessages(safeMessages)
     } catch (error: any) {
       console.error('Failed to fetch messages:', error)
     } finally {
-      if (showLoading) setLoadingMessages(false)
+      // Only the most recent request is allowed to clear the loading state.
+      if (showLoading && requestSeq === messagesRequestSeqRef.current) setLoadingMessages(false)
     }
   }
 
@@ -1478,7 +1507,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       const requested = await getProduct(trade.target_product_id)
       setRequestedProduct(requested)
 
-      const offeredIds = (trade.items || []).map((item: any) => item.product_id).filter(Boolean)
+      // Only show items offered by the buyer (offered_by === 'buyer') in the "offered" column.
+      // Some trades may store seller counter-offer items with offered_by === 'seller' — keep them separate.
+      const buyerItems = (trade.items || []).filter((item: any) => {
+        const ob = (item?.offered_by ?? item?.offeredBy ?? '').toLowerCase()
+        return !ob || ob === 'buyer' || ob === 'from_buyer' || ob === 'sender'
+      })
+      const offeredIds = buyerItems.map((item: any) => item.product_id).filter(Boolean)
       const offeredResults = await Promise.all(offeredIds.map((pid: number) => getProduct(pid)))
       setOfferedProducts(offeredResults.filter(Boolean) as Product[])
     } catch (error) {
@@ -1863,7 +1898,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
           <ModalCloseButton />
 
           <ModalBody overflowY="auto" flex={1} p={6}>
-            <Tabs colorScheme="brand" defaultIndex={0}>
+            <Tabs colorScheme="brand" index={tabIndex} onChange={(i) => setTabIndex(i)}>
               <TabList>
                 <Tab>Overview</Tab>
                 <Tab>
@@ -2015,6 +2050,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       borderRadius="md"
                       borderWidth="1px"
                       borderColor={borderColor}
+                      cursor="pointer"
+                      _hover={{ bg: 'gray.100' }}
+                      onClick={() => navigate(`/users/${isUserBuyer ? trade?.seller_id : trade?.buyer_id}`)}
                     >
                       <HStack spacing={4}>
                         <VerifiedAvatar
@@ -2025,7 +2063,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           isVerified={false}
                         />
                         <Box flex={1}>
-                          <Text fontWeight="semibold">{tradingPartner}</Text>
+                          <Text fontWeight="semibold" _hover={{ textDecoration: 'underline' }}>
+                            {tradingPartner}
+                          </Text>
                           <Text fontSize="sm" color="gray.600">
                             Trading Partner
                           </Text>
@@ -2062,19 +2102,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         : 'Requested'}
                                 </Badge>
                                 <Text fontSize="sm" color="gray.600">
-                                  (Your Item)
+                                  ({isUserSeller ? "Your Item" : (isUserBuyer ? tradingPartner + "'s Item" : "Seller's Item")})
                                 </Text>
                               </HStack>
                               {requestedProduct ? (
                                 <>
-                                  <Image
+                                  <OptimizedImage
                                     src={getFirstImage(requestedProduct.image_urls)}
                                     alt={requestedProduct.title}
-                                    w="full"
-                                    h="150px"
+                                    displayWidth="full"
+                                    displayHeight="150px"
                                     objectFit="cover"
                                     borderRadius="md"
                                     fallbackSrc="/no-image.svg"
+                                    width={300}
                                   />
                                   <Text fontWeight="semibold">{requestedProduct.title}</Text>
                                   <Text fontSize="sm" color="gray.600" noOfLines={2}>
@@ -2101,21 +2142,22 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         : 'Offered'}
                                 </Badge>
                                 <Text fontSize="sm" color="gray.600">
-                                  ({tradingPartner}'s Item{offeredProducts.length > 1 ? 's' : ''})
+                                  ({isUserBuyer ? "Your Item" : (isUserSeller ? tradingPartner + "'s Items" : "Buyer's Items")})
                                 </Text>
                               </HStack>
                               {offeredProducts.length > 0 ? (
                                 <SimpleGrid columns={offeredProducts.length > 1 ? 2 : 1} spacing={2}>
                                   {offeredProducts.map((product) => (
                                     <Box key={`offered-${product.id}`}>
-                                      <Image
+                                      <OptimizedImage
                                         src={getFirstImage(product.image_urls)}
                                         alt={product.title}
-                                        w="full"
-                                        h="150px"
+                                        displayWidth="full"
+                                        displayHeight="150px"
                                         objectFit="cover"
                                         borderRadius="md"
                                         fallbackSrc="/no-image.svg"
+                                        width={250}
                                       />
                                       <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
                                         {product.title}

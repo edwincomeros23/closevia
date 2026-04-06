@@ -21,7 +21,8 @@ import {
   Icon,
   Flex,
   Progress,
-  Checkbox
+  Checkbox,
+  useBreakpointValue
 } from '@chakra-ui/react'
 import { keyframes } from '@emotion/react'
 import { FaStar, FaHeart, FaThumbsUp, FaCheck, FaHandshake, FaImage } from 'react-icons/fa'
@@ -71,16 +72,15 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   const [uploadingImage, setUploadingImage] = useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const toast = useToast()
+  
+  // Responsive modal sizing for mobile vs desktop
+  const modalSize = useBreakpointValue({ base: 'sm', sm: 'md', md: 'lg', lg: 'xl' })
+  const modalMaxH = useBreakpointValue({ base: '90vh', md: '85vh' })
+  const userProfileSpacing = useBreakpointValue({ base: 4, md: 8 })
 
   const isUserBuyer = trade && currentUserId === trade.buyer_id
   const isUserSeller = trade && currentUserId === trade.seller_id
   const isPhotoMandatory = trade?.trade_option === 'meetup' || trade?.trade_option === 'delivery'
-
-  useEffect(() => {
-    if (trade && isOpen) {
-      fetchCompletionStatus()
-    }
-  }, [trade, isOpen])
 
   const fetchCompletionStatus = async () => {
     if (!trade) return
@@ -112,6 +112,52 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadStatus = async () => {
+      if (trade && isOpen && isMounted) {
+        try {
+          setLoading(true)
+          const response = await api.get(`/api/trades/${trade.id}/completion-status`)
+          
+          if (!isMounted) return
+          
+          setStatus(response.data.data)
+
+          // Check if current user has already submitted
+          if (isUserBuyer && response.data.data.buyer_completed) {
+            setHasSubmitted(true)
+            setRating(response.data.data.buyer_rating || 0)
+            setFeedback(response.data.data.buyer_feedback || '')
+          } else if (isUserSeller && response.data.data.seller_completed) {
+            setHasSubmitted(true)
+            setRating(response.data.data.seller_rating || 0)
+            setFeedback(response.data.data.seller_feedback || '')
+          }
+
+          // Check if both completed for celebration
+          if (response.data.data.buyer_completed && response.data.data.seller_completed) {
+            setShowCelebration(true)
+            setShowFinishButton(true)
+          }
+        } catch (error) {
+          console.error('Failed to fetch completion status:', error)
+        } finally {
+          if (isMounted) {
+            setLoading(false)
+          }
+        }
+      }
+    }
+
+    loadStatus()
+
+    return () => {
+      isMounted = false
+    }
+  }, [trade, isOpen])
 
   const handleSubmitCompletion = () => {
     if (!trade) return
@@ -320,15 +366,15 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered scrollBehavior="inside">
+      <Modal isOpen={isOpen} onClose={onClose} size={modalSize} isCentered scrollBehavior="inside">
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent
           bg="white"
           borderRadius="xl"
           boxShadow="xl"
-          mx={4}
-          maxW="500px"
-          maxH="85vh"
+          mx={{ base: 2, md: 4 }}
+          maxW={{ base: '100%', sm: '400px', md: '500px' }}
+          maxH={modalMaxH}
           display="flex"
           flexDirection="column"
         >
@@ -337,13 +383,13 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
           </ModalHeader>
           <ModalCloseButton color="gray.600" />
 
-          <ModalBody flex="1" overflowY="auto" px={6} py={2}>
+          <ModalBody flex="1" overflowY="auto" px={{ base: 3, md: 6 }} py={{ base: 3, md: 2 }}>
             {loading ? (
               <Flex justify="center" align="center" py={8} w="full">
                 <Spinner size="lg" color="brand.500" />
               </Flex>
             ) : (
-              <VStack spacing={6} w="full" maxW="500px">
+              <VStack spacing={6} w="full" maxW={{ base: '100%', md: '500px' }}>
                 {/* Progress Indicator */}
                 <Box w="full">
                   <Text fontSize="sm" color="gray.600" mb={2} textAlign="center">
@@ -360,8 +406,8 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                   />
                 </Box>
 
-                {/* User Profiles */}
-                <HStack spacing={8} w="full" justify="center">
+                {/* User Profiles - Responsive layout */}
+                <Flex flexDirection={{ base: 'column', md: 'row' }} w="full" justify="center" gap={{ base: 4, md: 8 }} align="center">
                   {renderUserProfile(
                     trade.buyer_name || `User #${trade.buyer_id}`,
                     trade.buyer_id,
@@ -369,15 +415,11 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                     !!(status?.buyer_completed),
                     status?.buyer_rating
                   )}
-
-                  <Box>
-                    <Icon
-                      as={FaHandshake}
-                      color={bothCompleted ? 'green.500' : 'gray.400'}
-                      boxSize={8}
-                    />
-                  </Box>
-
+                  <Icon
+                    as={FaHandshake}
+                    color={bothCompleted ? 'green.500' : 'gray.400'}
+                    boxSize={{ base: 6, md: 8 }}
+                  />
                   {renderUserProfile(
                     trade.seller_name || `User #${trade.seller_id}`,
                     trade.seller_id,
@@ -385,7 +427,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                     !!(status?.seller_completed),
                     status?.seller_rating
                   )}
-                </HStack>
+                </Flex>
 
                 <Divider />
 
@@ -468,44 +510,45 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                         Proof of Transaction {isPhotoMandatory ? '(Required)' : '(Optional)'}
                       </Text>
                       <HStack
-                        p={2}
-                        px={3}
+                        p={{ base: 1.5, md: 2 }}
+                        px={{ base: 2, md: 3 }}
                         border="1.5px dashed"
                         borderColor={transactionProof ? 'green.400' : uploadingImage ? 'blue.300' : 'gray.300'}
                         borderRadius="full"
                         bg={transactionProof ? 'green.50' : uploadingImage ? 'blue.50' : 'gray.50'}
-                        spacing={2}
+                        spacing={{ base: 1.5, md: 2 }}
                         justify="space-between"
                         cursor={uploadingImage ? 'not-allowed' : 'pointer'}
                         onClick={() => !uploadingImage && fileInputRef.current?.click()}
                         _hover={!uploadingImage ? { borderColor: 'brand.400', bg: 'brand.50' } : {}}
                         transition="all 0.2s"
                       >
-                        <HStack spacing={2} flex={1} minW={0}>
+                        <HStack spacing={{ base: 1.5, md: 2 }} flex={1} minW={0}>
                           {uploadingImage ? (
                             <Spinner size="xs" color="blue.400" />
                           ) : transactionProof ? (
-                            <Icon as={FaCheck} color="green.500" boxSize={3.5} />
+                            <Icon as={FaCheck} color="green.500" boxSize={{ base: 3, md: 3.5 }} />
                           ) : (
-                            <Icon as={FaImage} color="gray.400" boxSize={3.5} />
+                            <Icon as={FaImage} color="gray.400" boxSize={{ base: 3, md: 3.5 }} />
                           )}
-                          <Text fontSize="xs" color={transactionProof ? 'green.700' : isPhotoMandatory ? 'red.500' : 'gray.500'} isTruncated>
+                          <Text fontSize={{ base: '2xs', md: 'xs' }} color={transactionProof ? 'green.700' : isPhotoMandatory ? 'red.500' : 'gray.500'} isTruncated>
                             {uploadingImage
-                              ? 'Uploading image…'
+                              ? 'Uploading…'
                               : transactionProof
-                              ? 'Proof uploaded ✓'
+                              ? 'Proof ✓'
                               : isPhotoMandatory
-                              ? 'Take handoff photo (required)'
-                              : 'Click to attach a photo (optional)'}
+                              ? 'Take photo (required)'
+                              : 'Add photo (optional)'}
                           </Text>
                         </HStack>
                         {transactionProof && !uploadingImage && (
-                          <HStack spacing={1}>
+                          <HStack spacing={{ base: 0.5, md: 1 }} display={{ base: 'flex', md: 'flex' }}>
                             <Button
-                              size="xs"
+                              size={{ base: 'sm', md: 'xs' }}
                               colorScheme="brand"
                               variant="ghost"
-                              px={2}
+                              px={{ base: 1.5, md: 2 }}
+                              py={1}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 fileInputRef.current?.click()
@@ -514,10 +557,11 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                               Change
                             </Button>
                             <Button
-                              size="xs"
+                              size={{ base: 'sm', md: 'xs' }}
                               colorScheme="red"
                               variant="ghost"
-                              px={2}
+                              px={{ base: 1.5, md: 2 }}
+                              py={1}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 setTransactionProof(null)
@@ -529,8 +573,8 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                           </HStack>
                         )}
                         {!transactionProof && !uploadingImage && (
-                          <Text fontSize="xs" color="brand.500" fontWeight="600" flexShrink={0}>
-                            {isPhotoMandatory ? 'Take Photo' : 'Browse'}
+                          <Text fontSize={{ base: '2xs', md: 'xs' }} color="brand.500" fontWeight="600" flexShrink={0}>
+                            {isPhotoMandatory ? 'Photo' : 'Browse'}
                           </Text>
                         )}
                         <input
@@ -544,9 +588,11 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                       </HStack>
                     </Box>
 
-                    <VStack spacing={3}>
+                    <VStack spacing={3} w="full">
                       <Text fontSize="sm" color="gray.600">Rate this trade:</Text>
-                      {renderRatingStars(rating, setRating)}
+                      <HStack spacing={{ base: 2, md: 3 }} justify="center">
+                        {renderRatingStars(rating, setRating)}
+                      </HStack>
                     </VStack>
 
                     <VStack spacing={2} w="full">
@@ -559,6 +605,9 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                         placeholder="Share your experience with this trade..."
                         resize="none"
                         rows={3}
+                        fontSize={{ base: 'sm', md: 'md' }}
+                        px={{ base: 2, md: 3 }}
+                        py={{ base: 2, md: 3 }}
                       />
                     </VStack>
                   </VStack>
@@ -569,15 +618,16 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
 
           {/* Sticky footer — always visible, contains the main action button */}
           {!loading && !bothCompleted && !hasSubmitted && (
-            <ModalFooter borderTopWidth="1px" borderColor="gray.100" flexDirection="column" gap={2} pt={3} pb={4}>
-              <HStack spacing={3} justify="center" align="start" w="full">
+            <ModalFooter borderTopWidth="1px" borderColor="gray.100" flexDirection="column" gap={{ base: 1.5, md: 2 }} pt={{ base: 2, md: 3 }} pb={{ base: 3, md: 4 }} px={{ base: 3, md: 6 }}>
+              <HStack spacing={{ base: 2, md: 3 }} justify="center" align="start" w="full">
                 <Checkbox
                   isChecked={policyAgreed}
                   onChange={(e) => setPolicyAgreed(e.target.checked)}
                   colorScheme="green"
-                  size="sm"
+                  size={{ base: 'md', md: 'sm' }}
+                  flexShrink={0}
                 />
-                <Text fontSize="xs" color="gray.500" textAlign="left" flex={1}>
+                <Text fontSize={{ base: 'xs', md: 'xs' }} color="gray.500" textAlign="left" flex={1}>
                   By confirming, you acknowledge that the trade has been completed successfully
                 </Text>
               </HStack>
@@ -590,7 +640,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
                 loadingText="Completing..."
                 leftIcon={<FaCheck />}
                 isDisabled={rating === 0 || !policyAgreed || uploadingImage || (isPhotoMandatory && !transactionProof)}
-                mt={4}
+                mt={{ base: 2, md: 4 }}
               >
                 Complete Trade
               </Button>

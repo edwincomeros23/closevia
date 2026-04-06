@@ -27,6 +27,11 @@ type DeliveryHandler struct {
 	db *sql.DB
 }
 
+const (
+	defaultRemittanceTaxPerCollection = 2.0
+	defaultRemittanceLockThreshold    = 50.0
+)
+
 func (h *DeliveryHandler) getRiderFreeSlotsDefault() int {
 	var v string
 	if err := h.db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = 'rider_free_slots_default'").Scan(&v); err != nil {
@@ -35,6 +40,30 @@ func (h *DeliveryHandler) getRiderFreeSlotsDefault() int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil || parsed <= 0 {
 		return 3
+	}
+	return parsed
+}
+
+func (h *DeliveryHandler) getRiderRemittanceTaxPerCollection() float64 {
+	var v string
+	if err := h.db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = 'rider_remittance_tax_per_collection'").Scan(&v); err != nil {
+		return defaultRemittanceTaxPerCollection
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || parsed <= 0 {
+		return defaultRemittanceTaxPerCollection
+	}
+	return parsed
+}
+
+func (h *DeliveryHandler) getRiderRemittanceLockThreshold() float64 {
+	var v string
+	if err := h.db.QueryRow("SELECT setting_value FROM app_settings WHERE setting_key = 'rider_remittance_lock_threshold'").Scan(&v); err != nil {
+		return defaultRemittanceLockThreshold
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil || parsed <= 0 {
+		return defaultRemittanceLockThreshold
 	}
 	return parsed
 }
@@ -50,14 +79,13 @@ func (h *DeliveryHandler) isRiderLockedForRemittance(riderID int) (bool, float64
 	).Scan(&isLocked, &remittanceOwed, &freeSlotsRemaining); err != nil {
 		return false, 0
 	}
-	// Task 20: lock is enforced when free slots are exhausted AND there is remittance due.
-	if remittanceOwed > 0 && freeSlotsRemaining == 0 {
+	// Lock is enforced once the rider reaches the remittance threshold.
+	if remittanceOwed >= h.getRiderRemittanceLockThreshold() {
 		return true, remittanceOwed
 	}
-	// Keep the flag as an informational field (UI may show warnings), but don't block without due.
-	if isLocked && remittanceOwed > 0 {
-		return true, remittanceOwed
-	}
+	// Keep the flag as an informational field, but don't block below threshold.
+	_ = isLocked
+	_ = freeSlotsRemaining
 	return false, remittanceOwed
 }
 
@@ -2174,7 +2202,7 @@ func (h *DeliveryHandler) ensureRiderLedger(riderID int) {
 	var exists int
 	h.db.QueryRow("SELECT COUNT(*) FROM rider_ledger WHERE rider_id = ?", riderID).Scan(&exists)
 	if exists == 0 {
-		defaultSlots := h.getRiderFreeSlotsDefault()
+		defaultSlots := 0
 		_, err := h.db.Exec(`
 			INSERT INTO rider_ledger (rider_id, total_cash_collected, remittance_owed, take_home, free_slots_remaining)
 			VALUES (?, 0, 0, 0, ?)
@@ -2342,8 +2370,6 @@ func (h *DeliveryHandler) UpdateStopStatus(c *fiber.Ctx) error {
 		h.db.QueryRow("SELECT COUNT(*) FROM delivery_stops WHERE delivery_id = ? AND status != 'completed'", deliveryID).Scan(&pendingStops)
 		if pendingStops == 0 {
 			h.db.Exec("UPDATE deliveries SET status = 'delivered', delivered_at = ? WHERE id = ?", now, deliveryID)
-			// TASK 19: Decrement free slots if applicable
-			h.decrementFreeSlot(riderID)
 		}
 
 	default:
@@ -2374,16 +2400,14 @@ func (h *DeliveryHandler) updateRiderLedger(riderID int, amount float64) {
 	// Update totals
 	totalCash += amount
 
-	// TASK 19: If rider has free slots, they keep everything
-	if freeSlotsRemaining > 0 {
-		takeHome += amount
-	} else {
-		// Rider pays 15% remittance to platform
-		platformCut := amount * 0.15
-		riderEarnings := amount * 0.85
-		remittanceOwed += platformCut
-		takeHome += riderEarnings
+	// Platform takes a fixed tax per fee collection (pickup/delivery)
+	platformCut := h.getRiderRemittanceTaxPerCollection()
+	if amount < platformCut {
+		platformCut = amount
 	}
+	riderEarnings := amount - platformCut
+	remittanceOwed += platformCut
+	takeHome += riderEarnings
 
 	_, err := h.db.Exec(`
 		UPDATE rider_ledger
@@ -2395,28 +2419,11 @@ func (h *DeliveryHandler) updateRiderLedger(riderID int, amount float64) {
 		log.Printf("Failed to update rider ledger for rider %d: %v", riderID, err)
 	}
 
-	// TASK 20: When free slots are exhausted and remittance is due, lock rider from claiming next job.
-	if freeSlotsRemaining == 0 && remittanceOwed > 0 {
+	// Lock/unlock rider based on remittance threshold
+	if remittanceOwed >= h.getRiderRemittanceLockThreshold() {
 		_, _ = h.db.Exec("UPDATE rider_ledger SET is_locked_for_remittance = TRUE WHERE rider_id = ?", riderID)
-	}
-}
-
-// TASK 19: Decrement free slot when delivery is completed
-func (h *DeliveryHandler) decrementFreeSlot(riderID int) {
-	var freeSlotsRemaining int
-	h.db.QueryRow("SELECT free_slots_remaining FROM rider_ledger WHERE rider_id = ?", riderID).Scan(&freeSlotsRemaining)
-
-	if freeSlotsRemaining > 0 {
-		_, err := h.db.Exec(`
-			UPDATE rider_ledger
-			SET free_slots_remaining = free_slots_remaining - 1,
-			    total_free_slots_used = total_free_slots_used + 1,
-			    updated_at = CURRENT_TIMESTAMP
-			WHERE rider_id = ?
-		`, riderID)
-		if err != nil {
-			log.Printf("Failed to decrement free slot for rider %d: %v", riderID, err)
-		}
+	} else {
+		_, _ = h.db.Exec("UPDATE rider_ledger SET is_locked_for_remittance = FALSE WHERE rider_id = ?", riderID)
 	}
 }
 
@@ -2448,13 +2455,12 @@ func (h *DeliveryHandler) GetRiderLedger(c *fiber.Ctx) error {
 	if err != nil {
 		// Initialize if doesn't exist
 		h.ensureRiderLedger(riderID)
-		defaultSlots := h.getRiderFreeSlotsDefault()
 		return c.JSON(models.APIResponse{Success: true, Data: models.RiderLedger{
 			RiderID:            riderID,
 			TotalCashCollected: 0,
 			RemittanceOwed:     0,
 			TakeHome:           0,
-			FreeSlotsRemaining: defaultSlots,
+			FreeSlotsRemaining: 0,
 		}})
 	}
 
@@ -2535,7 +2541,7 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 			WHERE id = ?
 		`, userID, now, paymentID)
 
-		defaultSlots := h.getRiderFreeSlotsDefault()
+		defaultSlots := 0
 		// Reset remittance to 0 (admin-confirmed), unlock, and refill slots.
 		_, err = h.db.Exec(`
 			UPDATE rider_ledger
@@ -2562,13 +2568,21 @@ func (h *DeliveryHandler) AdminVerifyRemittancePayment(c *fiber.Ctx) error {
 // AdminGetRiderConfig returns rider system settings (Task 19)
 func (h *DeliveryHandler) AdminGetRiderConfig(c *fiber.Ctx) error {
 	defaultSlots := h.getRiderFreeSlotsDefault()
-	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{"rider_free_slots_default": defaultSlots}})
+	taxPerCollection := h.getRiderRemittanceTaxPerCollection()
+	lockThreshold := h.getRiderRemittanceLockThreshold()
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"rider_free_slots_default":            defaultSlots,
+		"rider_remittance_tax_per_collection": taxPerCollection,
+		"rider_remittance_lock_threshold":     lockThreshold,
+	}})
 }
 
 // AdminUpdateRiderConfig updates rider system settings (Task 19)
 func (h *DeliveryHandler) AdminUpdateRiderConfig(c *fiber.Ctx) error {
 	var payload struct {
-		RiderFreeSlotsDefault int `json:"rider_free_slots_default"`
+		RiderFreeSlotsDefault           int     `json:"rider_free_slots_default"`
+		RiderRemittanceTaxPerCollection float64 `json:"rider_remittance_tax_per_collection"`
+		RiderRemittanceLockThreshold    float64 `json:"rider_remittance_lock_threshold"`
 	}
 	if err := c.BodyParser(&payload); err != nil {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request"})
@@ -2576,14 +2590,23 @@ func (h *DeliveryHandler) AdminUpdateRiderConfig(c *fiber.Ctx) error {
 	if payload.RiderFreeSlotsDefault <= 0 || payload.RiderFreeSlotsDefault > 100 {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid free slots default"})
 	}
+	if payload.RiderRemittanceTaxPerCollection <= 0 || payload.RiderRemittanceTaxPerCollection > 100 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid remittance tax per collection"})
+	}
+	if payload.RiderRemittanceLockThreshold <= 0 || payload.RiderRemittanceLockThreshold > 1000 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid remittance lock threshold"})
+	}
 	_, err := h.db.Exec(`
-		INSERT INTO app_settings (setting_key, setting_value) VALUES ('rider_free_slots_default', ?)
+		INSERT INTO app_settings (setting_key, setting_value) VALUES 
+			('rider_free_slots_default', ?),
+			('rider_remittance_tax_per_collection', ?),
+			('rider_remittance_lock_threshold', ?)
 		ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
-	`, strconv.Itoa(payload.RiderFreeSlotsDefault))
+	`, strconv.Itoa(payload.RiderFreeSlotsDefault), fmt.Sprintf("%.2f", payload.RiderRemittanceTaxPerCollection), fmt.Sprintf("%.2f", payload.RiderRemittanceLockThreshold))
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update settings"})
 	}
-	return c.JSON(models.APIResponse{Success: true, Message: "Updated rider free slots default"})
+	return c.JSON(models.APIResponse{Success: true, Message: "Updated rider configuration"})
 }
 
 type AdminRemittancePaymentRow struct {
