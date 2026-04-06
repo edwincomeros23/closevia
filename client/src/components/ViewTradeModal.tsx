@@ -477,16 +477,16 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 
             {linkedDelivery?.rider_name ? (
               <Card variant="outline" borderColor="blue.300" bg="blue.50">
-                <CardBody p={4}>
-                  <VStack spacing={3} align="stretch">
-                    <HStack spacing={3}>
-                      <Avatar name={linkedDelivery.rider_name} size="md" bg="blue.500" color="white" />
-                      <VStack align="start" spacing={0} flex={1}>
-                        <Text fontWeight="semibold" fontSize="sm">{linkedDelivery.rider_name}</Text>
+                <CardBody p={[3, 4]}>
+                  <VStack spacing={2} align="stretch">
+                    <HStack spacing={2} align="start">
+                      <Avatar name={linkedDelivery.rider_name} size={["sm", "md"]} bg="blue.500" color="white" />
+                      <VStack align="start" spacing={0} flex={1} minW={0}>
+                        <Text fontWeight="semibold" fontSize={["xs", "sm"]} noOfLines={1}>{linkedDelivery.rider_name}</Text>
                         <Text fontSize="xs" color="gray.600">Assigned Rider</Text>
                       </VStack>
                       {linkedDelivery.rider_rating && (
-                        <HStack spacing={1}>
+                        <HStack spacing={1} flexShrink={0}>
                           <Icon as={FaStar} color="yellow.400" boxSize={3} />
                           <Text fontSize="xs" color="gray.600">{linkedDelivery.rider_rating.toFixed(1)}</Text>
                         </HStack>
@@ -494,16 +494,16 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                     </HStack>
                     {linkedDelivery.rider_vehicle && (
                       <HStack spacing={2}>
-                        <Icon as={FiTruck} color="blue.500" boxSize={4} />
-                        <Text fontSize="xs" color="gray.700">{linkedDelivery.rider_vehicle}</Text>
+                        <Icon as={FiTruck} color="blue.500" boxSize={[3, 4]} />
+                        <Text fontSize={["xs", "sm"]} color="gray.700" noOfLines={1}>{linkedDelivery.rider_vehicle}</Text>
                       </HStack>
                     )}
                   </VStack>
                 </CardBody>
               </Card>
             ) : (
-              <Box p={3} bg="yellow.50" borderRadius="md" borderWidth="1px" borderColor="yellow.200">
-                <Text fontSize="sm" color="yellow.700">Waiting for a rider to be assigned...</Text>
+              <Box p={[2, 3]} bg="yellow.50" borderRadius="md" borderWidth="1px" borderColor="yellow.200">
+                <Text fontSize={["xs", "sm"]} color="yellow.700">Waiting for a rider to be assigned...</Text>
               </Box>
             )}
           </VStack>
@@ -511,20 +511,20 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
       </Card>
 
       <Card variant="outline" borderColor="blue.200">
-        <CardBody py={2} px={4}>
-          <VStack spacing={2} align="stretch">
+        <CardBody py={[2, 3]} px={[3, 4]}>
+          <VStack spacing={3} align="stretch">
             {/* Compact Header with Distance */}
-            <HStack justify="space-between" align="center">
-              <Text fontSize="sm" fontWeight="semibold">Delivery {distance.toFixed(1)}km</Text>
-              <Text fontSize="xs" color="gray.500">Pick one:</Text>
+            <HStack justify="space-between" align="center" flexWrap="wrap">
+              <Text fontSize={["sm", "md"]} fontWeight="semibold">Delivery {distance.toFixed(1)}km</Text>
+              <Text fontSize={["xs", "sm"]} color="gray.500">Pick one:</Text>
             </HStack>
 
-            {/* Compact Delivery Options - Buttons */}
-            <HStack spacing={2}>
+            {/* Compact Delivery Options - Buttons with Mobile Responsiveness */}
+            <SimpleGrid columns={[2, 2]} spacing={2} w="100%">
               {Object.entries(deliveryOptions).map(([type, option]: [string, any]) => (
                 <Button
                   key={`delivery-${type}`}
-                  size="sm"
+                  size={["sm", "md"]}
                   colorScheme={deliveryState.deliveryType === type ? 'blue' : 'gray'}
                   variant={deliveryState.deliveryType === type ? 'solid' : 'outline'}
                   onClick={() => {
@@ -532,21 +532,22 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                     setDeliveryState(prev => ({ ...prev, deliveryType: newState }))
                     saveDeliveryState({ deliveryType: newState })
                   }}
-                  flex={1}
-                  fontSize="xs"
-                  py={1}
+                  w="100%"
+                  fontSize={["xs", "sm"]}
+                  py={[2, 3]}
+                  h="auto"
                 >
                   <VStack spacing={0}>
-                    <Text fontSize="lg">{option.icon}</Text>
+                    <Text fontSize={["lg", "2xl"]}>{option.icon}</Text>
                     <Text>{type === 'standard' ? 'Std' : 'Exp'}</Text>
-                    <Text>₱{option.fee}</Text>
+                    <Text fontSize={["xs", "sm"]}>₱{option.fee}</Text>
                   </VStack>
                 </Button>
               ))}
-            </HStack>
+            </SimpleGrid>
 
             {/* Instructions - Optional compact textarea */}
-            <Box>
+            <Box w="100%">
               <Textarea
                 value={deliveryState.deliveryInstructions}
                 onChange={(e) => setDeliveryState(prev => ({ ...prev, deliveryInstructions: e.target.value }))}
@@ -554,6 +555,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
                 placeholder="Delivery notes (optional)"
                 size="sm"
                 rows={2}
+                fontSize={["xs", "sm"]}
                 />
                 <Text fontSize="xs" color="gray.500" mt={1}>{deliveryState.deliveryInstructions.length}/200 characters</Text>
               </Box>
@@ -562,16 +564,16 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
       </Card>
 
       <Card variant="outline" borderColor="green.200">
-        <CardBody py={2} px={4}>
-          <HStack justify="space-between" align="center">
-            <HStack spacing={2}>
-              <Text fontSize="lg">💵</Text>
+        <CardBody py={[2, 3]} px={[3, 4]}>
+          <HStack justify="space-between" align={["start", "center"]} spacing={2} flexDir={["column", "row"]}>
+            <HStack spacing={2} align="start">
+              <Text fontSize={["lg", "2xl"]}>💵</Text>
               <VStack align="start" spacing={0}>
-                <Text fontSize="sm" fontWeight="semibold">Cash on Delivery</Text>
-                <Text fontSize="xs" color="gray.500">Have exact change ready</Text>
+                <Text fontSize={["sm", "md"]} fontWeight="semibold">Cash on Delivery</Text>
+                <Text fontSize={["xs", "sm"]} color="gray.500">Have exact change ready</Text>
               </VStack>
             </HStack>
-            <Text fontSize="sm" fontWeight="bold" color="green.600">
+            <Text fontSize={["md", "lg"]} fontWeight="bold" color="green.600" whiteSpace="nowrap">
               ₱{((requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee).toFixed(2)}
             </Text>
           </HStack>
@@ -1859,18 +1861,19 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} size="6xl" isCentered>
+      <Modal isOpen={isOpen} onClose={onClose} size={["sm", "md", "lg", "6xl"]} isCentered scrollBehavior="inside">
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
         <ModalContent
           bg={cardBg}
-          borderRadius="xl"
+          borderRadius={["md", "lg", "xl"]}
           boxShadow="xl"
           maxH="90vh"
+          mx={[2, 4]}
           display="flex"
           flexDirection="column"
         >
           <ModalHeader>
-            <HStack spacing={3}>
+            <HStack spacing={2} fontSize={["sm", "md"]}>
               <Icon as={FaHandshake} color="brand.500" />
               <Text>Trade Details</Text>
               <Badge
@@ -1884,6 +1887,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         : 'yellow'
                 }
                 variant="subtle"
+                fontSize={["xs", "sm"]}
               >
                 {trade.status === 'active'
                   ? 'In Progress'
@@ -1897,9 +1901,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
           </ModalHeader>
           <ModalCloseButton />
 
-          <ModalBody overflowY="auto" flex={1} p={6}>
+          <ModalBody overflowY="auto" flex={1} p={[3, 4, 6]}>
             <Tabs colorScheme="brand" index={tabIndex} onChange={(i) => setTabIndex(i)}>
-              <TabList>
+              <TabList fontSize={["sm", "md"]}>
                 <Tab>Overview</Tab>
                 <Tab>
                   Chat
@@ -1916,8 +1920,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
               <TabPanels>
                 {/* Overview Tab */}
-                <TabPanel px={0}>
-                  <VStack spacing={6} align="stretch">
+                <TabPanel px={[0, 2]}>
+                  <VStack spacing={[4, 6]} align="stretch">
                     {/* Trade Option Display - Locked for Ongoing Trades */}
                     {trade?.trade_option && (
                       <Card
@@ -2267,13 +2271,13 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
                 {/* Chat Tab */}
-                <TabPanel px={0}>
-                  <VStack spacing={4} align="stretch" h="500px" display="flex" flexDirection="column">
+                <TabPanel px={[0, 2]}>
+                  <VStack spacing={3} align="stretch" h={["300px", "400px", "500px"]} display="flex" flexDirection="column">
                     {/* Messages Area */}
                     <Box
                       flex={1}
                       overflowY="auto"
-                      p={4}
+                      p={[2, 3, 4]}
                       bg="gray.50"
                       borderRadius="md"
                       borderWidth="1px"
@@ -2375,7 +2379,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                 </TabPanel>
 
                 {/* Meetup/Delivery Tab */}
-                <TabPanel px={0}>
+                <TabPanel px={[0, 2]}>
                   {trade?.trade_option === 'delivery' ? (
                     <DeliveryTab
                       deliveryState={deliveryState}
@@ -2933,17 +2937,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
 
       {/* Review Modal */}
-      <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size="md" isCentered scrollBehavior="inside">
+      <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size={["xs", "sm", "md"]} isCentered scrollBehavior="inside">
         <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-        <ModalContent bg={cardBg} borderRadius="xl" boxShadow="xl" maxW="500px" mx={4}>
+        <ModalContent bg={cardBg} borderRadius={["md", "lg", "xl"]} boxShadow="xl" maxW={["90vw", "500px"]} mx={[2, 4]}>
           <ModalHeader>
-            <HStack spacing={3}>
+            <HStack spacing={2} fontSize={["sm", "md"]}>
               <Icon as={FaStar} color="yellow.400" />
               <Text>Trade Review & Completion</Text>
             </HStack>
           </ModalHeader>
           <ModalCloseButton />
-          <ModalBody py={6} px={6}>
+          <ModalBody py={[4, 6]} px={[3, 6]}>
             <ReviewTab
               trade={trade}
               isUserBuyer={isUserBuyer ?? false}
