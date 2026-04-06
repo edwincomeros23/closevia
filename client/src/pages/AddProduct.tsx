@@ -78,6 +78,7 @@ import FloatingTab from '../components/FloatingTab'
 import { prepareImageForUpload } from '../utils/imageConverter'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
 import { checkMultipleImageQuality, getQualityLabel, getQualityColorScheme, type ImageQualityResult as ClientQualityResult } from '../utils/imageQualityChecker'
+import { getBackupPriceEstimate } from '../utils/priceEstimator'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -436,8 +437,8 @@ const AddProduct: React.FC = () => {
       toast({
         id: "addproduct-ai-analysis-failed",
         title: 'AI analysis failed',
-        description: err?.response?.data?.error || err.message || 'Could not analyze image. You can fill in details manually.',
-        status: 'warning',
+        description: 'No problem! Just click "Continue" and fill in the product details on the next page.',
+        status: 'info',
         duration: 5000,
         isClosable: true,
         position: 'top-right',
@@ -1619,19 +1620,31 @@ const AddProduct: React.FC = () => {
           textAlign="center"
         >
           <Text fontSize="xs" fontWeight="medium" color="gray.600" mb={1}>
-            Estimated Value (AI Analysis)
+            Estimated Value {formData.estimated_value_min ? '(AI Analysis)' : '(Market Range)'}
           </Text>
           {isGenerating && !aiDone ? (
             <Skeleton height="32px" borderRadius="md" />
-          ) : (formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0) ? (
-            <Heading fontSize="2xl" fontWeight="bold" color="gray.800">
-              ₱{Number(formData.estimated_value_min).toLocaleString()} – ₱{Number(formData.estimated_value_max).toLocaleString()}
-            </Heading>
-          ) : (
-            <Text fontSize="sm" color="gray.600" fontStyle="italic">
-              Value estimate unavailable
-            </Text>
-          )}
+          ) : (() => {
+            const aiEstimate = formData.estimated_value_min && formData.estimated_value_max && formData.estimated_value_min > 0
+              ? { min: formData.estimated_value_min, max: formData.estimated_value_max }
+              : null
+            
+            const fallbackEstimate = !aiEstimate && formData.category && formData.condition
+              ? getBackupPriceEstimate(formData.category, formData.condition)
+              : null
+            
+            const estimate = aiEstimate || fallbackEstimate
+
+            return estimate ? (
+              <Heading fontSize="2xl" fontWeight="bold" color={aiEstimate ? 'gray.800' : 'amber.700'}>
+                ₱{Number(estimate.min).toLocaleString()} – ₱{Number(estimate.max).toLocaleString()}
+              </Heading>
+            ) : (
+              <Text fontSize="sm" color="gray.600" fontStyle="italic">
+                Add product details to see estimate
+              </Text>
+            )
+          })()}
         </Box>
 
         {/* ──────── VALUE DISPLAY ──────── */}
