@@ -832,6 +832,14 @@ const AddProduct: React.FC = () => {
       <input id="img-camera" type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
         onChange={e => handleImageUpload(e.target.files)} />
 
+      {/* Video Upload Input */}
+      <input id="vid-upload" type="file" accept="video/*" style={{ display: 'none' }}
+        onChange={e => handleVideoUpload(e.target.files)} />
+
+      {/* Video Capture Input - Mobile friendly */}
+      <input id="vid-camera" type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
+        onChange={e => handleVideoUpload(e.target.files)} />
+
       {/* Image Preview Grid */}
       {uploadedImages.length > 0 && (
         <VStack spacing={3} align="stretch" bg="gray.50" p={4} borderRadius="lg" border="1px solid" borderColor="gray.200">
