@@ -59,6 +59,16 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [offerCount, setOfferCount] = useState(0)
   const [notificationCount, setNotificationCount] = useState(0)
 
+  const getSseBaseUrl = useCallback(() => {
+    const configured = (API_BASE_URL || '').replace(/\/$/, '')
+    if (configured) return configured
+
+    // Dev fallback: avoid relying on the Vite proxy for streaming.
+    // This prevents EventSource from receiving a non-SSE response from the dev server.
+    const { protocol, hostname } = window.location
+    return `${protocol}//${hostname}:4000`
+  }, [])
+
   const refreshCounts = useCallback(async () => {
     try {
       // Admin only sees report notifications, so only count those for the badge
@@ -124,7 +134,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Use token for SSE auth
     const token = localStorage.getItem('clovia_token')
     if (!token) return
-    const base = API_BASE_URL.replace(/\/$/, '')
+    const base = getSseBaseUrl()
     const url = `${base}/api/chat/stream?token=${encodeURIComponent(token)}`
     const es = new EventSource(url)
     esRef.current = es
@@ -203,7 +213,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       es.close()
       esRef.current = null
     }
-  }, [user])
+  }, [user, getSseBaseUrl])
 
   useEffect(() => { if (user) refreshCounts() }, [user, refreshCounts])
 

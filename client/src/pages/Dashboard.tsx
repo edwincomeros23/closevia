@@ -95,7 +95,7 @@ import {
 } from '../hooks/useDashboard'
 
 const Dashboard: React.FC = () => {
-  const { user, loading, isAuthenticated } = useAuth()
+  const { user, loading, isAuthenticated, restoreAuthentication } = useAuth()
   const { deleteProduct, updateProduct } = useProducts()
   const { refreshCounts, setRefreshCallback } = useRealtime()
   const navigate = useNavigate()
@@ -294,11 +294,19 @@ const Dashboard: React.FC = () => {
   // Check if user is authenticated, redirect to login if not
   // Only redirect if not loading (to prevent race conditions after login)
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      console.log('Dashboard: Not authenticated, redirecting to login')
-      navigate('/login', { replace: true })
+    if (loading || isAuthenticated) return
+
+    const storedToken = localStorage.getItem('clovia_token')
+    if (storedToken) {
+      // Token exists but AuthContext may still be restoring user/profile.
+      // Avoid bouncing back to /login; attempt restore once and wait.
+      restoreAuthentication().catch(() => { })
+      return
     }
-  }, [isAuthenticated, loading, navigate])
+
+    console.log('Dashboard: Not authenticated, redirecting to login')
+    navigate('/login', { replace: true })
+  }, [isAuthenticated, loading, navigate, restoreAuthentication])
 
   // Fetch multi-way trades when tab is selected
   useEffect(() => {
