@@ -156,7 +156,8 @@ export default defineConfig({
         },
         // Async loading for dynamically imported modules
         assetFileNames: (assetInfo) => {
-          const info = assetInfo.name.split('.')
+          const name = assetInfo.name || 'asset'
+          const info = name.split('.')
           const ext = info[info.length - 1]
           if (ext === 'css') {
             // CSS files stay in assets folder
