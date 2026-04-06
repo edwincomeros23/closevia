@@ -394,7 +394,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
 }) => {
   const bothConfirmed = deliveryState.buyerConfirmedReceipt && deliveryState.sellerConfirmedDelivery
   const deliveryCompleted = linkedDelivery?.status === 'delivered'
-  const totalCost = (requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee
+  const deliveryFee = deliveryOptions[deliveryState.deliveryType].fee
   const deliveryStatus = linkedDelivery?.status || 'pending'
   const deliveryStatusColor =
     deliveryCompleted ? 'green'
@@ -490,7 +490,7 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
               <Badge colorScheme="purple" variant="subtle">
                 Method: Cash on Delivery
               </Badge>
-              <Badge colorScheme="brand" variant="subtle">Total: P{totalCost.toFixed(2)}</Badge>
+              <Badge colorScheme="brand" variant="subtle">Fee: ₱{deliveryFee.toFixed(2)}</Badge>
             </HStack>
 
             {linkedDelivery?.rider_name ? (
@@ -585,12 +585,12 @@ const DeliveryTab: React.FC<DeliveryTabProps> = ({
             <HStack spacing={2}>
               <Text fontSize="lg">💵</Text>
               <VStack align="start" spacing={0}>
-                <Text fontSize="sm" fontWeight="semibold">Cash on Delivery</Text>
-                <Text fontSize="xs" color="gray.500">Have exact change ready</Text>
+                <Text fontSize="sm" fontWeight="semibold">Delivery Fee (Cash on Delivery)</Text>
+                <Text fontSize="xs" color="gray.500">This is the rider fee only</Text>
               </VStack>
             </HStack>
             <Text fontSize="sm" fontWeight="bold" color="green.600">
-              ₱{((requestedProduct?.price || 0) + deliveryOptions[deliveryState.deliveryType].fee).toFixed(2)}
+              ₱{deliveryFee.toFixed(2)}
             </Text>
           </HStack>
         </CardBody>

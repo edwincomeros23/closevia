@@ -22,11 +22,10 @@ import {
   Spinner,
   Center,
   Badge,
-  Image,
-  Input
+  Progress
 } from '@chakra-ui/react'
 import { CheckCircleIcon, WarningIcon, RepeatIcon } from '@chakra-ui/icons'
-import { FaMoneyBillWave, FaCreditCard, FaUniversity, FaLock } from 'react-icons/fa'
+import { FaMoneyBillWave, FaCreditCard, FaLock } from 'react-icons/fa'
 import { api } from '../services/api'
 
 interface RiderLedger {
@@ -35,6 +34,9 @@ interface RiderLedger {
   total_cash_collected: number
   remittance_owed: number
   take_home: number
+  total_remittance_paid?: number
+  remittance_threshold?: number
+  remittance_paid_progress?: number
   free_slots_remaining: number
   total_free_slots_used: number
   last_remittance_at: string | null
@@ -51,34 +53,11 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
   const toast = useToast()
   const { isOpen, onOpen, onClose } = useDisclosure()
 
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('')
-  const [paymentProofUrl, setPaymentProofUrl] = useState('')
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [isUploading, setIsUploading] = useState(false)
 
   const [ledgerData, setLedgerData] = useState<RiderLedger | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-
-  const handleUploadProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setIsUploading(true)
-    const formData = new FormData()
-    formData.append('image', file)
-    try {
-      const res = await api.post('/api/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      if (res.data.success) {
-        setPaymentProofUrl(res.data.data.url)
-        toast({ title: 'Upload successful', status: 'success', duration: 2000 })
-      }
-    } catch (err: any) {
-      toast({ title: 'Upload failed', description: err.response?.data?.error || err.message, status: 'error', duration: 3000 })
-    } finally {
-      setIsUploading(false)
-    }
-  }
 
   const fetchLedger = async () => {
     setIsLoading(true)
@@ -101,7 +80,21 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
   }
 
   useEffect(() => {
-    fetchLedger()
+    const syncFromRedirect = async () => {
+      const params = new URLSearchParams(window.location.search)
+      const externalID = params.get('xendit_external_id')
+      if (!externalID) return
+      try {
+        await api.post('/api/payments/remittance/sync', { external_id: externalID })
+      } catch {
+        // Ignore sync failures; ledger will still load.
+      }
+    }
+
+    ;(async () => {
+      await syncFromRedirect()
+      fetchLedger()
+    })()
   }, [])
 
   const totalCashCollected = ledgerData?.total_cash_collected || 0
@@ -110,54 +103,60 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
   const isLocked = ledgerData?.is_locked_for_remittance || false
   const totalEarningsToDisplay = typeof totalEarnings === 'number' ? totalEarnings : computedTotalEarnings
 
+  const remittanceThreshold = (ledgerData?.remittance_threshold && ledgerData.remittance_threshold > 0)
+    ? ledgerData.remittance_threshold
+    : 50
+  const totalRemittancePaid = ledgerData?.total_remittance_paid || 0
+  const remittancePaidProgress = ledgerData?.remittance_paid_progress || 0
+  const remittancePaidPercent = remittanceThreshold > 0
+    ? Math.min(100, (remittancePaidProgress / remittanceThreshold) * 100)
+    : 0
+  const minUnlockAmount = Math.min(remittanceThreshold, totalFeesDue)
+  const showMinOption = minUnlockAmount > 0 && Math.abs(minUnlockAmount - totalFeesDue) > 0.009
+
   const handleRemitFees = async () => {
-    if (!selectedPaymentMethod) {
+    if (!selectedAmount || selectedAmount <= 0) {
       toast({
-        id: "remittanceledger-select-payment-method",
-        title: 'Select Payment Method',
-        description: 'Choose how you want to pay',
+        id: "remittanceledger-select-amount",
+        title: 'Select an option',
+        description: 'Choose a Xendit checkout option to continue.',
         status: 'warning',
         duration: 2000,
       })
       return
     }
 
-    if (!paymentProofUrl) {
-      toast({
-        id: "remittanceleader-proof-required",
-        title: 'Proof of Payment Required',
-        description: 'Please upload the receipt to verify your transfer.',
-        status: 'warning',
-        duration: 3000,
-      })
-      return
-    }
-
     setIsProcessing(true)
     try {
-      const res = await api.post('/api/deliveries/remittance-payment', {
-        amount_paid: totalFeesDue,
-        payment_method: selectedPaymentMethod,
-        payment_proof_url: paymentProofUrl
+      const res = await api.post('/api/payments/remittance-invoice', {
+        amount: selectedAmount,
       })
 
-      if (res.data.success) {
-        toast({
-          id: "remittanceledger-payment-successful",
-          title: 'Payment Submitted! ✅',
-          description: `₱${totalFeesDue} remitted via ${selectedPaymentMethod}. Awaiting admin verification.`,
-          status: 'success',
-          duration: 4000,
-          isClosable: true,
-        })
-        fetchLedger() // Refresh immediately to show pending status
-        onClose()
+      const checkoutUrl = res.data?.data?.checkout_url
+      if (!checkoutUrl) {
+        throw new Error('Missing checkout URL')
       }
+
+      toast({
+        id: 'remittanceledger-opening-xendit',
+        title: 'Opening Xendit checkout',
+        status: 'info',
+        duration: 1500,
+      })
+      window.location.href = checkoutUrl
     } catch (error: any) {
+      const status = error?.response?.status
+      const backendErr = error?.response?.data?.error
+      const isXenditNotConfigured =
+        status === 503 && typeof backendErr === 'string' && /xendit is not configured/i.test(backendErr)
+
       toast({
         id: "remittanceledger-payment-failed",
         title: 'Payment Failed',
-        description: error.response?.data?.error || 'Please try again',
+        description:
+          (isXenditNotConfigured
+            ? `${backendErr} Set XENDIT_SECRET_KEY in the backend environment and restart the Go server.`
+            : backendErr || error.message || 'Please try again'),
         status: 'error',
         duration: 2000,
       })
@@ -248,7 +247,7 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
                 • Your ledger updates automatically after completing a job.
               </Text>
               <Text fontSize="xs" color="blue.800">
-                • ₱50 limit: You’ll be locked from claiming new batches until you remit.
+                • ₱{remittanceThreshold.toFixed(0)} limit: You’ll be locked from claiming new batches until you remit.
               </Text>
             </VStack>
           </CardBody>
@@ -281,8 +280,18 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
               <Divider />
               <HStack justify="space-between" fontSize="sm">
                 <Text color="gray.600">Remittance Threshold:</Text>
-                <Badge colorScheme="orange">₱50</Badge>
+                <Badge colorScheme="orange">₱{remittanceThreshold.toFixed(0)}</Badge>
               </HStack>
+
+              <VStack align="stretch" spacing={1}>
+                <HStack justify="space-between" fontSize="sm">
+                  <Text color="gray.600">Remittance Paid (toward limit):</Text>
+                  <Text fontWeight="medium">₱{remittancePaidProgress.toFixed(2)} / ₱{remittanceThreshold.toFixed(2)}</Text>
+                </HStack>
+                <Progress value={remittancePaidPercent} size="sm" colorScheme="green" borderRadius="md" />
+                <Text fontSize="xs" color="gray.500">Lifetime remittance paid: ₱{totalRemittancePaid.toFixed(2)}</Text>
+              </VStack>
+
               <HStack justify="space-between" fontSize="sm">
                 <Text color="gray.600">Last Remittance:</Text>
                 <Text fontWeight="medium">{ledgerData?.last_remittance_at ? new Date(ledgerData.last_remittance_at).toLocaleDateString() : 'Never'}</Text>
@@ -344,7 +353,7 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
       <Modal isOpen={isOpen} onClose={onClose} isCentered size="sm">
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>Pay Remittance Fees</ModalHeader>
+          <ModalHeader>Pay Remittance Fees (Xendit)</ModalHeader>
           <ModalBody>
             <VStack spacing={4} align="stretch">
               <Card bg="gray.50">
@@ -360,68 +369,60 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
 
               <VStack spacing={2} align="stretch">
                 <Text fontWeight="bold" fontSize="sm">
-                  Select Payment Method:
+                  Select a Xendit checkout option:
                 </Text>
 
-                {/* GCash / E-Wallet */}
-                <Card
-                  bg={selectedPaymentMethod === 'gcash' ? 'blue.50' : 'white'}
-                  border="2px"
-                  borderColor={selectedPaymentMethod === 'gcash' ? 'blue.400' : 'gray.200'}
-                  cursor="pointer"
-                  onClick={() => setSelectedPaymentMethod('gcash')}
-                >
-                  <CardBody p={3}>
-                    <HStack spacing={2}>
-                      <FaCreditCard size={24} color={selectedPaymentMethod === 'gcash' ? '#0066FF' : '#999'} />
-                      <VStack align="start" spacing={0} flex={1}>
-                        <Text fontWeight="bold" fontSize="sm">E-Wallet (GCash / PayMaya)</Text>
-                        <Text fontSize="xs" color="gray.600">Send to exactly: 0912-345-6789</Text>
-                      </VStack>
-                      {selectedPaymentMethod === 'gcash' && <CheckCircleIcon color="green.500" />}
-                    </HStack>
-                  </CardBody>
-                </Card>
-
-                {/* Bank Transfer */}
-                <Card
-                  bg={selectedPaymentMethod === 'bank' ? 'blue.50' : 'white'}
-                  border="2px"
-                  borderColor={selectedPaymentMethod === 'bank' ? 'blue.400' : 'gray.200'}
-                  cursor="pointer"
-                  onClick={() => setSelectedPaymentMethod('bank')}
-                >
-                  <CardBody p={3}>
-                    <HStack spacing={2}>
-                      <FaUniversity size={24} color={selectedPaymentMethod === 'bank' ? '#0066FF' : '#999'} />
-                      <VStack align="start" spacing={0} flex={1}>
-                        <Text fontWeight="bold" fontSize="sm">Bank Transfer</Text>
-                        <Text fontSize="xs" color="gray.600">BDO Account: 1234-5678-9000</Text>
-                      </VStack>
-                      {selectedPaymentMethod === 'bank' && <CheckCircleIcon color="green.500" />}
-                    </HStack>
-                  </CardBody>
-                </Card>
-
-              </VStack>
-
-              <Divider />
-
-              {/* Image Upload for Proof */}
-              <Box mt={2} px={1}>
-                <Text fontWeight="bold" fontSize="sm" mb={2}>Proof of Payment (Required):</Text>
-                {paymentProofUrl ? (
-                  <VStack spacing={3}>
-                    <Image src={paymentProofUrl} alt="Payment Proof" boxSize="150px" objectFit="contain" border="2px dashed" borderColor="gray.300" borderRadius="md" p={1} />
-                    <Button size="sm" colorScheme="red" variant="ghost" onClick={() => setPaymentProofUrl('')}>Remove Receipt</Button>
-                  </VStack>
-                ) : (
-                  <Button as="label" w="full" py={6} variant="outline" cursor="pointer" isLoading={isUploading} leftIcon={<FaCreditCard />} borderStyle="dashed" borderWidth="2px" _hover={{ bg: "gray.50" }}>
-                    Upload Screenshot of Receipt
-                    <input type="file" hidden accept="image/*" onChange={handleUploadProof} />
-                  </Button>
+                {showMinOption && (
+                  <Card
+                    bg={selectedAmount === minUnlockAmount ? 'blue.50' : 'white'}
+                    border="2px"
+                    borderColor={selectedAmount === minUnlockAmount ? 'blue.400' : 'gray.200'}
+                    cursor="pointer"
+                    onClick={() => setSelectedAmount(minUnlockAmount)}
+                  >
+                    <CardBody p={3}>
+                      <HStack spacing={2}>
+                        <FaLock size={22} color={selectedAmount === minUnlockAmount ? '#0066FF' : '#999'} />
+                        <VStack align="start" spacing={0} flex={1}>
+                          <Text fontWeight="bold" fontSize="sm">Pay Minimum to Unlock</Text>
+                          <Text fontSize="xs" color="gray.600">Pay ₱{minUnlockAmount.toFixed(2)} and continue claiming batches</Text>
+                        </VStack>
+                        {selectedAmount === minUnlockAmount && <CheckCircleIcon color="green.500" />}
+                      </HStack>
+                    </CardBody>
+                  </Card>
                 )}
-              </Box>
+
+                <Card
+                  bg={selectedAmount === totalFeesDue ? 'blue.50' : 'white'}
+                  border="2px"
+                  borderColor={selectedAmount === totalFeesDue ? 'blue.400' : 'gray.200'}
+                  cursor="pointer"
+                  onClick={() => setSelectedAmount(totalFeesDue)}
+                >
+                  <CardBody p={3}>
+                    <HStack spacing={2}>
+                      <FaMoneyBillWave size={22} color={selectedAmount === totalFeesDue ? '#0066FF' : '#999'} />
+                      <VStack align="start" spacing={0} flex={1}>
+                        <Text fontWeight="bold" fontSize="sm">Pay Full Balance</Text>
+                        <Text fontSize="xs" color="gray.600">Pay ₱{totalFeesDue.toFixed(2)} total remittance owed</Text>
+                      </VStack>
+                      {selectedAmount === totalFeesDue && <CheckCircleIcon color="green.500" />}
+                    </HStack>
+                  </CardBody>
+                </Card>
+
+                <Card bg="gray.50" border="1px" borderColor="gray.200">
+                  <CardBody p={3}>
+                    <HStack spacing={2}>
+                      <FaCreditCard size={18} color="#666" />
+                      <Text fontSize="xs" color="gray.600">
+                        You’ll complete payment in Xendit checkout (no receipt upload needed).
+                      </Text>
+                    </HStack>
+                  </CardBody>
+                </Card>
+              </VStack>
             </VStack>
           </ModalBody>
           <ModalFooter>
@@ -436,7 +437,7 @@ const RemittanceLedger: React.FC<RemittanceLedgerProps> = ({ embedded = false, t
                 isLoading={isProcessing}
                 loadingText="Processing..."
               >
-                Confirm Payment
+                Continue to Xendit
               </Button>
             </HStack>
           </ModalFooter>
