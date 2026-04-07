@@ -69,6 +69,7 @@ export interface ProductFormData {
   // Barter preferences
   wanted_categories?: string[]
   wants?: string
+  desired_product?: string
 }
 
 import { useAuth } from '../contexts/AuthContext'
@@ -193,6 +194,7 @@ const AddProduct: React.FC = () => {
     value: undefined,
     wanted_categories: [],
     wants: '',
+    desired_product: '',
   })
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([])
@@ -719,6 +721,7 @@ const AddProduct: React.FC = () => {
         fd.append('wanted_categories', JSON.stringify(formData.wanted_categories))
       }
       if (formData.wants) fd.append('wants', formData.wants)
+      if (formData.desired_product) fd.append('desired_product', formData.desired_product)
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
@@ -1450,6 +1453,21 @@ const AddProduct: React.FC = () => {
                   onClick={e => e.stopPropagation()}
                 />
                 <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+              </Box>
+
+              <Box>
+                <FormLabel fontSize="xs" color="gray.600" mb={1}>Ideal Product</FormLabel>
+                <Input
+                  placeholder="e.g. Sony WH-1000XM5, iPhone 15 Pro"
+                  value={formData.desired_product || ''}
+                  onChange={e => handleField('desired_product', e.target.value)}
+                  size="sm"
+                  bg="white"
+                  maxLength={255}
+                  h="36px"
+                  onClick={e => e.stopPropagation()}
+                />
+                <FormHelperText fontSize="10px">The exact product you're looking for (optional).</FormHelperText>
               </Box>
             </SimpleGrid>
           </FormControl>
