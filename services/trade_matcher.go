@@ -2,6 +2,7 @@ package services
 
 import (
 	"database/sql"
+	"encoding/json"
 	"log"
 	"math"
 	"sort"
@@ -241,7 +242,17 @@ func semanticMatcher(need, have string) bool {
 func wantedSignalScore(candidateWants, candidateWantedCategories, candidateDesiredProduct, offeredTitle, offeredCategory string) (int, bool) {
 	needleTitle := strings.ToLower(strings.TrimSpace(offeredTitle))
 	needleCategory := strings.ToLower(strings.TrimSpace(offeredCategory))
-	haystack := strings.ToLower(candidateWants + " " + candidateWantedCategories + " " + candidateDesiredProduct)
+
+	// Normalize candidateWantedCategories: if it's a JSON array, flatten to space-separated values
+	normalizedWantedCat := candidateWantedCategories
+	if strings.HasPrefix(strings.TrimSpace(candidateWantedCategories), "[") {
+		var arr []string
+		if err := json.Unmarshal([]byte(candidateWantedCategories), &arr); err == nil {
+			normalizedWantedCat = strings.Join(arr, " ")
+		}
+	}
+
+	haystack := strings.ToLower(candidateWants + " " + normalizedWantedCat + " " + candidateDesiredProduct)
 
 	// Extract key words from offered title for better matching
 	// E.g., "iPhone 15 Pro Max - Test" => ["iPhone", "15", "Pro", "Max"]
@@ -382,21 +393,42 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 	wantedCatFilter := strings.TrimSpace(targetWantedCat)
 	desiredProdFilter := strings.TrimSpace(targetDesiredProd)
 
-	if wantsFilter != "" || wantedCatFilter != "" || desiredProdFilter != "" {
+	// Parse wantedCatFilter: it may be a JSON array like ["Clothing","Accessories"]
+	// Extract individual category strings so LIKE clauses work correctly.
+	var parsedWantedCats []string
+	if wantedCatFilter != "" {
+		if strings.HasPrefix(wantedCatFilter, "[") {
+			var arr []string
+			if err := json.Unmarshal([]byte(wantedCatFilter), &arr); err == nil {
+				parsedWantedCats = arr
+			}
+		}
+		if len(parsedWantedCats) == 0 {
+			// Not a JSON array — use as-is
+			parsedWantedCats = []string{wantedCatFilter}
+		}
+	}
+
+	if wantsFilter != "" || len(parsedWantedCats) > 0 || desiredProdFilter != "" {
 		var orClauses []string
 		if wantsFilter != "" {
 			orClauses = append(orClauses, "LOWER(p.title) LIKE LOWER(?)")
 			queryArgs = append(queryArgs, "%"+wantsFilter+"%")
 		}
-		if wantedCatFilter != "" {
-			orClauses = append(orClauses, "LOWER(p.category) LIKE LOWER(?)")
-			queryArgs = append(queryArgs, "%"+wantedCatFilter+"%")
+		for _, cat := range parsedWantedCats {
+			cat = strings.TrimSpace(cat)
+			if cat != "" {
+				orClauses = append(orClauses, "LOWER(p.category) LIKE LOWER(?)")
+				queryArgs = append(queryArgs, "%"+cat+"%")
+			}
 		}
 		if desiredProdFilter != "" {
 			orClauses = append(orClauses, "LOWER(p.title) LIKE LOWER(?)")
 			queryArgs = append(queryArgs, "%"+desiredProdFilter+"%")
 		}
-		query += " AND (" + strings.Join(orClauses, " OR ") + ")"
+		if len(orClauses) > 0 {
+			query += " AND (" + strings.Join(orClauses, " OR ") + ")"
+		}
 	} else if targetCat != "" {
 		// Fallback: if no wants specified, at least match by category
 		query += " AND LOWER(p.category) LIKE LOWER(?)"
@@ -429,7 +461,15 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 		// STRATEGIC FILTER: Skip User3 if their product doesn't match what User2 wants
 		// This prevents bad matches from scoring higher than good ones
 		user2WantsMatch := false
-		u2Haystack := strings.ToLower(targetWants + " " + targetWantedCat + " " + targetDesiredProd)
+		// Normalize targetWantedCat: flatten JSON arrays to space-separated strings
+		normalizedTargetWantedCat := targetWantedCat
+		if strings.HasPrefix(strings.TrimSpace(targetWantedCat), "[") {
+			var arr []string
+			if err := json.Unmarshal([]byte(targetWantedCat), &arr); err == nil {
+				normalizedTargetWantedCat = strings.Join(arr, " ")
+			}
+		}
+		u2Haystack := strings.ToLower(targetWants + " " + normalizedTargetWantedCat + " " + targetDesiredProd)
 		u3TitleLower := strings.ToLower(strings.TrimSpace(user3ProductTitle))
 		u3CatLower := strings.ToLower(strings.TrimSpace(user3Category))
 
@@ -499,11 +539,8 @@ func FindMultiwayMatchDetailed(db *sql.DB, user1ID, user2ID, originalTradeID int
 				continue
 			}
 
-			u2Haystack := strings.ToLower(targetWants + " " + targetWantedCat + " " + targetDesiredProd)
-			u3TitleLower := strings.ToLower(strings.TrimSpace(user3ProductTitle))
-			u3CatLower := strings.ToLower(strings.TrimSpace(user3Category))
-
 			// Check if U3's product semantically matches U2's wants (STRONG SIGNAL)
+			// (u2Haystack, u3TitleLower, u3CatLower already set above in strategic filter)
 			if semanticMatcher(u3TitleLower, targetWants) {
 				score += 50 // Maximum score for perfect semantic match on wants
 				reasons = append(reasons, "[PERFECT] User 3 product semantically matches User 2's explicit wants (+50)")
