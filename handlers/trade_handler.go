@@ -1829,6 +1829,36 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		}
 
 		if !created {
+			// Check if a chain already exists (e.g., from auto-trigger when trade was first created).
+			// If loopStatus is a valid chain status, the chain is already there — treat as matched.
+			if loopStatus == "pending_user3" || loopStatus == "pending_initiator_upgrade" || loopStatus == "user3_accepted" || loopStatus == "active" {
+				log.Printf("[convert_to_multiway] Chain already exists for trade %d with status=%s — returning matched=true", tradeID, loopStatus)
+				_, _ = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
+				// Clear stale cache so multiway tab shows the existing chain
+				_, _ = h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id IN (?, ?)", buyerID, sellerID)
+				publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway", "notification_type": "trade_loop"}})
+				publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway", "notification_type": "trade_loop"}})
+
+				var existingChainID string
+				_ = h.db.QueryRow("SELECT chain_id FROM multiway_trades WHERE original_trade_id = ? ORDER BY id DESC LIMIT 1", tradeID).Scan(&existingChainID)
+
+				return c.JSON(models.APIResponse{
+					Success: true,
+					Message: reason,
+					Data: fiber.Map{
+						"trade_id":   tradeID,
+						"status":     "pending_multiway",
+						"matched":    true,
+						"loop_state": loopStatus,
+						"chain_id":   existingChainID,
+					},
+				})
+			}
+
+			// No chain exists and no match found — mark as searching
+			_, _ = h.db.Exec("UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'", tradeID)
+			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway", "notification_type": "trade_loop"}})
+			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway", "notification_type": "trade_loop"}})
 			return c.JSON(models.APIResponse{
 				Success: true,
 				Message: "No strong multi-way match yet. We will keep checking automatically.",
@@ -1845,8 +1875,8 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		responseStatus := loopStatus
 		if loopStatus == "pending_user3" {
 			responseStatus = "pending_multiway"
-			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
-			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway"}})
+			publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway", "notification_type": "trade_loop"}})
+			publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "pending_multiway", "notification_type": "trade_loop"}})
 		}
 
 		var createdChainID string
@@ -3278,7 +3308,7 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		       DATE_FORMAT(DATE_ADD(m.created_at, INTERVAL 48 HOUR), '%Y-%m-%d %H:%i:%s') as expires_at,
 		       t.buyer_id as user1_id, t.seller_id as user2_id, t.target_product_id as user2_product_id,
 		       u1.name as user1_name, u2.name as user2_name, u3.name as user3_name, ui.name as initiator_name,
-		       p1.title as user3_wanted_product_title, p2.title as user2_product_title, p3.title as user3_product_title
+		       COALESCE(p1.title, '') as user3_wanted_product_title, p2.title as user2_product_title, p3.title as user3_product_title
 		FROM multiway_trades m
 		JOIN trades t ON m.original_trade_id = t.id
 		JOIN users u1 ON t.buyer_id = u1.id
@@ -3287,11 +3317,14 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		JOIN users ui ON m.initiator_user_id = ui.id
 		JOIN products p2 ON t.target_product_id = p2.id
 		JOIN products p3 ON m.user3_product_id = p3.id
-		JOIN trade_items ti ON t.id = ti.trade_id
-		JOIN products p1 ON ti.product_id = p1.id
+		LEFT JOIN trade_items ti ON t.id = ti.trade_id AND ti.offered_by = 'buyer'
+		LEFT JOIN products p1 ON ti.product_id = p1.id
 		WHERE (m.user3_id = ? OR t.buyer_id = ? OR t.seller_id = ?) AND m.status IN ('pending_user3', 'pending_initiator_upgrade', 'user3_accepted', 'active')
 	`, userID, userID, userID)
 
+	if err != nil {
+		log.Printf("[GetTradeLoops] ERROR querying multiway_trades for user %d: %v", userID, err)
+	}
 	if err == nil {
 		defer rows.Close()
 		seenChainIDs := map[string]bool{}
@@ -3299,8 +3332,12 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 			var chainID, mStatus, expiresAt, u1Name, u2Name, u3Name, initiatorName, u3WantedTitle, u2Title, u3Title string
 			var tradeID, u3ID, u3PID, initiatorUserID, u1ID, u2ID, u2PID int
 			err = rows.Scan(&chainID, &tradeID, &u3ID, &u3PID, &mStatus, &initiatorUserID, &expiresAt, &u1ID, &u2ID, &u2PID, &u1Name, &u2Name, &u3Name, &initiatorName, &u3WantedTitle, &u2Title, &u3Title)
-			if err == nil {
-				// Deduplicate: trade_items JOIN can produce multiple rows per chain if buyer offered multiple products
+			if err != nil {
+				log.Printf("[GetTradeLoops] ERROR scanning multiway row for user %d: %v", userID, err)
+				continue
+			}
+			{
+				// Deduplicate: LEFT JOIN on trade_items can produce multiple rows per chain if buyer offered multiple products
 				if seenChainIDs[chainID] {
 					continue
 				}
@@ -3359,8 +3396,15 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		}
 	}
 
+	log.Printf("[GetTradeLoops] user=%d found %d raw loops (before best-per-product filter)", userID, len(userLoops))
+	for i, l := range userLoops {
+		log.Printf("[GetTradeLoops]   [%d] type=%v id=%v status=%v", i, l["loop_type"], l["loop_id"], l["status"])
+	}
+
 	// Filter to keep only the best loop per product
 	bestLoops := selectBestLoopsPerProduct(h.db, userID, userLoops)
+
+	log.Printf("[GetTradeLoops] user=%d returning %d loops after best-per-product filter", userID, len(bestLoops))
 
 	if isPremium {
 		_ = h.saveLoopCacheForUser(userID, bestLoops)
