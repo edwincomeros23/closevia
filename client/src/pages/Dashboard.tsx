@@ -2930,7 +2930,7 @@ const Dashboard: React.FC = () => {
           <Box
             position="relative"
             w="full"
-            pt="100%"
+            h="120px"
             overflow="hidden"
             borderTopRadius="md"
             bg="gray.100"
@@ -2947,10 +2947,24 @@ const Dashboard: React.FC = () => {
               size="full"
             />
           </Box>
-          <CardHeader pb={1.5} pt={1.5} px={3}>
-            <Heading size="xs" noOfLines={2} fontSize="12px" lineHeight="1.3">
-              {getProductTitle(trade.target_product_id, trade.product_title)}
-            </Heading>
+          <CardHeader pb={2}>
+            <HStack spacing={2} align="center" flexWrap="wrap">
+              <Heading size="sm" noOfLines={2}>
+                {getProductTitle(trade.target_product_id, trade.product_title)}
+              </Heading>
+              {trade.trade_option && (
+                <Badge
+                  colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
+                  variant="subtle"
+                  fontSize="2xs"
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                </Badge>
+              )}
+            </HStack>
             <HStack spacing={1} mt={1}>
               <Avatar
                 name={userName}
@@ -2958,37 +2972,27 @@ const Dashboard: React.FC = () => {
                 bg={isIncoming ? 'blue.500' : 'green.500'}
                 color="white"
               />
-              <Text fontSize="xs" color="gray.600" noOfLines={1} flex={1}>
+              <Text fontSize="xs" color="gray.600" noOfLines={1}>
                 {userName}
               </Text>
-              {trade.trade_option && (
-                <Badge
-                  colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
-                  variant="subtle"
-                  fontSize="xs"
-                >
-                  {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                </Badge>
-              )}
             </HStack>
           </CardHeader>
-          <CardBody py={1.5} px={3}>
-            <VStack spacing={1.5} align="stretch">
+          <CardBody pt={0}>
+            <VStack spacing={2} align="stretch">
               <Text fontSize="xs" color="gray.500">
                 {new Date(trade.created_at).toLocaleDateString()}
               </Text>
               {renderOfferedItems(trade)}
             </VStack>
           </CardBody>
-          <CardFooter pt={1.5} pb={2} px={3}>
-            <HStack spacing={1.5} w="full" flexWrap="wrap">
+          <CardFooter pt={0}>
+            <HStack spacing={{ base: 1, md: 2 }} w="full" flexWrap="wrap">
               <Button
-                size="sm"
+                size={{ base: 'xs', md: 'sm' }}
                 variant="outline"
                 colorScheme="brand"
                 flex={1}
-                minW="50px"
-                fontSize="xs"
+                minW={{ base: '55px', md: '70px' }}
                 onClick={handleViewClick}
                 _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
                 transition="all 0.2s"
@@ -2998,11 +3002,10 @@ const Dashboard: React.FC = () => {
               {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
                 <>
                   <Button
-                    size="sm"
+                    size={{ base: 'xs', md: 'sm' }}
                     colorScheme="green"
                     flex={1}
-                    minW="50px"
-                    fontSize="xs"
+                    minW={{ base: '55px', md: '70px' }}
                     onClick={handleAcceptClick}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -3010,12 +3013,11 @@ const Dashboard: React.FC = () => {
                     Accept
                   </Button>
                   <Button
-                    size="sm"
+                    size={{ base: 'xs', md: 'sm' }}
                     colorScheme="red"
                     variant="outline"
                     flex={1}
-                    minW="50px"
-                    fontSize="xs"
+                    minW={{ base: '55px', md: '70px' }}
                     onClick={handleDeclineClick}
                     _hover={{ transform: 'scale(1.02)' }}
                     transition="all 0.2s"
@@ -3026,14 +3028,13 @@ const Dashboard: React.FC = () => {
               )}
               {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
                 <Button
-                  size="sm"
+                  size={{ base: 'xs', md: 'sm' }}
                   colorScheme="red"
                   variant="outline"
                   flex={1}
-                  minW="50px"
-                  fontSize="xs"
+                  minW={{ base: '55px', md: '70px' }}
                   onClick={() => onCancel && onCancel(trade)}
-                  leftIcon={<Icon as={FaTimes} boxSize={3} />}
+                  leftIcon={<Icon as={FaTimes} />}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
                 >
@@ -3042,13 +3043,12 @@ const Dashboard: React.FC = () => {
               )}
               {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
                 <Button
-                  size="sm"
+                  size={{ base: 'xs', md: 'sm' }}
                   colorScheme="blue"
                   flex={1}
-                  minW="50px"
-                  fontSize="xs"
+                  minW={{ base: '55px', md: '70px' }}
                   onClick={() => onComplete && onComplete(trade)}
-                  leftIcon={<Icon as={FaHandshake} boxSize={3} />}
+                  leftIcon={<Icon as={FaHandshake} />}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
                 >
