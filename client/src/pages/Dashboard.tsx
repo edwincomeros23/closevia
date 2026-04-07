@@ -2924,155 +2924,151 @@ const Dashboard: React.FC = () => {
     const handleCompleteClick = useCallback(() => onComplete?.(trade), [onComplete, trade])
 
     return (
-      <Card
-          variant="outline"
-          _hover={{
-            shadow: "md",
-            transform: "translateY(-2px)",
-            transition: "all 0.2s ease"
-          }}
-          transition="all 0.2s ease"
-          borderLeftWidth="4px"
-          borderLeftColor={
-            trade.status === 'countered' ? 'purple.400' :
-              trade.status === 'pending' ? 'yellow.400' :
-                trade.status === 'accepted' || trade.status === 'active' ? 'green.400' :
-                  'gray.200'
-          }
-          role="article"
-          aria-label={`Offer for ${getProductTitle(trade.target_product_id, trade.product_title)}`}
+      <Box
+        h="220px"
+        bg="white"
+        borderWidth="1px"
+        borderColor="gray.200"
+        borderLeftWidth="4px"
+        borderLeftColor={
+          trade.status === 'countered' ? 'purple.400' :
+            trade.status === 'pending' ? 'yellow.400' :
+              trade.status === 'accepted' || trade.status === 'active' ? 'green.400' :
+                'gray.200'
+        }
+        rounded="lg"
+        overflow="hidden"
+        display="flex"
+        flexDirection="column"
+        _hover={{
+          shadow: "md",
+          transform: "translateY(-2px)",
+          transition: "all 0.2s ease"
+        }}
+        transition="all 0.2s ease"
+        role="article"
+        aria-label={`Offer for ${getProductTitle(trade.target_product_id, trade.product_title)}`}
+      >
+        {/* Image Section - Fixed Height */}
+        <Box
+          position="relative"
+          w="full"
+          h="120px"
+          overflow="hidden"
+          bg="gray.100"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          flexShrink={0}
         >
-          <Box
-            position="relative"
-            w="full"
-            pt="100%"
-            overflow="hidden"
-            borderTopRadius="md"
-            bg="gray.100"
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            borderBottom="1px solid"
-            borderColor="gray.200"
-          >
-            <ProductThumb
-              pid={trade.target_product_id}
-              src={trade.product_image_url}
-              alt={getProductTitle(trade.target_product_id, trade.product_title)}
-              size="full"
-            />
-          </Box>
-          <CardHeader pb={1.5} pt={1.5} px={3}>
-            <Heading size="xs" noOfLines={2} fontSize="12px" lineHeight="1.3">
+          <ProductThumb
+            pid={trade.target_product_id}
+            src={trade.product_image_url}
+            alt={getProductTitle(trade.target_product_id, trade.product_title)}
+            size="full"
+          />
+        </Box>
+
+        {/* Info Section */}
+        <Box p={2} flex="1" display="flex" flexDirection="column" justifyContent="space-between">
+          <Box>
+            <Heading size="xs" noOfLines={1} fontSize="13px" lineHeight="1.3" mb={1} fontWeight="600">
               {getProductTitle(trade.target_product_id, trade.product_title)}
             </Heading>
-            <HStack spacing={1} mt={1}>
+            <HStack spacing={0.5} fontSize="10px">
               <Avatar
                 name={userName}
                 size="xs"
                 bg={isIncoming ? 'blue.500' : 'green.500'}
                 color="white"
               />
-              <Text fontSize="xs" color="gray.600" noOfLines={1} flex={1}>
+              <Text color="gray.600" noOfLines={1} flex={1}>
                 {userName}
               </Text>
-              {trade.trade_option && (
-                <Badge
-                  colorScheme={trade.trade_option === 'meetup' ? 'blue' : 'green'}
-                  variant="subtle"
-                  fontSize="xs"
-                >
-                  {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                </Badge>
-              )}
             </HStack>
-          </CardHeader>
-          <CardBody py={1.5} px={3}>
-            <VStack spacing={1.5} align="stretch">
-              <Text fontSize="xs" color="gray.500">
-                {new Date(trade.created_at).toLocaleDateString()}
-              </Text>
-              {renderOfferedItems(trade)}
-            </VStack>
-          </CardBody>
-          <CardFooter pt={1.5} pb={2} px={3}>
-            <HStack spacing={1.5} w="full" flexWrap="wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                colorScheme="brand"
-                flex={1}
-                minW="50px"
-                fontSize="xs"
-                onClick={handleViewClick}
-                _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
-                transition="all 0.2s"
-              >
-                View
-              </Button>
-              {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
-                <>
-                  <Button
-                    size="sm"
-                    colorScheme="green"
-                    flex={1}
-                    minW="50px"
-                    fontSize="xs"
-                    onClick={handleAcceptClick}
-                    _hover={{ transform: 'scale(1.02)' }}
-                    transition="all 0.2s"
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    size="sm"
-                    colorScheme="red"
-                    variant="outline"
-                    flex={1}
-                    minW="50px"
-                    fontSize="xs"
-                    onClick={handleDeclineClick}
-                    _hover={{ transform: 'scale(1.02)' }}
-                    transition="all 0.2s"
-                  >
-                    Decline
-                  </Button>
-                </>
-              )}
-              {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
+          </Box>
+
+          {/* Buttons */}
+          <HStack spacing={1} w="full" flexShrink={0} mt={1}>
+            <Button
+              size="sm"
+              variant="outline"
+              colorScheme="brand"
+              flex={1}
+              minW="45px"
+              fontSize="11px"
+              h="32px"
+              onClick={handleViewClick}
+              _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
+              transition="all 0.2s"
+            >
+              View
+            </Button>
+            {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
+              <>
+                <Button
+                  size="sm"
+                  colorScheme="green"
+                  flex={1}
+                  minW="45px"
+                  fontSize="11px"
+                  h="32px"
+                  onClick={handleAcceptClick}
+                  _hover={{ transform: 'scale(1.02)' }}
+                  transition="all 0.2s"
+                >
+                  Accept
+                </Button>
                 <Button
                   size="sm"
                   colorScheme="red"
                   variant="outline"
                   flex={1}
-                  minW="50px"
-                  fontSize="xs"
-                  onClick={() => onCancel && onCancel(trade)}
-                  leftIcon={<Icon as={FaTimes} boxSize={3} />}
+                  minW="45px"
+                  fontSize="11px"
+                  h="32px"
+                  onClick={handleDeclineClick}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
                 >
-                  Cancel
+                  Decline
                 </Button>
-              )}
-              {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
-                <Button
-                  size="sm"
-                  colorScheme="blue"
-                  flex={1}
-                  minW="50px"
-                  fontSize="xs"
-                  onClick={() => onComplete && onComplete(trade)}
-                  leftIcon={<Icon as={FaHandshake} boxSize={3} />}
-                  _hover={{ transform: 'scale(1.02)' }}
-                  transition="all 0.2s"
-                >
-                  Complete
-                </Button>
-              )}
-            </HStack>
-          </CardFooter>
-        </Card>
+              </>
+            )}
+            {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
+              <Button
+                size="sm"
+                colorScheme="red"
+                variant="outline"
+                flex={1}
+                minW="45px"
+                fontSize="11px"
+                h="32px"
+                onClick={() => onCancel && onCancel(trade)}
+                _hover={{ transform: 'scale(1.02)' }}
+                transition="all 0.2s"
+              >
+                Cancel
+              </Button>
+            )}
+            {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
+              <Button
+                size="sm"
+                colorScheme="blue"
+                flex={1}
+                minW="45px"
+                fontSize="11px"
+                h="32px"
+                onClick={() => onComplete && onComplete(trade)}
+                _hover={{ transform: 'scale(1.02)' }}
+                transition="all 0.2s"
+              >
+                Done
+              </Button>
+            )}
+          </HStack>
+        </Box>
+        </Box>
     )
   })
 

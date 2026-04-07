@@ -1166,7 +1166,7 @@ const ProductDetail: React.FC = () => {
                     <VStack spacing={4} align="stretch">
                       {/* Section 1: Header */}
                       <Box>
-                        <Flex justify="space-between" align="flex-start" gap={3}>
+                        <Flex justify="space-between" align="flex-start" gap={3} flexDirection={{ base: 'column', md: 'row' }}>
                           <VStack align="start" spacing={2} flex={1} minW={0}>
                             <Heading
                               mb={0}
@@ -1239,7 +1239,7 @@ const ProductDetail: React.FC = () => {
                             )}
                           </VStack>
 
-                          <VStack spacing={1} align="end" flexShrink={0}>
+                          <VStack spacing={1} align={{ base: 'start', md: 'end' }} flexShrink={0} w={{ base: 'full', md: 'auto' }}>
                             <Text
                               color="var(--pd-text)"
                               fontSize={{ base: '2xl', md: '3xl' }}

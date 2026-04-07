@@ -127,6 +127,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
     return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   }
 
+  const formatPriceUltraCompact = (value: unknown): string => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) return ''
+    if (num >= 1000000) return (num / 1000000).toFixed(0) + 'M'
+    if (num >= 1000) return (num / 1000).toFixed(0) + 'k'
+    return num.toString()
+  }
+
   return (
     <Box
       key={product.id}
@@ -204,7 +212,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 )}
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
                   <Text display={{ base: 'block', sm: 'none' }} fontSize="2xs" color="brand.100" lineHeight="1.2" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
-                    📊 Est. ₱{formatPriceCompact(product.estimated_value_min)}-₱{formatPriceCompact(product.estimated_value_max)}
+                    📊 Est. ₱{formatPriceUltraCompact(product.estimated_value_min)}-₱{formatPriceUltraCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
@@ -241,7 +249,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
               bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
               color="white"
             >
-              {product.tradeMatchScore}% Ready
+              <Text display={{ base: 'block', md: 'none' }}>{product.tradeMatchScore}% ✓</Text>
+              <Text display={{ base: 'none', md: 'block' }}>{product.tradeMatchScore}% Ready</Text>
             </Badge>
           </Tooltip>
         )}
