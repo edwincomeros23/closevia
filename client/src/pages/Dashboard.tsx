@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Box,
@@ -797,6 +797,9 @@ const Dashboard: React.FC = () => {
       if (status === 'pending_user3' && (canJoin || canDecline)) {
         // User is User3 and hasn't responded yet
         needsAction.push(trade)
+      } else if (status === 'pending_user3' && !canJoin && !canDecline) {
+        // User is initiator (u1/u2), waiting for User3 to respond
+        waitingOnOthers.push(trade)
       } else if (loopType === 'detected_loop' && (canJoin || canDecline)) {
         // Graph-detected cycle: all participants in the trade chain can accept or decline
         needsAction.push(trade)
@@ -1342,27 +1345,35 @@ const Dashboard: React.FC = () => {
     setDeclineModalOpen(false)
 
     try {
-      await updateTrade(tradeToDecline.id, {
-        action: 'convert_to_multiway'
-      })
+      const response = await api.put(`/api/trades/${tradeToDecline.id}`, { action: 'convert_to_multiway' })
+      const matched = response.data?.data?.matched === true
 
       setTradeToDecline(null)
       setDeclineFeedback('')
+      invalidateOffers()
 
-      toast({
-        id: 'success-convert-multiway',
-        title: 'Converting to Multi-Way',
-        description: 'Your offer has been converted to multi-way! We\'re searching for matching trade loops...',
-        status: 'success',
-        duration: 5000
-      })
+      if (matched) {
+        toast({
+          id: 'success-convert-multiway',
+          title: 'Loop Found!',
+          description: 'A 3-way trade loop was found! Check the Multi-Way tab to review and accept.',
+          status: 'success',
+          duration: 6000
+        })
+      } else {
+        toast({
+          id: 'success-convert-multiway',
+          title: 'Searching for Loops',
+          description: "No match yet, but we're now actively searching for a 3-way trade loop for you.",
+          status: 'info',
+          duration: 5000
+        })
+      }
 
-      // Refresh trades after conversion
-      setTimeout(() => {
-        setIsProcessing(false)
-        setActiveTab(2) // Move to Multi-Way tab
-        // Optionally refetch trades or let real-time update handle it
-      }, 1000)
+      // Switch to Multi-Way tab and always refresh multiway data
+      setActiveTab(2)
+      fetchMultiWayTrades()
+      setIsProcessing(false)
     } catch (error: any) {
       setIsProcessing(false)
 
@@ -1373,7 +1384,7 @@ const Dashboard: React.FC = () => {
         toast({
           id: 'error-convert-multiway-premium',
           title: 'Pro members can initiate',
-          description: "You're a great match to start a loop here � Pro members can initiate. Upgrade to unlock.",
+          description: "You're a great match to start a loop here. Pro members can initiate. Upgrade to unlock.",
           status: 'warning',
           duration: 5000
         })
