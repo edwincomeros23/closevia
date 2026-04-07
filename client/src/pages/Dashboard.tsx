@@ -4304,7 +4304,7 @@ const Dashboard: React.FC = () => {
                 </TabPanel>
 
                 {/* Offers Tab */}
-                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
+                <TabPanel px={{ base: 2, md: 4 }} py={{ base: 1, md: 2 }}>
                   <VStack spacing={6} align="stretch">
                     {/* Sub-tabs for Offers */}
                     <Tabs
