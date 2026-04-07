@@ -524,6 +524,7 @@ func main() {
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
 	trades.Get("/multiway/discoverable", middleware.AuthMiddleware(), tradeHandler.GetDiscoverableMultiwayLoops)
+	trades.Get("/multiway/suggestions", middleware.AuthMiddleware(), tradeHandler.GetProactiveMultiwaySuggestions)
 	trades.Post("/multiway/:id/hop-in", middleware.AuthMiddleware(), tradeHandler.HopIntoMultiwayChain)
 	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
 	trades.Post("/multiway/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineMultiwayChain)
