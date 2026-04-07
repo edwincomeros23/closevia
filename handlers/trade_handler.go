@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -539,11 +540,39 @@ func (h *TradeHandler) getCachedLoopsForUser(userID int) ([]map[string]interface
 		}
 		var loop map[string]interface{}
 		if err := json.Unmarshal([]byte(payload), &loop); err == nil {
-			loops = append(loops, loop)
+			// Filter out loops with products that are no longer available
+			if h.isLoopStillValid(loop) {
+				loops = append(loops, loop)
+			}
 		}
 	}
 
 	return loops, nil
+}
+
+// isLoopStillValid checks that every product in a loop is still available (not traded/removed)
+func (h *TradeHandler) isLoopStillValid(loop map[string]interface{}) bool {
+	participants, ok := loop["participants"].([]map[string]interface{})
+	if !ok {
+		return true // can't verify, assume valid
+	}
+	for _, p := range participants {
+		var productID int
+		if pid, ok := p["product_id"].(float64); ok {
+			productID = int(pid)
+		} else if pid, ok := p["product_id"].(int); ok {
+			productID = pid
+		}
+		if productID == 0 {
+			continue
+		}
+		var status string
+		err := h.db.QueryRow("SELECT status FROM products WHERE id = ?", productID).Scan(&status)
+		if err != nil || status != "available" {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *TradeHandler) saveLoopCacheForUser(userID int, loops []map[string]interface{}) error {
@@ -552,6 +581,10 @@ func (h *TradeHandler) saveLoopCacheForUser(userID int, loops []map[string]inter
 	}
 
 	for idx, loop := range loops {
+		// Skip loops with products that are no longer available
+		if !h.isLoopStillValid(loop) {
+			continue
+		}
 		loopID := fmt.Sprintf("cached_%d_%d", userID, idx)
 		if v, ok := loop["id"]; ok {
 			loopID = fmt.Sprintf("%v", v)
@@ -672,11 +705,30 @@ func (h *TradeHandler) buildUserLoopSuggestions(userID int) ([]map[string]interf
 				_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", m.User3ID).Scan(&user3Name)
 				_ = h.db.QueryRow("SELECT p.title FROM trades t JOIN products p ON p.id = t.target_product_id WHERE t.id = ?", tradeID).Scan(&targetTitle)
 
+				// Fetch desired category, desired items, and image for each participant's product
+				type prodPrefs struct {
+					cat, wantedCats, desiredProd, imageURL string
+				}
+				fetchProductPrefs := func(productID int) prodPrefs {
+					var pp prodPrefs
+					h.db.QueryRow("SELECT COALESCE(category, ''), COALESCE(wanted_categories, ''), COALESCE(desired_product, ''), COALESCE(image_url, '') FROM products WHERE id = ?", productID).Scan(&pp.cat, &pp.wantedCats, &pp.desiredProd, &pp.imageURL)
+					return pp
+				}
+				p1 := fetchProductPrefs(m.User1ProductID)
+				var p2 prodPrefs
+				var targetProductID int
+				h.db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tradeID).Scan(&targetProductID)
+				if targetProductID > 0 {
+					p2 = fetchProductPrefs(targetProductID)
+				}
+				p3 := fetchProductPrefs(m.User3ProductID)
+
 				userLoops = append(userLoops, map[string]interface{}{
 					"id":          fmt.Sprintf("auto_%d_%d", tradeID, m.User3ID),
 					"loop_type":   "auto_multiway",
 					"loop_length": 3,
-					"score":       85,
+					"score":       m.MatchScore,
+					"match_score": m.MatchScore,
 					"trade_id":    tradeID,
 					"summary": fmt.Sprintf(
 						"Trade Loop Found: You give %s, you get %s. Chain: %s → %s → %s → %s",
@@ -688,9 +740,9 @@ func (h *TradeHandler) buildUserLoopSuggestions(userID int) ([]map[string]interf
 						buyerName,
 					),
 					"participants": []map[string]interface{}{
-						{"id": buyerID, "user_name": buyerName, "product_title": m.User1ProductTitle},
-						{"id": sellerID, "user_name": sellerName, "product_title": targetTitle},
-						{"id": m.User3ID, "user_name": user3Name, "product_title": m.User3ProductTitle},
+						{"id": buyerID, "user_name": buyerName, "product_title": m.User1ProductTitle, "product_id": m.User1ProductID, "category": p1.cat, "wanted_categories": p1.wantedCats, "desired_product": p1.desiredProd, "product_image_url": p1.imageURL},
+						{"id": sellerID, "user_name": sellerName, "product_title": targetTitle, "product_id": targetProductID, "category": p2.cat, "wanted_categories": p2.wantedCats, "desired_product": p2.desiredProd, "product_image_url": p2.imageURL},
+						{"id": m.User3ID, "user_name": user3Name, "product_title": m.User3ProductTitle, "product_id": m.User3ProductID, "category": p3.cat, "wanted_categories": p3.wantedCats, "desired_product": p3.desiredProd, "product_image_url": p3.imageURL},
 					},
 				})
 				break
@@ -2989,8 +3041,25 @@ func (h *TradeHandler) setProductStatusForTrade(tx *sql.Tx, tradeID int, status 
 	return nil
 }
 
+// getLoopScore extracts the score from a loop map, checking multiple possible keys
+func getLoopScore(loop map[string]interface{}) int {
+	if v, ok := loop["match_score"].(float64); ok {
+		return int(v)
+	}
+	if v, ok := loop["match_score"].(int); ok {
+		return v
+	}
+	if v, ok := loop["score"].(float64); ok {
+		return int(v)
+	}
+	if v, ok := loop["score"].(int); ok {
+		return v
+	}
+	return 0
+}
+
 // selectBestLoopsPerProduct filters loops to keep only the best loop per product
-// Priority: Fewest participants > Recently active users > Most recently created
+// Priority: Highest score > Fewest participants > Most recently created
 func selectBestLoopsPerProduct(db *sql.DB, _ int, loops []map[string]interface{}) []map[string]interface{} {
 	// Map: product_id -> best loop
 	bestByProduct := make(map[int]map[string]interface{})
@@ -3014,51 +3083,62 @@ func selectBestLoopsPerProduct(db *sql.DB, _ int, loops []map[string]interface{}
 
 		// Get loop length (participant count)
 		loopLength := len(participants)
+		loopScore := getLoopScore(loop)
 
-		// For each participant, figure out if they're active and recently active
-		participantActivityScore := 0
-		for _, p := range participants {
-			if pID, ok := p["id"].(float64); ok {
-				var lastActive time.Time
-				_ = db.QueryRow("SELECT updated_at FROM users WHERE id = ?", int(pID)).Scan(&lastActive)
-				// Recently active = within 7 days
-				if time.Since(lastActive) < 7*24*time.Hour {
-					participantActivityScore++
+		// isBetterThan returns true if current loop beats existing loop
+		isBetterThan := func(existing map[string]interface{}) bool {
+			existingScore := getLoopScore(existing)
+			// Primary: higher score wins
+			if loopScore > existingScore {
+				return true
+			}
+			if loopScore < existingScore {
+				return false
+			}
+			// Secondary: fewer participants wins
+			existingLen, _ := existing["loop_length"].(int)
+			if loopLength < existingLen {
+				return true
+			}
+			if loopLength > existingLen {
+				return false
+			}
+			// Tertiary: newer wins
+			if existingCreated, ok := existing["created_at"].(time.Time); ok && createdAt.After(existingCreated) {
+				return true
+			}
+			return false
+		}
+
+		storeLoop := func(targetProductID int) {
+			if targetProductID <= 0 {
+				return
+			}
+			if existing, exists := bestByProduct[targetProductID]; exists {
+				if isBetterThan(existing) {
+					loop["created_at"] = createdAt
+					loop["loop_length"] = loopLength
+					bestByProduct[targetProductID] = loop
 				}
+			} else {
+				loop["created_at"] = createdAt
+				loop["loop_length"] = loopLength
+				bestByProduct[targetProductID] = loop
 			}
 		}
 
 		// Get target products involved in this loop to map to products
-		// For detected loops, use products from trades
 		if loopType, ok := loop["loop_type"].(string); ok && loopType == "detected_loop" {
 			if edges, ok := loop["edges"].([]map[string]interface{}); ok {
 				for _, edge := range edges {
 					if tradeID, ok := edge["trade_id"].(float64); ok {
 						var targetProductID int
 						_ = db.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", int(tradeID)).Scan(&targetProductID)
-
-						// Compare with existing best for this product
-						if existing, exists := bestByProduct[targetProductID]; exists {
-							// Keep existing if it has fewer participants
-							existingLen := existing["loop_length"].(int)
-							if loopLength < existingLen {
-								bestByProduct[targetProductID] = loop
-							} else if loopLength == existingLen {
-								// Tiebreaker: newer loops win
-								if existingCreated, ok := existing["created_at"].(time.Time); ok && createdAt.After(existingCreated) {
-									bestByProduct[targetProductID] = loop
-								}
-							}
-						} else {
-							loop["created_at"] = createdAt
-							loop["activity_score"] = participantActivityScore
-							bestByProduct[targetProductID] = loop
-						}
+						storeLoop(targetProductID)
 					}
 				}
 			}
 		} else if loopType, ok := loop["loop_type"].(string); ok && loopType == "invited_chain" {
-			// For invited chains, map to the target product of the original trade
 			if chainID, ok := loop["chain_id"].(string); ok {
 				var targetProductID int
 				_ = db.QueryRow(`
@@ -3066,23 +3146,7 @@ func selectBestLoopsPerProduct(db *sql.DB, _ int, loops []map[string]interface{}
 					JOIN trades t ON m.original_trade_id = t.id
 					WHERE m.chain_id = ?
 				`, chainID).Scan(&targetProductID)
-
-				if targetProductID > 0 {
-					if existing, exists := bestByProduct[targetProductID]; exists {
-						existingLen := existing["loop_length"].(int)
-						if loopLength < existingLen {
-							bestByProduct[targetProductID] = loop
-						} else if loopLength == existingLen {
-							if existingCreated, ok := existing["created_at"].(time.Time); ok && createdAt.After(existingCreated) {
-								bestByProduct[targetProductID] = loop
-							}
-						}
-					} else {
-						loop["created_at"] = createdAt
-						loop["activity_score"] = participantActivityScore
-						bestByProduct[targetProductID] = loop
-					}
-				}
+				storeLoop(targetProductID)
 			}
 		}
 	}
@@ -3353,6 +3417,14 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 
 	// Filter to keep only the best loop per product
 	bestLoops := selectBestLoopsPerProduct(h.db, userID, userLoops)
+
+	// For automatic search, surface only the single highest-scored loop
+	if len(bestLoops) > 1 {
+		sort.Slice(bestLoops, func(i, j int) bool {
+			return getLoopScore(bestLoops[i]) > getLoopScore(bestLoops[j])
+		})
+		bestLoops = bestLoops[:1]
+	}
 
 	log.Printf("[GetTradeLoops] user=%d returning %d loops after best-per-product filter", userID, len(bestLoops))
 
@@ -5119,27 +5191,47 @@ func (h *TradeHandler) UpdateLegHandoff(c *fiber.Ctx) error {
 	}
 
 	// Verify the user is part of this leg.
-	res, err := h.db.Exec(`
-		UPDATE multiway_trade_legs
-		SET handoff_method = ?, handoff_location = ?, handoff_time = ?, status = 'in_progress', updated_at = NOW()
+	// 1. Verify user is in this leg and get chain_id
+	var chainID string
+	err := h.db.QueryRow(`
+		SELECT chain_id FROM multiway_trade_legs 
 		WHERE id = ? AND (from_user_id = ? OR to_user_id = ?) AND status IN ('pending', 'in_progress')
-	`, payload.Method, payload.Location, payload.Time, legID, userID, userID)
+	`, legID, userID, userID).Scan(&chainID)
+	
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update handoff"})
-	}
-	ra, _ := res.RowsAffected()
-	if ra == 0 {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Leg not found or not your leg"})
 	}
 
-	// Notify the other party.
-	var otherUserID int
-	var chainID string
-	h.db.QueryRow("SELECT CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END, chain_id FROM multiway_trade_legs WHERE id = ?", userID, legID).Scan(&otherUserID, &chainID)
-	if otherUserID > 0 {
-		msg := fmt.Sprintf("Your trade partner has chosen %s for your handoff. Check your multi-way chain details.", payload.Method)
-		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, msg)
-		publishNotification(otherUserID, msg)
+	// 2. Update ALL legs for this chain
+	_, err = h.db.Exec(`
+		UPDATE multiway_trade_legs
+		SET handoff_method = ?, handoff_location = ?, handoff_time = ?, status = 'in_progress', updated_at = NOW()
+		WHERE chain_id = ? AND status IN ('pending', 'in_progress')
+	`, payload.Method, payload.Location, payload.Time, chainID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update handoffs"})
+	}
+
+	// 3. Notify all other parties in the chain
+	rows, err := h.db.Query(`
+		SELECT DISTINCT from_user_id
+		FROM multiway_trade_legs
+		WHERE chain_id = ? AND from_user_id != ?
+		UNION 
+		SELECT DISTINCT to_user_id
+		FROM multiway_trade_legs
+		WHERE chain_id = ? AND to_user_id != ?
+	`, chainID, userID, chainID, userID)
+	if err == nil {
+		defer rows.Close()
+		msg := fmt.Sprintf("A shared %s has been coordinated for your multi-way chain. Check your trade details.", payload.Method)
+		for rows.Next() {
+			var otherUserID int
+			if err := rows.Scan(&otherUserID); err == nil && otherUserID > 0 {
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)", otherUserID, msg)
+				publishNotification(otherUserID, msg)
+			}
+		}
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Handoff method updated"})
