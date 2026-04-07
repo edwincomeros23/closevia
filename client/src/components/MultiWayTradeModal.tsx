@@ -143,6 +143,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   const [legForms, setLegForms] = useState<
     Record<number, { method: 'meetup' | 'delivery'; location: string; time: string }>
   >({})
+  const [sharedForm, setSharedForm] = useState<{ method: 'meetup' | 'delivery'; location: string; time: string }>({ method: 'meetup', location: '', time: '' })
   const [savingLeg, setSavingLeg] = useState<number | null>(null)
   const [completingLeg, setCompletingLeg] = useState<number | null>(null)
   const { isOpen: isLegsOpen, onToggle: onLegsToggle } = useDisclosure({
@@ -186,6 +187,13 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
           }
         })
         setLegForms(forms)
+        if (legList.length > 0) {
+          setSharedForm({
+            method: legList[0].handoff_method || 'meetup',
+            location: legList[0].handoff_location || '',
+            time: legList[0].handoff_time || '',
+          })
+        }
       })
       .catch(() => {})
   }, [isOpen, multiWayTrade.loop_id, multiWayTrade.status])
@@ -218,15 +226,30 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
   // ── handlers ──────────────────────────────────────────────────────────────
 
+  const handleSaveSharedHandoff = async () => {
+    if (legs.length === 0) return
+    const legId = legs[0].id
+    setSavingLeg(-1)
+    try {
+      await updateLegHandoff(legId, sharedForm.method, sharedForm.location, sharedForm.time)
+      toast({ id: `shared-handoff-saved`, title: 'Shared Handoff saved', status: 'success', duration: 2000 })
+      
+      const data = await getChainLegs(multiWayTrade.loop_id)
+      setLegs(data?.legs || [])
+    } catch {
+      toast({ id: `shared-handoff-err`, title: 'Failed to save', status: 'error', duration: 3000 })
+    } finally {
+      setSavingLeg(null)
+    }
+  }
+
   const handleSaveLegHandoff = async (legId: number) => {
+    // kept for legacy API compatibility
     const form = legForms[legId]
     if (!form) return
     setSavingLeg(legId)
     try {
       await updateLegHandoff(legId, form.method, form.location, form.time)
-      toast({ id: `leg-${legId}-saved`, title: 'Handoff saved', status: 'success', duration: 2000 })
-    } catch {
-      toast({ id: `leg-${legId}-err`, title: 'Failed to save', status: 'error', duration: 3000 })
     } finally {
       setSavingLeg(null)
     }
@@ -536,15 +559,43 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                 <Divider />
                 <Box>
                   <HStack justify="space-between" cursor="pointer" onClick={onLegsToggle} mb={isLegsOpen ? 3 : 0} _hover={{ opacity: 0.8 }}>
-                    <Text fontWeight="semibold" fontSize="sm" color="gray.500" textTransform="uppercase" letterSpacing="wide">Arrange Handoffs ({legs.length})</Text>
+                    <Text fontWeight="semibold" fontSize="sm" color="gray.500" textTransform="uppercase" letterSpacing="wide">Shared Coordination ({legs.length} items)</Text>
                     <Icon as={FaChevronDown} transition="transform 0.2s" transform={isLegsOpen ? 'rotate(180deg)' : 'rotate(0deg)'} color="gray.400" />
                   </HStack>
 
                   <Collapse in={isLegsOpen} animateOpacity>
                     <VStack spacing={4} align="stretch">
-                      <Box bg={useColorModeValue('blue.50', 'blue.900')} borderLeftWidth="3px" borderColor="blue.400" p={3} borderRadius="md">
-                        <Text fontSize="xs" color={useColorModeValue('blue.800', 'blue.200')}>Both parties in each leg can propose a handoff method. Coordinate with each other and save when you agree.</Text>
+                      <Box bg={useColorModeValue('purple.50', 'purple.900')} borderLeftWidth="3px" borderColor="purple.400" p={3} borderRadius="md">
+                        <Text fontSize="xs" color={useColorModeValue('purple.800', 'purple.200')}>All participants will meet at the same location and time to execute the multi-way trade. Any participant can propose a shared method below.</Text>
                       </Box>
+
+                      <Box p={4} borderWidth="1px" borderColor={borderColor} borderRadius="lg" bg={legCardBg}>
+                        <VStack spacing={3} align="stretch">
+                          <FormControl>
+                            <FormLabel fontSize="xs" mb={1}>Shared Handoff Method</FormLabel>
+                            <Select size="sm" value={sharedForm.method} onChange={(e) => setSharedForm((prev) => ({ ...prev, method: e.target.value as 'meetup' | 'delivery' }))}>
+                              <option value="meetup">Meetup in person</option>
+                              <option value="delivery">Delivery / shipping</option>
+                            </Select>
+                          </FormControl>
+
+                          <FormControl>
+                            <FormLabel fontSize="xs" mb={1}><HStack spacing={1}><Icon as={FaMapMarkerAlt} /><span>{sharedForm.method === 'delivery' ? 'Delivery Instruction' : 'Meetup Location'}</span></HStack></FormLabel>
+                            <Input size="sm" placeholder={sharedForm.method === 'delivery' ? 'e.g. Any special instructions' : 'e.g. SM Mall main entrance'} value={sharedForm.location} onChange={(e) => setSharedForm((prev) => ({ ...prev, location: e.target.value }))} />
+                          </FormControl>
+
+                          <FormControl>
+                            <FormLabel fontSize="xs" mb={1}><HStack spacing={1}><Icon as={FaClock} /><span>Proposed Date & Time</span></HStack></FormLabel>
+                            <Input size="sm" placeholder="e.g. Saturday April 12, 3pm" value={sharedForm.time} onChange={(e) => setSharedForm((prev) => ({ ...prev, time: e.target.value }))} />
+                          </FormControl>
+
+                          <HStack justify="flex-end" pt={1}>
+                            <Button size="sm" colorScheme="purple" isLoading={savingLeg === -1} onClick={handleSaveSharedHandoff}>Update Shared Handoff</Button>
+                          </HStack>
+                        </VStack>
+                      </Box>
+                      
+                      <Text mt={4} fontWeight="semibold" fontSize="sm" color="gray.600" textTransform="uppercase" letterSpacing="wide">Confirm Receipts</Text>
 
                       {legs.map((leg: any) => {
                         const fromName = userNameMap[leg.from_user_id] || `User ${leg.from_user_id}`
@@ -588,49 +639,16 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
 
                             {!isDone && (
                               <Box px={4} py={3}>
-                                {(leg.handoff_location || leg.handoff_time) && !isInvolved && (
-                                  <HStack spacing={4} flexWrap="wrap" mb={3} fontSize="sm" color="gray.600">
-                                    {leg.handoff_method && (
-                                      <HStack spacing={1}><Icon as={leg.handoff_method === 'delivery' ? FaTruck : FaHandshake} /><Text textTransform="capitalize">{leg.handoff_method}</Text></HStack>
-                                    )}
-                                    {leg.handoff_location && (
-                                      <HStack spacing={1}><Icon as={FaMapMarkerAlt} /><Text>{leg.handoff_location}</Text></HStack>
-                                    )}
-                                    {leg.handoff_time && (
-                                      <HStack spacing={1}><Icon as={FaClock} /><Text>{leg.handoff_time}</Text></HStack>
-                                    )}
-                                  </HStack>
-                                )}
-
-                                {isInvolved && (
+                                {isReceiver && (
                                   <VStack spacing={3} align="stretch">
-                                    <FormControl>
-                                      <FormLabel fontSize="xs" mb={1}>Handoff method</FormLabel>
-                                      <Select size="sm" value={legForms[leg.id]?.method || 'meetup'} onChange={(e) => setLegForms((prev) => ({ ...prev, [leg.id]: { ...prev[leg.id], method: e.target.value as 'meetup' | 'delivery' } }))}>
-                                        <option value="meetup">Meetup in person</option>
-                                        <option value="delivery">Delivery / shipping</option>
-                                      </Select>
-                                    </FormControl>
-
-                                    <FormControl>
-                                      <FormLabel fontSize="xs" mb={1}><HStack spacing={1}><Icon as={FaMapMarkerAlt} /><span>{legForms[leg.id]?.method === 'delivery' ? 'Delivery address' : 'Meetup location'}</span></HStack></FormLabel>
-                                      <Input size="sm" placeholder={legForms[leg.id]?.method === 'delivery' ? 'e.g. 123 Main St, City' : 'e.g. SM Mall main entrance'} value={legForms[leg.id]?.location || ''} onChange={(e) => setLegForms((prev) => ({ ...prev, [leg.id]: { ...prev[leg.id], location: e.target.value } }))} />
-                                    </FormControl>
-
-                                    <FormControl>
-                                      <FormLabel fontSize="xs" mb={1}><HStack spacing={1}><Icon as={FaClock} /><span>Proposed date & time</span></HStack></FormLabel>
-                                      <Input size="sm" placeholder="e.g. Saturday April 12, 3pm" value={legForms[leg.id]?.time || ''} onChange={(e) => setLegForms((prev) => ({ ...prev, [leg.id]: { ...prev[leg.id], time: e.target.value } }))} />
-                                    </FormControl>
-
-                                    <HStack justify="flex-end" spacing={2} pt={1}>
-                                      <Button size="sm" variant="outline" colorScheme="blue" isLoading={savingLeg === leg.id} onClick={() => handleSaveLegHandoff(leg.id)}>Save Proposal</Button>
-                                      {isReceiver && <Button size="sm" colorScheme="green" leftIcon={<FaCheck />} isLoading={completingLeg === leg.id} onClick={() => handleCompleteLeg(leg.id)}>I Received It</Button>}
+                                    <Text fontSize="xs" color="gray.600">Once you have met and received the item from <strong>{fromName}</strong>, mark it as received.</Text>
+                                    <HStack justify="flex-start" spacing={2} pt={1}>
+                                      <Button size="sm" colorScheme="green" leftIcon={<FaCheck />} isLoading={completingLeg === leg.id} onClick={() => handleCompleteLeg(leg.id)}>I Received It</Button>
                                     </HStack>
                                   </VStack>
                                 )}
-
-                                {!isInvolved && (
-                                  <Text fontSize="xs" color="gray.400" fontStyle="italic">Waiting for {fromName} and {toName} to coordinate.</Text>
+                                {!isReceiver && (
+                                  <Text fontSize="xs" color="gray.500" fontStyle="italic">Waiting for {toName} to confirm receipt.</Text>
                                 )}
                               </Box>
                             )}
