@@ -62,10 +62,12 @@ func main() {
 	}
 
 	// Initialize database
+	log.Println("[STARTUP] Connecting to database...")
 	if err := database.InitDatabase(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
 	defer database.CloseDatabase()
+	log.Println("[STARTUP] Database connected successfully")
 
 	// Auto-migration (CreateTables) can be extremely slow on hosted DBs (ALTER TABLE on large tables).
 	// Default behavior:
@@ -74,11 +76,13 @@ func main() {
 	runCreateTables := os.Getenv("DB_CA_CERT") == ""
 	runCreateTables = envBool("RUN_CREATE_TABLES", runCreateTables)
 	if runCreateTables {
+		log.Println("[STARTUP] Running CreateTables...")
 		if err := database.CreateTables(); err != nil {
 			log.Fatal("Failed to create database tables:", err)
 		}
+		log.Println("[STARTUP] CreateTables completed")
 	} else {
-		log.Println("Skipping database.CreateTables() (set RUN_CREATE_TABLES=true to enable)")
+		log.Println("[STARTUP] Skipping database.CreateTables() (set RUN_CREATE_TABLES=true to enable)")
 	}
 
 	// Create Fiber app
@@ -357,7 +361,7 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
-	deliveryHandler.BackfillMissingDeliveries() // Create delivery records for existing active delivery trades
+	go deliveryHandler.BackfillMissingDeliveries() // Create delivery records for existing active delivery trades (async to avoid blocking startup)
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
