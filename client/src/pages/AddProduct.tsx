@@ -224,6 +224,8 @@ const AddProduct: React.FC = () => {
   const [locationText, setLocationText] = useState<string>('')
   const [locationDetected, setLocationDetected] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [useMockLocation, setUseMockLocation] = useState(false)
+  const [mockLocationText, setMockLocationText] = useState('Makati City')
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
@@ -1319,46 +1321,98 @@ const AddProduct: React.FC = () => {
 
       {/* ──────── LOCATION DETECTOR ──────── */}
       <Box bg="gray.100" p={3} borderRadius="md">
-        {isGettingLocation ? (
-          <HStack spacing={2}>
-            <Spinner size="sm" color="blue.600" />
-            <Text fontSize="xs" color="gray.600">Detecting location...</Text>
-          </HStack>
-        ) : locationDetected && locationText ? (
-          <HStack justify="space-between" align="center" spacing={2}>
-            <Text fontSize="sm" fontWeight="medium" color="gray.800">
-              📍 {locationText}
-            </Text>
-            <Button
-              size="xs"
-              variant="outline"
-              fontSize="9px"
-              h="auto"
-              py={1}
-              onClick={detectLocation}
-              isLoading={isGettingLocation}
-              _hover={{ bg: "gray.200" }}
-            >
-              Change
-            </Button>
-          </HStack>
-        ) : (
-          <VStack align="start" spacing={2}>
+        {/* QA Mode: Mock Location Toggle */}
+        <VStack align="stretch" spacing={3}>
+          <HStack justify="space-between" align="center">
             <Text fontSize="xs" color="gray.600" fontWeight="medium">📍 Location</Text>
-            <Button
-              size="sm"
-              colorScheme="brand"
-              variant="outline"
-              onClick={detectLocation}
-              isLoading={isGettingLocation}
-              fontSize="sm"
-              w="full"
-            >
-              Auto-Detect My Location
-            </Button>
-            <Text fontSize="9px" color="gray.500">This helps match you with nearby trades</Text>
-          </VStack>
-        )}
+            <HStack spacing={2}>
+              <Text fontSize="8px" color="gray.500">QA Mode:</Text>
+              <Button
+                size="xs"
+                variant={useMockLocation ? 'solid' : 'outline'}
+                colorScheme={useMockLocation ? 'orange' : 'gray'}
+                onClick={() => {
+                  setUseMockLocation(!useMockLocation)
+                  if (!useMockLocation) {
+                    // Enable mock location
+                    setLocationText(mockLocationText)
+                    setFormData(prev => ({ ...prev, location: mockLocationText }))
+                    setLocationDetected(true)
+                  } else {
+                    // Disable mock location
+                    setLocationDetected(false)
+                    setLocationText('')
+                    setFormData(prev => ({ ...prev, location: '' }))
+                  }
+                }}
+                fontSize="8px"
+                fontWeight="bold"
+                h="20px"
+                px={2}
+              >
+                {useMockLocation ? '✓ Mock' : 'Real'}
+              </Button>
+            </HStack>
+          </HStack>
+
+          {useMockLocation ? (
+            <VStack align="stretch" spacing={2}>
+              <Text fontSize="sm" fontWeight="medium" color="orange.600">⚡ Using Mock Location (QA Testing)</Text>
+              <Input
+                placeholder="Enter mock location (e.g., Makati City)"
+                value={mockLocationText}
+                onChange={e => {
+                  setMockLocationText(e.target.value)
+                  setLocationText(e.target.value)
+                  setFormData(prev => ({ ...prev, location: e.target.value }))
+                }}
+                size="sm"
+                bg="white"
+                fontSize="sm"
+                onClick={e => e.stopPropagation()}
+              />
+              <Text fontSize="8px" color="gray.500">✓ Location is set for testing. Real geolocation is disabled.</Text>
+            </VStack>
+          ) : isGettingLocation ? (
+            <HStack spacing={2}>
+              <Spinner size="sm" color="blue.600" />
+              <Text fontSize="xs" color="gray.600">Detecting location...</Text>
+            </HStack>
+          ) : locationDetected && locationText ? (
+            <HStack justify="space-between" align="center" spacing={2}>
+              <Text fontSize="sm" fontWeight="medium" color="gray.800">
+                📍 {locationText}
+              </Text>
+              <Button
+                size="xs"
+                variant="outline"
+                fontSize="9px"
+                h="auto"
+                py={1}
+                onClick={detectLocation}
+                isLoading={isGettingLocation}
+                _hover={{ bg: "gray.200" }}
+              >
+                Change
+              </Button>
+            </HStack>
+          ) : (
+            <VStack align="stretch" spacing={2}>
+              <Button
+                size="sm"
+                colorScheme="brand"
+                variant="outline"
+                onClick={detectLocation}
+                isLoading={isGettingLocation}
+                fontSize="sm"
+                w="full"
+              >
+                Auto-Detect My Location
+              </Button>
+              <Text fontSize="9px" color="gray.500">This helps match you with nearby trades</Text>
+            </VStack>
+          )}
+        </VStack>
       </Box>
 
       {/* Manual value field removed as per user request to use AI instead */}
