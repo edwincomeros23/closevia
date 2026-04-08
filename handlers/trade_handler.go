@@ -450,7 +450,7 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 
 	// STRATEGY 1: Find pending trades where target product matches THIS product's category/title
 	query1 := `
-		SELECT DISTINCT t.id, t.seller_id
+		SELECT t.id, t.seller_id
 		FROM trades t
 		JOIN products p ON p.id = t.target_product_id
 		JOIN users us ON us.id = t.seller_id
@@ -479,6 +479,28 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 			}
 			log.Printf("[ProactiveMultiway] Strategy1: Found trade %d to check", tradeID)
 			h.autoTriggerMultiwayForTrade(tradeID, targetSellerID, "new_available_item_strategy1")
+		}
+	}
+
+	// STRATEGY 2: Product-based 3-way cycle detection (no trades required).
+	// Check if this new product completes a 3-way cycle based on desires alone.
+	productLoops := h.findProductBasedMultiwayLoops(sellerID)
+	if len(productLoops) > 0 {
+		log.Printf("[ProactiveMultiway] Strategy2: Found %d product-based 3-way loops for seller %d", len(productLoops), sellerID)
+		// Notify all participants in each detected loop
+		for _, loop := range productLoops {
+			participants, _ := loop["participants"].([]map[string]interface{})
+			for _, p := range participants {
+				pID, _ := p["id"].(int)
+				if pID <= 0 {
+					continue
+				}
+				msg := fmt.Sprintf("A 3-way trade opportunity was found involving your item! Check the Multi-Way tab.")
+				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", pID, msg)
+				publishNotification(pID, msg)
+				// Clear stale cache so GetTradeLoops runs fresh
+				_, _ = h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id = ?", pID)
+			}
 		}
 	}
 
@@ -3148,6 +3170,14 @@ func selectBestLoopsPerProduct(db *sql.DB, _ int, loops []map[string]interface{}
 				`, chainID).Scan(&targetProductID)
 				storeLoop(targetProductID)
 			}
+		} else if loopType, ok := loop["loop_type"].(string); ok && loopType == "product_match" {
+			// Product-based loops have product_id in each participant
+			for _, p := range participants {
+				if pid, ok := p["product_id"].(int); ok && pid > 0 {
+					storeLoop(pid)
+					break // store once per loop is enough
+				}
+			}
 		}
 	}
 
@@ -3157,6 +3187,233 @@ func selectBestLoopsPerProduct(db *sql.DB, _ int, loops []map[string]interface{}
 		result = append(result, loop)
 	}
 	return result
+}
+
+// productMatchesDesires checks if a product (title/category) matches a user's desires (wants, wanted_categories, desired_product).
+// Returns true if there's a meaningful match.
+func productMatchesDesires(productTitle, productCategory, desires string) bool {
+	if desires == "" {
+		return false
+	}
+	ptLower := strings.ToLower(strings.TrimSpace(productTitle))
+	pcLower := strings.ToLower(strings.TrimSpace(productCategory))
+	dLower := strings.ToLower(strings.TrimSpace(desires))
+
+	// Direct substring checks
+	if ptLower != "" && (strings.Contains(dLower, ptLower) || strings.Contains(ptLower, dLower)) {
+		return true
+	}
+	if pcLower != "" && strings.Contains(dLower, pcLower) {
+		return true
+	}
+
+	// Check individual desire tokens against product title keywords
+	desireTokens := strings.FieldsFunc(dLower, func(r rune) bool {
+		return r == ',' || r == '"' || r == '[' || r == ']' || r == ' '
+	})
+	titleTokens := strings.Fields(ptLower)
+
+	for _, dt := range desireTokens {
+		dt = strings.TrimSpace(dt)
+		if len(dt) < 3 {
+			continue
+		}
+		// Check if desire token is contained in full title or vice versa
+		if strings.Contains(ptLower, dt) {
+			return true
+		}
+		// Semantic match
+		if services.SemanticMatcher(dt, ptLower) {
+			return true
+		}
+		// Check against each title keyword
+		for _, tk := range titleTokens {
+			if len(tk) < 3 {
+				continue
+			}
+			if strings.Contains(dt, tk) || strings.Contains(tk, dt) {
+				return true
+			}
+		}
+	}
+
+	// Check category against desire tokens
+	if pcLower != "" {
+		for _, dt := range desireTokens {
+			dt = strings.TrimSpace(dt)
+			if len(dt) < 3 {
+				continue
+			}
+			if strings.Contains(pcLower, dt) || strings.Contains(dt, pcLower) {
+				return true
+			}
+			if services.SemanticMatcher(dt, pcLower) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// findProductBasedMultiwayLoops detects 3-way trading opportunities based purely on
+// product desires (wanted_categories, desired_product, wants) without requiring existing trades.
+// It finds cycles where: UserA wants what UserB has, UserB wants what UserC has, UserC wants what UserA has.
+func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]interface{} {
+	type productInfo struct {
+		ID               int
+		SellerID         int
+		SellerName       string
+		Title            string
+		Category         string
+		Wants            string
+		WantedCategories string
+		DesiredProduct   string
+		ImageURL         string
+	}
+
+	// 1. Get current user's available products
+	myRows, err := h.db.Query(`
+		SELECT p.id, p.seller_id, u.name, p.title, COALESCE(p.category, ''),
+		       COALESCE(p.wants, ''), COALESCE(p.wanted_categories, ''), COALESCE(p.desired_product, ''), COALESCE(p.image_url, '')
+		FROM products p
+		JOIN users u ON u.id = p.seller_id
+		WHERE p.seller_id = ? AND p.status = 'available'
+		  AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+	`, userID)
+	if err != nil {
+		log.Printf("[ProductBasedMultiway] Failed to get user products: %v", err)
+		return nil
+	}
+	defer myRows.Close()
+
+	var myProducts []productInfo
+	for myRows.Next() {
+		var p productInfo
+		if err := myRows.Scan(&p.ID, &p.SellerID, &p.SellerName, &p.Title, &p.Category, &p.Wants, &p.WantedCategories, &p.DesiredProduct, &p.ImageURL); err != nil {
+			continue
+		}
+		if p.Wants == "" && p.WantedCategories == "" && p.DesiredProduct == "" {
+			continue // Skip products with no desires set
+		}
+		myProducts = append(myProducts, p)
+	}
+
+	log.Printf("[ProductBasedMultiway] user=%d has %d products with desires", userID, len(myProducts))
+	for _, p := range myProducts {
+		log.Printf("[ProductBasedMultiway]   product=%d title=%q wants=%q wantedCats=%q desiredProd=%q", p.ID, p.Title, p.Wants, p.WantedCategories, p.DesiredProduct)
+	}
+	if len(myProducts) == 0 {
+		return nil
+	}
+
+	// 2. Get all other users' available products (limited scope)
+	otherRows, err := h.db.Query(`
+		SELECT p.id, p.seller_id, u.name, p.title, COALESCE(p.category, ''),
+		       COALESCE(p.wants, ''), COALESCE(p.wanted_categories, ''), COALESCE(p.desired_product, ''), COALESCE(p.image_url, '')
+		FROM products p
+		JOIN users u ON u.id = p.seller_id
+		WHERE p.seller_id != ? AND p.status = 'available'
+		  AND u.role != 'admin'
+		  AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+		ORDER BY p.created_at DESC
+		LIMIT 200
+	`, userID)
+	if err != nil {
+		log.Printf("[ProductBasedMultiway] Failed to get other products: %v", err)
+		return nil
+	}
+	defer otherRows.Close()
+
+	var otherProducts []productInfo
+	for otherRows.Next() {
+		var p productInfo
+		if err := otherRows.Scan(&p.ID, &p.SellerID, &p.SellerName, &p.Title, &p.Category, &p.Wants, &p.WantedCategories, &p.DesiredProduct, &p.ImageURL); err != nil {
+			continue
+		}
+		otherProducts = append(otherProducts, p)
+	}
+
+	if len(otherProducts) < 2 {
+		return nil
+	}
+
+	// 3. Find 3-way cycles: myProduct → userB_product → userC_product → myProduct
+	var loops []map[string]interface{}
+	seen := map[string]bool{} // Deduplicate by sorted user IDs
+
+	for _, myProd := range myProducts {
+		// Build desire haystack for my product
+		myDesires := myProd.Wants + " " + myProd.WantedCategories + " " + myProd.DesiredProduct
+
+		for _, prodB := range otherProducts {
+			// Does my product's desires match what UserB has?
+			if !productMatchesDesires(prodB.Title, prodB.Category, myDesires) {
+				continue
+			}
+
+			// UserB must also have desires set
+			if prodB.Wants == "" && prodB.WantedCategories == "" && prodB.DesiredProduct == "" {
+				continue
+			}
+			bDesires := prodB.Wants + " " + prodB.WantedCategories + " " + prodB.DesiredProduct
+
+			for _, prodC := range otherProducts {
+				if prodC.SellerID == prodB.SellerID || prodC.SellerID == userID {
+					continue // Must be 3 distinct users
+				}
+
+				// Does UserB's desires match what UserC has?
+				if !productMatchesDesires(prodC.Title, prodC.Category, bDesires) {
+					continue
+				}
+
+				// Does UserC's desires match what I (UserA) have?
+				cDesires := prodC.Wants + " " + prodC.WantedCategories + " " + prodC.DesiredProduct
+				if !productMatchesDesires(myProd.Title, myProd.Category, cDesires) {
+					continue
+				}
+
+				// Found a 3-way cycle!
+				// Deduplicate by sorted user IDs + product IDs
+				ids := []int{userID, prodB.SellerID, prodC.SellerID}
+				sort.Ints(ids)
+				pids := []int{myProd.ID, prodB.ID, prodC.ID}
+				sort.Ints(pids)
+				key := fmt.Sprintf("%d_%d_%d_%d_%d_%d", ids[0], ids[1], ids[2], pids[0], pids[1], pids[2])
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+
+				log.Printf("[ProductBasedMultiway] ✅ Found 3-way cycle: %s(%s) → %s(%s) → %s(%s) → back",
+					myProd.SellerName, myProd.Title, prodB.SellerName, prodB.Title, prodC.SellerName, prodC.Title)
+
+				loopID := fmt.Sprintf("product_loop_%d_%d_%d", myProd.ID, prodB.ID, prodC.ID)
+
+				loops = append(loops, map[string]interface{}{
+					"id":                loopID,
+					"loop_id":           loopID,
+					"loop_type":         "product_match",
+					"initiator_view":    true,
+					"can_join":          true,
+					"can_decline":       true,
+					"can_create":        true,
+					"loop_length":       3,
+					"status":            "pending",
+					"initiator_user_id": userID,
+					"expires_at":        time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05"),
+					"participants": []map[string]interface{}{
+						{"id": userID, "user_name": myProd.SellerName, "product_title": myProd.Title, "product_id": myProd.ID, "category": myProd.Category, "wanted_categories": myProd.WantedCategories, "desired_product": myProd.DesiredProduct, "product_image_url": myProd.ImageURL, "status": "pending"},
+						{"id": prodB.SellerID, "user_name": prodB.SellerName, "product_title": prodB.Title, "product_id": prodB.ID, "category": prodB.Category, "wanted_categories": prodB.WantedCategories, "desired_product": prodB.DesiredProduct, "product_image_url": prodB.ImageURL, "status": "pending"},
+						{"id": prodC.SellerID, "user_name": prodC.SellerName, "product_title": prodC.Title, "product_id": prodC.ID, "category": prodC.Category, "wanted_categories": prodC.WantedCategories, "desired_product": prodC.DesiredProduct, "product_image_url": prodC.ImageURL, "status": "pending"},
+					},
+				})
+			}
+		}
+	}
+
+	return loops
 }
 
 // GetTradeLoops returns all possible multi-way trading loops the authenticated user is involved in
@@ -3173,9 +3430,11 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify premium status"})
 	}
 
-	// Try cache first — return immediately if fresh cache exists
-	if cached, cacheErr := h.getCachedLoopsForUser(userID); cacheErr == nil && len(cached) > 0 {
-		return c.JSON(models.APIResponse{Success: true, Data: cached})
+	// Try cache first — return immediately if fresh cache exists (premium users only)
+	if isPremium {
+		if cached, cacheErr := h.getCachedLoopsForUser(userID); cacheErr == nil && len(cached) > 0 {
+			return c.JSON(models.APIResponse{Success: true, Data: cached})
+		}
 	}
 
 	userLoops := []map[string]interface{}{}
@@ -3316,6 +3575,13 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		})
 	}
 
+	// 4b. Product-based 3-way cycle detection (no trades required — matches purely on product desires)
+	productLoops := h.findProductBasedMultiwayLoops(userID)
+	if len(productLoops) > 0 {
+		log.Printf("[GetTradeLoops] Found %d product-based multiway loops for user %d", len(productLoops), userID)
+		userLoops = append(userLoops, productLoops...)
+	}
+
 	// 5. Also fetch matches from multiway_trades table where user is participant (user3)
 	rows, err := h.db.Query(`
 		SELECT m.chain_id, m.original_trade_id, m.user3_id, m.user3_product_id, m.status, m.initiator_user_id,
@@ -3418,12 +3684,11 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 	// Filter to keep only the best loop per product
 	bestLoops := selectBestLoopsPerProduct(h.db, userID, userLoops)
 
-	// For automatic search, surface only the single highest-scored loop
+	// Sort loops by score (highest first) but show all of them
 	if len(bestLoops) > 1 {
 		sort.Slice(bestLoops, func(i, j int) bool {
 			return getLoopScore(bestLoops[i]) > getLoopScore(bestLoops[j])
 		})
-		bestLoops = bestLoops[:1]
 	}
 
 	log.Printf("[GetTradeLoops] user=%d returning %d loops after best-per-product filter", userID, len(bestLoops))
@@ -3522,6 +3787,101 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 				"participants": participantsDetails,
 				"edges":        edges,
 				"status":       status,
+			},
+		})
+	}
+
+	// Product-based loop: product_loop_{prodA}_{prodB}_{prodC}
+	if strings.HasPrefix(loopID, "product_loop_") {
+		parts := strings.Split(loopID, "_")
+		// format: product_loop_ID1_ID2_ID3
+		if len(parts) != 5 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product loop ID format"})
+		}
+		prodAID, _ := strconv.Atoi(parts[2])
+		prodBID, _ := strconv.Atoi(parts[3])
+		prodCID, _ := strconv.Atoi(parts[4])
+		if prodAID <= 0 || prodBID <= 0 || prodCID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs in loop"})
+		}
+
+		type prodInfo struct {
+			id       int
+			sellerID int
+			title    string
+			slug     string
+			imageURL string
+		}
+		fetchProd := func(pid int) (prodInfo, error) {
+			var p prodInfo
+			p.id = pid
+			var slugNull, imgNull sql.NullString
+			err := h.db.QueryRow("SELECT seller_id, title, COALESCE(slug,''), COALESCE(image_url,'') FROM products WHERE id = ?", pid).
+				Scan(&p.sellerID, &p.title, &slugNull, &imgNull)
+			p.slug = slugNull.String
+			p.imageURL = imgNull.String
+			return p, err
+		}
+
+		pA, errA := fetchProd(prodAID)
+		pB, errB := fetchProd(prodBID)
+		pC, errC := fetchProd(prodCID)
+		if errA != nil || errB != nil || errC != nil {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One or more products in the loop not found"})
+		}
+
+		// Verify current user is a participant
+		if userID != pA.sellerID && userID != pB.sellerID && userID != pC.sellerID {
+			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this product loop"})
+		}
+
+		// Fetch user names
+		getName := func(uid int) (string, string) {
+			var name string
+			var slug sql.NullString
+			h.db.QueryRow("SELECT name, slug FROM users WHERE id = ?", uid).Scan(&name, &slug)
+			return name, slug.String
+		}
+		nameA, slugA := getName(pA.sellerID)
+		nameB, slugB := getName(pB.sellerID)
+		nameC, slugC := getName(pC.sellerID)
+
+		participantsDetails := []map[string]interface{}{
+			{
+				"user_id": pA.sellerID, "user_name": nameA, "user_slug": slugA,
+				"product_id": pA.id, "product_title": pA.title, "product_slug": pA.slug,
+				"product_image_url": pA.imageURL,
+				"position_in_loop": 0, "trade_status": "pending",
+			},
+			{
+				"user_id": pB.sellerID, "user_name": nameB, "user_slug": slugB,
+				"product_id": pB.id, "product_title": pB.title, "product_slug": pB.slug,
+				"product_image_url": pB.imageURL,
+				"position_in_loop": 1, "trade_status": "pending",
+			},
+			{
+				"user_id": pC.sellerID, "user_name": nameC, "user_slug": slugC,
+				"product_id": pC.id, "product_title": pC.title, "product_slug": pC.slug,
+				"product_image_url": pC.imageURL,
+				"position_in_loop": 2, "trade_status": "pending",
+			},
+		}
+
+		edges := []map[string]interface{}{
+			{"from_user": pA.sellerID, "to_user": pB.sellerID, "from_user_name": nameA, "to_user_name": nameB, "product_title": pB.title, "status": "pending"},
+			{"from_user": pB.sellerID, "to_user": pC.sellerID, "from_user_name": nameB, "to_user_name": nameC, "product_title": pC.title, "status": "pending"},
+			{"from_user": pC.sellerID, "to_user": pA.sellerID, "from_user_name": nameC, "to_user_name": nameA, "product_title": pA.title, "status": "pending"},
+		}
+
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: fiber.Map{
+				"loop_id":      loopID,
+				"loop_type":    "product_match",
+				"is_chain":     false,
+				"participants": participantsDetails,
+				"edges":        edges,
+				"status":       "pending",
 			},
 		})
 	}
@@ -3788,6 +4148,121 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 	var isPremium bool
 	if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium); err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify subscription tier"})
+	}
+
+	// Handle product-based loop accept: product_loop_{prodA}_{prodB}_{prodC}
+	if strings.HasPrefix(loopID, "product_loop_") {
+		log.Printf("[AcceptTradeLoop:product] userID=%d loopID=%s", userID, loopID)
+		parts := strings.Split(loopID, "_")
+		if len(parts) != 5 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product loop ID format"})
+		}
+		prodAID, _ := strconv.Atoi(parts[2])
+		prodBID, _ := strconv.Atoi(parts[3])
+		prodCID, _ := strconv.Atoi(parts[4])
+		if prodAID <= 0 || prodBID <= 0 || prodCID <= 0 {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs in loop"})
+		}
+
+		// Fetch product info and verify all still available
+		type pInfo struct {
+			id       int
+			sellerID int
+			title    string
+			status   string
+		}
+		fetchP := func(pid int) (pInfo, error) {
+			var p pInfo
+			p.id = pid
+			err := h.db.QueryRow("SELECT seller_id, title, status FROM products WHERE id = ?", pid).Scan(&p.sellerID, &p.title, &p.status)
+			return p, err
+		}
+		pA, errA := fetchP(prodAID)
+		pB, errB := fetchP(prodBID)
+		pC, errC := fetchP(prodCID)
+		if errA != nil || errB != nil || errC != nil {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One or more products no longer exist"})
+		}
+		if pA.status != "available" || pB.status != "available" || pC.status != "available" {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "One or more products are no longer available for trade"})
+		}
+
+		// Verify the current user is one of the participants
+		if userID != pA.sellerID && userID != pB.sellerID && userID != pC.sellerID {
+			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this loop"})
+		}
+
+		// Create a trade: user1 (pA.seller) offers pA to user2 (pB.seller) for pB
+		tx, err := h.db.Begin()
+		if err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database error"})
+		}
+		defer tx.Rollback()
+
+		// Trade: pA.seller (buyer/initiator) → pB.seller for pB
+		res, err := tx.Exec(`
+			INSERT INTO trades (buyer_id, seller_id, target_product_id, status, trade_option, message)
+			VALUES (?, ?, ?, 'pending_multiway', 'item_trade', 'Auto-created from product-based 3-way match')
+		`, pA.sellerID, pB.sellerID, pB.id)
+		if err != nil {
+			log.Printf("[AcceptTradeLoop:product] Failed to create trade: %v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade"})
+		}
+		tradeID, _ := res.LastInsertId()
+
+		// Trade item: pA.seller offers pA
+		_, err = tx.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, 'buyer')", tradeID, pA.id)
+		if err != nil {
+			log.Printf("[AcceptTradeLoop:product] Failed to create trade item: %v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade item"})
+		}
+
+		// Create the multiway_trades row
+		chainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, pA.sellerID, pB.sellerID, pC.sellerID)
+		_, err = tx.Exec(`
+			INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, user3_product_id, status, expires_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_user3', DATE_ADD(NOW(), INTERVAL 48 HOUR))
+			ON DUPLICATE KEY UPDATE status='pending_user3', user3_product_id=?, user3_trade_id=?, updated_at=NOW()
+		`, chainID, tradeID, userID, pA.sellerID, pB.sellerID, pC.sellerID, pC.id, pC.id, pC.id, pC.id)
+		if err != nil {
+			log.Printf("[AcceptTradeLoop:product] Failed to create multiway_trades row: %v", err)
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create multi-way trade"})
+		}
+
+		// Lock the products
+		for _, pid := range []int{pA.id, pB.id, pC.id} {
+			_, _ = tx.Exec("UPDATE products SET status = 'locked' WHERE id = ? AND status = 'available'", pid)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to finalize trade"})
+		}
+
+		log.Printf("[AcceptTradeLoop:product] ✅ Created chain %s from product loop %s", chainID, loopID)
+
+		// Notify all participants
+		for _, uid := range []int{pA.sellerID, pB.sellerID, pC.sellerID} {
+			if uid == userID {
+				continue
+			}
+			msg := "A 3-way trade loop has been initiated with your item! Check the Multi-Way tab to review."
+			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", uid, msg)
+			publishNotification(uid, msg)
+		}
+
+		// Clear caches
+		for _, uid := range []int{pA.sellerID, pB.sellerID, pC.sellerID} {
+			_, _ = h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id = ?", uid)
+		}
+
+		return c.JSON(models.APIResponse{
+			Success: true,
+			Data: fiber.Map{
+				"message":  "Product-based 3-way trade initiated successfully!",
+				"chain_id": chainID,
+				"loop_id":  chainID,
+			},
+		})
 	}
 
 	if isAutoInvite {
