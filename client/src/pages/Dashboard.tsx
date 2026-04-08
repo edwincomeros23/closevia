@@ -810,8 +810,8 @@ const Dashboard: React.FC = () => {
       } else if (status === 'pending_initiator_upgrade') {
         // Waiting for initiator to upgrade
         waitingOnOthers.push(trade)
-      } else if (loopType === 'auto_multiway') {
-        // Suggestion loop
+      } else if (loopType === 'auto_multiway' || loopType === 'product_match') {
+        // Suggestion loop or product-based match
         autoSearchResults.push(trade)
       }
     }
