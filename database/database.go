@@ -1522,6 +1522,51 @@ func ensureMultiwayColumns() {
 	// 4. Ensure multiway_trade_legs status ENUM includes 'in_progress' and 'disputed'
 	// (needed for per-leg dispute flow and handoff tracking)
 	_, _ = DB.Exec("ALTER TABLE multiway_trade_legs MODIFY COLUMN status ENUM('pending','in_progress','completed','cancelled','failed','disputed') DEFAULT 'pending'")
+
+	// 5. Add support for proactive multiway suggestions
+	// Make original_trade_id nullable for proactive matches
+	var origTradeNullable int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'original_trade_id' AND IS_NULLABLE = 'YES'").Scan(&origTradeNullable)
+	if origTradeNullable == 0 {
+		if _, err := DB.Exec("ALTER TABLE multiway_trades MODIFY COLUMN original_trade_id INT NULL COMMENT 'NULL for proactive suggestions'"); err != nil {
+			log.Printf("Warning: could not modify original_trade_id to nullable: %v", err)
+		} else {
+			log.Println("Made original_trade_id nullable for proactive multiway")
+		}
+	}
+
+	// Add is_proactive_match flag to distinguish proactive suggestions from trade-triggered multiway
+	var proactiveExists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'is_proactive_match'").Scan(&proactiveExists)
+	if proactiveExists == 0 {
+		if _, err := DB.Exec("ALTER TABLE multiway_trades ADD COLUMN is_proactive_match BOOLEAN DEFAULT FALSE COMMENT 'TRUE if suggestion was auto-generated when product was posted'"); err != nil {
+			log.Printf("Warning: could not add is_proactive_match column: %v", err)
+		} else {
+			log.Println("Added is_proactive_match flag to multiway_trades")
+		}
+	}
+
+	// Add user1_product_id to track what User 1 is offering
+	var user1ProdExists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'user1_product_id'").Scan(&user1ProdExists)
+	if user1ProdExists == 0 {
+		if _, err := DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user1_product_id INT NULL COMMENT 'Product ID that User 1 is offering'"); err != nil {
+			log.Printf("Warning: could not add user1_product_id: %v", err)
+		} else {
+			log.Println("Added user1_product_id to multiway_trades")
+		}
+	}
+
+	// Add user2_product_id to track what User 2 is offering
+	var user2ProdExists int
+	_ = DB.QueryRow("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'multiway_trades' AND COLUMN_NAME = 'user2_product_id'").Scan(&user2ProdExists)
+	if user2ProdExists == 0 {
+		if _, err := DB.Exec("ALTER TABLE multiway_trades ADD COLUMN user2_product_id INT NULL COMMENT 'Product ID that User 2 is offering'"); err != nil {
+			log.Printf("Warning: could not add user2_product_id: %v", err)
+		} else {
+			log.Println("Added user2_product_id to multiway_trades")
+		}
+	}
 }
 
 // ensureRiderColumns adds missing columns to the riders table for the application flow

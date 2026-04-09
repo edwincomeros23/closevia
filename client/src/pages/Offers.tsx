@@ -933,11 +933,14 @@ const Offers: React.FC = () => {
                         'gray.200'
                       }
                       rounded="lg"
-                      p={6}
+                      p={3}
                       position="relative"
-                      boxShadow="md"
+                      boxShadow="sm"
+                      h="160px"
+                      display="flex"
+                      flexDirection="column"
                       _hover={{
-                        boxShadow: 'lg',
+                        boxShadow: 'md',
                         transform: 'translateY(-2px)',
                         borderColor: t.status === 'countered' ? 'purple.500' :
                                    t.status === 'pending' ? 'yellow.500' :
@@ -945,89 +948,82 @@ const Offers: React.FC = () => {
                       }}
                       transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
                     >
-                    {/* Top-left: Trade type indicator */}
-                    <Badge 
-                      position="absolute" 
-                      top={3} 
-                      left={3} 
-                      colorScheme="blue"
-                      variant="subtle"
-                      px={2}
-                      py={1}
-                      rounded="md"
-                      fontSize="xs"
-                      textTransform="none"
-                    >
-                      <HStack spacing={2} align="center">
-                        <Box as="span">💬</Box>
-                        <Box>Received</Box>
-                      </HStack>
-                    </Badge>
-
-                    {/* Top-right: status */}
-                    <Box position="absolute" top={3} right={3}>
+                    {/* Top row: badges and status */}
+                    <HStack justify="space-between" mb={1} spacing={1} flexShrink={0}>
+                      <Badge 
+                        colorScheme="blue"
+                        variant="subtle"
+                        px={1.5}
+                        py={0}
+                        rounded="sm"
+                        fontSize="10px"
+                        textTransform="none"
+                      >
+                        💬 Received
+                      </Badge>
                       {getStatusBadge(t.status)}
-                    </Box>
+                    </HStack>
 
-                    {/* Main content with extra right padding for actions */}
-                    <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
-                      <VStack align="start" spacing={2}>
-                        <HStack spacing={2} align="center" flexWrap="wrap">
-                          <Text fontWeight="semibold" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                          {t.trade_option && (
-                            <Badge 
-                              colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
-                              variant="subtle"
-                              fontSize="xs"
-                              display="flex"
-                              alignItems="center"
-                              gap={1}
-                            >
-                              <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
-                              {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                            </Badge>
-                          )}
-                        </HStack>
-                        <Text fontSize="sm" color="gray.600">From: <Text as="span" fontWeight="medium">{t.buyer_name || 'Anonymous User'}</Text></Text>
-                        <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
-                        {renderOfferedItems(t)}
-                      </VStack>
-                    </Box>
+                    {/* Product title and trade option */}
+                    <VStack align="start" spacing={0.5} flex="1" overflow="hidden" mb={1}>
+                      <Text fontWeight="semibold" fontSize="sm" noOfLines={2} color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                      {t.trade_option && (
+                        <Badge 
+                          colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                          variant="subtle"
+                          fontSize="8px"
+                          display="flex"
+                          alignItems="center"
+                          gap={0.5}
+                          px={1}
+                          py={0}
+                        >
+                          <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                          {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                        </Badge>
+                      )}
+                      <Text fontSize="10px" color="gray.600" noOfLines={1}>From: <Text as="span" fontWeight="medium">{(t.buyer_name || 'User').substring(0, 20)}</Text></Text>
+                    </VStack>
 
-                      {/* Actions positioned bottom-right */}
-                      <Box position="absolute" right={4} bottom={4}>
-                        <HStack spacing={2}>
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}
-                            _hover={{ bg: "gray.100" }}
-                          >
-                            View
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            colorScheme="green" 
-                            variant="solid"
-                            onClick={() => updateTrade(t.id, { action: 'accept' })} 
-                            isDisabled={t.status !== 'pending' || isProcessing}
-                            isLoading={isProcessing}
-                            _hover={{ transform: "translateY(-1px)" }}
-                          >
-                            Accept
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            colorScheme="red" 
-                            variant="outline" 
-                            onClick={() => handleDeclineTradeClick(t)} 
-                            isDisabled={t.status !== 'pending'}
-                            _hover={{ transform: "translateY(-1px)" }}
-                          >
-                            Decline
-                          </Button>
-                        </HStack>
-                      </Box>
+                    {/* Actions positioned at bottom */}
+                    <HStack spacing={1} mt="auto" flexShrink={0}>
+                      <Button 
+                        size="xs" 
+                        variant="outline"
+                        colorScheme="gray"
+                        flex={1}
+                        onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}
+                        fontSize="10px"
+                        h="24px"
+                      >
+                        View
+                      </Button>
+                      <Button 
+                        size="xs" 
+                        colorScheme="green" 
+                        variant="solid"
+                        flex={1}
+                        onClick={() => updateTrade(t.id, { action: 'accept' })} 
+                        isDisabled={t.status !== 'pending' || isProcessing}
+                        isLoading={isProcessing}
+                        fontSize="10px"
+                        h="24px"
+                      >
+                        Accept
+                      </Button>
+                      <Button 
+                        size="xs" 
+                        colorScheme="red" 
+                        variant="outline" 
+                        flex={1}
+                        onClick={() => handleDeclineTradeClick(t)} 
+                        isDisabled={t.status !== 'pending'}
+                        fontSize="10px"
+                        h="24px"
+                      >
+                        Decline
+                      </Button>
+                    </HStack>
                     </Box>
                   </ScaleFade>
                 ))}
@@ -1067,11 +1063,14 @@ const Offers: React.FC = () => {
                         'gray.200'
                       }
                       rounded="lg" 
-                      p={6}
+                      p={3}
                       position="relative"
-                      boxShadow="md"
+                      boxShadow="sm"
+                      h="160px"
+                      display="flex"
+                      flexDirection="column"
                       _hover={{
-                        boxShadow: 'lg',
+                        boxShadow: 'md',
                         transform: 'translateY(-2px)',
                         borderColor: t.status === 'countered' ? 'purple.500' :
                                    t.status === 'pending' ? 'yellow.500' :
@@ -1079,79 +1078,70 @@ const Offers: React.FC = () => {
                       }}
                       transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
                     >
-                      {/* Top-left: Trade type indicator */}
-                      <Badge 
-                        position="absolute" 
-                        top={3} 
-                        left={3} 
-                        colorScheme="blue"
-                        variant="subtle"
-                        px={2}
-                        py={1}
-                        rounded="md"
-                        fontSize="xs"
-                        textTransform="none"
-                      >
-                        <HStack spacing={2} align="center">
-                          <Box as="span">📤</Box>
-                          <Box>Sent</Box>
-                        </HStack>
-                      </Badge>
-
-                      {/* Top-right: status */}
-                      <Box 
-                        position="absolute" 
-                        top={3} 
-                        right={3}
-                        className="status-badge"
-                        transition="transform 0.2s ease-out"
-                      >
+                      {/* Top row: badges and status */}
+                      <HStack justify="space-between" mb={1} spacing={1} flexShrink={0}>
+                        <Badge 
+                          colorScheme="blue"
+                          variant="subtle"
+                          px={1.5}
+                          py={0}
+                          rounded="sm"
+                          fontSize="10px"
+                          textTransform="none"
+                        >
+                          📤 Sent
+                        </Badge>
                         {getStatusBadge(t.status)}
-                      </Box>
+                      </HStack>
 
-                      {/* Main content with extra right padding for actions */}
-                      <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
-                        <VStack align="start" spacing={2}>
-                          <HStack spacing={2} align="center" flexWrap="wrap">
-                            <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                            {t.trade_option && (
-                              <Badge 
-                                colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
-                                variant="subtle"
-                                fontSize="xs"
-                                display="flex"
-                                alignItems="center"
-                                gap={1}
-                              >
-                                <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
-                                {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                              </Badge>
-                            )}
-                          </HStack>
-                          <Text fontSize="sm" color="gray.600">To: <Text as="span" fontWeight="medium">{t.seller_name || 'Anonymous User'}</Text></Text>
-                          <Text fontSize="xs" color="gray.500">{new Date(t.created_at).toLocaleString()}</Text>
-                          {renderOfferedItems(t)}
-                        </VStack>
-                      </Box>
-
-                      {/* Bottom-right actions: Cancel button for pending offers */}
-                      {t.status === 'pending' && (
-                        <Box position="absolute" right={4} bottom={4}>
-                          <Button
-                            size="sm"
-                            colorScheme="red"
-                            variant="outline"
-                            onClick={() => handleCancelTradeClick(t)}
-                            _hover={{ 
-                              bg: "red.50",
-                              transform: "translateY(-1px)"
-                            }}
-                            leftIcon={<Icon as={FaTimes} />}
+                      {/* Product title and trade option */}
+                      <VStack align="start" spacing={0.5} flex="1" overflow="hidden" mb={1}>
+                        <Text fontWeight="semibold" fontSize="sm" noOfLines={2} color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        {t.trade_option && (
+                          <Badge 
+                            colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                            variant="subtle"
+                            fontSize="8px"
+                            display="flex"
+                            alignItems="center"
+                            gap={0.5}
+                            px={1}
+                            py={0}
                           >
-                            Cancel Offer
+                            <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                            {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                          </Badge>
+                        )}
+                        <Text fontSize="10px" color="gray.600" noOfLines={1}>To: <Text as="span" fontWeight="medium">{(t.seller_name || 'User').substring(0, 20)}</Text></Text>
+                      </VStack>
+
+                      {/* Actions positioned at bottom */}
+                      <HStack spacing={1} mt="auto" flexShrink={0}>
+                        <Button 
+                          size="xs" 
+                          variant="outline"
+                          colorScheme="gray"
+                          flex={1}
+                          onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}
+                          fontSize="10px"
+                          h="24px"
+                        >
+                          View
+                        </Button>
+                        {t.status === 'pending' && (
+                          <Button
+                            size="xs"
+                            colorScheme="red"
+                            variant="solid"
+                            flex={1}
+                            onClick={() => handleCancelTradeClick(t)}
+                            fontSize="10px"
+                            h="24px"
+                          >
+                            Cancel
                           </Button>
-                        </Box>
-                      )}
+                        )}
+                      </HStack>
                     </Box>
                   </ScaleFade>
                 ))}
@@ -1191,11 +1181,14 @@ const Offers: React.FC = () => {
                         'gray.200'
                       }
                       rounded="lg" 
-                      p={6}
+                      p={3}
                       position="relative"
-                      boxShadow="md"
+                      boxShadow="sm"
+                      h="160px"
+                      display="flex"
+                      flexDirection="column"
                       _hover={{
-                        boxShadow: 'lg',
+                        boxShadow: 'md',
                         transform: 'translateY(-2px)',
                         borderColor: t.status === 'countered' ? 'purple.500' :
                                    t.status === 'pending' ? 'yellow.500' :
@@ -1203,75 +1196,69 @@ const Offers: React.FC = () => {
                       }}
                       transition="all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
                     >
-                      {/* Top-left: Trade type indicator */}
-                      <Badge 
-                        position="absolute" 
-                        top={3} 
-                        left={3} 
-                        colorScheme="blue"
-                        variant="subtle"
-                        px={2}
-                        py={1}
-                        rounded="md"
-                        fontSize="xs"
-                        textTransform="none"
-                      >
-                        <HStack spacing={2} align="center">
-                          <Box as="span">🔄</Box>
-                          <Box>In Progress</Box>
-                        </HStack>
-                      </Badge>
-
-                      {/* Top-right: status */}
-                      <Box 
-                        position="absolute" 
-                        top={3} 
-                        right={3}
-                        className="status-badge"
-                        transition="transform 0.2s ease-out"
-                      >
+                      {/* Top row: badges and status */}
+                      <HStack justify="space-between" mb={1} spacing={1} flexShrink={0}>
+                        <Badge 
+                          colorScheme="orange"
+                          variant="subtle"
+                          px={1.5}
+                          py={0}
+                          rounded="sm"
+                          fontSize="10px"
+                          textTransform="none"
+                        >
+                          🔄 Progress
+                        </Badge>
                         {getStatusBadge(t.status)}
-                      </Box>
+                      </HStack>
 
-                      {/* Main content with extra right padding for actions */}
-                      <Box pr={t.status === 'pending' ? "200px" : "180px"} pt={8}>
-                        <VStack align="start" spacing={2}>
-                          <HStack spacing={2} align="center" flexWrap="wrap">
-                            <Text fontWeight="semibold" color="gray.800" fontSize="md">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                            {t.trade_option && (
-                              <Badge 
-                                colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
-                                variant="subtle"
-                                fontSize="xs"
-                                display="flex"
-                                alignItems="center"
-                                gap={1}
-                              >
-                                <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
-                                {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
-                              </Badge>
-                            )}
-                          </HStack>
-                          <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Trader: {t.seller_name || 'Anonymous User'}</Text>
-                          {renderOfferedItems(t)}
-                        </VStack>
-                      </Box>
+                      {/* Product title and trade option */}
+                      <VStack align="start" spacing={0.5} flex="1" overflow="hidden" mb={1}>
+                        <Text fontWeight="semibold" fontSize="sm" noOfLines={2} color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        {t.trade_option && (
+                          <Badge 
+                            colorScheme={t.trade_option === 'meetup' ? 'blue' : 'green'}
+                            variant="subtle"
+                            fontSize="8px"
+                            display="flex"
+                            alignItems="center"
+                            gap={0.5}
+                            px={1}
+                            py={0}
+                          >
+                            <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={2.5} />
+                            {t.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                          </Badge>
+                        )}
+                        <Text fontSize="10px" color="gray.600" noOfLines={1}><Text as="span" fontWeight="medium">{(t.buyer_name || 'Buyer').substring(0, 12)}</Text> ↔ <Text as="span" fontWeight="medium">{(t.seller_name || 'Seller').substring(0, 12)}</Text></Text>
+                      </VStack>
 
-                      {/* Bottom-right actions: Complete button */}
-                      <Box position="absolute" right={4} bottom={4}>
+                      {/* Actions positioned at bottom */}
+                      <HStack spacing={1} mt="auto" flexShrink={0}>
+                        <Button 
+                          size="xs" 
+                          variant="outline"
+                          colorScheme="gray"
+                          flex={1}
+                          onClick={() => { setSelectedTrade(t); setDetailsOpen(true) }}
+                          fontSize="10px"
+                          h="24px"
+                        >
+                          View
+                        </Button>
                         <Button
-                          size="sm"
+                          size="xs"
                           colorScheme="blue"
                           variant="solid"
+                          flex={1}
                           onClick={() => handleCompleteTradeClick(t)}
                           isDisabled={['completed', 'auto_completed', 'cancelled', 'declined'].includes(t.status)}
-                          title="Click to open trade completion modal"
-                          _hover={{ transform: "translateY(-1px)" }}
-                          leftIcon={<Icon as={FaHandshake} />}
+                          fontSize="10px"
+                          h="24px"
                         >
-                          Complete Trade
+                          Done
                         </Button>
-                      </Box>
+                      </HStack>
                     </Box>
                   </ScaleFade>
                 ))}
@@ -1279,7 +1266,7 @@ const Offers: React.FC = () => {
             )}
           </TabPanel>
           <TabPanel p={0}>
-            <VStack spacing={3} align="stretch">
+            <VStack spacing={2} align="stretch">
               {historyItems.length === 0 ? (
                 <Text color="gray.500" textAlign="center" py={8}>No history yet.</Text>
               ) : historyItems.map((t) => (
@@ -1289,8 +1276,11 @@ const Offers: React.FC = () => {
                     borderWidth="1px" 
                     borderColor="gray.100" 
                     rounded="lg" 
-                    p={5}
+                    p={3}
                     boxShadow="sm"
+                    h="100px"
+                    display="flex"
+                    flexDirection="column"
                     _hover={{
                       boxShadow: "md",
                       transform: "translateY(-1px)",
@@ -1298,12 +1288,11 @@ const Offers: React.FC = () => {
                     }}
                     transition="all 0.2s ease"
                   >
-                    <HStack justify="space-between" align="start">
-                      <VStack align="start" spacing={2}>
-                        <Text fontWeight="semibold" color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Trader: {t.seller_name || 'Anonymous User'}</Text>
-                        {renderOfferedItems(t)}
-                        <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
+                    <HStack justify="space-between" align="start" spacing={2}>
+                      <VStack align="start" spacing={0.5} flex="1" overflow="hidden">
+                        <Text fontWeight="semibold" color="gray.800" fontSize="sm" noOfLines={1}>{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <Text fontSize="10px" color="gray.600" noOfLines={1}>Buyer: {(t.buyer_name || 'User').substring(0, 15)} • Trader: {(t.seller_name || 'User').substring(0, 15)}</Text>
+                        <Text fontSize="9px" color="gray.400">Source: {t.source}</Text>
                       </VStack>
                       {getStatusBadge(t.status)}
                     </HStack>
@@ -1313,7 +1302,7 @@ const Offers: React.FC = () => {
             </VStack>
           </TabPanel>
           <TabPanel p={0}>
-            <VStack spacing={3} align="stretch">
+            <VStack spacing={2} align="stretch">
               {archiveItems.length === 0 ? (
                 <Text color="gray.500" textAlign="center" py={8}>No archived trades yet.</Text>
               ) : archiveItems.map((t) => (
@@ -1323,8 +1312,11 @@ const Offers: React.FC = () => {
                     borderWidth="1px"
                     borderColor="red.100"
                     rounded="lg"
-                    p={5}
+                    p={3}
                     boxShadow="sm"
+                    h="100px"
+                    display="flex"
+                    flexDirection="column"
                     _hover={{
                       boxShadow: "md",
                       transform: "translateY(-1px)",
@@ -1332,13 +1324,11 @@ const Offers: React.FC = () => {
                     }}
                     transition="all 0.2s ease"
                   >
-                    <HStack justify="space-between" align="start">
-                      <VStack align="start" spacing={2}>
-                        <Text fontWeight="semibold" color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
-                        <Text fontSize="sm" color="gray.600">Buyer: {t.buyer_name || 'Anonymous User'} • Trader: {t.seller_name || 'Anonymous User'}</Text>
-                        {renderOfferedItems(t)}
-                        <Text fontSize="xs" color="gray.400" mt={1}>Source: {t.source}</Text>
-                        <Text fontSize="xs" color="red.400">Expired due to 7 days of inactivity</Text>
+                    <HStack justify="space-between" align="start" spacing={2}>
+                      <VStack align="start" spacing={0.5} flex="1" overflow="hidden">
+                        <Text fontWeight="semibold" color="gray.800" fontSize="sm" noOfLines={1}>{getProductTitle(t.target_product_id, t.product_title)}</Text>
+                        <Text fontSize="10px" color="gray.600" noOfLines={1}>Buyer: {(t.buyer_name || 'User').substring(0, 15)} • Trader: {(t.seller_name || 'User').substring(0, 15)}</Text>
+                        <Text fontSize="9px" color="red.400">Expired due to 7 days of inactivity</Text>
                       </VStack>
                       {getStatusBadge(t.status)}
                     </HStack>

@@ -535,6 +535,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		// Also trigger notifications in the same background operation
 		services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
 		NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID))
+		// NEW: Also trigger PROACTIVE multiway detection (finds loops without requiring existing trades)
+		NewTradeHandler().FindProactiveMultiwayLoops(int(productID))
 	}()
 	// ========================================================================
 
@@ -1683,8 +1685,10 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	// Re-trigger multiway search if category/wants fields changed and product is available
 	if p.Status == "available" {
 		for _, f := range updateFields {
-			if strings.Contains(f, "category") || strings.Contains(f, "wants") {
+			if strings.Contains(f, "category") || strings.Contains(f, "wants") || strings.Contains(f, "desired_product") {
 				go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(productID)
+				// NEW: Also trigger PROACTIVE multiway detection (finds loops without requiring existing trades)
+				go NewTradeHandler().FindProactiveMultiwayLoops(productID)
 				break
 			}
 		}
