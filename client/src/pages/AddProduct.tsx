@@ -1339,10 +1339,8 @@ const AddProduct: React.FC = () => {
                     setFormData(prev => ({ ...prev, location: mockLocationText }))
                     setLocationDetected(true)
                   } else {
-                    // Disable mock location
-                    setLocationDetected(false)
-                    setLocationText('')
-                    setFormData(prev => ({ ...prev, location: '' }))
+                    // Disable mock location - trigger real geolocation detection
+                    detectLocation()
                   }
                 }}
                 fontSize="8px"

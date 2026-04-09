@@ -11,6 +11,7 @@ import {
   Badge,
   Progress,
   Divider,
+  Avatar,
 } from '@chakra-ui/react'
 import { FiCheckCircle, FiAlertTriangle, FiXCircle, FiAward, FiInfo } from 'react-icons/fi'
 
@@ -55,6 +56,12 @@ interface TrustScoreCardProps {
   tradeStats?: TradeStats
   responseTime?: string
   hasActiveDispute?: boolean
+  // New props for comprehensive profile card
+  profileName?: string
+  profileAvatar?: string
+  memberSinceDate?: Date | string
+  avgRating?: number
+  reviewCount?: number
 }
 
 const statusConfig = {
@@ -131,7 +138,7 @@ const formatResponseTime = (raw?: string): { label: string; colorScheme: string 
   return { label: '🐢 Responds in a few days', colorScheme: 'orange' }
 }
 
-const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime, hasActiveDispute }) => {
+const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, factors, conductSummary, compact, isVerified, listingCount, tradeCount, positivePercent, tradeStats, responseTime, hasActiveDispute, profileName, profileAvatar, memberSinceDate, avgRating, reviewCount }) => {
   const activeLevel = getTrustLevel(score)
   const responseInfo = formatResponseTime(responseTime)
   
@@ -191,219 +198,172 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
     )
   }
 
+  // === NEW REDESIGNED LAYOUT ===
+  // Single card, top to bottom. Clean, data-forward, no redundancy.
+  
   return (
     <Box
       bg="white"
       border="1px"
       borderColor="gray.200"
       borderRadius="xl"
-      p={5}
+      p={6}
       shadow="sm"
       w="100%"
     >
-      {/* Trust Indicator Badges */}
-      <HStack spacing={3} mb={4} flexWrap="wrap">
-        <Badge px={2} py={1} borderRadius="full" colorScheme={activeLevel === 'trusted' ? 'green' : activeLevel === 'new' ? 'yellow' : 'red'} fontSize="xs" fontWeight="bold">
-          {levelLabelBadge(activeLevel)}
-        </Badge>
-        {isVerified && (
-          <Badge px={2} py={1} borderRadius="full" colorScheme="green" fontSize="xs" fontWeight="medium">
-            ✔ Verified
-          </Badge>
-        )}
-        {typeof listingCount === 'number' && (
-          <Badge px={2} py={1} borderRadius="full" colorScheme="purple" fontSize="xs" fontWeight="medium">
-            📦 {listingCount} listing{listingCount !== 1 ? 's' : ''}
-          </Badge>
-        )}
-        {typeof tradeCount === 'number' && (
-          <Badge px={2} py={1} borderRadius="full" colorScheme="blue" fontSize="xs" fontWeight="medium">
-            🔁 {tradeCount} trade{tradeCount !== 1 ? 's' : ''}
-          </Badge>
-        )}
-        {typeof positivePercent === 'number' && positivePercent > 0 && (
-          <Badge px={2} py={1} borderRadius="full" colorScheme="yellow" fontSize="xs" fontWeight="medium">
-            ⭐ {Math.round(positivePercent)}% positive
-          </Badge>
-        )}
-        {responseInfo && (
-          <Badge px={2} py={1} borderRadius="full" colorScheme={responseInfo.colorScheme} fontSize="xs" fontWeight="medium">
-            {responseInfo.label}
-          </Badge>
-        )}
-        {hasActiveDispute && (
-          <Badge px={2} py={1} borderRadius="full" colorScheme="orange" variant="solid" fontSize="xs" fontWeight="bold">
-            ⚠️ Active Dispute
-          </Badge>
-        )}
-      </HStack>
-
-      <HStack spacing={5} align="start">
-        {/* Circular Score */}
-        <VStack spacing={1}>
-          <CircularProgress
-            value={score}
-            size="80px"
-            thickness="8px"
-            color={levelColor(activeLevel)}
-            trackColor={levelTrackColor(activeLevel)}
-          >
-            <CircularProgressLabel>
-              <Text fontSize="xl" fontWeight="bold" color={levelColor(activeLevel)}>
-                {score}
+      {/* HEADER ROW: Avatar, name, member since, verified checkmark */}
+      {profileName || profileAvatar ? (
+        <HStack spacing={4} mb={6} align="center">
+          <Avatar
+            size="md"
+            name={profileName}
+            src={profileAvatar}
+            bg="brand.500"
+            color="white"
+          />
+          <VStack align="start" spacing={0.5} flex={1}>
+            <HStack spacing={2}>
+              <Text fontSize="md" fontWeight="bold" color="gray.800">
+                {profileName}
               </Text>
-            </CircularProgressLabel>
-          </CircularProgress>
-          <Text fontSize="xs" color="gray.500" fontWeight="medium">
-            / 100
-          </Text>
-        </VStack>
-
-        {/* Factor Breakdown */}
-        <VStack align="stretch" spacing={2} flex={1}>
-          <HStack align="center" mb={1} spacing={1}>
-            <Text fontSize="sm" fontWeight="bold" color="gray.700">
-              Trust Score Breakdown
-            </Text>
-            <Tooltip label="Your overall score out of 100 is based on these components. Maximize them by making successful trades and fast responses!" hasArrow>
-              <Box as="span" display="inline-flex"><Icon as={FiInfo} color="gray.400" boxSize={3.5} /></Box>
-            </Tooltip>
-          </HStack>
-          
-          {factors && factors.length > 0 ? (
-            factors.map((f, i) => {
-              const cfg = statusConfig[f.status]
-              return (
-                <Tooltip key={i} label={getImprovementHint(f.label, f.points, f.max)} placement="top" hasArrow>
-                  <Box>
-                    <HStack spacing={2} py={0.5} cursor="pointer">
-                      <Icon as={cfg.icon} color={cfg.color} boxSize={4} flexShrink={0} />
-                      <Text fontSize="sm" color="gray.700" flex={1}>
-                        {f.label}
-                      </Text>
-                      <Text fontSize="xs" color="gray.400" fontWeight="medium" flexShrink={0}>
-                        {f.points}/{f.max}
-                      </Text>
-                    </HStack>
-                    <Progress value={(f.points / f.max) * 100} size="xs" colorScheme={cfg.color.split('.')[0]} borderRadius="full" mt={1} opacity={0.6}/>
-                  </Box>
+              {isVerified && (
+                <Tooltip label="Verified account" hasArrow>
+                  <HStack spacing={1}>
+                    <Icon as={FiCheckCircle} color="green.500" boxSize={4} />
+                  </HStack>
                 </Tooltip>
-              )
-            })
-          ) : (
-            <Text fontSize="sm" color="gray.400">No data available</Text>
-          )}
-        </VStack>
-      </HStack>
-
-      {/* Trade Statistics Section */}
-      {tradeStats && (tradeStats.successful > 0 || tradeStats.cancelled > 0 || tradeStats.pending > 0) && (
-        <>
-          <Divider my={4} />
-          <VStack align="stretch" spacing={3}>
-            <Text fontSize="sm" fontWeight="bold" color="gray.700">
-              Trade Statistics
-            </Text>
-            <VStack align="stretch" spacing={1}>
-              <HStack justify="space-between">
-                <HStack spacing={2}>
-                  <Text fontSize="sm">✔</Text>
-                  <Text fontSize="sm" color="green.600">Successful</Text>
-                </HStack>
-                <Text fontSize="sm" fontWeight="bold" color="green.600">{tradeStats.successful}</Text>
-              </HStack>
-              <HStack justify="space-between">
-                <HStack spacing={2}>
-                  <Text fontSize="sm">❌</Text>
-                  <Text fontSize="sm" color="red.500">Cancelled</Text>
-                </HStack>
-                <Text fontSize="sm" fontWeight="bold" color="red.500">{tradeStats.cancelled}</Text>
-              </HStack>
-              <HStack justify="space-between">
-                <HStack spacing={2}>
-                  <Text fontSize="sm">⏳</Text>
-                  <Text fontSize="sm" color="orange.500">Pending</Text>
-                </HStack>
-                <Text fontSize="sm" fontWeight="bold" color="orange.500">{tradeStats.pending}</Text>
-              </HStack>
-            </VStack>
-            {(tradeStats.successful + tradeStats.cancelled) > 0 && (
-              <Box bg="gray.50" px={3} py={2} borderRadius="md">
-                <HStack justify="space-between">
-                  <Text fontSize="sm" fontWeight="medium" color="gray.600">Trade Success Rate</Text>
-                  <Text fontSize="sm" fontWeight="bold" color={
-                    Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100) >= 75 ? 'green.600' :
-                    Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100) >= 50 ? 'orange.500' : 'red.500'
-                  }>
-                    {Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100)}%
-                  </Text>
-                </HStack>
-              </Box>
+              )}
+            </HStack>
+            {memberSinceDate && (
+              <Text fontSize="xs" color="gray.600">
+                Member since {(() => {
+                  const date = typeof memberSinceDate === 'string' 
+                    ? new Date(memberSinceDate) 
+                    : memberSinceDate
+                  if (isNaN(date.getTime())) return 'recently'
+                  return new Intl.DateTimeFormat('en-US', { 
+                    year: 'numeric', 
+                    month: 'short' 
+                  }).format(date)
+                })()}
+              </Text>
             )}
           </VStack>
-        </>
-      )}
+        </HStack>
+      ) : null}
 
-      {/* Conduct Grade Section */}
-      {conductSummary && conductSummary.total_grades > 0 && (
-        <>
-          <Divider my={4} />
-          <VStack align="stretch" spacing={3}>
-            <HStack justify="space-between">
-              <HStack spacing={2}>
-                <Icon as={FiAward} color={gradeColor(conductSummary.letter_grade)} boxSize={5} />
-                <Text fontSize="sm" fontWeight="bold" color="gray.700">
-                  Conduct Grade
-                </Text>
-              </HStack>
-              <Badge
-                px={3}
-                py={1}
-                borderRadius="md"
-                fontSize="md"
-                fontWeight="bold"
-                color={gradeColor(conductSummary.letter_grade)}
-                bg={gradeBg(conductSummary.letter_grade)}
-              >
-                {conductSummary.letter_grade}
-              </Badge>
-            </HStack>
-
-            {conductSummary.categories.map((cat, i) => (
-              <Box key={i}>
-                <HStack justify="space-between" mb={1}>
-                  <Text fontSize="xs" color="gray.600">{cat.category}</Text>
-                  <Text fontSize="xs" color="gray.500" fontWeight="medium">
-                    {cat.avg.toFixed(1)}/5
-                  </Text>
-                </HStack>
-                <Progress
-                  value={(cat.avg / 5) * 100}
-                  size="sm"
-                  borderRadius="full"
-                  colorScheme={categoryBarColor(cat.avg)}
-                />
-              </Box>
-            ))}
-
-            <HStack justify="space-between" pt={1}>
-              <Tooltip label="Percentage of trades cancelled" hasArrow>
-                <Text fontSize="xs" color="gray.500">
-                  Cancellation: {(conductSummary.cancellation_rate * 100).toFixed(0)}%
-                </Text>
-              </Tooltip>
-              <Tooltip label="Percentage of trades with disputes" hasArrow>
-                <Text fontSize="xs" color="gray.500">
-                  Disputes: {(conductSummary.dispute_rate * 100).toFixed(0)}%
-                </Text>
-              </Tooltip>
-            </HStack>
-
-            <Text fontSize="xs" color="gray.400" textAlign="center">
-              Based on {conductSummary.total_grades} trade {conductSummary.total_grades === 1 ? 'grade' : 'grades'}
+      {/* FOUR STAT PILLS: Rating · Positive % · Trades · Avg Response */}
+      <HStack spacing={2} mb={4} justify={{ base: 'start', sm: 'space-around' }} flexWrap="wrap">
+        {typeof avgRating === 'number' && avgRating > 0 && (
+          <VStack spacing={0.5} align="center" flex={{ base: '0 1 auto', sm: 1 }} minW="60px">
+            <Text fontSize={{ base: 'md', sm: 'md' }} fontWeight="bold" color="gray.800">
+              {avgRating.toFixed(1)}
             </Text>
+            <Text fontSize={{ base: '10px', sm: 'xs' }} color="gray.600" textAlign="center">Rating</Text>
           </VStack>
-        </>
+        )}
+        {typeof positivePercent === 'number' && positivePercent > 0 && (
+          <VStack spacing={0.5} align="center" flex={{ base: '0 1 auto', sm: 1 }} minW="60px">
+            <Text fontSize={{ base: 'md', sm: 'md' }} fontWeight="bold" color="gray.800">
+              {Math.round(positivePercent)}%
+            </Text>
+            <Text fontSize={{ base: '10px', sm: 'xs' }} color="gray.600" textAlign="center">Positive</Text>
+          </VStack>
+        )}
+        {typeof tradeCount === 'number' && (
+          <VStack spacing={0.5} align="center" flex={{ base: '0 1 auto', sm: 1 }} minW="60px">
+            <Text fontSize={{ base: 'md', sm: 'md' }} fontWeight="bold" color="gray.800">
+              {tradeCount === 0 ? 'New' : tradeCount}
+            </Text>
+            <Text fontSize={{ base: '10px', sm: 'xs' }} color="gray.600" textAlign="center">{tradeCount === 0 ? 'Trader' : 'Trades'}</Text>
+          </VStack>
+        )}
+        {responseTime && responseTime !== 'N/A' && (
+          <VStack spacing={0.5} align="center" flex={{ base: '0 1 auto', sm: 1 }} minW="60px">
+            <Text fontSize={{ base: 'md', sm: 'md' }} fontWeight="bold" color="gray.800">
+              {responseTime}
+            </Text>
+            <Text fontSize={{ base: '10px', sm: 'xs' }} color="gray.600" textAlign="center">Response</Text>
+          </VStack>
+        )}
+      </HStack>
+
+      <Divider my={4} />
+
+      {/* TRUST SCORE BREAKDOWN: Title with score, then six category bars */}
+      <VStack align="stretch" spacing={4} mb={6}>
+        <HStack justify="space-between" align="baseline">
+          <Text fontSize="md" fontWeight="bold" color="gray.800">
+            Trust score
+          </Text>
+          <Text fontSize="xl" fontWeight="bold" color="gray.900">
+            {score}/100
+          </Text>
+        </HStack>
+
+        {/* Six category bars with color-coded status */}
+        {factors && factors.length > 0 ? (
+          <VStack align="stretch" spacing={3}>
+            {factors.map((f, i) => {
+              const cfg = statusConfig[f.status]
+              const colorScheme = f.status === 'pass' ? 'green' : f.status === 'warn' ? 'orange' : 'red'
+              return (
+                <Box key={i}>
+                  <HStack justify="space-between" mb={1}>
+                    <Text fontSize="sm" color="gray.700">
+                      {f.label}
+                    </Text>
+                    <Text fontSize="xs" color="gray.500" fontWeight="medium">
+                      {f.points}/{f.max}
+                    </Text>
+                  </HStack>
+                  <Progress
+                    value={(f.points / f.max) * 100}
+                    size="sm"
+                    colorScheme={colorScheme}
+                    borderRadius="full"
+                  />
+                </Box>
+              )
+            })}
+          </VStack>
+        ) : (
+          <Text fontSize="sm" color="gray.400">No data available</Text>
+        )}
+      </VStack>
+
+      <Divider my={4} />
+
+      {/* TRADE STATISTICS: Three numbers in one row, success rate below */}
+      {tradeStats && (tradeStats.successful > 0 || tradeStats.cancelled > 0 || tradeStats.pending > 0) && (
+        <VStack align="stretch" spacing={4}>
+          <HStack spacing={4} justify="space-around">
+            <VStack spacing={1} align="center" flex={1}>
+              <Text fontSize="lg" fontWeight="bold" color="gray.800">
+                {tradeStats.successful}
+              </Text>
+              <Text fontSize="xs" color="gray.600">Successful</Text>
+            </VStack>
+            <VStack spacing={1} align="center" flex={1}>
+              <Text fontSize="lg" fontWeight="bold" color="gray.800">
+                {tradeStats.cancelled}
+              </Text>
+              <Text fontSize="xs" color="gray.600">Cancelled</Text>
+            </VStack>
+            <VStack spacing={1} align="center" flex={1}>
+              <Text fontSize="lg" fontWeight="bold" color="gray.800">
+                {tradeStats.pending}
+              </Text>
+              <Text fontSize="xs" color="gray.600">Pending</Text>
+            </VStack>
+          </HStack>
+
+          {(tradeStats.successful + tradeStats.cancelled) > 0 && (
+            <Text fontSize="sm" color="gray.700" textAlign="center">
+              Trade success rate: {Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100)}%
+            </Text>
+          )}
+        </VStack>
       )}
     </Box>
   )
