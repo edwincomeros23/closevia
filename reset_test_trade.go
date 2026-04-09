@@ -19,7 +19,7 @@ func main() {
 	}
 	defer database.CloseDatabase()
 
-	fmt.Println("=== RESETTING FOR FRESH TEST ===\n")
+	fmt.Println("=== RESETTING FOR FRESH TEST ===")
 
 	// Delete multiway for trade 114
 	_, _ = database.DB.Exec("DELETE FROM multiway_trades WHERE original_trade_id = 114")
