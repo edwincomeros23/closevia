@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -545,6 +545,9 @@ const AdminDashboard: React.FC = () => {
     onClose: closeDeleteDialog,
   } = useDisclosure();
   const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
+  const usersSearchInputRef = useRef<string>('');
+  const productsSearchInputRef = useRef<string>('');
+  const riderSearchInputRef = useRef<string>('');
 
   const toast = useToast();
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -1265,23 +1268,23 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ Debounced search handlers â"€â"€
   const handleUsersSearch = useCallback((searchValue: string) => {
-    setUsersSearchInput(searchValue);
+    usersSearchInputRef.current = searchValue;
     if (usersSearchDebounceRef.current) {
       clearTimeout(usersSearchDebounceRef.current);
     }
-    usersSearchDebounceRef.current = setTimeout(() => {
+    usersSearchDebounceRef.current = window.setTimeout(() => {
       setUsersSearch(searchValue);
-    }, 500);
+    }, 300);
   }, []);
 
   const handleProductsSearch = useCallback((searchValue: string) => {
-    setProductsSearchInput(searchValue);
+    productsSearchInputRef.current = searchValue;
     if (productsSearchDebounceRef.current) {
       clearTimeout(productsSearchDebounceRef.current);
     }
-    productsSearchDebounceRef.current = setTimeout(() => {
+    productsSearchDebounceRef.current = window.setTimeout(() => {
       setProductsSearch(searchValue);
-    }, 500);
+    }, 300);
   }, []);
 
   // Cleanup debounce timers on unmount
@@ -1664,17 +1667,13 @@ const AdminDashboard: React.FC = () => {
 
   // Debounced search handler
   const handleRiderSearch = useCallback((searchValue: string) => {
-    setRiderSearchInput(searchValue);
-    
-    // Clear previous timeout
+    riderSearchInputRef.current = searchValue;
     if (riderSearchDebounceRef.current) {
       clearTimeout(riderSearchDebounceRef.current);
     }
-    
-    // Set new timeout for debounced search
-    riderSearchDebounceRef.current = setTimeout(() => {
+    riderSearchDebounceRef.current = window.setTimeout(() => {
       setRiderSearchQuery(searchValue);
-    }, 500);
+    }, 300);
   }, []);
 
   // ── Fetch rider applications ──
@@ -3098,7 +3097,7 @@ const AdminDashboard: React.FC = () => {
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
                 </Select>
-                <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchInput} onChange={e => handleRiderSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
+                <Input size="sm" w="160px" placeholder="Search name/email" defaultValue={riderSearchInputRef.current} onChange={e => handleRiderSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
                 <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchRiderApplications()} isLoading={riderAppsLoading}>Refresh</Button>
               </HStack>
             </Flex>
@@ -3283,7 +3282,7 @@ const AdminDashboard: React.FC = () => {
           <Heading size="sm" color={textColor}>Users</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search users by name, email..." value={usersSearchInput} onChange={(e) => handleUsersSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminUsers(1, usersSearchInput, usersRoleFilter, usersIsVerifiedFilter); }} maxW="300px" />
+            <Input size="sm" placeholder="Search users by name, email..." defaultValue={usersSearchInputRef.current} onChange={(e) => handleUsersSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminUsers(1, usersSearchInputRef.current, usersRoleFilter, usersIsVerifiedFilter); }} maxW="300px" />
             <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => { setUsersRoleFilter(e.target.value); fetchAdminUsers(1, usersSearch, e.target.value); }}>
               <option value="admin">Admin</option>
               <option value="user">User</option>
@@ -3352,7 +3351,7 @@ const AdminDashboard: React.FC = () => {
           <Heading size="sm" color={textColor}>Items</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search items by title..." value={productsSearchInput} onChange={(e) => handleProductsSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminProducts(1, productsSearchInput, productsStatusFilter); }} maxW="300px" />
+            <Input size="sm" placeholder="Search items by title..." defaultValue={productsSearchInputRef.current} onChange={(e) => handleProductsSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminProducts(1, productsSearchInputRef.current, productsStatusFilter); }} maxW="300px" />
             <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => { setProductsStatusFilter(e.target.value); fetchAdminProducts(1, productsSearch, e.target.value); }}>
               <option value="available">Available</option>
               <option value="reserved">Reserved</option>
