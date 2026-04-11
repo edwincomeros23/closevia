@@ -495,7 +495,7 @@ func (h *TradeHandler) autoTriggerMultiwayForNewAvailableProduct(productID int) 
 				if pID <= 0 {
 					continue
 				}
-				msg := fmt.Sprintf("A 3-way trade opportunity was found involving your item! Check the Multi-Way tab.")
+				msg := "A 3-way trade opportunity was found involving your item! Check the Multi-Way tab."
 				_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", pID, msg)
 				publishNotification(pID, msg)
 				// Clear stale cache so GetTradeLoops runs fresh
@@ -851,6 +851,12 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 
 	status := c.Query("status", "")
 	direction := c.Query("direction", "")
+	limit := 1000 // Default unlimited (high cap)
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if limitVal, err := strconv.Atoi(limitStr); err == nil && limitVal > 0 {
+			limit = limitVal
+		}
+	}
 	where := "WHERE (t.buyer_id = ? OR t.seller_id = ?)"
 	args := []interface{}{userID, userID}
 	switch direction {
@@ -1110,9 +1116,12 @@ func (h *TradeHandler) GetTrades(c *fiber.Ctx) error {
 		}
 	}
 
-	// Convert back to value slice for response
+	// Convert back to value slice for response, respecting limit
 	trades := make([]models.Trade, 0, len(tradePtrs))
-	for _, tr := range tradePtrs {
+	for i, tr := range tradePtrs {
+		if i >= limit {
+			break
+		}
 		trades = append(trades, *tr)
 	}
 
@@ -3901,19 +3910,19 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 				"user_id": pA.sellerID, "user_name": nameA, "user_slug": slugA,
 				"product_id": pA.id, "product_title": pA.title, "product_slug": pA.slug,
 				"product_image_url": pA.imageURL,
-				"position_in_loop": 0, "trade_status": "pending",
+				"position_in_loop":  0, "trade_status": "pending",
 			},
 			{
 				"user_id": pB.sellerID, "user_name": nameB, "user_slug": slugB,
 				"product_id": pB.id, "product_title": pB.title, "product_slug": pB.slug,
 				"product_image_url": pB.imageURL,
-				"position_in_loop": 1, "trade_status": "pending",
+				"position_in_loop":  1, "trade_status": "pending",
 			},
 			{
 				"user_id": pC.sellerID, "user_name": nameC, "user_slug": slugC,
 				"product_id": pC.id, "product_title": pC.title, "product_slug": pC.slug,
 				"product_image_url": pC.imageURL,
-				"position_in_loop": 2, "trade_status": "pending",
+				"position_in_loop":  2, "trade_status": "pending",
 			},
 		}
 
@@ -5722,7 +5731,7 @@ func (h *TradeHandler) UpdateLegHandoff(c *fiber.Ctx) error {
 		SELECT chain_id FROM multiway_trade_legs 
 		WHERE id = ? AND (from_user_id = ? OR to_user_id = ?) AND status IN ('pending', 'in_progress')
 	`, legID, userID, userID).Scan(&chainID)
-	
+
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Leg not found or not your leg"})
 	}

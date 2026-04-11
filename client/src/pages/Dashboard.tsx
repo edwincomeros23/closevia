@@ -2925,7 +2925,7 @@ const Dashboard: React.FC = () => {
 
     return (
       <Box
-        h="220px"
+        minH="240px"
         bg="white"
         borderWidth="1px"
         borderColor="gray.200"
@@ -2953,7 +2953,7 @@ const Dashboard: React.FC = () => {
         <Box
           position="relative"
           w="full"
-          h="120px"
+          h="100px"
           overflow="hidden"
           bg="gray.100"
           display="flex"
@@ -2986,16 +2986,16 @@ const Dashboard: React.FC = () => {
                 {userName}
               </Text>
             </HStack>
-          </CardHeader>
-          <CardBody py={1.5} px={3}>
+          </Box>
+          <Box py={1.5} px={3}>
             <VStack spacing={1.5} align="stretch">
               <Text fontSize="xs" color="gray.500">
                 {new Date(trade.created_at).toLocaleDateString()}
               </Text>
               {renderOfferedItems(trade)}
             </VStack>
-          </CardBody>
-          <CardFooter pt={1.5} pb={2} px={3}>
+          </Box>
+          <Box pt={1.5} pb={2} px={3}>
             <HStack spacing={1.5} w="full" flexWrap="wrap">
               <Button
                 size="sm"
@@ -3071,8 +3071,9 @@ const Dashboard: React.FC = () => {
                 </Button>
               )}
             </HStack>
-          </CardFooter>
-        </Card>
+          </Box>
+        </Box>
+      </Box>
     )
   })
 
