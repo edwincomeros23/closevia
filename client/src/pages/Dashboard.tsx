@@ -2930,7 +2930,7 @@ const Dashboard: React.FC = () => {
 
     return (
       <Box
-        h="220px"
+        minH="240px"
         bg="white"
         borderWidth="1px"
         borderColor="gray.200"
@@ -2958,7 +2958,7 @@ const Dashboard: React.FC = () => {
         <Box
           position="relative"
           w="full"
-          h="120px"
+          h="100px"
           overflow="hidden"
           bg="gray.100"
           display="flex"
@@ -2987,93 +2987,98 @@ const Dashboard: React.FC = () => {
                 bg={isIncoming ? 'blue.500' : 'green.500'}
                 color="white"
               />
-              <Text color="gray.600" noOfLines={1} flex={1}>
+              <Text fontSize="xs" color="gray.600" noOfLines={1} flex={1}>
                 {userName}
               </Text>
             </HStack>
           </Box>
-
-          {/* Buttons */}
-          <HStack spacing={1} w="full" flexShrink={0} mt={1}>
-            <Button
-              size="sm"
-              variant="outline"
-              colorScheme="brand"
-              flex={1}
-              minW="45px"
-              fontSize="11px"
-              h="32px"
-              onClick={handleViewClick}
-              _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
-              transition="all 0.2s"
-            >
-              View
-            </Button>
-            {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
-              <>
-                <Button
-                  size="sm"
-                  colorScheme="green"
-                  flex={1}
-                  minW="45px"
-                  fontSize="11px"
-                  h="32px"
-                  onClick={handleAcceptClick}
-                  _hover={{ transform: 'scale(1.02)' }}
-                  transition="all 0.2s"
-                >
-                  Accept
-                </Button>
+          <Box py={1.5} px={3}>
+            <VStack spacing={1.5} align="stretch">
+              <Text fontSize="xs" color="gray.500">
+                {new Date(trade.created_at).toLocaleDateString()}
+              </Text>
+              {renderOfferedItems(trade)}
+            </VStack>
+          </Box>
+          <Box pt={1.5} pb={2} px={3}>
+            <HStack spacing={1.5} w="full" flexWrap="wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                colorScheme="brand"
+                flex={1}
+                minW="50px"
+                fontSize="xs"
+                onClick={handleViewClick}
+                _hover={{ bg: 'brand.50', transform: 'scale(1.02)' }}
+                transition="all 0.2s"
+              >
+                View
+              </Button>
+              {isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onAccept && onDecline && (
+                <>
+                  <Button
+                    size="sm"
+                    colorScheme="green"
+                    flex={1}
+                    minW="50px"
+                    fontSize="xs"
+                    onClick={handleAcceptClick}
+                    _hover={{ transform: 'scale(1.02)' }}
+                    transition="all 0.2s"
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    colorScheme="red"
+                    variant="outline"
+                    flex={1}
+                    minW="50px"
+                    fontSize="xs"
+                    onClick={handleDeclineClick}
+                    _hover={{ transform: 'scale(1.02)' }}
+                    transition="all 0.2s"
+                  >
+                    Decline
+                  </Button>
+                </>
+              )}
+              {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
                 <Button
                   size="sm"
                   colorScheme="red"
                   variant="outline"
                   flex={1}
-                  minW="45px"
-                  fontSize="11px"
-                  h="32px"
-                  onClick={handleDeclineClick}
+                  minW="50px"
+                  fontSize="xs"
+                  onClick={() => onCancel && onCancel(trade)}
+                  leftIcon={<Icon as={FaTimes} boxSize={3} />}
                   _hover={{ transform: 'scale(1.02)' }}
                   transition="all 0.2s"
                 >
-                  Decline
+                  Cancel
                 </Button>
-              </>
-            )}
-            {!isIncoming && (trade.status === 'pending' || trade.status === 'pending_multiway') && onCancel && (
-              <Button
-                size="sm"
-                colorScheme="red"
-                variant="outline"
-                flex={1}
-                minW="45px"
-                fontSize="11px"
-                h="32px"
-                onClick={() => onCancel && onCancel(trade)}
-                _hover={{ transform: 'scale(1.02)' }}
-                transition="all 0.2s"
-              >
-                Cancel
-              </Button>
-            )}
-            {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
-              <Button
-                size="sm"
-                colorScheme="blue"
-                flex={1}
-                minW="45px"
-                fontSize="11px"
-                h="32px"
-                onClick={() => onComplete && onComplete(trade)}
-                _hover={{ transform: 'scale(1.02)' }}
-                transition="all 0.2s"
-              >
-                Done
-              </Button>
-            )}
-          </HStack>
+              )}
+              {(trade.status === 'accepted' || trade.status === 'active') && onComplete && (
+                <Button
+                  size="sm"
+                  colorScheme="blue"
+                  flex={1}
+                  minW="50px"
+                  fontSize="xs"
+                  onClick={() => onComplete && onComplete(trade)}
+                  leftIcon={<Icon as={FaHandshake} boxSize={3} />}
+                  _hover={{ transform: 'scale(1.02)' }}
+                  transition="all 0.2s"
+                >
+                  Complete
+                </Button>
+              )}
+            </HStack>
+          </Box>
         </Box>
-        </Box>
+      </Box>
     )
   })
 
