@@ -1274,7 +1274,7 @@ const AdminDashboard: React.FC = () => {
     }
     usersSearchDebounceRef.current = window.setTimeout(() => {
       setUsersSearch(searchValue);
-    }, 300);
+    }, 300) as ReturnType<typeof setTimeout>;
   }, []);
 
   const handleProductsSearch = useCallback((searchValue: string) => {
@@ -1284,7 +1284,7 @@ const AdminDashboard: React.FC = () => {
     }
     productsSearchDebounceRef.current = window.setTimeout(() => {
       setProductsSearch(searchValue);
-    }, 300);
+    }, 300) as ReturnType<typeof setTimeout>;
   }, []);
 
   // Cleanup debounce timers on unmount
@@ -1673,7 +1673,7 @@ const AdminDashboard: React.FC = () => {
     }
     riderSearchDebounceRef.current = window.setTimeout(() => {
       setRiderSearchQuery(searchValue);
-    }, 300);
+    }, 300) as ReturnType<typeof setTimeout>;
   }, []);
 
   // ── Fetch rider applications ──
