@@ -801,17 +801,22 @@ const Dashboard: React.FC = () => {
       } else if (status === 'pending_user3' && !canJoin && !canDecline) {
         // User is initiator (u1/u2), waiting for User3 to respond
         waitingOnOthers.push(trade)
-      } else if (loopType === 'detected_loop' && (canJoin || canDecline)) {
-        // Graph-detected cycle: all participants in the trade chain can accept or decline
-        needsAction.push(trade)
       } else if (status === 'user3_accepted' || status === 'active') {
         // User has already accepted, now waiting on others
         waitingOnOthers.push(trade)
       } else if (status === 'pending_initiator_upgrade') {
         // Waiting for initiator to upgrade
         waitingOnOthers.push(trade)
-      } else if (loopType === 'auto_multiway' || loopType === 'product_match') {
-        // Suggestion loop or product-based match
+      } else if (
+        loopType === 'auto_multiway' ||
+        loopType === 'product_match' ||
+        loopType === 'detected_loop' ||
+        loopType === 'graph'
+      ) {
+        // Automatically discovered loop suggestions (graph-detected cycles,
+        // product-desire matches, or legacy auto_multiway entries from the
+        // cache warmer). These are all "opportunities" the user can review
+        // and optionally convert into a real multiway trade.
         autoSearchResults.push(trade)
       }
     }
