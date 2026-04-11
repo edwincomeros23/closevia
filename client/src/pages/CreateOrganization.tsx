@@ -254,16 +254,16 @@ const CreateOrganization: React.FC = () => {
                   </FormControl>
 
                   <FormControl isRequired>
-                    <FormLabel>Handle / Username</FormLabel>
+                    <FormLabel>Handle</FormLabel>
                     <Input
                       value={orgHandle}
                       onChange={(e) => setOrgHandle(sanitizeHandle(e.target.value))}
-                      placeholder="org-name"
+                      placeholder="your-org-handle"
                     />
                     <FormHelperText mt={1}>
                       <Text as="span" color="gray.500">Profile URL: </Text>
                       <Text as="span" fontFamily="mono" bg="gray.100" px={2} py={0.5} borderRadius="md" color="gray.700">
-                        /org/{sanitizeHandle(orgHandle || orgName || 'org-name')}
+                        /org/{sanitizeHandle(orgHandle || orgName || 'your-handle')}
                       </Text>
                     </FormHelperText>
                   </FormControl>
