@@ -3313,7 +3313,7 @@ const AdminDashboard: React.FC = () => {
                         <Td px={2}><HStack spacing={2}><VerifiedAvatar size="xs" name={user.name} src={user.profile_picture || undefined} isVerified={user.verified || user.verification_status === 'verified' || false} /><VStack spacing={0} align="start" minW={0}><Text fontWeight="600" fontSize="xs" isTruncated maxW="120px">{user.name || 'Unnamed'}</Text><Text fontSize="xs" color={mutedTextColor}>#{user.id}</Text></VStack></HStack></Td>
                         <Td px={2} display={{ base: 'none', md: 'table-cell' }}><Text fontSize="xs" isTruncated maxW="160px">{user.email}</Text></Td>
                         <Td px={2}><Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : user.role === 'banned' ? 'blackAlpha' : user.role === 'suspended' ? 'red' : 'blue'} fontSize="xs">{user.role || 'user'}</Tag></Td>
-                        <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : 'Unverified'}</Tag></Td>
+                        <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : 'Not Verified'}</Tag></Td>
                         <Td textAlign="right" px={1}>
                           <HStack spacing={1} justify="flex-end">
                             <Tooltip label="Strike History" hasArrow><IconButton aria-label="Strikes" size="xs" colorScheme="purple" variant="ghost" icon={<FiAlertTriangle />} onClick={() => openStrikeHistory(user)} /></Tooltip>
@@ -3389,8 +3389,8 @@ const AdminDashboard: React.FC = () => {
                     <Th color={mutedTextColor} px={2} w="40px"><Checkbox isChecked={selectedProductIds.size === products.length && products.length > 0} isIndeterminate={selectedProductIds.size > 0 && selectedProductIds.size < products.length} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.checked) { setSelectedProductIds(new Set(products.map(p => p.id))); } else { setSelectedProductIds(new Set()); } }} /></Th>
                     <Th color={mutedTextColor} px={2}>Item</Th>
                     <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Trader</Th>
-                    <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
-                    <Th isNumeric color={mutedTextColor} w="110px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
+                    <Th color={mutedTextColor} w="100px" px={3}>Status</Th>
+                    <Th isNumeric color={mutedTextColor} w="150px" px={3} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
                     <Th textAlign="right" color={mutedTextColor} w="80px" px={1}></Th>
                   </Tr></Thead>
                   <Tbody>
@@ -3402,9 +3402,9 @@ const AdminDashboard: React.FC = () => {
                           <Td px={2}><Checkbox isChecked={isSelected} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { const newSet = new Set(selectedProductIds); if (e.target.checked) { newSet.add(product.id); } else { newSet.delete(product.id); } setSelectedProductIds(newSet); }} /></Td>
                           <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
                           <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
-                          <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'} px={2.5} py={1}>{product.status}</Tag></Td>
-                          <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : '—'}</Text></Td>
-                          <Td textAlign="right">
+                          <Td px={3}><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'} px={2.5} py={1} isTruncated maxW="100px">{product.status.charAt(0).toUpperCase() + product.status.slice(1)}</Tag></Td>
+                          <Td isNumeric px={3} pr={14}><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : '—'}</Text></Td>
+                          <Td textAlign="right" pl={6}>
                             <HStack spacing={1} justify="flex-end">
                               <Tooltip label="View Details" hasArrow>
                                 <IconButton as="a" href={`/product/${product.id}`} target="_blank" aria-label="View Details" size="sm" colorScheme="blue" variant="ghost" icon={<FiEye />} />
