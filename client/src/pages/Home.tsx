@@ -54,7 +54,7 @@ import {
 } from '@chakra-ui/icons'
 import { InputRightElement } from '@chakra-ui/react'
 import { FaUserCircle, FaHandshake, FaHome, FaTag, FaMotorcycle, FaCrown } from 'react-icons/fa'
-import { FiShoppingBag } from 'react-icons/fi'
+import { FiShoppingBag, FiDownload } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -1184,6 +1184,19 @@ const Home: React.FC = () => {
                         leftIcon={<Icon as={FaHome} />}
                       >
                         Organizations
+                      </Button>
+
+                      <Button
+                        as="a"
+                        href="/clovia.apk"
+                        download="clovia.apk"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FiDownload} />}
+                      >
+                        Install Clovia (Android)
                       </Button>
 
                       <InstallAppPrompt variant="profile-menu" />
