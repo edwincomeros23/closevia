@@ -121,7 +121,7 @@ const AdvertisementCarousel = () => {
   if (loading) {
     return (
       <Box w="full" maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx={{ base: 'auto', lg: 0 }} ml={{ base: 0, md: -2, lg: -6, xl: -8 }} mb={8} px={{ base: 3, md: 6, lg: 8, xl: 10 }}>
-        <Skeleton w="full" h={{ base: 18, sm: 22, md: 64, lg: 120, xl: 128, '2xl': 144 }} rounded="lg" />
+        <Skeleton w="full" h={{ base: 72, sm: 88, md: 64, lg: 120, xl: 128, '2xl': 144 }} rounded="lg" />
       </Box>
     )
   }
@@ -131,7 +131,7 @@ const AdvertisementCarousel = () => {
     const staticAds = ['/1.jpg', '/2.jpg', '/3.jpg']
     return (
       <Box w="full" maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx={{ base: 'auto', lg: 0 }} ml={{ base: 0, md: -2, lg: -6, xl: -8 }} mb={8} px={{ base: 3, md: 6, lg: 8, xl: 10 }}>
-        <Box position="relative" overflow="hidden" w="full" h={{ base: 18, sm: 22, md: 64, lg: 120, xl: 128, '2xl': 144 }} rounded="lg" bg="gray.100">
+        <Box position="relative" overflow="hidden" w="full" h={{ base: 72, sm: 88, md: 64, lg: 120, xl: 128, '2xl': 144 }} rounded="lg" bg="gray.100">
           <Image src={staticAds[0]} w="full" h="full" objectFit="cover" />
         </Box>
       </Box>
@@ -151,7 +151,7 @@ const AdvertisementCarousel = () => {
         position="relative"
         overflow="hidden"
         w="full"
-        h={{ base: 18, sm: 22, md: 64, lg: 144, xl: 160, '2xl': 176 }}
+        h={{ base: 72, sm: 88, md: 64, lg: 144, xl: 160, '2xl': 176 }}
         rounded="xl"
         bg="black"
         boxShadow="lg"
