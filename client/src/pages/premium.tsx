@@ -57,6 +57,10 @@ const Premium: React.FC = () => {
   const [isYearly, setIsYearly] = useState(false)
   const [upgrading, setUpgrading] = useState<string | null>(null) // 'plus' | 'pro' | null
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null)
+  const [userProducts, setUserProducts] = useState<any[]>([])
+  const [productsLoading, setProductsLoading] = useState(false)
+  const [boostingProduct, setBoostingProduct] = useState<number | null>(null)
+  const [subscriptionData, setSubscriptionData] = useState<any>(null)
 
   const pageBg = useColorModeValue('#FFFDF1', 'gray.900')
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -65,15 +69,19 @@ const Premium: React.FC = () => {
   const subtleBg = useColorModeValue('gray.50', 'gray.900')
   const mutedText = useColorModeValue('gray.500', 'gray.400')
 
-  // Premium status logic removed: multiway trading is now available to all users
-  const isPremiumUser = true
-  const currentTier = 'free' as 'free' | 'plus' | 'pro'
+  // Use actual premium status from user context
+  const isPremiumUser = user?.is_premium ?? false
+  const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
 
   useEffect(() => {
     fetchLoops()
+    fetchSubscriptionData()
+    if (isPremiumUser) {
+      fetchUserProducts()
+    }
     const interval = setInterval(fetchLoops, 30000)
     return () => clearInterval(interval)
-  }, [refreshUser])
+  }, [refreshUser, isPremiumUser])
 
   const fetchLoops = async () => {
     try {
@@ -112,6 +120,61 @@ const Premium: React.FC = () => {
     fetchLoops()
   }
 
+  const fetchSubscriptionData = async () => {
+    try {
+      const response = await api.get('/api/payments/subscription')
+      if (response.data?.data) {
+        setSubscriptionData(response.data.data)
+      }
+    } catch (error: any) {
+      // Silently fail - subscription data is optional
+    }
+  }
+
+  const fetchUserProducts = async () => {
+    try {
+      setProductsLoading(true)
+      const response = await api.get('/api/products/my-products')
+      if (response.data?.data) {
+        setUserProducts(response.data.data)
+      }
+    } catch (error: any) {
+      // Silently fail
+    } finally {
+      setProductsLoading(false)
+    }
+  }
+
+  const handleBoostProduct = async (productId: number) => {
+    try {
+      setBoostingProduct(productId)
+      const response = await api.post(`/api/products/${productId}/boost`)
+      
+      if (response.data?.success) {
+        toast({
+          id: 'boost-success',
+          title: 'Success',
+          description: 'Product boosted! It will appear higher in the feed.',
+          status: 'success',
+          duration: 3000,
+        })
+        // Refresh products list to show updated boost status
+        fetchUserProducts()
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Failed to boost product'
+      toast({
+        id: 'boost-error',
+        title: 'Boost Failed',
+        description: errorMsg,
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setBoostingProduct(null)
+    }
+  }
+
   const handleUpgrade = async (tier: 'plus' | 'pro') => {
     try {
       setUpgrading(tier)
@@ -148,6 +211,31 @@ const Premium: React.FC = () => {
 
   const toggleFaq = (index: number) => {
     setExpandedFaq(expandedFaq === index ? null : index)
+  }
+
+  // Helper to get subscription summary
+  const getSubscriptionSummary = () => {
+    if (!subscriptionData) return null
+    const endDate = subscriptionData.end_date ? new Date(subscriptionData.end_date) : null
+    const daysRemaining = endDate ? Math.ceil((endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : null
+    return {
+      endDate: endDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      daysRemaining: daysRemaining && daysRemaining > 0 ? daysRemaining : 0,
+      isExpiring: daysRemaining && daysRemaining <= 7,
+    }
+  }
+
+  // Helper to get listing quota
+  const getListingQuota = () => {
+    const limits = { free: 10, plus: 30, pro: Infinity }
+    const limit = limits[currentTier] || 10
+    const used = userProducts.filter(p => ['available', 'locked'].includes(p.status)).length
+    return {
+      limit,
+      used,
+      remaining: Math.max(0, limit - used),
+      percentage: limit === Infinity ? 100 : Math.round((used / limit) * 100),
+    }
   }
 
   // ─── Feature Section Component ───
@@ -347,6 +435,213 @@ const Premium: React.FC = () => {
           </VStack>
         </CardBody>
       </Card>
+
+      {/* Subscription Details Grid */}
+      <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+        {/* Subscription End Date */}
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor}>
+          <CardBody>
+            <VStack align="start" spacing={2}>
+              <HStack spacing={2}>
+                <Icon as={FaCheckCircle} color={currentTier === 'pro' ? 'purple.500' : 'blue.500'} fontSize="lg" />
+                <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color={mutedText}>Subscription Ends</Text>
+              </HStack>
+              {subscriptionData?.end_date ? (
+                <>
+                  <Text fontSize="xl" fontWeight="bold">{getSubscriptionSummary()?.endDate}</Text>
+                  <HStack spacing={2} w="full">
+                    <Badge
+                      colorScheme={getSubscriptionSummary()?.isExpiring ? 'red' : 'green'}
+                      variant="subtle"
+                      fontSize="xs"
+                      borderRadius="full"
+                    >
+                      {getSubscriptionSummary()?.daysRemaining} days left
+                    </Badge>
+                  </HStack>
+                </>
+              ) : (
+                <Text fontSize="sm" color={mutedText}>No active subscription</Text>
+              )}
+            </VStack>
+          </CardBody>
+        </Card>
+
+        {/* Listing Quota */}
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor}>
+          <CardBody>
+            <VStack align="start" spacing={2}>
+              <HStack spacing={2}>
+                <Icon as={FaBoxes} color={currentTier === 'pro' ? 'purple.500' : 'blue.500'} fontSize="lg" />
+                <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color={mutedText}>Listings Used</Text>
+              </HStack>
+              <Text fontSize="xl" fontWeight="bold">
+                {getListingQuota().used} / {getListingQuota().limit === Infinity ? '∞' : getListingQuota().limit}
+              </Text>
+              {getListingQuota().limit !== Infinity && (
+                <Box w="full">
+                  <Box
+                    h="2px"
+                    bg={borderColor}
+                    borderRadius="full"
+                    overflow="hidden"
+                  >
+                    <Box
+                      h="100%"
+                      bg={getListingQuota().percentage > 90 ? 'red.400' : currentTier === 'pro' ? 'purple.400' : 'blue.400'}
+                      w={`${getListingQuota().percentage}%`}
+                      transition="all 0.3s"
+                    />
+                  </Box>
+                  <Text fontSize="xs" color={mutedText} mt={1}>
+                    {getListingQuota().remaining} remaining
+                  </Text>
+                </Box>
+              )}
+            </VStack>
+          </CardBody>
+        </Card>
+
+        {/* Current Plan */}
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor}>
+          <CardBody>
+            <VStack align="start" spacing={2}>
+              <HStack spacing={2}>
+                <Icon as={FaCrown} color={currentTier === 'pro' ? 'purple.500' : 'blue.500'} fontSize="lg" />
+                <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color={mutedText}>Current Plan</Text>
+              </HStack>
+              <Badge
+                colorScheme={currentTier === 'pro' ? 'purple' : 'blue'}
+                variant="solid"
+                fontSize="md"
+                px={3}
+                py={1}
+                borderRadius="md"
+              >
+                {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)}
+              </Badge>
+              <Button
+                size="xs"
+                variant="ghost"
+                colorScheme={currentTier === 'pro' ? 'purple' : 'blue'}
+                fontSize="xs"
+                onClick={() => handleUpgrade(currentTier === 'plus' ? 'pro' : 'plus')}
+              >
+                {currentTier === 'pro' ? 'View Details' : 'Upgrade →'}
+              </Button>
+            </VStack>
+          </CardBody>
+        </Card>
+      </SimpleGrid>
+
+      {/* Your Products - Boost Section */}
+      {isPremiumUser && (
+        <VStack align="start" spacing={4}>
+          <Heading size="md">Your Products</Heading>
+          {productsLoading ? (
+            <Center w="100%" py={8}>
+              <Spinner size="lg" color="brand.500" />
+            </Center>
+          ) : userProducts.length === 0 ? (
+            <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} w="100%">
+              <CardBody>
+                <HStack spacing={3} justify="center" py={8}>
+                  <Icon as={FaBoxes} fontSize="2xl" color="gray.400" />
+                  <VStack align="start" spacing={0}>
+                    <Text fontWeight="semibold" color="gray.600">No products yet</Text>
+                    <Text fontSize="sm" color={mutedText}>Create your first product to start boosting</Text>
+                  </VStack>
+                </HStack>
+              </CardBody>
+            </Card>
+          ) : (
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4} w="100%">
+              {userProducts.map((product) => (
+                <Card
+                  key={product.id}
+                  bg={cardBg}
+                  borderWidth="1px"
+                  borderColor={product.boosted_at ? 'brand.300' : borderColor}
+                  _hover={{ shadow: 'md', borderColor: 'brand.400' }}
+                  transition="all 0.2s"
+                  overflow="hidden"
+                >
+                  {/* Product Image Preview */}
+                  {product.image_urls?.[0] && (
+                    <Box
+                      h="150px"
+                      bg="gray.200"
+                      bgImage={`url(${product.image_urls[0]})`}
+                      bgSize="cover"
+                      bgPos="center"
+                      position="relative"
+                    >
+                      {product.boosted_at && (
+                        <Badge
+                          position="absolute"
+                          top={2}
+                          right={2}
+                          colorScheme="brand"
+                          variant="solid"
+                          borderRadius="full"
+                          px={2}
+                          py={1}
+                          fontSize="xs"
+                          display="flex"
+                          alignItems="center"
+                          gap={1}
+                        >
+                          <Icon as={FaRocket} fontSize="xs" />
+                          Boosted
+                        </Badge>
+                      )}
+                    </Box>
+                  )}
+                  <CardBody>
+                    <VStack align="start" spacing={3}>
+                      <Box>
+                        <Text fontSize="sm" fontWeight="bold" noOfLines={2}>{product.title}</Text>
+                        <Text fontSize="xs" color={mutedText} mt={1}>
+                          Status: <Badge fontSize="xs" colorScheme={product.status === 'available' ? 'green' : 'gray'}>{product.status}</Badge>
+                        </Text>
+                      </Box>
+                      
+                      {/* Boost Button */}
+                      {currentTier !== 'free' && (
+                        <Button
+                          size="sm"
+                          colorScheme={product.boosted_at ? 'brand' : 'gray'}
+                          variant={product.boosted_at ? 'solid' : 'outline'}
+                          w="full"
+                          leftIcon={<FaRocket />}
+                          isLoading={boostingProduct === product.id}
+                          isDisabled={product.status !== 'available' || boostingProduct === product.id}
+                          onClick={() => handleBoostProduct(product.id)}
+                        >
+                          {product.boosted_at ? 'Boosted' : 'Boost'}
+                        </Button>
+                      )}
+                      {currentTier === 'free' && (
+                        <Button
+                          size="sm"
+                          colorScheme="gray"
+                          variant="outline"
+                          w="full"
+                          leftIcon={<FaRocket />}
+                          isDisabled
+                          opacity={0.5}
+                        >
+                          Upgrade to Boost
+                        </Button>
+                      )}
+                    </VStack>
+                  </CardBody>
+                </Card>
+              ))}
+            </SimpleGrid>
+          )}
+        </VStack>
+      )}
 
       {/* Your Unlocked Features - 4 Column Grid */}
       <VStack align="start" spacing={4}>
