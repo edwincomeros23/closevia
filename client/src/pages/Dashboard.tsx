@@ -5089,7 +5089,9 @@ const Dashboard: React.FC = () => {
                                               
                                               <Box w="full" textAlign="center" py={2}>
                                                 <Text fontSize="xs" color="gray.600">
-                                                  {summary.yourGive} → {summary.yourGet}
+                                                  {trade.participants?.length >= 3
+                                                    ? trade.participants.map((p: any) => p.product_title).join(' → ')
+                                                    : `${summary.yourGive} → ${summary.yourGet}`}
                                                 </Text>
                                               </Box>
                                               
