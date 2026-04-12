@@ -79,6 +79,7 @@ import TradeModal from '../components/TradeModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 import MultiWayTradeUI from '../components/MultiWayTradeUI'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
+import DisputeReportModal from '../components/DisputeReportModal'
 import { fetchMultiWayTrade, fetchLoopQuota, fetchDiscoverableMultiwayLoops, hopIntoMultiwayChain } from '../services/tradeService'
 import {
   useDashboardProducts,
@@ -192,6 +193,8 @@ const Dashboard: React.FC = () => {
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [viewTradeModalOpen, setViewTradeModalOpen] = useState(false)
+  const [disputeReportModalOpen, setDisputeReportModalOpen] = useState(false)
+  const [tradeToDispute, setTradeToDispute] = useState<Trade | null>(null)
   const [completionModalOpen, setCompletionModalOpen] = useState(false)
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
   const [tradeToCancel, setTradeToCancel] = useState<Trade | null>(null)
@@ -5016,7 +5019,9 @@ const Dashboard: React.FC = () => {
                                               
                                               <Box w="full" textAlign="center" py={2}>
                                                 <Text fontSize="xs" color="gray.600">
-                                                  {summary.yourGive} → {summary.yourGet}
+                                                  {trade.participants?.length >= 3
+                                                    ? trade.participants.map((p: any) => p.product_title).join(' → ')
+                                                    : `${summary.yourGive} → ${summary.yourGet}`}
                                                 </Text>
                                               </Box>
                                               
@@ -5430,6 +5435,13 @@ const Dashboard: React.FC = () => {
             onClose={() => setViewTradeModalOpen(false)}
             onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
             onTradeUpdate={setSelectedTrade}
+          />
+
+          <DisputeReportModal
+            isOpen={disputeReportModalOpen}
+            onClose={() => setDisputeReportModalOpen(false)}
+            tradeId={tradeToDispute?.id || null}
+            otherPartyName={tradeToDispute ? (tradeToDispute.buyer_id === user?.id ? tradeToDispute.seller_name : tradeToDispute.buyer_name) : 'the other party'}
           />
 
           {/* Multi-way Loop Manager (Pro) */}
