@@ -121,7 +121,7 @@ const AdvertisementCarousel = () => {
   if (loading) {
     return (
       <Box w="full" maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx={{ base: 'auto', lg: 0 }} ml={{ base: 0, md: -2, lg: -6, xl: -8 }} mb={8} px={{ base: 3, md: 6, lg: 8, xl: 10 }}>
-        <Skeleton w="full" h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }} rounded="lg" />
+        <Skeleton w="full" h={{ base: 72, sm: 88, md: 64, lg: 120, xl: 128, '2xl': 144 }} rounded="lg" />
       </Box>
     )
   }
@@ -131,7 +131,7 @@ const AdvertisementCarousel = () => {
     const staticAds = ['/1.jpg', '/2.jpg', '/3.jpg']
     return (
       <Box w="full" maxW={{ lg: '1600px', xl: '1620px', '2xl': '1920px' }} mx={{ base: 'auto', lg: 0 }} ml={{ base: 0, md: -2, lg: -6, xl: -8 }} mb={8} px={{ base: 3, md: 6, lg: 8, xl: 10 }}>
-        <Box position="relative" overflow="hidden" w="full" h={{ base: 24, sm: 28, md: 32, lg: 40, xl: 44, '2xl': 48 }} rounded="lg" bg="gray.100">
+        <Box position="relative" overflow="hidden" w="full" h={{ base: 72, sm: 88, md: 64, lg: 120, xl: 128, '2xl': 144 }} rounded="lg" bg="gray.100">
           <Image src={staticAds[0]} w="full" h="full" objectFit="cover" />
         </Box>
       </Box>
@@ -151,7 +151,7 @@ const AdvertisementCarousel = () => {
         position="relative"
         overflow="hidden"
         w="full"
-        h={{ base: 32, sm: 40, md: 48, lg: 56, xl: 64, '2xl': 72 }}
+        h={{ base: 72, sm: 88, md: 64, lg: 144, xl: 160, '2xl': 176 }}
         rounded="xl"
         bg="black"
         boxShadow="lg"
@@ -179,7 +179,7 @@ const AdvertisementCarousel = () => {
             )}
 
             {/* Gradient Overlay for Text Readability */}
-            <Box position="absolute" top={0} left={0} w="full" h="full" bgGradient="linear(to-r, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)" />
+            <Box position="absolute" top={0} left={0} w="full" h="full" bgGradient="linear(to-r, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.1) 80%, transparent 100%)" />
 
             {/* Content Layer */}
             <Flex
@@ -195,22 +195,22 @@ const AdvertisementCarousel = () => {
               color="white"
             >
               {ad.title && (
-                <Text fontSize={{ base: 'xl', md: '3xl', lg: '4xl' }} fontWeight="extrabold" mb={2} textShadow="0 2px 10px rgba(0,0,0,0.5)" noOfLines={2} maxW="60%">
+                <Text fontSize={{ base: 'lg', md: 'xl', lg: '2xl' }} fontWeight="bold" mb={2} textShadow="0 4px 12px rgba(0,0,0,0.8)" noOfLines={2} maxW="65%" letterSpacing="tight">
                   {ad.title}
                 </Text>
               )}
               {ad.description && (
-                <Text fontSize={{ base: 'sm', md: 'md', lg: 'lg' }} fontWeight="medium" mb={4} opacity={0.9} maxW="50%" display={{ base: 'none', sm: 'block' }} noOfLines={2}>
+                <Text fontSize={{ base: 'xs', md: 'sm', lg: 'md' }} fontWeight="500" mb={4} opacity={0.95} maxW="55%" display={{ base: 'none', sm: 'block' }} noOfLines={2} textShadow="0 2px 8px rgba(0,0,0,0.6)">
                   {ad.description}
                 </Text>
               )}
               {ad.cta_text && ad.link_url && (
-                <Button colorScheme="brand" size={{ base: 'sm', md: 'md' }} onClick={() => handleCtaClick(ad)} mt={2} _hover={{ transform: 'translateY(-2px)', shadow: 'md' }}>
+                <Button colorScheme="brand" size={{ base: 'xs', md: 'sm' }} onClick={() => handleCtaClick(ad)} mt={3} fontWeight="600" _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }} transition="all 0.2s">
                   {ad.cta_text}
                 </Button>
               )}
               {!ad.cta_text && ad.link_url && (
-                <Button colorScheme="whiteAlpha" backdropFilter="blur(5px)" variant="solid" size={{ base: 'sm', md: 'md' }} onClick={() => handleCtaClick(ad)} mt={2} _hover={{ transform: 'translateY(-2px)', shadow: 'md' }}>
+                <Button colorScheme="whiteAlpha" backdropFilter="blur(8px)" variant="solid" size={{ base: 'xs', md: 'sm' }} onClick={() => handleCtaClick(ad)} mt={3} fontWeight="600" bg="rgba(255,255,255,0.2)" _hover={{ bg: 'rgba(255,255,255,0.3)', transform: 'translateY(-2px)', shadow: 'lg' }} transition="all 0.2s">
                   Learn More
                 </Button>
               )}
@@ -226,15 +226,18 @@ const AdvertisementCarousel = () => {
               aria-label="Previous slide"
               icon={<ArrowLeftIcon />}
               position="absolute"
-              left={{ base: 2, md: 4 }}
+              left={{ base: 3, md: 6 }}
               top="50%"
               transform="translateY(-50%)"
               zIndex={10}
-              size={{ base: 'sm', md: 'md' }}
-              colorScheme="blackAlpha"
-              variant="solid"
-              backdropFilter="blur(5px)"
+              size={{ base: 'md', md: 'lg' }}
+              colorScheme="whiteAlpha"
+              variant="ghost"
+              backdropFilter="blur(8px)"
               display={{ base: 'none', sm: 'flex' }}
+              _hover={{ transform: 'translateY(-50%) scale(1.15)' }}
+              transition="all 0.2s"
+              cursor="pointer"
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -246,15 +249,18 @@ const AdvertisementCarousel = () => {
               aria-label="Next slide"
               icon={<ArrowRightIcon />}
               position="absolute"
-              right={{ base: 2, md: 4 }}
+              right={{ base: 3, md: 6 }}
               top="50%"
               transform="translateY(-50%)"
               zIndex={10}
-              size={{ base: 'sm', md: 'md' }}
-              colorScheme="blackAlpha"
-              variant="solid"
-              backdropFilter="blur(5px)"
+              size={{ base: 'md', md: 'lg' }}
+              colorScheme="whiteAlpha"
+              variant="ghost"
+              backdropFilter="blur(8px)"
               display={{ base: 'none', sm: 'flex' }}
+              _hover={{ transform: 'translateY(-50%) scale(1.15)' }}
+              transition="all 0.2s"
+              cursor="pointer"
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -268,9 +274,9 @@ const AdvertisementCarousel = () => {
                 <Box
                   key={i}
                   as="button"
-                  w={i === slideIndex ? { base: 6, md: 10 } : { base: 2, md: 3 }}
-                  h={i === slideIndex ? { base: 1.5, md: 2 } : { base: 2, md: 3 }}
-                  bg={i === slideIndex ? 'brand.400' : 'whiteAlpha.600'}
+                  w={i === slideIndex ? { base: 8, md: 12 } : { base: 2.5, md: 3 }}
+                  h={i === slideIndex ? { base: 2, md: 2.5 } : { base: 2, md: 2.5 }}
+                  bg={i === slideIndex ? 'brand.400' : 'whiteAlpha.500'}
                   borderRadius="full"
                   transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                   onClick={(e: React.MouseEvent) => {
@@ -278,7 +284,8 @@ const AdvertisementCarousel = () => {
                     setSlideIndex(i)
                     scheduleResume()
                   }}
-                  _hover={{ bg: 'white' }}
+                  _hover={{ bg: i === slideIndex ? 'brand.500' : 'whiteAlpha.700' }}
+                  boxShadow="0 2px 8px rgba(0,0,0,0.3)"
                 />
               ))}
             </HStack>

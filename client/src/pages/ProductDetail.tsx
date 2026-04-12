@@ -1724,15 +1724,6 @@ const ProductDetail: React.FC = () => {
                     Avg Response
                   </Text>
                 </VStack>
-                <VStack spacing={1} align="center">
-                  <TrustScoreCard
-                    score={sellerStats?.trust_score ?? 0}
-                    trustLevel={sellerStats?.trust_level}
-                    factors={sellerStats?.trust_factors}
-                    conductSummary={sellerStats?.conduct_summary}
-                    compact
-                  />
-                </VStack>
               </SimpleGrid>
             </Flex>
 

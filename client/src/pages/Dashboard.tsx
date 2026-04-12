@@ -37,7 +37,6 @@ import {
   ModalCloseButton,
   Icon,
   Stack,
-  Select,
   Textarea,
   Link,
   Input,
@@ -57,7 +56,7 @@ import {
   Checkbox,
   Skeleton,
 } from '@chakra-ui/react'
-import { AddIcon, EditIcon, DeleteIcon, BellIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon, SearchIcon, ViewIcon, StarIcon } from '@chakra-ui/icons'
+import { AddIcon, EditIcon, DeleteIcon, SettingsIcon, WarningIcon, ChevronLeftIcon, ChevronRightIcon, CheckIcon, CloseIcon, SearchIcon, ViewIcon, StarIcon } from '@chakra-ui/icons'
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { useRealtime } from '../contexts/RealtimeContext'
@@ -65,7 +64,7 @@ import { Product, Order, Trade, TradeAction, TradeItem } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
 import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
-import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiFilter, FiArrowDown, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders } from 'react-icons/fi'
+import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
@@ -188,6 +187,7 @@ const Dashboard: React.FC = () => {
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
   const [offersSubTab, setOffersSubTab] = useState(2) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing, 4: Archive
+  const [multiWaySubTab, setMultiWaySubTab] = useState(1) // 0: Chat, 1: Multi-Way
   const [offersPage, setOffersPage] = useState(1)
   const [offersSearch, setOffersSearch] = useState('')
   const [offersStatusFilter, setOffersStatusFilter] = useState<string>('all')
@@ -804,17 +804,22 @@ const Dashboard: React.FC = () => {
       } else if (status === 'pending_user3' && !canJoin && !canDecline) {
         // User is initiator (u1/u2), waiting for User3 to respond
         waitingOnOthers.push(trade)
-      } else if (loopType === 'detected_loop' && (canJoin || canDecline)) {
-        // Graph-detected cycle: all participants in the trade chain can accept or decline
-        needsAction.push(trade)
       } else if (status === 'user3_accepted' || status === 'active') {
         // User has already accepted, now waiting on others
         waitingOnOthers.push(trade)
       } else if (status === 'pending_initiator_upgrade') {
         // Waiting for initiator to upgrade
         waitingOnOthers.push(trade)
-      } else if (loopType === 'auto_multiway' || loopType === 'product_match') {
-        // Suggestion loop or product-based match
+      } else if (
+        loopType === 'auto_multiway' ||
+        loopType === 'product_match' ||
+        loopType === 'detected_loop' ||
+        loopType === 'graph'
+      ) {
+        // Automatically discovered loop suggestions (graph-detected cycles,
+        // product-desire matches, or legacy auto_multiway entries from the
+        // cache warmer). These are all "opportunities" the user can review
+        // and optionally convert into a real multiway trade.
         autoSearchResults.push(trade)
       }
     }
@@ -2160,17 +2165,45 @@ const Dashboard: React.FC = () => {
           role="article"
           aria-label={`Product: ${product.title}`}
         >
-          <Box cursor="zoom-in" onClick={(e) => handleImageZoom(e, getFirstImage(product.image_urls), product.title)}>
+          <Box position="relative" w="full" h="120px" overflow="hidden" bg="gray.100" borderRadius="lg">
             <Image
               src={getFirstImage(product.image_urls)}
               alt={product.title}
               w="full"
-              h="120px"
-              borderRadius="lg"
+              h="full"
               objectFit="cover"
               loading="lazy"
               fallbackSrc="/no-image.svg"
+              cursor="pointer"
+              onClick={() => navigate(`/products/${product.id}`)}
             />
+            {/* Boost button overlay - top right */}
+            {isStagnant && isBoostable && shouldShowActions && (
+              <Tooltip label="Boost this listing" placement="left" hasArrow>
+                <Button
+                  position="absolute"
+                  top={2}
+                  right={2}
+                  size="xs"
+                  colorScheme="blue"
+                  variant="solid"
+                  fontSize="10px"
+                  px={2}
+                  py={1}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleBoostProductClick(product)
+                  }}
+                  fontWeight="bold"
+                  boxShadow="md"
+                  _hover={{ transform: 'scale(1.05)', boxShadow: 'lg' }}
+                  transition="all 0.2s"
+                  zIndex={2}
+                >
+                  Boost
+                </Button>
+              </Tooltip>
+            )}
           </Box>
           <CardHeader pb={2}>
             <Flex justify="space-between" align="start">
@@ -2261,16 +2294,7 @@ const Dashboard: React.FC = () => {
                   <Text>{offersCount} offers</Text>
                 </HStack>
               </HStack>
-              {isStagnant && isBoostable && shouldShowActions && (
-                <Flex bg="blue.50" color="blue.700" p={2} borderRadius="md" mt={2} align="center" justify="space-between" cursor="pointer" onClick={(e) => { e.stopPropagation(); handleBoostProductClick(product); }} _hover={{ bg: 'blue.100' }}>
-                  <HStack spacing={1}>
-                    <Icon as={FaArrowUp} boxSize={3} />
-                    <Text fontSize="xs" fontWeight="bold">Low activity</Text>
-                  </HStack>
-                  <Button size="xs" colorScheme="blue" variant="solid" onClick={(e) => { e.stopPropagation(); handleBoostProductClick(product); }}>Boost listing</Button>
-                </Flex>
-              )}
-            </VStack>
+              </VStack>
           </CardBody>
           {shouldShowActions && (
             <CardFooter pt={0}>
@@ -2751,6 +2775,7 @@ const Dashboard: React.FC = () => {
 
     const statusBadge = getOngoingStatusBadge()
     const timeAgo = getTimeAgo(trade.updated_at || trade.created_at)
+    const borderColor = trade.trade_option === 'delivery' ? 'blue.400' : 'orange.400'
 
     return (
       <Card
@@ -2766,7 +2791,7 @@ const Dashboard: React.FC = () => {
           }}
           transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
           borderLeftWidth="4px"
-          borderLeftColor="green.400"
+          borderLeftColor={borderColor}
           role="article"
         >
           <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
@@ -3505,398 +3530,67 @@ const Dashboard: React.FC = () => {
              </HStack>
              */}
 
-                {/* Filter/Sort Controls - Desktop */}
+                {/* View Type Toggle - Desktop */}
                 <HStack
                   spacing={{ base: 2, md: 1 }}
                   flexShrink={0}
                   display={{ base: 'none', md: 'flex' }}
-                  sx={{
-                    '& .chakra-icon-button': {
-                      minW: { base: '36px', md: '32px' },
-                      h: { base: '36px', md: '32px' },
-                      fontSize: { base: '22px', md: '16px' },
-                      bg: { base: 'teal.50', md: 'transparent' },
-                      borderWidth: { base: '1px', md: '0px' },
-                      borderColor: { base: 'teal.200', md: 'transparent' },
-                      color: { base: 'teal.700', md: 'inherit' },
-                      _hover: { bg: { base: 'teal.100', md: 'transparent' } },
-                    },
-                  }}
                 >
                   {activeTab === 0 && (
-                    <>
-                      <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <Button
-                          size="sm"
-                          variant={productViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          leftIcon={<Icon as={productViewMode === 'grid' ? FiList : FiGrid} />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        >
-                          View
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <IconButton
-                          aria-label={productViewMode === 'grid' ? 'List view' : 'Grid view'}
-                          icon={<Icon as={productViewMode === 'grid' ? FiList : FiGrid} />}
-                          size="sm"
-                          variant={productViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        />
-                      </Tooltip>
-
-                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`} hasArrow>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          leftIcon={<FiFilter />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          isDisabled={!hasListedProducts}
-                          onClick={() => {
-                            const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
-                            const currentIndex = filters.indexOf(productFilter)
-                            setProductFilter(filters[(currentIndex + 1) % filters.length])
-                            setCurrentPage(1)
-                          }}
-                        >
-                          Filter
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={`Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`} hasArrow>
-                        <IconButton
-                          aria-label="Filter products"
-                          icon={<FiFilter />}
-                          size="sm"
-                          variant="ghost"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          isDisabled={!hasListedProducts}
-                          onClick={() => {
-                            const filters: Array<'all' | 'available' | 'locked'> = ['all', 'available', 'locked']
-                            const currentIndex = filters.indexOf(productFilter)
-                            setProductFilter(filters[(currentIndex + 1) % filters.length])
-                            setCurrentPage(1)
-                          }}
-                        />
-                      </Tooltip>
-
-                      <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          leftIcon={<FiArrowDown />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => {
-                            setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
-                            setCurrentPage(1)
-                          }}
-                        >
-                          Sort
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={`Sort: ${productSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <IconButton
-                          aria-label="Sort products"
-                          icon={<FiArrowDown />}
-                          size="sm"
-                          variant="ghost"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => {
-                            setProductSort(productSort === 'newest' ? 'oldest' : 'newest')
-                            setCurrentPage(1)
-                          }}
-                        />
-                      </Tooltip>
-                    </>
+                    <Tooltip label={productViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                      <Button
+                        size="sm"
+                        variant={productViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        leftIcon={<Icon as={productViewMode === 'grid' ? FiList : FiGrid} />}
+                        onClick={() => setProductViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                      >
+                        View
+                      </Button>
+                    </Tooltip>
                   )}
 
                   {activeTab === 1 && (
-                    <>
-                      <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <Button
-                          size="sm"
-                          variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          leftIcon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        >
-                          View
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <IconButton
-                          aria-label={offersViewMode === 'grid' ? 'List view' : 'Grid view'}
-                          icon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
-                          size="sm"
-                          variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        />
-                      </Tooltip>
-
-                      <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          colorScheme="orange"
-                          leftIcon={<FiFilter />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => {
-                            const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
-                            const currentIndex = statuses.indexOf(offersStatusFilter)
-                            setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
-                            setOffersPage(1)
-                          }}
-                        >
-                          Filter
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={`Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`} hasArrow>
-                        <IconButton
-                          aria-label="Filter offers"
-                          icon={<FiFilter />}
-                          size="sm"
-                          variant="outline"
-                          colorScheme="orange"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => {
-                            const statuses = ['all', 'pending', 'accepted', 'active', 'countered']
-                            const currentIndex = statuses.indexOf(offersStatusFilter)
-                            setOffersStatusFilter(statuses[(currentIndex + 1) % statuses.length])
-                            setOffersPage(1)
-                          }}
-                        />
-                      </Tooltip>
-
-                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          leftIcon={<FiArrowDown />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => {
-                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
-                          }}
-                        >
-                          Sort
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <IconButton
-                          aria-label="Sort offers"
-                          icon={<FiArrowDown />}
-                          size="sm"
-                          variant="ghost"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => {
-                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
-                          }}
-                        />
-                      </Tooltip>
-                    </>
+                    <Tooltip label={offersViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                      <Button
+                        size="sm"
+                        variant={offersViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        leftIcon={<Icon as={offersViewMode === 'grid' ? FiList : FiGrid} />}
+                        onClick={() => setOffersViewMode(m => m === 'grid' ? 'list' : 'grid')}
+                      >
+                        View
+                      </Button>
+                    </Tooltip>
                   )}
 
                   {activeTab === 2 && (
-                    <>
-                      <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <Button
-                          size="sm"
-                          variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          leftIcon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        >
-                          View
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <IconButton
-                          aria-label={multiWayTradesViewMode === 'grid' ? 'List view' : 'Grid view'}
-                          icon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
-                          size="sm"
-                          variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        />
-                      </Tooltip>
-                      <Tooltip
-                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : '3-way chains'}`}
-                        hasArrow
+                    <Tooltip label={multiWayTradesViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                      <Button
+                        size="sm"
+                        variant={multiWayTradesViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        leftIcon={<Icon as={multiWayTradesViewMode === 'grid' ? FiList : FiGrid} />}
+                        onClick={() => setMultiWayTradesViewMode(m => m === 'grid' ? 'list' : 'grid')}
                       >
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          colorScheme="purple"
-                          leftIcon={<FiFilter />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => {
-                            setMultiWayChainFilter(multiWayChainFilter === 'all' ? '3' : 'all')
-                          }}
-                        >
-                          Filter
-                        </Button>
-                      </Tooltip>
-                      <Tooltip
-                        label={`Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : '3-way chains'}`}
-                        hasArrow
-                      >
-                        <IconButton
-                          aria-label="Filter multi-way trades"
-                          icon={<FiFilter />}
-                          size="sm"
-                          variant="outline"
-                          colorScheme="purple"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => {
-                            setMultiWayChainFilter(multiWayChainFilter === 'all' ? '3' : 'all')
-                          }}
-                        />
-                      </Tooltip>
-                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          leftIcon={<FiArrowDown />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => {
-                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
-                          }}
-                        >
-                          Sort
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={`Sort: ${offersSort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <IconButton
-                          aria-label="Sort multi-way trades"
-                          icon={<FiArrowDown />}
-                          size="sm"
-                          variant="ghost"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => {
-                            setOffersSort(offersSort === 'newest' ? 'oldest' : 'newest')
-                          }}
-                        />
-                      </Tooltip>
-                    </>
+                        View
+                      </Button>
+                    </Tooltip>
                   )}
 
                   {activeTab === 3 && (
-                    <>
-                      <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <Button
-                          size="sm"
-                          variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          leftIcon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        >
-                          View
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
-                        <IconButton
-                          aria-label={tradeHistoryViewMode === 'grid' ? 'List view' : 'Grid view'}
-                          icon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
-                          size="sm"
-                          variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
-                          colorScheme="brand"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
-                        />
-                      </Tooltip>
-                      <Tooltip label="History filters coming soon" hasArrow>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          colorScheme="gray"
-                          leftIcon={<FiFilter />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          isDisabled
-                        >
-                          Filter
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label="History filters coming soon" hasArrow>
-                        <IconButton
-                          aria-label="Filter trade history"
-                          icon={<FiFilter />}
-                          size="sm"
-                          variant="outline"
-                          colorScheme="gray"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          isDisabled
-                        />
-                      </Tooltip>
-                      <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          leftIcon={<FiArrowDown />}
-                          display={{ base: 'none', md: 'inline-flex' }}
-                          onClick={() => {
-                            setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
-                            setTradeHistoryPage(1)
-                          }}
-                        >
-                          Sort
-                        </Button>
-                      </Tooltip>
-                      <Tooltip label={`Sort: ${tradeHistorySort === 'newest' ? 'Newest First' : 'Oldest First'}`} hasArrow>
-                        <IconButton
-                          aria-label="Sort trade history"
-                          icon={<FiArrowDown />}
-                          size="sm"
-                          variant="ghost"
-                          display={{ base: 'inline-flex', md: 'none' }}
-                          onClick={() => {
-                            setTradeHistorySort(tradeHistorySort === 'newest' ? 'oldest' : 'newest')
-                            setTradeHistoryPage(1)
-                          }}
-                        />
-                      </Tooltip>
-                    </>
-                  )}
-                </HStack>
-
-                {/* Notifications - Desktop */}
-                <HStack spacing={2} flexShrink={0} display={{ base: 'none', md: 'flex' }}>
-                  <Box position="relative">
-                    <IconButton
-                      aria-label="Notifications"
-                      icon={<BellIcon />}
-                      size="sm"
-                      variant="outline"
-                      colorScheme={unreadNotifications > 0 ? 'orange' : 'gray'}
-                      onClick={() => navigate('/notifications')}
-                    />
-                    {unreadNotifications > 0 && (
-                      <Badge
-                        position="absolute"
-                        top="-6px"
-                        right="-6px"
-                        bg="red.500"
-                        color="white"
-                        borderRadius="full"
-                        fontSize="2xs"
-                        minW="16px"
-                        h="16px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        fontWeight="bold"
+                    <Tooltip label={tradeHistoryViewMode === 'grid' ? 'Switch to List View' : 'Switch to Grid View'} hasArrow>
+                      <Button
+                        size="sm"
+                        variant={tradeHistoryViewMode === 'list' ? 'solid' : 'ghost'}
+                        colorScheme="brand"
+                        leftIcon={<Icon as={tradeHistoryViewMode === 'grid' ? FiList : FiGrid} />}
+                        onClick={() => setTradeHistoryViewMode(m => m === 'grid' ? 'list' : 'grid')}
                       >
-                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                      </Badge>
-                    )}
-                  </Box>
+                        View
+                      </Button>
+                    </Tooltip>
+                  )}
                 </HStack>
 
                 {/* Mobile controls: Search stays left; Controls + Bell + Avatar on the right */}
@@ -3917,61 +3611,9 @@ const Dashboard: React.FC = () => {
                       <MenuItem icon={<Icon as={activeViewMode === 'grid' ? FiGrid : FiList} />} onClick={handleMobileToggleView}>
                         {activeViewMode === 'grid' ? 'Grid view' : 'List view'} <Text as="span" ml={2}>?</Text>
                       </MenuItem>
-                      <MenuItem
-                        icon={<Icon as={FiFilter} />}
-                        onClick={handleMobileCycleFilter}
-                        isDisabled={activeTab === 3 || (activeTab === 0 && !hasListedProducts)}
-                      >
-                        {activeTab === 0
-                          ? `Filter: ${productFilter === 'all' ? 'All Active' : productFilter}`
-                          : activeTab === 1
-                            ? `Filter: ${offersStatusFilter === 'all' ? 'All Status' : offersStatusFilter}`
-                            : activeTab === 2
-                              ? `Filter: ${multiWayChainFilter === 'all' ? 'All Chains' : '3-way chains'}`
-                              : 'Filter: Coming soon'}
-                      </MenuItem>
-                      <MenuDivider />
-                      <MenuItem icon={<Icon as={FiArrowDown} />} onClick={() => handleMobileSetSort('newest')}>
-                        Newest {activeSortMode === 'newest' ? '?' : ''}
-                      </MenuItem>
-                      <MenuItem icon={<Icon as={FiArrowDown} />} onClick={() => handleMobileSetSort('oldest')}>
-                        Latest {activeSortMode === 'oldest' ? '?' : ''}
-                      </MenuItem>
                     </MenuList>
                   </Menu>
 
-                  <Box position="relative">
-                    <IconButton
-                      aria-label="Notifications"
-                      icon={<BellIcon />}
-                      size="sm"
-                      variant="outline"
-                      color="#3D9E8C"
-                      borderColor="#3D9E8C"
-                      _hover={{ bg: 'teal.50' }}
-                      _active={{ bg: 'teal.100' }}
-                      onClick={() => navigate('/notifications')}
-                    />
-                    {unreadNotifications > 0 && (
-                      <Badge
-                        position="absolute"
-                        top="-2px"
-                        right="-2px"
-                        bg="red.500"
-                        color="white"
-                        borderRadius="full"
-                        fontSize="xs"
-                        minW="18px"
-                        h="18px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        fontWeight="bold"
-                      >
-                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                      </Badge>
-                    )}
-                  </Box>
                   <Box
                     border="2px solid"
                     borderColor="#3D9E8C"
@@ -4123,39 +3765,6 @@ const Dashboard: React.FC = () => {
                 {/* Products Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
-                    {/* Filters and Actions (Search moved to top bar) */}
-                    <HStack spacing={3} flexWrap="wrap" justify="space-between">
-                      <HStack spacing={2} flexWrap="wrap">
-                        {unifiedSearch && (
-                          <Badge colorScheme="blue" variant="subtle" fontSize="sm" px={2} py={1}>
-                            Searching: "{unifiedSearch}"
-                          </Badge>
-                        )}
-                        {hasListedProducts && (
-                          <>
-                            {/* Category Filter Dropdown */}
-                            <Select
-                              size="sm"
-                              value={productCategoryFilter}
-                              onChange={e => { setProductCategoryFilter(e.target.value); setCurrentPage(1) }}
-                              maxW="160px"
-                              borderRadius="md"
-                              fontSize="sm"
-                            >
-                              <option value="all">All Categories</option>
-                              {PRODUCT_CATEGORIES.map(cat => (
-                                <option key={cat.value} value={cat.value}>{cat.label}</option>
-                              ))}
-                            </Select>
-                            {productCategoryFilter !== 'all' && (
-                              <Badge colorScheme="green" variant="subtle" fontSize="sm" px={2} py={1} cursor="pointer" onClick={() => setProductCategoryFilter('all')}>
-                                Category: {productCategoryFilter} ?
-                              </Badge>
-                            )}
-                          </>
-                        )}
-                      </HStack>
-                    </HStack>
 
                     {/* Products Grid or List - Apply Sort */}
                     {productsLoading && !hasInitiallyLoaded.current ? (
@@ -4919,6 +4528,147 @@ const Dashboard: React.FC = () => {
                                     />
                                   )
                                 })}
+                                {/* Multi-Way Loop Trades in same grid */}
+                                {ongoingMultiWayTrades.map((trade: any) => {
+                                  const participants = Array.isArray(trade?.participants) ? trade.participants : []
+                                  if (participants.length < 2) return null
+                                  const summary = getMultiWayTradeSummary(trade)
+                                  
+                                  const currentUserID = Number(user?.id || 0)
+                                  const yourParticipantIndex = participants.findIndex((p: any) => Number(p?.id || p?.user_id) === currentUserID)
+                                  
+                                  const yourParticipant = yourParticipantIndex >= 0 ? participants[yourParticipantIndex] : null;
+                                  const nextParticipant = yourParticipantIndex >= 0 && participants.length > 0
+                                      ? participants[(yourParticipantIndex + 1) % participants.length]
+                                      : participants[0];
+
+                                  const desiredCategory = nextParticipant?.wanted_categories 
+                                      ? (Array.isArray(nextParticipant.wanted_categories) ? nextParticipant.wanted_categories.join(', ') : nextParticipant.wanted_categories)
+                                      : 'Any'
+                                  const desiredItems = nextParticipant?.desired_product || 'Open to offers'
+                                  const matchScore = trade.match_score || trade.score || 0
+                                  
+                                  const yourProductImage = yourParticipant?.product_image || yourParticipant?.product_image_url
+                                  const incomingProductImage = nextParticipant?.product_image || nextParticipant?.product_image_url
+                                  
+                                  return (
+                                    <Card
+                                      key={trade.id || trade.loop_id || trade.chain_id}
+                                      variant="outline"
+                                      h="100%"
+                                      display="flex"
+                                      flexDirection="column"
+                                      _hover={{
+                                        shadow: 'lg',
+                                        transform: 'translateY(-4px)',
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        borderColor: 'purple.400',
+                                      }}
+                                      transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                      borderLeftWidth="4px"
+                                      borderLeftColor="purple.400"
+                                      role="article"
+                                    >
+                                      <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
+                                        {/* Your Item */}
+                                        <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="0">
+                                          {yourProductImage ? (
+                                            <Image src={yourProductImage} alt="Your Item" objectFit="cover" w="100%" h="100%" fallback={
+                                              <Box w="100%" h="100%" bg="gray.200" />
+                                            } />
+                                          ) : (
+                                            <Box w="100%" h="100%" bg="gray.200" />
+                                          )}
+                                          <Badge position="absolute" top={1} left={1} colorScheme="blue" fontSize="2xs" px={1} py={0.5}>
+                                            Your Item
+                                          </Badge>
+                                        </Box>
+
+                                        {/* Their Items */}
+                                        <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="green.300" minW="0">
+                                          {incomingProductImage ? (
+                                            <Image src={incomingProductImage} alt="Their Item" objectFit="cover" w="100%" h="100%" fallback={
+                                              <Box w="100%" h="100%" bg="gray.200" />
+                                            }/>
+                                          ) : (
+                                            <Box w="100%" h="100%" bg="gray.200" />
+                                          )}
+                                          <Badge position="absolute" top={1} right={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
+                                            Multi-Way
+                                          </Badge>
+                                        </Box>
+                                      </Box>
+
+                                      <CardHeader pb={2} flex={1}>
+                                        <VStack spacing={2} align="stretch">
+                                          <Flex justify="space-between" align="start">
+                                            <HStack spacing={2}>
+                                              <Badge colorScheme="purple" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full">
+                                                Active Loop
+                                              </Badge>
+                                              <Badge colorScheme="purple" variant="solid" fontSize="xs" px={2} py={1} borderRadius="full">
+                                                Multi-Way
+                                              </Badge>
+                                            </HStack>
+                                            {matchScore > 0 && (
+                                              <Badge colorScheme="purple" fontSize="2xs">
+                                                {matchScore}% Match
+                                              </Badge>
+                                            )}
+                                          </Flex>
+
+                                          <HStack spacing={2} align="center" flexWrap="wrap" mt={2}>
+                                            <Heading size="sm" noOfLines={2} lineHeight="1.3">
+                                              {summary.yourGive}
+                                            </Heading>
+                                            <Text fontSize="xs" color="gray.500">→</Text>
+                                            <Heading size="sm" noOfLines={2} lineHeight="1.3">
+                                              {summary.yourGet}
+                                            </Heading>
+                                          </HStack>
+
+                                          <HStack spacing={1} mt={1}>
+                                            {nextParticipant && (
+                                              <>
+                                                <Avatar
+                                                  name={nextParticipant.user_name || 'User'}
+                                                  size="sm"
+                                                  bg="purple.500"
+                                                  color="white"
+                                                />
+                                                <Box flex={1} minW={0}>
+                                                  <Text fontSize="xs" fontWeight="medium" color="gray.800" noOfLines={1}>
+                                                    {nextParticipant.user_name || 'Unknown User'}
+                                                  </Text>
+                                                  <Text fontSize="2xs" color="gray.500">
+                                                    {desiredItems}
+                                                  </Text>
+                                                </Box>
+                                              </>
+                                            )}
+                                          </HStack>
+                                        </VStack>
+                                      </CardHeader>
+
+                                      <CardFooter pt={0} pb={3}>
+                                        <Button
+                                          size="sm"
+                                          colorScheme="brand"
+                                          w="full"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            handleViewMultiWayTradeDetails(trade)
+                                          }}
+                                          leftIcon={<Icon as={ViewIcon} />}
+                                          _hover={{ transform: 'scale(1.02)', shadow: 'md' }}
+                                          transition="all 0.2s"
+                                        >
+                                          View Trade
+                                        </Button>
+                                      </CardFooter>
+                                    </Card>
+                                  )
+                                })}
                               </SimpleGrid>
                               {totalPages > 1 && (
                                 <HStack justify="center" spacing={2} mt={4}>
@@ -4944,131 +4694,6 @@ const Dashboard: React.FC = () => {
                                 </HStack>
                               )}
                             </>
-                          )}
-
-                          {/* Accepted Multi-Way Trades in Ongoing */}
-                          {ongoingMultiWayTrades.length > 0 && (
-                            <Box mt={ongoingTrades.length > 0 ? 6 : 0}>
-                              <Heading size="sm" mb={3} color="gray.700">
-                                Multi-Way Loop Trades
-                              </Heading>
-                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                                {ongoingMultiWayTrades.map((trade: any) => {
-                                  const participants = Array.isArray(trade?.participants) ? trade.participants : []
-                                  if (participants.length < 2) return null
-                                  const summary = getMultiWayTradeSummary(trade)
-                                  
-                                  const currentUserID = Number(user?.id || 0)
-                                  const yourParticipantIndex = participants.findIndex((p: any) => Number(p?.id || p?.user_id) === currentUserID)
-                                  
-                                  const yourParticipant = yourParticipantIndex >= 0 ? participants[yourParticipantIndex] : null;
-                                  const nextParticipant = yourParticipantIndex >= 0 && participants.length > 0
-                                      ? participants[(yourParticipantIndex + 1) % participants.length]
-                                      : participants[0];
-
-                                  const desiredCategory = nextParticipant?.wanted_categories 
-                                      ? (Array.isArray(nextParticipant.wanted_categories) ? nextParticipant.wanted_categories.join(', ') : nextParticipant.wanted_categories)
-                                      : 'Any'
-                                  const desiredItems = nextParticipant?.desired_product || 'Open to offers'
-                                  const matchScore = trade.match_score || trade.score || 0
-                                  
-                                  const yourProductImage = yourParticipant?.product_image || yourParticipant?.product_image_url
-                                  const incomingProductImage = nextParticipant?.product_image || nextParticipant?.product_image_url
-                                  
-                                  return (
-                                    <Card
-                                        key={trade.id || trade.loop_id || trade.chain_id}
-                                        variant="outline"
-                                        h="100%"
-                                        display="flex"
-                                        flexDirection="column"
-                                        _hover={{
-                                          shadow: 'lg',
-                                          transform: 'translateY(-4px)',
-                                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                          borderColor: 'brand.400',
-                                        }}
-                                        transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                                        borderLeftWidth="4px"
-                                        borderLeftColor="green.400"
-                                        cursor="pointer"
-                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
-                                    >
-                                        <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
-                                          {/* Your Item */}
-                                          <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="blue.300" minW="0">
-                                            {yourProductImage ? (
-                                              <Image src={yourProductImage} alt="Your Give" objectFit="cover" w="100%" h="100%" fallback={
-                                                <Box w="100%" h="100%" bg="gray.200" />
-                                              } />
-                                            ) : (
-                                              <Box w="100%" h="100%" bg="gray.200" />
-                                            )}
-                                            <Badge position="absolute" top={1} left={1} colorScheme="blue" fontSize="2xs" px={1} py={0.5}>
-                                              Your Item
-                                            </Badge>
-                                          </Box>
-
-                                          {/* Their Items */}
-                                          <Box flex={1} position="relative" borderRadius="md" overflow="hidden" borderWidth="2px" borderColor="green.300" minW="0">
-                                            {incomingProductImage ? (
-                                              <Image src={incomingProductImage} alt="Your Get" objectFit="cover" w="100%" h="100%" fallback={
-                                                <Box w="100%" h="100%" bg="gray.200" />
-                                              }/>
-                                            ) : (
-                                              <Box w="100%" h="100%" bg="gray.200" />
-                                            )}
-                                            <Badge position="absolute" top={1} left={1} colorScheme="green" fontSize="2xs" px={1} py={0.5}>
-                                              Their Item
-                                            </Badge>
-                                          </Box>
-                                        </Box>
-                                        
-                                        <CardBody p={3} flex="1" display="flex" flexDirection="column">
-                                            <VStack align="stretch" spacing={2} flex="1">
-                                                <HStack justify="space-between">
-                                                    <Badge colorScheme="purple" variant="solid" fontSize="2xs">Multi-Way</Badge>
-                                                    <Badge colorScheme="green" variant="subtle" fontSize="2xs">Active Loop</Badge>
-                                                </HStack>
-                                                
-                                                <Text fontWeight="semibold" fontSize="sm" noOfLines={1}>
-                                                    {summary.yourGive} → {summary.yourGet}
-                                                </Text>
-                                                
-                                                <Text fontSize="xs" color="gray.500" noOfLines={1}>
-                                                    Chain: {summary.chainLabel}
-                                                </Text>
-                                                
-                                                <Box w="full" bg={useColorModeValue('purple.50', 'whiteAlpha.100')} p={2} borderRadius="md" fontSize="xs" mt="auto">
-                                                  <HStack justify="space-between">
-                                                      <Text fontWeight="semibold" color="purple.800" mb={1}>Partner wants:</Text>
-                                                      {matchScore > 0 && <Badge colorScheme="purple" fontSize="2xs">{matchScore}% Match</Badge>}
-                                                  </HStack>
-                                                  <Text noOfLines={1}><Text as="span" color="gray.500">Category:</Text> {desiredCategory}</Text>
-                                                  <Text noOfLines={1}><Text as="span" color="gray.500">Items:</Text> {desiredItems}</Text>
-                                                </Box>
-                                            </VStack>
-                                            
-                                            <Button
-                                              mt={3}
-                                              w="full"
-                                              size="sm"
-                                              variant="outline"
-                                              colorScheme="brand"
-                                              isLoading={multiWayManagerLoading}
-                                              onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleViewMultiWayTradeDetails(trade);
-                                              }}
-                                            >
-                                              View Details
-                                            </Button>
-                                        </CardBody>
-                                    </Card>
-                                  )
-                                })}
-                              </SimpleGrid>
-                            </Box>
                           )}
                         </TabPanel>
 
@@ -5127,20 +4752,93 @@ const Dashboard: React.FC = () => {
 
                 {/* Multi-Way Trades Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
-                  <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg" mb={4}>
-                    <VStack align="start" spacing={1}>
-                      <Text fontSize="xs" color="blue.800">
-                        Tip: Make sure your listings have desired items filled in to appear in multi-way matches.
-                      </Text>
-                      {!user?.is_premium && (
-                        <Text fontSize="xs" color="blue.900" fontWeight="semibold">
-                          You're viewing matches found for your listings. Initiating a multi-way search requires Premium.
-                        </Text>
-                      )}
-                    </VStack>
-                  </Box>
+                  <VStack spacing={6} align="stretch">
+                    {/* Sub-tabs for Multi-Way */}
+                    <Tabs
+                      index={multiWaySubTab}
+                      onChange={(index) => {
+                        setMultiWaySubTab(index)
+                      }}
+                      variant="soft-rounded"
+                      colorScheme="brand"
+                    >
+                      <TabList
+                        flexWrap="nowrap"
+                        overflowX={{ base: 'auto', md: 'visible' }}
+                        justifyContent={{ base: 'flex-start', md: 'flex-start' }}
+                        w="100%"
+                        sx={{
+                          '&::-webkit-scrollbar': { display: 'none' },
+                          scrollbarWidth: 'none',
+                          msOverflowStyle: 'none',
+                          gap: { base: '6px', md: '8px' },
+                          '& > button': {
+                            px: { base: '10px', md: '14px' },
+                            py: { base: '5px', md: '6px' },
+                            minW: 'fit-content',
+                            flex: 'none',
+                            fontSize: { base: 'xs', md: 'sm' },
+                          }
+                        }}
+                      >
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="blue.200"
+                          bg="blue.50"
+                          _selected={{ bg: 'blue.100', borderColor: 'blue.400', color: 'blue.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FiMessageCircle} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Chat</Box>
+                          </HStack>
+                        </Tab>
+                        <Tab
+                          fontSize={{ base: 'xs', md: 'sm' }}
+                          borderWidth="1px"
+                          borderColor="purple.200"
+                          bg="purple.50"
+                          _selected={{ bg: 'purple.100', borderColor: 'purple.400', color: 'purple.700' }}
+                        >
+                          <HStack spacing={1.5}>
+                            <Icon as={FaExchangeAlt} boxSize={3.5} />
+                            <Box display={{ base: 'none', md: 'inline' }}>Multi-Way</Box>
+                            <Box display={{ base: 'inline', md: 'none' }}>Trades</Box>
+                          </HStack>
+                        </Tab>
+                      </TabList>
 
-                  {!user?.is_premium && loopQuota && !loopQuota.unlimited && (
+                      <TabPanels>
+                        {/* Chat Sub-tab */}
+                        <TabPanel px={0}>
+                          <Box textAlign="center" py={12} bg="blue.50" borderRadius="lg" border="2px dashed" borderColor="blue.200">
+                            <Icon as={FiMessageCircle} boxSize={16} color="blue.300" mb={4} />
+                            <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                              Chat coming soon
+                            </Text>
+                            <Text color="gray.500" fontSize="sm">
+                              View and manage your multi-way trade conversations here
+                            </Text>
+                          </Box>
+                        </TabPanel>
+
+                        {/* Multi-Way Sub-tab */}
+                        <TabPanel px={0}>
+                          <VStack align="stretch" spacing={6}>
+                            <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
+                              <VStack align="start" spacing={1}>
+                                <Text fontSize="xs" color="blue.800">
+                                  Tip: Make sure your listings have desired items filled in to appear in multi-way matches.
+                                </Text>
+                                {!user?.is_premium && (
+                                  <Text fontSize="xs" color="blue.900" fontWeight="semibold">
+                                    You're viewing matches found for your listings. Initiating a multi-way search requires Premium.
+                                  </Text>
+                                )}
+                              </VStack>
+                            </Box>
+
+                            {!user?.is_premium && loopQuota && !loopQuota.unlimited && (
                     <VStack align="stretch" spacing={2} mb={4}>
                       <Box p={3} bg="purple.50" border="1px solid" borderColor="purple.200" borderRadius="lg">
                         <Text fontSize="sm" color="purple.800" fontWeight="bold">
@@ -5155,414 +4853,266 @@ const Dashboard: React.FC = () => {
                         </Box>
                       )}
                     </VStack>
-                  )}
-
-                  {!user?.is_premium && (multiWayTrades || []).some((t: any) => t?.loop_type === 'detected_loop' && t?.pro_nudge) && (
-                    <Box p={3} bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="lg" mb={4}>
-                      <Text fontSize="xs" color="yellow.800" fontWeight="bold">
-                        You're a great match to start a loop here � Pro members can initiate. Upgrade to unlock.
-                      </Text>
-                    </Box>
-                  )}
-
-                  {/* Open Loops You Can Hop Into */}
-                  {discoverableLoading ? (
-                    <Center py={6}>
-                      <Spinner size="md" color="teal.400" />
-                    </Center>
-                  ) : discoverableLoops.length > 0 && (
-                    <Box mb={6}>
-                      <Heading size="sm" mb={3} color="teal.600" display="flex" alignItems="center" gap={2}>
-                        <Icon as={FaExchangeAlt} /> Open Loops You Can Join
-                      </Heading>
-                      <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
-                        {discoverableLoops.map((loop: any) => (
-                          <Box
-                            key={`discoverable-${loop.chain_id}`}
-                            p={4}
-                            bg="teal.50"
-                            borderRadius="lg"
-                            borderWidth="2px"
-                            borderColor="teal.200"
-                            position="relative"
-                          >
-                            <Badge colorScheme="teal" mb={2} fontSize="10px">OPEN LOOP</Badge>
-                            {loop.match_score && (
-                              <Badge colorScheme="green" ml={2} mb={2} fontSize="10px">
-                                {loop.match_score}% match
-                              </Badge>
                             )}
-                            <VStack align="start" spacing={1} mb={3}>
-                              <Text fontSize="xs" color="gray.500">You give</Text>
-                              <Text fontSize="sm" fontWeight="semibold" color="teal.700" noOfLines={2}>
-                                {loop.you_give_title}
-                              </Text>
-                              <Text fontSize="xs" color="gray.500" mt={1}>You get</Text>
-                              <Text fontSize="sm" fontWeight="semibold" noOfLines={2}>
-                                {loop.you_get_title}
-                              </Text>
-                              <Text fontSize="xs" color="gray.400" mt={1}>
-                                {loop.user1_name} ? {loop.user2_name} ? You
-                              </Text>
-                            </VStack>
-                            <Button
-                              size="sm"
-                              colorScheme="teal"
-                              width="full"
-                              isLoading={hoppingInto === loop.chain_id}
-                              isDisabled={!!hoppingInto}
-                              onClick={() => handleHopIntoDiscoverable(loop)}
-                            >
-                              Hop In
-                            </Button>
-                          </Box>
-                        ))}
-                      </SimpleGrid>
-                    </Box>
-                  )}
 
-                  {multiWayTradesLoading ? (
-                    <Center py={12}>
-                      <Spinner size="lg" color="brand.500" />
-                    </Center>
-                  ) : pendingMultiWayTrades.length === 0 && filteredMultiWayTrades.length === 0 && discoverableLoops.length === 0 ? (
-                    multiWayTradesViewMode === 'list' ? (
-                      <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={6} textAlign="center">
-                        <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
-                        <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                          {multiWayChainFilter === 'all' ? 'No loop matches found yet' : 'No matches for this chain filter'}
-                        </Text>
-                        <Text color="gray.500" fontSize="sm">
-                          {multiWayChainFilter === 'all'
-                            ? "We'll notify you when one is available"
-                            : 'Try changing the chain-size filter to see more matches.'}
-                        </Text>
-                      </Box>
-                    ) : (
-                      <Box border="1px" borderColor={borderColor} borderRadius="lg" overflow="hidden" bg={cardBg} p={8} textAlign="center" w="100%">
-                        <VStack spacing={4}>
-                          <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={2} />
-                          <VStack spacing={1}>
-                            <Text color="gray.600" fontSize="lg" fontWeight="semibold">
-                              {multiWayChainFilter === 'all' ? 'No loop matches found yet' : 'No matches for this chain filter'}
-                            </Text>
-                            <Text color="gray.500" fontSize="sm" maxW="400px">
-                              {multiWayChainFilter === 'all'
-                                ? "We'll notify you when one is available"
-                                : 'No loops currently match the selected chain size. Try All Chains.'}
-                            </Text>
-                          </VStack>
-                        </VStack>
-                      </Box>
-                    )
-                  ) : (
-                    <VStack align="stretch" spacing={6}>
-                      {groupedMultiWayTrades.needsAction.length > 0 || groupedMultiWayTrades.waitingOnOthers.length > 0 || groupedMultiWayTrades.autoSearchResults.length > 0 ? (
-                        <Box>
-                          <VStack align="stretch" spacing={6}>
-                            {/* Needs Your Action Section */}
-                            {groupedMultiWayTrades.needsAction.length > 0 && (
-                              <Box>
-                                <Heading size="sm" mb={3} color="blue.600">
-                                  Needs Your Action
-                                </Heading>
-                                <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
-                                  {groupedMultiWayTrades.needsAction.map((trade) => {
-                                    const summary = getSummary(trade)
-                                    return (
-                                      <Box
-                                        key={trade.id || trade.loop_id || trade.chain_id}
-                                        p={4}
-                                        bg={cardBg}
-                                        borderRadius="lg"
-                                        borderWidth="1px"
-                                        borderColor={borderColor}
-                                        cursor="pointer"
-                                        transition="all 0.2s"
-                                        _hover={{ borderColor: 'blue.400', transform: 'translateY(-2px)', shadow: 'md' }}
-                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
-                                      >
-                                        <VStack align="start" spacing={3}>
-                                          <Box>
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Your Item → You Get</Text>
-                                            <Text fontWeight="semibold" fontSize="sm">
-                                              {summary.yourGive} → {summary.yourGet}
-                                            </Text>
-                                          </Box>
-                                          <Box w="full">
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Chain</Text>
-                                            <Text fontSize="xs" noOfLines={2}>{summary.chainLabel}</Text>
-                                          </Box>
-                                          <HStack spacing={2} w="full" pt={2}>
-                                            <Button
-                                              size="sm"
-                                              colorScheme="green"
-                                              flex={1}
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleJoinMultiWayTrade(trade)
-                                              }}
-                                              isLoading={multiWayTradeJoining}
-                                            >
-                                              Accept
-                                            </Button>
-                                            <Button
-                                              size="sm"
-                                              colorScheme="red"
-                                              variant="outline"
-                                              flex={1}
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                handleDeclineMultiWayTrade(trade, false)
-                                              }}
-                                            >
-                                              Decline
-                                            </Button>
-                                          </HStack>
-                                        </VStack>
-                                      </Box>
-                                    )
-                                  })}
-                                </SimpleGrid>
+                            {!user?.is_premium && (multiWayTrades || []).some((t: any) => t?.loop_type === 'detected_loop' && t?.pro_nudge) && (
+                              <Box p={3} bg="yellow.50" border="1px solid" borderColor="yellow.200" borderRadius="lg" mb={4}>
+                                <Text fontSize="xs" color="yellow.800" fontWeight="bold">
+                                  You're a great match to start a loop here � Pro members can initiate. Upgrade to unlock.
+                                </Text>
                               </Box>
                             )}
 
-                            {/* Waiting on Others Section */}
-                            {groupedMultiWayTrades.waitingOnOthers.length > 0 && (
-                              <Box>
-                                <Heading size="sm" mb={3} color="orange.600">
-                                  Waiting on Others
-                                </Heading>
-                                <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
-                                  {groupedMultiWayTrades.waitingOnOthers.map((trade) => {
-                                    const summary = getSummary(trade)
-                                    const participants = trade.participants || []
-                                    const totalParticipants = participants.length
-                                    const acceptedCount = participants.filter((p: any) => p.status !== 'pending').length
-                                    const pendingCount = totalParticipants - acceptedCount
-                                    
-                                    // Find your product and incoming product
-                                    const currentUserID = Number(user?.id || 0)
-                                    const yourParticipant = participants.find((p: any) => Number(p?.user_id) === currentUserID)
-                                    const yourProductImage = yourParticipant?.product_image
-                                    const incomingProductImage = participants.length > 0 
-                                      ? participants[participants.length - 1]?.product_image || participants[0]?.product_image
-                                      : null
-                                    
-                                    // Calculate time remaining
-                                    const expiresAt = trade?.expires_at ? new Date(trade.expires_at).getTime() : null
-                                    const nowTime = Date.now()
-                                    const timeRemaining = expiresAt ? Math.max(0, expiresAt - nowTime) : null
-                                    const daysRemaining = timeRemaining ? Math.ceil(timeRemaining / (1000 * 60 * 60 * 24)) : null
-                                    const hoursRemaining = timeRemaining ? Math.ceil(timeRemaining / (1000 * 60 * 60)) : null
-                                    
-                                    const expiryText = daysRemaining !== null
-                                      ? daysRemaining > 0
-                                        ? `${daysRemaining}d remaining`
-                                        : hoursRemaining !== null && hoursRemaining > 0
-                                        ? `${hoursRemaining}h remaining`
-                                        : 'Expiring soon'
-                                      : 'No expiry'
-                                    
-                                    return (
-                                      <Box
-                                        key={trade.id || trade.loop_id || trade.chain_id}
-                                        p={4}
-                                        bg={cardBg}
-                                        borderRadius="lg"
-                                        borderWidth="1px"
-                                        borderColor="orange.200"
-                                        cursor="pointer"
-                                        transition="all 0.2s"
-                                        _hover={{ borderColor: 'orange.400', transform: 'translateY(-2px)', shadow: 'md' }}
-                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
-                                      >
-                                        <VStack align="stretch" spacing={3}>
-                                          {/* Item Flow */}
-                                          <HStack spacing={2} justify="center" w="full">
-                                            {yourProductImage ? (
-                                              <Image
-                                                src={yourProductImage}
-                                                alt="Your item"
-                                                maxW="45px"
-                                                maxH="45px"
-                                                borderRadius="md"
-                                                objectFit="cover"
-                                              />
-                                            ) : (
-                                              <Box w="45px" h="45px" bg="gray.200" borderRadius="md" />
-                                            )}
-                                            <Text fontSize="lg" fontWeight="bold" color="orange.500">→</Text>
-                                            {incomingProductImage ? (
-                                              <Image
-                                                src={incomingProductImage}
-                                                alt="Incoming item"
-                                                maxW="45px"
-                                                maxH="45px"
-                                                borderRadius="md"
-                                                objectFit="cover"
-                                              />
-                                            ) : (
-                                              <Box w="45px" h="45px" bg="gray.200" borderRadius="md" />
-                                            )}
-                                          </HStack>
-                                          
-                                          {/* Item names */}
-                                          <Box w="full" textAlign="center">
-                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
-                                              {summary.yourGive}
-                                            </Text>
-                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
-                                              ↓
-                                            </Text>
-                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
-                                              {summary.yourGet}
-                                            </Text>
-                                          </Box>
-                                          
-                                          {/* Participant Avatars with Status */}
-                                          <Box w="full">
-                                            <HStack spacing={1} justify="center" wrap="wrap">
-                                              {participants.map((participant: any, idx: number) => {
-                                                const isAccepted = participant.status !== 'pending'
-                                                return (
-                                                  <Tooltip key={idx} label={`${participant.user_name}: ${isAccepted ? 'Accepted ✓' : 'Pending'}`} fontSize="xs">
-                                                    <Box position="relative">
-                                                      <Avatar
-                                                        name={participant.user_name}
-                                                        size="sm"
-                                                        bg={isAccepted ? 'green.400' : 'orange.300'}
-                                                      />
-                                                      {isAccepted && (
-                                                        <Box
-                                                          position="absolute"
-                                                          bottom="-2px"
-                                                          right="-2px"
-                                                          bg="green.500"
-                                                          borderRadius="full"
-                                                          p="1px"
-                                                          border="2px solid"
-                                                          borderColor={cardBg}
-                                                        >
-                                                          <CheckIcon boxSize={2} color="white" />
-                                                        </Box>
-                                                      )}
-                                                    </Box>
-                                                  </Tooltip>
-                                                )
-                                              })}
-                                            </HStack>
-                                          </Box>
-                                          
-                                          {/* Progress and Expiry */}
-                                          <HStack spacing={2} w="full" justify="space-between" fontSize="xs">
-                                            <Badge colorScheme="orange" variant="subtle">
-                                              {acceptedCount}/{totalParticipants} accepted
-                                            </Badge>
-                                            <Text color="gray.500" fontWeight="medium">
-                                              {expiryText}
-                                            </Text>
-                                          </HStack>
-                                        </VStack>
-                                      </Box>
-                                    )
-                                  })}
-                                </SimpleGrid>
-                              </Box>
-                            )}
-                            
-                            {/* Auto Search Results Section */}
-                            {groupedMultiWayTrades.autoSearchResults.length > 0 && (
-                              <Box>
-                                <Heading size="sm" mb={3} color="purple.600">
-                                  Auto Search Results
-                                </Heading>
-                                <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
-                                  {groupedMultiWayTrades.autoSearchResults.map((trade) => {
-                                    const summary = getSummary(trade)
-                                    const matchScore = trade.match_score || trade.score || 0
-                                    // Extract the items
-                                    const participants = trade.participants || []
-                                    const currentUserID = Number(user?.id || 0)
-                                    const yourParticipantIndex = participants.findIndex((p: any) => Number(p?.id || p?.user_id) === currentUserID)
-                                    const nextParticipant = yourParticipantIndex >= 0 && participants.length > 0
-                                      ? participants[(yourParticipantIndex + 1) % participants.length]
-                                      : participants[0]
-                                    
-                                    const desiredCategory = nextParticipant?.wanted_categories 
-                                      ? (Array.isArray(nextParticipant.wanted_categories) ? nextParticipant.wanted_categories.join(', ') : nextParticipant.wanted_categories)
-                                      : 'Any'
-                                    const desiredItems = nextParticipant?.desired_product || 'Open to offers'
+                            {/* Open Loops You Can Hop Into */}
+                            {discoverableLoading ? (
+                              <Center py={6}>
+                                <Spinner size="md" color="teal.400" />
+                              </Center>
+                            ) : discoverableLoops.length > 0 && (
+                              <Box mb={6}>
+                              <Heading size="sm" mb={3} color="teal.600" display="flex" alignItems="center" gap={2}>
+                                <Icon as={FaExchangeAlt} /> Open Loops You Can Join
+                              </Heading>
+                              <SimpleGrid columns={{ base: 1, sm: 2, md: 2, lg: 3 }} spacing={{ base: 3, md: 4 }}>
+                                {discoverableLoops.map((loop: any) => (
+                                  <Box
+                                    key={`discoverable-${loop.chain_id}`}
+                                    p={4}
+                                    bg="teal.50"
+                                    borderRadius="lg"
+                                    borderWidth="2px"
+                                    borderColor="teal.200"
+                                    position="relative"
+                                  >
+                                    <Badge colorScheme="teal" mb={2} fontSize="10px">OPEN LOOP</Badge>
+                                    {loop.match_score && (
+                                      <Badge colorScheme="green" ml={2} mb={2} fontSize="10px">
+                                        {loop.match_score}% match
+                                      </Badge>
+                                    )}
+                                    <VStack align="start" spacing={1} mb={3}>
+                                      <Text fontSize="xs" color="gray.500">You give</Text>
+                                      <Text fontSize="sm" fontWeight="semibold" color="teal.700" noOfLines={2}>
+                                        {loop.you_give_title}
+                                      </Text>
+                                      <Text fontSize="xs" color="gray.500" mt={1}>You get</Text>
+                                      <Text fontSize="sm" fontWeight="semibold" noOfLines={2}>
+                                        {loop.you_get_title}
+                                      </Text>
+                                      <Text fontSize="xs" color="gray.400" mt={1}>
+                                        {loop.user1_name} → {loop.user2_name} → You
+                                      </Text>
+                                    </VStack>
+                                    <Button
+                                      size="sm"
+                                      colorScheme="teal"
+                                      width="full"
+                                      isLoading={hoppingInto === loop.chain_id}
+                                      isDisabled={!!hoppingInto}
+                                      onClick={() => handleHopIntoDiscoverable(loop)}
+                                    >
+                                      Hop In
+                                    </Button>
+                                  </Box>
+                                ))}
+                              </SimpleGrid>
+                            </Box>
+                          )}
 
-                                    return (
-                                      <Box
-                                        key={trade.id || trade.loop_id || trade.chain_id}
-                                        p={4}
-                                        bg={cardBg}
-                                        borderRadius="lg"
-                                        borderWidth="1px"
-                                        borderColor="purple.200"
-                                        cursor="pointer"
-                                        transition="all 0.2s"
-                                        _hover={{ borderColor: 'purple.400', transform: 'translateY(-2px)', shadow: 'md' }}
-                                        onClick={() => handleViewMultiWayTradeDetails(trade)}
-                                      >
-                                        <VStack align="stretch" spacing={3}>
-                                          <HStack justify="space-between">
-                                            <Badge colorScheme="purple" variant="subtle">Auto Match</Badge>
-                                            {matchScore > 0 && (
-                                              <Badge colorScheme={matchScore > 80 ? 'green' : (matchScore > 60 ? 'yellow' : 'orange')}>
-                                                {matchScore}% Match
+                            {multiWayTradesLoading ? (
+                              <Center py={12}>
+                                <Spinner size="lg" color="brand.500" />
+                              </Center>
+                            ) : pendingMultiWayTrades.length === 0 && filteredMultiWayTrades.length === 0 && discoverableLoops.length === 0 ? (
+                              <Box textAlign="center" py={12}>
+                                <Icon as={FaExchangeAlt} boxSize={16} color="purple.300" mb={4} />
+                                <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
+                                  No loop matches found yet
+                                </Text>
+                                <Text color="gray.500" fontSize="sm">
+                                  We'll notify you when one is available
+                                </Text>
+                              </Box>
+                            ) : (
+                              <VStack align="stretch" spacing={6}>
+                                {groupedMultiWayTrades.needsAction.length > 0 && (
+                                  <Box>
+                                    <Heading size="sm" mb={3} color="blue.600">
+                                      Needs Your Action
+                                    </Heading>
+                                    <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                                      {groupedMultiWayTrades.needsAction.map((trade) => {
+                                        const summary = getSummary(trade)
+                                        const participants = trade.participants || []
+                                        const firstParticipantImage = participants[0]?.product_image
+                                        const secondParticipantImage = participants[1]?.product_image || firstParticipantImage
+                                        
+                                        return (
+                                          <Card
+                                            key={trade.id || trade.loop_id || trade.chain_id}
+                                            variant="outline"
+                                            h="100%"
+                                            display="flex"
+                                            flexDirection="column"
+                                            _hover={{
+                                              shadow: 'lg',
+                                              transform: 'translateY(-4px)',
+                                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                              borderColor: 'blue.500',
+                                            }}
+                                            transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                            borderLeftWidth="4px"
+                                            borderLeftColor="blue.400"
+                                            borderColor="blue.200"
+                                            cursor="pointer"
+                                            onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                          >
+                                            <Box position="relative" w="full" h={{ base: '120px', md: '140px' }} display="flex" gap={1} p={1} bg="gray.50" flexWrap="nowrap" alignContent="flex-start" overflow="hidden">
+                                              {firstParticipantImage ? (
+                                                <Image src={firstParticipantImage} alt="Item" w="full" h="full" objectFit="cover" />
+                                              ) : (
+                                                <Box w="full" h="full" bg="gray.200" display="flex" alignItems="center" justifyContent="center">
+                                                  <Text fontSize="xs" color="gray.500">Item</Text>
+                                                </Box>
+                                              )}
+                                            </Box>
+
+                                            <CardHeader pb={2} flex={1}>
+                                              <Badge colorScheme="blue" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                                Your Action
                                               </Badge>
-                                            )}
-                                          </HStack>
-                                          
-                                          <Box w="full" textAlign="center" py={2}>
-                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
-                                              {summary.yourGive}
-                                            </Text>
-                                            <Text fontSize="xs" color="gray.600" noOfLines={1} lineHeight="1.2">
-                                              ↓
-                                            </Text>
-                                            <Text fontSize="sm" fontWeight="bold" color="purple.700" noOfLines={1} lineHeight="1.2">
-                                              {summary.yourGet}
-                                            </Text>
-                                          </Box>
+                                              <Heading size="sm" noOfLines={2}>
+                                                {summary.yourGive}
+                                              </Heading>
+                                              <Text fontSize="xs" color="gray.500" mt={2}>
+                                                → {summary.yourGet}
+                                              </Text>
+                                            </CardHeader>
 
-                                          <Box w="full" bg={useColorModeValue('purple.50', 'whiteAlpha.100')} p={3} borderRadius="md" fontSize="xs">
-                                            <Text fontWeight="semibold" color="purple.800" mb={1}>Partner wants:</Text>
-                                            <Text noOfLines={1}><Text as="span" color="gray.500">Category:</Text> {desiredCategory}</Text>
-                                            <Text noOfLines={1}><Text as="span" color="gray.500">Items:</Text> {desiredItems}</Text>
+                                            <CardFooter pt={0} pb={3}>
+                                              <HStack w="full" spacing={2}>
+                                                <Button size="sm" colorScheme="green" flex={1} onClick={(e) => { e.stopPropagation(); handleJoinMultiWayTrade(trade) }} isLoading={multiWayTradeJoining}>
+                                                  Accept
+                                                </Button>
+                                                <Button size="sm" colorScheme="red" variant="outline" flex={1} onClick={(e) => { e.stopPropagation(); handleDeclineMultiWayTrade(trade, false) }}>
+                                                  Decline
+                                                </Button>
+                                              </HStack>
+                                            </CardFooter>
+                                          </Card>
+                                        )
+                                      })}
+                                    </SimpleGrid>
+                                  </Box>
+                                )}
+
+                                {groupedMultiWayTrades.waitingOnOthers.length > 0 && (
+                                  <Box>
+                                    <Heading size="sm" mb={3} color="orange.600">
+                                      Waiting on Others
+                                    </Heading>
+                                    <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                                      {groupedMultiWayTrades.waitingOnOthers.map((trade) => {
+                                        const summary = getSummary(trade)
+                                        const participants = trade.participants || []
+                                        
+                                        return (
+                                          <Card
+                                            key={trade.id || trade.loop_id || trade.chain_id}
+                                            variant="outline"
+                                            h="100%"
+                                            display="flex"
+                                            flexDirection="column"
+                                            _hover={{
+                                              shadow: 'lg',
+                                              transform: 'translateY(-4px)',
+                                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                              borderColor: 'orange.500',
+                                            }}
+                                            transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
+                                            borderLeftWidth="4px"
+                                            borderLeftColor="orange.400"
+                                            borderColor="orange.200"
+                                            cursor="pointer"
+                                            onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                          >
+                                            <CardHeader pb={2} flex={1}>
+                                              <Badge colorScheme="orange" variant="subtle" fontSize="xs" px={2} py={1} borderRadius="full" mb={2}>
+                                                Waiting...
+                                              </Badge>
+                                              <Heading size="sm" noOfLines={2}>
+                                                {summary.yourGive} → {summary.yourGet}
+                                              </Heading>
+                                            </CardHeader>
+
+                                            <CardFooter pt={0} pb={3}>
+                                              <Button size="sm" colorScheme="orange" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                                View Trade
+                                              </Button>
+                                            </CardFooter>
+                                          </Card>
+                                        )
+                                      })}
+                                    </SimpleGrid>
+                                  </Box>
+                                )}
+
+                                {groupedMultiWayTrades.autoSearchResults.length > 0 && (
+                                  <Box>
+                                    <Heading size="sm" mb={3} color="purple.600">
+                                      Auto Search Results
+                                    </Heading>
+                                    <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={4}>
+                                      {groupedMultiWayTrades.autoSearchResults.map((trade) => {
+                                        const summary = getSummary(trade)
+                                        const matchScore = trade.match_score || trade.score || 0
+
+                                        return (
+                                          <Box
+                                            key={trade.id || trade.loop_id || trade.chain_id}
+                                            p={4}
+                                            bg={cardBg}
+                                            borderRadius="lg"
+                                            borderWidth="1px"
+                                            borderColor="purple.200"
+                                            cursor="pointer"
+                                            transition="all 0.2s"
+                                            _hover={{ borderColor: 'purple.400', transform: 'translateY(-2px)', shadow: 'md' }}
+                                            onClick={() => handleViewMultiWayTradeDetails(trade)}
+                                          >
+                                            <VStack align="stretch" spacing={3}>
+                                              <HStack justify="space-between">
+                                                <Badge colorScheme="purple" variant="subtle">Auto Match</Badge>
+                                                {matchScore > 0 && (
+                                                  <Badge colorScheme={matchScore > 80 ? 'green' : 'orange'}>
+                                                    {matchScore}% Match
+                                                  </Badge>
+                                                )}
+                                              </HStack>
+                                              
+                                              <Box w="full" textAlign="center" py={2}>
+                                                <Text fontSize="xs" color="gray.600">
+                                                  {summary.yourGive} → {summary.yourGet}
+                                                </Text>
+                                              </Box>
+                                              
+                                              <Button size="sm" colorScheme="purple" w="full" onClick={(e) => { e.stopPropagation(); handleViewMultiWayTradeDetails(trade) }}>
+                                                Review & Start
+                                              </Button>
+                                            </VStack>
                                           </Box>
-                                          
-                                          <Box w="full">
-                                            <Text fontSize="xs" color="gray.500" mb={1}>Chain</Text>
-                                            <Text fontSize="xs" noOfLines={2}>{summary.chainLabel}</Text>
-                                          </Box>
-                                          
-                                          <Button size="sm" colorScheme="purple" w="full" mt={2} onClick={(e) => {
-                                            e.stopPropagation()
-                                            handleViewMultiWayTradeDetails(trade)
-                                          }}>
-                                            Review & Start
-                                          </Button>
-                                        </VStack>
-                                      </Box>
-                                    )
-                                  })}
-                                </SimpleGrid>
-                              </Box>
+                                        )
+                                      })}
+                                    </SimpleGrid>
+                                  </Box>
+                                )}
+                              </VStack>
                             )}
                           </VStack>
-                        </Box>
-                      ) : (
-                        <Box textAlign="center" py={12}>
-                          <Text color="gray.600" mb={2}>No loop matches found yet</Text>
-                          <Text fontSize="sm" color="gray.500">We'll notify you when one is available</Text>
-                        </Box>
-                      )}
-                    </VStack>
-                  )}
+                        </TabPanel>
+                      </TabPanels>
+                    </Tabs>
+                  </VStack>
                 </TabPanel>
 
                 {/* Trade History Tab */}

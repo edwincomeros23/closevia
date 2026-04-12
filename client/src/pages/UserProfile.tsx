@@ -1116,37 +1116,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 </Text>
               ) : null}
 
-              {/* Stats card below */}
-              <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3} mb={4} p={3} bg="gray.50" borderRadius="md">
-                <Box lineHeight="1.4">
-                  <Text color="gray.500" fontSize="xs">Member Since</Text>
-                  <Text fontWeight="500" color="gray.800" fontSize="sm">
-                    {(() => {
-                      const joinDate = new Date(user.created_at)
-                      const now = new Date()
-                      if (isNaN(joinDate.getTime()) || joinDate > now) return 'Recently joined'
-                      return joinDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                    })()}
-                  </Text>
-                </Box>
-                <Box lineHeight="1.4">
-                  <Tooltip label="Trust Score is based on completed trades, positive ratings, and reports. Higher is better." hasArrow>
-                    <Text color="gray.500" fontSize="xs" cursor="pointer">Trust Score</Text>
-                  </Tooltip>
-                  <Text fontWeight="500" color="gray.800" fontSize="sm">{sellerStats?.trust_score ?? 'N/A'}</Text>
-                </Box>
-                <Box lineHeight="1.4">
-                  <Text color="gray.500" fontSize="xs">Active Listings</Text>
-                  <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.active}</Text>
-                </Box>
-                {/* Department field removed as per request */}
-                <Box lineHeight="1.4">
-                  <Text color="gray.500" fontSize="xs">Total Listings</Text>
-                  <Text fontWeight="500" color="gray.800" fontSize="sm">{stats.total}</Text>
-                </Box>
-              </SimpleGrid>
-
-              {/* Trust Score Card */}
+              {/* Trust Score Card - Single comprehensive profile card */}
               {sellerStats ? (
                 <Box mb={3}>
                   <TrustScoreCard
@@ -1165,6 +1135,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     }}
                     responseTime={sellerStats.avg_response_time}
                     hasActiveDispute={sellerStats.has_active_dispute}
+                    profileName={user.name}
+                    profileAvatar={user.avatar_url}
+                    memberSinceDate={user.created_at}
+                    avgRating={displayRating}
+                    reviewCount={displayTotalReviews}
                   />
                 </Box>
               ) : (
@@ -1206,21 +1181,9 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                 <Box p={4} borderBottom="1px" borderColor="gray.100">
                   <HStack spacing={4} justify="space-between" flexWrap="wrap">
                     <Text fontWeight="medium">{sortedProducts.length} items</Text>
-                    <HStack>
-                      <Text fontSize="sm" color="gray.500">Sort by:</Text>
-                      <Select
-                        size="sm"
-                        w="180px"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                        aria-label="Sort products"
-                        title="Sort products"
-                      >
-                        <option value="newest">Newest First</option>
-                        <option value="price_asc">Price: Low to High</option>
-                        <option value="price_desc">Price: High to Low</option>
-                      </Select>
-                    </HStack>
+                    {currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) && (
+                      <Text fontSize="xs" color="gray.500" fontStyle="italic">💡 Manage featured items by clicking the star icon on listings below</Text>
+                    )}
                   </HStack>
                 </Box>
 
@@ -1248,42 +1211,70 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                     {/* Pinned / Featured Listings */}
                     {sortedProducts.length > 0 && (
                       <Box p={4} borderBottom="1px" borderColor="gray.100">
-                        <HStack spacing={2} mb={3}>
-                          <Icon as={FaThumbtack} color="orange.400" boxSize={3.5} />
-                          <Text fontSize="sm" fontWeight="semibold" color="gray.700">Featured Listings</Text>
+                        <HStack spacing={2} mb={3} justify="space-between">
+                          <HStack spacing={2}>
+                            <Icon as={FaThumbtack} color="orange.400" boxSize={3.5} />
+                            <Text fontSize="sm" fontWeight="semibold" color="gray.700">Featured Listings (Top 3)</Text>
+                          </HStack>
+                          {currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) && (
+                            <Text fontSize="xs" color="orange.500" fontStyle="italic">Drag to reorder</Text>
+                          )}
                         </HStack>
                         <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={3}>
-                          {sortedProducts.slice(0, 3).map((product) => (
-                            <RouterLink key={`pin-${product.id}`} to={getProductUrl(product)} style={{ textDecoration: 'none' }}>
-                              <Box
-                                border="1px"
-                                borderColor="orange.200"
-                                rounded="md"
-                                overflow="hidden"
-                                bg="white"
-                                _hover={{ transform: 'translateY(-2px)', shadow: 'sm', borderColor: 'orange.400' }}
-                                transition="all 0.2s"
-                                display="flex"
-                                alignItems="center"
-                                gap={3}
-                                p={2}
-                              >
-                                <Image
-                                  src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
-                                  alt={product.title}
-                                  boxSize="50px"
-                                  objectFit="cover"
-                                  borderRadius="md"
-                                  flexShrink={0}
-                                />
-                                <Box minW={0}>
-                                  <Text fontSize="xs" fontWeight="semibold" noOfLines={2} color="gray.800">{product.title}</Text>
-                                  <Text fontSize="xs" color="brand.500" fontWeight="bold">
-                                    {product.price ? `₱${product.price.toFixed(2)}` : 'For Trade'}
-                                  </Text>
-                                </Box>
-                              </Box>
-                            </RouterLink>
+                          {sortedProducts.slice(0, 3).map((product, idx) => (
+                            <Box
+                              key={`pin-${product.id}`}
+                              position="relative"
+                              border="1px"
+                              borderColor="orange.200"
+                              rounded="md"
+                              overflow="hidden"
+                              bg="white"
+                              _hover={{ transform: 'translateY(-2px)', shadow: 'sm', borderColor: 'orange.400' }}
+                              transition="all 0.2s"
+                            >
+                              <RouterLink to={getProductUrl(product)} style={{ textDecoration: 'none', display: 'block' }}>
+                                <HStack display="flex" alignItems="center" gap={3} p={2} h="full">
+                                  <Image
+                                    src={getFirstImage(product.image_urls) || '/placeholder-item.jpg'}
+                                    alt={product.title}
+                                    boxSize="50px"
+                                    objectFit="cover"
+                                    borderRadius="md"
+                                    flexShrink={0}
+                                  />
+                                  <Box minW={0}>
+                                    <Text fontSize="xs" fontWeight="semibold" noOfLines={2} color="gray.800">{product.title}</Text>
+                                    <Text fontSize="xs" color="brand.500" fontWeight="bold">
+                                      {product.price ? `₱${product.price.toFixed(2)}` : 'For Trade'}
+                                    </Text>
+                                  </Box>
+                                </HStack>
+                              </RouterLink>
+                              {currentUser && (String(currentUser.id) === id || (currentUser as any).slug === id) && (
+                                <Tooltip label="Remove from featured" hasArrow>
+                                  <IconButton
+                                    aria-label="Remove from featured"
+                                    icon={<Icon as={FaThumbtack} />}
+                                    size="sm"
+                                    position="absolute"
+                                    top={1}
+                                    right={1}
+                                    colorScheme="orange"
+                                    variant="solid"
+                                    opacity={0}
+                                    _groupHover={{ opacity: 1 }}
+                                    transition="opacity 0.2s"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      // Will implement backend call to remove from featured
+                                      console.log('Remove from featured:', product.id)
+                                    }}
+                                  />
+                                </Tooltip>
+                              )}
+                            </Box>
                           ))}
                         </SimpleGrid>
                       </Box>
@@ -1444,65 +1435,16 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                   <Box>
                     {mergedTradeActivity.map((activity, index) => {
                       const trade = activity
-                      const review = activity.review
                       const isBuyer = currentUser && trade.buyer_id === currentUser?.id
                       const counterpartName = isBuyer ? trade.seller_name : trade.buyer_name
                       const completedDate = trade.completed_at
-                        ? new Date(trade.completed_at).toLocaleDateString()
-                        : new Date(trade.created_at).toLocaleDateString()
+                        ? new Date(trade.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                        : new Date(trade.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
                       const buyerRating = trade.buyer_rating as number | null | undefined
                       const sellerRating = trade.seller_rating as number | null | undefined
                       const buyerFeedback = (trade.buyer_feedback || '') as string
                       const sellerFeedback = (trade.seller_feedback || '') as string
-                      const buyerProofUrl = (trade.buyer_proof_url || '') as string
-                      const sellerProofUrl = (trade.seller_proof_url || '') as string
-
-                      const renderPartyReview = (
-                        label: string,
-                        rating?: number | null,
-                        comment?: string,
-                        proofUrl?: string
-                      ) => {
-                        const hasContent = (rating != null && rating > 0) || !!(comment && comment.trim()) || !!proofUrl
-                        if (!hasContent) return null
-
-                        return (
-                          <Box bg="gray.50" p={2} borderRadius="md" mt={2}>
-                            <HStack spacing={2} mb={1} align="center">
-                              <Text fontSize="xs" fontWeight="bold" color="gray.700">
-                                {label}
-                              </Text>
-                              {rating != null && (
-                                <HStack spacing={0.5}>
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <Icon
-                                      key={`${label}-${star}`}
-                                      as={FiStar}
-                                      boxSize={3}
-                                      color={star <= rating ? 'yellow.400' : 'gray.300'}
-                                      fill={star <= rating ? 'currentColor' : 'none'}
-                                    />
-                                  ))}
-                                  <Text fontSize="xs" color="gray.500" ml={1}>{rating}/5</Text>
-                                </HStack>
-                              )}
-                            </HStack>
-
-                            {comment?.trim() && (
-                              <Text fontSize="xs" color="gray.600" fontStyle="italic">
-                                "{comment.trim()}"
-                              </Text>
-                            )}
-
-                            {proofUrl && (
-                              <Box mt={2} w="120px" h="120px" borderRadius="md" overflow="hidden" border="1px" borderColor="gray.200">
-                                <Image src={proofUrl} alt={`${label} proof`} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
-                              </Box>
-                            )}
-                          </Box>
-                        )
-                      }
 
                       // Target product (what the seller listed)
                       const targetImage = trade.product_image_url || '/placeholder-item.jpg'
@@ -1514,119 +1456,148 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                       const offeredImage = firstOffered?.product_image_url || '/placeholder-item.jpg'
                       const offeredTitle = firstOffered?.product_title || 'Offered item'
 
+                      const tradeTitle = `${offeredTitle} ⇌ ${targetTitle}`
+                      const tradeAction = isBuyer ? 'Received' : 'Sent'
+
                       return (
                         <Box
                           key={trade.id}
                           p={4}
-                          borderBottom={index < mergedTradeActivity.length - 1 ? '1px solid' : 'none'}
+                          borderWidth="1px"
                           borderColor="gray.200"
-                          borderLeftWidth="4px"
-                          borderLeftColor={review ? 'yellow.300' : 'gray.300'}
-                          _hover={{ bg: 'gray.50' }}
-                          bg="white"
+                          borderRadius="lg"
+                          bg="linear-gradient(135deg, #FFFCF0 0%, #FFFDF1 100%)"
+                          mb={3}
+                          _hover={{ shadow: 'md', borderColor: 'blue.300' }}
+                          transition="all 0.2s"
                         >
+                          {/* HEADER ROW: Two thumbnails, trade title, date */}
                           <VStack spacing={3} align="stretch">
-                            {/* Product images or Review Photo on top */}
-                            {review?.photo_url ? (
-                              <Box w="100%" h="250px" bg="gray.100" borderRadius="md" overflow="hidden" mb={2} position="relative" border="1px" borderColor="gray.200">
-                                <Image src={review.photo_url} alt="Review attachment" w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
-                                <Badge position="absolute" top="2" right="2" colorScheme="blackAlpha" bg="blackAlpha.600" color="white" border="none">
-                                  {completedDate}
-                                </Badge>
-                              </Box>
-                            ) : (
-                              <HStack spacing={2} align="center">
-                                <Box w="55px" h="55px" bg="gray.100" borderRadius="md" overflow="hidden" border="2px" borderColor="blue.200" flexShrink={0}>
+                            {/* Thumbnails row with date */}
+                            <HStack spacing={2} align="center" justify="space-between">
+                              <HStack spacing={2} align="center" flexShrink={0}>
+                                <Box w="56px" h="56px" bg="white" border="2px" borderColor="gray.200" borderRadius="lg" overflow="hidden" flexShrink={0}>
                                   <Image src={offeredImage} alt={offeredTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
                                 </Box>
-                                <Text fontSize="xs" color="gray.400">⇄</Text>
-                                <Box w="55px" h="55px" bg="gray.100" borderRadius="md" overflow="hidden" border="2px" borderColor="green.200" flexShrink={0}>
+                                <VStack spacing={0.5} align="center" flexShrink={0}>
+                                  <Text fontSize="10px" color="gray.500" fontWeight="bold">TRADED</Text>
+                                  <Text fontSize="lg" color="brand.400" fontWeight="bold">⇌</Text>
+                                </VStack>
+                                <Box w="56px" h="56px" bg="white" border="2px" borderColor="gray.200" borderRadius="lg" overflow="hidden" flexShrink={0}>
                                   <Image src={targetImage} alt={targetTitle} w="100%" h="100%" objectFit="cover" fallbackSrc="/placeholder-item.jpg" />
                                 </Box>
-                                <Text fontSize="xs" color="gray.500" ml="auto" flexShrink={0}>{completedDate}</Text>
                               </HStack>
-                            )}
+                              <Text fontSize="xs" color="gray.500" fontWeight="semibold" flexShrink={0} textAlign="right">
+                                {completedDate}
+                              </Text>
+                            </HStack>
 
-                            {/* Trade details below */}
+                            {/* Trade title */}
                             <Box>
-                              <Text fontWeight="medium" fontSize="sm" noOfLines={1} mb={1}>
-                                {offeredTitle} ⇄ {targetTitle}
+                              <Text fontWeight="bold" fontSize="sm" color="gray.900" noOfLines={2}>
+                                {tradeTitle}
                               </Text>
-
-                              <Text fontSize="sm" color="gray.600" mb={2}>
-                                {offeredItems.length > 1 
-                                  ? `Multi-way trade with ${offeredItems.length} items offered`
-                                  : isBuyer ? 'Received item' : 'Sent item'
-                                }
+                              <Text fontSize="xs" color="gray.600" mt={1}>
+                                You {tradeAction.toLowerCase()} • with {counterpartName || 'Trader'}
                               </Text>
-
-                              <HStack spacing={2} align="center" mb={review ? 2 : 0}>
-                                <Badge colorScheme="green" variant="solid" fontSize="xs">
-                                  ✓ Completed
-                                </Badge>
-                                <Text fontSize="xs" color="gray.600">
-                                  with <Text as="span" fontWeight="medium">{counterpartName || 'User'}</Text>
-                                </Text>
-                              </HStack>
-
-                              {/* Review from trading partner */}
-                              {renderPartyReview(`${trade.buyer_name || 'Buyer'} (Buyer)`, buyerRating, buyerFeedback, buyerProofUrl)}
-                              {renderPartyReview(`${trade.seller_name || 'Seller'} (Seller)`, sellerRating, sellerFeedback, sellerProofUrl)}
                             </Box>
-
-                            {/* Show existing reply if any */}
-                            {review && review.reply && (
-                              <Box
-                                mt={3}
-                                pl={4}
-                                borderLeft="2px"
-                                borderColor="brand.200"
-                                bg="gray.50"
-                                p={3}
-                                borderRadius="md"
-                              >
-                                <HStack spacing={2} mb={1}>
-                                  <Icon as={FiMessageSquare} boxSize={3} color="brand.500" />
-                                  <Text fontSize="sm" fontWeight="semibold" color="brand.600">
-                                    <Box as="span" textTransform="capitalize">{review.reply_author || user?.name || 'Trader'}</Box> replied:
-                                  </Text>
-                                  {review.reply_date && (
-                                    <Text fontSize="xs" color="gray.500">
-                                      {review.reply_date}
-                                    </Text>
-                                  )}
-                                </HStack>
-                              </Box>
-                            )}
                           </VStack>
 
-                          {/* Cancel Trade Button (only for locked trades) */}
-                          {trade.status === 'locked' && currentUser && ((String(currentUser.id) === id || (currentUser as any).slug === id)) && (
-                            <HStack justify="flex-end" mt={3} pt={2} borderTop="1px solid" borderColor="gray.200">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                colorScheme="red"
-                                onClick={() => handleCancelTrade(trade.id)}
-                              >
-                                Cancel Trade
-                              </Button>
-                            </HStack>
-                          )}
+                          {/* REVIEWS SECTION */}
+                          {((buyerRating && buyerRating > 0) || buyerFeedback?.trim()) || ((sellerRating && sellerRating > 0) || sellerFeedback?.trim()) ? (
+                            <>
+                              <Divider my={3} borderColor="gray.300" />
+                              <VStack spacing={3} align="stretch">
+                                {/* RECEIVER RATING  */}
+                                {((buyerRating && buyerRating > 0) || buyerFeedback?.trim()) && (
+                                  <Box bg="white" p={3} borderRadius="md" border="1px" borderColor="gray.100">
+                                    <VStack align="start" spacing={2}>
+                                      <HStack spacing={2}>
+                                        <Badge colorScheme="blue" fontSize="xs" fontWeight="bold">
+                                          {isBuyer ? 'Your rating' : 'Their rating'}
+                                        </Badge>
+                                        <Text fontSize="xs" color="gray.600" fontWeight="medium">
+                                          {trade.buyer_name || 'Trader'}
+                                        </Text>
+                                      </HStack>
+                                      {buyerRating && buyerRating > 0 && (
+                                        <HStack spacing={1} align="center">
+                                          <HStack spacing={0.5}>
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                              <Icon
+                                                key={`buyer-star-${star}`}
+                                                as={FiStar}
+                                                boxSize={4}
+                                                color={star <= buyerRating ? 'yellow.400' : 'gray.300'}
+                                                fill={star <= buyerRating ? 'currentColor' : 'none'}
+                                              />
+                                            ))}
+                                          </HStack>
+                                          <Text fontSize="sm" color="gray.700" fontWeight="bold">{buyerRating}/5</Text>
+                                        </HStack>
+                                      )}
+                                      {buyerFeedback?.trim() && (
+                                        <Text fontSize="xs" color="gray.700" fontStyle="italic" noOfLines={2}>
+                                          "{buyerFeedback.trim()}"
+                                        </Text>
+                                      )}
+                                    </VStack>
+                                  </Box>
+                                )}
 
-                          {/* Leave a Review Button (for completed trades needing reviews) */}
-                          {trade.status === 'completed' && !review && currentUser && completedTradesNeedingReview.has(trade.id) && (
+                                {/* SENDER RATING */}
+                                {((sellerRating && sellerRating > 0) || sellerFeedback?.trim()) && (
+                                  <Box bg="white" p={3} borderRadius="md" border="1px" borderColor="gray.100">
+                                    <VStack align="start" spacing={2}>
+                                      <HStack spacing={2}>
+                                        <Badge colorScheme="green" fontSize="xs" fontWeight="bold">
+                                          {isBuyer ? 'Their rating' : 'Your rating'}
+                                        </Badge>
+                                        <Text fontSize="xs" color="gray.600" fontWeight="medium">
+                                          {trade.seller_name || 'Trader'}
+                                        </Text>
+                                      </HStack>
+                                      {sellerRating && sellerRating > 0 && (
+                                        <HStack spacing={1} align="center">
+                                          <HStack spacing={0.5}>
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                              <Icon
+                                                key={`seller-star-${star}`}
+                                                as={FiStar}
+                                                boxSize={4}
+                                                color={star <= sellerRating ? 'yellow.400' : 'gray.300'}
+                                                fill={star <= sellerRating ? 'currentColor' : 'none'}
+                                              />
+                                            ))}
+                                          </HStack>
+                                          <Text fontSize="sm" color="gray.700" fontWeight="bold">{sellerRating}/5</Text>
+                                        </HStack>
+                                      )}
+                                      {sellerFeedback?.trim() && (
+                                        <Text fontSize="xs" color="gray.700" fontStyle="italic" noOfLines={2}>
+                                          "{sellerFeedback.trim()}"
+                                        </Text>
+                                      )}
+                                    </VStack>
+                                  </Box>
+                                )}
+                              </VStack>
+                            </>
+                          ) : null}
+
+                          {/* Action buttons if needed */}
+                          {trade.status === 'completed' && !activity.review && currentUser && completedTradesNeedingReview.has(trade.id) && (
                             <HStack justify="flex-end" mt={3} pt={2} borderTop="1px solid" borderColor="gray.200">
-                              <Text fontSize="sm" color="amber.600">
-                                ⭐ Please share your feedback
+                              <Text fontSize="xs" color="amber.600">
+                                ⭐ Share your feedback
                               </Text>
                               <Button
-                                size="sm"
+                                size="xs"
                                 colorScheme="brand"
                                 leftIcon={<Icon as={FiStar} />}
                                 onClick={() => handleOpenReviewModal(trade.id)}
                               >
-                                Leave Review
+                                Review
                               </Button>
                             </HStack>
                           )}
