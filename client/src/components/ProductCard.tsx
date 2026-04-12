@@ -26,6 +26,8 @@ interface ProductCardProps {
   onBuyClick: (productId: number) => void
   onViewOffers: (productId: number) => void
   showPriceOverlay?: boolean
+  onBoostClick?: (productId: number) => void
+  isStagnant?: boolean
 }
 
 /**
@@ -39,6 +41,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onBuyClick,
   onViewOffers,
   showPriceOverlay = false,
+  onBoostClick,
+  isStagnant = false,
 }) => {
   const navigate = useNavigate()
 
@@ -170,6 +174,28 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Top-right image badges */}
         <Box position="absolute" top={{ base: 1.5, md: 2 }} right={{ base: 1.5, md: 2 }} zIndex={1}>
           <Box display="flex" flexDirection="column" gap={1} alignItems="flex-end">
+            {isStagnant && onBoostClick && (
+              <Tooltip label="Boost this listing" placement="left" hasArrow>
+                <Button
+                  size="xs"
+                  colorScheme="blue"
+                  variant="solid"
+                  fontSize={{ base: '10px', md: '11px' }}
+                  px={{ base: 1, md: 1.5 }}
+                  py={{ base: 0.5, md: 1 }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onBoostClick(product.id)
+                  }}
+                  fontWeight="bold"
+                  boxShadow="md"
+                  _hover={{ transform: 'scale(1.05)', boxShadow: 'lg' }}
+                  transition="all 0.2s"
+                >
+                  Boost
+                </Button>
+              </Tooltip>
+            )}
             {product.premium && (
               <Badge
                 colorScheme="yellow"

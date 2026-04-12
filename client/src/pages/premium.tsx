@@ -116,18 +116,30 @@ const Premium: React.FC = () => {
     try {
       setUpgrading(tier)
       const plan = isYearly ? 'yearly' : 'monthly'
-      const { data } = await api.post('/api/payments/subscription', { tier, plan })
-      if (data?.success && data?.data?.checkout_url) {
-        window.location.href = data.data.checkout_url
+      
+      const response = await api.post('/api/payments/subscription', { tier, plan })
+      const { data: responsePayload } = response
+      
+      // Check if response was successful and has checkout URL
+      if (responsePayload?.success && responsePayload?.data?.checkout_url) {
+        window.location.href = responsePayload.data.checkout_url
+      } else if (responsePayload?.checkout_url) {
+        // Fallback if response structure is different
+        window.location.href = responsePayload.checkout_url
       } else {
-        throw new Error('Failed to create payment session')
+        console.error('Response:', responsePayload)
+        throw new Error('Invalid response: No checkout URL found')
       }
     } catch (error: any) {
+      console.error('Upgrade error:', error)
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Something went wrong'
       toast({
         id: 'premium-upgrade-error',
         title: 'Upgrade Failed',
-        description: error.response?.data?.error || error.message || 'Something went wrong',
+        description: errorMsg,
         status: 'error',
+        duration: 5000,
+        isClosable: true,
       })
     } finally {
       setUpgrading(null)
@@ -617,6 +629,7 @@ const Premium: React.FC = () => {
               <Button
                 colorScheme="blue" size="lg" leftIcon={<FaStar />}
                 isLoading={upgrading === 'plus'} onClick={() => handleUpgrade('plus')}
+                w="full"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
               >
                 Get Plus
@@ -679,6 +692,7 @@ const Premium: React.FC = () => {
               <Button
                 colorScheme="purple" size="lg" leftIcon={<FaCrown />}
                 isLoading={upgrading === 'pro'} onClick={() => handleUpgrade('pro')}
+                w="full"
                 _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }} transition="all 0.2s"
               >
                 Get Pro

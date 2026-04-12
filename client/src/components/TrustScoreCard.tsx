@@ -211,46 +211,7 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
       shadow="sm"
       w="100%"
     >
-      {/* HEADER ROW: Avatar, name, member since, verified checkmark */}
-      {profileName || profileAvatar ? (
-        <HStack spacing={4} mb={6} align="center">
-          <Avatar
-            size="md"
-            name={profileName}
-            src={profileAvatar}
-            bg="brand.500"
-            color="white"
-          />
-          <VStack align="start" spacing={0.5} flex={1}>
-            <HStack spacing={2}>
-              <Text fontSize="md" fontWeight="bold" color="gray.800">
-                {profileName}
-              </Text>
-              {isVerified && (
-                <Tooltip label="Verified account" hasArrow>
-                  <HStack spacing={1}>
-                    <Icon as={FiCheckCircle} color="green.500" boxSize={4} />
-                  </HStack>
-                </Tooltip>
-              )}
-            </HStack>
-            {memberSinceDate && (
-              <Text fontSize="xs" color="gray.600">
-                Member since {(() => {
-                  const date = typeof memberSinceDate === 'string' 
-                    ? new Date(memberSinceDate) 
-                    : memberSinceDate
-                  if (isNaN(date.getTime())) return 'recently'
-                  return new Intl.DateTimeFormat('en-US', { 
-                    year: 'numeric', 
-                    month: 'short' 
-                  }).format(date)
-                })()}
-              </Text>
-            )}
-          </VStack>
-        </HStack>
-      ) : null}
+      {/* HEADER ROW: Removed duplicate name/avatar display - shown in main profile header */}
 
       {/* FOUR STAT PILLS: Rating · Positive % · Trades · Avg Response */}
       <HStack spacing={2} mb={4} justify={{ base: 'start', sm: 'space-around' }} flexWrap="wrap">
@@ -357,12 +318,6 @@ const TrustScoreCard: React.FC<TrustScoreCardProps> = ({ score, trustLevel, fact
               <Text fontSize="xs" color="gray.600">Pending</Text>
             </VStack>
           </HStack>
-
-          {(tradeStats.successful + tradeStats.cancelled) > 0 && (
-            <Text fontSize="sm" color="gray.700" textAlign="center">
-              Trade success rate: {Math.round((tradeStats.successful / (tradeStats.successful + tradeStats.cancelled)) * 100)}%
-            </Text>
-          )}
         </VStack>
       )}
     </Box>
