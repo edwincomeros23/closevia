@@ -604,9 +604,6 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
                       <Text fontSize="lg" fontWeight="bold" color="green.500">₱{multiWayTrade.total_value.toFixed(2)}</Text>
                     </HStack>
                   )}
-                </VStack>
-              )}
-            </Box>
 
             {/* Status Info Box */}
             <Box bg={useColorModeValue('blue.50', 'blue.900')} borderLeftWidth="4px" borderColor="blue.500" p={3} borderRadius="md">
