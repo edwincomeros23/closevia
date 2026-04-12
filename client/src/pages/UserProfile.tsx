@@ -1232,7 +1232,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
                               bg="white"
                               _hover={{ transform: 'translateY(-2px)', shadow: 'sm', borderColor: 'orange.400' }}
                               transition="all 0.2s"
-                              group
                             >
                               <RouterLink to={getProductUrl(product)} style={{ textDecoration: 'none', display: 'block' }}>
                                 <HStack display="flex" alignItems="center" gap={3} p={2} h="full">
