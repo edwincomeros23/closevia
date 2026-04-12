@@ -718,9 +718,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
         const formData = new FormData()
         formData.append('image', proofFile)
         formData.append('type', 'trade_proof')
-        const uploadRes = await api.post('/api/upload', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        const uploadRes = await api.post('/api/upload', formData)
         
         // Validate upload succeeded and has URL
         if (!uploadRes.data?.success) {

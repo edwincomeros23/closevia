@@ -577,6 +577,18 @@ func main() {
 
 	// User peer tags routes
 	users.Get("/:id/peer-tags", peerTagHandler.GetUserPeerTags) // Public - get peer tags for a user
+
+	// Dispute/Reporting routes
+	disputeHandler := handlers.NewDisputeHandler()
+	disputes := api.Group("/disputes")
+	disputes.Post("/", middleware.AuthMiddleware(), disputeHandler.FileDispute)                    // File a dispute
+	disputes.Get("/:id", middleware.AuthMiddleware(), disputeHandler.GetDispute)                   // Get dispute details
+	disputes.Post("/:id/respond", middleware.AuthMiddleware(), disputeHandler.RespondToDispute)    // Respondent response
+	disputes.Post("/:id/messages", middleware.AuthMiddleware(), disputeHandler.SendDisputeMessage) // Send message in negotiation
+	disputes.Get("/:id/messages", middleware.AuthMiddleware(), disputeHandler.GetDisputeMessages)  // Get all messages
+	disputes.Post("/:id/agree", middleware.AuthMiddleware(), disputeHandler.AgreeOnResolution)     // Mutual agreement with rating
+	disputes.Post("/escalate/expired", disputeHandler.CheckAndEscalateDisputesHandler)             // Auto-escalate expired disputes (cron job)
+
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.
@@ -753,6 +765,10 @@ func main() {
 		log.Println("Starting pre-meetup reminder scheduler...")
 		reminderService.SchedulePreMeetupReminders()
 	}()
+
+	// Start background dispute auto-escalation job (check every 30 minutes for expired disputes)
+	disputeService := services.NewDisputeService(database.DB)
+	disputeService.StartAutoEscalationJob(30 * time.Minute)
 
 	// ⚡ SPA SERVE ROUTES - MUST BE LAST (after all API routes)
 	// Serve root path with index.html

@@ -1078,6 +1078,7 @@ func CreateTables() error {
 	ensureUserColumns()
 	ensureProductColumns()
 	ensureTradeColumns()
+	ensureDisputeColumns()
 	ensureMultiwayColumns()
 	ensureRiderColumns()
 	ensureDeliveryBatchColumns()
@@ -1115,6 +1116,122 @@ func CreateTables() error {
 
 	log.Println("Database tables and indexes created successfully")
 	return nil
+}
+
+// ensureDisputeColumns adds missing columns and creates dispute_messages table if needed
+func ensureDisputeColumns() {
+	// Add missing columns to trade_disputes
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{"category", "VARCHAR(50) NULL DEFAULT 'item_not_as_described' COMMENT 'item_not_as_described, no_show, rider_damage, safety, harassment'"},
+		{"response_deadline", "TIMESTAMP NULL COMMENT 'filed_at + 48 hours'"},
+		{"dispute_frozen_at", "TIMESTAMP NULL COMMENT 'When trade was frozen due to dispute'"},
+		{"archive_timer_paused_at", "TIMESTAMP NULL COMMENT 'When 7-day archive timer was paused'"},
+		{"resolution", "VARCHAR(50) NULL COMMENT 'accepted, mutual, admin_upheld, admin_reversed, admin_suspended'"},
+		{"admin_notes", "TEXT NULL"},
+		// Mutual agreement fields
+		{"mutual_agreement_party1", "BOOLEAN DEFAULT FALSE COMMENT 'Party 1 (raised_by_id) agreed to resolution'"},
+		{"mutual_agreement_party2", "BOOLEAN DEFAULT FALSE COMMENT 'Party 2 (reported_user_id) agreed to resolution'"},
+		{"mutual_agreement_at", "TIMESTAMP NULL COMMENT 'When both parties agreed to resolution'"},
+		{"agreed_resolution_type", "VARCHAR(50) NULL COMMENT 'complete or cancel - what both parties agreed to'"},
+		// Rating fields (1-5 stars)
+		{"party1_rating", "INT NULL COMMENT 'Rating given by raised_by_id (1-5)'"},
+		{"party2_rating", "INT NULL COMMENT 'Rating given by reported_user_id (1-5)'"},
+		// Auto-escalation fields
+		{"auto_escalated", "BOOLEAN DEFAULT FALSE COMMENT 'Whether dispute was auto-escalated to admin'"},
+		{"auto_escalated_at", "TIMESTAMP NULL COMMENT 'When dispute was auto-escalated'"},
+		{"escalation_reason", "TEXT NULL COMMENT 'Reason for auto-escalation'"},
+	}
+
+	for _, col := range columns {
+		var count int
+		err := DB.QueryRow(`
+			SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = 'trade_disputes'
+			AND COLUMN_NAME = ?
+		`, col.name).Scan(&count)
+
+		if err != nil {
+			log.Printf("Warning: failed to check dispute column %s: %v", col.name, err)
+			continue
+		}
+
+		if count == 0 {
+			query := fmt.Sprintf("ALTER TABLE trade_disputes ADD COLUMN %s %s", col.name, col.definition)
+			if _, err := DB.Exec(query); err != nil {
+				log.Printf("Warning: failed to add dispute column %s: %v", col.name, err)
+			} else {
+				log.Printf("Added missing dispute column: %s", col.name)
+			}
+		}
+	}
+
+	// Ensure dispute status ENUM includes new states
+	var disputeStatusType string
+	if err := DB.QueryRow(`
+		SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'trade_disputes' AND COLUMN_NAME = 'status'
+	`).Scan(&disputeStatusType); err == nil {
+		requiredStatuses := []string{"'filed'", "'mutual_resolution'", "'counter_evidence'", "'negotiation'",
+			"'resolved_accepted'", "'resolved_mutual'", "'admin_escalation'", "'resolved_admin_upheld'",
+			"'resolved_admin_reversed'", "'resolved_admin_suspended'", "'cancelled'"}
+
+		needsUpdate := false
+		for _, status := range requiredStatuses {
+			if !contains(disputeStatusType, status) {
+				needsUpdate = true
+				break
+			}
+		}
+
+		if needsUpdate {
+			newEnum := "ENUM('filed','mutual_resolution','counter_evidence','negotiation','resolved_accepted','resolved_mutual','admin_escalation','resolved_admin_upheld','resolved_admin_reversed','resolved_admin_suspended','cancelled')"
+			if _, err := DB.Exec(fmt.Sprintf(`ALTER TABLE trade_disputes MODIFY COLUMN status %s DEFAULT 'filed'`, newEnum)); err != nil {
+				log.Printf("Warning: failed to update dispute status enum: %v", err)
+			} else {
+				log.Println("Updated trade_disputes status enum with new states")
+			}
+		}
+	}
+
+	// Create dispute_messages table if it doesn't exist
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS dispute_messages (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		dispute_id INT NOT NULL,
+		sender_id INT NOT NULL,
+		message TEXT NOT NULL,
+		photo_evidence VARCHAR(500) NULL COMMENT 'Counter-evidence photo URL',
+		sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		last_response_deadline TIMESTAMP NULL COMMENT '12 hours from message sent',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (dispute_id) REFERENCES trade_disputes(id) ON DELETE CASCADE,
+		FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_dispute_messages_dispute (dispute_id),
+		INDEX idx_dispute_messages_sender (sender_id),
+		INDEX idx_dispute_messages_deadline (last_response_deadline)
+	)`)
+
+	// Create trade_responses table for tracking party agreement and ratings
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS trade_responses (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		dispute_id INT NOT NULL,
+		party_id INT NOT NULL COMMENT 'User ID of party responding',
+		agreed_resolution_type VARCHAR(50) COMMENT 'complete or cancel - what this party agrees to',
+		rating INT COMMENT 'Rating given by this party (1-5 stars)',
+		user_feedback TEXT COMMENT 'Feedback text from party',
+		response_type VARCHAR(50) COMMENT 'agreement, rating, or both',
+		responded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (dispute_id) REFERENCES trade_disputes(id) ON DELETE CASCADE,
+		FOREIGN KEY (party_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_trade_responses_dispute (dispute_id),
+		INDEX idx_trade_responses_party (party_id),
+		UNIQUE KEY uk_dispute_party (dispute_id, party_id)
+	)`)
 }
 
 func ensureAppSettingsDefaults() {
@@ -1345,6 +1462,10 @@ func ensureTradeColumns() {
 		{"seller_met", "BOOLEAN DEFAULT FALSE"},
 		{"buyer_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 		{"seller_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
+		{"dispute_id", "INT NULL COMMENT 'Reference to active dispute'"},
+		{"is_dispute_frozen", "BOOLEAN DEFAULT FALSE COMMENT 'Trade is frozen due to dispute'"},
+		{"archive_timer_paused", "BOOLEAN DEFAULT FALSE COMMENT 'Archive timer paused due to dispute'"},
+		{"archive_timer_paused_at", "TIMESTAMP NULL COMMENT 'When archive timer was paused'"},
 	}
 
 	for _, col := range columns {
