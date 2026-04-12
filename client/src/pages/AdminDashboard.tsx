@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -545,6 +545,9 @@ const AdminDashboard: React.FC = () => {
     onClose: closeDeleteDialog,
   } = useDisclosure();
   const cancelDeleteRef = useRef<HTMLButtonElement | null>(null);
+  const usersSearchInputRef = useRef<string>('');
+  const productsSearchInputRef = useRef<string>('');
+  const riderSearchInputRef = useRef<string>('');
 
   const toast = useToast();
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -1265,23 +1268,23 @@ const AdminDashboard: React.FC = () => {
 
   // â"€â"€ Debounced search handlers â"€â"€
   const handleUsersSearch = useCallback((searchValue: string) => {
-    setUsersSearchInput(searchValue);
+    usersSearchInputRef.current = searchValue;
     if (usersSearchDebounceRef.current) {
       clearTimeout(usersSearchDebounceRef.current);
     }
-    usersSearchDebounceRef.current = setTimeout(() => {
+    usersSearchDebounceRef.current = window.setTimeout(() => {
       setUsersSearch(searchValue);
-    }, 500);
+    }, 300) as unknown as ReturnType<typeof setTimeout>;
   }, []);
 
   const handleProductsSearch = useCallback((searchValue: string) => {
-    setProductsSearchInput(searchValue);
+    productsSearchInputRef.current = searchValue;
     if (productsSearchDebounceRef.current) {
       clearTimeout(productsSearchDebounceRef.current);
     }
-    productsSearchDebounceRef.current = setTimeout(() => {
+    productsSearchDebounceRef.current = window.setTimeout(() => {
       setProductsSearch(searchValue);
-    }, 500);
+    }, 300) as unknown as ReturnType<typeof setTimeout>;
   }, []);
 
   // Cleanup debounce timers on unmount
@@ -1664,17 +1667,13 @@ const AdminDashboard: React.FC = () => {
 
   // Debounced search handler
   const handleRiderSearch = useCallback((searchValue: string) => {
-    setRiderSearchInput(searchValue);
-    
-    // Clear previous timeout
+    riderSearchInputRef.current = searchValue;
     if (riderSearchDebounceRef.current) {
       clearTimeout(riderSearchDebounceRef.current);
     }
-    
-    // Set new timeout for debounced search
-    riderSearchDebounceRef.current = setTimeout(() => {
+    riderSearchDebounceRef.current = window.setTimeout(() => {
       setRiderSearchQuery(searchValue);
-    }, 500);
+    }, 300) as unknown as ReturnType<typeof setTimeout>;
   }, []);
 
   // ── Fetch rider applications ──
@@ -3098,7 +3097,7 @@ const AdminDashboard: React.FC = () => {
                   <option value="approved">Approved</option>
                   <option value="rejected">Rejected</option>
                 </Select>
-                <Input size="sm" w="160px" placeholder="Search name/email" value={riderSearchInput} onChange={e => handleRiderSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
+                <Input size="sm" w="160px" placeholder="Search name/email" defaultValue={riderSearchInputRef.current} onChange={e => handleRiderSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchRiderApplications(); }} />
                 <Button size="sm" leftIcon={<FiRefreshCw />} onClick={() => fetchRiderApplications()} isLoading={riderAppsLoading}>Refresh</Button>
               </HStack>
             </Flex>
@@ -3283,7 +3282,7 @@ const AdminDashboard: React.FC = () => {
           <Heading size="sm" color={textColor}>Users</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>View all registered users and manage accounts.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search users by name, email..." value={usersSearchInput} onChange={(e) => handleUsersSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminUsers(1, usersSearchInput, usersRoleFilter, usersIsVerifiedFilter); }} maxW="300px" />
+            <Input size="sm" placeholder="Search users by name, email..." defaultValue={usersSearchInputRef.current} onChange={(e) => handleUsersSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminUsers(1, usersSearchInputRef.current, usersRoleFilter, usersIsVerifiedFilter); }} maxW="300px" />
             <Select size="sm" w="130px" placeholder="All Roles" value={usersRoleFilter} onChange={(e) => { setUsersRoleFilter(e.target.value); fetchAdminUsers(1, usersSearch, e.target.value); }}>
               <option value="admin">Admin</option>
               <option value="user">User</option>
@@ -3314,7 +3313,7 @@ const AdminDashboard: React.FC = () => {
                         <Td px={2}><HStack spacing={2}><VerifiedAvatar size="xs" name={user.name} src={user.profile_picture || undefined} isVerified={user.verified || user.verification_status === 'verified' || false} /><VStack spacing={0} align="start" minW={0}><Text fontWeight="600" fontSize="xs" isTruncated maxW="120px">{user.name || 'Unnamed'}</Text><Text fontSize="xs" color={mutedTextColor}>#{user.id}</Text></VStack></HStack></Td>
                         <Td px={2} display={{ base: 'none', md: 'table-cell' }}><Text fontSize="xs" isTruncated maxW="160px">{user.email}</Text></Td>
                         <Td px={2}><Tag size="sm" colorScheme={user.role === 'admin' ? 'purple' : user.role === 'banned' ? 'blackAlpha' : user.role === 'suspended' ? 'red' : 'blue'} fontSize="xs">{user.role || 'user'}</Tag></Td>
-                        <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : 'Unverified'}</Tag></Td>
+                        <Td px={2} display={{ base: 'none', sm: 'table-cell' }}><Tag size="sm" colorScheme={user.verified ? 'green' : 'gray'} fontSize="xs">{user.verified ? 'Verified' : 'Not Verified'}</Tag></Td>
                         <Td textAlign="right" px={1}>
                           <HStack spacing={1} justify="flex-end">
                             <Tooltip label="Strike History" hasArrow><IconButton aria-label="Strikes" size="xs" colorScheme="purple" variant="ghost" icon={<FiAlertTriangle />} onClick={() => openStrikeHistory(user)} /></Tooltip>
@@ -3352,7 +3351,7 @@ const AdminDashboard: React.FC = () => {
           <Heading size="sm" color={textColor}>Items</Heading>
           <Text fontSize="xs" color={mutedTextColor} mt={1}>Inspect and manage marketplace listings.</Text>
           <HStack mt={4} mb={2} spacing={3} wrap="wrap">
-            <Input size="sm" placeholder="Search items by title..." value={productsSearchInput} onChange={(e) => handleProductsSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminProducts(1, productsSearchInput, productsStatusFilter); }} maxW="300px" />
+            <Input size="sm" placeholder="Search items by title..." defaultValue={productsSearchInputRef.current} onChange={(e) => handleProductsSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') fetchAdminProducts(1, productsSearchInputRef.current, productsStatusFilter); }} maxW="300px" />
             <Select size="sm" w="140px" placeholder="All Status" value={productsStatusFilter} onChange={(e) => { setProductsStatusFilter(e.target.value); fetchAdminProducts(1, productsSearch, e.target.value); }}>
               <option value="available">Available</option>
               <option value="reserved">Reserved</option>
@@ -3390,8 +3389,8 @@ const AdminDashboard: React.FC = () => {
                     <Th color={mutedTextColor} px={2} w="40px"><Checkbox isChecked={selectedProductIds.size === products.length && products.length > 0} isIndeterminate={selectedProductIds.size > 0 && selectedProductIds.size < products.length} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.checked) { setSelectedProductIds(new Set(products.map(p => p.id))); } else { setSelectedProductIds(new Set()); } }} /></Th>
                     <Th color={mutedTextColor} px={2}>Item</Th>
                     <Th color={mutedTextColor} px={2} display={{ base: 'none', md: 'table-cell' }}>Trader</Th>
-                    <Th color={mutedTextColor} w="80px" px={2}>Status</Th>
-                    <Th isNumeric color={mutedTextColor} w="110px" px={2} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
+                    <Th color={mutedTextColor} w="100px" px={3}>Status</Th>
+                    <Th isNumeric color={mutedTextColor} w="150px" px={3} display={{ base: 'none', sm: 'table-cell' }}>Price</Th>
                     <Th textAlign="right" color={mutedTextColor} w="80px" px={1}></Th>
                   </Tr></Thead>
                   <Tbody>
@@ -3403,9 +3402,9 @@ const AdminDashboard: React.FC = () => {
                           <Td px={2}><Checkbox isChecked={isSelected} onChange={(e: React.ChangeEvent<HTMLInputElement>) => { const newSet = new Set(selectedProductIds); if (e.target.checked) { newSet.add(product.id); } else { newSet.delete(product.id); } setSelectedProductIds(newSet); }} /></Td>
                           <Td><HStack spacing={3}><Avatar size="sm" variant="rounded" name={product.title} src={product.image_urls?.[0] || undefined} /><VStack spacing={0} align="start"><Text fontWeight="600" fontSize="sm" noOfLines={1} maxW="150px">{product.title}</Text><Text fontSize="xs" color={mutedTextColor}>ID #{product.id}</Text></VStack></HStack></Td>
                           <Td><Text fontSize="sm">{product.seller_name || `User #${product.seller_id}`}</Text></Td>
-                          <Td><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'} px={2.5} py={1}>{product.status}</Tag></Td>
-                          <Td isNumeric><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : '—'}</Text></Td>
-                          <Td textAlign="right">
+                          <Td px={3}><Tag size="sm" colorScheme={product.status === 'available' ? 'green' : product.status === 'suspended' ? 'red' : 'gray'} px={2.5} py={1} isTruncated maxW="100px">{product.status.charAt(0).toUpperCase() + product.status.slice(1)}</Tag></Td>
+                          <Td isNumeric px={3} pr={14}><Text fontSize="sm">{product.price != null ? formatCurrency(product.price) : '—'}</Text></Td>
+                          <Td textAlign="right" pl={6}>
                             <HStack spacing={1} justify="flex-end">
                               <Tooltip label="View Details" hasArrow>
                                 <IconButton as="a" href={`/product/${product.id}`} target="_blank" aria-label="View Details" size="sm" colorScheme="blue" variant="ghost" icon={<FiEye />} />
