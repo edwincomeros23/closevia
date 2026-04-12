@@ -557,6 +557,7 @@ type Delivery struct {
 	// Denormalized fields for display
 	UserName       string   `json:"user_name,omitempty"`
 	RiderName      string   `json:"rider_name,omitempty"`
+	RiderPhone     string   `json:"rider_phone,omitempty"`
 	RiderVehicle   string   `json:"rider_vehicle,omitempty"`
 	RiderRating    *float64 `json:"rider_rating,omitempty"`
 	RiderLatitude  *float64 `json:"rider_latitude,omitempty"`
@@ -625,17 +626,20 @@ type RiderCashCollection struct {
 
 // RiderLedger represents the rider's cash tracking
 type RiderLedger struct {
-	ID                    int        `json:"id"`
-	RiderID               int        `json:"rider_id"`
-	TotalCashCollected    float64    `json:"total_cash_collected"`
-	RemittanceOwed        float64    `json:"remittance_owed"`
-	TakeHome              float64    `json:"take_home"`
-	FreeSlotsRemaining    int        `json:"free_slots_remaining"`
-	TotalFreeSlotsUsed    int        `json:"total_free_slots_used"`
-	LastRemittanceAt      *time.Time `json:"last_remittance_at,omitempty"`
-	IsLockedForRemittance bool       `json:"is_locked_for_remittance"`
-	CreatedAt             time.Time  `json:"created_at"`
-	UpdatedAt             time.Time  `json:"updated_at"`
+	ID                     int        `json:"id"`
+	RiderID                int        `json:"rider_id"`
+	TotalCashCollected     float64    `json:"total_cash_collected"`
+	RemittanceOwed         float64    `json:"remittance_owed"`
+	TakeHome               float64    `json:"take_home"`
+	TotalRemittancePaid    float64    `json:"total_remittance_paid"`
+	RemittanceThreshold    float64    `json:"remittance_threshold"`
+	RemittancePaidProgress float64    `json:"remittance_paid_progress"`
+	FreeSlotsRemaining     int        `json:"free_slots_remaining"`
+	TotalFreeSlotsUsed     int        `json:"total_free_slots_used"`
+	LastRemittanceAt       *time.Time `json:"last_remittance_at,omitempty"`
+	IsLockedForRemittance  bool       `json:"is_locked_for_remittance"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
 }
 
 // RiderRemittancePayment represents a remittance payment submission

@@ -111,11 +111,15 @@ func parseWantedCategories(raw string) models.StringArray {
 func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
+		log.Printf("❌ [CreateProduct] ERROR: Failed to extract userID from context")
 		return c.Status(401).JSON(models.APIResponse{
 			Success: false,
 			Error:   "User not authenticated",
 		})
 	}
+
+	// DEBUG LOG: Track which user is creating the product
+	log.Printf("✅ [CreateProduct] User ID %d attempting to create product", userID)
 
 	// Parse fields
 	title := c.FormValue("title")
@@ -415,6 +419,10 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 	productID, _ := result.LastInsertId()
 
+	// DEBUG LOG: Confirm product was created with correct seller_id
+	log.Printf("✅ [CreateProduct] Product #%d successfully created for seller_id=%d | Title: %s",
+		productID, userID, title)
+
 	// Store counterfeit detection results
 	if report.IsSuspicious {
 		flagsJSON, _ := json.Marshal(report.Flags)
@@ -527,6 +535,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		// Also trigger notifications in the same background operation
 		services.TriggerSmartNotifications(h.db, int(productID), userID, title, category)
 		NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(int(productID))
+		// NEW: Also trigger PROACTIVE multiway detection (finds loops without requiring existing trades)
+		NewTradeHandler().FindProactiveMultiwayLoops(int(productID))
 	}()
 	// ========================================================================
 
@@ -1675,8 +1685,10 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	// Re-trigger multiway search if category/wants fields changed and product is available
 	if p.Status == "available" {
 		for _, f := range updateFields {
-			if strings.Contains(f, "category") || strings.Contains(f, "wants") {
+			if strings.Contains(f, "category") || strings.Contains(f, "wants") || strings.Contains(f, "desired_product") {
 				go NewTradeHandler().autoTriggerMultiwayForNewAvailableProduct(productID)
+				// NEW: Also trigger PROACTIVE multiway detection (finds loops without requiring existing trades)
+				go NewTradeHandler().FindProactiveMultiwayLoops(productID)
 				break
 			}
 		}

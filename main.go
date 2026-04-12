@@ -62,10 +62,12 @@ func main() {
 	}
 
 	// Initialize database
+	log.Println("[STARTUP] Connecting to database...")
 	if err := database.InitDatabase(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
 	defer database.CloseDatabase()
+	log.Println("[STARTUP] Database connected successfully")
 
 	// Auto-migration (CreateTables) can be extremely slow on hosted DBs (ALTER TABLE on large tables).
 	// Default behavior:
@@ -74,11 +76,13 @@ func main() {
 	runCreateTables := os.Getenv("DB_CA_CERT") == ""
 	runCreateTables = envBool("RUN_CREATE_TABLES", runCreateTables)
 	if runCreateTables {
+		log.Println("[STARTUP] Running CreateTables...")
 		if err := database.CreateTables(); err != nil {
 			log.Fatal("Failed to create database tables:", err)
 		}
+		log.Println("[STARTUP] CreateTables completed")
 	} else {
-		log.Println("Skipping database.CreateTables() (set RUN_CREATE_TABLES=true to enable)")
+		log.Println("[STARTUP] Skipping database.CreateTables() (set RUN_CREATE_TABLES=true to enable)")
 	}
 
 	// Create Fiber app
@@ -163,22 +167,6 @@ func main() {
 	app.Static("/", "./client/dist")
 
 	log.Printf("Backend version: xendit-sync-all-405-fix")
-
-	// ⚠️ IMPORTANT: SPA routes MUST come early (before most routes)
-	// Serve root path
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendFile("./client/dist/index.html")
-	})
-
-	// Serve index.html for all unmatched non-API routes (SPA catch-all)
-	// This allows React Router to handle all routing on the client side
-	app.Get("/*", func(c *fiber.Ctx) error {
-		// Don't intercept API routes
-		if c.Path() == "/" || !strings.HasPrefix(c.Path(), "/api") {
-			return c.SendFile("./client/dist/index.html")
-		}
-		return nil
-	})
 
 	// Quick sanity-check endpoint to confirm you restarted the backend with latest routes.
 	app.Get("/api/version", func(c *fiber.Ctx) error {
@@ -373,7 +361,7 @@ func main() {
 	wishlistHandler := handlers.NewWishlistHandler()
 	aiFeaturesHandler := handlers.NewAIFeaturesHandler()
 	deliveryHandler := handlers.NewDeliveryHandler()
-	deliveryHandler.BackfillMissingDeliveries() // Create delivery records for existing active delivery trades
+	go deliveryHandler.BackfillMissingDeliveries() // Create delivery records for existing active delivery trades (async to avoid blocking startup)
 	reviewHandler := handlers.NewReviewHandler()
 	reportHandler := handlers.NewReportHandler()
 	uploadHandler := handlers.NewUploadHandler()
@@ -540,6 +528,7 @@ func main() {
 	// Multi-way chain specific routes
 	trades.Get("/multiway/opportunities", middleware.AuthMiddleware(), tradeHandler.GetMultiwayOpportunities)
 	trades.Get("/multiway/discoverable", middleware.AuthMiddleware(), tradeHandler.GetDiscoverableMultiwayLoops)
+	trades.Get("/multiway/suggestions", middleware.AuthMiddleware(), tradeHandler.GetProactiveMultiwaySuggestions)
 	trades.Post("/multiway/:id/hop-in", middleware.AuthMiddleware(), tradeHandler.HopIntoMultiwayChain)
 	trades.Post("/multiway/:id/accept", middleware.AuthMiddleware(), tradeHandler.AcceptMultiwayChain)
 	trades.Post("/multiway/:id/decline", middleware.AuthMiddleware(), tradeHandler.DeclineMultiwayChain)
@@ -568,6 +557,7 @@ func main() {
 	trades.Get("/:id/history", middleware.AuthMiddleware(), tradeHandler.GetTradeHistory)
 	trades.Put("/:id/complete", middleware.AuthMiddleware(), tradeHandler.CompleteTrade)
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
+	trades.Get("/:id/deliveries", middleware.AuthMiddleware(), deliveryHandler.GetTradeDeliveries)
 	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
 
 	// Meetup routes (stage-aware meeting coordination)
@@ -591,6 +581,8 @@ func main() {
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.
 	payments.All("/trade/:id/sync", middleware.AuthMiddleware(), paymentHandler.SyncTradePayment)
+	payments.Post("/remittance-invoice", middleware.AuthMiddleware(), paymentHandler.CreateRemittanceInvoice)
+	payments.All("/remittance/sync", middleware.AuthMiddleware(), paymentHandler.SyncRemittancePayment)
 	payments.Post("/premium/:id", middleware.AuthMiddleware(), paymentHandler.CreatePremiumInvoice)
 	payments.Post("/subscription", middleware.AuthMiddleware(), paymentHandler.CreateUserPremiumInvoice)
 	payments.Post("/boost/:id", middleware.AuthMiddleware(), paymentHandler.CreateBoostInvoice)
@@ -761,6 +753,23 @@ func main() {
 		log.Println("Starting pre-meetup reminder scheduler...")
 		reminderService.SchedulePreMeetupReminders()
 	}()
+
+	// ⚡ SPA SERVE ROUTES - MUST BE LAST (after all API routes)
+	// Serve root path with index.html
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendFile("./client/dist/index.html")
+	})
+
+	// Serve index.html for all unmatched routes (SPA catch-all)
+	// This allows React Router to handle all routing on the client side
+	// This MUST come after all API routes so they are not intercepted
+	app.Use(func(c *fiber.Ctx) error {
+		// Only serve index.html for non-API routes
+		if !strings.HasPrefix(c.Path(), "/api") && !strings.HasPrefix(c.Path(), "/uploads") {
+			return c.SendFile("./client/dist/index.html")
+		}
+		return c.Next()
+	})
 
 	log.Printf("Starting Clovia server on port %s", port)
 	log.Fatal(app.Listen(":" + port))

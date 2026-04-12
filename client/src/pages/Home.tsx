@@ -50,7 +50,9 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CloseIcon,
+  SmallCloseIcon,
 } from '@chakra-ui/icons'
+import { InputRightElement } from '@chakra-ui/react'
 import { FaUserCircle, FaHandshake, FaHome, FaTag, FaMotorcycle, FaCrown } from 'react-icons/fa'
 import { FiShoppingBag } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
@@ -300,13 +302,59 @@ const Home: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, hasSearched])
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     setSelectedCategory('All')
     setShowSuggestions(false)
+    
+    const term = searchTerm.trim()
+    const termLower = term.toLowerCase()
+    
+    console.log('🔍 [Search] Term:', term, 'organizationSuggestions:', organizationSuggestions.length)
+    
+    // Check if search term matches an organization in current suggestions
+    const matchedOrg = organizationSuggestions.find(org => {
+      const orgNameLower = (org.org_name || org.name || '').toLowerCase()
+      return orgNameLower === termLower
+    })
+    
+    if (matchedOrg) {
+      console.log('✅ [Search] Found org in suggestions:', matchedOrg)
+      // Navigate directly to the organization page
+      const orgHandle = matchedOrg.org_handle || matchedOrg.slug
+      if (orgHandle) {
+        console.log('🚀 [Search] Navigating to /org/' + orgHandle)
+        navigate(`/org/${orgHandle}`)
+        return
+      }
+    }
+    
+    // Fallback: Check API for organization if not in suggestions
+    if (term.length >= 2) {
+      try {
+        console.log('📡 [Search] Checking API for organization:', term)
+        const response = await api.get(`/api/organizations?q=${encodeURIComponent(term)}&limit=1`)
+        console.log('📡 [Search] API response:', response.data)
+        if (response.data?.success && Array.isArray(response.data?.data) && response.data.data.length > 0) {
+          const org = response.data.data[0]
+          const orgHandle = org.org_handle || org.slug
+          console.log('✅ [Search] Found org from API:', org, 'handle:', orgHandle)
+          if (orgHandle) {
+            console.log('🚀 [Search] Navigating to /org/' + orgHandle)
+            navigate(`/org/${orgHandle}`)
+            return
+          }
+        }
+      } catch (error) {
+        // API call failed, continue with product search
+        console.error('❌ [Search] Error checking for organization:', error)
+      }
+    }
+    
+    // Otherwise, do a regular product keyword search
+    console.log('🔎 [Search] Falling back to product search for:', term)
     // Detect natural language queries for smart search
-    const term = searchTerm.trim().toLowerCase()
     const smartSignals = ['near me', 'nearby', 'cheap', 'budget', 'expensive', 'under ', 'below ', 'above ']
-    const isSmartQuery = term.split(/\s+/).length >= 2 && smartSignals.some(s => term.includes(s))
+    const isSmartQuery = termLower.split(/\s+/).length >= 2 && smartSignals.some(s => termLower.includes(s))
     setFilters(prev => ({ ...prev, keyword: searchTerm, category: '', page: 1, useSmartSearch: isSmartQuery || undefined }))
     setHasSearched(true)
   }
@@ -322,7 +370,7 @@ const Home: React.FC = () => {
       if (selectedUser?.is_organization) {
         const orgHandle = selectedUser.org_handle || selectedUser.slug
         if (orgHandle) {
-          navigate(`/org/${orgHandle}/products`)
+          navigate(`/org/${orgHandle}`)
           return
         }
       }
@@ -683,9 +731,10 @@ const Home: React.FC = () => {
           ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
           position="relative"
         >
-          {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap" ref={searchContainerRef}>
-            <Box position="relative" flex={1} minW={{ base: 0, md: 'auto' }}>
+          {/* Main Search Bar - Full width on mobile, inline on desktop */}
+          <VStack w="full" spacing={2} align="stretch" ref={searchContainerRef}>
+            {/* Search Input - Full width on mobile */}
+            <Box position="relative" w="full">
               <InputGroup size="lg">
                 <InputLeftElement pointerEvents="none">
                   <SearchIcon color="gray.400" />
@@ -703,7 +752,18 @@ const Home: React.FC = () => {
                     borderColor: "brand.500",
                     boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
                   }}
+                  pr={{ base: '40px', md: 0 }}
                 />
+                {/* Filter icon inside search - mobile only */}
+                <InputRightElement display={{ base: 'flex', md: 'none' }} pointerEvents="auto">
+                  <IconButton
+                    aria-label="Toggle filters"
+                    icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowFilters(!showFilters)}
+                  />
+                </InputRightElement>
               </InputGroup>
 
               {/* Search Suggestions Dropdown */}
@@ -816,24 +876,43 @@ const Home: React.FC = () => {
               </Box>
             )}
             </Box>
+          </VStack>
 
-            {/* Toggle Filters icon (mobile inline, right side) */}
+          {/* Desktop Controls - Show on desktop only */}
+          <HStack 
+            w="full" 
+            spacing={3} 
+            display={{ base: 'none', md: 'flex' }}
+            wrap="wrap"
+          >
+
+            {/* Hidden on mobile to keep header compact: Search button (desktop only) */}
+            <Button
+              leftIcon={<SearchIcon />}
+              colorScheme="brand"
+              size="lg"
+              onClick={handleSearch}
+              px={8}
+            >
+              Search
+            </Button>
+
+            {/* Desktop filters toggle at the end to keep desktop layout */}
             <IconButton
               aria-label="Toggle filters"
               icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
               variant="outline"
-              size={{ base: 'md', md: 'lg' }}
+              size="lg"
               onClick={() => setShowFilters(!showFilters)}
-              display={{ base: 'inline-flex', md: 'none' }}
             />
 
-            {/* Mobile notifications button beside hamburger */}
+            {/* Desktop notifications button beside profile */}
             {user && (
-              <Box position="relative" display={{ base: 'inline-flex', md: 'none' }}>
+              <Box position="relative">
                 <IconButton
                   aria-label="Notifications"
                   icon={<BellIcon />}
-                  size={{ base: 'md', md: 'lg' }}
+                  size="lg"
                   variant="ghost"
                   onClick={() => navigate('/notifications')}
                 />
@@ -844,8 +923,8 @@ const Home: React.FC = () => {
                     right="-1"
                     colorScheme="red"
                     borderRadius="full"
-                    minW="18px"
-                    h="18px"
+                    minW="20px"
+                    h="20px"
                     display="flex"
                     alignItems="center"
                     justifyContent="center"
@@ -858,38 +937,6 @@ const Home: React.FC = () => {
               </Box>
             )}
 
-            {/* Mobile hamburger to open nav drawer (after filters icon) */}
-            <IconButton
-              aria-label="Open navigation"
-              icon={<HamburgerIcon />}
-              display={{ base: 'inline-flex', md: 'none' }}
-              size={{ base: 'md', md: 'lg' }}
-              variant="ghost"
-              onClick={openMobileNav}
-            />
-
-            {/* Hidden on mobile to keep header compact: Search button (desktop only) */}
-            <Button
-              leftIcon={<SearchIcon />}
-              colorScheme="brand"
-              size="lg"
-              onClick={handleSearch}
-              px={8}
-              display={{ base: 'none', md: 'inline-flex' }}
-            >
-              Search
-            </Button>
-
-            {/* Desktop filters toggle at the end to keep desktop layout */}
-            <IconButton
-              aria-label="Toggle filters"
-              icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
-              variant="outline"
-              size="lg"
-              onClick={() => setShowFilters(!showFilters)}
-              display={{ base: 'none', md: 'inline-flex' }}
-            />
-
             {/* Profile button (desktop only) with Popover */}
             {user && (
               <Popover placement="bottom-end" trigger="hover">
@@ -897,7 +944,6 @@ const Home: React.FC = () => {
                   <Box
                     as="button"
                     cursor={user.id ? "pointer" : "not-allowed"}
-                    display={{ base: 'none', md: 'inline-flex' }}
                     alignItems="center"
                     justifyContent="center"
                     borderRadius="full"
@@ -906,6 +952,7 @@ const Home: React.FC = () => {
                     onClick={() => user.id && navigate(`/users/${user.slug || user.id}`)}
                     disabled={!user.id}
                     opacity={user.id ? 1 : 0.5}
+                    display="inline-flex"
                   >
                     <VerifiedAvatar
                       size="sm"
@@ -1026,7 +1073,7 @@ const Home: React.FC = () => {
               <Box
                 as={RouterLink}
                 to="/login"
-                display={{ base: 'none', md: 'inline-flex' }}
+                display="inline-flex"
                 alignItems="center"
                 justifyContent="center"
                 borderRadius="full"

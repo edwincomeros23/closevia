@@ -33,6 +33,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const [requestedOption, setRequestedOption] = useState<TradeOption | null>(null)
   const [requestedDeliveryAddress, setRequestedDeliveryAddress] = useState<string>('')
   const [requestingOptionChange, setRequestingOptionChange] = useState(false)
+  const [isAccepting, setIsAccepting] = useState(false)
+  const [isDeclining, setIsDeclining] = useState(false)
+  const [isCountering, setIsCountering] = useState(false)
 
   // Deep debug logs for data structure analysis
   useEffect(() => {
@@ -167,8 +170,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }, [isOpen, effectiveTrade, getProduct, offeredItemIds])
 
   const accept = async () => {
-    if (!effectiveTrade) return
+    if (!effectiveTrade || isAccepting) return
     try {
+      setIsAccepting(true)
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'accept' } as TradeAction)
       toast({
         id: "offerdetailsmodal-offer-accepted", title: 'Offer accepted', status: 'success' })
@@ -177,6 +181,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     } catch (e: any) {
       toast({
         id: "offerdetailsmodal-failed-to-accept", title: 'Failed to accept', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    } finally {
+      setIsAccepting(false)
     }
   }
 
@@ -185,8 +191,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   }
 
   const confirmDecline = async () => {
-    if (!effectiveTrade) return
+    if (!effectiveTrade || isDeclining) return
     try {
+      setIsDeclining(true)
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'decline' } as TradeAction)
       toast({
         id: "offerdetailsmodal-offer-declined", title: 'Offer declined', status: 'success' })
@@ -196,22 +203,35 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     } catch (e: any) {
       toast({
         id: "offerdetailsmodal-failed-to-decline", title: 'Failed to decline', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    } finally {
+      setIsDeclining(false)
     }
   }
 
   const openCounter = async () => {
     if (!effectiveTrade) return
+    
+    // Reset form fields
+    setCashDelta('')
+    setCounterMsg('')
+    
     try {
       // Load sender (User A) active listings
       const res = await api.get(`/api/products/user/${effectiveTrade.buyer_id}?active=true&page=1&limit=50`)
       const list: Product[] = Array.isArray(res.data?.data?.data) ? res.data.data.data : []
       setUserInventory(list)
-      // Preselect current offered items
-      setSelectedCounterIds(offeredItemIds)
+      
+      // For buyout trades, don't preselect items (they don't have items anyway)
+      // For regular trades, preselect current offered items
+      if (!isBuyout) {
+        setSelectedCounterIds(offeredItemIds)
+      } else {
+        setSelectedCounterIds([])
+      }
       setCounterOpen(true)
     } catch {
       setUserInventory([])
-      setSelectedCounterIds(offeredItemIds)
+      setSelectedCounterIds(isBuyout ? [] : offeredItemIds)
       setCounterOpen(true)
     }
   }
@@ -244,9 +264,16 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
   const { isOpen: isDeclineOpen, onOpen: onDeclineOpen, onClose: onDeclineClose } = useDisclosure()
   const cancelRef = React.useRef<HTMLButtonElement>(null)
 
+  // Check if this is a buyout trade (no items offered, only cash)
+  const isBuyout = useMemo(() => {
+    return (!effectiveTrade?.items || effectiveTrade.items.length === 0) && 
+           (effectiveTrade?.offered_cash_amount && effectiveTrade.offered_cash_amount > 0)
+  }, [effectiveTrade])
+
   const submitCounter = async () => {
-    if (!effectiveTrade) return
+    if (!effectiveTrade || isCountering) return
     try {
+      setIsCountering(true)
       await api.put(`/api/trades/${effectiveTrade.id}`, { action: 'counter', counter_offered_product_ids: selectedCounterIds, message: counterMsg, counter_offered_cash_amount: cashDelta ? Number(cashDelta) : undefined } as TradeAction)
       toast({
         id: "offerdetailsmodal-counter-offer-sent", title: 'Counter offer sent', status: 'success' })
@@ -255,6 +282,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     } catch (e: any) {
       toast({
         id: "offerdetailsmodal-failed-to-counter", title: 'Failed to counter', description: e?.response?.data?.error || 'Try again', status: 'error' })
+    } finally {
+      setIsCountering(false)
     }
   }
 
@@ -418,10 +447,10 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
       <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
       <ModalContent maxH="90vh" display="flex" flexDirection="column" bg="white" borderRadius="lg" boxShadow="lg">
         {/* Compact Header */}
-        <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" p={4}>
+        <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" p={2.5}>
           <HStack justify="space-between" align="center">
             <VStack align="start" spacing={0}>
-              <Text fontSize="lg" fontWeight="bold" color="gray.900">Offer Details</Text>
+              <Text fontSize="base" fontWeight="bold" color="gray.900">Offer Details</Text>
               <Badge 
                 colorScheme={
                   effectiveTrade?.status === 'pending' ? 'yellow' : 
@@ -438,63 +467,166 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         </Box>
 
         {/* Scrollable Content */}
-        <ModalBody p={4} overflowY="auto" flex={1}>
-          <VStack align="stretch" spacing={4}>
+        <ModalBody p={3} overflowY="auto" flex={1}>
+          <VStack align="stretch" spacing={3}>
+            {/* User Info Section */}
+            <Box p={2.5} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
+              <Text fontSize="10px" fontWeight="bold" color="blue.900" mb={1.5} textTransform="uppercase">Trade Participant</Text>
+              <VStack align="start" spacing={1.5} fontSize="sm">
+                <HStack w="100%" justify="space-between">
+                  <Text fontWeight="semibold" fontSize="13px">{effectiveTrade?.buyer_id === user?.id ? 'From: ' : 'With: '}{effectiveTrade?.buyer_id === user?.id ? effectiveTrade?.seller_name : effectiveTrade?.buyer_name}</Text>
+                </HStack>
+                {effectiveTrade?.buyer_id === user?.id && effectiveTrade?.seller_location && (
+                  <Text fontSize="11px" color="gray.600">📍 {effectiveTrade.seller_location || 'Location not specified'}</Text>
+                )}
+                {effectiveTrade?.buyer_id !== user?.id && effectiveTrade?.buyer_location && (
+                  <Text fontSize="11px" color="gray.600">📍 {effectiveTrade.buyer_location || 'Location not specified'}</Text>
+                )}
+              </VStack>
+            </Box>
+
+            {/* Counter Offer Info - if status is 'countered' */}
+            {effectiveTrade?.status === 'countered' && (
+              <Box p={3} bg="purple.50" borderRadius="md" borderWidth="1px" borderColor="purple.200">
+                <Text fontSize="sm" fontWeight="bold" color="purple.900" mb={2}>📤 Counter Offer Received</Text>
+                <VStack align="start" spacing={2} fontSize="xs" color="purple.800">
+                  {isBuyout ? (
+                    <>
+                      <Text fontWeight="bold">Original Offer: ₱{formatPHP(effectiveTrade?.offered_cash_amount || 0)}</Text>
+                      {effectiveTrade?.counter_offered_cash_amount && (
+                        <Text fontWeight="bold" color="purple.700">
+                          💰 Counter Price: <span style={{ fontSize: '14px', fontWeight: 'bold' }}>₱{formatPHP(effectiveTrade.counter_offered_cash_amount)}</span>
+                        </Text>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {effectiveTrade.counter_offered_product_ids && effectiveTrade.counter_offered_product_ids.length > 0 && (
+                        <VStack align="start" w="full">
+                          <Text fontWeight="bold">Their Items:</Text>
+                          <HStack spacing={2} w="full" wrap="wrap">
+                            {effectiveTrade.counter_offered_product_ids.map((pid: any) => {
+                              const counterProduct = offered.find(p => p.id === pid)
+                              return (
+                                <Badge key={pid} colorScheme="purple" variant="outline">
+                                  {counterProduct?.title || `Product #${pid}`}
+                                </Badge>
+                              )
+                            })}
+                          </HStack>
+                        </VStack>
+                      )}
+                      {effectiveTrade.counter_offered_cash_amount && effectiveTrade.counter_offered_cash_amount > 0 && (
+                        <Text fontWeight="bold">
+                          💰 Additional Cash: ₱{formatPHP(effectiveTrade.counter_offered_cash_amount)}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </VStack>
+              </Box>
+            )}
+
             {/* Items Comparison - Compact */}
             <Box>
-              <Text fontSize="sm" fontWeight="bold" color="gray.700" mb={2}>Items</Text>
-              <Grid templateColumns={{ base: '1fr', md: '0.8fr 1fr' }} gap={3}>
+              <Text fontSize="11px" fontWeight="bold" color="gray.700" mb={2} textTransform="uppercase">Items</Text>
+              <Grid templateColumns={{ base: '1fr', md: '0.7fr 1.3fr' }} gap={2}>
                 {/* Your Requested Item */}
                 <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="gray.50">
                   {loading ? (
-                    <Box p={3} textAlign="center">
-                      <Text fontSize="xs" color="gray.500">Loading...</Text>
+                    <Box p={2} textAlign="center">
+                      <Text fontSize="11px" color="gray.500">Loading...</Text>
                     </Box>
                   ) : (
-                    renderProductCard(requested, { compact: true })
+                    <>
+                      {renderProductCard(requested, { compact: true })}
+                      {requested && (
+                        <Button 
+                          as="a" 
+                          href={getProductUrl(requested)} 
+                          variant="link" 
+                          colorScheme="brand" 
+                          w="full" 
+                          fontSize="10px"
+                          size="xs"
+                          py={1.5}
+                        >
+                          View Product →
+                        </Button>
+                      )}
+                    </>
                   )}
                 </Box>
 
                 {/* Their Offered Items */}
                 <Box>
                   {buyerItems.length > 0 ? (
-                    <VStack spacing={2} align="stretch">
+                    <VStack spacing={1.5} align="stretch">
                       {buyerItems.map((item: any, idx: number) => {
                         const product = offered.find(p => p.id === (item.product_id ?? item.productId));
+                        const itemId = item.product_id ?? item.productId
                         
                         if (!product) {
                           const itemImg = item.product_image_url || item.productImageUrl || item.image || ''
                           const itemTitle = item.product_title || item.productTitle || 'Unknown Item'
                           return (
-                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" h="80px">
-                              <Image 
-                                src={itemImg} 
-                                alt={itemTitle} 
-                                w="80px" 
-                                h="80px" 
-                                objectFit="cover" 
-                                fallbackSrc="/no-image.svg" 
-                              />
-                              <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
-                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
+                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" flexDir="column" h="auto">
+                              <Box display="flex" h="80px">
+                                <Image 
+                                  src={itemImg} 
+                                  alt={itemTitle} 
+                                  w="80px" 
+                                  h="80px" 
+                                  objectFit="cover" 
+                                  fallbackSrc="/no-image.svg" 
+                                />
+                                <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
+                                  <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
+                                </Box>
                               </Box>
+                              {itemId && (
+                                <Button 
+                                  as="a" 
+                                  href={`/products/${itemId}`} 
+                                  variant="link" 
+                                  colorScheme="brand" 
+                                  w="full" 
+                                  fontSize="2xs"
+                                  p={2}
+                                >
+                                  View →
+                                </Button>
+                              )}
                             </Box>
                           )
                         }
                         
                         return (
-                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" h="80px">
-                            <Image 
-                              src={resolveImage(product)} 
-                              alt={product.title} 
-                              w="80px" 
-                              h="80px" 
-                              objectFit="cover" 
-                              fallbackSrc="/no-image.svg"
-                            />
-                            <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
-                              <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
+                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" flexDir="column" h="auto">
+                            <Box display="flex" h="80px">
+                              <Image 
+                                src={resolveImage(product)} 
+                                alt={product.title} 
+                                w="80px" 
+                                h="80px" 
+                                objectFit="cover" 
+                                fallbackSrc="/no-image.svg"
+                              />
+                              <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
+                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
+                              </Box>
                             </Box>
+                            <Button 
+                              as="a" 
+                              href={getProductUrl(product)} 
+                              variant="link" 
+                              colorScheme="brand" 
+                              w="full" 
+                              fontSize="2xs"
+                              p={2}
+                            >
+                              View →
+                            </Button>
                           </Box>
                         );
                       })}
@@ -508,9 +640,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </Grid>
             </Box>
             {trade?.message && (
-              <Box p={3} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                <Text fontSize="xs" fontWeight="bold" color="gray.700" mb={1}>Message</Text>
-                <Text fontSize="xs" color="gray.700" lineHeight="1.5" noOfLines={2}>
+              <Box p={2} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                <Text fontSize="10px" fontWeight="bold" color="gray.700" mb={1}>Message</Text>
+                <Text fontSize="11px" color="gray.700" lineHeight="1.4" noOfLines={2}>
                   {trade.message}
                 </Text>
               </Box>
@@ -518,18 +650,18 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
             {/* Trade Method */}
             {effectiveTrade?.trade_option && (
-              <Box borderRadius="md" bg="brand.50" p={3} borderWidth="1px" borderColor="brand.200">
+              <Box borderRadius="md" bg="brand.50" p={2} borderWidth="1px" borderColor="brand.200">
                 <HStack spacing={2}>
-                  <Icon as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={4} color="brand.600" flexShrink={0} />
+                  <Icon as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={3.5} color="brand.600" flexShrink={0} />
                   <VStack align="start" spacing={0} flex={1}>
-                    <Text fontWeight="semibold" fontSize="sm" color="brand.900">
+                    <Text fontWeight="semibold" fontSize="12px" color="brand.900">
                       {effectiveTrade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
                     </Text>
                     {effectiveTrade.trade_option === 'delivery' && effectiveTrade.delivery_address && (
-                      <Text fontSize="xs" color="gray.700">{effectiveTrade.delivery_address}</Text>
+                      <Text fontSize="10px" color="gray.700">{effectiveTrade.delivery_address}</Text>
                     )}
                     {effectiveTrade.trade_option === 'delivery' && (effectiveTrade as any).delivery_fee !== undefined && (
-                      <Text fontSize="xs" color="green.700" fontWeight="semibold">
+                      <Text fontSize="10px" color="green.700" fontWeight="semibold">
                         Delivery Fee: {formatPHP((effectiveTrade as any).delivery_fee)}
                       </Text>
                     )}
@@ -564,19 +696,41 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
         </ModalBody>
 
         {/* Footer */}
-        <Box borderTopWidth="1px" borderColor="gray.200" p={3} bg="white">
-          <HStack spacing={2} justify="flex-end">
-            {/* Action buttons can go here if needed */}
+        <Box borderTopWidth="1px" borderColor="gray.200" p={2} bg="white">
+          <HStack spacing={1.5} justify="flex-end">
+            {/* Only show action buttons if trade is pending AND user is the seller (received this offer) */}
+            {effectiveTrade?.status === 'pending' && effectiveTrade?.buyer_id !== user?.id ? (
+              <>
+                {/* Decline Button */}
+                <Button size="xs" variant="outline" colorScheme="red" onClick={decline} fontSize="11px">
+                  Decline
+                </Button>
+
+                {/* Counter Button */}
+                <Button size="xs" variant="outline" colorScheme="brand" onClick={openCounter} fontSize="11px">
+                  Counter
+                </Button>
+
+                {/* Accept Button */}
+                <Button size="xs" colorScheme="brand" onClick={accept} isDisabled={disableAccept} fontSize="11px">
+                  Accept
+                </Button>
+              </>
+            ) : (
+              <Text fontSize="11px" color="gray.500" fontStyle="italic">
+                {effectiveTrade?.buyer_id === user?.id ? 'No actions available for offers you sent' : `No actions available for ${effectiveTrade?.status} trades`}
+              </Text>
+            )}
           </HStack>
         </Box>
 
         {/* Counter Modal */}
-        <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size="md">
+        <Modal isOpen={counterOpen} onClose={() => setCounterOpen(false)} isCentered size={isBuyout ? "sm" : "md"}>
           <ModalOverlay />
           <ModalContent>
             <ModalHeader fontSize="sm">
-              Counter Offer
-              {requested?.max_items_per_offer ? (
+              {isBuyout ? 'Counter Buyout Offer' : 'Counter Offer'}
+              {!isBuyout && requested?.max_items_per_offer ? (
                 <Badge ml={2} colorScheme="brand" variant="subtle" verticalAlign="middle">
                   Max {requested.max_items_per_offer} items
                 </Badge>
@@ -584,35 +738,72 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
             </ModalHeader>
             <ModalCloseButton size="sm" />
             <ModalBody fontSize="sm">
-              {selectedCounterIds.length > 0 && (
-                <Text fontSize="xs" color="brand.500" fontWeight="bold" mb={2}>
-                  {selectedCounterIds.length} {requested?.max_items_per_offer ? `/ ${requested.max_items_per_offer}` : ''} items selected
-                </Text>
-              )}
-              <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
-                {userInventory.map(p => (
-                  <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
-                    <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" loading="lazy" />
-                    <Box p={1}>
-                      <Text fontSize="xs" noOfLines={1}>{p.title}</Text>
-                    </Box>
+              {isBuyout ? (
+                // Buyout counter: only money input
+                <VStack spacing={3} align="stretch">
+                  <Box p={3} bg="blue.50" borderRadius="md" borderWidth="1px" borderColor="blue.200">
+                    <Text fontSize="xs" fontWeight="bold" color="blue.700" mb={2}>Original Offer</Text>
+                    <Text fontSize="sm" fontWeight="bold" color="blue.900">
+                      ₱{formatPHP(effectiveTrade?.offered_cash_amount || 0)}
+                    </Text>
                   </Box>
-                ))}
-              </Grid>
-              <VStack spacing={2} mt={4}>
-                <FormControl size="sm">
-                  <FormLabel fontSize="xs">Add Cash</FormLabel>
-                  <input type="number" value={cashDelta} onChange={e => setCashDelta(e.target.value)} min={0} step="100" style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
-                </FormControl>
-                <FormControl size="sm">
-                  <FormLabel fontSize="xs">Message</FormLabel>
-                  <input value={counterMsg} onChange={e => setCounterMsg(e.target.value)} placeholder="Optional..." style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
-                </FormControl>
-              </VStack>
+                  <FormControl isRequired>
+                    <FormLabel fontSize="xs" fontWeight="bold">Your Counter Price (PHP)</FormLabel>
+                    <input 
+                      type="number" 
+                      value={cashDelta} 
+                      onChange={e => setCashDelta(e.target.value)} 
+                      min={0} 
+                      step="100" 
+                      placeholder="Enter your offer price"
+                      style={{ width: '100%', padding: '8px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} 
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel fontSize="xs">Message (optional)</FormLabel>
+                    <Textarea 
+                      value={counterMsg} 
+                      onChange={e => setCounterMsg(e.target.value)} 
+                      placeholder="Add a note..." 
+                      size="sm" 
+                      rows={2}
+                    />
+                  </FormControl>
+                </VStack>
+              ) : (
+                // Regular trade counter: items + money
+                <>
+                  {selectedCounterIds.length > 0 && (
+                    <Text fontSize="xs" color="brand.500" fontWeight="bold" mb={2}>
+                      {selectedCounterIds.length} {requested?.max_items_per_offer ? `/ ${requested.max_items_per_offer}` : ''} items selected
+                    </Text>
+                  )}
+                  <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
+                    {userInventory.map(p => (
+                      <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
+                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" loading="lazy" />
+                        <Box p={1}>
+                          <Text fontSize="xs" noOfLines={1}>{p.title}</Text>
+                        </Box>
+                      </Box>
+                    ))}
+                  </Grid>
+                  <VStack spacing={2} mt={4}>
+                    <FormControl size="sm">
+                      <FormLabel fontSize="xs">Add Cash</FormLabel>
+                      <input type="number" value={cashDelta} onChange={e => setCashDelta(e.target.value)} min={0} step="100" style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
+                    </FormControl>
+                    <FormControl size="sm">
+                      <FormLabel fontSize="xs">Message</FormLabel>
+                      <input value={counterMsg} onChange={e => setCounterMsg(e.target.value)} placeholder="Optional..." style={{ width: '100%', padding: '6px', fontSize: '12px', border: '1px solid #E2E8F0', borderRadius: '4px' }} />
+                    </FormControl>
+                  </VStack>
+                </>
+              )}
             </ModalBody>
             <ModalFooter>
-              <Button size="sm" variant="ghost" mr={2} onClick={() => setCounterOpen(false)}>Cancel</Button>
-              <Button size="sm" colorScheme="brand" onClick={submitCounter}>Send</Button>
+              <Button size="sm" variant="ghost" mr={2} onClick={() => setCounterOpen(false)} isDisabled={isCountering}>Cancel</Button>
+              <Button size="sm" colorScheme="brand" onClick={submitCounter} isLoading={isCountering}>Send</Button>
             </ModalFooter>
           </ModalContent>
         </Modal>
@@ -626,9 +817,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 You can send a counter offer instead to negotiate.
               </AlertDialogBody>
               <AlertDialogFooter>
-                <Button ref={cancelRef} size="sm" onClick={onDeclineClose}>Cancel</Button>
-                <Button size="sm" colorScheme="red" onClick={confirmDecline} ml={2}>Decline</Button>
-                <Button size="sm" colorScheme="brand" variant="outline" onClick={openCounter} ml={2}>Counter</Button>
+                <Button ref={cancelRef} size="sm" onClick={onDeclineClose} isDisabled={isDeclining}>Cancel</Button>
+                <Button size="sm" colorScheme="red" onClick={confirmDecline} ml={2} isLoading={isDeclining}>Decline</Button>
+                <Button size="sm" colorScheme="brand" variant="outline" onClick={openCounter} ml={2} isDisabled={isDeclining}>Counter</Button>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialogOverlay>

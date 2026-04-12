@@ -230,6 +230,9 @@ export interface Trade {
   delivery_estimated_time?: string // Estimated delivery time
   buyer_location?: string // Buyer coordinates as "lat,lng"
   seller_location?: string // Seller coordinates as "lat,lng"
+  // Counter offer fields
+  counter_offered_product_ids?: number[] // Product IDs offered in counter
+  counter_offered_cash_amount?: number | null // Cash amount offered in counter
 }
 
 // Multi-way/Three-way Trading Types
@@ -402,6 +405,7 @@ export interface Delivery {
   // Denormalized fields
   user_name?: string
   rider_name?: string
+  rider_phone?: string
   rider_vehicle?: string
   rider_rating?: number
   rider_latitude?: number

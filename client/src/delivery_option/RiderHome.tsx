@@ -14,7 +14,6 @@ import {
   Spinner,
   Center,
   useToast,
-  Switch,
   Tabs,
   TabList,
   Tab,
@@ -511,9 +510,6 @@ const RiderHome: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'home' | 'jobs' | 'earnings'>('home')
   const [deliveryTab, setDeliveryTab] = useState(0) // 0: Available, 1: Active, 2: Completed
 
-  // Online/Offline state
-  const [isOnline, setIsOnline] = useState(true)
-
   // Deliveries data
   const [availableDeliveries, setAvailableDeliveries] = useState<DeliveryWithBatch[]>([])
   const [activeDeliveries, setActiveDeliveries] = useState<DeliveryWithBatch[]>([])
@@ -645,16 +641,6 @@ const RiderHome: React.FC = () => {
     setBatchExpiredDelivery(null)
   }
 
-  // Toggle online status
-  const handleToggleOnline = () => {
-    setIsOnline(!isOnline)
-    toast({
-      title: !isOnline ? 'You are now online' : 'You are now offline',
-      description: !isOnline ? 'You will receive delivery requests.' : 'You will not receive new requests.',
-      status: !isOnline ? 'success' : 'info',
-      duration: 2000,
-    })
-  }
 
   // Loading state
   if (stateLoading) {
@@ -708,16 +694,15 @@ const RiderHome: React.FC = () => {
       {/* Header */}
       <HStack justify="space-between" align="center" px={4} pt={4}>
         <Heading size="md" color="gray.800">Available Deliveries</Heading>
-        <HStack spacing={2}>
-          <Text fontSize="sm" color={isOnline ? 'green.600' : 'gray.500'}>
-            {isOnline ? 'Online' : 'Offline'}
-          </Text>
-          <Switch
-            colorScheme="green"
-            isChecked={isOnline}
-            onChange={handleToggleOnline}
-          />
-        </HStack>
+        <Button
+          size="sm"
+          variant="outline"
+          colorScheme="brand"
+          leftIcon={<Icon as={FaHome} />}
+          onClick={() => navigate('/home')}
+        >
+          Back to Home
+        </Button>
       </HStack>
 
       {/* Delivery Tabs */}

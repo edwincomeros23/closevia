@@ -26,6 +26,8 @@ interface ProductCardProps {
   onBuyClick: (productId: number) => void
   onViewOffers: (productId: number) => void
   showPriceOverlay?: boolean
+  onBoostClick?: (productId: number) => void
+  isStagnant?: boolean
 }
 
 /**
@@ -39,6 +41,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onBuyClick,
   onViewOffers,
   showPriceOverlay = false,
+  onBoostClick,
+  isStagnant = false,
 }) => {
   const navigate = useNavigate()
 
@@ -127,6 +131,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
     return num.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   }
 
+  const formatPriceUltraCompact = (value: unknown): string => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) return ''
+    if (num >= 1000000) return (num / 1000000).toFixed(0) + 'M'
+    if (num >= 1000) return (num / 1000).toFixed(0) + 'k'
+    return num.toString()
+  }
+
   return (
     <Box
       key={product.id}
@@ -162,6 +174,28 @@ const ProductCard: React.FC<ProductCardProps> = ({
         {/* Top-right image badges */}
         <Box position="absolute" top={{ base: 1.5, md: 2 }} right={{ base: 1.5, md: 2 }} zIndex={1}>
           <Box display="flex" flexDirection="column" gap={1} alignItems="flex-end">
+            {isStagnant && onBoostClick && (
+              <Tooltip label="Boost this listing" placement="left" hasArrow>
+                <Button
+                  size="xs"
+                  colorScheme="blue"
+                  variant="solid"
+                  fontSize={{ base: '10px', md: '11px' }}
+                  px={{ base: 1, md: 1.5 }}
+                  py={{ base: 0.5, md: 1 }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onBoostClick(product.id)
+                  }}
+                  fontWeight="bold"
+                  boxShadow="md"
+                  _hover={{ transform: 'scale(1.05)', boxShadow: 'lg' }}
+                  transition="all 0.2s"
+                >
+                  Boost
+                </Button>
+              </Tooltip>
+            )}
             {product.premium && (
               <Badge
                 colorScheme="yellow"
@@ -199,17 +233,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 </Text>
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
                   <Text display={{ base: 'none', sm: 'block' }} fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
-                    AI Est. ₱{formatPriceCompact(product.estimated_value_min)} – ₱{formatPriceCompact(product.estimated_value_max)}
+                    📊 Market Est. ₱{formatPriceCompact(product.estimated_value_min)} – ₱{formatPriceCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {product.price && product.price > 0 && product.estimated_value_min && product.estimated_value_max && (
                   <Text display={{ base: 'block', sm: 'none' }} fontSize="2xs" color="brand.100" lineHeight="1.2" mt={0.5} fontWeight="medium" whiteSpace="nowrap">
-                    AI ₱{formatPriceCompact(product.estimated_value_min)}-₱{formatPriceCompact(product.estimated_value_max)}
+                    📊 Est. ₱{formatPriceUltraCompact(product.estimated_value_min)}-₱{formatPriceUltraCompact(product.estimated_value_max)}
                   </Text>
                 )}
                 {(!product.price || product.price <= 0) && product.estimated_value_min && product.estimated_value_max && (
                   <Text fontSize="2xs" color="brand.100" lineHeight="1.25" mt={0.5} fontWeight="medium">
-                    AI Est. range
+                    📊 Market Est. range
                   </Text>
                 )}
               </Box>
@@ -241,7 +275,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
               bg={product.tradeMatchScore >= 70 ? 'green.500' : product.tradeMatchScore >= 40 ? 'yellow.500' : 'gray.500'}
               color="white"
             >
-              {product.tradeMatchScore}% Ready
+              <Text display={{ base: 'block', md: 'none' }}>{product.tradeMatchScore}% ✓</Text>
+              <Text display={{ base: 'none', md: 'block' }}>{product.tradeMatchScore}% Ready</Text>
             </Badge>
           </Tooltip>
         )}

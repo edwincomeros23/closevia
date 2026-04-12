@@ -39,7 +39,7 @@ const Login: React.FC = () => {
   const [googleLoginSuccess, setGoogleLoginSuccess] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
 
-  const { login, googleLogin, user, isAuthenticated } = useAuth()
+  const { login, googleLogin, user, isAuthenticated, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
 
@@ -51,18 +51,17 @@ const Login: React.FC = () => {
     }
   }, [googleLoginSuccess, isAuthenticated, isLoggingIn, navigate, user])
 
-  // Redirect already authenticated users away from login page
-  // ONLY when component first mounts, not on every auth state change
+  // Redirect authenticated users away from login page.
+  // Important: run when auth state becomes ready, not only on mount.
   useEffect(() => {
-    // Check if we're actually on the login page before redirecting
     const isOnLoginPage = window.location.pathname === '/login'
+    if (!isOnLoginPage) return
 
-    if (isAuthenticated && !isLoggingIn && !loading && isOnLoginPage) {
-      console.log('Login: User already authenticated on login page, redirecting')
+    if (isAuthenticated && !isLoggingIn && !authLoading) {
+      console.log('Login: User authenticated on login page, redirecting')
       navigate(user?.role === 'admin' ? '/admin' : '/dashboard', { replace: true })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Only run once on mount
+  }, [isAuthenticated, isLoggingIn, authLoading, navigate, user])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,10 +75,7 @@ const Login: React.FC = () => {
       setLoading(true)
       setIsLoggingIn(true)
       setError('')
-      
-      // Clear any existing auth state before new login
-      localStorage.removeItem('clovia_token')
-      
+
       await login(email, password)
 
       toast({
@@ -96,10 +92,9 @@ const Login: React.FC = () => {
       const parsedUser = storedUser ? JSON.parse(storedUser) : null
       const redirectPath = parsedUser?.role === 'admin' ? '/admin' : '/dashboard'
 
-      // Small delay to ensure auth state is updated
-      setTimeout(() => {
-        navigate(redirectPath)
-      }, 100)
+      // Navigate immediately; if auth state finalizes a moment later,
+      // the effect above will still redirect away from /login.
+      navigate(redirectPath, { replace: true })
     } catch (error: any) {
       setError(error.message || 'Login failed')
     } finally {

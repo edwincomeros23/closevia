@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
 import {
   Box,
@@ -6,14 +6,18 @@ import {
   Button,
   IconButton,
   Icon,
+  VStack,
 } from '@chakra-ui/react'
 import {
   AddIcon,
+  HamburgerIcon,
 } from '@chakra-ui/icons'
-import { FaHome } from 'react-icons/fa'
+import { FaHome, FaBell } from 'react-icons/fa'
 import { FiShoppingBag } from 'react-icons/fi'
 import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
+import { useMobileNav } from '../contexts/MobileNavContext'
+import { useNavigate } from 'react-router-dom'
 
 interface FloatingTabProps {
   dashboardLink?: string
@@ -29,6 +33,8 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
   showAddButton = true,
 }) => {
   const { notificationCount } = useRealtime()
+  const { onOpen: openMobileNav } = useMobileNav()
+  const navigate = useNavigate()
 
   return (
     <>
@@ -36,58 +42,87 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
       <Box
         position="fixed"
         bottom="env(safe-area-inset-bottom, 16px)"
-        mb={12}
+        mb={8}
         left="50%"
         transform="translateX(-50%)"
         display={{ base: 'block', md: 'none' }}
         zIndex={200}
-        boxShadow="0 4px 20px rgba(0,0,0,0.15)"
+        boxShadow="0 8px 32px rgba(0,0,0,0.12)"
         borderRadius="full"
         overflow="hidden"
       >
         <HStack
           spacing={0}
-          h="48px"
-          justify="space-around"
+          h="64px"
+          justify="space-between"
           align="center"
-          bg="rgba(255, 255, 255, 0.2)"
-          backdropFilter="blur(10px)"
-          border="1px solid rgba(255, 255, 255, 0.3)"
+          bg="rgba(255, 255, 255, 0.95)"
+          backdropFilter="blur(20px)"
+          border="1px solid rgba(255, 255, 255, 0.4)"
+          px={2}
+          py={2}
         >
+          {/* Home Button */}
+          <IconButton
+            as={RouterLink}
+            to={homeLink}
+            aria-label="Home"
+            icon={<FaHome />}
+            h="full"
+            w="56px"
+            flexShrink={0}
+            bg="transparent"
+            color="brand.500"
+            borderRadius="full"
+            variant="ghost"
+            fontSize="20px"
+            transition="all 0.3s ease"
+            _hover={{
+              bg: 'rgba(49, 151, 149, 0.1)',
+              color: 'brand.600',
+              transform: 'scale(1.1)',
+            }}
+            _active={{
+              bg: 'rgba(49, 151, 149, 0.2)',
+              transform: 'scale(0.95)',
+            }}
+          />
+
           {/* Dashboard Button */}
-          <Box position="relative" h="full" flex={1}>
-            <Button
+          <Box position="relative">
+            <IconButton
               as={RouterLink}
               to={dashboardLink}
-              variant="ghost"
+              aria-label="Dashboard"
+              icon={<FiShoppingBag />}
               h="full"
-              w="full"
-              bg="brand.500"
-              flexDirection="column"
-              gap={1}
-              borderRadius="none"
-              transition="all 0.2s ease"
+              w="56px"
+              flexShrink={0}
+              bg="transparent"
+              color="brand.500"
+              borderRadius="full"
+              variant="ghost"
+              fontSize="20px"
+              transition="all 0.3s ease"
               _hover={{
-                bg: 'brand.600',
-                transform: 'translateY(-1px)',
-                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.24)',
+                bg: 'rgba(49, 151, 149, 0.1)',
+                color: 'brand.600',
+                transform: 'scale(1.1)',
               }}
               _active={{
-                bg: 'brand.700',
-                transform: 'translateY(0)',
+                bg: 'rgba(49, 151, 149, 0.2)',
+                transform: 'scale(0.95)',
               }}
-            >
-              <Icon as={FiShoppingBag} boxSize={6} color="white" />
-            </Button>
+            />
             {notificationCount > 0 && (
               <CBadge
                 position="absolute"
-                top="4px"
-                right="calc(50% - 16px)"
+                top="-4px"
+                right="-4px"
                 colorScheme="red"
                 borderRadius="full"
-                fontSize="0.6em"
-                px={1.5}
+                fontSize="0.7em"
+                px={1}
                 zIndex={1}
               >
                 {notificationCount}
@@ -95,61 +130,102 @@ const FloatingTab: React.FC<FloatingTabProps> = ({
             )}
           </Box>
 
-          {/* Home Button (Primary/Center) */}
-          <Button
-            as={RouterLink}
-            to={homeLink}
-            h="full"
-            flex={1}
-            flexDirection="column"
-            gap={1}
-            borderRadius="none"
-            bg="brand.500"
-            px={4}
-            color="white"
-            transition="all 0.2s ease"
-            _hover={{
-              bg: 'brand.600',
-              transform: 'translateY(-1px)',
-              boxShadow: '0 8px 20px rgba(49, 151, 149, 0.35)',
-            }}
-            _active={{
-              bg: 'brand.700',
-              transform: 'translateY(0)',
-            }}
-            position="relative"
-            boxShadow="0 4px 12px rgba(49, 151, 149, 0.3)"
-          >
-            <Icon as={FaHome} boxSize={7} />
-          </Button>
-
-          {/* Add Product Button */}
+          {/* Add Product Button - LARGE CIRCULAR CENTER */}
           {showAddButton && (
             <Button
               as={RouterLink}
               to={addProductLink}
-              variant="ghost"
-              h="full"
-              flex={1}
-              bg="brand.500"
-              flexDirection="column"
-              gap={1}
-              px={4}
-              borderRadius="none"
-              transition="all 0.2s ease"
+              h="72px"
+              w="72px"
+              flexShrink={0}
+              bg="linear(to-br, brand.500, teal.400)"
+              color="white"
+              borderRadius="full"
+              boxShadow="0 6px 24px rgba(49, 151, 149, 0.4)"
+              transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
               _hover={{
-                bg: 'brand.600',
-                transform: 'translateY(-1px)',
-                boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.24)',
+                transform: 'translateY(-4px) scale(1.08)',
+                boxShadow: '0 12px 32px rgba(49, 151, 149, 0.5)',
+                bg: 'linear(to-br, brand.600, teal.500)',
               }}
               _active={{
-                bg: 'brand.700',
-                transform: 'translateY(0)',
+                transform: 'translateY(-2px) scale(1.02)',
+                boxShadow: '0 8px 24px rgba(49, 151, 149, 0.4)',
               }}
+              position="relative"
             >
-              <Icon as={AddIcon} boxSize={6} color="white" />
+              <Icon as={AddIcon} boxSize={10} color="green.500" strokeWidth="3" />
             </Button>
           )}
+
+          {/* Notification Button */}
+          <Box position="relative">
+            <IconButton
+              aria-label="Notifications"
+              icon={<FaBell />}
+              h="full"
+              w="56px"
+              flexShrink={0}
+              bg="transparent"
+              color="brand.500"
+              borderRadius="full"
+              variant="ghost"
+              fontSize="20px"
+              transition="all 0.3s ease"
+              _hover={{
+                bg: 'rgba(49, 151, 149, 0.1)',
+                color: 'brand.600',
+                transform: 'scale(1.1)',
+              }}
+              _active={{
+                bg: 'rgba(49, 151, 149, 0.2)',
+                transform: 'scale(0.95)',
+              }}
+              onClick={() => navigate('/notifications')}
+            />
+            {notificationCount > 0 && (
+              <CBadge
+                position="absolute"
+                top="-4px"
+                right="-4px"
+                colorScheme="red"
+                borderRadius="full"
+                fontSize="0.7em"
+                px={1}
+                zIndex={1}
+              >
+                {notificationCount}
+              </CBadge>
+            )}
+          </Box>
+
+          {/* Hamburger Menu Button */}
+          <IconButton
+            aria-label="Menu"
+            icon={<HamburgerIcon />}
+            h="full"
+            w="56px"
+            flexShrink={0}
+            bg="transparent"
+            color="brand.500"
+            borderRadius="full"
+            variant="ghost"
+            fontSize="20px"
+            transition="all 0.3s ease"
+            _hover={{
+              bg: 'rgba(49, 151, 149, 0.1)',
+              color: 'brand.600',
+              transform: 'scale(1.1)',
+            }}
+            _active={{
+              bg: 'rgba(49, 151, 149, 0.2)',
+              transform: 'scale(0.95)',
+            }}
+            onClick={openMobileNav}
+          />
         </HStack>
       </Box>
 
