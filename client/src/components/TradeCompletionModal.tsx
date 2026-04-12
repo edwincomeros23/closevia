@@ -196,11 +196,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       formData.append('image', file)
       formData.append('type', 'trade_proof')
 
-      const response = await api.post('/api/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      })
+      const response = await api.post('/api/upload', formData)
 
       // Check if response indicates success
       if (!response.data?.success) {
