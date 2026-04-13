@@ -816,14 +816,22 @@ const ProductDetail: React.FC = () => {
         status: 'info',
         duration: 5000,
         isClosable: true,
-        action: (
-          <Button
-            size="sm"
-            colorScheme="brand"
-            onClick={() => window.location.href = '/premium'}
-          >
-            Upgrade
-          </Button>
+        position: 'bottom-right',
+        render: () => (
+          <Box bg="info.500" color="white" p={3} borderRadius="md" display="flex" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Text fontWeight="bold">⭐ Premium Feature</Text>
+              <Text fontSize="sm">Boost Listing is a Premium-only feature. Upgrade now to boost your listings!</Text>
+            </Box>
+            <Button
+              size="sm"
+              colorScheme="brand"
+              ml={3}
+              onClick={() => window.location.href = '/premium'}
+            >
+              Upgrade
+            </Button>
+          </Box>
         ),
       })
       return

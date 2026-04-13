@@ -81,6 +81,13 @@ export interface Product {
   brand?: string;
   max_items_per_offer?: number;
   view_count?: number;
+  organization_tags?: Array<{
+    id: number;
+    slug: string;
+    name: string;
+    logo_url?: string;
+    description?: string;
+  }>;
 }
 
 export interface Order {
@@ -234,6 +241,9 @@ export interface Trade {
   // Counter offer fields
   counter_offered_product_ids?: number[] // Product IDs offered in counter
   counter_offered_cash_amount?: number | null // Cash amount offered in counter
+  // Review rating fields
+  buyer_rating?: number // Rating given by buyer (1-5)
+  seller_rating?: number // Rating given by seller (1-5)
 }
 
 // Multi-way/Three-way Trading Types
