@@ -2177,7 +2177,7 @@ const Dashboard: React.FC = () => {
     // Never show actions for traded/sold items
     const shouldShowActions = showActions && normalizedStatus !== 'traded' && normalizedStatus !== 'sold'
     const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id, getProductOffersCount])
-    const viewsCount = 0 // TODO: Fetch from API when available
+    const viewsCount = product.view_count || 0
 
     const isStagnant = React.useMemo(() => {
       const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)

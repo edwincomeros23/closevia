@@ -80,6 +80,7 @@ export interface Product {
   wants?: string;
   brand?: string;
   max_items_per_offer?: number;
+  view_count?: number;
 }
 
 export interface Order {

@@ -1528,6 +1528,7 @@ const AddProduct: React.FC = () => {
                   bg="white"
                   h="36px"
                   onClick={e => e.stopPropagation()}
+                  min={0}
                 />
                 <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
               </Box>

@@ -486,48 +486,83 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </VStack>
             </Box>
 
-            {/* Spending Breakdown */}
-            <Box p={2.5} bg="purple.50" borderRadius="md" borderWidth="1px" borderColor="purple.200">
-              <Text fontSize="10px" fontWeight="bold" color="purple.900" mb={1.5} textTransform="uppercase">What Each Party Offered</Text>
-              <VStack align="stretch" spacing={2} fontSize="11px">
-                {/* Your side */}
-                <Box>
-                  <Text fontWeight="semibold" color="purple.900" mb={0.5}>
-                    {effectiveTrade?.buyer_id === user?.id ? 'You (Buyer) Offered:' : 'You (Seller) Offered:'}
+            {/* Offer Details Section - Compact 2-Column Info Grid */}
+            <Box p={2.5} bg="orange.50" borderRadius="md" borderWidth="1px" borderColor="orange.200">
+              <Text fontSize="10px" fontWeight="bold" color="orange.900" mb={2} textTransform="uppercase">Offer Details</Text>
+              <Grid templateColumns="1fr 1fr" gap={2}>
+                {/* Offer Timestamp */}
+                <VStack align="start" spacing={0.5}>
+                  <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">Offered</Text>
+                  <Text fontSize="11px" color="orange.900" fontWeight="semibold">
+                    {effectiveTrade?.created_at 
+                      ? new Date(effectiveTrade.created_at).toLocaleDateString('en-PH', { 
+                          month: 'short', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : 'N/A'
+                    }
                   </Text>
-                  {requested && (
-                    <HStack spacing={1}>
-                      <Text color="gray.700">{requested.title}</Text>
-                      {requested.price && requested.price > 0 && (
-                        <Text fontWeight="bold" color="brand.600">(≈ {formatPHP(requested.price)})</Text>
-                      )}
-                    </HStack>
-                  )}
-                  {effectiveTrade?.offered_cash_amount && (
-                    <Text fontWeight="semibold" color="green.600">💰 + ₱{formatPHP(effectiveTrade.offered_cash_amount)}</Text>
-                  )}
-                </Box>
-                {/* Their side */}
-                <Box>
-                  <Text fontWeight="semibold" color="purple.900" mb={0.5}>
-                    {effectiveTrade?.buyer_id === user?.id ? 'They Offered:' : 'They Offered:'}
+                </VStack>
+
+                {/* Cash Amount (if applicable) */}
+                {effectiveTrade?.offered_cash_amount && effectiveTrade.offered_cash_amount > 0 ? (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">💰 Cash</Text>
+                    <Text fontSize="11px" color="green.700" fontWeight="bold">
+                      {formatPHP(effectiveTrade.offered_cash_amount)}
+                    </Text>
+                  </VStack>
+                ) : (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">💰 Cash</Text>
+                    <Text fontSize="11px" color="gray.600">
+                      Pure trade
+                    </Text>
+                  </VStack>
+                )}
+
+                {/* Product Location */}
+                {requested && (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">📍 Item Location</Text>
+                    <Text fontSize="11px" color="orange.900" fontWeight="semibold" noOfLines={1}>
+                      {requested.location || 'Not specified'}
+                    </Text>
+                  </VStack>
+                )}
+
+                {/* Offer Validity (Suggested) */}
+                <VStack align="start" spacing={0.5}>
+                  <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">⏰ Valid Until</Text>
+                  <Text fontSize="11px" color="orange.900" fontWeight="semibold">
+                    {effectiveTrade?.created_at
+                      ? new Date(new Date(effectiveTrade.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+                      : '7 days'
+                    }
                   </Text>
-                  {buyerItems.length > 0 ? (
-                    <VStack align="start" spacing={0.5}>
-                      {buyerItems.map((item, idx) => (
-                        <HStack key={idx} spacing={1}>
-                          <Text color="gray.700" noOfLines={1}>{item.title}</Text>
-                          {item.price && item.price > 0 && (
-                            <Text fontSize="10px" color="gray.600">(≈ {formatPHP(item.price)})</Text>
-                          )}
-                        </HStack>
-                      ))}
-                    </VStack>
-                  ) : (
-                    <Text color="gray.600" fontSize="10px">No items</Text>
-                  )}
-                </Box>
-              </VStack>
+                </VStack>
+
+                {/* Suggested: Response Time Badge */}
+                <VStack align="start" spacing={0.5}>
+                  <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">⚡ Response</Text>
+                  <Badge colorScheme="green" fontSize="9px" px={1.5} py={0.5}>
+                    Quick
+                  </Badge>
+                </VStack>
+
+                {/* Suggested: Payment Method (if applicable) */}
+                {effectiveTrade?.payment_method && (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">Payment</Text>
+                    <Text fontSize="11px" color="orange.900" fontWeight="semibold" textTransform="capitalize">
+                      {effectiveTrade.payment_method}
+                    </Text>
+                  </VStack>
+                )}
+              </Grid>
+            </Box>
             </Box>
 
             {/* Counter Offer Info - if status is 'countered' */}
