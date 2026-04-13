@@ -2,7 +2,7 @@ services:
   - type: web
     name: closevia-backend
     runtime: go
-    buildCommand: go build -o ./main .
+    buildCommand: go build -o main .
     startCommand: ./main
     envVars:
       - key: GEMINI_API_KEY
