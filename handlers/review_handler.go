@@ -109,7 +109,7 @@ func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
 	// Set cache headers - 10 minutes for user reviews
 	c.Set("Cache-Control", "public, max-age=600")
 	c.Set("ETag", fmt.Sprintf(`"%d"`, time.Now().Unix()/600)) // ETag changes every 10 min
-	
+
 	identifier := c.Params("id")
 	if identifier == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
