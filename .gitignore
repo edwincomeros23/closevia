@@ -32,7 +32,8 @@ android/.gradle/
 android/local.properties
 *.keystore
 *.jks
-*.apk
+# *.apk - commented out to allow deploying clovia.apk
+# *.apk
 
 # IDE
 .vscode/
