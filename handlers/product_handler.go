@@ -893,11 +893,13 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		products = append(products, product)
 	}
 
-	// Background geocode products that have location text but no coordinates
-	for i := range products {
-		p := &products[i]
+	// Collect product IDs for batch organization tagging query
+	productIDs := make([]int, len(products))
+	for i, p := range products {
+		productIDs[i] = p.ID
+		
+		// Background geocode products that have location text but no coordinates
 		if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
-			// Geocode in background and save to DB for future requests
 			go func(productID int, loc string) {
 				coords, err := services.GetCoordinates(loc)
 				if err != nil {
@@ -910,26 +912,49 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 				fmt.Printf("📍 Geocoded product %d (%s) -> %.6f, %.6f\n", productID, loc, coords.Latitude, coords.Longitude)
 			}(p.ID, p.Location)
 		}
+	}
 
-		// Fetch organization tags for this product
-		orgRows, err := h.db.Query(`
-			SELECT o.id, o.name, o.slug, COALESCE(o.logo_url, ''), COALESCE(o.description, '')
+	// Batch fetch organization tags for all products (avoid N+1 query problem)
+	if len(productIDs) > 0 {
+		// Build placeholder string for IN clause: ?,?,?,...
+		placeholders := make([]string, len(productIDs))
+		args := make([]interface{}, len(productIDs))
+		for i, id := range productIDs {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		inClause := strings.Join(placeholders, ",")
+
+		orgRows, err := h.db.Query(fmt.Sprintf(`
+			SELECT pot.product_id, o.id, o.name, o.slug, COALESCE(o.logo_url, ''), COALESCE(o.description, '')
 			FROM product_organization_tags pot
 			JOIN organizations o ON pot.organization_id = o.id
-			WHERE pot.product_id = ? AND o.is_deleted = FALSE
-			ORDER BY o.name ASC
-		`, p.ID)
+			WHERE pot.product_id IN (%s) AND o.is_deleted = FALSE
+			ORDER BY pot.product_id, o.name ASC
+		`, inClause), args...)
 		if err == nil {
 			defer orgRows.Close()
+			// Map organization tags by product ID
+			orgTagsByProduct := make(map[int][]models.Organization)
 			for orgRows.Next() {
+				var productID int
 				var org models.Organization
-				if err := orgRows.Scan(&org.ID, &org.Name, &org.Slug, &org.LogoURL, &org.Description); err == nil {
-					p.OrganizationTags = append(p.OrganizationTags, org)
+				if err := orgRows.Scan(&productID, &org.ID, &org.Name, &org.Slug, &org.LogoURL, &org.Description); err == nil {
+					orgTagsByProduct[productID] = append(orgTagsByProduct[productID], org)
+				}
+			}
+			// Assign organization tags to products
+			for i := range products {
+				if tags, ok := orgTagsByProduct[products[i].ID]; ok {
+					products[i].OrganizationTags = tags
 				}
 			}
 		}
+	}
 
-		// Compute distance from viewer if both viewer and product have coordinates
+	// Compute distances for all products
+	for i := range products {
+		p := &products[i]
 		if viewerLat != nil && viewerLon != nil && p.Latitude != nil && p.Longitude != nil {
 			result := services.CalculateDistance(*viewerLat, *viewerLon, *p.Latitude, *p.Longitude)
 			var distStr string
