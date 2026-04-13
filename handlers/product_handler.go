@@ -168,6 +168,26 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	barterOnly := c.FormValue("barter_only") == "true"
 	location := c.FormValue("location")
 	condition := c.FormValue("condition")
+
+	// Parse organization IDs for tagging (comma-separated or JSON array)
+	organizationIDsStr := c.FormValue("organization_ids")
+	var organizationIDs []int
+	if organizationIDsStr != "" {
+		// Try JSON array first: [1,2,3]
+		var jsonIDs []int
+		if err := json.Unmarshal([]byte(organizationIDsStr), &jsonIDs); err == nil {
+			organizationIDs = jsonIDs
+		} else {
+			// Try comma-separated: 1,2,3
+			parts := strings.Split(organizationIDsStr, ",")
+			for _, part := range parts {
+				if id, err := strconv.Atoi(strings.TrimSpace(part)); err == nil && id > 0 {
+					organizationIDs = append(organizationIDs, id)
+				}
+			}
+		}
+	}
+
 	// AI Generated fields
 	itemType := c.FormValue("item_type")
 	brand := c.FormValue("brand")
@@ -540,6 +560,48 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	}()
 	// ========================================================================
 
+	// ==================== TAG ORGANIZATIONS ====================
+	// If user provided organization IDs, validate membership and tag product
+	if len(organizationIDs) > 0 {
+		log.Printf("📦 [ORG-TAG] User %d is tagging product %d with %d organizations", userID, productID, len(organizationIDs))
+
+		for _, orgID := range organizationIDs {
+			// Validate user is an approved member of this organization
+			var memberStatus string
+			err := h.db.QueryRow(`
+				SELECT status FROM organization_memberships 
+				WHERE organization_id = ? AND user_id = ?
+			`, orgID, userID).Scan(&memberStatus)
+
+			if err == sql.ErrNoRows {
+				log.Printf("⚠️  [ORG-TAG] User %d is not a member of org %d, skipping tag", userID, orgID)
+				continue
+			} else if err != nil {
+				log.Printf("❌ [ORG-TAG] Database error checking membership: %v", err)
+				continue
+			}
+
+			// Only allow tagging if user is approved or creator
+			if memberStatus != "approved" && memberStatus != "creator" {
+				log.Printf("⚠️  [ORG-TAG] User %d has status '%s' in org %d (not approved), skipping", userID, memberStatus, orgID)
+				continue
+			}
+
+			// Insert into product_organization_tags
+			_, err = h.db.Exec(`
+				INSERT IGNORE INTO product_organization_tags (product_id, organization_id) 
+				VALUES (?, ?)
+			`, productID, orgID)
+
+			if err != nil {
+				log.Printf("❌ [ORG-TAG] Failed to tag product %d with org %d: %v", productID, orgID, err)
+			} else {
+				log.Printf("✅ [ORG-TAG] Product %d tagged with org %d", productID, orgID)
+			}
+		}
+	}
+	// ========================================================================
+
 	return c.Status(201).JSON(models.APIResponse{
 		Success: true,
 		Message: "Product created successfully",
@@ -690,16 +752,19 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	// Apply sorting based on sort_by parameter
 	tierSort := "(CASE WHEN u.premium_tier = 'pro' THEN 3 WHEN u.premium_tier = 'plus' THEN 2 ELSE 1 END)"
+	// Check if boost is still active (less than 3 hours old) - this should be prioritized HIGH
+	isActiveBoosted := "(CASE WHEN p.boosted_at IS NOT NULL AND p.boosted_at > DATE_SUB(NOW(), INTERVAL 3 HOUR) THEN 1 ELSE 0 END)"
+	boostTimestamp := "(CASE WHEN p.boosted_at IS NOT NULL AND p.boosted_at > DATE_SUB(NOW(), INTERVAL 3 HOUR) THEN p.boosted_at ELSE p.created_at END)"
 
 	switch sortBy {
 	case "newest":
-		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, COALESCE(p.boosted_at, p.created_at) DESC`, tierSort)
+		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	case "most_offers":
-		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined', 'cancelled', 'completed')) DESC, COALESCE(p.boosted_at, p.created_at) DESC`, tierSort)
+		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status NOT IN ('declined', 'cancelled', 'completed')) DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	case "trending":
-		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) DESC, COALESCE(p.boosted_at, p.created_at) DESC`, tierSort)
+		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	default: // most_relevant
-		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, COALESCE(p.boosted_at, p.created_at) DESC`, tierSort)
+		query += fmt.Sprintf(` ORDER BY p.premium DESC, %s DESC, %s DESC, %s DESC`, isActiveBoosted, tierSort, boostTimestamp)
 	}
 
 	query += ` LIMIT ? OFFSET ?`
@@ -844,6 +909,24 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 				)
 				fmt.Printf("📍 Geocoded product %d (%s) -> %.6f, %.6f\n", productID, loc, coords.Latitude, coords.Longitude)
 			}(p.ID, p.Location)
+		}
+
+		// Fetch organization tags for this product
+		orgRows, err := h.db.Query(`
+			SELECT o.id, o.name, o.slug, COALESCE(o.logo_url, ''), COALESCE(o.description, '')
+			FROM product_organization_tags pot
+			JOIN organizations o ON pot.organization_id = o.id
+			WHERE pot.product_id = ? AND o.is_deleted = FALSE
+			ORDER BY o.name ASC
+		`, p.ID)
+		if err == nil {
+			defer orgRows.Close()
+			for orgRows.Next() {
+				var org models.Organization
+				if err := orgRows.Scan(&org.ID, &org.Name, &org.Slug, &org.LogoURL, &org.Description); err == nil {
+					p.OrganizationTags = append(p.OrganizationTags, org)
+				}
+			}
 		}
 
 		// Compute distance from viewer if both viewer and product have coordinates
@@ -1059,9 +1142,21 @@ func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
 		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You can only boost your own products"})
 	}
 
-	// Fetch user tier and current premium count
+	// Fetch user tier and premium status
 	var tier string
-	h.db.QueryRow("SELECT COALESCE(premium_tier, 'free') FROM users WHERE id = ?", userID).Scan(&tier)
+	var isPremium bool
+	err = h.db.QueryRow("SELECT COALESCE(premium_tier, 'free'), is_premium FROM users WHERE id = ?", userID).Scan(&tier, &isPremium)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch user premium status"})
+	}
+
+	// Check if user is premium - restrict boost to premium users only
+	if tier == "free" || !isPremium {
+		return c.Status(403).JSON(models.APIResponse{
+			Success: false,
+			Error:   "Boost feature is only available for Premium members. Upgrade to Premium to boost your listings.",
+		})
+	}
 
 	// Determine if this should be a "Premium pin" boost based on tier limits
 	limit := 0
@@ -1081,14 +1176,16 @@ func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
 		}
 	}
 
-	// Prevent spamming standard boosts (max once per 24 hours)
-	// IF it's just a regular boost. If it's a premium pin, we can allow it if they have slots.
-	if !canPin && boostedAt.Valid && time.Since(boostedAt.Time).Hours() < 24 {
+	// Prevent spamming boosts (max once per 24 hours per product)
+	if boostedAt.Valid && time.Since(boostedAt.Time).Hours() < 24 {
 		return c.Status(429).JSON(models.APIResponse{
 			Success: false,
-			Error:   "Product was already boosted recently. Please wait 24 hours between boosts.",
+			Error:   "This product was already boosted recently. You can boost it again in 24 hours.",
 		})
 	}
+
+	// Calculate boost expiration time (3 hours from now)
+	expiresAt := time.Now().Add(3 * time.Hour)
 
 	query := "UPDATE products SET boosted_at = NOW()"
 	if canPin {
@@ -1102,14 +1199,21 @@ func (h *ProductHandler) BoostProduct(c *fiber.Ctx) error {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to boost product"})
 	}
 
-	message := "Product boosted successfully! It will now appear higher in the feed."
+	// Prepare response with boost details
+	responseData := map[string]interface{}{
+		"boost_duration": "3 hours",
+		"expires_at":     expiresAt,
+	}
+
+	message := "Product boosted successfully! 🚀 It will appear at the top of the feed for the next 3 hours."
 	if canPin {
-		message = "Product boosted and pinned to top as part of your premium benefits!"
+		message = "Product boosted and permanently pinned to top! ⭐ Your Premium Plus/Pro benefit includes always-visible listings."
 	}
 
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Message: message,
+		Data:    responseData,
 	})
 }
 

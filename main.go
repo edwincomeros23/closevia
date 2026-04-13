@@ -473,6 +473,7 @@ func main() {
 	organizations := api.Group("/organizations")
 	organizations.Get("", organizationHandler.ListOrganizations)
 	organizations.Get("/quota", middleware.AuthMiddleware(), organizationHandler.GetQuota)
+	organizations.Get("/my-approved", middleware.AuthMiddleware(), organizationHandler.GetUserApprovedOrganizations)
 	organizations.Post("", middleware.AuthMiddleware(), organizationHandler.CreateOrganization)
 	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
 	organizations.Post("/:slug/join-request", middleware.AuthMiddleware(), organizationHandler.RequestJoin)
@@ -559,6 +560,11 @@ func main() {
 	trades.Get("/:id/completion-status", middleware.AuthMiddleware(), tradeHandler.GetTradeCompletionStatus)
 	trades.Get("/:id/deliveries", middleware.AuthMiddleware(), deliveryHandler.GetTradeDeliveries)
 	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
+
+	// Review routes (initial + follow-up reviews with auto-completion)
+	trades.Post("/:id/reviews", middleware.AuthMiddleware(), tradeHandler.SubmitTradeReview)
+	trades.Get("/:id/reviews", middleware.AuthMiddleware(), tradeHandler.GetTradeReviewHistory)
+	trades.Get("/:id/review-summary", middleware.AuthMiddleware(), tradeHandler.GetReviewSummary)
 
 	// Meetup routes (stage-aware meeting coordination)
 	trades.Post("/:id/meetup/propose", middleware.AuthMiddleware(), meetupHandler.ProposeMeetupTime)

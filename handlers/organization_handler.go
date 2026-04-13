@@ -845,6 +845,47 @@ func (h *OrganizationHandler) GetFeed(c *fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: items})
 }
 
+// GetUserApprovedOrganizations returns all organizations where the user is an approved member.
+// Used during product creation to allow tagging organizations.
+func (h *OrganizationHandler) GetUserApprovedOrganizations(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT o.id, o.name, o.slug, COALESCE(o.logo_url, '') as logo_url, COALESCE(o.description, '') as description
+		FROM organizations o
+		JOIN organization_memberships m ON o.id = m.organization_id
+		WHERE m.user_id = ? AND m.status = 'approved' AND o.is_deleted = FALSE
+		ORDER BY o.name ASC
+	`, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load organizations"})
+	}
+	defer rows.Close()
+
+	items := make([]fiber.Map, 0)
+	for rows.Next() {
+		var (
+			id                               int
+			name, slug, logoURL, description string
+		)
+		if err := rows.Scan(&id, &name, &slug, &logoURL, &description); err != nil {
+			continue
+		}
+		items = append(items, fiber.Map{
+			"id":          id,
+			"name":        name,
+			"slug":        slug,
+			"logo_url":    logoURL,
+			"description": description,
+		})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: items})
+}
+
 // DeleteOrganization soft-deletes org and hides all org-feed posts while preserving profile visibility.
 func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)

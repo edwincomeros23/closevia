@@ -565,6 +565,17 @@ func CreateTables() error {
 			INDEX idx_org_trade_posts_org (organization_id, created_at),
 			INDEX idx_org_trade_posts_user (user_id, created_at)
 		)`,
+		`CREATE TABLE IF NOT EXISTS product_organization_tags (
+			id INT AUTO_INCREMENT PRIMARY KEY,
+			product_id INT NOT NULL,
+			organization_id INT NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+			FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+			UNIQUE KEY uniq_product_org_tag (product_id, organization_id),
+			INDEX idx_product_id (product_id),
+			INDEX idx_organization_id (organization_id)
+		)`,
 		`CREATE TABLE IF NOT EXISTS comments (
 			id INT AUTO_INCREMENT PRIMARY KEY,
 			product_id INT NOT NULL,

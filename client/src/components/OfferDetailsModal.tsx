@@ -388,11 +388,11 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     if (!p) return null
     const compact = !!opts?.compact
     const showPrice = !!p.allow_buying && !p.barter_only && typeof p.price === 'number'
-    const imageHeight = compact ? '80px' : '150px'
-    const padding = compact ? 2 : 3
-    const titleSize = compact ? 'sm' : 'md'
+    const imageHeight = compact ? '50px' : '75px'
+    const padding = compact ? 1 : 1.5
+    const titleSize = compact ? 'xs' : 'sm'
     const titleFontWeight = compact ? 'semibold' : 'semibold'
-    const priceFontSize = compact ? 'sm' : 'md'
+    const priceFontSize = compact ? 'xs' : 'sm'
 
     const imgSrc = resolveImage(p)
     if (!imgSrc) {
@@ -402,18 +402,19 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
     return (
       <Box borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column">
-        <Image 
-          src={imgSrc || ''} 
-          alt={p.title} 
-          w="full" 
-          h={imageHeight} 
-          objectFit="cover" 
-          fallbackSrc="/no-image.svg" 
-          bg="gray.100"
-        />
+        <Box w="full" h={imageHeight} bg="gray.50" display="flex" alignItems="center" justifyContent="center" overflow="hidden">
+          <Image 
+            src={imgSrc || ''} 
+            alt={p.title} 
+            w="100%" 
+            h="100%" 
+            objectFit="contain" 
+            fallbackSrc="/no-image.svg" 
+          />
+        </Box>
         <Box p={padding} display="flex" flexDirection="column" flex={1}>
           <HStack justify="space-between">
-            <Text fontWeight={titleFontWeight} fontSize={titleSize}>{p.title}</Text>
+            <Text fontWeight={titleFontWeight} fontSize={titleSize} noOfLines={2}>{p.title}</Text>
             {/* Show premium only on full (requested) cards, hide for compact (offered) */}
             {p.premium && !compact && <Badge colorScheme="yellow" fontSize={compact ? 'xs' : undefined}>Premium</Badge>}
           </HStack>
@@ -426,13 +427,13 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
             </HStack>
           )}
 
-          {!compact && p.description && <Text color="gray.600" mt={1} fontSize="xs" noOfLines={2}>{p.description}</Text>}
+          {!compact && p.description && <Text color="gray.600" mt={1} fontSize="10px" noOfLines={2}>{p.description}</Text>}
 
           {showPrice && (
-            <Text mt={1} fontWeight="bold" fontSize="sm" color="brand.600">{formatPHP(p.price as number)}</Text>
+            <Text mt={0.5} fontWeight="bold" fontSize="xs" color="brand.600">{formatPHP(p.price as number)}</Text>
           )}
 
-          {!compact && <Text mt={1} fontSize="xs" color="gray.500">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
+          {!compact && <Text mt={0.5} fontSize="9px" color="gray.500">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
 
           <Button as={'a'} href={getProductUrl(p)} variant="link" colorScheme="brand" mt="auto" size="sm" fontSize="xs">View listing</Button>
         </Box>
@@ -485,6 +486,50 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </VStack>
             </Box>
 
+            {/* Spending Breakdown */}
+            <Box p={2.5} bg="purple.50" borderRadius="md" borderWidth="1px" borderColor="purple.200">
+              <Text fontSize="10px" fontWeight="bold" color="purple.900" mb={1.5} textTransform="uppercase">What Each Party Offered</Text>
+              <VStack align="stretch" spacing={2} fontSize="11px">
+                {/* Your side */}
+                <Box>
+                  <Text fontWeight="semibold" color="purple.900" mb={0.5}>
+                    {effectiveTrade?.buyer_id === user?.id ? 'You (Buyer) Offered:' : 'You (Seller) Offered:'}
+                  </Text>
+                  {requested && (
+                    <HStack spacing={1}>
+                      <Text color="gray.700">{requested.title}</Text>
+                      {requested.price && requested.price > 0 && (
+                        <Text fontWeight="bold" color="brand.600">(≈ {formatPHP(requested.price)})</Text>
+                      )}
+                    </HStack>
+                  )}
+                  {effectiveTrade?.offered_cash_amount && (
+                    <Text fontWeight="semibold" color="green.600">💰 + ₱{formatPHP(effectiveTrade.offered_cash_amount)}</Text>
+                  )}
+                </Box>
+                {/* Their side */}
+                <Box>
+                  <Text fontWeight="semibold" color="purple.900" mb={0.5}>
+                    {effectiveTrade?.buyer_id === user?.id ? 'They Offered:' : 'They Offered:'}
+                  </Text>
+                  {buyerItems.length > 0 ? (
+                    <VStack align="start" spacing={0.5}>
+                      {buyerItems.map((item, idx) => (
+                        <HStack key={idx} spacing={1}>
+                          <Text color="gray.700" noOfLines={1}>{item.title}</Text>
+                          {item.price && item.price > 0 && (
+                            <Text fontSize="10px" color="gray.600">(≈ {formatPHP(item.price)})</Text>
+                          )}
+                        </HStack>
+                      ))}
+                    </VStack>
+                  ) : (
+                    <Text color="gray.600" fontSize="10px">No items</Text>
+                  )}
+                </Box>
+              </VStack>
+            </Box>
+
             {/* Counter Offer Info - if status is 'countered' */}
             {effectiveTrade?.status === 'countered' && (
               <Box p={3} bg="purple.50" borderRadius="md" borderWidth="1px" borderColor="purple.200">
@@ -529,8 +574,8 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
             {/* Items Comparison - Compact */}
             <Box>
-              <Text fontSize="11px" fontWeight="bold" color="gray.700" mb={2} textTransform="uppercase">Items</Text>
-              <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={2}>
+              <Text fontSize="10px" fontWeight="bold" color="gray.700" mb={1.5} textTransform="uppercase">Items</Text>
+              <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={1.5}>
                 {/* Your Requested Item */}
                 <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="gray.50" display="flex" flexDirection="column" h="100%">
                   {loading ? (
@@ -623,6 +668,44 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 </Box>
               </Grid>
             </Box>
+
+            {/* Trade Summary */}
+            {effectiveTrade?.status === 'completed' && (
+              <Box p={2} bg="green.50" borderRadius="md" borderWidth="1px" borderColor="green.200">
+                <VStack align="stretch" spacing={1.5} fontSize="11px">
+                  <HStack justify="space-between">
+                    <Text fontWeight="bold" color="green.900">Trade Summary:</Text>
+                  </HStack>
+                  {effectiveTrade?.completed_at && (
+                    <HStack justify="space-between">
+                      <Text color="gray.700">Completed:</Text>
+                      <Text fontWeight="semibold" color="gray.900">{new Date(effectiveTrade.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                    </HStack>
+                  )}
+                  {/* Show buyer/seller ratings if available */}
+                  {(effectiveTrade.buyer_rating || effectiveTrade.seller_rating) && (
+                    <HStack justify="space-between">
+                      <Text color="gray.700">Ratings:</Text>
+                      <HStack spacing={2}>
+                        {effectiveTrade.buyer_rating && (
+                          <HStack spacing={0.5}>
+                            <Text fontSize="10px" color="gray.600">Buyer:</Text>
+                            <Text fontWeight="bold" color="yellow.500">⭐ {effectiveTrade.buyer_rating}/5</Text>
+                          </HStack>
+                        )}
+                        {effectiveTrade.seller_rating && (
+                          <HStack spacing={0.5}>
+                            <Text fontSize="10px" color="gray.600">Seller:</Text>
+                            <Text fontWeight="bold" color="yellow.500">⭐ {effectiveTrade.seller_rating}/5</Text>
+                          </HStack>
+                        )}
+                      </HStack>
+                    </HStack>
+                  )}
+                </VStack>
+              </Box>
+            )}
+
             {trade?.message && (
               <Box p={2} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor="gray.200">
                 <Text fontSize="10px" fontWeight="bold" color="gray.700" mb={1}>Message</Text>
@@ -762,12 +845,14 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                       {selectedCounterIds.length} {requested?.max_items_per_offer ? `/ ${requested.max_items_per_offer}` : ''} items selected
                     </Text>
                   )}
-                  <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2}>
+                  <Grid templateColumns="repeat(auto-fill, minmax(70px, 1fr))" gap={1.5}>
                     {userInventory.map(p => (
-                      <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'}>
-                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="60px" objectFit="cover" loading="lazy" />
-                        <Box p={1}>
-                          <Text fontSize="xs" noOfLines={1}>{p.title}</Text>
+                      <Box key={p.id} borderWidth={selectedCounterIds.includes(p.id) ? '2px' : '1px'} borderColor={selectedCounterIds.includes(p.id) ? 'brand.500' : 'gray.200'} rounded="md" overflow="hidden" onClick={() => toggleCounter(p.id)} cursor="pointer" bg={selectedCounterIds.includes(p.id) ? 'brand.50' : 'white'} h="100%">
+                        <Box w="full" h="50px" bg="gray.50" display="flex" alignItems="center" justifyContent="center" overflow="hidden">
+                          <Image src={getFirstImage(p.image_urls)} alt={p.title} w="100%" h="100%" objectFit="contain" loading="lazy" />
+                        </Box>
+                        <Box p={0.75}>
+                          <Text fontSize="10px" noOfLines={1}>{p.title}</Text>
                         </Box>
                       </Box>
                     ))}

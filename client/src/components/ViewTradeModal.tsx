@@ -7,6 +7,7 @@ import {
   ModalHeader,
   ModalCloseButton,
   ModalBody,
+  ModalFooter,
   VStack,
   HStack,
   Box,
@@ -37,10 +38,16 @@ import {
   FormControl,
   FormLabel,
   Grid,
+  AlertDialog,
+  AlertDialogOverlay,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogBody,
+  AlertDialogFooter,
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
 import OptimizedImage from './OptimizedImage'
-import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle, FaCheck } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle, FaCheck, FaTimesCircle, FaLightbulb } from 'react-icons/fa'
 import {
   FiMapPin,
   FiPhone,
@@ -774,6 +781,16 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
     return <Spinner />
   }
 
+  // Determine if this is a buyout (no items, only cash) vs regular trade
+  const isBuyout = useMemo(() => {
+    return (!trade?.items || trade.items.length === 0) && 
+           (trade?.offered_cash_amount && trade.offered_cash_amount > 0)
+  }, [trade])
+
+  // Get role labels based on transaction type
+  const buyerLabel = isBuyout ? 'Buyer' : 'Trader 1'
+  const sellerLabel = isBuyout ? 'Seller' : 'Trader 2'
+
   const userHasCompleted = isUserBuyer ? completionStatus?.buyer_completed : completionStatus?.seller_completed
   const otherPartyCompleted = isUserBuyer ? completionStatus?.seller_completed : completionStatus?.buyer_completed
 
@@ -785,7 +802,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
           <Box p={3} bg={completionStatus.buyer_completed ? 'green.50' : 'gray.50'} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
             <VStack spacing={2}>
               <HStack justify="space-between" w="full">
-                <Text fontWeight="semibold" fontSize="sm">Buyer Review</Text>
+                <Text fontWeight="semibold" fontSize="sm">{buyerLabel} Review</Text>
                 <Icon
                   as={completionStatus.buyer_completed ? FaCheck : FaClock}
                   color={completionStatus.buyer_completed ? 'green.500' : 'gray.400'}
@@ -820,7 +837,7 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
           <Box p={3} bg={completionStatus.seller_completed ? 'green.50' : 'gray.50'} borderRadius="md" borderWidth="1px" borderColor={borderColor}>
             <VStack spacing={2}>
               <HStack justify="space-between" w="full">
-                <Text fontWeight="semibold" fontSize="sm">Seller Review</Text>
+                <Text fontWeight="semibold" fontSize="sm">{sellerLabel} Review</Text>
                 <Icon
                   as={completionStatus.seller_completed ? FaCheck : FaClock}
                   color={completionStatus.seller_completed ? 'green.500' : 'gray.400'}
@@ -909,27 +926,26 @@ const ReviewTab: React.FC<ReviewTabProps> = ({
               </FormLabel>
               {proofImage ? (
                 <VStack spacing={2} align="stretch">
-                  <Box position="relative" w="full" maxW="150px">
+                  <Box position="relative" w="full" maxW="250px" bg="gray.50" borderRadius="md" overflow="hidden" aspectRatio="4/3" display="flex" alignItems="center" justifyContent="center">
                     <Image
                       src={proofImage}
                       alt="Proof"
-                      w="full"
-                      maxH="120px"
-                      objectFit="cover"
+                      w="100%"
+                      h="100%"
+                      objectFit="contain"
                       borderRadius="md"
-                      borderWidth="2px"
-                      borderColor="green.300"
                     />
                     <Icon
                       as={FiCheck}
                       position="absolute"
-                      top={1}
-                      right={1}
+                      top={2}
+                      right={2}
                       color="green.500"
-                      boxSize={5}
+                      boxSize={6}
                       bg="white"
                       borderRadius="full"
-                      p={0.5}
+                      p={1}
+                      boxShadow="md"
                     />
                   </Box>
                   <Button
@@ -1029,6 +1045,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null) // New: date for 7-day window
+  const [validationError, setValidationError] = useState<string | null>(null) // New: validation message
   const [confirmingMeetup, setConfirmingMeetup] = useState(false)
   const [resettingMeetup, setResettingMeetup] = useState(false)
   const [confirmingPayment, setConfirmingPayment] = useState(false)
@@ -1044,6 +1062,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [sellerMeetupTime, setSellerMeetupTime] = useState<string | null>(null)
   const [confirmingMeetupDone, setConfirmingMeetupDone] = useState(false)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
+  const [showCancelDialog, setShowCancelDialog] = useState(false) // New: cancel trade confirmation
+  const [cancelingTrade, setCancelingTrade] = useState(false) // New: cancel trade loading state
+  const cancelDialogRef = useRef<HTMLButtonElement>(null) // New: for AlertDialog focus
+
+  // ============ Meetup Dispute & Agreement System ============
+  const [meetupInDispute, setMeetupInDispute] = useState(false) // Track if meetup is in dispute
+  const [meetupDisputeReason, setMeetupDisputeReason] = useState<'time' | 'date' | 'unresponsive' | 'conflict' | null>(null)
+  const [disputeNotes, setDisputeNotes] = useState('') // Additional notes from disputing party
+  const [showDisputeDialog, setShowDisputeDialog] = useState(false) // Show dispute creation dialog
+  const [showSuggestionsPanel, setShowSuggestionsPanel] = useState(false) // Show smart suggestions
+  const [showAgreedConfirmation, setShowAgreedConfirmation] = useState(false) // Show confirmation after agreement
+  const [agreeingToSchedule, setAgreeingToSchedule] = useState(false) // Loading state for agreement button
+  // ============ END: Dispute & Agreement State ============
+
   const [deliveryState, setDeliveryState] = useState<DeliveryState>({
     deliveryType: 'standard',
     paymentMethod: 'cod',
@@ -1662,15 +1694,250 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
   }
 
+  // ============ NEW: Helper functions for date/time validation & generation ============
+
+  /**
+   * Generate array of next 7 days starting from today (YYYY-MM-DD format)
+   */
+  const getNext7Days = (): string[] => {
+    const days: string[] = []
+    for (let i = 0; i < 7; i++) {
+      const date = new Date()
+      date.setDate(date.getDate() + i)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      days.push(`${year}-${month}-${day}`)
+    }
+    return days
+  }
+
+  /**
+   * Get formatted day label (Today, Tomorrow, Mon 15, Tue 16, etc.)
+   */
+  const formatDateLabel = (dateStr: string): string => {
+    const date = new Date(dateStr + 'T00:00:00')
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+
+    if (date.getTime() === today.getTime()) return 'Today'
+    if (date.getTime() === tomorrow.getTime()) return 'Tomorrow'
+
+    const options = { weekday: 'short', month: 'short', day: 'numeric' } as const
+    return date.toLocaleDateString('en-US', options)
+  }
+
+  /**
+   * Generate available time slots (30-min intervals)
+   * For today, filter out past times
+   * Slots: 09:00, 09:30, 10:00, ... 18:00
+   */
+  const generateTimeSlots = (dateStr: string | null): string[] => {
+    if (!dateStr) return []
+
+    const now = new Date()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const selectedDateObj = new Date(dateStr + 'T00:00:00')
+    const isToday = selectedDateObj.getTime() === today.getTime()
+
+    const slots: string[] = []
+    const startHour = 9 // 09:00
+    const endHour = 18 // 18:00
+
+    for (let hour = startHour; hour <= endHour; hour++) {
+      for (const minute of [0, 30]) {
+        const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+        
+        // For today, skip past times
+        if (isToday) {
+          const [hourPart, minPart] = timeStr.split(':').map(Number)
+          const slotDate = new Date()
+          slotDate.setHours(hourPart, minPart, 0, 0)
+          if (slotDate <= now) continue // Skip past times
+        }
+
+        slots.push(timeStr)
+      }
+    }
+
+    return slots
+  }
+
+  /**
+   * Validate selected date and time
+   * Returns error message or null if valid
+   */
+  const validateDateTimeSelection = (date: string | null, time: string | null): string | null => {
+    if (!date) return 'Please select a date'
+    if (!time) return 'Please select a time'
+
+    // Check if date is within next 7 days
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const selectedDate = new Date(date + 'T00:00:00')
+    const maxDate = new Date(today)
+    maxDate.setDate(maxDate.getDate() + 6) // 7 days starting from today (0-6)
+
+    if (selectedDate < today) return 'Cannot select a past date'
+    if (selectedDate > maxDate) return 'Meetup must be scheduled within 7 days'
+
+    // Check if time is not in the past for today
+    if (selectedDate.getTime() === today.getTime()) {
+      const [hour, minute] = time.split(':').map(Number)
+      const now = new Date()
+      const selectedDateTime = new Date()
+      selectedDateTime.setHours(hour, minute, 0, 0)
+
+      if (selectedDateTime <= now) {
+        return 'Cannot select a past time'
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Generate smart suggestions for alternative times
+   */
+  const generateSmartSuggestions = (): Array<{ date: string; time: string; label: string }> => {
+    const suggestions: Array<{ date: string; time: string; label: string }> = []
+    const next7days = getNext7Days()
+    
+    // Suggest early morning slots
+    if (next7days[1]) {
+      suggestions.push({
+        date: next7days[1],
+        time: '09:00',
+        label: '📅 Tomorrow, 9:00 AM'
+      })
+    }
+
+    // Suggest afternoon slots
+    if (next7days[2]) {
+      suggestions.push({
+        date: next7days[2],
+        time: '14:00',
+        label: '📅 Day after tomorrow, 2:00 PM'
+      })
+    }
+
+    // Suggest evening slots
+    if (next7days[3]) {
+      suggestions.push({
+        date: next7days[3],
+        time: '17:00',
+        label: '📅 In 3 days, 5:00 PM'
+      })
+    }
+
+    // Suggest weekend if available
+    if (next7days[6]) {
+      suggestions.push({
+        date: next7days[6],
+        time: '10:00',
+        label: '📅 Weekend, 10:00 AM'
+      })
+    }
+
+    return suggestions
+  }
+
+  /**
+   * Handle agreement to other party's schedule
+   */
+  const handleAgreeToSchedule = async () => {
+    if (isUserBuyer) {
+      setBuyerMeetupLocation(sellerMeetupLocation)
+      setBuyerMeetupTime(sellerMeetupTime)
+    } else {
+      setSellerMeetupLocation(buyerMeetupLocation)
+      setSellerMeetupTime(buyerMeetupTime)
+    }
+
+    // Trigger confirm meetup with the agreed details
+    setSelectedLocation(isUserBuyer ? sellerMeetupLocation : buyerMeetupLocation)
+    setSelectedTime(isUserBuyer ? sellerMeetupTime : buyerMeetupTime)
+    
+    toast({
+      title: 'Schedule accepted!',
+      description: 'You have agreed to the proposed date and time.',
+      status: 'success',
+      position: 'top',
+      duration: 2000
+    })
+  }
+
+  /**
+   * Handle dispute creation
+   */
+  const handleRaiseDispute = async () => {
+    if (!meetupDisputeReason) {
+      toast({
+        title: 'Please select a reason',
+        status: 'warning',
+        position: 'top'
+      })
+      return
+    }
+
+    setMeetupInDispute(true)
+    setShowDisputeDialog(false)
+    setMeetupDisputeReason(null)
+    setDisputeNotes('')
+    
+    toast({
+      title: '⚠️ Meetup marked as in dispute',
+      description: 'The other party has been notified. You can propose alternative times or discuss the issue.',
+      status: 'info',
+      position: 'top',
+      duration: 3000
+    })
+  }
+
+  /**
+   * Get current meetup state for display
+   */
+  const getMeetupState = (): 'proposed' | 'dispute' | 'finalized' | 'none' => {
+    if (meetupInDispute) return 'dispute'
+    if (meetupAgreed) return 'finalized'
+    if (buyerMeetupConfirmed || sellerMeetupConfirmed) return 'proposed'
+    return 'none'
+  }
+
+  // ============ END: Helper functions for date/time validation & generation ============
+
   const confirmMeetup = async () => {
-    if (!trade || !selectedLocation || !selectedTime || confirmingMeetup) return
+    if (!trade || !selectedLocation || !selectedTime || !selectedDate || confirmingMeetup) return
+
+    // Validate date and time
+    const error = validateDateTimeSelection(selectedDate, selectedTime)
+    if (error) {
+      setValidationError(error)
+      toast({
+        id: "viewtrademodal-validation-error",
+        title: 'Invalid Selection',
+        description: error,
+        status: 'warning',
+        duration: 3000,
+      })
+      return
+    }
+
+    // Format the full datetime for the backend (combining date + time)
+    const fullDateTime = `${selectedDate}T${selectedTime}`
 
     try {
       setConfirmingMeetup(true)
+      setValidationError(null)
       await api.put(`/api/trades/${trade.id}`, {
         action: 'confirm_meetup',
         meetup_location: selectedLocation,
         meetup_time: selectedTime,
+        meetup_date: selectedDate,
       })
 
       // Update local state based on current user role
@@ -1814,6 +2081,45 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       setConfirmingMeetupDone(false)
     }
   }
+
+  // ============ NEW: Cancel trade functionality ============
+  const handleCancelTrade = async () => {
+    if (!trade || cancelingTrade) return
+
+    try {
+      setCancelingTrade(true)
+      await api.put(`/api/trades/${trade.id}`, {
+        action: 'cancel',
+      })
+
+      toast({
+        id: 'viewtrademodal-trade-cancelled',
+        title: 'Trade Cancelled',
+        description: 'This trade has been cancelled. Your trust score may be affected.',
+        status: 'info',
+        duration: 3000,
+      })
+
+      // Refresh trade data and close modal
+      await fetchMeetupStatus()
+      onStatusUpdate()
+      setTimeout(() => {
+        onClose()
+      }, 1500)
+    } catch (error: any) {
+      toast({
+        id: 'viewtrademodal-cancel-failed',
+        title: 'Error',
+        description: error?.response?.data?.error || 'Failed to cancel trade',
+        status: 'error',
+        duration: 3000,
+      })
+    } finally {
+      setCancelingTrade(false)
+      setShowCancelDialog(false)
+    }
+  }
+  // ============ END: Cancel trade functionality ============
 
 
   if (!trade) return null
@@ -2175,10 +2481,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                     {loadingProducts ? (
                       <Spinner />
                     ) : (
-                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-                        <Card variant="outline" borderColor="blue.300">
-                          <CardBody>
-                            <VStack spacing={3} align="stretch">
+                      <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} w="full">
+                        {/* Requested Product (What you're giving) */}
+                        <Card variant="outline" borderColor="blue.300" h="full">
+                          <CardBody display="flex" flexDirection="column">
+                            <VStack spacing={3} align="stretch" h="full">
                               <HStack>
                                 <Badge colorScheme={
                                   trade.status === 'expired' ? 'gray'
@@ -2194,20 +2501,26 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </HStack>
                               {requestedProduct ? (
                                 <>
-                                  <OptimizedImage
-                                    src={getFirstImage(requestedProduct.image_urls)}
-                                    alt={requestedProduct.title}
-                                    displayWidth="full"
-                                    displayHeight="150px"
-                                    objectFit="cover"
-                                    borderRadius="md"
-                                    fallbackSrc="/no-image.svg"
-                                    width={300}
-                                  />
-                                  <Text fontWeight="semibold">{requestedProduct.title}</Text>
-                                  <Text fontSize="sm" color="gray.600" noOfLines={2}>
-                                    {requestedProduct.description}
-                                  </Text>
+                                  <Box w="full" bg="gray.50" borderRadius="md" overflow="hidden" aspectRatio="1" display="flex" alignItems="center" justifyContent="center">
+                                    <OptimizedImage
+                                      src={getFirstImage(requestedProduct.image_urls)}
+                                      alt={requestedProduct.title}
+                                      displayWidth="full"
+                                      displayHeight="100%"
+                                      objectFit="contain"
+                                      borderRadius="md"
+                                      fallbackSrc="/no-image.svg"
+                                      width={400}
+                                    />
+                                  </Box>
+                                  <Box flex={1}>
+                                    <Text fontWeight="semibold" fontSize="sm" noOfLines={2}>
+                                      {requestedProduct.title}
+                                    </Text>
+                                    <Text fontSize="xs" color="gray.600" noOfLines={3} mt={1}>
+                                      {requestedProduct.description}
+                                    </Text>
+                                  </Box>
                                 </>
                               ) : (
                                 <Text color="gray.500">Loading...</Text>
@@ -2216,9 +2529,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           </CardBody>
                         </Card>
 
-                        <Card variant="outline" borderColor="green.300">
-                          <CardBody>
-                            <VStack spacing={3} align="stretch">
+                        {/* Offered Products (What you're receiving) */}
+                        <Card variant="outline" borderColor="green.300" h="full">
+                          <CardBody display="flex" flexDirection="column">
+                            <VStack spacing={3} align="stretch" h="full">
                               <HStack>
                                 <Badge colorScheme={
                                   trade.status === 'expired' ? 'gray'
@@ -2233,23 +2547,25 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 </Text>
                               </HStack>
                               {offeredProducts.length > 0 ? (
-                                <SimpleGrid columns={offeredProducts.length > 1 ? 2 : 1} spacing={2}>
+                                <SimpleGrid columns={offeredProducts.length > 1 ? 2 : 1} spacing={3} w="full" flex={1}>
                                   {offeredProducts.map((product) => (
-                                    <Box key={`offered-${product.id}`}>
-                                      <OptimizedImage
-                                        src={getFirstImage(product.image_urls)}
-                                        alt={product.title}
-                                        displayWidth="full"
-                                        displayHeight="150px"
-                                        objectFit="cover"
-                                        borderRadius="md"
-                                        fallbackSrc="/no-image.svg"
-                                        width={250}
-                                      />
-                                      <Text fontSize="sm" fontWeight="medium" mt={2} noOfLines={1}>
+                                    <VStack key={`offered-${product.id}`} spacing={2} align="stretch" h="full">
+                                      <Box w="full" bg="gray.50" borderRadius="md" overflow="hidden" aspectRatio="1" display="flex" alignItems="center" justifyContent="center" flex={1}>
+                                        <OptimizedImage
+                                          src={getFirstImage(product.image_urls)}
+                                          alt={product.title}
+                                          displayWidth="full"
+                                          displayHeight="100%"
+                                          objectFit="contain"
+                                          borderRadius="md"
+                                          fallbackSrc="/no-image.svg"
+                                          width={300}
+                                        />
+                                      </Box>
+                                      <Text fontSize="xs" fontWeight="medium" noOfLines={2}>
                                         {product.title}
                                       </Text>
-                                    </Box>
+                                    </VStack>
                                   ))}
                                 </SimpleGrid>
                               ) : (
@@ -2766,65 +3082,323 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                       {/* Meetup Time Selection */}
                       <Box>
-                        <Text fontWeight="semibold" mb={1} fontSize="md">
-                          Choose a Time
-                        </Text>
-                        <Text fontSize="sm" color="gray.600" mb={4}>
-                          Select a time that works for both of you.
-                        </Text>
+                        <HStack justify="space-between" mb={2}>
+                          <VStack align="start" spacing={0}>
+                            <Text fontWeight="semibold" fontSize="md">
+                              Schedule a Meetup
+                            </Text>
+                            <Text fontSize="sm" color="gray.600">
+                              Pick a date within the next 7 days and a time that works for both of you.
+                            </Text>
+                          </VStack>
+                          {(selectedDate || selectedTime) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              colorScheme="blue"
+                              onClick={() => {
+                                setSelectedDate(null)
+                                setSelectedTime(null)
+                                setValidationError(null)
+                              }}
+                            >
+                              🔄 Change
+                            </Button>
+                          )}
+                        </HStack>
 
-                        {/* Time Picker */}
-                        <VStack spacing={3} align="stretch">
-                          {/* Time Input */}
-                          <FormControl>
-                            <FormLabel fontSize="sm" fontWeight="medium" mb={2}>
-                              Time
-                            </FormLabel>
-                            <InputGroup>
-                              <InputLeftElement pointerEvents="none">
-                                <Icon as={FiClock} color="gray.400" />
-                              </InputLeftElement>
-                              <Input
-                                type="time"
-                                value={selectedTime || ''}
-                                onChange={(e) => setSelectedTime(e.target.value)}
-                                bg="white"
-                                borderWidth="1px"
-                                borderColor={borderColor}
-                                _focus={{
-                                  borderColor: 'brand.500',
-                                  boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)',
-                                }}
-                              />
-                            </InputGroup>
-                          </FormControl>
+                        {/* Enhanced Time Picker */}
+                        <VStack spacing={4} align="stretch">
+                          {/* Validation Error Message */}
+                          {validationError && (
+                            <Box
+                              p={3}
+                              bg="red.50"
+                              borderRadius="md"
+                              borderLeft="4px"
+                              borderColor="red.500"
+                            >
+                              <Text fontSize="sm" color="red.700">
+                                {validationError}
+                              </Text>
+                            </Box>
+                          )}
 
-                          {/* Quick time suggestions */}
+                          {/* Date Selection - Next 7 Days */}
                           <Box>
-                            <Text fontSize="xs" color="gray.600" mb={2}>
-                              Or choose a suggested time:
+                            <Text fontSize="sm" fontWeight="medium" mb={2}>
+                              Select Date
                             </Text>
                             <HStack spacing={2} flexWrap="wrap">
-                              {['09:00', '12:00', '14:00', '16:00', '18:00'].map(time => (
+                              {getNext7Days().map((dateStr) => (
                                 <Button
-                                  key={time}
+                                  key={dateStr}
                                   size="sm"
-                                  variant={selectedTime === time ? 'solid' : 'outline'}
-                                  colorScheme={selectedTime === time ? 'brand' : 'gray'}
-                                  onClick={() => setSelectedTime(time)}
+                                  variant={selectedDate === dateStr ? 'solid' : 'outline'}
+                                  colorScheme={selectedDate === dateStr ? 'brand' : 'gray'}
+                                  onClick={() => {
+                                    setSelectedDate(dateStr)
+                                    setSelectedTime(null) // Clear time when date changes
+                                    setValidationError(null)
+                                  }}
                                   fontWeight="medium"
+                                  px={3}
                                 >
-                                  {formatTimePH(time)}
+                                  {formatDateLabel(dateStr)}
                                 </Button>
                               ))}
                             </HStack>
                           </Box>
+
+                          {/* Time Selection - Dynamic slots based on selected date */}
+                          <Box>
+                            <Text fontSize="sm" fontWeight="medium" mb={2}>
+                              Select Time
+                            </Text>
+                            {selectedDate ? (
+                              <VStack align="start" spacing={2}>
+                                <Text fontSize="xs" color="gray.600">
+                                  Available times (30-minute intervals):
+                                </Text>
+                                <SimpleGrid columns={[3, 4, 5]} spacing={2} w="full">
+                                  {generateTimeSlots(selectedDate).map((time) => (
+                                    <Button
+                                      key={time}
+                                      size="sm"
+                                      variant={selectedTime === time ? 'solid' : 'outline'}
+                                      colorScheme={selectedTime === time ? 'brand' : 'gray'}
+                                      onClick={() => {
+                                        setSelectedTime(time)
+                                        setValidationError(null)
+                                      }}
+                                      fontWeight="medium"
+                                      fontSize="xs"
+                                    >
+                                      {formatTimePH(time)}
+                                    </Button>
+                                  ))}
+                                </SimpleGrid>
+                                {generateTimeSlots(selectedDate).length === 0 && (
+                                  <Text fontSize="xs" color="orange.600">
+                                    No available times remaining today. Please select tomorrow or a later date.
+                                  </Text>
+                                )}
+                              </VStack>
+                            ) : (
+                              <Text fontSize="sm" color="gray.500">
+                                Select a date first to see available times
+                              </Text>
+                            )}
+                          </Box>
+
+                          {/* Submit Button */}
+                          {selectedDate && selectedLocation && selectedTime && (
+                            <Button
+                              colorScheme="brand"
+                              size="md"
+                              onClick={confirmMeetup}
+                              isLoading={confirmingMeetup}
+                              leftIcon={<FaCheckCircle />}
+                              w="full"
+                              fontWeight="semibold"
+                            >
+                              Confirm This Meetup
+                            </Button>
+                          )}
                         </VStack>
                       </Box>
 
                       <Divider />
 
-                      {/* Agreement Status - Simplified UI */}
+                      {/* ============ MEETUP STATE DISPLAY & DISPUTE SECTION ============ */}
+                      <Box>
+                        {/* State Badge */}
+                        <HStack mb={4} justify="space-between">
+                          <HStack>
+                            <Text fontSize="sm" fontWeight="medium" color="gray.600">
+                              Meetup Status:
+                            </Text>
+                            {getMeetupState() === 'proposed' && (
+                              <Badge colorScheme="blue" fontSize="xs" px={2} py={1}>
+                                📌 Proposed Schedule
+                              </Badge>
+                            )}
+                            {getMeetupState() === 'dispute' && (
+                              <Badge colorScheme="orange" fontSize="xs" px={2} py={1}>
+                                ⚠️ In Dispute
+                              </Badge>
+                            )}
+                            {getMeetupState() === 'finalized' && (
+                              <Badge colorScheme="green" fontSize="xs" px={2} py={1}>
+                                ✓ Finalized
+                              </Badge>
+                            )}
+                            {getMeetupState() === 'none' && (
+                              <Badge colorScheme="gray" fontSize="xs" px={2} py={1}>
+                                ⏳ Pending
+                              </Badge>
+                            )}
+                          </HStack>
+                        </HStack>
+
+                        {/* Dispute Buttons - Only show if meeting hasn't been confirmed yet */}
+                        {!meetupAgreed && (buyerMeetupConfirmed || sellerMeetupConfirmed) && (
+                          <VStack spacing={2} mb={4} align="stretch">
+                            <Text fontSize="xs" fontWeight="medium" color="gray.600">
+                              Having issues with this schedule?
+                            </Text>
+                            <HStack spacing={2}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                colorScheme="orange"
+                                leftIcon={<Icon as={FaExclamationTriangle} />}
+                                onClick={() => setShowDisputeDialog(true)}
+                                flex={1}
+                              >
+                                Raise Dispute
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                colorScheme="blue"
+                                leftIcon={<Icon as={FaLightbulb} />}
+                                onClick={() => setShowSuggestionsPanel(!showSuggestionsPanel)}
+                                flex={1}
+                              >
+                                Get Suggestions
+                              </Button>
+                            </HStack>
+                          </VStack>
+                        )}
+
+                        {/* Smart Suggestions Panel */}
+                        {showSuggestionsPanel && (
+                          <Box
+                            p={3}
+                            bg="blue.50"
+                            borderRadius="md"
+                            borderLeft="4px"
+                            borderColor="blue.400"
+                            mb={4}
+                          >
+                            <HStack justify="space-between" mb={2}>
+                              <Text fontSize="sm" fontWeight="medium" color="blue.700">
+                                💡 Suggested Alternative Times
+                              </Text>
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                onClick={() => setShowSuggestionsPanel(false)}
+                              >
+                                ✕
+                              </Button>
+                            </HStack>
+                            <VStack align="stretch" spacing={2}>
+                              {generateSmartSuggestions().map((suggestion, idx) => (
+                                <Button
+                                  key={idx}
+                                  size="sm"
+                                  variant="outline"
+                                  colorScheme="blue"
+                                  justifyContent="flex-start"
+                                  onClick={() => {
+                                    setSelectedDate(suggestion.date)
+                                    setSelectedTime(suggestion.time)
+                                    setShowSuggestionsPanel(false)
+                                  }}
+                                >
+                                  {suggestion.label}
+                                </Button>
+                              ))}
+                            </VStack>
+                          </Box>
+                        )}
+
+                        {/* Dispute Dialog */}
+                        <AlertDialog
+                          isOpen={showDisputeDialog}
+                          onClose={() => setShowDisputeDialog(false)}
+                          leastDestructiveRef={cancelDialogRef}
+                          isCentered
+                        >
+                          <AlertDialogOverlay>
+                            <AlertDialogContent>
+                              <AlertDialogHeader fontSize="lg" fontWeight="bold">
+                                Report Meetup Issue
+                              </AlertDialogHeader>
+                              <AlertDialogBody>
+                                <VStack spacing={4} align="stretch">
+                                  <Text fontSize="sm" color="gray.600">
+                                    What's the problem with the scheduled time?
+                                  </Text>
+                                  <VStack spacing={2}>
+                                    <Button
+                                      variant={meetupDisputeReason === 'time' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('time')}
+                                    >
+                                      ⏰ The time doesn't work for me
+                                    </Button>
+                                    <Button
+                                      variant={meetupDisputeReason === 'date' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('date')}
+                                    >
+                                      📅 The date is inconvenient
+                                    </Button>
+                                    <Button
+                                      variant={meetupDisputeReason === 'unresponsive' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('unresponsive')}
+                                    >
+                                      🔕 Other person is unresponsive
+                                    </Button>
+                                    <Button
+                                      variant={meetupDisputeReason === 'conflict' ? 'solid' : 'outline'}
+                                      colorScheme="orange"
+                                      justifyContent="flex-start"
+                                      onClick={() => setMeetupDisputeReason('conflict')}
+                                    >
+                                      ⚡ Schedule conflict
+                                    </Button>
+                                  </VStack>
+                                  <FormControl>
+                                    <FormLabel fontSize="sm">Additional notes (optional)</FormLabel>
+                                    <Textarea
+                                      placeholder="Explain your concern..."
+                                      value={disputeNotes}
+                                      onChange={(e) => setDisputeNotes(e.target.value)}
+                                      size="sm"
+                                      minH="80px"
+                                    />
+                                  </FormControl>
+                                </VStack>
+                              </AlertDialogBody>
+                              <AlertDialogFooter>
+                                <Button
+                                  ref={cancelDialogRef}
+                                  onClick={() => setShowDisputeDialog(false)}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  colorScheme="orange"
+                                  onClick={handleRaiseDispute}
+                                  ml={3}
+                                >
+                                  Report Issue
+                                </Button>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialogOverlay>
+                        </AlertDialog>
+                      </Box>
+
+                      <Divider />
                       <Box
                         p={4}
                         bg={meetupInfoBg}
@@ -2980,71 +3554,84 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             )
                           ) : (
                             // One submitted, waiting for the other
-                            <VStack spacing={3}>
-                              <HStack justify="center" spacing={4} py={2}>
-                                {/* Your status */}
-                                <VStack spacing={1}>
-                                  <Box
-                                    w={10}
-                                    h={10}
-                                    borderRadius="full"
-                                    bg={(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? 'green.500' : 'gray.300'}
-                                    display="flex"
-                                    alignItems="center"
-                                    justifyContent="center"
-                                  >
-                                    {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
-                                      <Icon as={FaCheckCircle} color="white" boxSize={5} />
-                                    ) : (
-                                      <Icon as={FiClock} color="white" boxSize={5} />
-                                    )}
-                                  </Box>
-                                  <Text fontSize="xs" fontWeight="medium" color="gray.600">You</Text>
-                                </VStack>
+                            <VStack spacing={3} align="stretch">
+                              <Box
+                                p={3}
+                                bg="blue.100"
+                                borderRadius="md"
+                                borderWidth="2px"
+                                borderColor="blue.400"
+                                textAlign="center"
+                              >
+                                <Text fontWeight="medium" color="blue.700" fontSize="sm">
+                                  ⏳ Waiting for Agreement
+                                </Text>
+                                <Text fontSize="xs" color="blue.600" mt={1}>
+                                  {buyerMeetupConfirmed && !sellerMeetupConfirmed
+                                    ? `${trade.buyer_name} proposed:`
+                                    : `${trade.seller_name} proposed:`}
+                                </Text>
+                              </Box>
 
-                                {/* Connection line */}
-                                <Box w="40px" h="2px" bg="gray.300" />
-
-                                {/* Partner status */}
-                                <VStack spacing={1}>
-                                  <Box
-                                    w={10}
-                                    h={10}
-                                    borderRadius="full"
-                                    bg={(isUserBuyer && sellerMeetupConfirmed) || (isUserSeller && buyerMeetupConfirmed) ? 'green.500' : 'gray.300'}
-                                    display="flex"
-                                    alignItems="center"
-                                    justifyContent="center"
-                                  >
-                                    {(isUserBuyer && sellerMeetupConfirmed) || (isUserSeller && buyerMeetupConfirmed) ? (
-                                      <Icon as={FaCheckCircle} color="white" boxSize={5} />
-                                    ) : (
-                                      <Icon as={FiClock} color="white" boxSize={5} />
-                                    )}
-                                  </Box>
-                                  <Text fontSize="xs" fontWeight="medium" color="gray.600">{tradingPartner.split(' ')[0]}</Text>
-                                </VStack>
-                              </HStack>
-
-                              {/* Status message */}
-                              {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
-                                <Box textAlign="center">
-                                  <Text fontSize="sm" color="green.600" fontWeight="medium">
-                                    You submitted: {isUserBuyer ? buyerMeetupLocation : sellerMeetupLocation} at {formatTimePH(isUserBuyer ? buyerMeetupTime : sellerMeetupTime)}
+                              {/* Show proposed schedule */}
+                              {buyerMeetupConfirmed && !sellerMeetupConfirmed && isUserSeller && (
+                                <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2}>
+                                    Proposed Schedule:
                                   </Text>
-                                  <Text fontSize="xs" color="gray.500" mt={1}>
-                                    Waiting for {tradingPartner} to submit their choice...
+                                  <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                    📍 {buyerMeetupLocation}
+                                  </Text>
+                                  <Text fontSize="sm" color="gray.600">
+                                    🕐 {formatTimePH(buyerMeetupTime)}
                                   </Text>
                                 </Box>
+                              )}
+
+                              {sellerMeetupConfirmed && !buyerMeetupConfirmed && isUserBuyer && (
+                                <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2}>
+                                    Proposed Schedule:
+                                  </Text>
+                                  <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                    📍 {sellerMeetupLocation}
+                                  </Text>
+                                  <Text fontSize="sm" color="gray.600">
+                                    🕐 {formatTimePH(sellerMeetupTime)}
+                                  </Text>
+                                </Box>
+                              )}
+
+                              {/* Action buttons */}
+                              {(buyerMeetupConfirmed && !sellerMeetupConfirmed && isUserSeller) ||
+                              (sellerMeetupConfirmed && !buyerMeetupConfirmed && isUserBuyer) ? (
+                                <HStack spacing={2}>
+                                  <Button
+                                    colorScheme="green"
+                                    size="md"
+                                    onClick={handleAgreeToSchedule}
+                                    isLoading={agreeingToSchedule}
+                                    leftIcon={<FaCheckCircle />}
+                                    flex={1}
+                                  >
+                                    ✓ Accept This Time
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    colorScheme="gray"
+                                    size="md"
+                                    onClick={() => {
+                                      setShowSuggestionsPanel(true)
+                                    }}
+                                    leftIcon={<FaLightbulb />}
+                                  >
+                                    Suggest Different
+                                  </Button>
+                                </HStack>
                               ) : (
-                                <Box textAlign="center">
-                                  <Text fontSize="sm" color="blue.600" fontWeight="medium">
-                                    {tradingPartner} already submitted their choice
-                                  </Text>
-                                  <Text fontSize="xs" color="gray.500" mt={1}>
-                                    Select the same location and time to agree!
-                                  </Text>
-                                </Box>
+                                <Text fontSize="xs" color="gray.600" textAlign="center">
+                                  Waiting for {isUserBuyer ? trade.seller_name : trade.buyer_name} to respond.
+                                </Text>
                               )}
                             </VStack>
                           )}
@@ -3102,8 +3689,100 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
               </TabPanels >
             </Tabs >
           </ModalBody >
+
+          {/* Modal Footer with Cancel Trade Button */}
+          <ModalFooter pt={2} pb={4} px={[3, 4, 6]} borderTop="1px" borderTopColor="gray.200">
+            <HStack spacing={3} w="full">
+              <Button
+                variant="ghost"
+                onClick={onClose}
+                flex={1}
+              >
+                Close
+              </Button>
+              {trade?.status === 'active' || trade?.status === 'accepted' ? (
+                <Button
+                  colorScheme="red"
+                  variant="outline"
+                  onClick={() => setShowCancelDialog(true)}
+                  leftIcon={<FaTimesCircle />}
+                  flex={1}
+                  isDisabled={cancelingTrade}
+                >
+                  Cancel Trade
+                </Button>
+              ) : null}
+            </HStack>
+          </ModalFooter>
         </ModalContent >
       </Modal >
+
+
+
+      {/* Cancel Trade Confirmation Dialog */}
+      <AlertDialog
+        isOpen={showCancelDialog}
+        leastDestructiveRef={cancelDialogRef}
+        onClose={() => setShowCancelDialog(false)}
+        isCentered
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent bg={cardBg} borderRadius={["md", "lg"]}>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              <HStack spacing={2}>
+                <Icon as={FaExclamationTriangle} color="red.500" boxSize={5} />
+                <Text>Cancel This Trade?</Text>
+              </HStack>
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              <VStack spacing={3} align="start">
+                <Text>
+                  Are you sure you want to cancel this trade?
+                </Text>
+                <Box
+                  p={3}
+                  bg="red.50"
+                  borderRadius="md"
+                  borderLeft="4px"
+                  borderColor="red.500"
+                >
+                  <Text fontSize="sm" fontWeight="medium" color="red.800">
+                    ⚠️ Warning: Cancelling this trade will negatively affect your trust score.
+                  </Text>
+                </Box>
+                <Text fontSize="sm" color="gray.600">
+                  Product: <Text as="span" fontWeight="bold">{requestedProduct?.title || 'Unknown Product'}</Text>
+                </Text>
+                <Text fontSize="sm" color="gray.600">
+                  With: <Text as="span" fontWeight="bold">{tradingPartner}</Text>
+                </Text>
+              </VStack>
+            </AlertDialogBody>
+
+            <AlertDialogFooter pt={4}>
+              <HStack spacing={2} w="full">
+                <Button
+                  ref={cancelDialogRef}
+                  onClick={() => setShowCancelDialog(false)}
+                  variant="ghost"
+                  flex={1}
+                >
+                  Keep Trade Active
+                </Button>
+                <Button
+                  colorScheme="red"
+                  onClick={handleCancelTrade}
+                  isLoading={cancelingTrade}
+                  flex={1}
+                >
+                  Yes, Cancel Trade
+                </Button>
+              </HStack>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
 
 
 
