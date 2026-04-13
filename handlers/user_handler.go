@@ -1532,6 +1532,10 @@ func (h *UserHandler) GetOrganizationByHandle(c *fiber.Ctx) error {
 
 // GetUserByID gets a user by ID or slug (public info only)
 func (h *UserHandler) GetUserByID(c *fiber.Ctx) error {
+	// Set cache headers - 5 minutes for public user profiles
+	c.Set("Cache-Control", "public, max-age=300")
+	c.Set("ETag", fmt.Sprintf(`"%d"`, time.Now().Unix()/300)) // ETag changes every 5 min
+	
 	identifier := c.Params("id")
 	if identifier == "" {
 		return c.Status(400).JSON(models.APIResponse{
@@ -2131,6 +2135,10 @@ func (h *UserHandler) GetSavedProducts(c *fiber.Ctx) error {
 
 // GetSellerStats retrieves statistics for a seller profile
 func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
+	// Set cache headers - 15 minutes for seller stats (can be reused across requests)
+	c.Set("Cache-Control", "public, max-age=900")
+	c.Set("ETag", fmt.Sprintf(`"%d"`, time.Now().Unix()/900)) // ETag changes every 15 min
+	
 	identifier := c.Params("id")
 	if identifier == "" {
 		return c.Status(400).JSON(models.APIResponse{

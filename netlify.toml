@@ -24,3 +24,19 @@
     Content-Type = "application/vnd.android.package-archive"
     Content-Disposition = "attachment; filename=clovia.apk"
     Cache-Control = "public, max-age=86400"
+
+# API response caching
+[[headers]]
+  for = "/api/users/*/stats"
+  [headers.values]
+    Cache-Control = "public, max-age=900" # 15 minutes for seller stats
+
+[[headers]]
+  for = "/api/users/*/reviews"
+  [headers.values]
+    Cache-Control = "public, max-age=600" # 10 minutes for reviews
+
+[[headers]]
+  for = "/api/users/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300" # 5 minutes for user profiles
