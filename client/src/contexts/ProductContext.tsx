@@ -57,7 +57,12 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     // Try to restore from localStorage on mount
     try {
       const cached = localStorage.getItem('clovia_home_products')
-      return cached ? JSON.parse(cached) : []
+      if (!cached) return []
+      // Strip cached distances — they were computed against the user's
+      // previous location and can be stale (e.g. showing 1.7km on every
+      // card). Backend will refill on the next fetch.
+      const parsed = JSON.parse(cached) as Product[]
+      return parsed.map((p) => ({ ...p, distance: '', distanceKm: Infinity }))
     } catch {
       return []
     }
@@ -176,9 +181,16 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         )
       }
 
+      // If we couldn't compute a per-product distance on the client, keep
+      // whatever the backend already returned (may be empty) instead of
+      // stamping every card with 'Nearby' — that was making every card in
+      // the feed look identical.
+      const nextDistance =
+        dist === Infinity ? (product.distance || '') : formatDistance(dist)
+
       return {
         ...product,
-        distance: dist === Infinity ? 'Nearby' : formatDistance(dist),
+        distance: nextDistance,
         distanceKm: dist,
       }
     })

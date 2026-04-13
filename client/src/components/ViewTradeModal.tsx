@@ -40,6 +40,7 @@ import {
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
 import OptimizedImage from './OptimizedImage'
+import CancelTradeModal from './CancelTradeModal'
 import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle, FaCheck } from 'react-icons/fa'
 import {
   FiMapPin,
@@ -1030,6 +1031,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [offeredProducts, setOfferedProducts] = useState<Product[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null)
+  const [searchedLocations, setSearchedLocations] = useState<MeetupLocation[]>([])
+  const [placeQuery, setPlaceQuery] = useState('')
+  const [placeResults, setPlaceResults] = useState<Array<{ name: string; address: string; latitude: number; longitude: number }>>([])
+  const [placeSearching, setPlaceSearching] = useState(false)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [confirmingMeetup, setConfirmingMeetup] = useState(false)
   const [resettingMeetup, setResettingMeetup] = useState(false)
@@ -1046,6 +1051,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   const [sellerMeetupTime, setSellerMeetupTime] = useState<string | null>(null)
   const [confirmingMeetupDone, setConfirmingMeetupDone] = useState(false)
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [deliveryState, setDeliveryState] = useState<DeliveryState>({
     deliveryType: 'standard',
     paymentMethod: 'cod',
@@ -1257,7 +1263,40 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
   }, [isOpen, trade?.buyer_id, trade?.seller_id])
 
-  const suggestedLocations: MeetupLocation[] = [
+  // Debounced place search (Google Places / Nominatim via backend)
+  useEffect(() => {
+    const q = placeQuery.trim()
+    if (q.length < 2) {
+      setPlaceResults([])
+      setPlaceSearching(false)
+      return
+    }
+    setPlaceSearching(true)
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q })
+        if (user?.latitude && user?.longitude) {
+          params.set('lat', String(user.latitude))
+          params.set('lng', String(user.longitude))
+        }
+        const res = await api.get(`/api/places/search?${params.toString()}`)
+        if (!cancelled) {
+          setPlaceResults(res.data?.results || [])
+        }
+      } catch {
+        if (!cancelled) setPlaceResults([])
+      } finally {
+        if (!cancelled) setPlaceSearching(false)
+      }
+    }, 350)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [placeQuery, user?.latitude, user?.longitude])
+
+  const defaultLocations: MeetupLocation[] = [
     { name: 'Meet n Eat', address: 'Gov. Camins Ave, Zamboanga City', type: 'cafe', lat: 6.9150, lng: 122.0630, isPartner: true },
     { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public', lat: 6.9214, lng: 122.0790 },
     { name: 'SM Mindpro', address: 'La Purisima St, Zamboanga City', type: 'mall', lat: 6.9080, lng: 122.0745 },
@@ -1266,6 +1305,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     { name: 'Paseo del Mar', address: 'Valderosa St, Zamboanga City', type: 'public', lat: 6.9030, lng: 122.0780 },
     { name: 'Local coffee shops', address: 'Various locations in Zamboanga', type: 'cafe', isPartner: true },
   ]
+  const suggestedLocations: MeetupLocation[] = useMemo(
+    () => [...searchedLocations, ...defaultLocations],
+    [searchedLocations],
+  )
 
   // Helper compute distance in km using Haversine
   const getDistance = (lat1?: number, lon1?: number, lat2?: number, lon2?: number) => {
@@ -1980,6 +2023,18 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       ? 'Waiting for Meetup'
                       : 'Pending'}
               </Badge>
+              {['pending', 'accepted', 'active', 'awaiting_confirmation'].includes(trade.status) && (
+                <Button
+                  size="xs"
+                  colorScheme="red"
+                  variant="outline"
+                  ml={2}
+                  leftIcon={<Icon as={FaExclamationTriangle} />}
+                  onClick={() => setIsCancelModalOpen(true)}
+                >
+                  Cancel Trade
+                </Button>
+              )}
             </HStack>
           </ModalHeader>
           <ModalCloseButton />
@@ -2593,9 +2648,81 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         <Text fontWeight="semibold" mb={1} fontSize="md">
                           Suggested Meetup Locations
                         </Text>
-                        <Text fontSize="sm" color="gray.600" mb={4}>
+                        <Text fontSize="sm" color="gray.600" mb={3}>
                           Select a safe, public location. Both parties must confirm to proceed.
                         </Text>
+
+                        {/* Place search (Google Maps) */}
+                        <Box mb={4} position="relative">
+                          <InputGroup size="sm">
+                            <InputLeftElement pointerEvents="none">
+                              <Icon as={FaMapMarkerAlt} color="gray.400" />
+                            </InputLeftElement>
+                            <Input
+                              placeholder='Search any place in PH (e.g. "claret jollibee")'
+                              value={placeQuery}
+                              onChange={(e) => setPlaceQuery(e.target.value)}
+                              pr={placeSearching ? '2rem' : undefined}
+                            />
+                            {placeSearching && (
+                              <Box position="absolute" right={2} top="50%" transform="translateY(-50%)" zIndex={2}>
+                                <Spinner size="xs" />
+                              </Box>
+                            )}
+                          </InputGroup>
+                          {placeResults.length > 0 && (
+                            <Box
+                              position="absolute"
+                              top="100%"
+                              left={0}
+                              right={0}
+                              zIndex={20}
+                              bg="white"
+                              borderWidth="1px"
+                              borderColor={borderColor}
+                              borderRadius="md"
+                              boxShadow="lg"
+                              maxH="240px"
+                              overflowY="auto"
+                              mt={1}
+                            >
+                              {placeResults.map((r, idx) => (
+                                <Box
+                                  key={`${r.name}-${idx}`}
+                                  px={3}
+                                  py={2}
+                                  cursor="pointer"
+                                  _hover={{ bg: 'brand.50' }}
+                                  borderBottomWidth={idx < placeResults.length - 1 ? '1px' : 0}
+                                  borderColor="gray.100"
+                                  onClick={() => {
+                                    const loc: MeetupLocation = {
+                                      name: r.name,
+                                      address: r.address,
+                                      type: 'other',
+                                      lat: r.latitude,
+                                      lng: r.longitude,
+                                    }
+                                    setSearchedLocations((prev) => {
+                                      if (prev.find((p) => p.name === loc.name)) return prev
+                                      return [loc, ...prev].slice(0, 5)
+                                    })
+                                    setSelectedLocation(loc.name)
+                                    setPlaceResults([])
+                                    setPlaceQuery('')
+                                  }}
+                                >
+                                  <Text fontSize="sm" fontWeight="medium" noOfLines={1}>
+                                    {r.name}
+                                  </Text>
+                                  <Text fontSize="xs" color="gray.500" noOfLines={1}>
+                                    {r.address}
+                                  </Text>
+                                </Box>
+                              ))}
+                            </Box>
+                          )}
+                        </Box>
 
                         {/* Locations Grid */}
                         <Box h="250px" mb={4} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
@@ -3108,6 +3235,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
       </Modal >
 
 
+
+      {/* Cancel Trade Modal */}
+      {trade && (
+        <CancelTradeModal
+          isOpen={isCancelModalOpen}
+          onClose={() => setIsCancelModalOpen(false)}
+          tradeId={trade.id}
+          isOngoing={['accepted', 'active', 'awaiting_confirmation'].includes(trade.status)}
+          onCancelled={() => {
+            onStatusUpdate()
+            onClose()
+          }}
+        />
+      )}
 
       {/* Review Modal */}
       <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} size={["xs", "sm", "md"]} isCentered scrollBehavior="inside">

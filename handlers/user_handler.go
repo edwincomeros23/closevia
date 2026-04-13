@@ -2275,8 +2275,8 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Verified account", Status: verifiedStatus, Points: verifiedPoints, Max: 15})
 
-	// 2. Completed trades: 15 points (progressive, 0 trades = neutral 5)
-	tradePoints := 5
+	// 2. Completed trades: 15 points (new users start at 0 — must earn this)
+	tradePoints := 0
 	tradeStatus := "warn"
 	if stats.CompletedTrades >= 6 {
 		tradePoints = 15
@@ -2290,14 +2290,15 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Completed trades", Status: tradeStatus, Points: tradePoints, Max: 15})
 
-	// 3. Positive ratings: 25 points (based on percentage)
-	ratingPoints := 25 // Default neutral/clean
-	ratingStatus := "pass"
-	var positivePercentVal float64 = 100
+	// 3. Positive ratings: 25 points (new users start at 0 — points earned
+	// only after receiving actual feedback)
+	ratingPoints := 0
+	ratingStatus := "warn"
 	if stats.TotalFeedback > 0 {
-		positivePercentVal = stats.PositivePercent
+		positivePercentVal := stats.PositivePercent
 		if positivePercentVal == 100 {
 			ratingPoints = 25
+			ratingStatus = "pass"
 		} else if positivePercentVal >= 80 {
 			ratingPoints = 18 + int((positivePercentVal-80)/19.0*6.0)
 			ratingStatus = "pass"
@@ -2332,8 +2333,9 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Clean record", Status: reportStatus, Points: reportPoints, Max: 20})
 
-	// 5. Response time: 15 points (Faster = better, inactive = minimum 5)
-	responsePoints := 12 // Default moderate for no activity
+	// 5. Response time: 15 points (new users start at 0 — earned by actually
+	// responding to messages/offers)
+	responsePoints := 0
 	responseStatus := "warn"
 	if avgResponseTimeMinutes.Valid {
 		minutes := int(avgResponseTimeMinutes.Float64)
@@ -2357,9 +2359,10 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	var totalAttempted int
 	_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed', 'cancelled')", userID).Scan(&totalAttempted)
 
-	successPoints := 10 // Default neutral if no trades
-	successStatus := "pass"
+	successPoints := 0 // New users start at 0 — earned only after trade attempts
+	successStatus := "warn"
 	if totalAttempted > 0 {
+		successStatus = "pass"
 		var successCount int
 		_ = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE seller_id = ? AND status IN ('completed', 'auto_completed')", userID).Scan(&successCount)
 		successRate := (float64(successCount) / float64(totalAttempted)) * 100
@@ -2378,10 +2381,32 @@ func (h *UserHandler) GetSellerStats(c *fiber.Ctx) error {
 	}
 	trustFactors = append(trustFactors, models.TrustFactor{Label: "Trade success", Status: successStatus, Points: successPoints, Max: 10})
 
+	// Cancellation penalty: deduct points for recent cancellations. A cancel
+	// made while the trade was ongoing (accepted/active) is weighted heavier
+	// than one made while still pending.
+	var recentActiveCancels, recentPendingCancels int
+	_ = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades
+		WHERE cancelled_by = ? AND cancelled_while_active = TRUE
+		  AND cancelled_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
+	`, userID).Scan(&recentActiveCancels)
+	_ = h.db.QueryRow(`
+		SELECT COUNT(*) FROM trades
+		WHERE cancelled_by = ? AND (cancelled_while_active = FALSE OR cancelled_while_active IS NULL)
+		  AND cancelled_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
+	`, userID).Scan(&recentPendingCancels)
+	cancelPenalty := recentActiveCancels*5 + recentPendingCancels*2
+	if cancelPenalty > 30 {
+		cancelPenalty = 30
+	}
+
 	// Sum all factors
-	totalScore := verifiedPoints + tradePoints + ratingPoints + reportPoints + responsePoints + successPoints
+	totalScore := verifiedPoints + tradePoints + ratingPoints + reportPoints + responsePoints + successPoints - cancelPenalty
 	if totalScore > 100 {
 		totalScore = 100
+	}
+	if totalScore < 0 {
+		totalScore = 0
 	}
 	stats.TrustScore = totalScore
 	stats.TrustFactors = trustFactors

@@ -384,6 +384,7 @@ type TradeAction struct {
 	MeetupTime               string   `json:"meetup_time,omitempty"`
 	RequestedOption          string   `json:"requested_option,omitempty"`
 	DeliveryAddress          string   `json:"delivery_address,omitempty"`
+	CancellationReason       string   `json:"cancellation_reason,omitempty"`
 }
 
 // ChatConversation represents a conversation between a buyer and seller about a product

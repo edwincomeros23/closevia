@@ -1345,6 +1345,10 @@ func ensureTradeColumns() {
 		{"seller_met", "BOOLEAN DEFAULT FALSE"},
 		{"buyer_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
 		{"seller_photo_is_camera", "BOOLEAN DEFAULT FALSE"},
+		{"cancellation_reason", "VARCHAR(255) NULL"},
+		{"cancelled_by", "INT NULL"},
+		{"cancelled_at", "TIMESTAMP NULL"},
+		{"cancelled_while_active", "BOOLEAN DEFAULT FALSE"},
 	}
 
 	for _, col := range columns {
