@@ -404,6 +404,7 @@ export interface Delivery {
   updated_at: string
   // Denormalized fields
   user_name?: string
+  receiver_name?: string
   rider_name?: string
   rider_phone?: string
   rider_vehicle?: string

@@ -15,7 +15,13 @@ import (
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
 	"github.com/xashathebest/clovia/services"
+	"golang.org/x/sync/singleflight"
 )
+
+// loopBuildGroup coalesces concurrent buildLoopSuggestionsForUser calls for
+// the same user so two in-flight requests don't each run the O(N³)
+// product-based loop finder.
+var loopBuildGroup singleflight.Group
 
 type TradeHandler struct {
 	db *sql.DB
@@ -617,10 +623,15 @@ func (h *TradeHandler) saveLoopCacheForUser(userID int, loops []map[string]inter
 			continue
 		}
 
+		// 10-minute TTL. The cache is explicitly invalidated by every
+		// DELETE FROM trade_loop_cache call in this file (on product add,
+		// trade create/accept/decline, multiway upgrade, etc.), so a short
+		// TTL doesn't buy freshness — it just forces needless rebuilds of
+		// the O(N³) product-match loop finder.
 		_, _ = h.db.Exec(`
 			INSERT INTO trade_loop_cache
 			(user_id, loop_id, loop_type, loop_length, score, payload_json, expires_at)
-			VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 2 MINUTE))
+			VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))
 		`, userID, loopID, loopType, loopLength, score, string(payloadBytes))
 	}
 
@@ -874,10 +885,10 @@ func (h *TradeHandler) buildLoopSuggestionsForUser(userID int) ([]map[string]int
 			continue
 		}
 		if _, ok := pl["score"]; !ok {
-			pl["score"] = 60
+			pl["score"] = 0
 		}
 		if _, ok := pl["match_score"]; !ok {
-			pl["match_score"] = 60
+			pl["match_score"] = 0
 		}
 		userLoops = append(userLoops, pl)
 	}
@@ -906,6 +917,7 @@ func (h *TradeHandler) rebuildTradeLoopCacheForUsers(userIDs []int) {
 			log.Printf("rebuildTradeLoopCacheForUsers: failed for user %d: %v", userID, err)
 			continue
 		}
+		loops = selectBestLoopsPerProduct(h.db, userID, loops)
 		if err := h.saveLoopCacheForUser(userID, loops); err != nil {
 			log.Printf("rebuildTradeLoopCacheForUsers: failed to save cache for user %d: %v", userID, err)
 		}
@@ -935,12 +947,19 @@ func mapKeysToSlice(m map[int]bool) []int {
 	return out
 }
 
-// RebuildAllLoopCaches refreshes hybrid loop suggestions for premium users.
+// RebuildAllLoopCaches refreshes hybrid loop suggestions for all active users
+// who have at least one available product with desires set.
 // Intended to be called by a background ticker/cron.
 func (h *TradeHandler) RebuildAllLoopCaches() {
-	rows, err := h.db.Query("SELECT id FROM users WHERE is_premium = TRUE")
+	rows, err := h.db.Query(`
+		SELECT DISTINCT p.seller_id
+		FROM products p
+		WHERE p.status = 'available'
+		  AND p.created_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)
+		  AND (p.wants != '' OR p.wanted_categories != '' OR p.desired_product != '')
+	`)
 	if err != nil {
-		log.Printf("RebuildAllLoopCaches: failed to load premium users: %v", err)
+		log.Printf("RebuildAllLoopCaches: failed to load active users: %v", err)
 		return
 	}
 	defer rows.Close()
@@ -957,6 +976,7 @@ func (h *TradeHandler) RebuildAllLoopCaches() {
 		return
 	}
 
+	log.Printf("RebuildAllLoopCaches: refreshing cache for %d active users", len(userIDs))
 	h.rebuildTradeLoopCacheForUsers(userIDs)
 }
 
@@ -1684,11 +1704,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 			if bLoc == sLoc && bTime == sTime {
 				// Selections match! Update trade status to active and set the final meetup details
-				_, err = h.db.Exec(`
+				_, activateErr := h.db.Exec(`
 					UPDATE trades
 					SET status='active', meetup_location=?, meetup_time=?, updated_at=CURRENT_TIMESTAMP
 					WHERE id = ?`, buyerLocation.String, buyerTime.String, tradeID)
-				if err == nil {
+				if activateErr == nil {
 					log.Printf("Both parties agreed on meetup for trade %d (location: %s, time: %s), status updated to active",
 						tradeID, buyerLocation.String, buyerTime.String)
 					publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
@@ -1699,6 +1719,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 						buyerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
 					_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
 						sellerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
+				} else {
+					// Important: do not fail the whole request here.
+					// The user's selection has already been stored above; activation may race with the other party's request.
+					log.Printf("Warning: failed to auto-activate trade %d after meetup agreement: %v", tradeID, activateErr)
 				}
 			} else {
 				// Selections don't match - notify both parties
@@ -1955,6 +1979,33 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		// Log how many rows were affected
 		rowsAffected, _ := result.RowsAffected()
 		log.Printf("Delivery state update successful, affected %d rows", rowsAffected)
+
+		// If delivery type was updated on the trade, propagate it to any pending/unclaimed delivery jobs
+		// created for this trade. Rider pages read from `deliveries.delivery_type`.
+		if deliveryPayload.DeliveryType != "" {
+			newType := strings.ToLower(strings.TrimSpace(deliveryPayload.DeliveryType))
+			if newType != "standard" && newType != "express" {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid delivery_type. Must be 'standard' or 'express'"})
+			}
+
+			newCost := 30.0
+			if newType == "express" {
+				newCost = 60.0
+			}
+
+			res2, err2 := h.db.Exec(
+				"UPDATE deliveries SET delivery_type = ?, total_cost = ?, updated_at = CURRENT_TIMESTAMP WHERE trade_id = ? AND status = 'pending' AND rider_id IS NULL",
+				newType,
+				newCost,
+				tradeID,
+			)
+			if err2 != nil {
+				log.Printf("Warning: failed to propagate delivery_type to deliveries for trade %d: %v", tradeID, err2)
+			} else {
+				updatedDeliveries, _ := res2.RowsAffected()
+				log.Printf("Propagated delivery_type=%s to %d pending/unclaimed deliveries for trade %d", newType, updatedDeliveries, tradeID)
+			}
+		}
 
 		// Notify other party of the update
 		var otherUserID int
@@ -3453,32 +3504,92 @@ func selectBestLoopsPerProduct(db *sql.DB, _ int, loops []map[string]interface{}
 		}
 	}
 
-	result := make([]map[string]interface{}, 0, len(bestByUserSet))
+	afterUserSet := make([]map[string]interface{}, 0, len(bestByUserSet))
 	for _, loop := range bestByUserSet {
+		afterUserSet = append(afterUserSet, loop)
+	}
+
+	// Third dedupe pass (product_match only): by the visible product set.
+	// Cards display all 3 products. If the same 3-product combination appears
+	// through different user combinations, the user sees identical-looking cards.
+	// Keep only the highest-scored loop per sorted product-ID triple.
+	bestByProductSet := make(map[string]map[string]interface{})
+	for _, loop := range afterUserSet {
+		loopType, _ := loop["loop_type"].(string)
+		if loopType != "product_match" {
+			key := fmt.Sprintf("__nonpm_%p", loop)
+			bestByProductSet[key] = loop
+			continue
+		}
+		participants, ok := loop["participants"].([]map[string]interface{})
+		if !ok || len(participants) < 3 {
+			key := fmt.Sprintf("__nopart_%p", loop)
+			bestByProductSet[key] = loop
+			continue
+		}
+		pid0 := extractIntFromMap(participants[0], "product_id")
+		pid1 := extractIntFromMap(participants[1], "product_id")
+		pid2 := extractIntFromMap(participants[2], "product_id")
+		pids := []int{pid0, pid1, pid2}
+		sort.Ints(pids)
+		key := fmt.Sprintf("pm_%d_%d_%d", pids[0], pids[1], pids[2])
+
+		existing, exists := bestByProductSet[key]
+		if !exists {
+			bestByProductSet[key] = loop
+			continue
+		}
+		if getLoopScore(loop) > getLoopScore(existing) {
+			bestByProductSet[key] = loop
+		}
+	}
+
+	result := make([]map[string]interface{}, 0, len(bestByProductSet))
+	for _, loop := range bestByProductSet {
 		result = append(result, loop)
 	}
 	return result
 }
 
-// productMatchesDesires checks if a product (title/category) matches a user's desires (wants, wanted_categories, desired_product).
-// Returns true if there's a meaningful match.
-func productMatchesDesires(productTitle, productCategory, desires string) bool {
+// extractIntFromMap safely extracts an int from a map value that may be int or float64.
+func extractIntFromMap(m map[string]interface{}, key string) int {
+	if v, ok := m[key].(int); ok {
+		return v
+	}
+	if v, ok := m[key].(float64); ok {
+		return int(v)
+	}
+	return 0
+}
+
+// productMatchScore returns a 0-100 score indicating how well a product matches desires.
+// 90-100: direct product-name match, 70-89: category match, 50-69: token/keyword match, 40-59: semantic-only match.
+func productMatchScore(productTitle, productCategory, desires string) int {
 	if desires == "" {
-		return false
+		return 0
 	}
 	ptLower := strings.ToLower(strings.TrimSpace(productTitle))
 	pcLower := strings.ToLower(strings.TrimSpace(productCategory))
 	dLower := strings.ToLower(strings.TrimSpace(desires))
 
-	// Direct substring checks
+	bestScore := 0
+
+	// Direct substring: title in desires or desires in title → 90-100
 	if ptLower != "" && (strings.Contains(dLower, ptLower) || strings.Contains(ptLower, dLower)) {
-		return true
-	}
-	if pcLower != "" && strings.Contains(dLower, pcLower) {
-		return true
+		bestScore = 95
+		return bestScore
 	}
 
-	// Check individual desire tokens against product title keywords
+	// Category substring in desires → 75
+	if pcLower != "" && strings.Contains(dLower, pcLower) {
+		if bestScore < 75 {
+			bestScore = 75
+		}
+	}
+
+	// Tokenized checks — use word-boundary matching so "phone" doesn't
+	// accidentally match "headphone". A token matches a word only if it
+	// equals the full word, not merely a substring of a longer word.
 	desireTokens := strings.FieldsFunc(dLower, func(r rune) bool {
 		return r == ',' || r == '"' || r == '[' || r == ']' || r == ' '
 	})
@@ -3489,47 +3600,125 @@ func productMatchesDesires(productTitle, productCategory, desires string) bool {
 		if len(dt) < 3 {
 			continue
 		}
-		// Check if desire token is contained in full title or vice versa
-		if strings.Contains(ptLower, dt) {
-			return true
+		// Whole-word match: desire token equals a title word exactly → 60
+		for _, tw := range titleTokens {
+			if tw == dt {
+				if bestScore < 60 {
+					bestScore = 60
+				}
+				break
+			}
 		}
-		// Semantic match
+		if bestScore >= 60 {
+			continue
+		}
+		// Full title contains the desire as a standalone phrase → 58
+		// (multi-word desires like "gaming laptop")
+		if len(strings.Fields(dt)) > 1 && strings.Contains(ptLower, dt) {
+			if bestScore < 58 {
+				bestScore = 58
+			}
+			continue
+		}
+		// Semantic match against title → 45
 		if services.SemanticMatcher(dt, ptLower) {
-			return true
+			if bestScore < 45 {
+				bestScore = 45
+			}
+			continue
 		}
-		// Check against each title keyword
+		// Word-boundary cross-match: title word equals desire token → 55
 		for _, tk := range titleTokens {
 			if len(tk) < 3 {
 				continue
 			}
-			if strings.Contains(dt, tk) || strings.Contains(tk, dt) {
-				return true
+			if tk == dt {
+				if bestScore < 55 {
+					bestScore = 55
+				}
+				break
 			}
 		}
 	}
 
-	// Check category against desire tokens
+	// Category against desire tokens → 70 (word-boundary aware)
 	if pcLower != "" {
+		catTokens := strings.Fields(pcLower)
 		for _, dt := range desireTokens {
 			dt = strings.TrimSpace(dt)
 			if len(dt) < 3 {
 				continue
 			}
-			if strings.Contains(pcLower, dt) || strings.Contains(dt, pcLower) {
-				return true
+			// Exact word match between category tokens and desire token
+			matched := false
+			for _, ct := range catTokens {
+				if ct == dt {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				// Fall back to full-string containment for multi-word categories
+				matched = strings.Contains(pcLower, dt) || strings.Contains(dt, pcLower)
+			}
+			if matched {
+				if bestScore < 70 {
+					bestScore = 70
+				}
+				break
 			}
 			if services.SemanticMatcher(dt, pcLower) {
-				return true
+				if bestScore < 45 {
+					bestScore = 45
+				}
 			}
 		}
 	}
 
-	return false
+	return bestScore
 }
 
 // findProductBasedMultiwayLoops detects 3-way trading opportunities based purely on
 // product desires (wanted_categories, desired_product, wants) without requiring existing trades.
 // It finds cycles where: UserA wants what UserB has, UserB wants what UserC has, UserC wants what UserA has.
+// buildCandidateSet returns indices into the otherProducts slice whose category
+// or title words overlap with the given desires string. If no candidates are
+// found via the index, it falls back to a full scan (all indices).
+func (h *TradeHandler) buildCandidateSet(desires string, byCat map[string][]int, total int) []int {
+	dLower := strings.ToLower(strings.TrimSpace(desires))
+	tokens := strings.FieldsFunc(dLower, func(r rune) bool {
+		return r == ',' || r == '"' || r == '[' || r == ']' || r == ' '
+	})
+
+	idxSet := map[int]bool{}
+	for _, tok := range tokens {
+		tok = strings.TrimSpace(tok)
+		if len(tok) < 3 {
+			continue
+		}
+		if indices, ok := byCat[tok]; ok {
+			for _, idx := range indices {
+				idxSet[idx] = true
+			}
+		}
+	}
+
+	if len(idxSet) == 0 {
+		// No index hits — fall back to full scan
+		all := make([]int, total)
+		for i := range all {
+			all[i] = i
+		}
+		return all
+	}
+
+	out := make([]int, 0, len(idxSet))
+	for idx := range idxSet {
+		out = append(out, idx)
+	}
+	return out
+}
+
 func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]interface{} {
 	type productInfo struct {
 		ID               int
@@ -3541,12 +3730,15 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 		WantedCategories string
 		DesiredProduct   string
 		ImageURL         string
+		Price            float64
+		SellerVerified   bool
 	}
 
 	// 1. Get current user's available products
 	myRows, err := h.db.Query(`
 		SELECT p.id, p.seller_id, u.name, p.title, COALESCE(p.category, ''),
-		       COALESCE(p.wants, ''), COALESCE(p.wanted_categories, ''), COALESCE(p.desired_product, ''), COALESCE(p.image_url, '')
+		       COALESCE(p.wants, ''), COALESCE(p.wanted_categories, ''), COALESCE(p.desired_product, ''), COALESCE(p.image_url, ''),
+		       COALESCE(p.price, 0), COALESCE(u.verified, FALSE)
 		FROM products p
 		JOIN users u ON u.id = p.seller_id
 		WHERE p.seller_id = ? AND p.status = 'available'
@@ -3561,7 +3753,7 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 	var myProducts []productInfo
 	for myRows.Next() {
 		var p productInfo
-		if err := myRows.Scan(&p.ID, &p.SellerID, &p.SellerName, &p.Title, &p.Category, &p.Wants, &p.WantedCategories, &p.DesiredProduct, &p.ImageURL); err != nil {
+		if err := myRows.Scan(&p.ID, &p.SellerID, &p.SellerName, &p.Title, &p.Category, &p.Wants, &p.WantedCategories, &p.DesiredProduct, &p.ImageURL, &p.Price, &p.SellerVerified); err != nil {
 			continue
 		}
 		if p.Wants == "" && p.WantedCategories == "" && p.DesiredProduct == "" {
@@ -3581,7 +3773,8 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 	// 2. Get all other users' available products (limited scope)
 	otherRows, err := h.db.Query(`
 		SELECT p.id, p.seller_id, u.name, p.title, COALESCE(p.category, ''),
-		       COALESCE(p.wants, ''), COALESCE(p.wanted_categories, ''), COALESCE(p.desired_product, ''), COALESCE(p.image_url, '')
+		       COALESCE(p.wants, ''), COALESCE(p.wanted_categories, ''), COALESCE(p.desired_product, ''), COALESCE(p.image_url, ''),
+		       COALESCE(p.price, 0), COALESCE(u.verified, FALSE)
 		FROM products p
 		JOIN users u ON u.id = p.seller_id
 		WHERE p.seller_id != ? AND p.status = 'available'
@@ -3599,7 +3792,7 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 	var otherProducts []productInfo
 	for otherRows.Next() {
 		var p productInfo
-		if err := otherRows.Scan(&p.ID, &p.SellerID, &p.SellerName, &p.Title, &p.Category, &p.Wants, &p.WantedCategories, &p.DesiredProduct, &p.ImageURL); err != nil {
+		if err := otherRows.Scan(&p.ID, &p.SellerID, &p.SellerName, &p.Title, &p.Category, &p.Wants, &p.WantedCategories, &p.DesiredProduct, &p.ImageURL, &p.Price, &p.SellerVerified); err != nil {
 			continue
 		}
 		otherProducts = append(otherProducts, p)
@@ -3609,6 +3802,24 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 		return nil
 	}
 
+	// Pre-index other products by category and by individual desire tokens
+	// so inner loops can skip irrelevant products instead of scanning all 200.
+	byCat := map[string][]int{}    // category → indices into otherProducts
+	byDesire := map[string][]int{} // desire token → indices (products wanting that token)
+	for i, p := range otherProducts {
+		cat := strings.ToLower(strings.TrimSpace(p.Category))
+		if cat != "" {
+			byCat[cat] = append(byCat[cat], i)
+		}
+		// Also index by individual title words for quick lookup
+		for _, tw := range strings.Fields(strings.ToLower(p.Title)) {
+			if len(tw) >= 3 {
+				byCat[tw] = append(byCat[tw], i)
+			}
+		}
+	}
+	_ = byDesire // reserved for future desire-based indexing
+
 	// 3. Find 3-way cycles: myProduct → userB_product → userC_product → myProduct
 	var loops []map[string]interface{}
 	seen := map[string]bool{} // Deduplicate by sorted user IDs
@@ -3617,9 +3828,15 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 		// Build desire haystack for my product
 		myDesires := myProd.Wants + " " + myProd.WantedCategories + " " + myProd.DesiredProduct
 
-		for _, prodB := range otherProducts {
-			// Does my product's desires match what UserB has?
-			if !productMatchesDesires(prodB.Title, prodB.Category, myDesires) {
+		// Build candidate set for prodB: products whose category or title words
+		// overlap with my desires. Fall back to full scan if no candidates found.
+		candidateB := h.buildCandidateSet(myDesires, byCat, len(otherProducts))
+
+		for _, bi := range candidateB {
+			prodB := otherProducts[bi]
+			// Does my product's desires match what UserB has? (scored)
+			scoreAB := productMatchScore(prodB.Title, prodB.Category, myDesires)
+			if scoreAB == 0 {
 				continue
 			}
 
@@ -3629,20 +3846,69 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 			}
 			bDesires := prodB.Wants + " " + prodB.WantedCategories + " " + prodB.DesiredProduct
 
-			for _, prodC := range otherProducts {
+			// Build candidate set for prodC based on UserB's desires
+			candidateC := h.buildCandidateSet(bDesires, byCat, len(otherProducts))
+
+			for _, ci := range candidateC {
+				prodC := otherProducts[ci]
 				if prodC.SellerID == prodB.SellerID || prodC.SellerID == userID {
 					continue // Must be 3 distinct users
 				}
 
-				// Does UserB's desires match what UserC has?
-				if !productMatchesDesires(prodC.Title, prodC.Category, bDesires) {
+				// Does UserB's desires match what UserC has? (scored)
+				scoreBC := productMatchScore(prodC.Title, prodC.Category, bDesires)
+				if scoreBC == 0 {
 					continue
 				}
 
-				// Does UserC's desires match what I (UserA) have?
+				// Does UserC's desires match what I (UserA) have? (scored)
 				cDesires := prodC.Wants + " " + prodC.WantedCategories + " " + prodC.DesiredProduct
-				if !productMatchesDesires(myProd.Title, myProd.Category, cDesires) {
+				scoreCA := productMatchScore(myProd.Title, myProd.Category, cDesires)
+				if scoreCA == 0 {
 					continue
+				}
+
+				// Average the 3 edge scores for the loop's overall match quality
+				avgScore := (scoreAB + scoreBC + scoreCA) / 3
+
+				// Price similarity bonus: if all 3 products have prices, boost
+				// score when values are within ±50% of each other (fair trades).
+				if myProd.Price > 0 && prodB.Price > 0 && prodC.Price > 0 {
+					prices := []float64{myProd.Price, prodB.Price, prodC.Price}
+					minP, maxP := prices[0], prices[0]
+					for _, pr := range prices[1:] {
+						if pr < minP {
+							minP = pr
+						}
+						if pr > maxP {
+							maxP = pr
+						}
+					}
+					ratio := minP / maxP // 0..1, higher = closer in value
+					if ratio >= 0.8 {
+						avgScore += 5 // very close values
+					} else if ratio >= 0.5 {
+						avgScore += 2 // reasonably close
+					}
+					// ratio < 0.5: no bonus (large price gap)
+				}
+
+				// Reputation bonus: verified users are more trustworthy
+				verifiedCount := 0
+				if myProd.SellerVerified {
+					verifiedCount++
+				}
+				if prodB.SellerVerified {
+					verifiedCount++
+				}
+				if prodC.SellerVerified {
+					verifiedCount++
+				}
+				avgScore += verifiedCount // +1 per verified user (max +3)
+
+				// Clamp to 100
+				if avgScore > 100 {
+					avgScore = 100
 				}
 
 				// Found a 3-way cycle!
@@ -3657,8 +3923,8 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 				}
 				seen[key] = true
 
-				log.Printf("[ProductBasedMultiway] ✅ Found 3-way cycle: %s(%s) → %s(%s) → %s(%s) → back",
-					myProd.SellerName, myProd.Title, prodB.SellerName, prodB.Title, prodC.SellerName, prodC.Title)
+				log.Printf("[ProductBasedMultiway] ✅ Found 3-way cycle (score %d%%): %s(%s) → %s(%s) → %s(%s) → back",
+					avgScore, myProd.SellerName, myProd.Title, prodB.SellerName, prodB.Title, prodC.SellerName, prodC.Title)
 
 				loopID := fmt.Sprintf("product_loop_%d_%d_%d", myProd.ID, prodB.ID, prodC.ID)
 
@@ -3673,6 +3939,8 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 					"loop_length":       3,
 					"status":            "pending",
 					"initiator_user_id": userID,
+					"score":             avgScore,
+					"match_score":       avgScore,
 					"expires_at":        time.Now().Add(48 * time.Hour).Format("2006-01-02 15:04:05"),
 					"participants": []map[string]interface{}{
 						{"id": userID, "user_name": myProd.SellerName, "product_title": myProd.Title, "product_id": myProd.ID, "category": myProd.Category, "wanted_categories": myProd.WantedCategories, "desired_product": myProd.DesiredProduct, "product_image_url": myProd.ImageURL, "status": "pending"},
@@ -3694,28 +3962,28 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
-	// 1. Check if user is premium
-	var isPremium bool
-	err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium)
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify premium status"})
-	}
-
-	// Try cache first — return immediately if fresh cache exists (premium users only)
-	if isPremium {
-		if cached, cacheErr := h.getCachedLoopsForUser(userID); cacheErr == nil && len(cached) > 0 {
-			return c.JSON(models.APIResponse{Success: true, Data: cached})
-		}
+	// Try cache first — return immediately if fresh cache exists.
+	// Cache is per-user and explicitly invalidated on every state change
+	// (product add, trade create/accept/decline, etc.), so it's safe to
+	// serve to all users, not just premium. This keeps the O(N³) product-
+	// match loop finder off the hot path for free users too.
+	if cached, cacheErr := h.getCachedLoopsForUser(userID); cacheErr == nil && len(cached) > 0 {
+		return c.JSON(models.APIResponse{Success: true, Data: cached})
 	}
 
 	// Unified loop discovery — same code path as the cache warmer so the
 	// frontend sees the same loop_type values whether the data came from a
-	// warm cache or a fresh build.
-	userLoops, err := h.buildLoopSuggestionsForUser(userID)
+	// warm cache or a fresh build. Coalesce concurrent builds for the same
+	// user so two in-flight requests don't each run the O(N³) finder.
+	sfKey := fmt.Sprintf("loops_%d", userID)
+	built, err, _ := loopBuildGroup.Do(sfKey, func() (interface{}, error) {
+		return h.buildLoopSuggestionsForUser(userID)
+	})
 	if err != nil {
 		log.Printf("Error building loop suggestions: %v", err)
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade graph"})
 	}
+	userLoops, _ := built.([]map[string]interface{})
 
 	// 5. Also fetch matches from multiway_trades table where user is participant (user3)
 	rows, err := h.db.Query(`
@@ -3830,9 +4098,9 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 
 	log.Printf("[GetTradeLoops] user=%d returning %d loops after best-per-product filter", userID, len(bestLoops))
 
-	if isPremium {
-		_ = h.saveLoopCacheForUser(userID, bestLoops)
-	}
+	// Cache for all users, not just premium — see comment on the cache-read
+	// path above.
+	_ = h.saveLoopCacheForUser(userID, bestLoops)
 
 	return c.JSON(models.APIResponse{
 		Success: true,

@@ -61,6 +61,7 @@ import { useProducts } from '../contexts/ProductContext'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import TrustScoreCard from '../components/TrustScoreCard'
+import { cacheService, sellerStatsCache, reviewsCache } from '../services/cacheService'
 
 type PublicUser = Pick<User, 'id' | 'name' | 'verified' | 'created_at' | 'verification_status'> & {
   avatar_url?: string
@@ -181,13 +182,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
   const [isSubmittingReply, setIsSubmittingReply] = useState(false)
 
 
-  // Fetch reviews from API
+  // Fetch reviews from API with caching
   useEffect(() => {
     const fetchReviews = async () => {
       if (!id) return
       try {
-        const response = await api.get(`/api/users/${id}/reviews`)
-        setReviews(response.data?.data || response.data || [])
+        const data = await reviewsCache.getOrFetch(
+          `/api/users/${id}/reviews`,
+          () => api.get(`/api/users/${id}/reviews`).then(r => r.data?.data || r.data || []),
+          10 * 60 * 1000 // 10 minute cache
+        )
+        setReviews(data || [])
       } catch (error) {
         console.error('Failed to fetch reviews:', error)
         // Fallback to mock data if API fails
@@ -219,8 +224,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
     const fetchStats = async () => {
       if (!id) return
       try {
-        const res = await api.get(`/api/users/${id}/stats`)
-        setSellerStats(res.data?.data || res.data || null)
+        const data = await sellerStatsCache.getOrFetch(
+          `/api/users/${id}/stats`,
+          () => api.get(`/api/users/${id}/stats`).then(r => r.data?.data || r.data || null),
+          15 * 60 * 1000 // 15 minute cache for stats
+        )
+        setSellerStats(data || null)
       } catch (err) {
         setSellerStats(null)
       }
@@ -234,18 +243,21 @@ const UserProfile: React.FC<UserProfileProps> = ({ userId }) => {
       setLoading(true);
       setError('');
       try {
-        // If this is the currently authenticated user's page, fetch the protected profile
+        // If this is the currently authenticated user's page, fetch the protected profile (NO caching)
         let res
-        // If the current authenticated user's ID matches the requested route ID.
-        // Or if the requested route is the user's slug, check against currentUser as well.
-        console.log('🔍 UserProfile: Checking if own profile - id:', id, 'currentUser.id:', currentUser?.id, 'currentUser.slug:', currentUser?.slug)
-        if (currentUser && (id === String(currentUser.id) || id === currentUser.slug)) {
-          console.log('✅ UserProfile: Own profile detected, fetching from /api/users/profile')
+        const isOwnProfile = currentUser && (id === String(currentUser.id) || id === currentUser.slug)
+        
+        if (isOwnProfile) {
+          console.log('✅ UserProfile: Own profile detected, fetching from /api/users/profile (no cache)')
           res = await api.get('/api/users/profile')
         } else {
-          // Fetch public user info
-          console.log('🔍 UserProfile: Public profile, fetching from /api/users/' + id)
-          res = await api.get(`/api/users/${id}`)
+          // Fetch public user info with caching
+          console.log('🔍 UserProfile: Public profile, fetching from /api/users/' + id + ' (with cache)')
+          res = await cacheService.getOrFetch(
+            `/api/users/${id}`,
+            () => api.get(`/api/users/${id}`),
+            5 * 60 * 1000 // 5 minute cache for public profiles
+          )
         }
 
         console.log('🔍 Full API response:', res.data)

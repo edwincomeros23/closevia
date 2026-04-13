@@ -413,7 +413,7 @@ const AdminDashboard: React.FC = () => {
   const [usersTotalPages, setUsersTotalPages] = useState(1);
   const [usersSearchInput, setUsersSearchInput] = useState('');
   const [usersSearch, setUsersSearch] = useState('');
-  const usersSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const usersSearchDebounceRef = useRef<number | null>(null);
   const [usersRoleFilter, setUsersRoleFilter] = useState('');
   const [usersIsVerifiedFilter, setUsersIsVerifiedFilter] = useState('');
 
@@ -423,7 +423,7 @@ const AdminDashboard: React.FC = () => {
   const [productsTotalPages, setProductsTotalPages] = useState(1);
   const [productsSearchInput, setProductsSearchInput] = useState('');
   const [productsSearch, setProductsSearch] = useState('');
-  const productsSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const productsSearchDebounceRef = useRef<number | null>(null);
   const [productsStatusFilter, setProductsStatusFilter] = useState('');
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(new Set());
   const [isSelectingProducts, setIsSelectingProducts] = useState(false);
@@ -511,7 +511,7 @@ const AdminDashboard: React.FC = () => {
   const [riderStatusFilter, setRiderStatusFilter] = useState('');
   const [riderSearchInput, setRiderSearchInput] = useState('');
   const [riderSearchQuery, setRiderSearchQuery] = useState('');
-  const riderSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const riderSearchDebounceRef = useRef<number | null>(null);
   const [selectedRiderApp, setSelectedRiderApp] = useState<RiderAppItem | null>(null);
   const [rejectRiderTarget, setRejectRiderTarget] = useState<RiderAppItem | null>(null);
   const [rejectRiderReason, setRejectRiderReason] = useState('');
@@ -1274,7 +1274,7 @@ const AdminDashboard: React.FC = () => {
     }
     usersSearchDebounceRef.current = window.setTimeout(() => {
       setUsersSearch(searchValue);
-    }, 300) as unknown as ReturnType<typeof setTimeout>;
+    }, 300);
   }, []);
 
   const handleProductsSearch = useCallback((searchValue: string) => {
@@ -1284,7 +1284,7 @@ const AdminDashboard: React.FC = () => {
     }
     productsSearchDebounceRef.current = window.setTimeout(() => {
       setProductsSearch(searchValue);
-    }, 300) as unknown as ReturnType<typeof setTimeout>;
+    }, 300);
   }, []);
 
   // Cleanup debounce timers on unmount
@@ -1673,7 +1673,7 @@ const AdminDashboard: React.FC = () => {
     }
     riderSearchDebounceRef.current = window.setTimeout(() => {
       setRiderSearchQuery(searchValue);
-    }, 300) as unknown as ReturnType<typeof setTimeout>;
+    }, 300);
   }, []);
 
   // ── Fetch rider applications ──

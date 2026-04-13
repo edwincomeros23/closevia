@@ -29,7 +29,7 @@ import { Badge as CBadge } from '@chakra-ui/react'
 import { useRealtime } from '../contexts/RealtimeContext'
 import { useAuth } from '../contexts/AuthContext'
 import { FaHome, FaPlus, FaStar, FaMotorcycle, FaCrown } from 'react-icons/fa'
-import { FiGrid, FiHeart, FiLogOut, FiBell, FiSettings, FiUser } from 'react-icons/fi'
+import { FiGrid, FiHeart, FiLogOut, FiBell, FiSettings, FiUser, FiDownload } from 'react-icons/fi'
 import { getImageUrl } from '../utils/imageUtils'
 import VerifiedAvatar from './VerifiedAvatar'
 import InstallAppPrompt from './InstallAppPrompt'
@@ -305,6 +305,22 @@ const Sidebar: React.FC = () => {
                     </Button>
                   )
                 })}
+
+                <Button
+                  as="a"
+                  href="/clovia.apk"
+                  download="clovia.apk"
+                  width="full"
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<FiDownload />}
+                  justifyContent="flex-start"
+                  _hover={{
+                    bg: 'gray.100',
+                  }}
+                >
+                  Install Clovia (Android)
+                </Button>
 
                 <InstallAppPrompt variant="mobile-menu" onInstalled={onClose} />
               </VStack>

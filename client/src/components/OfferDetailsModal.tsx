@@ -401,7 +401,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
     }
 
     return (
-      <Box borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden" bg="white" height="100%">
+      <Box borderWidth="1px" borderColor="gray.200" rounded="md" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column">
         <Image 
           src={imgSrc || ''} 
           alt={p.title} 
@@ -411,7 +411,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
           fallbackSrc="/no-image.svg" 
           bg="gray.100"
         />
-        <Box p={padding}>
+        <Box p={padding} display="flex" flexDirection="column" flex={1}>
           <HStack justify="space-between">
             <Text fontWeight={titleFontWeight} fontSize={titleSize}>{p.title}</Text>
             {/* Show premium only on full (requested) cards, hide for compact (offered) */}
@@ -434,7 +434,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
 
           {!compact && <Text mt={1} fontSize="xs" color="gray.500">Seller: {p.seller_name || `#${p.seller_id}`}</Text>}
 
-          <Button as={'a'} href={getProductUrl(p)} variant="link" colorScheme="brand" mt={1} size="sm" fontSize="xs">View listing</Button>
+          <Button as={'a'} href={getProductUrl(p)} variant="link" colorScheme="brand" mt="auto" size="sm" fontSize="xs">View listing</Button>
         </Box>
       </Box>
     )
@@ -530,9 +530,9 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
             {/* Items Comparison - Compact */}
             <Box>
               <Text fontSize="11px" fontWeight="bold" color="gray.700" mb={2} textTransform="uppercase">Items</Text>
-              <Grid templateColumns={{ base: '1fr', md: '0.7fr 1.3fr' }} gap={2}>
+              <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={2}>
                 {/* Your Requested Item */}
-                <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="gray.50">
+                <Box borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="gray.50" display="flex" flexDirection="column" h="100%">
                   {loading ? (
                     <Box p={2} textAlign="center">
                       <Text fontSize="11px" color="gray.500">Loading...</Text>
@@ -540,20 +540,6 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                   ) : (
                     <>
                       {renderProductCard(requested, { compact: true })}
-                      {requested && (
-                        <Button 
-                          as="a" 
-                          href={getProductUrl(requested)} 
-                          variant="link" 
-                          colorScheme="brand" 
-                          w="full" 
-                          fontSize="10px"
-                          size="xs"
-                          py={1.5}
-                        >
-                          View Product →
-                        </Button>
-                      )}
                     </>
                   )}
                 </Box>
@@ -561,7 +547,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 {/* Their Offered Items */}
                 <Box>
                   {buyerItems.length > 0 ? (
-                    <VStack spacing={1.5} align="stretch">
+                    <VStack spacing={1.5} align="stretch" h="100%">
                       {buyerItems.map((item: any, idx: number) => {
                         const product = offered.find(p => p.id === (item.product_id ?? item.productId));
                         const itemId = item.product_id ?? item.productId
@@ -570,19 +556,17 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                           const itemImg = item.product_image_url || item.productImageUrl || item.image || ''
                           const itemTitle = item.product_title || item.productTitle || 'Unknown Item'
                           return (
-                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" flexDir="column" h="auto">
-                              <Box display="flex" h="80px">
-                                <Image 
-                                  src={itemImg} 
-                                  alt={itemTitle} 
-                                  w="80px" 
-                                  h="80px" 
-                                  objectFit="cover" 
-                                  fallbackSrc="/no-image.svg" 
-                                />
-                                <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
-                                  <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
-                                </Box>
+                            <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column" flex={1}>
+                              <Image 
+                                src={itemImg} 
+                                alt={itemTitle} 
+                                w="full" 
+                                h="80px" 
+                                objectFit="cover" 
+                                fallbackSrc="/no-image.svg" 
+                              />
+                              <Box p={2}>
+                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{itemTitle}</Text>
                               </Box>
                               {itemId && (
                                 <Button 
@@ -593,6 +577,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                                   w="full" 
                                   fontSize="2xs"
                                   p={2}
+                                  mt="auto"
                                 >
                                   View →
                                 </Button>
@@ -602,19 +587,17 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                         }
                         
                         return (
-                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" display="flex" flexDir="column" h="auto">
-                            <Box display="flex" h="80px">
-                              <Image 
-                                src={resolveImage(product)} 
-                                alt={product.title} 
-                                w="80px" 
-                                h="80px" 
-                                objectFit="cover" 
-                                fallbackSrc="/no-image.svg"
-                              />
-                              <Box p={2} flex={1} display="flex" flexDir="column" justifyContent="center">
-                                <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
-                              </Box>
+                          <Box key={item.id || idx} borderWidth="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" bg="white" height="100%" display="flex" flexDirection="column" flex={1}>
+                            <Image 
+                              src={resolveImage(product)} 
+                              alt={product.title} 
+                              w="full" 
+                              h="80px" 
+                              objectFit="cover" 
+                              fallbackSrc="/no-image.svg"
+                            />
+                            <Box p={2}>
+                              <Text fontWeight="semibold" fontSize="xs" noOfLines={2}>{product.title}</Text>
                             </Box>
                             <Button 
                               as="a" 
@@ -624,6 +607,7 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                               w="full" 
                               fontSize="2xs"
                               p={2}
+                              mt="auto"
                             >
                               View →
                             </Button>

@@ -79,6 +79,7 @@ import TradeModal from '../components/TradeModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 import MultiWayTradeUI from '../components/MultiWayTradeUI'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
+import DisputeReportModal from '../components/DisputeReportModal'
 import { fetchMultiWayTrade, fetchLoopQuota, fetchDiscoverableMultiwayLoops, hopIntoMultiwayChain } from '../services/tradeService'
 import {
   useDashboardProducts,
@@ -133,7 +134,7 @@ const Dashboard: React.FC = () => {
     return (receivedOffersData || []).filter(t =>
       (!t.items || t.items.length === 0) &&
       (t.offered_cash_amount && t.offered_cash_amount > 0) &&
-      t.status === 'pending'
+      (t.status === 'pending' || t.status === 'countered')
     )
   }, [receivedOffersData])
 
@@ -186,13 +187,14 @@ const Dashboard: React.FC = () => {
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
   const [offersSubTab, setOffersSubTab] = useState(2) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing, 4: Archive
-  const [multiWaySubTab, setMultiWaySubTab] = useState(1) // 0: Chat, 1: Multi-Way
   const [offersPage, setOffersPage] = useState(1)
   const [offersSearch, setOffersSearch] = useState('')
   const [offersStatusFilter, setOffersStatusFilter] = useState<string>('all')
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [viewTradeModalOpen, setViewTradeModalOpen] = useState(false)
+  const [disputeReportModalOpen, setDisputeReportModalOpen] = useState(false)
+  const [tradeToDispute, setTradeToDispute] = useState<Trade | null>(null)
   const [completionModalOpen, setCompletionModalOpen] = useState(false)
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
   const [tradeToCancel, setTradeToCancel] = useState<Trade | null>(null)
@@ -4750,79 +4752,7 @@ const Dashboard: React.FC = () => {
                 {/* Multi-Way Trades Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
-                    {/* Sub-tabs for Multi-Way */}
-                    <Tabs
-                      index={multiWaySubTab}
-                      onChange={(index) => {
-                        setMultiWaySubTab(index)
-                      }}
-                      variant="soft-rounded"
-                      colorScheme="brand"
-                    >
-                      <TabList
-                        flexWrap="nowrap"
-                        overflowX={{ base: 'auto', md: 'visible' }}
-                        justifyContent={{ base: 'flex-start', md: 'flex-start' }}
-                        w="100%"
-                        sx={{
-                          '&::-webkit-scrollbar': { display: 'none' },
-                          scrollbarWidth: 'none',
-                          msOverflowStyle: 'none',
-                          gap: { base: '6px', md: '8px' },
-                          '& > button': {
-                            px: { base: '10px', md: '14px' },
-                            py: { base: '5px', md: '6px' },
-                            minW: 'fit-content',
-                            flex: 'none',
-                            fontSize: { base: 'xs', md: 'sm' },
-                          }
-                        }}
-                      >
-                        <Tab
-                          fontSize={{ base: 'xs', md: 'sm' }}
-                          borderWidth="1px"
-                          borderColor="blue.200"
-                          bg="blue.50"
-                          _selected={{ bg: 'blue.100', borderColor: 'blue.400', color: 'blue.700' }}
-                        >
-                          <HStack spacing={1.5}>
-                            <Icon as={FiMessageCircle} boxSize={3.5} />
-                            <Box display={{ base: 'none', md: 'inline' }}>Chat</Box>
-                          </HStack>
-                        </Tab>
-                        <Tab
-                          fontSize={{ base: 'xs', md: 'sm' }}
-                          borderWidth="1px"
-                          borderColor="purple.200"
-                          bg="purple.50"
-                          _selected={{ bg: 'purple.100', borderColor: 'purple.400', color: 'purple.700' }}
-                        >
-                          <HStack spacing={1.5}>
-                            <Icon as={FaExchangeAlt} boxSize={3.5} />
-                            <Box display={{ base: 'none', md: 'inline' }}>Multi-Way</Box>
-                            <Box display={{ base: 'inline', md: 'none' }}>Trades</Box>
-                          </HStack>
-                        </Tab>
-                      </TabList>
-
-                      <TabPanels>
-                        {/* Chat Sub-tab */}
-                        <TabPanel px={0}>
-                          <Box textAlign="center" py={12} bg="blue.50" borderRadius="lg" border="2px dashed" borderColor="blue.200">
-                            <Icon as={FiMessageCircle} boxSize={16} color="blue.300" mb={4} />
-                            <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                              Chat coming soon
-                            </Text>
-                            <Text color="gray.500" fontSize="sm">
-                              View and manage your multi-way trade conversations here
-                            </Text>
-                          </Box>
-                        </TabPanel>
-
-                        {/* Multi-Way Sub-tab */}
-                        <TabPanel px={0}>
-                          <VStack align="stretch" spacing={6}>
-                            <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
+                    <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
                               <VStack align="start" spacing={1}>
                                 <Text fontSize="xs" color="blue.800">
                                   Tip: Make sure your listings have desired items filled in to appear in multi-way matches.
@@ -5089,7 +5019,9 @@ const Dashboard: React.FC = () => {
                                               
                                               <Box w="full" textAlign="center" py={2}>
                                                 <Text fontSize="xs" color="gray.600">
-                                                  {summary.yourGive} → {summary.yourGet}
+                                                  {trade.participants?.length >= 3
+                                                    ? trade.participants.map((p: any) => p.product_title).join(' → ')
+                                                    : `${summary.yourGive} → ${summary.yourGet}`}
                                                 </Text>
                                               </Box>
                                               
@@ -5105,11 +5037,7 @@ const Dashboard: React.FC = () => {
                                 )}
                               </VStack>
                             )}
-                          </VStack>
-                        </TabPanel>
-                      </TabPanels>
-                    </Tabs>
-                  </VStack>
+                        </VStack>
                 </TabPanel>
 
                 {/* Trade History Tab */}
@@ -5507,6 +5435,13 @@ const Dashboard: React.FC = () => {
             onClose={() => setViewTradeModalOpen(false)}
             onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
             onTradeUpdate={setSelectedTrade}
+          />
+
+          <DisputeReportModal
+            isOpen={disputeReportModalOpen}
+            onClose={() => setDisputeReportModalOpen(false)}
+            tradeId={tradeToDispute?.id || null}
+            otherPartyName={tradeToDispute ? (tradeToDispute.buyer_id === user?.id ? tradeToDispute.seller_name : tradeToDispute.buyer_name) : 'the other party'}
           />
 
           {/* Multi-way Loop Manager (Pro) */}
