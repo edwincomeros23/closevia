@@ -485,6 +485,84 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
               </VStack>
             </Box>
 
+            {/* Offer Details Section - Compact 2-Column Info Grid */}
+            <Box p={2.5} bg="orange.50" borderRadius="md" borderWidth="1px" borderColor="orange.200">
+              <Text fontSize="10px" fontWeight="bold" color="orange.900" mb={2} textTransform="uppercase">Offer Details</Text>
+              <Grid templateColumns="1fr 1fr" gap={2}>
+                {/* Offer Timestamp */}
+                <VStack align="start" spacing={0.5}>
+                  <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">Offered</Text>
+                  <Text fontSize="11px" color="orange.900" fontWeight="semibold">
+                    {effectiveTrade?.created_at 
+                      ? new Date(effectiveTrade.created_at).toLocaleDateString('en-PH', { 
+                          month: 'short', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : 'N/A'
+                    }
+                  </Text>
+                </VStack>
+
+                {/* Cash Amount (if applicable) */}
+                {effectiveTrade?.offered_cash_amount && effectiveTrade.offered_cash_amount > 0 ? (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">💰 Cash</Text>
+                    <Text fontSize="11px" color="green.700" fontWeight="bold">
+                      {formatPHP(effectiveTrade.offered_cash_amount)}
+                    </Text>
+                  </VStack>
+                ) : (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">💰 Cash</Text>
+                    <Text fontSize="11px" color="gray.600">
+                      Pure trade
+                    </Text>
+                  </VStack>
+                )}
+
+                {/* Product Location */}
+                {requested && (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">📍 Item Location</Text>
+                    <Text fontSize="11px" color="orange.900" fontWeight="semibold" noOfLines={1}>
+                      {requested.location || 'Not specified'}
+                    </Text>
+                  </VStack>
+                )}
+
+                {/* Offer Validity (Suggested) */}
+                <VStack align="start" spacing={0.5}>
+                  <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">⏰ Valid Until</Text>
+                  <Text fontSize="11px" color="orange.900" fontWeight="semibold">
+                    {effectiveTrade?.created_at
+                      ? new Date(new Date(effectiveTrade.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+                      : '7 days'
+                    }
+                  </Text>
+                </VStack>
+
+                {/* Suggested: Response Time Badge */}
+                <VStack align="start" spacing={0.5}>
+                  <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">⚡ Response</Text>
+                  <Badge colorScheme="green" fontSize="9px" px={1.5} py={0.5}>
+                    Quick
+                  </Badge>
+                </VStack>
+
+                {/* Suggested: Payment Method (if applicable) */}
+                {effectiveTrade?.payment_method && (
+                  <VStack align="start" spacing={0.5}>
+                    <Text fontSize="9px" fontWeight="bold" color="orange.700" textTransform="uppercase">Payment</Text>
+                    <Text fontSize="11px" color="orange.900" fontWeight="semibold" textTransform="capitalize">
+                      {effectiveTrade.payment_method}
+                    </Text>
+                  </VStack>
+                )}
+              </Grid>
+            </Box>
+
             {/* Counter Offer Info - if status is 'countered' */}
             {effectiveTrade?.status === 'countered' && (
               <Box p={3} bg="purple.50" borderRadius="md" borderWidth="1px" borderColor="purple.200">

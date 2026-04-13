@@ -273,6 +273,7 @@ func CreateTables() error {
 		"authenticity_risks":  "VARCHAR(50) NULL",
 		"tags":                "JSON NULL",
 		"boosted_at":          "TIMESTAMP NULL",
+		"view_count":          "INT DEFAULT 0",
 	}
 
 	for col, def := range productCols {
@@ -381,6 +382,7 @@ func CreateTables() error {
 			longitude FLOAT,
 			video_url VARCHAR(500) NULL,
 			bidding_type ENUM('none', 'blind', 'open') DEFAULT 'none',
+			view_count INT DEFAULT 0,
 			boosted_at TIMESTAMP NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
