@@ -76,6 +76,7 @@ import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
 import InstallAppPrompt from '../components/InstallAppPrompt'
 import AdvertisementCarousel from '../components/AdvertisementCarousel'
+import AppDownloadBanner from '../components/AppDownloadBanner'
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value)
 
@@ -713,6 +714,7 @@ const Home: React.FC = () => {
 
   return (
     <Box minH="100vh" bg="#FFFDF1">
+      <AppDownloadBanner variant="card" position="top" />
       {/* Sticky Search Header - desktop: centered max-width */}
       <Box
         position="sticky"
