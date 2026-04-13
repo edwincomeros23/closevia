@@ -16,8 +16,15 @@ const AppDownloadBanner: React.FC<AppDownloadBannerProps> = ({
   const [isAndroid, setIsAndroid] = React.useState(false)
 
   React.useEffect(() => {
-    // Hide if already running as standalone app
+    // Hide if already running as standalone app or native app
     if (isRunningStandalone()) {
+      setDismissed(true)
+      return
+    }
+
+    // Check if app was dismissed before
+    const isDismissed = localStorage.getItem('app-download-banner-dismissed')
+    if (isDismissed) {
       setDismissed(true)
       return
     }
@@ -25,12 +32,6 @@ const AppDownloadBanner: React.FC<AppDownloadBannerProps> = ({
     // Detect Android
     const userAgent = navigator.userAgent.toLowerCase()
     setIsAndroid(/android/.test(userAgent))
-
-    // Check localStorage for dismissal
-    const isDismissed = localStorage.getItem('app-download-banner-dismissed')
-    if (isDismissed) {
-      setDismissed(true)
-    }
   }, [])
 
   const handleDismiss = () => {

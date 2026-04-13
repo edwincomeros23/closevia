@@ -189,6 +189,5 @@ const InstallAppPrompt: React.FC<InstallAppPromptProps> = ({
     </Box>
   )
 }
-}
 
 export default InstallAppPrompt

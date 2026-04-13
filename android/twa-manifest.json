@@ -18,8 +18,8 @@
     "path": "clovia.keystore",
     "alias": "cloviakey"
   },
-  "appVersionName": "1.0.0",
-  "appVersionCode": 3,
+  "appVersionName": "1.0.1",
+  "appVersionCode": 4,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "fallbackType": "customtabs",
@@ -27,9 +27,9 @@
   "alphaDependencies": {
     "enabled": false
   },
-  "enableSiteSettingsShortcut": true,
-  "enableNotifications": false,
-  "splashScreenFadeOutDuration": 0,
+  "enableSiteSettingsShortcut": false,
+  "enableNotifications": true,
+  "splashScreenFadeOutDuration": 300,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
   "minSdkVersion": 21,
@@ -37,6 +37,6 @@
   "fingerprints": [],
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
-  "displayOverride": [],
-  "appVersion": "1.0.0"
+  "displayOverride": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "appVersion": "1.0.1"
 }
