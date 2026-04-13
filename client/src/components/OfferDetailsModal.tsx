@@ -563,7 +563,6 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
                 )}
               </Grid>
             </Box>
-            </Box>
 
             {/* Counter Offer Info - if status is 'countered' */}
             {effectiveTrade?.status === 'countered' && (

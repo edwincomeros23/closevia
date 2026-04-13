@@ -6,8 +6,8 @@ import (
 	"log"
 	"strconv"
 
-	"clovia/middleware"
-	"clovia/models"
+	"github.com/xashathebest/clovia/middleware"
+	"github.com/xashathebest/clovia/models"
 
 	"github.com/gofiber/fiber/v2"
 )
