@@ -1,5 +1,7 @@
 client/
 android/
+android-app-build/
+build/
 .vscode/
 .netlify/
 .gradle/
@@ -9,7 +11,7 @@ Documentations/
 private_uploads/
 tmp/
 uploads/
-build/
+mobile/
 .git/
 .gitignore
 README.md
@@ -19,3 +21,4 @@ README.md
 *.bat
 *.json.bak
 *.log
+
