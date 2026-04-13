@@ -1704,11 +1704,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 			if bLoc == sLoc && bTime == sTime {
 				// Selections match! Update trade status to active and set the final meetup details
-				_, err = h.db.Exec(`
+				_, activateErr := h.db.Exec(`
 					UPDATE trades
 					SET status='active', meetup_location=?, meetup_time=?, updated_at=CURRENT_TIMESTAMP
 					WHERE id = ?`, buyerLocation.String, buyerTime.String, tradeID)
-				if err == nil {
+				if activateErr == nil {
 					log.Printf("Both parties agreed on meetup for trade %d (location: %s, time: %s), status updated to active",
 						tradeID, buyerLocation.String, buyerTime.String)
 					publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
@@ -1719,6 +1719,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 						buyerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
 					_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
 						sellerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
+				} else {
+					// Important: do not fail the whole request here.
+					// The user's selection has already been stored above; activation may race with the other party's request.
+					log.Printf("Warning: failed to auto-activate trade %d after meetup agreement: %v", tradeID, activateErr)
 				}
 			} else {
 				// Selections don't match - notify both parties
@@ -1975,6 +1979,33 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		// Log how many rows were affected
 		rowsAffected, _ := result.RowsAffected()
 		log.Printf("Delivery state update successful, affected %d rows", rowsAffected)
+
+		// If delivery type was updated on the trade, propagate it to any pending/unclaimed delivery jobs
+		// created for this trade. Rider pages read from `deliveries.delivery_type`.
+		if deliveryPayload.DeliveryType != "" {
+			newType := strings.ToLower(strings.TrimSpace(deliveryPayload.DeliveryType))
+			if newType != "standard" && newType != "express" {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid delivery_type. Must be 'standard' or 'express'"})
+			}
+
+			newCost := 30.0
+			if newType == "express" {
+				newCost = 60.0
+			}
+
+			res2, err2 := h.db.Exec(
+				"UPDATE deliveries SET delivery_type = ?, total_cost = ?, updated_at = CURRENT_TIMESTAMP WHERE trade_id = ? AND status = 'pending' AND rider_id IS NULL",
+				newType,
+				newCost,
+				tradeID,
+			)
+			if err2 != nil {
+				log.Printf("Warning: failed to propagate delivery_type to deliveries for trade %d: %v", tradeID, err2)
+			} else {
+				updatedDeliveries, _ := res2.RowsAffected()
+				log.Printf("Propagated delivery_type=%s to %d pending/unclaimed deliveries for trade %d", newType, updatedDeliveries, tradeID)
+			}
+		}
 
 		// Notify other party of the update
 		var otherUserID int
@@ -3647,77 +3678,6 @@ func productMatchScore(productTitle, productCategory, desires string) int {
 	return bestScore
 }
 
-// productMatchesDesires checks if a product (title/category) matches a user's desires (wants, wanted_categories, desired_product).
-// Returns true if there's a meaningful match.
-func productMatchesDesires(productTitle, productCategory, desires string) bool {
-	if desires == "" {
-		return false
-	}
-	ptLower := strings.ToLower(strings.TrimSpace(productTitle))
-	pcLower := strings.ToLower(strings.TrimSpace(productCategory))
-	dLower := strings.ToLower(strings.TrimSpace(desires))
-
-	// Direct substring checks
-	if ptLower != "" && (strings.Contains(dLower, ptLower) || strings.Contains(ptLower, dLower)) {
-		return true
-	}
-	if pcLower != "" && strings.Contains(dLower, pcLower) {
-		return true
-	}
-
-	// Check individual desire tokens against product title keywords
-	// Uses word-boundary matching so "phone" won't match "headphone".
-	desireTokens := strings.FieldsFunc(dLower, func(r rune) bool {
-		return r == ',' || r == '"' || r == '[' || r == ']' || r == ' '
-	})
-	titleTokens := strings.Fields(ptLower)
-
-	for _, dt := range desireTokens {
-		dt = strings.TrimSpace(dt)
-		if len(dt) < 3 {
-			continue
-		}
-		// Whole-word match: desire token equals a title word
-		for _, tw := range titleTokens {
-			if tw == dt {
-				return true
-			}
-		}
-		// Multi-word desire phrase in title
-		if len(strings.Fields(dt)) > 1 && strings.Contains(ptLower, dt) {
-			return true
-		}
-		// Semantic match
-		if services.SemanticMatcher(dt, ptLower) {
-			return true
-		}
-	}
-
-	// Check category against desire tokens (word-boundary aware)
-	if pcLower != "" {
-		catTokens := strings.Fields(pcLower)
-		for _, dt := range desireTokens {
-			dt = strings.TrimSpace(dt)
-			if len(dt) < 3 {
-				continue
-			}
-			for _, ct := range catTokens {
-				if ct == dt {
-					return true
-				}
-			}
-			if strings.Contains(pcLower, dt) || strings.Contains(dt, pcLower) {
-				return true
-			}
-			if services.SemanticMatcher(dt, pcLower) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // findProductBasedMultiwayLoops detects 3-way trading opportunities based purely on
 // product desires (wanted_categories, desired_product, wants) without requiring existing trades.
 // It finds cycles where: UserA wants what UserB has, UserB wants what UserC has, UserC wants what UserA has.
@@ -3844,7 +3804,7 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 
 	// Pre-index other products by category and by individual desire tokens
 	// so inner loops can skip irrelevant products instead of scanning all 200.
-	byCat := map[string][]int{}   // category → indices into otherProducts
+	byCat := map[string][]int{}    // category → indices into otherProducts
 	byDesire := map[string][]int{} // desire token → indices (products wanting that token)
 	for i, p := range otherProducts {
 		cat := strings.ToLower(strings.TrimSpace(p.Category))

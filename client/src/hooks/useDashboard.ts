@@ -92,15 +92,37 @@ export const useSentOffers = () => {
   return useQuery({
     queryKey: DASHBOARD_QUERY_KEYS.sentOffers,
     queryFn: async (): Promise<Trade[]> => {
-      const response = await api.get('/api/trades', {
-        params: {
-          direction: 'outgoing',
-          include: 'products',
-          status: 'pending',
-          limit: 100
-        }
+      const [pendingRes, counteredRes] = await Promise.all([
+        api.get('/api/trades', {
+          params: {
+            direction: 'outgoing',
+            include: 'products',
+            status: 'pending',
+            limit: 100,
+          },
+        }),
+        api.get('/api/trades', {
+          params: {
+            direction: 'outgoing',
+            include: 'products',
+            status: 'countered',
+            limit: 100,
+          },
+        }),
+      ])
+
+      const extractData = (response: any): Trade[] => {
+        return Array.isArray(response?.data?.data)
+          ? response.data.data
+          : (Array.isArray(response?.data) ? response.data : [])
+      }
+
+      const allTrades = [...extractData(pendingRes), ...extractData(counteredRes)]
+      const unique = new Map<number, Trade>()
+      allTrades.forEach((tr: Trade) => {
+        if (tr && tr.id) unique.set(tr.id, tr)
       })
-      return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
+      return Array.from(unique.values())
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnMount: true,
@@ -115,15 +137,37 @@ export const useReceivedOffers = () => {
   return useQuery({
     queryKey: DASHBOARD_QUERY_KEYS.receivedOffers,
     queryFn: async (): Promise<Trade[]> => {
-      const response = await api.get('/api/trades', {
-        params: {
-          direction: 'incoming',
-          include: 'products',
-          status: 'pending',
-          limit: 100
-        }
+      const [pendingRes, counteredRes] = await Promise.all([
+        api.get('/api/trades', {
+          params: {
+            direction: 'incoming',
+            include: 'products',
+            status: 'pending',
+            limit: 100,
+          },
+        }),
+        api.get('/api/trades', {
+          params: {
+            direction: 'incoming',
+            include: 'products',
+            status: 'countered',
+            limit: 100,
+          },
+        }),
+      ])
+
+      const extractData = (response: any): Trade[] => {
+        return Array.isArray(response?.data?.data)
+          ? response.data.data
+          : (Array.isArray(response?.data) ? response.data : [])
+      }
+
+      const allTrades = [...extractData(pendingRes), ...extractData(counteredRes)]
+      const unique = new Map<number, Trade>()
+      allTrades.forEach((tr: Trade) => {
+        if (tr && tr.id) unique.set(tr.id, tr)
       })
-      return Array.isArray(response.data?.data) ? response.data.data : (Array.isArray(response.data) ? response.data : [])
+      return Array.from(unique.values())
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnMount: true,

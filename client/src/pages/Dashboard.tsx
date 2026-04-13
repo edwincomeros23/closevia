@@ -134,7 +134,7 @@ const Dashboard: React.FC = () => {
     return (receivedOffersData || []).filter(t =>
       (!t.items || t.items.length === 0) &&
       (t.offered_cash_amount && t.offered_cash_amount > 0) &&
-      t.status === 'pending'
+      (t.status === 'pending' || t.status === 'countered')
     )
   }, [receivedOffersData])
 
