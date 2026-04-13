@@ -1801,33 +1801,34 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
   }
 
   /**
-   * Generate smart suggestions for alternative times
+   * Generate smart suggestions for alternative times (memoized for performance)
    */
-  const generateSmartSuggestions = (): Array<{ date: string; time: string; label: string }> => {
-    const suggestions: Array<{ date: string; time: string; label: string }> = []
-    const next7days = getNext7Days()
-    
-    // Suggest early morning slots
-    if (next7days[1]) {
-      suggestions.push({
-        date: next7days[1],
-        time: '09:00',
-        label: '📅 Tomorrow, 9:00 AM'
-      })
-    }
+  const generateSmartSuggestions = useMemo(() => {
+    return (): Array<{ date: string; time: string; label: string }> => {
+      const suggestions: Array<{ date: string; time: string; label: string }> = []
+      const next7days = getNext7Days()
+      
+      // Suggest early morning slots
+      if (next7days[1]) {
+        suggestions.push({
+          date: next7days[1],
+          time: '09:00',
+          label: '📅 Tomorrow, 9:00 AM'
+        })
+      }
 
-    // Suggest afternoon slots
-    if (next7days[2]) {
-      suggestions.push({
-        date: next7days[2],
-        time: '14:00',
-        label: '📅 Day after tomorrow, 2:00 PM'
-      })
-    }
+      // Suggest afternoon slots
+      if (next7days[2]) {
+        suggestions.push({
+          date: next7days[2],
+          time: '14:00',
+          label: '📅 Day after tomorrow, 2:00 PM'
+        })
+      }
 
-    // Suggest evening slots
-    if (next7days[3]) {
-      suggestions.push({
+      // Suggest evening slots
+      if (next7days[3]) {
+        suggestions.push({
         date: next7days[3],
         time: '17:00',
         label: '📅 In 3 days, 5:00 PM'
@@ -1844,7 +1845,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     }
 
     return suggestions
-  }
+    }
+  }, [])
 
   /**
    * Handle agreement to other party's schedule
