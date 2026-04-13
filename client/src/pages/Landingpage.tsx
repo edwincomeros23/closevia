@@ -452,7 +452,7 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ PROBLEM & SOLUTION SECTION ══════════ */}
-      <Box bg={C.white} py={{ base: 16, md: 24 }}>
+      <Box id="how-it-works" bg={C.white} py={{ base: 16, md: 24 }}>
         <Container maxW="1200px">
           <Flex direction={{ base: 'column', lg: 'row' }} gap={12} align="center" mb={20}>
             {/* Left - The Problem */}
