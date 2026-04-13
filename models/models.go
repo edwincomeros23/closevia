@@ -215,6 +215,7 @@ type Product struct {
 	WishlistCount        int               `json:"wishlist_count,omitempty"`
 	WantCount            int               `json:"want_count"`
 	OfferCount           int               `json:"offer_count"`
+	ViewCount            int               `json:"view_count,omitempty"`
 	BoostedAt            *time.Time        `json:"boosted_at,omitempty"`
 }
 
