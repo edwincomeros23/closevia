@@ -258,16 +258,19 @@ const AddProduct: React.FC = () => {
       async (pos) => {
         const { latitude, longitude } = pos.coords
         setFormData(prev => ({ ...prev, latitude, longitude }))
+        // Persist user's coords so distance from other users stays fresh.
+        api.put('/api/users/location', { latitude, longitude }).catch(() => {})
         try {
           const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+            `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${latitude}&lon=${longitude}`
           )
           const data = await res.json()
           const addr = data.address || {}
-          // Format: "Barangay Name, City"
-          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || ''
-          const city = addr.city || addr.town || ''
-          const parts = [barangay, city].filter(Boolean)
+          // Build most specific address we can: street + barangay + city.
+          const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
+          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
+          const city = addr.city || addr.town || addr.municipality || ''
+          const parts = [street, barangay, city].filter(Boolean)
           const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
           setLocationText(address)
           setFormData(prev => ({ ...prev, location: address }))
@@ -286,6 +289,41 @@ const AddProduct: React.FC = () => {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     )
   }, [])
+
+  // Manual-entry fallback: user types an address, we forward-geocode it and
+  // save both the text and resolved coords so distance is still accurate.
+  const [manualLocationOpen, setManualLocationOpen] = useState(false)
+  const [manualLocationInput, setManualLocationInput] = useState('')
+  const [manualLocationSaving, setManualLocationSaving] = useState(false)
+  const saveManualLocation = useCallback(async () => {
+    const q = manualLocationInput.trim()
+    if (!q) return
+    setManualLocationSaving(true)
+    try {
+      const res = await api.put('/api/users/location', { location: q })
+      const coords = res.data?.data || res.data
+      const lat = Number(coords?.latitude)
+      const lng = Number(coords?.longitude)
+      if (!isNaN(lat) && !isNaN(lng)) {
+        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: q }))
+      } else {
+        setFormData(prev => ({ ...prev, location: q }))
+      }
+      setLocationText(q)
+      setLocationDetected(true)
+      setManualLocationOpen(false)
+      setManualLocationInput('')
+    } catch (err: any) {
+      toast({
+        title: 'Could not find that place',
+        description: err?.response?.data?.error || 'Try a more specific address.',
+        status: 'warning',
+        duration: 3000,
+      })
+    } finally {
+      setManualLocationSaving(false)
+    }
+  }, [manualLocationInput, toast])
 
   useEffect(() => {
     detectLocation()
@@ -1419,23 +1457,57 @@ const AddProduct: React.FC = () => {
               <Text fontSize="xs" color="gray.600">Detecting location...</Text>
             </HStack>
           ) : locationDetected && locationText ? (
-            <HStack justify="space-between" align="center" spacing={2}>
-              <Text fontSize="sm" fontWeight="medium" color="gray.800">
-                📍 {locationText}
-              </Text>
-              <Button
-                size="xs"
-                variant="outline"
-                fontSize="9px"
-                h="auto"
-                py={1}
-                onClick={detectLocation}
-                isLoading={isGettingLocation}
-                _hover={{ bg: "gray.200" }}
-              >
-                Change
-              </Button>
-            </HStack>
+            <VStack align="stretch" spacing={2}>
+              <HStack justify="space-between" align="center" spacing={2}>
+                <Text fontSize="sm" fontWeight="medium" color="gray.800">
+                  📍 {locationText}
+                </Text>
+                <HStack spacing={1}>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    fontSize="9px"
+                    h="auto"
+                    py={1}
+                    onClick={detectLocation}
+                    isLoading={isGettingLocation}
+                    _hover={{ bg: "gray.200" }}
+                  >
+                    Retry
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    fontSize="9px"
+                    h="auto"
+                    py={1}
+                    onClick={() => {
+                      setManualLocationInput(locationText)
+                      setManualLocationOpen(true)
+                    }}
+                  >
+                    Enter manually
+                  </Button>
+                </HStack>
+              </HStack>
+              {manualLocationOpen && (
+                <HStack spacing={2}>
+                  <Input
+                    size="sm"
+                    placeholder="e.g., Barangay Mercedes, Zamboanga City"
+                    value={manualLocationInput}
+                    onChange={(e) => setManualLocationInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveManualLocation() } }}
+                  />
+                  <Button size="sm" colorScheme="brand" onClick={saveManualLocation} isLoading={manualLocationSaving}>
+                    Save
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setManualLocationOpen(false)}>
+                    Cancel
+                  </Button>
+                </HStack>
+              )}
+            </VStack>
           ) : (
             <VStack align="stretch" spacing={2}>
               <Button
@@ -1449,6 +1521,27 @@ const AddProduct: React.FC = () => {
               >
                 Auto-Detect My Location
               </Button>
+              <Button
+                size="xs"
+                variant="link"
+                onClick={() => setManualLocationOpen(true)}
+              >
+                Or enter manually
+              </Button>
+              {manualLocationOpen && (
+                <HStack spacing={2}>
+                  <Input
+                    size="sm"
+                    placeholder="e.g., Barangay Mercedes, Zamboanga City"
+                    value={manualLocationInput}
+                    onChange={(e) => setManualLocationInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveManualLocation() } }}
+                  />
+                  <Button size="sm" colorScheme="brand" onClick={saveManualLocation} isLoading={manualLocationSaving}>
+                    Save
+                  </Button>
+                </HStack>
+              )}
               <Text fontSize="9px" color="gray.500">This helps match you with nearby trades</Text>
             </VStack>
           )}
