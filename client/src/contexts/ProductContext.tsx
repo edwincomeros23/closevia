@@ -100,10 +100,14 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setUserLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          })
+          const lat = position.coords.latitude
+          const lng = position.coords.longitude
+          setUserLocation({ lat, lng })
+          // Persist to backend so product distance calculations server-side
+          // (and other users checking this user's location) stay fresh.
+          if (token) {
+            api.put('/api/users/location', { latitude: lat, longitude: lng }).catch(() => {})
+          }
         },
         (error) => {
           console.warn('Geolocation error:', error.message)
@@ -116,7 +120,7 @@ export const ProductProvider: React.FC<ProductProviderProps> = ({ children }) =>
         }
       )
     }
-  }, [])
+  }, [token])
 
   // Recalculate distances when user location becomes available
   useEffect(() => {

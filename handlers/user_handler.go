@@ -2789,3 +2789,51 @@ func (h *UserHandler) GetUserConduct(c *fiber.Ctx) error {
 		Data:    summary,
 	})
 }
+
+// UpdateLocation persists the authenticated user's current coordinates.
+// Accepts either raw {latitude, longitude} from the browser geolocation API
+// or a {location} string that we reverse-geocode via Nominatim (manual entry).
+func (h *UserHandler) UpdateLocation(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var body struct {
+		Latitude  *float64 `json:"latitude"`
+		Longitude *float64 `json:"longitude"`
+		Location  *string  `json:"location"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+
+	lat, lng := body.Latitude, body.Longitude
+	if (lat == nil || lng == nil) && body.Location != nil && strings.TrimSpace(*body.Location) != "" {
+		coords, err := services.GetCoordinates(strings.TrimSpace(*body.Location))
+		if err != nil {
+			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Could not resolve location: " + err.Error()})
+		}
+		lat = &coords.Latitude
+		lng = &coords.Longitude
+	}
+
+	if lat == nil || lng == nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "latitude/longitude or location string required"})
+	}
+	if *lat < -90 || *lat > 90 || *lng < -180 || *lng > 180 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Coordinates out of range"})
+	}
+
+	if _, err := h.db.Exec("UPDATE users SET latitude = ?, longitude = ? WHERE id = ?", *lat, *lng, userID); err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update location"})
+	}
+
+	return c.JSON(models.APIResponse{
+		Success: true,
+		Data: fiber.Map{
+			"latitude":  *lat,
+			"longitude": *lng,
+		},
+	})
+}
