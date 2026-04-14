@@ -36,6 +36,8 @@ import {
   ModalCloseButton,
   Circle,
   Checkbox,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
 
@@ -1534,9 +1536,17 @@ const AddProduct: React.FC = () => {
               </Box>
 
               <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Preferred Item</FormLabel>
+                <HStack mb={2} justify="space-between" align="flex-start">
+                  <VStack align="flex-start" spacing={0} flex={1}>
+                    <FormLabel fontSize="xs" color="gray.600" mb={1} fontWeight="600">Preferred Item *</FormLabel>
+                    <Text fontSize="9px" color="gray.500">What you'd like in exchange</Text>
+                  </VStack>
+                  <Tooltip label="Quick suggestions based on your product" hasArrow placement="top">
+                    <Badge size="sm" colorScheme="brand" variant="subtle">💡 Tips</Badge>
+                  </Tooltip>
+                </HStack>
                 <Input
-                  placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
+                  placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                   value={formData.wants}
                   onChange={e => handleField('wants', e.target.value)}
                   size="sm"
@@ -1544,14 +1554,101 @@ const AddProduct: React.FC = () => {
                   maxLength={80}
                   h="36px"
                   onClick={e => e.stopPropagation()}
+                  borderColor={
+                    formData.wants && formData.desired_product && 
+                    formData.wants.toLowerCase().trim() === formData.desired_product.toLowerCase().trim() 
+                      ? 'orange.400' 
+                      : undefined
+                  }
+                  borderWidth={
+                    formData.wants && formData.desired_product && 
+                    formData.wants.toLowerCase().trim() === formData.desired_product.toLowerCase().trim() 
+                      ? '2px' 
+                      : undefined
+                  }
                 />
-                <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+                {/* Duplicate Detection Warning */}
+                {formData.wants && formData.desired_product && 
+                 formData.wants.toLowerCase().trim() === formData.desired_product.toLowerCase().trim() && (
+                  <HStack mt={1} spacing={1}>
+                    <Badge colorScheme="orange" fontSize="10px">⚠ Similar</Badge>
+                    <Text fontSize="9px" color="orange.600">Both fields have similar values - consider making them different</Text>
+                  </HStack>
+                )}
+                {/* Quick Suggestions */}
+                <Wrap spacing={1} mt={2}>
+                  <WrapItem>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="brand"
+                      fontSize="9px"
+                      h="24px"
+                      onClick={() => handleField('wants', 'Any')}
+                      _hover={{ bg: 'brand.50' }}
+                    >
+                      💫 Any
+                    </Button>
+                  </WrapItem>
+                  {formData.title && (
+                    <>
+                      <WrapItem>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="brand"
+                          fontSize="9px"
+                          h="24px"
+                          onClick={() => handleField('wants', `Similar to ${formData.title}`)}
+                          _hover={{ bg: 'brand.50' }}
+                          title="Suggest similar products"
+                        >
+                          🔄 Similar Items
+                        </Button>
+                      </WrapItem>
+                      <WrapItem>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="brand"
+                          fontSize="9px"
+                          h="24px"
+                          onClick={() => handleField('wants', `Other ${formData.category || 'items'}`)}
+                          _hover={{ bg: 'brand.50' }}
+                          title={`Suggest other ${(formData.category || 'items').toLowerCase()}`}
+                        >
+                          📦 Other {formData.category || 'Items'}
+                        </Button>
+                      </WrapItem>
+                    </>
+                  )}
+                  <WrapItem>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="brand"
+                      fontSize="9px"
+                      h="24px"
+                      onClick={() => handleField('wants', '')}
+                      _hover={{ bg: 'red.50' }}
+                      title="Clear field"
+                    >
+                      ✕ Clear
+                    </Button>
+                  </WrapItem>
+                </Wrap>
+                <FormHelperText fontSize="9px" mt={1}>Generic like "Any" works well for trading flexibility</FormHelperText>
               </Box>
 
               <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Ideal Product</FormLabel>
+                <HStack mb={2} justify="space-between">
+                  <VStack align="flex-start" spacing={0} flex={1}>
+                    <FormLabel fontSize="xs" color="gray.600" mb={1} fontWeight="600">Ideal Product</FormLabel>
+                    <Text fontSize="9px" color="gray.500">Specific product you want (optional)</Text>
+                  </VStack>
+                </HStack>
                 <Input
-                  placeholder="e.g. Sony WH-1000XM5, iPhone 15 Pro"
+                  placeholder="e.g. Sony WH-1000XM5, iPhone 15 Pro Max"
                   value={formData.desired_product || ''}
                   onChange={e => handleField('desired_product', e.target.value)}
                   size="sm"
@@ -1559,8 +1656,52 @@ const AddProduct: React.FC = () => {
                   maxLength={255}
                   h="36px"
                   onClick={e => e.stopPropagation()}
+                  borderColor={
+                    formData.desired_product && formData.wants && 
+                    formData.desired_product.toLowerCase().trim() === formData.wants.toLowerCase().trim() 
+                      ? 'orange.400' 
+                      : undefined
+                  }
+                  borderWidth={
+                    formData.desired_product && formData.wants && 
+                    formData.desired_product.toLowerCase().trim() === formData.wants.toLowerCase().trim() 
+                      ? '2px' 
+                      : undefined
+                  }
                 />
-                <FormHelperText fontSize="10px">The exact product you're looking for (optional).</FormHelperText>
+                {/* Quick Suggestions */}
+                <Wrap spacing={1} mt={2}>
+                  <WrapItem>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="brand"
+                      fontSize="9px"
+                      h="24px"
+                      onClick={() => handleField('desired_product', '')}
+                      _hover={{ bg: 'brand.50' }}
+                    >
+                      ✕ Leave Empty
+                    </Button>
+                  </WrapItem>
+                  {formData.title && (
+                    <WrapItem>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="brand"
+                        fontSize="9px"
+                        h="24px"
+                        onClick={() => handleField('desired_product', formData.title)}
+                        _hover={{ bg: 'brand.50' }}
+                        title="Use your product name"
+                      >
+                        🔁 This Item
+                      </Button>
+                    </WrapItem>
+                  )}
+                </Wrap>
+                <FormHelperText fontSize="9px" mt={1}>Leave empty for open trades, or specify exactly what you want</FormHelperText>
               </Box>
             </SimpleGrid>
           </FormControl>

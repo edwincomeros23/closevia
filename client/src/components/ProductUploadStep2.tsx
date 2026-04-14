@@ -22,6 +22,8 @@ import {
   RadioGroup,
   Radio,
   SimpleGrid,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react'
 import { ArrowBackIcon, ArrowForwardIcon } from '@chakra-ui/icons'
 import { FILTER_CATEGORIES } from '../utils/categories'
@@ -350,15 +352,45 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
               </FormControl>
 
               <FormControl>
-                <FormLabel fontSize="sm" color="gray.600">Specific Items (Optional)</FormLabel>
+                <HStack mb={1} justify="space-between" align="flex-start">
+                  <FormLabel fontSize="sm" color="gray.600" mb={0}>Preferred Items (Optional)</FormLabel>
+                  <Wrap spacing={1}>
+                    <WrapItem>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="brand"
+                        fontSize="8px"
+                        h="20px"
+                        onClick={() => handleChange('wants', 'Any')}
+                        _hover={{ bg: 'brand.50' }}
+                      >
+                        💫 Any
+                      </Button>
+                    </WrapItem>
+                    <WrapItem>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="brand"
+                        fontSize="8px"
+                        h="20px"
+                        onClick={() => handleChange('wants', '')}
+                        _hover={{ bg: 'red.50' }}
+                      >
+                        ✕ Clear
+                      </Button>
+                    </WrapItem>
+                  </Wrap>
+                </HStack>
                 <Input
-                  placeholder="e.g., iPhone 13, mechanical keyboard, etc."
+                  placeholder="e.g., Any smartphone, mechanical keyboard, etc."
                   value={details.wants}
                   onChange={(e) => handleChange('wants', e.target.value)}
                   size="sm"
                   bg="white"
                 />
-                <FormHelperText fontSize="2xs">Specific items you have in mind</FormHelperText>
+                <FormHelperText fontSize="2xs">Type "Any" for flexibility, or be specific with desired items</FormHelperText>
               </FormControl>
             </VStack>
           </Box>
