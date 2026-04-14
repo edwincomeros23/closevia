@@ -3750,33 +3750,63 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               {/* Action buttons */}
                               {(buyerMeetupConfirmed && !sellerMeetupConfirmed && isUserSeller) ||
                               (sellerMeetupConfirmed && !buyerMeetupConfirmed && isUserBuyer) ? (
-                                <HStack spacing={2}>
+                                <VStack spacing={2} w="full">
+                                  <HStack spacing={2} w="full">
+                                    <Button
+                                      colorScheme="green"
+                                      size={["sm", "md"]}
+                                      onClick={handleAgreeToSchedule}
+                                      isLoading={agreeingToSchedule}
+                                      leftIcon={<FaCheckCircle />}
+                                      flex={1}
+                                    >
+                                      ✓ Accept This Time
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      colorScheme="gray"
+                                      size={["sm", "md"]}
+                                      onClick={() => {
+                                        setShowSuggestionsPanel(true)
+                                      }}
+                                      leftIcon={<FaLightbulb />}
+                                    >
+                                      Suggest Different
+                                    </Button>
+                                  </HStack>
+                                  {/* Leave Review Button - Available but disabled until meet */}
                                   <Button
-                                    colorScheme="green"
+                                    colorScheme={meetupAgreed ? "green" : "gray"}
+                                    variant={meetupAgreed ? "solid" : "outline"}
                                     size={["sm", "md"]}
-                                    onClick={handleAgreeToSchedule}
-                                    isLoading={agreeingToSchedule}
-                                    leftIcon={<FaCheckCircle />}
-                                    flex={1}
+                                    onClick={() => setIsReviewModalOpen(true)}
+                                    leftIcon={<FaStar />}
+                                    w="full"
+                                    isDisabled={!meetupAgreed}
+                                    _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
                                   >
-                                    ✓ Accept This Time
+                                    {meetupAgreed ? '✓ Leave Review & Complete Trade' : '⏳ Review (after agreement)'}
                                   </Button>
-                                  <Button
-                                    variant="outline"
-                                    colorScheme="gray"
-                                    size={["sm", "md"]}
-                                    onClick={() => {
-                                      setShowSuggestionsPanel(true)
-                                    }}
-                                    leftIcon={<FaLightbulb />}
-                                  >
-                                    Suggest Different
-                                  </Button>
-                                </HStack>
+                                </VStack>
                               ) : (
-                                <Text fontSize="xs" color="gray.600" textAlign="center">
-                                  Waiting for {isUserBuyer ? trade.seller_name : trade.buyer_name} to respond.
-                                </Text>
+                                <VStack spacing={2} w="full">
+                                  <Text fontSize="xs" color="gray.600" textAlign="center">
+                                    Waiting for {isUserBuyer ? trade.seller_name : trade.buyer_name} to respond.
+                                  </Text>
+                                  {/* Leave Review Button - Available but disabled until agree */}
+                                  <Button
+                                    colorScheme={meetupAgreed ? "green" : "gray"}
+                                    variant={meetupAgreed ? "solid" : "outline"}
+                                    size={["sm", "md"]}
+                                    onClick={() => setIsReviewModalOpen(true)}
+                                    leftIcon={<FaStar />}
+                                    w="full"
+                                    isDisabled={!meetupAgreed}
+                                    _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
+                                  >
+                                    {meetupAgreed ? '✓ Leave Review & Complete Trade' : '⏳ Review (after agreement)'}
+                                  </Button>
+                                </VStack>
                               )}
                             </VStack>
                           )}
