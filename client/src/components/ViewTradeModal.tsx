@@ -3028,7 +3028,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Box>
 
                         {/* Locations Grid */}
-                        <Box h="250px" mb={4} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
+                        <Box h={["150px", "180px", "200px"]} mb={3} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
                           <MapContainer
                             key={mapInitKey}
                             center={[6.9214, 122.0790]}
@@ -3059,7 +3059,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           </MapContainer>
                         </Box>
 
-                        <VStack spacing={3} align="stretch" maxH="400px" overflowY="auto" pr={2} css={{
+                        <VStack spacing={[1.5, 2]} align="stretch" maxH={["280px", "350px"]} overflowY="auto" pr={2} css={{
                           '&::-webkit-scrollbar': {
                             width: '4px',
                           },
@@ -3112,12 +3112,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   transform: isLocked ? undefined : 'translateY(-2px)',
                                 }}
                               >
-                                <CardBody>
-                                  <HStack spacing={3} justify="space-between">
+                                <CardBody p={[2, 2.5]}>
+                                  <HStack spacing={[2, 2.5]} justify="space-between">
                                     {/* Location Icon & Info */}
-                                    <HStack spacing={3} flex={1}>
+                                    <HStack spacing={[2, 2.5]} flex={1}>
                                       <Box
-                                        p={2}
+                                        p={1.5}
                                         bg={isPartner ? partnerIconBg : defaultIconBg}
                                         borderRadius="md"
                                         display="flex"
@@ -3128,27 +3128,27 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         <Icon
                                           as={isPartner ? FaStore : FaMapMarkerAlt}
                                           color={isPartner ? 'orange.500' : isSelected ? 'brand.500' : isNearest ? 'blue.500' : 'gray.500'}
-                                          boxSize={isPartner ? 6 : 5}
+                                          boxSize={isPartner ? 5 : 4}
                                         />
                                       </Box>
 
-                                      <VStack align="start" spacing={1} flex={1}>
-                                        <HStack spacing={2} flexWrap="wrap">
-                                          <Text fontWeight="semibold" fontSize="sm" color={locationTextColor}>
+                                      <VStack align="start" spacing={0.5} flex={1}>
+                                        <HStack spacing={1} flexWrap="wrap">
+                                          <Text fontWeight="semibold" fontSize={["xs", "sm"]} color={locationTextColor}>
                                             {location.name}
                                           </Text>
                                           {isPartner && (
-                                            <Badge colorScheme="orange" fontSize="2xs" px={1.5} py={0.5}>
+                                            <Badge colorScheme="orange" fontSize="2xs" px={1} py={0}>
                                               🌟 Partnered Shop
                                             </Badge>
                                           )}
                                           {isNearest && !isPartner && (
-                                            <Badge colorScheme="blue" fontSize="2xs" px={1.5} py={0.5}>
+                                            <Badge colorScheme="blue" fontSize="2xs" px={1} py={0}>
                                               Nearest
                                             </Badge>
                                           )}
                                         </HStack>
-                                        <Text fontSize="xs" color="gray.600">
+                                        <Text fontSize={["2xs", "xs"]} color="gray.600" noOfLines={1}>
                                           {location.address}
                                         </Text>
                                         <Badge
@@ -3161,8 +3161,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                           }
                                           variant="subtle"
                                           fontSize="2xs"
-                                          px={1.5}
-                                          py={0.5}
+                                          px={1}
+                                          py={0}
                                           w="fit-content"
                                         >
                                           {location.type}
@@ -3185,7 +3185,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                           },
                                         }}
                                       >
-                                        <Icon as={FaCheckCircle} color="brand.500" boxSize={6} />
+                                        <Icon as={FaCheckCircle} color="brand.500" boxSize={5} />
                                       </Box>
                                     )}
                                   </HStack>
@@ -3516,17 +3516,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                       <Divider />
                       <Box
-                        p={4}
+                        p={[2, 3]}
                         bg={meetupInfoBg}
                         borderRadius="lg"
                         borderWidth="1px"
                         borderColor="blue.200"
                       >
-                        <VStack spacing={4} align="stretch">
+                        <VStack spacing={[2, 3]} align="stretch">
                           {/* Header */}
-                          <HStack justify="center" spacing={2}>
-                            <Icon as={FaHandshake} color="blue.500" boxSize={5} />
-                            <Text fontWeight="bold" fontSize="md" color="blue.700">
+                          <HStack justify="center" spacing={2} py={[1, 2]}>
+                            <Icon as={FaHandshake} color="blue.500" boxSize={4} />
+                            <Text fontWeight="bold" fontSize={["sm", "md"]} color="blue.700">
                               Meetup Agreement
                             </Text>
                           </HStack>
@@ -3534,11 +3534,11 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           {/* Simple Status Display */}
                           {!buyerMeetupConfirmed && !sellerMeetupConfirmed ? (
                             // Neither has submitted
-                            <Box textAlign="center" py={2}>
-                              <Text fontSize="sm" color="gray.600">
+                            <Box textAlign="center" py={1}>
+                              <Text fontSize={["xs", "sm"]} color="gray.600">
                                 Select a location and time above, then click submit.
                               </Text>
-                              <Text fontSize="xs" color="gray.500" mt={1}>
+                              <Text fontSize="xs" color="gray.500" mt={0.5}>
                                   {formatTimePH(buyerMeetupTime)}
                               </Text>
                             </Box>
@@ -3546,47 +3546,47 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             // Both submitted - check if they match
                             buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime ? (
                               // MATCH - Success!
-                              <VStack spacing={3} align="stretch">
+                              <VStack spacing={[2, 3]} align="stretch">
                                 <Box
-                                  p={4}
+                                  p={[2, 3]}
                                   bg="green.100"
                                   borderRadius="md"
                                   borderWidth="2px"
                                   borderColor="green.400"
                                   textAlign="center"
                                 >
-                                  <Icon as={FaCheckCircle} color="green.500" boxSize={8} mb={2} />
-                                  <Text fontWeight="bold" color="green.700" fontSize="md">
+                                  <Icon as={FaCheckCircle} color="green.500" boxSize={6} mb={1} />
+                                  <Text fontWeight="bold" color="green.700" fontSize={["sm", "md"]}>
                                     You Both Agreed!
                                   </Text>
-                                  <Text fontSize="sm" color="green.600" mt={1}>
+                                  <Text fontSize={["xs", "sm"]} color="green.600" mt={0.5}>
                                     {buyerMeetupLocation}
                                   </Text>
-                                  <Text fontSize="sm" color="green.600">
+                                  <Text fontSize={["xs", "sm"]} color="green.600">
                                     {formatTimePH(buyerMeetupTime)}
                                   </Text>
-                                  <Text fontSize="xs" color="green.500" mt={2}>
+                                  <Text fontSize="xs" color="green.500" mt={1}>
                                     Meetup agreed. Proceed to confirm you met.
                                   </Text>
                                 </Box>
 
                                 {!bothMetConfirmed ? (
-                                  <VStack align="stretch" spacing={3}>
+                                  <VStack align="stretch" spacing={[2, 2.5]}>
                                     <Box
-                                      p={3}
+                                      p={[2, 2.5]}
                                       bg={meetupInfoBg}
                                       borderLeft="4px"
                                       borderColor="brand.500"
                                       borderRadius="md"
                                     >
-                                      <Text fontSize="sm" color={meetupInfoTextColor} fontWeight="medium">
+                                      <Text fontSize={["xs", "sm"]} color={meetupInfoTextColor} fontWeight="medium">
                                         Current Stage: Confirm you met at {buyerMeetupLocation} at {formatTimePH(buyerMeetupTime)}
                                       </Text>
                                     </Box>
 
                                     <Button
                                       colorScheme="green"
-                                      size="lg"
+                                      size={["sm", "md"]}
                                       onClick={confirmMeetupDone}
                                       isLoading={confirmingMeetupDone}
                                       leftIcon={<FaCheckCircle />}
@@ -3605,7 +3605,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 ) : (
                                   <Button
                                     colorScheme="green"
-                                    size="lg"
+                                    size={["sm", "md"]}
                                     onClick={() => setIsReviewModalOpen(true)}
                                     leftIcon={<FaStar />}
                                     w="full"
@@ -3618,9 +3618,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </VStack>
                             ) : (
                               // NO MATCH - Need to coordinate
-                              <VStack spacing={3}>
+                              <VStack spacing={[2, 2.5]}>
                                 <Box
-                                  p={3}
+                                  p={[2, 3]}
                                   bg="orange.100"
                                   borderRadius="md"
                                   borderWidth="2px"
@@ -3628,33 +3628,33 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   textAlign="center"
                                   w="full"
                                 >
-                                  <Icon as={FaExclamationTriangle} color="orange.500" boxSize={6} mb={2} />
-                                  <Text fontWeight="bold" color="orange.700" fontSize="sm">
+                                  <Icon as={FaExclamationTriangle} color="orange.500" boxSize={5} mb={1} />
+                                  <Text fontWeight="bold" color="orange.700" fontSize={["xs", "sm"]}>
                                     Different Selections
                                   </Text>
-                                  <Text fontSize="xs" color="orange.600" mt={1}>
+                                  <Text fontSize="xs" color="orange.600" mt={0.5}>
                                     You and {tradingPartner} picked different options.
                                   </Text>
                                 </Box>
 
                                 {/* Show both selections side by side */}
-                                <SimpleGrid columns={2} spacing={3} w="full">
-                                  <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
+                                <SimpleGrid columns={2} spacing={[2, 2]} w="full">
+                                  <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={0.5}>
                                       {isUserBuyer ? 'You picked:' : `${trade.buyer_name} picked:`}
                                     </Text>
-                                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                    <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
                                       {buyerMeetupLocation}
                                     </Text>
                                     <Text fontSize="xs" color="gray.500">
                                       {formatTimePH(buyerMeetupTime)}
                                     </Text>
                                   </Box>
-                                  <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
+                                  <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                    <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={0.5}>
                                       {isUserSeller ? 'You picked:' : `${trade.seller_name} picked:`}
                                     </Text>
-                                    <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                    <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
                                       {sellerMeetupLocation}
                                     </Text>
                                     <Text fontSize="xs" color="gray.500">
@@ -3670,19 +3670,19 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             )
                           ) : (
                             // One submitted, waiting for the other
-                            <VStack spacing={3} align="stretch">
+                            <VStack spacing={[2, 2.5]} align="stretch">
                               <Box
-                                p={3}
+                                p={[2, 2.5]}
                                 bg="blue.100"
                                 borderRadius="md"
                                 borderWidth="2px"
                                 borderColor="blue.400"
                                 textAlign="center"
                               >
-                                <Text fontWeight="medium" color="blue.700" fontSize="sm">
+                                <Text fontWeight="medium" color="blue.700" fontSize={["xs", "sm"]}>
                                   ⏳ Waiting for Agreement
                                 </Text>
-                                <Text fontSize="xs" color="blue.600" mt={1}>
+                                <Text fontSize="xs" color="blue.600" mt={0.5}>
                                   {buyerMeetupConfirmed && !sellerMeetupConfirmed
                                     ? `${trade.buyer_name} proposed:`
                                     : `${trade.seller_name} proposed:`}
@@ -3691,28 +3691,28 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
                               {/* Show proposed schedule */}
                               {buyerMeetupConfirmed && !sellerMeetupConfirmed && isUserSeller && (
-                                <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2}>
+                                <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
                                     Proposed Schedule:
                                   </Text>
-                                  <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                  <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
                                     📍 {buyerMeetupLocation}
                                   </Text>
-                                  <Text fontSize="sm" color="gray.600">
+                                  <Text fontSize={["xs", "sm"]} color="gray.600">
                                     🕐 {formatTimePH(buyerMeetupTime)}
                                   </Text>
                                 </Box>
                               )}
 
                               {sellerMeetupConfirmed && !buyerMeetupConfirmed && isUserBuyer && (
-                                <Box p={3} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
-                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={2}>
+                                <Box p={[2, 2.5]} bg="white" borderRadius="md" borderWidth="1px" borderColor="gray.200">
+                                  <Text fontSize="xs" fontWeight="bold" color="gray.500" mb={1}>
                                     Proposed Schedule:
                                   </Text>
-                                  <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                                  <Text fontSize={["xs", "sm"]} fontWeight="medium" color="gray.700">
                                     📍 {sellerMeetupLocation}
                                   </Text>
-                                  <Text fontSize="sm" color="gray.600">
+                                  <Text fontSize={["xs", "sm"]} color="gray.600">
                                     🕐 {formatTimePH(sellerMeetupTime)}
                                   </Text>
                                 </Box>
@@ -3724,7 +3724,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                 <HStack spacing={2}>
                                   <Button
                                     colorScheme="green"
-                                    size="md"
+                                    size={["sm", "md"]}
                                     onClick={handleAgreeToSchedule}
                                     isLoading={agreeingToSchedule}
                                     leftIcon={<FaCheckCircle />}
@@ -3735,7 +3735,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                   <Button
                                     variant="outline"
                                     colorScheme="gray"
-                                    size="md"
+                                    size={["sm", "md"]}
                                     onClick={() => {
                                       setShowSuggestionsPanel(true)
                                     }}
