@@ -63,7 +63,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction, TradeItem } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
-import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
+import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb, FaRocket } from 'react-icons/fa'
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
@@ -79,6 +79,7 @@ import TradeModal from '../components/TradeModal'
 import DeliveryTracking from '../components/DeliveryTracking'
 import MultiWayTradeUI from '../components/MultiWayTradeUI'
 import MultiWayTradeModal from '../components/MultiWayTradeModal'
+import DisputeReportModal from '../components/DisputeReportModal'
 import { fetchMultiWayTrade, fetchLoopQuota, fetchDiscoverableMultiwayLoops, hopIntoMultiwayChain } from '../services/tradeService'
 import {
   useDashboardProducts,
@@ -186,13 +187,14 @@ const Dashboard: React.FC = () => {
   const tradeHistoryLoading = false
   const [offersSort, setOffersSort] = useState<'newest' | 'oldest'>('newest')
   const [offersSubTab, setOffersSubTab] = useState(2) // 0: Buyout, 1: Sent, 2: Received, 3: Ongoing, 4: Archive
-  const [multiWaySubTab, setMultiWaySubTab] = useState(1) // 0: Chat, 1: Multi-Way
   const [offersPage, setOffersPage] = useState(1)
   const [offersSearch, setOffersSearch] = useState('')
   const [offersStatusFilter, setOffersStatusFilter] = useState<string>('all')
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [viewTradeModalOpen, setViewTradeModalOpen] = useState(false)
+  const [disputeReportModalOpen, setDisputeReportModalOpen] = useState(false)
+  const [tradeToDispute, setTradeToDispute] = useState<Trade | null>(null)
   const [completionModalOpen, setCompletionModalOpen] = useState(false)
   const [cancelModalOpen, setCancelModalOpen] = useState(false)
   const [tradeToCancel, setTradeToCancel] = useState<Trade | null>(null)
@@ -240,7 +242,7 @@ const Dashboard: React.FC = () => {
   const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
   const [multiWayChainFilter, setMultiWayChainFilter] = useState<'all' | '3'>('all')
-  const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
+  const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('list')
 
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -465,9 +467,15 @@ const Dashboard: React.FC = () => {
 
   const getTradePartnerInfo = useCallback((trade: Trade) => {
     const isYouBuyer = trade.buyer_id === user?.id
+    // Determine if this is a buyout (no items, only cash) vs regular trade
+    const isBuyout = (!trade.items || trade.items.length === 0) && 
+                     (trade.offered_cash_amount && trade.offered_cash_amount > 0)
+    const role = isBuyout 
+      ? (isYouBuyer ? 'Seller' : 'Buyer')
+      : (isYouBuyer ? 'Trader 2' : 'Trader 1')
     return {
       name: isYouBuyer ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous'),
-      role: isYouBuyer ? 'Seller' : 'Buyer',
+      role,
       direction: isYouBuyer ? 'You initiated this trade' : 'They initiated this trade',
     }
   }, [user?.id])
@@ -1825,43 +1833,77 @@ const Dashboard: React.FC = () => {
   }
 
   const handleBoostProductClick = async (product: Product) => {
-    try {
-      setBoosting(true)
+    // Check if user is premium
+    if (!user?.is_premium || user?.premium_tier === 'free') {
       showPopup({
-        type: 'loading',
-        title: 'Boosting Listing...',
-        message: 'Please wait while we boost your listing.',
-        icon: FaArrowUp,
-        confirmColorScheme: 'blue'
+        type: 'warning',
+        title: '⭐ Premium Feature',
+        message: 'Boost Listing is a Premium-only feature. Upgrade now to boost your listings to the top of the feed for 3 hours!',
+        confirmText: 'Upgrade to Premium',
+        cancelText: 'Cancel',
+        onConfirm: () => {
+          closePopup()
+          navigate('/premium')
+        },
+        onCancel: () => closePopup(),
+        icon: FaCrown,
+        confirmColorScheme: 'brand'
       })
-
-      const response = await api.post(`/api/products/boost/${product.id}`)
-
-      if (response.data?.success) {
-        showPopup({
-          type: 'success',
-          title: 'Boost Successful!',
-          message: response.data.message || 'Your listing has been boosted.',
-          confirmText: 'Awesome',
-          onConfirm: () => closePopup(),
-          icon: FaCheckCircle,
-          confirmColorScheme: 'green'
-        })
-        invalidateDashboard()
-      } else {
-        throw new Error(response.data?.error || 'Failed to boost product')
-      }
-    } catch (error: any) {
-      showPopup({
-        type: 'error',
-        title: 'Boost Failed',
-        message: error.response?.data?.error || error.message || 'An error occurred while boosting the product',
-        confirmText: 'Okay',
-        onConfirm: () => closePopup(),
-        icon: FaTimes,
-        confirmColorScheme: 'red'
-      })
+      return
     }
+
+    // Show confirmation dialog with details
+    showPopup({
+      type: 'info',
+      title: `🚀 Boost "${product.title}"?`,
+      message: `Your listing will appear at the top of the feed for 3 hours and get maximum visibility to other traders. You can boost this product again in 24 hours.`,
+      confirmText: 'Boost for 3 Hours',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          setBoosting(true)
+          showPopup({
+            type: 'loading',
+            title: 'Boosting Listing...',
+            message: 'Your product is being boosted to the top of the feed.',
+            icon: FaArrowUp,
+            confirmColorScheme: 'blue'
+          })
+
+          const response = await api.post(`/api/products/boost/${product.id}`)
+
+          if (response.data?.success) {
+            showPopup({
+              type: 'success',
+              title: '🎉 Boost Successful!',
+              message: response.data.message || `"${product.title}" is now boosted! It will appear at the top of the feed for the next 3 hours.`,
+              confirmText: 'Awesome',
+              onConfirm: () => closePopup(),
+              icon: FaCheckCircle,
+              confirmColorScheme: 'green'
+            })
+            invalidateDashboard()
+          } else {
+            throw new Error(response.data?.error || 'Failed to boost product')
+          }
+        } catch (error: any) {
+          showPopup({
+            type: 'error',
+            title: 'Boost Failed',
+            message: error.response?.data?.error || error.message || 'An error occurred while boosting the product',
+            confirmText: 'Okay',
+            onConfirm: () => closePopup(),
+            icon: FaTimes,
+            confirmColorScheme: 'red'
+          })
+        } finally {
+          setBoosting(false)
+        }
+      },
+      onCancel: () => closePopup(),
+      icon: FaRocket,
+      confirmColorScheme: 'orange'
+    })
   }
 
   const handleDeleteProductClick = (product: Product) => {
@@ -2135,7 +2177,7 @@ const Dashboard: React.FC = () => {
     // Never show actions for traded/sold items
     const shouldShowActions = showActions && normalizedStatus !== 'traded' && normalizedStatus !== 'sold'
     const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id, getProductOffersCount])
-    const viewsCount = 0 // TODO: Fetch from API when available
+    const viewsCount = product.view_count || 0
 
     const isStagnant = React.useMemo(() => {
       const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
@@ -4750,79 +4792,7 @@ const Dashboard: React.FC = () => {
                 {/* Multi-Way Trades Tab */}
                 <TabPanel px={{ base: 2, md: 4 }} py={{ base: 3, md: 4 }}>
                   <VStack spacing={6} align="stretch">
-                    {/* Sub-tabs for Multi-Way */}
-                    <Tabs
-                      index={multiWaySubTab}
-                      onChange={(index) => {
-                        setMultiWaySubTab(index)
-                      }}
-                      variant="soft-rounded"
-                      colorScheme="brand"
-                    >
-                      <TabList
-                        flexWrap="nowrap"
-                        overflowX={{ base: 'auto', md: 'visible' }}
-                        justifyContent={{ base: 'flex-start', md: 'flex-start' }}
-                        w="100%"
-                        sx={{
-                          '&::-webkit-scrollbar': { display: 'none' },
-                          scrollbarWidth: 'none',
-                          msOverflowStyle: 'none',
-                          gap: { base: '6px', md: '8px' },
-                          '& > button': {
-                            px: { base: '10px', md: '14px' },
-                            py: { base: '5px', md: '6px' },
-                            minW: 'fit-content',
-                            flex: 'none',
-                            fontSize: { base: 'xs', md: 'sm' },
-                          }
-                        }}
-                      >
-                        <Tab
-                          fontSize={{ base: 'xs', md: 'sm' }}
-                          borderWidth="1px"
-                          borderColor="blue.200"
-                          bg="blue.50"
-                          _selected={{ bg: 'blue.100', borderColor: 'blue.400', color: 'blue.700' }}
-                        >
-                          <HStack spacing={1.5}>
-                            <Icon as={FiMessageCircle} boxSize={3.5} />
-                            <Box display={{ base: 'none', md: 'inline' }}>Chat</Box>
-                          </HStack>
-                        </Tab>
-                        <Tab
-                          fontSize={{ base: 'xs', md: 'sm' }}
-                          borderWidth="1px"
-                          borderColor="purple.200"
-                          bg="purple.50"
-                          _selected={{ bg: 'purple.100', borderColor: 'purple.400', color: 'purple.700' }}
-                        >
-                          <HStack spacing={1.5}>
-                            <Icon as={FaExchangeAlt} boxSize={3.5} />
-                            <Box display={{ base: 'none', md: 'inline' }}>Multi-Way</Box>
-                            <Box display={{ base: 'inline', md: 'none' }}>Trades</Box>
-                          </HStack>
-                        </Tab>
-                      </TabList>
-
-                      <TabPanels>
-                        {/* Chat Sub-tab */}
-                        <TabPanel px={0}>
-                          <Box textAlign="center" py={12} bg="blue.50" borderRadius="lg" border="2px dashed" borderColor="blue.200">
-                            <Icon as={FiMessageCircle} boxSize={16} color="blue.300" mb={4} />
-                            <Text color="gray.600" fontSize="lg" fontWeight="medium" mb={2}>
-                              Chat coming soon
-                            </Text>
-                            <Text color="gray.500" fontSize="sm">
-                              View and manage your multi-way trade conversations here
-                            </Text>
-                          </Box>
-                        </TabPanel>
-
-                        {/* Multi-Way Sub-tab */}
-                        <TabPanel px={0}>
-                          <VStack align="stretch" spacing={6}>
-                            <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
+                    <Box p={3} bg="blue.50" border="1px solid" borderColor="blue.200" borderRadius="lg">
                               <VStack align="start" spacing={1}>
                                 <Text fontSize="xs" color="blue.800">
                                   Tip: Make sure your listings have desired items filled in to appear in multi-way matches.
@@ -5107,11 +5077,7 @@ const Dashboard: React.FC = () => {
                                 )}
                               </VStack>
                             )}
-                          </VStack>
-                        </TabPanel>
-                      </TabPanels>
-                    </Tabs>
-                  </VStack>
+                        </VStack>
                 </TabPanel>
 
                 {/* Trade History Tab */}
@@ -5186,6 +5152,7 @@ const Dashboard: React.FC = () => {
                                 >
                                   <ProductThumb
                                     pid={trade.target_product_id}
+                                    src={trade.product_image_url}
                                     alt={getProductTitle(trade.target_product_id, trade.product_title)}
                                     size="100%"
                                   />
@@ -5278,6 +5245,7 @@ const Dashboard: React.FC = () => {
                                 <Box w={{ base: '50px', md: '60px' }} h="60px" flexShrink={0} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
                                   <ProductThumb
                                     pid={trade.target_product_id}
+                                    src={trade.product_image_url}
                                     alt={getProductTitle(trade.target_product_id, trade.product_title)}
                                     size="full"
                                   />
@@ -5374,6 +5342,7 @@ const Dashboard: React.FC = () => {
                                     <Box w="50px" h="50px" flexShrink={0} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
                                       <ProductThumb
                                         pid={trade.target_product_id}
+                                        src={trade.product_image_url}
                                         alt={getProductTitle(trade.target_product_id, trade.product_title)}
                                         size="full"
                                       />
@@ -5509,6 +5478,13 @@ const Dashboard: React.FC = () => {
             onClose={() => setViewTradeModalOpen(false)}
             onStatusUpdate={() => { invalidateOffers(); invalidateDashboard() }}
             onTradeUpdate={setSelectedTrade}
+          />
+
+          <DisputeReportModal
+            isOpen={disputeReportModalOpen}
+            onClose={() => setDisputeReportModalOpen(false)}
+            tradeId={tradeToDispute?.id || null}
+            otherPartyName={tradeToDispute ? (tradeToDispute.buyer_id === user?.id ? tradeToDispute.seller_name : tradeToDispute.buyer_name) : 'the other party'}
           />
 
           {/* Multi-way Loop Manager (Pro) */}

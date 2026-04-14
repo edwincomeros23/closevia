@@ -460,6 +460,7 @@ func main() {
 	products.Post("/:id/comments", middleware.AuthMiddleware(), commentHandler.CreateComment)
 	// Voting endpoint (must be before generic :id route)
 	products.Post("/:id/vote", middleware.AuthMiddleware(), productHandler.VoteProduct)
+	products.Post("/:id/view", productHandler.IncrementViewCount)                              // Track view count (public)
 	products.Post("/boost/:id", middleware.AuthMiddleware(), productHandler.BoostProduct)      // Boost a listing
 	products.Post("/:id/relist", middleware.AuthMiddleware(), productHandler.DuplicateProduct) // Relist (Plus/Pro)
 	products.Put("/:id/reorder-images", middleware.AuthMiddleware(), productHandler.ReorderImages)
@@ -474,6 +475,7 @@ func main() {
 	organizations := api.Group("/organizations")
 	organizations.Get("", organizationHandler.ListOrganizations)
 	organizations.Get("/quota", middleware.AuthMiddleware(), organizationHandler.GetQuota)
+	organizations.Get("/my-approved", middleware.AuthMiddleware(), organizationHandler.GetUserApprovedOrganizations)
 	organizations.Post("", middleware.AuthMiddleware(), organizationHandler.CreateOrganization)
 	organizations.Get("/:slug", middleware.OptionalAuthMiddleware(), organizationHandler.GetOrganization)
 	organizations.Post("/:slug/join-request", middleware.AuthMiddleware(), organizationHandler.RequestJoin)
@@ -585,6 +587,11 @@ func main() {
 	trades.Get("/:id/deliveries", middleware.AuthMiddleware(), deliveryHandler.GetTradeDeliveries)
 	trades.Get("/:id/delivery", middleware.AuthMiddleware(), deliveryHandler.GetTradeDelivery)
 
+	// Review routes (initial + follow-up reviews with auto-completion)
+	trades.Post("/:id/reviews", middleware.AuthMiddleware(), tradeHandler.SubmitTradeReview)
+	trades.Get("/:id/reviews", middleware.AuthMiddleware(), tradeHandler.GetTradeReviewHistory)
+	trades.Get("/:id/review-summary", middleware.AuthMiddleware(), tradeHandler.GetReviewSummary)
+
 	// Meetup routes (stage-aware meeting coordination)
 	trades.Post("/:id/meetup/propose", middleware.AuthMiddleware(), meetupHandler.ProposeMeetupTime)
 	trades.Post("/:id/meetup/heading-out", middleware.AuthMiddleware(), meetupHandler.MarkHeadingOut)
@@ -602,6 +609,18 @@ func main() {
 
 	// User peer tags routes
 	users.Get("/:id/peer-tags", peerTagHandler.GetUserPeerTags) // Public - get peer tags for a user
+
+	// Dispute/Reporting routes
+	disputeHandler := handlers.NewDisputeHandler()
+	disputes := api.Group("/disputes")
+	disputes.Post("/", middleware.AuthMiddleware(), disputeHandler.FileDispute)                    // File a dispute
+	disputes.Get("/:id", middleware.AuthMiddleware(), disputeHandler.GetDispute)                   // Get dispute details
+	disputes.Post("/:id/respond", middleware.AuthMiddleware(), disputeHandler.RespondToDispute)    // Respondent response
+	disputes.Post("/:id/messages", middleware.AuthMiddleware(), disputeHandler.SendDisputeMessage) // Send message in negotiation
+	disputes.Get("/:id/messages", middleware.AuthMiddleware(), disputeHandler.GetDisputeMessages)  // Get all messages
+	disputes.Post("/:id/agree", middleware.AuthMiddleware(), disputeHandler.AgreeOnResolution)     // Mutual agreement with rating
+	disputes.Post("/escalate/expired", disputeHandler.CheckAndEscalateDisputesHandler)             // Auto-escalate expired disputes (cron job)
+
 	payments := api.Group("/payments")
 	payments.Post("/trade/:id", middleware.AuthMiddleware(), paymentHandler.CreateTradeInvoice)
 	// Accept any method for sync to avoid 405 issues in dev/proxies.
@@ -778,6 +797,10 @@ func main() {
 		log.Println("Starting pre-meetup reminder scheduler...")
 		reminderService.SchedulePreMeetupReminders()
 	}()
+
+	// Start background dispute auto-escalation job (check every 30 minutes for expired disputes)
+	disputeService := services.NewDisputeService(database.DB)
+	disputeService.StartAutoEscalationJob(30 * time.Minute)
 
 	// ⚡ SPA SERVE ROUTES - MUST BE LAST (after all API routes)
 	// Serve root path with index.html

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -105,6 +106,10 @@ func (h *ReviewHandler) CreateReview(c *fiber.Ctx) error {
 
 // GetUserReviews retrieves all reviews for a specific user
 func (h *ReviewHandler) GetUserReviews(c *fiber.Ctx) error {
+	// Set cache headers - 10 minutes for user reviews
+	c.Set("Cache-Control", "public, max-age=600")
+	c.Set("ETag", fmt.Sprintf(`"%d"`, time.Now().Unix()/600)) // ETag changes every 10 min
+
 	identifier := c.Params("id")
 	if identifier == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

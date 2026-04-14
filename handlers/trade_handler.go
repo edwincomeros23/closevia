@@ -581,21 +581,6 @@ func (h *TradeHandler) recordTradeRejectionSignal(tradeID, rejectorUserID, rejec
 	}
 }
 
-func (h *TradeHandler) hasRecentRejectionSignal(rejectorUserID, rejectedUserID int) bool {
-	var count int
-	err := h.db.QueryRow(`
-		SELECT COUNT(*)
-		FROM trade_rejection_signals
-		WHERE rejector_user_id = ?
-		  AND rejected_user_id = ?
-		  AND created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)
-	`, rejectorUserID, rejectedUserID).Scan(&count)
-	if err != nil {
-		return false
-	}
-	return count > 0
-}
-
 func (h *TradeHandler) getCachedLoopsForUser(userID int) ([]map[string]interface{}, error) {
 	rows, err := h.db.Query(`
 		SELECT payload_json

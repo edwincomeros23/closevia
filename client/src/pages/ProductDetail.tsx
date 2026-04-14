@@ -38,6 +38,8 @@ import {
   Textarea,
   Skeleton,
   useColorModeValue,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react'
 import {
   FiHeart,
@@ -804,25 +806,69 @@ const ProductDetail: React.FC = () => {
 
   const handleBoostNow = async () => {
     if (!product || boosting) return
+    
+    // Check if user is premium
+    if (!user?.is_premium || user?.premium_tier === 'free') {
+      toast({
+        id: 'premium-required',
+        title: '⭐ Premium Feature',
+        description: 'Boost Listing is a Premium-only feature. Upgrade now to boost your listings!',
+        status: 'info',
+        duration: 5000,
+        isClosable: true,
+        position: 'bottom-right',
+        render: () => (
+          <Box bg="info.500" color="white" p={3} borderRadius="md" display="flex" justifyContent="space-between" alignItems="center">
+            <Box>
+              <Text fontWeight="bold">⭐ Premium Feature</Text>
+              <Text fontSize="sm">Boost Listing is a Premium-only feature. Upgrade now to boost your listings!</Text>
+            </Box>
+            <Button
+              size="sm"
+              colorScheme="brand"
+              ml={3}
+              onClick={() => window.location.href = '/premium'}
+            >
+              Upgrade
+            </Button>
+          </Box>
+        ),
+      })
+      return
+    }
+
     try {
       setBoosting(true)
-      // For now, boosting is handled via direct API call, but we want to track it
+      toast({
+        id: 'boost-pending',
+        title: 'Boosting...',
+        description: 'Your product is being boosted to the top of the feed.',
+        status: 'loading',
+        duration: null,
+        isClosable: false,
+      })
+
       const response = await api.post(`/api/products/boost/${product.id}`)
       if (response.data?.success) {
         toast({
           id: 'boost-success',
-          title: 'Boost Successful!',
-          description: 'Your product visibility has been increased.',
+          title: '🚀 Boost Successful!',
+          description: response.data.message || `"${product.title}" is now boosted for 3 hours!`,
           status: 'success',
+          duration: 5000,
+          isClosable: true,
         })
         fetchProduct() // Refresh to update boosted_at
       }
     } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.message || 'An error occurred'
       toast({
         id: 'boost-error',
         title: 'Boost Failed',
-        description: error.response?.data?.error || error.message || 'An error occurred',
-        status: 'error'
+        description: errorMsg,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
       })
     } finally {
       setBoosting(false)
@@ -1758,6 +1804,50 @@ const ProductDetail: React.FC = () => {
                   <Text fontSize="xs" color="gray.600">Trade with caution</Text>
                 </Box>
               </Alert>
+            )}
+
+            {/* Organization Tags Section */}
+            {product?.organization_tags && product.organization_tags.length > 0 && (
+              <Box mt={6} p={4} bg="purple.50" borderRadius="lg" borderWidth="1px" borderColor="purple.200">
+                <Heading size="sm" mb={3} display="flex" alignItems="center" gap={2}>
+                  <Text>🏢 Tagged Organizations</Text>
+                </Heading>
+                <Wrap spacing={3}>
+                  {product.organization_tags.map((org: any) => (
+                    <WrapItem key={org.id}>
+                      <Button
+                        as={RouterLink}
+                        to={`/organizations/${org.slug}`}
+                        variant="outline"
+                        colorScheme="purple"
+                        size="sm"
+                        leftIcon={
+                          org.logo_url ? (
+                            <Image
+                              src={org.logo_url}
+                              alt={org.name}
+                              boxSize="18px"
+                              borderRadius="50%"
+                              onError={(e: any) => {
+                                e.target.style.display = 'none'
+                              }}
+                            />
+                          ) : undefined
+                        }
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                        _hover={{ bg: 'purple.100' }}
+                      >
+                        {org.name}
+                      </Button>
+                    </WrapItem>
+                  ))}
+                </Wrap>
+                {product.organization_tags[0]?.description && (
+                  <Text fontSize="xs" color="gray.600" mt={2}>
+                    This product is listed in {product.organization_tags.length} organization{"(s)"}
+                  </Text>
+                )}
+              </Box>
             )}
           </Box>
 

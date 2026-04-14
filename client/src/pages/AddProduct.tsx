@@ -35,6 +35,9 @@ import {
   ModalBody,
   ModalCloseButton,
   Circle,
+  Checkbox,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
 
@@ -229,6 +232,18 @@ const AddProduct: React.FC = () => {
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
+
+  // Organization tagging state
+  interface Organization {
+    id: number
+    name: string
+    slug: string
+    logo_url?: string
+    description?: string
+  }
+  const [approvedOrganizations, setApprovedOrganizations] = useState<Organization[]>([])
+  const [selectedOrganizationIds, setSelectedOrganizationIds] = useState<number[]>([])
+  const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false)
   
   const bgColor = useColorModeValue('white', 'gray.800')
   const borderColor = useColorModeValue('gray.200', 'gray.700')
@@ -275,6 +290,28 @@ const AddProduct: React.FC = () => {
   useEffect(() => {
     detectLocation()
   }, [detectLocation])
+
+  // Fetch user's approved organizations
+  useEffect(() => {
+    const fetchApprovedOrganizations = async () => {
+      try {
+        setIsLoadingOrganizations(true)
+        const response = await api.get('/api/organizations/my-approved')
+        if (response.data.success && response.data.data) {
+          setApprovedOrganizations(response.data.data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch approved organizations:', err)
+        setApprovedOrganizations([])
+      } finally {
+        setIsLoadingOrganizations(false)
+      }
+    }
+
+    if (user) {
+      fetchApprovedOrganizations()
+    }
+  }, [user])
 
   // ── AI Generation ─────────────────────────────────────────────────────────
 
@@ -724,6 +761,11 @@ const AddProduct: React.FC = () => {
       }
       if (formData.wants) fd.append('wants', formData.wants)
       if (formData.desired_product) fd.append('desired_product', formData.desired_product)
+      
+      // Add organization IDs for tagging
+      if (selectedOrganizationIds.length > 0) {
+        fd.append('organization_ids', JSON.stringify(selectedOrganizationIds))
+      }
 
       uploadedImages.forEach(f => fd.append('images', f))
       if (uploadedVideo) fd.append('video', uploadedVideo)
@@ -1488,14 +1530,15 @@ const AddProduct: React.FC = () => {
                   bg="white"
                   h="36px"
                   onClick={e => e.stopPropagation()}
+                  min={0}
                 />
                 <FormHelperText fontSize="10px">Your asking price (₱).</FormHelperText>
               </Box>
 
               <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Preferred Item</FormLabel>
+                <FormLabel fontSize="xs" color="gray.600" mb={2} fontWeight="600">Preferred Item *</FormLabel>
                 <Input
-                  placeholder="e.g. Any mechanical keyboard, iPhone 12, etc."
+                  placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                   value={formData.wants}
                   onChange={e => handleField('wants', e.target.value)}
                   size="sm"
@@ -1503,14 +1546,58 @@ const AddProduct: React.FC = () => {
                   maxLength={80}
                   h="36px"
                   onClick={e => e.stopPropagation()}
+                  borderColor={
+                    formData.wants && formData.desired_product && 
+                    formData.wants.toLowerCase().trim() === formData.desired_product.toLowerCase().trim() 
+                      ? 'orange.300' 
+                      : 'gray.200'
+                  }
+                  borderWidth="1px"
                 />
-                <FormHelperText fontSize="10px">Type specific items you'd like to receive in exchange.</FormHelperText>
+                {/* Duplicate Detection - Minimal */}
+                {formData.wants && formData.desired_product && 
+                 formData.wants.toLowerCase().trim() === formData.desired_product.toLowerCase().trim() && (
+                  <Text fontSize="8px" color="orange.600" mt={1}>⚠ Same as Ideal Product</Text>
+                )}
+                {/* Quick Suggestions - Minimal */}
+                {formData.wants === '' && (
+                  <HStack spacing={1} mt={1.5}>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="gray"
+                      fontSize="10px"
+                      h="20px"
+                      px={2}
+                      fontWeight="500"
+                      onClick={() => handleField('wants', 'Any')}
+                      _hover={{ color: 'brand.600' }}
+                    >
+                      Any
+                    </Button>
+                    {formData.title && (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        colorScheme="gray"
+                        fontSize="10px"
+                        h="20px"
+                        px={2}
+                        fontWeight="500"
+                        onClick={() => handleField('wants', `Other ${formData.category || 'items'}`)}
+                        _hover={{ color: 'brand.600' }}
+                      >
+                        Other {formData.category || 'Items'}
+                      </Button>
+                    )}
+                  </HStack>
+                )}
               </Box>
 
               <Box>
-                <FormLabel fontSize="xs" color="gray.600" mb={1}>Ideal Product</FormLabel>
+                <FormLabel fontSize="xs" color="gray.600" mb={2} fontWeight="600">Ideal Product (Optional)</FormLabel>
                 <Input
-                  placeholder="e.g. Sony WH-1000XM5, iPhone 15 Pro"
+                  placeholder="e.g. Sony WH-1000XM5, iPhone 15 Pro Max"
                   value={formData.desired_product || ''}
                   onChange={e => handleField('desired_product', e.target.value)}
                   size="sm"
@@ -1518,8 +1605,19 @@ const AddProduct: React.FC = () => {
                   maxLength={255}
                   h="36px"
                   onClick={e => e.stopPropagation()}
+                  borderColor={
+                    formData.desired_product && formData.wants && 
+                    formData.desired_product.toLowerCase().trim() === formData.wants.toLowerCase().trim() 
+                      ? 'orange.300' 
+                      : 'gray.200'
+                  }
+                  borderWidth="1px"
                 />
-                <FormHelperText fontSize="10px">The exact product you're looking for (optional).</FormHelperText>
+                {/* Duplicate Detection - Minimal */}
+                {formData.desired_product && formData.wants && 
+                 formData.desired_product.toLowerCase().trim() === formData.wants.toLowerCase().trim() && (
+                  <Text fontSize="8px" color="orange.600" mt={1}>⚠ Same as Preferred Item</Text>
+                )}
               </Box>
             </SimpleGrid>
           </FormControl>
@@ -1746,6 +1844,91 @@ const AddProduct: React.FC = () => {
                 <Text fontSize="sm" fontWeight="medium" color="blue.800" fontStyle="italic">
                   " {formData.wants} "
                 </Text>
+              )}
+            </VStack>
+          </Box>
+        )}
+
+        {/* ──────── ORGANIZATION TAGGING ──────── */}
+        {approvedOrganizations.length > 0 && (
+          <Box p={4} bg="orange.50" borderRadius="lg" borderLeft="3px solid" borderLeftColor="orange.400">
+            <VStack align="stretch" spacing={3}>
+              <Box>
+                <Text fontSize="sm" fontWeight="bold" color="orange.900">🏢 Tag Organizations</Text>
+                <Text fontSize="xs" color="orange.700" mt={1}>
+                  Tag one or more organizations to also display your product in their marketplace. This is optional.
+                </Text>
+              </Box>
+
+              {isLoadingOrganizations ? (
+                <Box display="flex" justifyContent="center" py={4}>
+                  <Spinner size="sm" color="orange.500" />
+                </Box>
+              ) : approvedOrganizations.length === 0 ? (
+                <Text fontSize="sm" color="orange.700" fontStyle="italic">
+                  You don't have any approved organizations yet.
+                </Text>
+              ) : (
+                <VStack align="stretch" spacing={2}>
+                  {approvedOrganizations.map(org => (
+                    <HStack
+                      key={org.id}
+                      p={3}
+                      bg="white"
+                      borderRadius="md"
+                      borderWidth="1px"
+                      borderColor={selectedOrganizationIds.includes(org.id) ? 'orange.400' : 'gray.200'}
+                      cursor="pointer"
+                      onClick={() => {
+                        setSelectedOrganizationIds(prev =>
+                          prev.includes(org.id)
+                            ? prev.filter(id => id !== org.id)
+                            : [...prev, org.id]
+                        )
+                      }}
+                      _hover={{ borderColor: 'orange.300', bg: 'orange.50' }}
+                      transition="all 0.2s"
+                    >
+                      <Checkbox
+                        isChecked={selectedOrganizationIds.includes(org.id)}
+                        onChange={() => {}}
+                        pointerEvents="none"
+                        cursor="pointer"
+                      />
+                      <VStack align="start" spacing={0} flex={1}>
+                        <Text fontSize="sm" fontWeight="semibold" color="gray.900">
+                          {org.name}
+                        </Text>
+                        {org.description && (
+                          <Text fontSize="xs" color="gray.600">
+                            {org.description}
+                          </Text>
+                        )}
+                      </VStack>
+                    </HStack>
+                  ))}
+                </VStack>
+              )}
+
+              {selectedOrganizationIds.length > 0 && (
+                <HStack spacing={1} flexWrap="wrap">
+                  {selectedOrganizationIds.map(orgId => {
+                    const org = approvedOrganizations.find(o => o.id === orgId)
+                    return org ? (
+                      <Badge
+                        key={orgId}
+                        colorScheme="orange"
+                        variant="solid"
+                        fontSize="xs"
+                        borderRadius="full"
+                        px={2}
+                        py={1}
+                      >
+                        {org.name}
+                      </Badge>
+                    ) : null
+                  })}
+                </HStack>
               )}
             </VStack>
           </Box>

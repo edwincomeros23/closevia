@@ -4,25 +4,29 @@ import {
   Flex, HStack, Image, IconButton, useDisclosure,
   Drawer, DrawerBody, DrawerHeader, DrawerOverlay,
   DrawerContent, DrawerCloseButton, Link, Stack,
-  SimpleGrid, Icon, Avatar,
+  SimpleGrid, Icon, Avatar, Badge,
 } from '@chakra-ui/react'
 import { HamburgerIcon } from '@chakra-ui/icons'
 import { useNavigate } from 'react-router-dom'
 
-import { FiArrowRight, FiPhone, FiPlay, FiStar, FiRefreshCw, FiShield } from 'react-icons/fi'
-import { FaLeaf, FaHandshake, FaBoxOpen } from 'react-icons/fa'
+import { FiArrowRight, FiPhone, FiPlay, FiStar, FiRefreshCw, FiShield, FiArrowUpRight, FiTruck, FiDownload } from 'react-icons/fi'
+import { FaHandshake, FaBoxOpen, FaLeaf, FaExchangeAlt } from 'react-icons/fa'
 
-/* ─── color tokens (aligned with homepage teal/cream theme) ─── */
+/* ─── color tokens (light yellow theme with more vibrant accents) ─── */
 const C = {
-  dark: '#1d4e4f',       // brand.800 - dark teal for hero overlay & dark sections
-  mid: '#285e61',        // brand.700 - medium teal for alternate sections
-  card: '#2c7a7b',       // brand.600 - card backgrounds in dark sections
-  accent: '#319795',     // brand.500 - primary accent (teal, same as homepage)
-  accentLight: '#38b2ac', // brand.400 - hover state for accent
-  cream: '#FFFDF1',      // same cream background as homepage
+  bg: '#FFF9E6',         // light yellow background
+  bgSecondary: '#FFF4CC', // slightly darker yellow for cards
+  accent: '#319795',     // brand teal accent
+  accentLight: '#38b2ac', // lighter teal
+  accentDark: '#285e61',  // darker teal
+  accent2: '#D97706',     // warm orange for vibrancy
+  accent3: '#059669',     // vibrant green
   white: '#FFFFFF',
-  textMuted: '#b2f5ea',  // brand.100 - muted text on dark backgrounds
-  textDark: '#285e61',   // brand.700 - text on light backgrounds
+  textDark: '#1f2937',   // darker text for better contrast
+  textMuted: '#6b7280',  // muted gray
+  textLight: '#4b5563',  // light gray
+  gradient: 'linear-gradient(135deg, #319795 0%, #38b2ac 100%)',
+  gradientWarm: 'linear-gradient(135deg, #D97706 0%, #F59E0B 100%)',
 }
 
 /* ─── Navbar ─── */
@@ -32,7 +36,7 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
   const navItems = ['Home', 'About', 'How It Works', 'Features', 'Contact Us']
 
   return (
-    <Box position="fixed" top={0} left={0} right={0} zIndex={50} bg={C.dark} borderBottom="1px solid" borderColor="whiteAlpha.100">
+    <Box position="fixed" top={0} left={0} right={0} zIndex={50} bg={C.bg} borderBottom="2px solid" borderColor={C.bgSecondary} backdropFilter="blur(10px)">
       <Flex
         as="nav"
         h={{ base: '64px', md: '72px' }}
@@ -41,13 +45,11 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
         px={{ base: 4, md: 8, lg: 12 }}
         maxW="1400px"
         mx="auto"
+        w="100%"
       >
-        {/* Logo */}
-        <HStack spacing={2}>
-          <Icon as={FaLeaf} color={C.accentLight} boxSize={6} />
-          <Text fontSize="xl" fontWeight="bold" color={C.white}>
-            Clovia<Text as="span" color={C.accentLight}>PH</Text>
-          </Text>
+        {/* Logo - Use actual SVG */}
+        <HStack spacing={2} cursor="pointer" onClick={() => navigate('/')} _hover={{ opacity: 0.8 }} transition="opacity 0.2s">
+          <Image src="/logo.svg" alt="Clovia" h={{ base: '32px', md: '36px' }} w="auto" />
         </HStack>
 
         {/* Desktop Nav */}
@@ -58,9 +60,20 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
               href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
               color={C.textMuted}
               fontSize="sm"
-              fontWeight="medium"
-              _hover={{ color: C.accentLight, textDecoration: 'none' }}
+              fontWeight="500"
+              _hover={{ color: C.accent, textDecoration: 'none', _after: { width: '100%' } }}
               transition="color 0.2s"
+              position="relative"
+              _after={{
+                content: '""',
+                position: 'absolute',
+                bottom: '-4px',
+                left: '0',
+                width: '0',
+                height: '2px',
+                bg: C.accent,
+                transition: 'width 0.3s ease',
+              }}
             >
               {item}
             </Link>
@@ -68,7 +81,7 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
         </HStack>
 
         {/* CTA */}
-        <HStack spacing={4}>
+        <HStack spacing={3}>
           <Button
             display={{ base: 'none', md: 'flex' }}
             bg={C.accent}
@@ -76,12 +89,13 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
             size="sm"
             borderRadius="full"
             px={6}
-            fontWeight="bold"
-            _hover={{ bg: C.accentLight, transform: 'translateY(-1px)' }}
-            transition="all 0.2s"
+            fontWeight="600"
+            _hover={{ bg: C.accentDark, transform: 'translateY(-2px)', boxShadow: 'lg' }}
+            transition="all 0.3s"
             onClick={onGetStarted}
+            rightIcon={<Icon as={FiArrowUpRight} />}
           >
-            Sign Up Now
+            Sign Up
           </Button>
           <IconButton
             display={{ base: 'flex', md: 'none' }}
@@ -89,21 +103,18 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
             icon={<HamburgerIcon />}
             onClick={onOpen}
             variant="ghost"
-            color={C.white}
-            _hover={{ bg: 'whiteAlpha.100' }}
+            color={C.textDark}
+            _hover={{ bg: C.bgSecondary }}
           />
         </HStack>
 
         {/* Mobile Drawer */}
         <Drawer isOpen={isOpen} placement="right" onClose={onClose}>
           <DrawerOverlay />
-          <DrawerContent bg={C.dark}>
-            <DrawerCloseButton color={C.white} />
+          <DrawerContent bg={C.bg}>
+            <DrawerCloseButton color={C.textDark} />
             <DrawerHeader>
-              <HStack spacing={2}>
-                <Icon as={FaLeaf} color={C.accentLight} boxSize={5} />
-                <Text color={C.white}>CloviaPH</Text>
-              </HStack>
+              <Image src="/logo.svg" alt="Clovia" h="32px" w="auto" />
             </DrawerHeader>
             <DrawerBody>
               <Stack spacing={4}>
@@ -112,14 +123,15 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
                     key={item}
                     href={`#${item.toLowerCase().replace(/\s+/g, '-')}`}
                     color={C.textMuted}
-                    _hover={{ color: C.accentLight }}
+                    fontWeight="500"
+                    _hover={{ color: C.accent }}
                     onClick={onClose}
                   >
                     {item}
                   </Link>
                 ))}
-                <Button bg={C.accent} color={C.white} w="full" borderRadius="full" onClick={() => { onClose(); onGetStarted() }}>
-                  Sign Up Now
+                <Button bg={C.accent} color={C.white} w="full" borderRadius="full" onClick={() => { onClose(); onGetStarted() }} fontWeight="600">
+                  Sign Up
                 </Button>
               </Stack>
             </DrawerBody>
@@ -130,101 +142,125 @@ const Navbar = ({ navigate, onGetStarted }: { navigate: ReturnType<typeof useNav
   )
 }
 
-/* ─── Stat Counter Card ─── */
-const StatCard = ({ value, label }: { value: string; label: string }) => (
-  <VStack spacing={0}>
-    <Text fontSize={{ base: '2xl', md: '3xl' }} fontWeight="bold" color={C.accentLight}>
-      {value}
-    </Text>
-    <Text fontSize="xs" color={C.textMuted} textTransform="uppercase" letterSpacing="wider">
-      {label}
-    </Text>
-  </VStack>
-)
 
 /* ─── Service Card ─── */
-const ServiceCard = ({ icon, title, desc }: { icon: React.ElementType; title: string; desc: string }) => (
+const ServiceCard = ({ icon, title, desc, accentColor }: { icon: React.ElementType; title: string; desc: string; accentColor?: string }) => {
+  const accent = accentColor || C.accent
+  return (
   <VStack
-    bg={C.card}
-    borderRadius="xl"
-    p={6}
+    bg={C.white}
+    borderRadius="2xl"
+    p={8}
     spacing={4}
-    align="center"
-    textAlign="center"
-    border="1px solid"
-    borderColor="whiteAlpha.100"
-    _hover={{ borderColor: C.accentLight, transform: 'translateY(-4px)' }}
-    transition="all 0.3s"
+    align="start"
+    textAlign="start"
+    border="2px solid"
+    borderColor="transparent"
+    position="relative"
+    overflow="hidden"
+    _hover={{ 
+      borderColor: accent, 
+      transform: 'translateY(-8px)',
+      boxShadow: `0 20px 40px ${accent}26`,
+      _before: {
+        opacity: 1,
+      }
+    }}
+    transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+    _before={{
+      content: '""',
+      position: 'absolute',
+      top: '0',
+      left: '0',
+      right: '0',
+      height: '4px',
+      background: accent,
+      opacity: 0,
+      transition: 'opacity 0.3s',
+    }}
   >
     <Flex
-      w={14}
-      h={14}
-      borderRadius="full"
-      bg="whiteAlpha.100"
+      w={16}
+      h={16}
+      borderRadius="xl"
+      bg={`${accent}15`}
       align="center"
       justify="center"
+      _groupHover={{ bg: `${accent}25` }}
+      transition="all 0.3s"
     >
-      <Icon as={icon} boxSize={6} color={C.accentLight} />
+      <Icon as={icon} boxSize={8} color={accent} />
     </Flex>
-    <Text fontSize="lg" color={C.white} fontWeight="semibold">{title}</Text>
-    <Text fontSize="sm" color={C.textMuted} lineHeight="1.7">{desc}</Text>
-    <HStack color={C.accentLight} fontSize="sm" cursor="pointer" _hover={{ gap: 3 }} transition="all 0.2s" spacing={1}>
-      <Text fontWeight="medium">Learn More</Text>
-      <Icon as={FiArrowRight} />
+    <Text fontSize="lg" color={C.textDark} fontWeight="700">{title}</Text>
+    <Text fontSize="sm" color={C.textMuted} lineHeight="1.6">{desc}</Text>
+    <HStack color={accent} fontSize="sm" cursor="pointer" _hover={{ gap: 3 }} transition="all 0.2s" spacing={2} pt={2}>
+      <Text fontWeight="600">Learn more</Text>
+      <Icon as={FiArrowRight} boxSize={4} />
     </HStack>
   </VStack>
-)
+  )
+}
 
 /* ─── Product Card ─── */
-const LandingProductCard = ({ image, name, desc }: { image: string; name: string; desc: string }) => (
+const LandingProductCard = ({ image, name, desc }: { image: string; name: string; desc: string }) => {
+  const accentColors = [C.accent, C.accent2, C.accent3]
+  const accentColor = accentColors[Math.floor(Math.random() * accentColors.length)]
+  return (
   <Box
-    borderRadius="xl"
+    borderRadius="2xl"
     overflow="hidden"
     position="relative"
     role="group"
     cursor="pointer"
+    border="2px solid"
+    borderColor="transparent"
+    transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+    _hover={{ borderColor: accentColor, boxShadow: `0 20px 40px ${accentColor}26`, transform: 'translateY(-8px)' }}
   >
     <Image
       src={image}
       alt={name}
       w="full"
-      h={{ base: '220px', md: '260px' }}
+      h={{ base: '220px', md: '280px' }}
       objectFit="cover"
-      transition="transform 0.4s"
-      _groupHover={{ transform: 'scale(1.05)' }}
+      transition="transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)"
+      _groupHover={{ transform: 'scale(1.08)' }}
     />
     {/* Rating badge */}
     <HStack
       position="absolute"
-      top={3}
-      left={3}
-      bg="whiteAlpha.900"
+      top={4}
+      left={4}
+      bg="white"
       borderRadius="full"
-      px={2}
-      py={1}
+      px={3}
+      py={2}
       spacing={1}
+      boxShadow="0 10px 25px rgba(0, 0, 0, 0.15)"
+      backdropFilter="blur(10px)"
     >
       {[...Array(5)].map((_, i) => (
-        <Icon key={i} as={FiStar} boxSize={3} color={C.accent} fill={C.accent} />
+        <Icon key={i} as={FiStar} boxSize={4} color={accentColor} fill={accentColor} />
       ))}
-      <Text fontSize="xs" fontWeight="bold" ml={1}>(5/5)</Text>
+      <Text fontSize="xs" fontWeight="700" ml={1}>5/5</Text>
     </HStack>
     {/* Plus button */}
     <Flex
       position="absolute"
-      top={3}
-      right={3}
-      w={8}
-      h={8}
+      top={4}
+      right={4}
+      w={10}
+      h={10}
       borderRadius="full"
-      bg={C.accent}
+      bg={accentColor}
       color={C.white}
       align="center"
       justify="center"
       fontWeight="bold"
       fontSize="lg"
-      _groupHover={{ bg: C.accentLight }}
-      transition="all 0.2s"
+      _groupHover={{ transform: 'scale(1.1)' }}
+      transition="all 0.3s"
+      boxShadow={`0 10px 25px ${accentColor}4d`}
     >
       +
     </Flex>
@@ -234,15 +270,16 @@ const LandingProductCard = ({ image, name, desc }: { image: string; name: string
       bottom={0}
       left={0}
       right={0}
-      bgGradient="linear(to-t, blackAlpha.800, transparent)"
-      p={4}
-      pt={12}
+      bgGradient="linear(to-t, rgba(0,0,0,0.9), rgba(0,0,0,0.4) 60%, transparent)"
+      p={6}
+      pt={16}
     >
-      <Text color={C.white} fontWeight="semibold" fontSize="md">{name}</Text>
-      <Text fontSize="xs" color="whiteAlpha.800" noOfLines={2}>{desc}</Text>
+      <Text color={C.white} fontWeight="700" fontSize="lg">{name}</Text>
+      <Text fontSize="sm" color="whiteAlpha.90" noOfLines={2}>{desc}</Text>
     </Box>
   </Box>
-)
+  )
+}
 
 /* ═══════════════════════════════════════════
    LANDING PAGE
@@ -254,7 +291,21 @@ const LandingPage: React.FC = () => {
   }
 
   return (
-    <Box bg={C.dark} color={C.white} overflowX="hidden">
+    <Box
+      bg={C.bg}
+      color={C.textDark}
+      overflowX="hidden"
+      minH="100vh"
+      sx={{
+        scrollBehavior: 'smooth',
+        scrollPaddingTop: '80px',
+        html: {
+          scrollBehavior: 'smooth',
+          scrollPaddingTop: '80px',
+        },
+      }}
+    >
+      <style>{`html { scroll-behavior: smooth; scroll-padding-top: 80px; }`}</style>
       <Navbar navigate={navigate} onGetStarted={handleGetStarted} />
 
       {/* ══════════ HERO SECTION ══════════ */}
@@ -265,12 +316,33 @@ const LandingPage: React.FC = () => {
         pt={{ base: '100px', md: '120px' }}
         pb={{ base: 12, md: 0 }}
         overflow="hidden"
+        bg={`linear-gradient(135deg, ${C.bg} 0%, ${C.bgSecondary} 100%)`}
       >
-        {/* BG image with overlay */}
-        <Box position="absolute" inset={0} zIndex={0}>
-          <Image src="/bgphoto.jpg" alt="" w="full" h="full" objectFit="cover" />
-          <Box position="absolute" inset={0} bg="linear-gradient(to bottom, rgba(29,78,79,0.88) 0%, rgba(29,78,79,0.72) 50%, rgba(29,78,79,0.95) 100%)" />
-        </Box>
+        {/* Animated background elements */}
+        <Box
+          position="absolute"
+          top="5%"
+          right="-8%"
+          w="500px"
+          h="500px"
+          borderRadius="full"
+          bg={`${C.accent}12`}
+          filter="blur(60px)"
+          pointerEvents="none"
+          animation="float 6s ease-in-out infinite"
+        />
+        <Box
+          position="absolute"
+          bottom="-10%"
+          left="-5%"
+          w="400px"
+          h="400px"
+          borderRadius="full"
+          bg={`${C.accent2}08`}
+          filter="blur(50px)"
+          pointerEvents="none"
+          animation="float 8s ease-in-out infinite reverse"
+        />
 
         <Container maxW="1200px" position="relative" zIndex={1}>
           <Flex
@@ -280,39 +352,227 @@ const LandingPage: React.FC = () => {
             minH={{ base: 'auto', md: 'calc(100vh - 120px)' }}
             justify="center"
           >
+            <Badge
+              bg={`${C.accent2}25`}
+              color={C.accent2}
+              borderRadius="full"
+              px={4}
+              py={2}
+              mb={6}
+              fontSize="xs"
+              fontWeight="700"
+              textTransform="uppercase"
+              letterSpacing="wider"
+              border="2px solid"
+              borderColor={`${C.accent2}40`}
+            >
+              �️ Zamboanga First
+            </Badge>
+
             <Heading
               as="h1"
-              fontSize={{ base: '3xl', md: '5xl', lg: '6xl' }}
-              fontWeight="bold"
-              lineHeight="1.15"
-              mb={4}
-              maxW="700px"
+              fontSize={{ base: '2.8xl', md: '4.5xl', lg: '5.5xl' }}
+              fontWeight="900"
+              lineHeight="1.1"
+              mb={8}
+              maxW="900px"
+              color={C.textDark}
+              letterSpacing="-0.02em"
             >
-              Start Your Trading{' '}
-              <Text as="span" color={C.accentLight}>Journey</Text>{' '}
-              Today.
+              Trade What You Don't Need.{' '}
+              <Text as="span" bgGradient={C.gradientWarm} bgClip="text">
+                Help Your Community.
+              </Text>
             </Heading>
 
-            {/* Decorative line */}
-            <Box w="80px" h="3px" bg={C.accent} borderRadius="full" mb={6} />
-
             <Text
-              fontSize={{ base: 'sm', md: 'md' }}
+              fontSize={{ base: 'lg', md: 'xl' }}
               color={C.textMuted}
-              maxW="550px"
+              maxW="650px"
               lineHeight="1.8"
-              mb={8}
+              mb={12}
+              fontWeight="500"
             >
-              We're just getting started! Join our growing community of traders
-              and discover a smarter way to exchange items locally.
+              Zamboanga's community trading platform. Textbooks, gadgets, clothes, furniture—whatever you're done with, someone else needs. Meet locally, trade freely.
             </Text>
+
+            <HStack spacing={4} flexWrap="wrap" justify="center" mb={16}>
+              <Button
+                size="lg"
+                bg={C.accent}
+                color={C.white}
+                borderRadius="full"
+                px={9}
+                fontWeight="800"
+                fontSize="md"
+                _hover={{ bg: C.accentDark, transform: 'translateY(-4px)', boxShadow: '0 25px 50px rgba(49, 151, 149, 0.4)' }}
+                transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                onClick={handleGetStarted}
+                rightIcon={<Icon as={FiArrowRight} boxSize={5} />}
+              >
+                Join Now
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                borderColor={C.accent}
+                color={C.accent}
+                borderRadius="full"
+                px={9}
+                fontWeight="800"
+                fontSize="md"
+                _hover={{ bg: C.accent, color: C.white, transform: 'translateY(-4px)', boxShadow: '0 25px 50px rgba(49, 151, 149, 0.3)' }}
+                transition="all 0.3s"
+                as="a"
+                href="/clovia.apk"
+                download="clovia.apk"
+                rightIcon={<Icon as={FiDownload} boxSize={5} />}
+              >
+                Download Now
+              </Button>
+            </HStack>
+
+            {/* Quick stats - simplified for one city */}
+            <HStack spacing={{ base: 6, md: 12 }} justify="center" pt={8} pb={4} borderTop="2px solid" borderColor={`${C.accent}20`} flexWrap="wrap">
+              <VStack spacing={1}>
+                <Text fontSize="2.5xl" fontWeight="900" color={C.accent}>100+</Text>
+                <Text fontSize="sm" color={C.textMuted} fontWeight="600">Community Members</Text>
+              </VStack>
+              <VStack spacing={1}>
+                <Text fontSize="2.5xl" fontWeight="900" color={C.accent2}>50+</Text>
+                <Text fontSize="sm" color={C.textMuted} fontWeight="600">Successful Trades</Text>
+              </VStack>
+              <VStack spacing={1}>
+                <Text fontSize="2.5xl" fontWeight="900" color={C.accent3}>Zamboanga</Text>
+                <Text fontSize="sm" color={C.textMuted} fontWeight="600">Local Only</Text>
+              </VStack>
+            </HStack>
           </Flex>
         </Container>
       </Box>
 
-      {/* ══════════ FEATURED / TESTIMONIAL SECTION ══════════ */}
-      <Box bg={C.mid} py={{ base: 12, md: 20 }}>
+      {/* ══════════ PROBLEM & SOLUTION SECTION ══════════ */}
+      <Box id="how-it-works" bg={C.white} py={{ base: 16, md: 24 }}>
         <Container maxW="1200px">
+          <Flex direction={{ base: 'column', lg: 'row' }} gap={12} align="center" mb={20}>
+            {/* Left - The Problem */}
+            <VStack flex={1} align="start" spacing={6}>
+              <VStack align="start" spacing={2}>
+                <Badge bg={`${C.accent}15`} color={C.accent} borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">THE PROBLEM</Badge>
+                <Heading fontSize={{ base: '2.5xl', md: '3.5xl' }} lineHeight="1.2" color={C.textDark} fontWeight="800">
+                  Bartering is{' '}<Text as="span" color={C.accent}>Part of Our Culture</Text>
+                </Heading>
+              </VStack>
+              <VStack align="start" spacing={4}>
+                <HStack align="start" spacing={4}>
+                  <Icon as={FiShield} boxSize={6} color={C.accent} mt={1} flexShrink={0} />
+                  <VStack align="start" spacing={1}>
+                    <Text fontSize="md" fontWeight="700" color={C.textDark}>Scammers Make It Risky</Text>
+                    <Text fontSize="sm" color={C.textMuted}>No verification, no buyer protection, no safe way to trace bad actors.</Text>
+                  </VStack>
+                </HStack>
+                <HStack align="start" spacing={4}>
+                  <Icon as={FiPhone} boxSize={6} color={C.accent} mt={1} flexShrink={0} />
+                  <VStack align="start" spacing={1}>
+                    <Text fontSize="md" fontWeight="700" color={C.textDark}>Scattered Across Platforms</Text>
+                    <Text fontSize="sm" color={C.textMuted}>Facebook Marketplace, Carousel—they're generic, slow, lack Zamboanga-specific features.</Text>
+                  </VStack>
+                </HStack>
+                <HStack align="start" spacing={4}>
+                  <Icon as={FiRefreshCw} boxSize={6} color={C.accent} mt={1} flexShrink={0} />
+                  <VStack align="start" spacing={1}>
+                    <Text fontSize="md" fontWeight="700" color={C.textDark}>Ecommerce = More Plastic Waste</Text>
+                    <Text fontSize="sm" color={C.textMuted}>Every online order means packaging, shipping, carbon emissions. We keep buying new instead of trading reused.</Text>
+                  </VStack>
+                </HStack>
+              </VStack>
+            </VStack>
+
+            {/* Right - The Solution */}
+            <VStack flex={1} align="start" spacing={6}>
+              <VStack align="start" spacing={2}>
+                <Badge bg={`${C.accent2}20`} color={C.accent2} borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">CLOVIA SOLVES IT</Badge>
+                <Heading fontSize={{ base: '2.5xl', md: '3.5xl' }} lineHeight="1.2" color={C.textDark} fontWeight="800">
+                  Safe Trading,{' '}<Text as="span" color={C.accent2}>Built for Zamboanga</Text>
+                </Heading>
+              </VStack>
+              <VStack align="start" spacing={4}>
+                <HStack align="start" spacing={4}>
+                  <Icon as={FiShield} boxSize={6} color={C.accent2} mt={1} flexShrink={0} />
+                  <VStack align="start" spacing={1}>
+                    <Text fontSize="md" fontWeight="700" color={C.textDark}>Verified Community</Text>
+                    <Text fontSize="sm" color={C.textMuted}>School email verification, rating system, trader profiles. Know who you're dealing with.</Text>
+                  </VStack>
+                </HStack>
+                <HStack align="start" spacing={4}>
+                  <Icon as={FaBoxOpen} boxSize={6} color={C.accent2} mt={1} flexShrink={0} />
+                  <VStack align="start" spacing={1}>
+                    <Text fontSize="md" fontWeight="700" color={C.textDark}>Built for Local Trading</Text>
+                    <Text fontSize="sm" color={C.textMuted}>Location-based matching, campus meetup focus, no global nonsense. Trade with people near you.</Text>
+                  </VStack>
+                </HStack>
+                <HStack align="start" spacing={4}>
+                  <Icon as={FaHandshake} boxSize={6} color={C.accent2} mt={1} flexShrink={0} />
+                  <VStack align="start" spacing={1}>
+                    <Text fontSize="md" fontWeight="700" color={C.textDark}>Zero Shipping Emissions</Text>
+                    <Text fontSize="sm" color={C.textMuted}>Meet locally = no delivery carbon footprint. No packaging waste. Direct hand-to-hand trades.</Text>
+                  </VStack>
+                </HStack>
+              </VStack>
+            </VStack>
+          </Flex>
+
+          {/* Impact Section */}
+          <Box bg={`linear-gradient(135deg, ${C.accent2}12 0%, ${C.accent3}12 100%)`} border="2px solid" borderColor={`${C.accent2}25`} borderRadius="2xl" p={10}>
+            <VStack spacing={8} textAlign="center">
+              <VStack spacing={3}>
+                <Heading fontSize={{ base: '2xl', md: '3xl' }} fontWeight="800" color={C.textDark}>
+                  The Impact: Trading Smarter,{' '}<Text as="span" color={C.accent2}>Not Shopping</Text>
+                </Heading>
+                <Text fontSize="md" color={C.textMuted} maxW="800px">
+                  Every trade on Clovia replaces one potential ecommerce purchase. No manufacturing emissions. No packaging waste. No shipping fuel. Just smart people, reusing smart.
+                </Text>
+              </VStack>
+
+              <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={8} w="full">
+                <VStack spacing={3} p={6} bg={C.white} borderRadius="xl" boxShadow="0 5px 15px rgba(0,0,0,0.05)">
+                  <Icon as={FaLeaf} boxSize={10} color={C.accent3} />
+                  <Text fontSize="sm" fontWeight="700" color={C.textDark}>Plastic Waste Reduced</Text>
+                  <Text fontSize="xs" color={C.textMuted}>Every trade avoids packaging from new purchases</Text>
+                </VStack>
+                <VStack spacing={3} p={6} bg={C.white} borderRadius="xl" boxShadow="0 5px 15px rgba(0,0,0,0.05)">
+                  <Icon as={FiTruck} boxSize={10} color={C.accent} />
+                  <Text fontSize="sm" fontWeight="700" color={C.textDark}>Zero Delivery Emissions</Text>
+                  <Text fontSize="xs" color={C.textMuted}>Local meetups cut transportation carbon</Text>
+                </VStack>
+                <VStack spacing={3} p={6} bg={C.white} borderRadius="xl" boxShadow="0 5px 15px rgba(0,0,0,0.05)">
+                  <Icon as={FiRefreshCw} boxSize={10} color={C.accent2} />
+                  <Text fontSize="sm" fontWeight="700" color={C.textDark}>Circular Economy</Text>
+                  <Text fontSize="xs" color={C.textMuted}>Items get second life instead of landfills</Text>
+                </VStack>
+                <VStack spacing={3} p={6} bg={C.white} borderRadius="xl" boxShadow="0 5px 15px rgba(0,0,0,0.05)">
+                  <Icon as={FaExchangeAlt} boxSize={10} color={C.accent3} />
+                  <Text fontSize="sm" fontWeight="700" color={C.textDark}>Money Stays Local</Text>
+                  <Text fontSize="xs" color={C.textMuted}>No logistics markup. Zamboanga keeps the value</Text>
+                </VStack>
+              </SimpleGrid>
+            </VStack>
+          </Box>
+        </Container>
+      </Box>
+
+      {/* ══════════ SERVICES SECTION ══════════ */}
+      <Box bg={C.bg} py={{ base: 16, md: 24 }}>
+        <Container maxW="1200px">
+          <VStack spacing={4} mb={16} textAlign="center">
+            <Heading fontSize={{ base: '2xl', md: '4xl' }} fontWeight="800" color={C.textDark} letterSpacing="-0.02em">
+              WMSU Students{' '}<Text as="span" bgGradient={C.gradientWarm} bgClip="text">Trading Smart</Text>
+            </Heading>
+            <Text fontSize="md" color={C.textMuted} maxW="500px" fontWeight="500">
+              Here's what's actually happening on campus
+            </Text>
+          </VStack>
+
           <Flex
             direction={{ base: 'column', lg: 'row' }}
             gap={8}
@@ -321,61 +581,48 @@ const LandingPage: React.FC = () => {
             {/* Left - Testimonial Card */}
             <Box flex={1} position="relative">
               <Box
-                borderRadius="2xl"
+                borderRadius="3xl"
                 overflow="hidden"
-                bg={C.card}
-                p={6}
+                bg={C.white}
+                p={8}
                 h="full"
-                border="1px solid"
-                borderColor="whiteAlpha.100"
+                border="2px solid"
+                borderColor="transparent"
+                boxShadow="0 10px 30px rgba(0, 0, 0, 0.05)"
+                _hover={{ borderColor: C.accent2, boxShadow: `0 20px 40px rgba(217, 119, 6, 0.15)` }}
+                transition="all 0.3s"
               >
                 {/* Rating */}
-                <HStack mb={3} spacing={1}>
-                  <Box bg={C.accent} borderRadius="full" px={2} py={0.5}>
-                    <HStack spacing={0.5}>
-                      {[...Array(5)].map((_, i) => (
-                        <Icon key={i} as={FiStar} boxSize={3} color={C.white} fill={C.white} />
-                      ))}
-                    </HStack>
-                  </Box>
-                  <Text fontSize="xs" color={C.textMuted}>(5/5)</Text>
+                <HStack mb={6} spacing={1}>
+                  {[...Array(5)].map((_, i) => (
+                    <Icon key={i} as={FiStar} boxSize={5} color={C.accent2} fill={C.accent2} />
+                  ))}
                 </HStack>
 
-                <Text fontSize="sm" color={C.textMuted} lineHeight="1.8" mb={6}>
-                  "This is exactly what our community needed! Easy to use, simple way
-                  to exchange items. Excited to see where this goes."
+                <Text fontSize="lg" color={C.textDark} lineHeight="1.8" mb={8} fontWeight="500">
+                  "Sold my old programming textbook for PHP 400. Buyer got a deal, I got cash. Met locally, no shipping fees. Done in 15 minutes. Best way to declutter and help someone."
                 </Text>
 
-                <HStack spacing={3}>
-                  <Avatar size="sm" name="Early Adopter" bg={C.accent} color={C.white} />
+                <HStack spacing={4}>
+                  <Avatar size="md" name="Kami" bg={C.accent2} color={C.white} />
                   <VStack align="start" spacing={0}>
-                    <Text fontSize="sm" fontWeight="bold" color={C.white}>Community Member</Text>
-                    <Text fontSize="xs" color={C.textMuted}>Early User</Text>
+                    <Text fontSize="md" fontWeight="700" color={C.textDark}>Kami, Zamboanga</Text>
+                    <Text fontSize="sm" color={C.textMuted}>Active trader • 8 trades</Text>
                   </VStack>
                 </HStack>
 
-                {/* Floating badges */}
-                <HStack position="absolute" top={4} right={4} spacing={2}>
-                  <Box bg="whiteAlpha.200" borderRadius="lg" px={3} py={1.5}>
-                    <Text fontSize="xs" color={C.accentLight}>Quick Payment</Text>
-                  </Box>
+                {/* Badges */}
+                <HStack position="absolute" top={8} right={8} spacing={2}>
+                  <Badge bg={`${C.accent2}15`} color={C.accent2} borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">Free Local</Badge>
                 </HStack>
-                <HStack position="absolute" bottom={20} right={4} spacing={2}>
-                  <Box bg="whiteAlpha.200" borderRadius="lg" px={3} py={1.5}>
-                    <Text fontSize="xs" color={C.accentLight}>Safe Trades</Text>
-                  </Box>
-                </HStack>
-                <Box position="absolute" right={4} bottom={6} bg="whiteAlpha.200" borderRadius="lg" px={3} py={1.5}>
-                  <Text fontSize="xs" color={C.accentLight}>24/7 Support</Text>
-                </Box>
               </Box>
             </Box>
 
             {/* Right - Large image */}
-            <Box flex={1.2} borderRadius="2xl" overflow="hidden" minH={{ base: '300px', md: '400px' }}>
+            <Box flex={1.2} borderRadius="3xl" overflow="hidden" minH={{ base: '300px', md: '400px' }} border="2px solid" borderColor={`${C.accent2}20`} boxShadow="0 10px 30px rgba(0, 0, 0, 0.05)">
               <Image
                 src="/bgphoto.jpg"
-                alt="Community trading"
+                alt="WMSU campus trading community"
                 w="full"
                 h="full"
                 objectFit="cover"
@@ -386,101 +633,89 @@ const LandingPage: React.FC = () => {
       </Box>
 
       {/* ══════════ ABOUT / EXPERIENCE SECTION ══════════ */}
-      <Box id="about" py={{ base: 12, md: 20 }} bg={C.cream} color={C.textDark}>
+      <Box id="about" py={{ base: 16, md: 24 }} bg={C.bgSecondary} color={C.textDark}>
         <Container maxW="1200px">
-          <Flex direction={{ base: 'column', lg: 'row' }} gap={10} align="center">
+          <Flex direction={{ base: 'column', lg: 'row' }} gap={12} align="center">
             {/* Left - Image with overlay badge */}
             <Box flex={1} position="relative">
               <Image
                 src="/barter.jpg"
-                alt="Trading community"
-                borderRadius="2xl"
+                alt="WMSU students trading"
+                borderRadius="3xl"
                 w="full"
-                h={{ base: '300px', md: '420px' }}
+                h={{ base: '300px', md: '450px' }}
                 objectFit="cover"
+                border="2px solid"
+                borderColor={`${C.accent2}30`}
+                boxShadow="0 20px 40px rgba(217, 119, 6, 0.15)"
               />
-              {/* Location badge */}
-              <HStack
-                position="absolute"
-                top={4}
-                left={4}
-                bg="white"
-                borderRadius="full"
-                px={3}
-                py={1.5}
-                boxShadow="lg"
-                spacing={2}
-              >
-                <Box w={2} h={2} borderRadius="full" bg="green.500" />
-                <Text fontSize="xs" fontWeight="semibold" color={C.textDark}>Community Marketplace</Text>
-              </HStack>
-              {/* Experience badge */}
+              {/* Experience badge  */}
               <Box
                 position="absolute"
                 bottom={6}
                 left={6}
-                bg={C.accent}
-                borderRadius="xl"
+                bg={C.white}
+                borderRadius="2xl"
                 p={4}
                 textAlign="center"
-                boxShadow="xl"
+                boxShadow="0 10px 30px rgba(0, 0, 0, 0.15)"
               >
-                <Text fontSize="3xl" fontWeight="bold" color={C.white}>
-                  &beta;
+                <Text fontSize="3xl" fontWeight="800" bgGradient={C.gradientWarm} bgClip="text">
+                  ✓
                 </Text>
-                <Text fontSize="xs" color={C.white} fontWeight="semibold">
-                  Beta Launch<br />2026
+                <Text fontSize="xs" color={C.textDark} fontWeight="700">
+                  WMSU<br />Verified
                 </Text>
               </Box>
             </Box>
 
             {/* Right - text */}
-            <VStack flex={1} align="start" spacing={5}>
-              <Heading fontSize={{ base: '2xl', md: '4xl' }} lineHeight="1.2">
-                Building the{' '}
-                <Text as="span" color={C.accent}>Future</Text>{' '}
-                of Trading.
-              </Heading>
-              <Text fontSize="sm" color="gray.600" lineHeight="1.8">
-                We're a new platform dedicated to making local item exchange simple,
-                safe, and accessible. Our mission is to help communities reduce waste
-                and discover value in what they already have. Join us as we grow and
-                build together.
+            <VStack flex={1} align="start" spacing={6}>
+              <VStack align="start" spacing={2}>
+                <Badge bg={`${C.accent2}20`} color={C.accent2} borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">OUR MISSION</Badge>
+                <Heading fontSize={{ base: '2.5xl', md: '3.5xl' }} lineHeight="1.2" color={C.textDark} fontWeight="800" letterSpacing="-0.02em">
+                  Started at WMSU.{' '}
+                  <Text as="span" color={C.accent2}>Built for Zamboanga.</Text>
+                </Heading>
+              </VStack>
+              <Text fontSize="md" color={C.textMuted} lineHeight="1.8" fontWeight="500">
+                We spotted the problem: people everywhere throw out good stuff while others struggle to afford things. So we built Clovia—a platform where you trade directly with neighbors you can trust. No middlemen, no shipping costs, no waste.
+              </Text>
+              <Text fontSize="md" color={C.textMuted} lineHeight="1.8" fontWeight="500">
+                Every trade keeps money in Zamboanga. Every swap builds real trust in our community.
               </Text>
               <Button
-                bg={C.accent}
+                bg={C.accent2}
                 color={C.white}
                 borderRadius="full"
                 px={8}
-                size="md"
-                fontWeight="bold"
-                rightIcon={<Icon as={FiArrowRight} />}
-                _hover={{ bg: C.accentLight, transform: 'translateY(-1px)' }}
-                transition="all 0.2s"
+                size="lg"
+                fontWeight="700"
+                rightIcon={<Icon as={FiArrowRight} boxSize={5} />}
+                _hover={{ bg: `rgb(217, 119, 6)`, transform: 'translateY(-3px)', boxShadow: '0 20px 40px rgba(217, 119, 6, 0.3)' }}
+                transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
                 onClick={handleGetStarted}
               >
-                Get Started Today
+                Get Started Now
               </Button>
             </VStack>
           </Flex>
         </Container>
       </Box>
 
-      {/* ══════════ BEST PRODUCTS SECTION ══════════ */}
-      <Box id="features" py={{ base: 12, md: 20 }} bg={C.dark}>
+      <Box id="features" py={{ base: 16, md: 24 }} bg={C.bg}>
         <Container maxW="1200px">
-          <VStack spacing={3} mb={10} textAlign="center">
-            <Heading fontSize={{ base: '2xl', md: '4xl' }}>
-              Popular{' '}<Text as="span" color={C.accentLight}>Items</Text>{' '}
-              Being Traded
+          <VStack spacing={4} mb={16} textAlign="center">
+            <Badge bg={`${C.accent2}15`} color={C.accent2} borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">LIVE IN ZAMBOANGA</Badge>
+            <Heading fontSize={{ base: '2xl', md: '4xl' }} fontWeight="800" color={C.textDark} letterSpacing="-0.02em">
+              What People{' '}<Text as="span" bgGradient={C.gradientWarm} bgClip="text">Are Trading Now</Text>
             </Heading>
-            <Text fontSize="sm" color={C.textMuted} maxW="600px">
-              See what our early community members are trading. From tech to essentials,
-              discover what's available now.
+            <Text fontSize="md" color={C.textMuted} maxW="600px" fontWeight="500">
+              Real items from real Zamboanga residents. Available today. Meet locally or arrange delivery.
             </Text>
           </VStack>
 
-          <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} spacing={6}>
+          <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} spacing={8}>
             <LandingProductCard
               image="/Wireless Earbuds for Students.jpg"
               name="Wireless Earbuds"
@@ -500,158 +735,109 @@ const LandingPage: React.FC = () => {
         </Container>
       </Box>
 
-      {/* ══════════ PARTNER LOGOS STRIP ══════════ */}
-      <Box bg={C.cream} py={8}>
-        <Container maxW="1200px">
-          <Flex
-            justify="space-between"
-            align="center"
-            flexWrap="wrap"
-            gap={6}
-            opacity={0.5}
-          >
-            {['ECODE', 'CloviaPH', 'TradeHub', 'SwapNet', 'EcoTrade', 'BarterCo'].map((name) => (
-              <Text
-                key={name}
-                fontSize={{ base: 'md', md: 'lg' }}
-                fontWeight="bold"
-                color={C.textDark}
-                letterSpacing="wider"
-              >
-                {name}
-              </Text>
-            ))}
-          </Flex>
-        </Container>
-      </Box>
-
-      {/* ══════════ SERVICES SECTION ══════════ */}
-      <Box id="how-it-works" py={{ base: 12, md: 20 }} bg={C.dark}>
-        <Container maxW="1200px">
-          <VStack spacing={3} mb={12} textAlign="center">
-            <Heading fontSize={{ base: '2xl', md: '4xl' }}>
-              Service We{' '}<Text as="span" color={C.accentLight}>Provide</Text>
-            </Heading>
-            <Text fontSize="sm" color={C.textMuted} maxW="600px">
-              Everything you need for a safe and seamless trading experience, all in one place.
-            </Text>
-          </VStack>
-
-          <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={6}>
-            <ServiceCard
-              icon={FiRefreshCw}
-              title="Easy Trading"
-              desc="List your items and find trades in your community with just a few taps."
-            />
-            <ServiceCard
-              icon={FiShield}
-              title="Secure Deals"
-              desc="Every trade is protected with our verification and review system."
-            />
-            <ServiceCard
-              icon={FaBoxOpen}
-              title="Item Discovery"
-              desc="Browse and discover items from people near you — from textbooks to tech."
-            />
-            <ServiceCard
-              icon={FaHandshake}
-              title="Community Trust"
-              desc="Build your reputation through ratings, reviews, and verified trades."
-            />
-          </SimpleGrid>
-        </Container>
-      </Box>
-
       {/* ══════════ STATS / ACHIEVEMENTS SECTION ══════════ */}
-      <Box id="contact-us" bg={C.mid} py={{ base: 12, md: 16 }}>
+      <Box id="contact-us" bg={C.bgSecondary} py={{ base: 16, md: 24 }}>
         <Container maxW="1200px">
           <Flex
             direction={{ base: 'column', md: 'row' }}
             align="center"
             justify="space-between"
-            gap={8}
+            gap={12}
           >
-            <VStack align={{ base: 'center', md: 'start' }} spacing={2} flex={1}>
-              <Heading fontSize={{ base: '2xl', md: '3xl' }} lineHeight="1.2">
-                Early Stage{' '}<Text as="span" color={C.accentLight}>Growth</Text>
-                <br />
+            <VStack align={{ base: 'center', md: 'start' }} spacing={3} flex={1}>
+              <Badge bg={`${C.accent2}15`} color={C.accent2} borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">GROWTH</Badge>
+              <Heading fontSize={{ base: '2.5xl', md: '3.5xl' }} lineHeight="1.2" color={C.textDark} fontWeight="800" letterSpacing="-0.02em">
+                Built by WMSU.{' '}<Text as="span" color={C.accent2}>Growing Fast.</Text>
               </Heading>
             </VStack>
 
-            <SimpleGrid columns={{ base: 2, md: 4 }} spacing={8} flex={2}>
-              <StatCard value="100+" label="Early Users" />
-              <StatCard value="50+" label="Active Trades" />
-              <StatCard value="15+" label="Categories" />
-              <StatCard value="5" label="Communities" />
+            <SimpleGrid columns={{ base: 2, md: 3 }} spacing={10} flex={2}>
+              <VStack spacing={2}>
+                <Text fontSize="3xl" fontWeight="800" color={C.accent}>100+</Text>
+                <Text fontSize="sm" color={C.textMuted} fontWeight="600">Community Members</Text>
+              </VStack>
+              <VStack spacing={2}>
+                <Text fontSize="3xl" fontWeight="800" color={C.accent2}>50+</Text>
+                <Text fontSize="sm" color={C.textMuted} fontWeight="600">Successful Trades</Text>
+              </VStack>
+              <VStack spacing={2}>
+                <Text fontSize="3xl" fontWeight="800" color={C.accent3}>1 City</Text>
+                <Text fontSize="sm" color={C.textMuted} fontWeight="600">Deep Focus</Text>
+              </VStack>
             </SimpleGrid>
           </Flex>
         </Container>
       </Box>
 
       {/* ══════════ CTA / FOOTER ══════════ */}
-      <Box bg={C.dark} py={{ base: 12, md: 16 }} borderTop="1px solid" borderColor="whiteAlpha.100">
+      <Box bg={C.bg} py={{ base: 16, md: 24 }} borderTop="2px solid" borderColor={C.bgSecondary}>
         <Container maxW="1200px">
-          <VStack spacing={6} textAlign="center">
-            <Heading fontSize={{ base: 'xl', md: '3xl' }}>
-              Be Part of Something{' '}<Text as="span" color={C.accentLight}>New</Text>
-            </Heading>
-            <Text fontSize="sm" color={C.textMuted} maxW="500px">
-              We're building a community-driven trading platform. Join us early and help shape
-              the future of local exchanges.
+          <VStack spacing={8} textAlign="center" mb={16}>
+            <VStack spacing={3}>
+              <Badge bg={`${C.accent2}20`} color={C.accent2} borderRadius="full" px={3} py={1} fontSize="xs" fontWeight="600">READY? LET'S GO</Badge>
+              <Heading fontSize={{ base: '2.5xl', md: '3.5xl' }} fontWeight="800" color={C.textDark} letterSpacing="-0.02em">
+                Start Trading in{' '}<Text as="span" bgGradient={C.gradientWarm} bgClip="text">Zamboanga Today</Text>
+              </Heading>
+            </VStack>
+            <Text fontSize="md" color={C.textMuted} maxW="500px" fontWeight="500">
+              We're still building, and we care what you think. Be part of the movement.
+              Smart trades. No fees. No shipping hassle. Just people, helping people.
             </Text>
-            <HStack spacing={4} flexWrap="wrap" justify={{ base: 'center', md: 'flex-start' }}>
+            <HStack spacing={4} flexWrap="wrap" justify="center" pt={4}>
               <Button
+                size="lg"
                 bg={C.accent}
                 color={C.white}
                 borderRadius="full"
-                px={{ base: 6, md: 8 }}
-                size={{ base: 'md', md: 'lg' }}
-                fontWeight="bold"
-                _hover={{ bg: C.accentLight, transform: 'translateY(-2px)' }}
-                transition="all 0.2s"
+                px={8}
+                fontWeight="700"
+                _hover={{ bg: C.accentDark, transform: 'translateY(-3px)', boxShadow: '0 20px 40px rgba(49, 151, 149, 0.3)' }}
+                transition="all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
                 onClick={handleGetStarted}
+                rightIcon={<Icon as={FiArrowRight} boxSize={5} />}
               >
-                Get Started
+                Sign Up Now
               </Button>
               <Button
+                size="lg"
                 variant="outline"
-                borderColor="whiteAlpha.300"
-                color={C.white}
+                borderColor={C.accent2}
+                color={C.accent2}
                 borderRadius="full"
-                px={{ base: 6, md: 8 }}
-                size={{ base: 'md', md: 'lg' }}
-                _hover={{ borderColor: C.accentLight, color: C.accentLight }}
-                transition="all 0.2s"
-                onClick={() => navigate('/company')}
+                borderWidth="2px"
+                px={8}
+                fontWeight="700"
+                _hover={{ borderColor: `rgb(217, 119, 6)`, bg: `${C.accent2}08`, transform: 'translateY(-3px)' }}
+                transition="all 0.3s"
+                onClick={() => window.open('https://play.google.com/store/apps/details?id=com.cloviagh.clovia', '_blank')}
+                rightIcon={<Icon as={FiArrowRight} boxSize={5} />}
               >
-                About Us
+                Download App
               </Button>
             </HStack>
           </VStack>
 
           {/* Footer bar */}
           <Flex
-            mt={16}
+            mt={20}
             pt={8}
-            borderTop="1px solid"
-            borderColor="whiteAlpha.100"
+            borderTop="2px solid"
+            borderColor={C.bgSecondary}
             direction={{ base: 'column', md: 'row' }}
             justify="space-between"
             align="center"
-            gap={4}
+            gap={6}
           >
             <HStack spacing={2}>
-              <Icon as={FaLeaf} color={C.accentLight} boxSize={5} />
-              <Text fontSize="lg" color={C.white}>
-                Clovia<Text as="span" color={C.accentLight}>PH</Text>
-              </Text>
+              <Image src="/logo.svg" alt="Clovia" h="28px" w="auto" />
+              <Text fontSize="xs" color={C.textMuted} fontWeight="600">Zamboanga's Student Trading Platform</Text>
             </HStack>
-            <Text fontSize="xs" color={C.textMuted}>
-              © 2026 CloviaPH. All rights reserved.
+            <Text fontSize="sm" color={C.textMuted} fontWeight="500">
+              © 2026 Clovia. All rights reserved.
             </Text>
-            <HStack spacing={6}>
+            <HStack spacing={8}>
               {['Privacy', 'Terms', 'Contact'].map((item) => (
-                <Link key={item} fontSize="xs" color={C.textMuted} _hover={{ color: C.accentLight }}>
+                <Link key={item} fontSize="sm" color={C.textMuted} fontWeight="500" _hover={{ color: C.accent2 }} transition="color 0.2s">
                   {item}
                 </Link>
               ))}

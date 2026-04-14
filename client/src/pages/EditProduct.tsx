@@ -534,14 +534,28 @@ const EditProduct: React.FC = () => {
                     </FormControl>
 
                     <FormControl>
-                      <FormLabel fontSize="sm" color="gray.600">Specific Items (Optional)</FormLabel>
+                      <FormLabel fontSize="sm" color="gray.600" fontWeight="600" mb={2}>Preferred Items</FormLabel>
                       <Input
                         value={formData.wants || ''}
                         onChange={(e) => handleInputChange('wants', e.target.value)}
-                        placeholder="e.g., iPhone 13, mechanical keyboard, etc."
+                        placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                         size={{ base: 'md', md: 'lg' }}
                       />
-                      <FormHelperText fontSize="xs" color="gray.500">Specific items you have in mind</FormHelperText>
+                      {formData.wants === '' && (
+                        <HStack spacing={2} mt={2}>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            colorScheme="gray"
+                            fontSize="11px"
+                            fontWeight="500"
+                            onClick={() => handleInputChange('wants', 'Any')}
+                            _hover={{ color: 'brand.600' }}
+                          >
+                            Any
+                          </Button>
+                        </HStack>
+                      )}
                     </FormControl>
                   </VStack>
                 </Box>

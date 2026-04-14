@@ -22,6 +22,8 @@ import {
   RadioGroup,
   Radio,
   SimpleGrid,
+  Wrap,
+  WrapItem,
 } from '@chakra-ui/react'
 import { ArrowBackIcon, ArrowForwardIcon } from '@chakra-ui/icons'
 import { FILTER_CATEGORIES } from '../utils/categories'
@@ -350,15 +352,31 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
               </FormControl>
 
               <FormControl>
-                <FormLabel fontSize="sm" color="gray.600">Specific Items (Optional)</FormLabel>
+                <FormLabel fontSize="sm" color="gray.600" mb={2} fontWeight="600">Preferred Items (Optional)</FormLabel>
                 <Input
-                  placeholder="e.g., iPhone 13, mechanical keyboard, etc."
+                  placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                   value={details.wants}
                   onChange={(e) => handleChange('wants', e.target.value)}
                   size="sm"
                   bg="white"
                 />
-                <FormHelperText fontSize="2xs">Specific items you have in mind</FormHelperText>
+                {details.wants === '' && (
+                  <HStack spacing={1.5} mt={1.5}>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="gray"
+                      fontSize="10px"
+                      fontWeight="500"
+                      h="20px"
+                      px={2}
+                      onClick={() => handleChange('wants', 'Any')}
+                      _hover={{ color: 'brand.600' }}
+                    >
+                      Any
+                    </Button>
+                  </HStack>
+                )}
               </FormControl>
             </VStack>
           </Box>
