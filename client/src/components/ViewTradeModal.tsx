@@ -1331,7 +1331,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
     { name: 'KCC de Zamboanga', address: 'Gov. Camins Ave, Zamboanga City', type: 'mall', lat: 6.9214, lng: 122.0790 },
     { name: 'Amethyst Eatery', address: 'Johnston Road, Zamboanga City', type: 'cafe', lat: 6.9125, lng: 122.0720, isPartner: true },
     { name: 'Paseo del Mar', address: 'Valderosa St, Zamboanga City', type: 'public', lat: 6.9030, lng: 122.0780 },
-    { name: 'Local coffee shops', address: 'Various locations in Zamboanga', type: 'cafe', isPartner: true },
   ]
   const suggestedLocations: MeetupLocation[] = useMemo(
     () => [...searchedLocations, ...defaultLocations],
@@ -3194,6 +3193,20 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </SimpleGrid>
                       </Box>
 
+                      {/* Suggest Different Times Button - Below Location Cards */}
+                      {(buyerMeetupConfirmed || sellerMeetupConfirmed) && !meetupAgreed && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          colorScheme="blue"
+                          leftIcon={<Icon as={FaLightbulb} />}
+                          onClick={() => setShowSuggestionsPanel(!showSuggestionsPanel)}
+                          w="full"
+                        >
+                          💡 Suggest Different Times
+                        </Button>
+                      )}
+
                       {/* Meetup Time Selection */}
                       <Box>
                         <HStack justify="space-between" mb={2}>
@@ -3304,33 +3317,6 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </Text>
                             )}
                           </Box>
-
-                          {/* Submit Button - Always Visible, Disabled When Not Ready */}
-                          <Button
-                            colorScheme="brand"
-                            size="md"
-                            onClick={confirmMeetup}
-                            isLoading={confirmingMeetup}
-                            leftIcon={<FaCheckCircle />}
-                            w="full"
-                            fontWeight="semibold"
-                            isDisabled={!(selectedDate && selectedLocation && selectedTime) || (isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed)}
-                            bg={(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? 'green.500' : 'brand.500'}
-                            _disabled={{ bg: 'gray.300', cursor: 'not-allowed' }}
-                          >
-                            {(isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? '✓ Confirmed' : 'Confirm This Meetup'}
-                          </Button>
-                          
-                          {/* Hint Text */}
-                          {!(selectedDate && selectedLocation && selectedTime) ? (
-                            <Text fontSize="xs" color="gray.500" textAlign="center">
-                              Select a location, date, and time to proceed
-                            </Text>
-                          ) : (isUserBuyer && buyerMeetupConfirmed) || (isUserSeller && sellerMeetupConfirmed) ? (
-                            <Text fontSize="xs" color="green.600" textAlign="center" fontWeight="medium">
-                              ✓ Your selection has been confirmed. Waiting for the other party...
-                            </Text>
-                          ) : null}
                         </VStack>
                       </Box>
 
@@ -3559,14 +3545,34 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           {/* Simple Status Display */}
                           {!buyerMeetupConfirmed && !sellerMeetupConfirmed ? (
                             // Neither has submitted
-                            <Box textAlign="center" py={1}>
-                              <Text fontSize={["xs", "sm"]} color="gray.600">
-                                Select a location and time above, then click submit.
-                              </Text>
-                              <Text fontSize="xs" color="gray.500" mt={0.5}>
-                                  {formatTimePH(buyerMeetupTime)}
-                              </Text>
-                            </Box>
+                            <VStack spacing={[2, 2.5]} align="stretch">
+                              <Box textAlign="center" py={1}>
+                                <Text fontSize={["xs", "sm"]} color="gray.600">
+                                  Select a location and time above, then click Confirm.
+                                </Text>
+                              </Box>
+                              
+                              {/* Confirm Button - Now in Meetup Agreement Section */}
+                              <Button
+                                colorScheme="brand"
+                                size="md"
+                                onClick={confirmMeetup}
+                                isLoading={confirmingMeetup}
+                                leftIcon={<FaCheckCircle />}
+                                w="full"
+                                fontWeight="semibold"
+                                isDisabled={!(selectedDate && selectedLocation && selectedTime)}
+                              >
+                                Confirm This Meetup
+                              </Button>
+                              
+                              {/* Hint Text */}
+                              {!(selectedDate && selectedLocation && selectedTime) ? (
+                                <Text fontSize="xs" color="gray.500" textAlign="center">
+                                  Select a location, date, and time to proceed
+                                </Text>
+                              ) : null}
+                            </VStack>
                           ) : buyerMeetupConfirmed && sellerMeetupConfirmed ? (
                             // Both submitted - check if they match
                             buyerMeetupLocation === sellerMeetupLocation && buyerMeetupTime === sellerMeetupTime ? (
