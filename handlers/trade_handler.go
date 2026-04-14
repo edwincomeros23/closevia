@@ -50,6 +50,54 @@ func NewTradeHandler() *TradeHandler {
 	return &TradeHandler{db: database.DB}
 }
 
+// applyCancellationPenalty updates strikes and auto-suspends a user after
+// repeated cancellations. A cancellation made while the trade was already
+// ongoing (accepted/active/awaiting_confirmation) counts as a "strike";
+// three strikes auto-suspends the account until an admin reviews it.
+// Trust-score impact is computed live by GetUserStats from the trades table,
+// so no separate score column is needed.
+func (h *TradeHandler) applyCancellationPenalty(userID int, wasActive bool) {
+	if !wasActive {
+		return
+	}
+
+	// Increment strike counter
+	if _, err := h.db.Exec("UPDATE users SET strikes = COALESCE(strikes, 0) + 1 WHERE id = ?", userID); err != nil {
+		log.Printf("applyCancellationPenalty: failed to increment strikes for user %d: %v", userID, err)
+		return
+	}
+
+	// Count recent active-cancels in the trailing 30 days to decide on suspension.
+	// Lifetime strikes alone are noisy for long-tenured users.
+	var recentActiveCancels int
+	_ = h.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM trades
+		WHERE cancelled_by = ?
+		  AND cancelled_while_active = TRUE
+		  AND cancelled_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
+	`, userID).Scan(&recentActiveCancels)
+
+	if recentActiveCancels >= 3 {
+		if _, err := h.db.Exec("UPDATE users SET is_suspended = TRUE WHERE id = ?", userID); err != nil {
+			log.Printf("applyCancellationPenalty: failed to suspend user %d: %v", userID, err)
+			return
+		}
+		_, _ = h.db.Exec(
+			"INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'account', ?, FALSE)",
+			userID,
+			"Your account has been auto-suspended after 3 ongoing-trade cancellations in 30 days. An admin will review your account.",
+		)
+		log.Printf("applyCancellationPenalty: auto-suspended user %d (%d active-cancels in 30d)", userID, recentActiveCancels)
+	} else {
+		_, _ = h.db.Exec(
+			"INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'account', ?, FALSE)",
+			userID,
+			fmt.Sprintf("Heads up: your trust score has been reduced for cancelling an ongoing trade (%d/3 strikes in the last 30 days).", recentActiveCancels),
+		)
+	}
+}
+
 // CreateTrade creates a new trade proposal
 func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -1599,6 +1647,16 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			}
 		}
 	case "cancel":
+		// A trade cancelled after it was already "ongoing" (accepted/active/etc.)
+		// carries a larger trust-score penalty than one cancelled while still pending.
+		wasActive := currentStatus == "accepted" || currentStatus == "active" ||
+			currentStatus == "awaiting_confirmation" || currentStatus == "awaiting_other_party"
+
+		reason := payload.CancellationReason
+		if reason == "" {
+			reason = payload.Message
+		}
+
 		tx, err := h.db.Begin()
 		if err != nil {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
@@ -1610,8 +1668,17 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to unlock products"})
 		}
 
-		// Update trade status
-		_, err = tx.Exec("UPDATE trades SET status='cancelled', updated_at=CURRENT_TIMESTAMP WHERE id = ?", tradeID)
+		// Update trade status with cancellation metadata
+		_, err = tx.Exec(`
+			UPDATE trades
+			SET status='cancelled',
+			    cancellation_reason = ?,
+			    cancelled_by = ?,
+			    cancelled_at = CURRENT_TIMESTAMP,
+			    cancelled_while_active = ?,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?`,
+			reason, userID, wasActive, tradeID)
 		if err != nil {
 			_ = tx.Rollback()
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel trade"})
@@ -1625,9 +1692,16 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit trade cancellation"})
 		}
 
+		// Apply automated penalty: score minus + suspend after repeated cancels
+		go h.applyCancellationPenalty(userID, wasActive)
+
 		publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "cancelled"}})
 		publishToUser(sellerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "cancelled"}})
-		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'cancelled', ?)", tradeID, userID, currentStatus, payload.Message)
+		eventNote := reason
+		if wasActive {
+			eventNote = "[cancelled-during-active] " + reason
+		}
+		_, _ = h.db.Exec("INSERT INTO trade_events (trade_id, actor_id, from_status, to_status, note) VALUES (?, ?, ?, 'cancelled', ?)", tradeID, userID, currentStatus, eventNote)
 	case "confirm_meetup":
 		log.Printf("=== TRADE MEETUP CONFIRMATION REQUEST ===")
 		log.Printf("User %d attempting to confirm meetup for trade %d", userID, tradeID)

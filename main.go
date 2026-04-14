@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -549,6 +550,30 @@ func main() {
 
 	// Phase 4: Per-leg disputes & upstream collapse
 	trades.Post("/multiway/legs/:legId/dispute", middleware.AuthMiddleware(), tradeHandler.FileLegDispute)
+
+	// Place search (Google Places / Nominatim) for meetup location autocomplete
+	app.Get("/api/places/search", middleware.OptionalAuthMiddleware(), func(c *fiber.Ctx) error {
+		q := strings.TrimSpace(c.Query("q"))
+		if len(q) < 2 {
+			return c.JSON(fiber.Map{"results": []services.PlaceSuggestion{}})
+		}
+		var biasLat, biasLng *float64
+		if s := c.Query("lat"); s != "" {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				biasLat = &v
+			}
+		}
+		if s := c.Query("lng"); s != "" {
+			if v, err := strconv.ParseFloat(s, 64); err == nil {
+				biasLng = &v
+			}
+		}
+		results, err := services.SearchPlaces(q, biasLat, biasLng)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.JSON(fiber.Map{"results": results})
+	})
 
 	// Counts endpoint must come before any :id routes to avoid shadowing
 	trades.Get("/count", middleware.OptionalAuthMiddleware(), tradeHandler.CountTrades)

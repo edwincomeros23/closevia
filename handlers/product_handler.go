@@ -848,27 +848,24 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			product.SellerProfilePicture = sellerProfile.String
 		}
 
-		// Use product coords or fallback to seller coords
+		// Use product coords only. Seller coords are NOT used as a fallback
+		// for distance — that previously caused every product to show the
+		// seller's home distance even when the item was listed elsewhere.
+		// If product coords are missing we'll geocode from `location` text
+		// in the background loop below.
 		var finalLat, finalLon *float64
 		if latNull.Valid {
 			l := latNull.Float64
 			product.Latitude = &l
 			finalLat = &l
-		} else if sLatNull.Valid {
-			l := sLatNull.Float64
-			product.Latitude = &l // fallback to seller coords
-			finalLat = &l
 		}
-
 		if lonNull.Valid {
 			l := lonNull.Float64
 			product.Longitude = &l
 			finalLon = &l
-		} else if sLonNull.Valid {
-			l := sLonNull.Float64
-			product.Longitude = &l // fallback to seller coords
-			finalLon = &l
 		}
+		_ = sLatNull
+		_ = sLonNull
 
 		// Parse image URLs from JSON
 		if imageURLsJSONStr != "" {
@@ -1715,6 +1712,33 @@ func (h *ProductHandler) UpdateProduct(c *fiber.Ctx) error {
 	if location != "" {
 		updateFields = append(updateFields, "location = ?")
 		args = append(args, location)
+
+		// Re-geocode when location changes so product distance reflects the
+		// new location instead of the seller's previous coords. If the client
+		// passed explicit lat/lng (from a picker), those take precedence below.
+		if coords, err := services.GetCoordinates(location); err == nil {
+			updateFields = append(updateFields, "latitude = ?", "longitude = ?")
+			args = append(args, coords.Latitude, coords.Longitude)
+		} else {
+			// Clear stale coords so GetProducts will re-geocode in the background
+			updateFields = append(updateFields, "latitude = ?", "longitude = ?")
+			args = append(args, nil, nil)
+		}
+	}
+
+	// Explicit lat/lng override (e.g., from a map picker) — applied after the
+	// location-based geocode so the picker always wins.
+	if latStr := c.FormValue("latitude"); latStr != "" {
+		if lat, err := strconv.ParseFloat(latStr, 64); err == nil {
+			updateFields = append(updateFields, "latitude = ?")
+			args = append(args, lat)
+		}
+	}
+	if lngStr := c.FormValue("longitude"); lngStr != "" {
+		if lng, err := strconv.ParseFloat(lngStr, 64); err == nil {
+			updateFields = append(updateFields, "longitude = ?")
+			args = append(args, lng)
+		}
 	}
 
 	condition := c.FormValue("condition")
