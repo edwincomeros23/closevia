@@ -611,6 +611,8 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 
 // GetProducts gets all products with search and filtering
 func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
+	fmt.Println("🔍 [DEBUG] GetProducts called")
+
 	// Parse query parameters
 	keyword := c.Query("keyword", "")
 	condition := c.Query("condition", "")
@@ -623,6 +625,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	allowBuyingStr := c.Query("allow_buying", "")
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+
+	fmt.Printf("🔍 [DEBUG] Query params - keyword: %s, sortBy: %s, page: %d, limit: %d\n", keyword, sortBy, page, limit)
+
 	// Support optional offset-based pagination (limit & offset)
 	if limit <= 0 {
 		limit = 20
@@ -771,9 +776,10 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query += ` LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
+	fmt.Println("🔍 [DEBUG] About to execute main products query")
 	rows, err := h.db.Query(query, args...)
 	if err != nil {
-		fmt.Println("❌ Products query failed!")
+		fmt.Println("❌ [DEBUG] Products query FAILED!")
 		fmt.Println("Query:", query)
 		fmt.Println("Args:", args)
 		fmt.Println("Error:", err.Error())
@@ -782,6 +788,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			Error:   "Failed to get products: " + err.Error(),
 		})
 	}
+	fmt.Println("✅ [DEBUG] Main products query succeeded, iterating rows")
 	defer rows.Close()
 
 	// Parse optional viewer coordinates for distance calculation (must be before row loop)
@@ -975,6 +982,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	if products == nil {
 		products = []models.Product{}
 	}
+
+	fmt.Printf("✅ [DEBUG] GetProducts completed successfully. Returning %d products\n", len(products))
+
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data: models.PaginatedResponse{
@@ -2170,13 +2180,18 @@ func (h *ProductHandler) DeleteProductAdmin(c *fiber.Ctx) error {
 
 // GetUserProducts gets all products for a specific user
 func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
+	fmt.Println("🔍 [DEBUG] GetUserProducts called")
+
 	userID, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
+		fmt.Printf("❌ [DEBUG] Failed to parse user ID: %v\n", err)
 		return c.Status(400).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Invalid user ID",
 		})
 	}
+
+	fmt.Printf("🔍 [DEBUG] Fetching products for user ID: %d\n", userID)
 
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
@@ -2229,11 +2244,13 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	`, queryArgs...)
 
 	if err != nil {
+		fmt.Printf("❌ [DEBUG] GetUserProducts query failed: %v\n", err)
 		return c.Status(500).JSON(models.APIResponse{
 			Success: false,
 			Error:   "Failed to get products",
 		})
 	}
+	fmt.Println("✅ [DEBUG] GetUserProducts query succeeded, iterating rows")
 	defer rows.Close()
 
 	var products []models.Product
@@ -2280,6 +2297,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 
 	totalPages := (total + limit - 1) / limit
 
+	fmt.Printf("✅ [DEBUG] GetUserProducts completed successfully. Returning %d products for user %s\n", len(products), userID)
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data: models.PaginatedResponse{
