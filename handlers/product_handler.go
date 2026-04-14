@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -724,7 +725,12 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	// NOTE: join users table here because WHERE can reference u.* fields
 	countQuery := "SELECT COUNT(*) FROM products p LEFT JOIN users u ON p.seller_id = u.id " + whereClause
 	var total int
-	err := h.db.QueryRow(countQuery, args...).Scan(&total)
+
+	// Add timeout context for count query to prevent hanging
+	ctx, cancel := context.WithTimeout(c.Context(), 10*time.Second)
+	err := h.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	cancel()
+
 	if err != nil {
 		// Enhanced debugging: print query and args
 		fmt.Println("❌ Count query failed!")
@@ -770,7 +776,10 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query += ` LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
-	rows, err := h.db.Query(query, args...)
+	ctx, cancel := context.WithTimeout(c.Context(), 20*time.Second)
+	rows, err := h.db.QueryContext(ctx, query, args...)
+	cancel()
+
 	if err != nil {
 		fmt.Println("❌ Products query failed!")
 		fmt.Println("Query:", query)
@@ -894,7 +903,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	productIDs := make([]int, len(products))
 	for i, p := range products {
 		productIDs[i] = p.ID
-		
+
 		// Background geocode products that have location text but no coordinates
 		if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
 			go func(productID int, loc string) {
@@ -915,20 +924,23 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	if len(productIDs) > 0 {
 		// Build placeholder string for IN clause: ?,?,?,...
 		placeholders := make([]string, len(productIDs))
-		args := make([]interface{}, len(productIDs))
+		orgArgs := make([]interface{}, len(productIDs))
 		for i, id := range productIDs {
 			placeholders[i] = "?"
-			args[i] = id
+			orgArgs[i] = id
 		}
 		inClause := strings.Join(placeholders, ",")
 
-		orgRows, err := h.db.Query(fmt.Sprintf(`
+		orgCtx, orgCancel := context.WithTimeout(c.Context(), 5*time.Second)
+		orgRows, err := h.db.QueryContext(orgCtx, fmt.Sprintf(`
 			SELECT pot.product_id, o.id, o.name, o.slug, COALESCE(o.logo_url, ''), COALESCE(o.description, '')
 			FROM product_organization_tags pot
 			JOIN organizations o ON pot.organization_id = o.id
 			WHERE pot.product_id IN (%s) AND o.is_deleted = FALSE
 			ORDER BY pot.product_id, o.name ASC
-		`, inClause), args...)
+		`, inClause), orgArgs...)
+		orgCancel()
+
 		if err == nil {
 			defer orgRows.Close()
 			// Map organization tags by product ID
