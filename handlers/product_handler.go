@@ -895,7 +895,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	productIDs := make([]int, len(products))
 	for i, p := range products {
 		productIDs[i] = p.ID
-		
+
 		// Background geocoding temporarily disabled due to connection pool issues
 		// if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
 		// 	go func(productID int, loc string) {
@@ -910,7 +910,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		// 		fmt.Printf("📍 Geocoded product %d (%s) -> %.6f, %.6f\n", productID, loc, coords.Latitude, coords.Longitude)
 		// 	}(p.ID, p.Location)
 		// }
-// Batch fetch organization tags for all products - TEMPORARILY DISABLED
+	}
+
+	// Batch fetch organization tags for all products - TEMPORARILY DISABLED
 	if false && len(productIDs) > 0 {
 		// Build placeholder string for IN clause: ?,?,?,...
 		placeholders := make([]string, len(productIDs))
