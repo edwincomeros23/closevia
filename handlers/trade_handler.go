@@ -1674,7 +1674,7 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		// Update trade status with cancellation metadata
 		// Try with all columns first, fall back to status-only if columns don't exist
-		updateResult := tx.Exec(`
+		_, err = tx.Exec(`
 			UPDATE trades
 			SET status='cancelled',
 			    cancellation_reason = ?,
@@ -1685,22 +1685,22 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			WHERE id = ?`,
 			reason, userID, wasActive, tradeID)
 
-		if updateResult.Error != nil {
-			log.Printf("[Cancel Trade] Full update failed (checking if columns exist): %v", updateResult.Error)
-			
+		if err != nil {
+			log.Printf("[Cancel Trade] Full update failed (checking if columns exist): %v", err)
+
 			// Fallback: Try simple status update if columns don't exist yet
-			if strings.Contains(updateResult.Error.Error(), "Unknown column") {
+			if strings.Contains(err.Error(), "Unknown column") {
 				log.Printf("[Cancel Trade] Cancellation columns missing, using fallback update")
-				updateResult = tx.Exec(`
+				_, err = tx.Exec(`
 					UPDATE trades
 					SET status='cancelled', updated_at = CURRENT_TIMESTAMP
 					WHERE id = ?`, tradeID)
 			}
 
-			if updateResult.Error != nil {
+			if err != nil {
 				_ = tx.Rollback()
-				log.Printf("[Cancel Trade] Fallback update also failed: %v", updateResult.Error)
-				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel trade: " + updateResult.Error.Error()})
+				log.Printf("[Cancel Trade] Fallback update also failed: %v", err)
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel trade: " + err.Error()})
 			}
 		}
 
@@ -3941,7 +3941,7 @@ func (h *TradeHandler) findProductBasedMultiwayLoops(userID int) []map[string]in
 
 	// Pre-index other products by category and by individual desire tokens
 	// so inner loops can skip irrelevant products instead of scanning all 200.
-	byCat := map[string][]int{}   // category → indices into otherProducts
+	byCat := map[string][]int{}    // category → indices into otherProducts
 	byDesire := map[string][]int{} // desire token → indices (products wanting that token)
 	for i, p := range otherProducts {
 		cat := strings.ToLower(strings.TrimSpace(p.Category))
