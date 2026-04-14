@@ -777,9 +777,9 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	args = append(args, limit, offset)
 
 	var rows *sql.Rows
-	ctx, cancel := context.WithTimeout(c.Context(), 20*time.Second)
-	rows, err = h.db.QueryContext(ctx, query, args...)
-	cancel()
+	queryCtx, queryCancel := context.WithTimeout(c.Context(), 20*time.Second)
+	rows, err = h.db.QueryContext(queryCtx, query, args...)
+	queryCancel()
 
 	if err != nil {
 		fmt.Println("❌ Products query failed!")
@@ -932,16 +932,16 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 		inClause := strings.Join(placeholders, ",")
 
-		orgCtx, orgCancel := context.WithTimeout(c.Context(), 5*time.Second)
+		tagsCtx, tagsCancel := context.WithTimeout(c.Context(), 5*time.Second)
 		var orgRows *sql.Rows
-		orgRows, err = h.db.QueryContext(orgCtx, fmt.Sprintf(`
+		orgRows, err = h.db.QueryContext(tagsCtx, fmt.Sprintf(`
 			SELECT pot.product_id, o.id, o.name, o.slug, COALESCE(o.logo_url, ''), COALESCE(o.description, '')
 			FROM product_organization_tags pot
 			JOIN organizations o ON pot.organization_id = o.id
 			WHERE pot.product_id IN (%s) AND o.is_deleted = FALSE
 			ORDER BY pot.product_id, o.name ASC
 		`, inClause), orgArgs...)
-		orgCancel()
+		tagsCancel()
 
 		if err == nil {
 			defer orgRows.Close()
