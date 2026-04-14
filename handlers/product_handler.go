@@ -777,7 +777,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	args = append(args, limit, offset)
 
 	ctx, cancel := context.WithTimeout(c.Context(), 20*time.Second)
-	rows, err := h.db.QueryContext(ctx, query, args...)
+	rows, err = h.db.QueryContext(ctx, query, args...)
 	cancel()
 
 	if err != nil {
@@ -932,7 +932,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		inClause := strings.Join(placeholders, ",")
 
 		orgCtx, orgCancel := context.WithTimeout(c.Context(), 5*time.Second)
-		orgRows, err := h.db.QueryContext(orgCtx, fmt.Sprintf(`
+		var orgRows *sql.Rows
+		orgRows, err = h.db.QueryContext(orgCtx, fmt.Sprintf(`
 			SELECT pot.product_id, o.id, o.name, o.slug, COALESCE(o.logo_url, ''), COALESCE(o.description, '')
 			FROM product_organization_tags pot
 			JOIN organizations o ON pot.organization_id = o.id
