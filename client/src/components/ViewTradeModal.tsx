@@ -2327,18 +2327,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       ? 'Waiting for Meetup'
                       : 'Pending'}
               </Badge>
-              {['pending', 'accepted', 'active', 'awaiting_confirmation'].includes(trade.status) && (
-                <Button
-                  size="xs"
-                  colorScheme="red"
-                  variant="outline"
-                  ml={2}
-                  leftIcon={<Icon as={FaExclamationTriangle} />}
-                  onClick={() => setShowCancelDialog(true)}
-                >
-                  Cancel Trade
-                </Button>
-              )}
+
             </HStack>
           </ModalHeader>
           <ModalCloseButton />
