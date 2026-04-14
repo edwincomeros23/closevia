@@ -3750,8 +3750,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               {/* Action buttons */}
                               {(buyerMeetupConfirmed && !sellerMeetupConfirmed && isUserSeller) ||
                               (sellerMeetupConfirmed && !buyerMeetupConfirmed && isUserBuyer) ? (
-                                <VStack spacing={2} w="full">
-                                  <HStack spacing={2} w="full">
+                                <VStack spacing={2} w="full" align="stretch">
+                                  <HStack spacing={2} w="full" align="stretch">
                                     <Button
                                       colorScheme="green"
                                       size={["sm", "md"]}
@@ -3770,11 +3770,12 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                                         setShowSuggestionsPanel(true)
                                       }}
                                       leftIcon={<FaLightbulb />}
+                                      flex={0.8}
                                     >
                                       Suggest Different
                                     </Button>
                                   </HStack>
-                                  {/* Leave Review Button - Available but disabled until meet */}
+                                  {/* Leave Review Button - Available but disabled until agree */}
                                   <Button
                                     colorScheme={meetupAgreed ? "green" : "gray"}
                                     variant={meetupAgreed ? "solid" : "outline"}
