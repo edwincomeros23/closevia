@@ -540,18 +540,7 @@ const EditProduct: React.FC = () => {
                         onChange={(e) => handleInputChange('wants', e.target.value)}
                         placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                         size={{ base: 'md', md: 'lg' }}
-                        borderColor={
-                          formData.wants && formData.desired_product && 
-                          (formData.wants as string).toLowerCase().trim() === (formData.desired_product as string).toLowerCase().trim() 
-                            ? 'orange.300' 
-                            : 'gray.200'
-                        }
-                        borderWidth="1px"
                       />
-                      {formData.wants && formData.desired_product && 
-                       (formData.wants as string).toLowerCase().trim() === (formData.desired_product as string).toLowerCase().trim() && (
-                        <Text fontSize="8px" color="orange.600" mt={1}>⚠ Same as Ideal Product</Text>
-                      )}
                       {formData.wants === '' && (
                         <HStack spacing={2} mt={2}>
                           <Button
