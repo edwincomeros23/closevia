@@ -401,6 +401,7 @@ func main() {
 	users := api.Group("/users")
 	users.Get("/profile", middleware.AuthMiddleware(), userHandler.GetProfile)
 	users.Put("/profile", middleware.AuthMiddleware(), userHandler.UpdateProfile)
+	users.Put("/location", middleware.AuthMiddleware(), userHandler.UpdateLocation)
 	users.Post("/profile-picture", middleware.AuthMiddleware(), userHandler.UploadProfilePicture)
 	// School ID verification (optional)
 	users.Post("/verification/start", middleware.AuthMiddleware(), verificationHandler.StartVerification)

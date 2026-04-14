@@ -1326,10 +1326,10 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
 
   const defaultLocations: MeetupLocation[] = [
     { name: 'Meet n Eat', address: 'Gov. Camins Ave, Zamboanga City', type: 'cafe', lat: 6.9150, lng: 122.0630, isPartner: true },
-    { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public', lat: 6.9214, lng: 122.0790 },
+    { name: 'WMSU', address: 'Normal Road, Zamboanga City', type: 'public', lat: 6.9142, lng: 122.0620 },
     { name: 'SM Mindpro', address: 'La Purisima St, Zamboanga City', type: 'mall', lat: 6.9080, lng: 122.0745 },
-    { name: 'KCC de Zamboanga', address: 'Gov. Camins Ave, Zamboanga City', type: 'mall', lat: 6.9142, lng: 122.0620 },
-    { name: 'Amethyst Eatery', address: 'Zamboanga City', type: 'cafe', lat: 6.9125, lng: 122.0720, isPartner: true },
+    { name: 'KCC de Zamboanga', address: 'Gov. Camins Ave, Zamboanga City', type: 'mall', lat: 6.9214, lng: 122.0790 },
+    { name: 'Amethyst Eatery', address: 'Johnston Road, Zamboanga City', type: 'cafe', lat: 6.9125, lng: 122.0720, isPartner: true },
     { name: 'Paseo del Mar', address: 'Valderosa St, Zamboanga City', type: 'public', lat: 6.9030, lng: 122.0780 },
     { name: 'Local coffee shops', address: 'Various locations in Zamboanga', type: 'cafe', isPartner: true },
   ]
@@ -2956,7 +2956,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </Text>
 
                         {/* Place search (Google Maps) */}
-                        <Box mb={4} position="relative">
+                        <Box mb={4} position="relative" zIndex={1500}>
                           <InputGroup size="sm">
                             <InputLeftElement pointerEvents="none">
                               <Icon as={FaMapMarkerAlt} color="gray.400" />
@@ -2979,7 +2979,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               top="100%"
                               left={0}
                               right={0}
-                              zIndex={20}
+                              zIndex={1500}
                               bg="white"
                               borderWidth="1px"
                               borderColor={borderColor}

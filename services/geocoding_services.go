@@ -156,20 +156,64 @@ type googlePlacesTextSearchResponse struct {
 	ErrorMessage string `json:"error_message,omitempty"`
 }
 
-// SearchPlaces performs a text search for places biased to the Philippines.
+// Zamboanga City service area: viewbox + center for strict bias.
+// The app primarily serves WMSU students and nearby residents, so we
+// filter out any place results that land outside this region.
+const (
+	zamboCenterLat   = 6.9214
+	zamboCenterLng   = 122.0790
+	zamboMaxRadiusKm = 50.0
+	// Viewbox covers Zamboanga Peninsula (minLon, minLat, maxLon, maxLat).
+	zamboMinLat = 6.75
+	zamboMaxLat = 7.10
+	zamboMinLng = 121.85
+	zamboMaxLng = 122.25
+)
+
+// SearchPlaces performs a text search for places biased to Zamboanga City.
 // Uses Google Places Text Search when GOOGLE_MAPS_API_KEY is set,
-// otherwise falls back to Nominatim search.
+// otherwise falls back to Nominatim search. Results further than
+// zamboMaxRadiusKm from Zamboanga center are dropped.
 func SearchPlaces(query string, biasLat, biasLng *float64) ([]PlaceSuggestion, error) {
 	query = trimmed(query)
 	if query == "" {
 		return nil, errors.New("query cannot be empty")
 	}
 
+	// Force bias to Zamboanga center when no user coords are provided,
+	// so free-text searches like "jollibee" don't return Manila results.
+	if biasLat == nil || biasLng == nil {
+		lat, lng := zamboCenterLat, zamboCenterLng
+		biasLat = &lat
+		biasLng = &lng
+	}
+
+	var (
+		results []PlaceSuggestion
+		err     error
+	)
 	apiKey := os.Getenv("GOOGLE_MAPS_API_KEY")
 	if apiKey != "" && apiKey != "your-google-maps-api-key-here" {
-		return searchPlacesGoogle(query, apiKey, biasLat, biasLng)
+		results, err = searchPlacesGoogle(query, apiKey, biasLat, biasLng)
+	} else {
+		results, err = searchPlacesNominatim(query)
 	}
-	return searchPlacesNominatim(query)
+	if err != nil {
+		return nil, err
+	}
+	return filterToZamboanga(results), nil
+}
+
+// filterToZamboanga drops results outside the Zamboanga service radius.
+func filterToZamboanga(in []PlaceSuggestion) []PlaceSuggestion {
+	out := make([]PlaceSuggestion, 0, len(in))
+	for _, p := range in {
+		d := CalculateDistance(zamboCenterLat, zamboCenterLng, p.Latitude, p.Longitude)
+		if d.DistanceKm <= zamboMaxRadiusKm {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func searchPlacesGoogle(query, apiKey string, biasLat, biasLng *float64) ([]PlaceSuggestion, error) {
@@ -222,8 +266,9 @@ type nominatimSearchResult struct {
 
 func searchPlacesNominatim(query string) ([]PlaceSuggestion, error) {
 	reqURL := fmt.Sprintf(
-		"https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=8&countrycodes=ph&addressdetails=0",
+		"https://nominatim.openstreetmap.org/search?q=%s&format=json&limit=8&countrycodes=ph&addressdetails=0&bounded=1&viewbox=%f,%f,%f,%f",
 		url.QueryEscape(query),
+		zamboMinLng, zamboMaxLat, zamboMaxLng, zamboMinLat,
 	)
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
