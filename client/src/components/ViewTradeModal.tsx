@@ -3353,6 +3353,24 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               </Text>
                             )}
                           </Box>
+
+                          {/* Confirm Button - Inline below time selection */}
+                          {selectedLocation && selectedDate && selectedTime && !buyerMeetupConfirmed && !sellerMeetupConfirmed ? (
+                            <Button
+                              colorScheme="green"
+                              size="lg"
+                              onClick={confirmMeetup}
+                              isLoading={confirmingMeetup}
+                              leftIcon={<FaCheckCircle />}
+                              w="full"
+                              fontWeight="semibold"
+                              mt={3}
+                              _hover={{ transform: 'translateY(-2px)', shadow: 'lg' }}
+                              transition="all 0.2s"
+                            >
+                              ✓ Confirm This Meetup
+                            </Button>
+                          ) : null}
                         </VStack>
                       </Box>
 
