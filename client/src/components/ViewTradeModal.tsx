@@ -2334,7 +2334,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   variant="outline"
                   ml={2}
                   leftIcon={<Icon as={FaExclamationTriangle} />}
-                  onClick={() => setIsCancelModalOpen(true)}
+                  onClick={() => setShowCancelDialog(true)}
                 >
                   Cancel Trade
                 </Button>
