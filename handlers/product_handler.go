@@ -913,7 +913,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 
 	// Batch fetch organization tags for all products (avoid N+1 query problem)
-	if len(productIDs) > 0 {
+	if len(productIDs) > 0 && false { // TEMPORARILY DISABLED FOR DEBUG
 		// Build placeholder string for IN clause: ?,?,?,...
 		placeholders := make([]string, len(productIDs))
 		orgArgs := make([]interface{}, len(productIDs))
