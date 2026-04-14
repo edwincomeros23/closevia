@@ -893,12 +893,19 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	// Collect product IDs for batch organization tagging query
 	productIDs := make([]int, len(products))
+
+	// Limit concurrent geocoding goroutines to avoid connection pool exhaustion
+	geocodingSem := make(chan struct{}, 5) // Max 5 concurrent geocodes
+
 	for i, p := range products {
 		productIDs[i] = p.ID
 
 		// Background geocode products that have location text but no coordinates
 		if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
 			go func(productID int, loc string) {
+				geocodingSem <- struct{}{}        // Acquire
+				defer func() { <-geocodingSem }() // Release
+
 				coords, err := services.GetCoordinates(loc)
 				if err != nil {
 					return
@@ -913,7 +920,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	}
 
 	// Batch fetch organization tags for all products (avoid N+1 query problem)
-	if len(productIDs) > 0 && false { // TEMPORARILY DISABLED FOR DEBUG
+	if len(productIDs) > 0 {
 		// Build placeholder string for IN clause: ?,?,?,...
 		placeholders := make([]string, len(productIDs))
 		orgArgs := make([]interface{}, len(productIDs))
@@ -931,8 +938,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			ORDER BY pot.product_id, o.name ASC
 		`, inClause), orgArgs...)
 
-		if err == nil {
-			defer orgRows.Close()
+		if err == nil && orgRows != nil {
 			// Map organization tags by product ID
 			orgTagsByProduct := make(map[int][]models.Organization)
 			for orgRows.Next() {
@@ -942,6 +948,8 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 					orgTagsByProduct[productID] = append(orgTagsByProduct[productID], org)
 				}
 			}
+			orgRows.Close() // Explicitly close immediately
+
 			// Assign organization tags to products
 			for i := range products {
 				if tags, ok := orgTagsByProduct[products[i].ID]; ok {
