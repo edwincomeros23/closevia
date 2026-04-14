@@ -3854,7 +3854,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   leftIcon={<Icon as={FaExclamationTriangle} />}
                   flex={1}
                 >
-                  ⚠️ Raise Dispute
+                  Raise Dispute
                 </Button>
               )}
               {trade?.status === 'active' || trade?.status === 'accepted' ? (
