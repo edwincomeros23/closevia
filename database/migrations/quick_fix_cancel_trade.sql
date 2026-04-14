@@ -1,34 +1,22 @@
 -- URGENT: Quick fix for cancel trade 500 errors
--- Apply this directly to the Render MySQL database via SQL Editor
+-- Compatible with MySQL 5.7+ (no IF NOT EXISTS in ALTER TABLE)
 
--- First, check if columns exist
-SET @col_exists = 0;
-SELECT COUNT(*) INTO @col_exists FROM information_schema.COLUMNS 
-WHERE TABLE_SCHEMA = DATABASE() 
-AND TABLE_NAME = 'trades' 
-AND COLUMN_NAME = 'cancellation_reason';
+-- Add cancellation tracking columns one by one
+-- If a column already exists, it will error but that's okay - just move to the next one
 
--- Only proceed if columns don't exist
-IF @col_exists = 0 THEN
-  -- Add all missing cancellation tracking columns
-  ALTER TABLE trades ADD COLUMN cancellation_reason VARCHAR(255) NULL COMMENT 'Reason provided when cancelling the trade';
-  ALTER TABLE trades ADD COLUMN cancelled_by INT NULL COMMENT 'User ID of who cancelled the trade';
-  ALTER TABLE trades ADD COLUMN cancelled_at TIMESTAMP NULL COMMENT 'Timestamp when trade was cancelled';
-  ALTER TABLE trades ADD COLUMN cancelled_while_active BOOLEAN DEFAULT FALSE COMMENT 'Whether trade was cancelled while in active/accepted status (affects trust score penalty)';
-  
-  -- Add foreign key constraint
-  ALTER TABLE trades ADD CONSTRAINT fk_trades_cancelled_by 
-  FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL;
-  
-  -- Add indexes
-  CREATE INDEX idx_trades_cancelled_by ON trades(cancelled_by, cancelled_at);
-  
-  SELECT 'MIGRATION APPLIED: Cancellation columns added successfully' as result;
-ELSE
-  SELECT 'MIGRATION SKIPPED: Cancellation columns already exist' as result;
-END IF;
+ALTER TABLE trades ADD COLUMN cancellation_reason VARCHAR(255) NULL COMMENT 'Reason provided when cancelling the trade';
+ALTER TABLE trades ADD COLUMN cancelled_by INT NULL COMMENT 'User ID of who cancelled the trade';
+ALTER TABLE trades ADD COLUMN cancelled_at TIMESTAMP NULL COMMENT 'Timestamp when trade was cancelled';
+ALTER TABLE trades ADD COLUMN cancelled_while_active BOOLEAN DEFAULT FALSE COMMENT 'Whether trade was cancelled while in active/accepted status';
 
--- Verify the columns
+-- Add foreign key constraint (ignore if already exists)
+ALTER TABLE trades ADD CONSTRAINT fk_trades_cancelled_by 
+FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL;
+
+-- Add indexes (ignore if already exists)
+CREATE INDEX idx_trades_cancelled_by ON trades(cancelled_by, cancelled_at);
+
+-- Verify the columns were created
 SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
