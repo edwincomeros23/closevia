@@ -1657,19 +1657,24 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			reason = payload.Message
 		}
 
+		log.Printf("[Cancel Trade] Trade %d: User %d, wasActive=%v, reason=%s", tradeID, userID, wasActive, reason)
+
 		tx, err := h.db.Begin()
 		if err != nil {
+			log.Printf("[Cancel Trade] Failed to start transaction: %v", err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
 		}
 
 		// Unlock products
 		if err := h.setProductStatusForTrade(tx, tradeID, "available"); err != nil {
 			_ = tx.Rollback()
+			log.Printf("[Cancel Trade] Failed to unlock products: %v", err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to unlock products"})
 		}
 
 		// Update trade status with cancellation metadata
-		_, err = tx.Exec(`
+		// Try with all columns first, fall back to status-only if columns don't exist
+		updateResult := tx.Exec(`
 			UPDATE trades
 			SET status='cancelled',
 			    cancellation_reason = ?,
@@ -1679,9 +1684,24 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 			    updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?`,
 			reason, userID, wasActive, tradeID)
-		if err != nil {
-			_ = tx.Rollback()
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel trade"})
+
+		if updateResult.Error != nil {
+			log.Printf("[Cancel Trade] Full update failed (checking if columns exist): %v", updateResult.Error)
+			
+			// Fallback: Try simple status update if columns don't exist yet
+			if strings.Contains(updateResult.Error.Error(), "Unknown column") {
+				log.Printf("[Cancel Trade] Cancellation columns missing, using fallback update")
+				updateResult = tx.Exec(`
+					UPDATE trades
+					SET status='cancelled', updated_at = CURRENT_TIMESTAMP
+					WHERE id = ?`, tradeID)
+			}
+
+			if updateResult.Error != nil {
+				_ = tx.Rollback()
+				log.Printf("[Cancel Trade] Fallback update also failed: %v", updateResult.Error)
+				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to cancel trade: " + updateResult.Error.Error()})
+			}
 		}
 
 		// Also cancel any pending multi-way invitations for this trade
@@ -1689,8 +1709,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
+			log.Printf("[Cancel Trade] Failed to commit transaction: %v", err)
 			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit trade cancellation"})
 		}
+
+		log.Printf("[Cancel Trade] Success - Trade %d cancelled by user %d", tradeID, userID)
 
 		// Apply automated penalty: score minus + suspend after repeated cancels
 		go h.applyCancellationPenalty(userID, wasActive)
