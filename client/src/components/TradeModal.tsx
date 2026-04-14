@@ -27,6 +27,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   const [userProducts, setUserProducts] = useState<Product[]>([])
   const [targetProduct, setTargetProduct] = useState<Product | null>(null)
   const [selectedOfferIds, setSelectedOfferIds] = useState<number[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
   const [tradeMessage, setTradeMessage] = useState('')
   const [submittingTrade, setSubmittingTrade] = useState(false)
   const [cashAmount, setCashAmount] = useState<string>('')
@@ -68,6 +69,7 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
   useEffect(() => {
     if (!isOpen) return
     setSelectedOfferIds([])
+    setSearchTerm('')
     setTradeMessage('')
     setCashAmount('')
     setTradeOption(null)
@@ -322,9 +324,19 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                 )}
               </VStack>
 
+              {/* Search Bar */}
+              <Input
+                placeholder="Search your items..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
+                size="sm"
+                fontSize="11px"
+                _placeholder={{ color: 'gray.400' }}
+              />
+
               {/* Scrollable grid: shows 2 full rows + small peek of 3rd; scroll when overflowing */}
               <Box maxH="200px" overflowY="auto" pr={2}>
-                {userProducts.length === 0 ? (
+                {userProducts.filter(p => p.title.toLowerCase().includes(searchTerm)).length === 0 ? (
                   <Flex direction="column" align="center" justify="center" h="140px" gap={2} p={4} bg="gray.50" borderRadius="md" borderWidth="1px" borderColor={borderColor}>
                     <Icon as={FaBoxOpen} boxSize={8} color="gray.400" />
                     <VStack spacing={1} textAlign="center">
@@ -344,11 +356,11 @@ const TradeModal: React.FC<TradeModalProps> = ({ isOpen, onClose, targetProductI
                     </VStack>
                   </Flex>
                 ) : (
-                  <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2} gridAutoRows="110px" justifyContent="start">
-                    {userProducts.map((p) => (
-                      <Box key={p.id} minH="110px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '0.5px'} borderColor={selectedOfferIds.includes(p.id) ? selectedBorder : borderColor} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? selectedBg : 'white'}>
-                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="45px" objectFit="cover" loading="lazy" />
-                        <Box p={1.5}>
+                  <Grid templateColumns="repeat(auto-fill, minmax(90px, 1fr))" gap={2} gridAutoRows="85px" justifyContent="start">
+                    {userProducts.filter(p => p.title.toLowerCase().includes(searchTerm)).map((p) => (
+                      <Box key={p.id} minH="85px" borderWidth={selectedOfferIds.includes(p.id) ? '2px' : '0.5px'} borderColor={selectedOfferIds.includes(p.id) ? selectedBorder : borderColor} rounded="md" overflow="hidden" onClick={() => toggleOfferSelection(p.id)} cursor="pointer" bg={selectedOfferIds.includes(p.id) ? selectedBg : 'white'}>
+                        <Image src={getFirstImage(p.image_urls)} alt={p.title} w="full" h="40px" objectFit="cover" loading="lazy" />
+                        <Box p={1}>
                           <Text fontSize="10px" noOfLines={2} wordBreak="break-word" fontWeight={selectedOfferIds.includes(p.id) ? '600' : '500'} color={selectedOfferIds.includes(p.id) ? selectedTextColor : 'inherit'}>{p.title}</Text>
                         </Box>
                       </Box>

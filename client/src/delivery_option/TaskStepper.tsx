@@ -190,9 +190,7 @@ const TaskStepper: React.FC = () => {
       formData.append('image', file)
       formData.append('type', 'delivery_proof')
 
-      const response = await api.post('/api/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      const response = await api.post('/api/upload', formData)
 
       const uploadedUrl = response.data?.data?.url
       if (uploadedUrl) {

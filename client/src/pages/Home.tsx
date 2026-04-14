@@ -50,9 +50,11 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CloseIcon,
+  SmallCloseIcon,
 } from '@chakra-ui/icons'
+import { InputRightElement } from '@chakra-ui/react'
 import { FaUserCircle, FaHandshake, FaHome, FaTag, FaMotorcycle, FaCrown } from 'react-icons/fa'
-import { FiShoppingBag } from 'react-icons/fi'
+import { FiShoppingBag, FiDownload } from 'react-icons/fi'
 import { FILTER_CATEGORIES } from '../utils/categories'
 import { useProducts } from '../contexts/ProductContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -74,6 +76,7 @@ import ActivityFeed from '../components/ActivityFeed'
 import { useTradeMatchScores } from '../hooks/useTradeMatchScore'
 import InstallAppPrompt from '../components/InstallAppPrompt'
 import AdvertisementCarousel from '../components/AdvertisementCarousel'
+import AppDownloadBanner from '../components/AppDownloadBanner'
 const useDebounce = (value: string, delay: number) => {
   const [debouncedValue, setDebouncedValue] = useState(value)
 
@@ -711,6 +714,7 @@ const Home: React.FC = () => {
 
   return (
     <Box minH="100vh" bg="#FFFDF1">
+      <AppDownloadBanner variant="card" position="top" />
       {/* Sticky Search Header - desktop: centered max-width */}
       <Box
         position="sticky"
@@ -729,9 +733,164 @@ const Home: React.FC = () => {
           ml={{ base: 0, md: -2, lg: -6, xl: -8 }}
           position="relative"
         >
-          {/* Main Search Bar */}
-          <HStack w="full" spacing={3} wrap="wrap" ref={searchContainerRef}>
-            <Box position="relative" flex={1} minW={{ base: 0, md: 'auto' }}>
+          {/* Main Search Bar - Full width on mobile, inline on desktop */}
+          {/* Mobile: Stacked layout */}
+          <VStack w="full" spacing={2} align="stretch" ref={searchContainerRef} display={{ base: 'flex', md: 'none' }}>
+            {/* Search Input - Full width on mobile */}
+            <Box position="relative" w="full">
+              <InputGroup size="lg">
+                <InputLeftElement pointerEvents="none">
+                  <SearchIcon color="gray.400" />
+                </InputLeftElement>
+                <Input
+                  placeholder="Search products, categories, or keywords..."
+                  value={searchTerm}
+                  onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value.trim().length >= 2) setShowSuggestions(true) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); if (e.key === 'Escape') setShowSuggestions(false) }}
+                  onFocus={() => { if (searchTerm.trim().length >= 2 && (suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || (suggestions.users?.length || 0) > 0)) setShowSuggestions(true) }}
+                  bg="white"
+                  border="2px"
+                  borderColor="gray.200"
+                  _focus={{
+                    borderColor: "brand.500",
+                    boxShadow: "0 0 0 1px var(--chakra-colors-brand-500)"
+                  }}
+                  pr="40px"
+                />
+                {/* Filter icon inside search - mobile only */}
+                <InputRightElement pointerEvents="auto">
+                  <IconButton
+                    aria-label="Toggle filters"
+                    icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowFilters(!showFilters)}
+                  />
+                </InputRightElement>
+              </InputGroup>
+
+              {/* Search Suggestions Dropdown - Mobile */}
+              {showSuggestions && (
+                <Box
+                  position="absolute"
+                  top="calc(100% + 4px)"
+                  left={0}
+                  right={0}
+                  w="100%"
+                  bg="white"
+                  border="1px solid"
+                  borderColor="gray.200"
+                  rounded="xl"
+                  shadow="0 4px 20px rgba(0,0,0,0.15)"
+                  zIndex={999}
+                  maxH="360px"
+                  overflowY="auto"
+                >
+                  {suggestionsLoading ? (
+                    <Center py={4}><Spinner size="sm" color="brand.500" /><Text ml={2} fontSize="sm" color="gray.500">Searching...</Text></Center>
+                  ) : (
+                    <VStack align="stretch" spacing={0} py={2}>
+                      {suggestions.products.length > 0 && (
+                        <>
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Products</Text>
+                          {suggestions.products.map((p, i) => (
+                            <Box key={`p-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(p, 'product')}>
+                              <HStack spacing={3}>
+                                <SearchIcon color="gray.400" boxSize={3} />
+                                <Text fontSize="sm" color="gray.700" noOfLines={1}>{p}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {suggestions.categories.length > 0 && (
+                        <>
+                          {suggestions.products.length > 0 && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Categories</Text>
+                          {suggestions.categories.map((c, i) => (
+                            <Box key={`c-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(c, 'category')}>
+                              <HStack spacing={3}>
+                                <Icon as={FaTag} color="brand.400" boxSize={3} />
+                                <Text fontSize="sm" color="gray.700">{c}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {suggestions.tags.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Tags</Text>
+                          {suggestions.tags.map((t, i) => (
+                            <Box key={`t-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(t, 'tag')}>
+                              <HStack spacing={3}>
+                                <Text color="brand.400" fontSize="xs" fontWeight="bold">#</Text>
+                                <Text fontSize="sm" color="gray.700">{t}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {suggestions.brands.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Brands</Text>
+                          {suggestions.brands.map((b, i) => (
+                            <Box key={`b-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(b, 'brand')}>
+                              <HStack spacing={3}>
+                                <StarIcon color="yellow.400" boxSize={3} />
+                                <Text fontSize="sm" color="gray.700">{b}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {userSuggestions.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Users</Text>
+                          {userSuggestions.map((u, i) => (
+                            <Box key={`u-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.name, 'user', u.id, u)}>
+                              <HStack spacing={3}>
+                                <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.name} />
+                                <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.name}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {organizationSuggestions.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || userSuggestions.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Organizations</Text>
+                          {organizationSuggestions.map((u, i) => (
+                            <Box key={`o-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.org_name || u.name, 'user', u.id, u)}>
+                              <HStack spacing={3}>
+                                <Avatar size="xs" src={getImageUrl(u.org_logo_url || u.logo_url || u.profile_picture)} name={u.org_name || u.name} />
+                                <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.org_name || u.name}</Text>
+                                {(u as any).type === 'community_org' && <Badge size="xs" colorScheme="purple" fontSize="10px">Community</Badge>}
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                    </VStack>
+                  )}
+                </Box>
+              )}
+            </Box>
+          </VStack>
+
+          {/* Desktop: Horizontal layout with search bar on left, buttons on right */}
+          <HStack 
+            w="full" 
+            spacing={3} 
+            display={{ base: 'none', md: 'flex' }}
+            align="flex-start"
+            ref={searchContainerRef}
+          >
+            {/* Desktop Search Input */}
+            <Box position="relative" flex={1} minW={0}>
               <InputGroup size="lg">
                 <InputLeftElement pointerEvents="none">
                   <SearchIcon color="gray.400" />
@@ -752,7 +911,7 @@ const Home: React.FC = () => {
                 />
               </InputGroup>
 
-              {/* Search Suggestions Dropdown */}
+              {/* Search Suggestions Dropdown - Desktop */}
               {showSuggestions && (
                 <Box
                   position="absolute"
@@ -760,190 +919,169 @@ const Home: React.FC = () => {
                   left={0}
                   right={0}
                   w="100%"
-                bg="white"
-                border="1px solid"
-                borderColor="gray.200"
-                rounded="xl"
-                shadow="0 4px 20px rgba(0,0,0,0.15)"
-                zIndex={999}
-                maxH="360px"
-                overflowY="auto"
-              >
-                {suggestionsLoading ? (
-                  <Center py={4}><Spinner size="sm" color="brand.500" /><Text ml={2} fontSize="sm" color="gray.500">Searching...</Text></Center>
-                ) : (
-                  <VStack align="stretch" spacing={0} py={2}>
-                    {suggestions.products.length > 0 && (
-                      <>
-                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Products</Text>
-                        {suggestions.products.map((p, i) => (
-                          <Box key={`p-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(p, 'product')}>
-                            <HStack spacing={3}>
-                              <SearchIcon color="gray.400" boxSize={3} />
-                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{p}</Text>
-                            </HStack>
-                          </Box>
-                        ))}
-                      </>
-                    )}
-                    {suggestions.categories.length > 0 && (
-                      <>
-                        {suggestions.products.length > 0 && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
-                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Categories</Text>
-                        {suggestions.categories.map((c, i) => (
-                          <Box key={`c-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(c, 'category')}>
-                            <HStack spacing={3}>
-                              <Icon as={FaTag} color="brand.400" boxSize={3} />
-                              <Text fontSize="sm" color="gray.700">{c}</Text>
-                            </HStack>
-                          </Box>
-                        ))}
-                      </>
-                    )}
-                    {suggestions.tags.length > 0 && (
-                      <>
-                        {(suggestions.products.length > 0 || suggestions.categories.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
-                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Tags</Text>
-                        {suggestions.tags.map((t, i) => (
-                          <Box key={`t-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(t, 'tag')}>
-                            <HStack spacing={3}>
-                              <Text color="brand.400" fontSize="xs" fontWeight="bold">#</Text>
-                              <Text fontSize="sm" color="gray.700">{t}</Text>
-                            </HStack>
-                          </Box>
-                        ))}
-                      </>
-                    )}
-                    {suggestions.brands.length > 0 && (
-                      <>
-                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
-                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Brands</Text>
-                        {suggestions.brands.map((b, i) => (
-                          <Box key={`b-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(b, 'brand')}>
-                            <HStack spacing={3}>
-                              <StarIcon color="yellow.400" boxSize={3} />
-                              <Text fontSize="sm" color="gray.700">{b}</Text>
-                            </HStack>
-                          </Box>
-                        ))}
-                      </>
-                    )}
-                    {userSuggestions.length > 0 && (
-                      <>
-                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
-                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Users</Text>
-                        {userSuggestions.map((u, i) => (
-                          <Box key={`u-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.name, 'user', u.id, u)}>
-                            <HStack spacing={3}>
-                              <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.name} />
-                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.name}</Text>
-                            </HStack>
-                          </Box>
-                        ))}
-                      </>
-                    )}
-                    {organizationSuggestions.length > 0 && (
-                      <>
-                        {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || userSuggestions.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
-                        <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Organizations</Text>
-                        {organizationSuggestions.map((u, i) => (
-                          <Box key={`o-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.org_name || u.name, 'user', u.id, u)}>
-                            <HStack spacing={3}>
-                              <Avatar size="xs" src={getImageUrl(u.org_logo_url || u.logo_url || u.profile_picture)} name={u.org_name || u.name} />
-                              <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.org_name || u.name}</Text>
-                              {(u as any).type === 'community_org' && <Badge size="xs" colorScheme="purple" fontSize="10px">Community</Badge>}
-                            </HStack>
-                          </Box>
-                        ))}
-                      </>
-                    )}
-                  </VStack>
-                )}
-              </Box>
-            )}
+                  bg="white"
+                  border="1px solid"
+                  borderColor="gray.200"
+                  rounded="xl"
+                  shadow="0 4px 20px rgba(0,0,0,0.15)"
+                  zIndex={999}
+                  maxH="360px"
+                  overflowY="auto"
+                >
+                  {suggestionsLoading ? (
+                    <Center py={4}><Spinner size="sm" color="brand.500" /><Text ml={2} fontSize="sm" color="gray.500">Searching...</Text></Center>
+                  ) : (
+                    <VStack align="stretch" spacing={0} py={2}>
+                      {suggestions.products.length > 0 && (
+                        <>
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Products</Text>
+                          {suggestions.products.map((p, i) => (
+                            <Box key={`p-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(p, 'product')}>
+                              <HStack spacing={3}>
+                                <SearchIcon color="gray.400" boxSize={3} />
+                                <Text fontSize="sm" color="gray.700" noOfLines={1}>{p}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {suggestions.categories.length > 0 && (
+                        <>
+                          {suggestions.products.length > 0 && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Categories</Text>
+                          {suggestions.categories.map((c, i) => (
+                            <Box key={`c-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(c, 'category')}>
+                              <HStack spacing={3}>
+                                <Icon as={FaTag} color="brand.400" boxSize={3} />
+                                <Text fontSize="sm" color="gray.700">{c}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {suggestions.tags.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Tags</Text>
+                          {suggestions.tags.map((t, i) => (
+                            <Box key={`t-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(t, 'tag')}>
+                              <HStack spacing={3}>
+                                <Text color="brand.400" fontSize="xs" fontWeight="bold">#</Text>
+                                <Text fontSize="sm" color="gray.700">{t}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {suggestions.brands.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Brands</Text>
+                          {suggestions.brands.map((b, i) => (
+                            <Box key={`b-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(b, 'brand')}>
+                              <HStack spacing={3}>
+                                <StarIcon color="yellow.400" boxSize={3} />
+                                <Text fontSize="sm" color="gray.700">{b}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {userSuggestions.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Users</Text>
+                          {userSuggestions.map((u, i) => (
+                            <Box key={`u-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.name, 'user', u.id, u)}>
+                              <HStack spacing={3}>
+                                <Avatar size="xs" src={u.profile_picture ? getImageUrl(u.profile_picture) : undefined} name={u.name} />
+                                <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.name}</Text>
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                      {organizationSuggestions.length > 0 && (
+                        <>
+                          {(suggestions.products.length > 0 || suggestions.categories.length > 0 || suggestions.tags.length > 0 || suggestions.brands.length > 0 || userSuggestions.length > 0) && <Box mx={3} my={1} borderTop="1px solid" borderColor="gray.100" />}
+                          <Text px={4} pt={2} pb={1} fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase" letterSpacing="wider">Organizations</Text>
+                          {organizationSuggestions.map((u, i) => (
+                            <Box key={`o-${u.id}-${i}`} px={4} py={2} cursor="pointer" _hover={{ bg: 'gray.50' }} onClick={() => handleSuggestionClick(u.org_name || u.name, 'user', u.id, u)}>
+                              <HStack spacing={3}>
+                                <Avatar size="xs" src={getImageUrl(u.org_logo_url || u.logo_url || u.profile_picture)} name={u.org_name || u.name} />
+                                <Text fontSize="sm" color="gray.700" noOfLines={1}>{u.org_name || u.name}</Text>
+                                {(u as any).type === 'community_org' && <Badge size="xs" colorScheme="purple" fontSize="10px">Community</Badge>}
+                              </HStack>
+                            </Box>
+                          ))}
+                        </>
+                      )}
+                    </VStack>
+                  )}
+                </Box>
+              )}
             </Box>
 
-            {/* Toggle Filters icon (mobile inline, right side) */}
-            <IconButton
-              aria-label="Toggle filters"
-              icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
-              variant="outline"
-              size={{ base: 'md', md: 'lg' }}
-              onClick={() => setShowFilters(!showFilters)}
-              display={{ base: 'inline-flex', md: 'none' }}
-            />
+            {/* Desktop Controls - Right side buttons */}
+            <HStack spacing={2} flexShrink={0}>
+              {/* Search button */}
+              <Button
+                leftIcon={<SearchIcon />}
+                colorScheme="brand"
+                size="lg"
+                onClick={handleSearch}
+                px={6}
+              >
+                Search
+              </Button>
 
-            {/* Mobile notifications button beside hamburger */}
-            {user && (
-              <Box position="relative" display={{ base: 'inline-flex', md: 'none' }}>
-                <IconButton
-                  aria-label="Notifications"
-                  icon={<BellIcon />}
-                  size={{ base: 'md', md: 'lg' }}
-                  variant="ghost"
-                  onClick={() => navigate('/notifications')}
-                />
-                {offerCount > 0 && (
-                  <Badge
-                    position="absolute"
-                    top="-1"
-                    right="-1"
-                    colorScheme="red"
-                    borderRadius="full"
-                    minW="18px"
-                    h="18px"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    fontSize="xs"
-                    px={1}
-                  >
-                    {offerCount > 99 ? '99+' : offerCount}
-                  </Badge>
-                )}
-              </Box>
-            )}
+              {/* Filters toggle */}
+              <IconButton
+                aria-label="Toggle filters"
+                icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
+                variant="outline"
+                size="lg"
+                onClick={() => setShowFilters(!showFilters)}
+              />
 
-            {/* Mobile hamburger to open nav drawer (after filters icon) */}
-            <IconButton
-              aria-label="Open navigation"
-              icon={<HamburgerIcon />}
-              display={{ base: 'inline-flex', md: 'none' }}
-              size={{ base: 'md', md: 'lg' }}
-              variant="ghost"
-              onClick={openMobileNav}
-            />
+              {/* Notifications button */}
+              {user && (
+                <Box position="relative">
+                  <IconButton
+                    aria-label="Notifications"
+                    icon={<BellIcon />}
+                    size="lg"
+                    variant="ghost"
+                    onClick={() => navigate('/notifications')}
+                  />
+                  {offerCount > 0 && (
+                    <Badge
+                      position="absolute"
+                      top="-1"
+                      right="-1"
+                      colorScheme="red"
+                      borderRadius="full"
+                      minW="20px"
+                      h="20px"
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      fontSize="xs"
+                      px={1}
+                    >
+                      {offerCount > 99 ? '99+' : offerCount}
+                    </Badge>
+                  )}
+                </Box>
+              )}
 
-            {/* Hidden on mobile to keep header compact: Search button (desktop only) */}
-            <Button
-              leftIcon={<SearchIcon />}
-              colorScheme="brand"
-              size="lg"
-              onClick={handleSearch}
-              px={8}
-              display={{ base: 'none', md: 'inline-flex' }}
-            >
-              Search
-            </Button>
-
-            {/* Desktop filters toggle at the end to keep desktop layout */}
-            <IconButton
-              aria-label="Toggle filters"
-              icon={showFilters ? <ChevronUpIcon /> : <ChevronDownIcon />}
-              variant="outline"
-              size="lg"
-              onClick={() => setShowFilters(!showFilters)}
-              display={{ base: 'none', md: 'inline-flex' }}
-            />
-
-            {/* Profile button (desktop only) with Popover */}
-            {user && (
+              {/* Profile button */}
+              {user && (
               <Popover placement="bottom-end" trigger="hover">
                 <PopoverTrigger>
                   <Box
                     as="button"
                     cursor={user.id ? "pointer" : "not-allowed"}
-                    display={{ base: 'none', md: 'inline-flex' }}
                     alignItems="center"
                     justifyContent="center"
                     borderRadius="full"
@@ -952,6 +1090,7 @@ const Home: React.FC = () => {
                     onClick={() => user.id && navigate(`/users/${user.slug || user.id}`)}
                     disabled={!user.id}
                     opacity={user.id ? 1 : 0.5}
+                    display="inline-flex"
                   >
                     <VerifiedAvatar
                       size="sm"
@@ -1049,6 +1188,19 @@ const Home: React.FC = () => {
                         Organizations
                       </Button>
 
+                      <Button
+                        as="a"
+                        href="/clovia.apk"
+                        download="clovia.apk"
+                        size="sm"
+                        w="full"
+                        variant="ghost"
+                        justifyContent="flex-start"
+                        leftIcon={<Icon as={FiDownload} />}
+                      >
+                        Install Clovia (Android)
+                      </Button>
+
                       <InstallAppPrompt variant="profile-menu" />
 
                       <Divider />
@@ -1072,7 +1224,7 @@ const Home: React.FC = () => {
               <Box
                 as={RouterLink}
                 to="/login"
-                display={{ base: 'none', md: 'inline-flex' }}
+                display="inline-flex"
                 alignItems="center"
                 justifyContent="center"
                 borderRadius="full"
@@ -1082,7 +1234,8 @@ const Home: React.FC = () => {
               >
                 <Avatar size="sm" bg="gray.400" />
               </Box>
-            )}
+              )}
+            </HStack>
           </HStack>
 
           {/* Expandable Filters */}

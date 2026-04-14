@@ -82,6 +82,14 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
   const isUserSeller = trade && currentUserId === trade.seller_id
   const isPhotoMandatory = trade?.trade_option === 'meetup' || trade?.trade_option === 'delivery'
 
+  // Determine if this is a buyout (no items, only cash) vs regular trade
+  const isBuyout = !!((!trade?.items || trade.items.length === 0) && 
+           (trade?.offered_cash_amount && trade.offered_cash_amount > 0))
+
+  // Get role labels based on transaction type
+  const buyerLabel = isBuyout ? 'Buyer' : 'Trader 1'
+  const sellerLabel = isBuyout ? 'Seller' : 'Trader 2'
+
   const fetchCompletionStatus = async () => {
     if (!trade) return
 
@@ -196,11 +204,7 @@ const TradeCompletionModal: React.FC<TradeCompletionModalProps> = ({
       formData.append('image', file)
       formData.append('type', 'trade_proof')
 
-      const response = await api.post('/api/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      })
+      const response = await api.post('/api/upload', formData)
 
       // Check if response indicates success
       if (!response.data?.success) {

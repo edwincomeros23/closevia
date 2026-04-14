@@ -8,9 +8,24 @@ interface BeforeInstallPromptEvent extends Event {
 let deferredInstallPrompt: BeforeInstallPromptEvent | null = null
 
 export const isRunningStandalone = (): boolean => {
+  // Check for standalone display (PWA)
   const isStandaloneDisplay = window.matchMedia('(display-mode: standalone)').matches
+  
+  // Check for iOS standalone
   const isIosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  return isStandaloneDisplay || isIosStandalone
+  
+  // Check for TWA (Trusted Web Activity) - Android native app
+  const isTWA = (window as any).navigator.userAgent?.includes('Chrome/') && 
+                (window as any).navigationInterface !== undefined
+  
+  // Check for Android app wrapper (Capacitor, etc.)
+  const isAndroidApp = (window as any).Capacitor !== undefined
+  
+  // Check if running in Chrome Custom Tab (TWA uses this)
+  const isChromeCustomTab = window.matchMedia('(display-mode: minimal-ui)').matches ||
+                            (window as any).navigator.userAgent?.includes('NoStaticShellMode') === true
+  
+  return isStandaloneDisplay || isIosStandalone || isTWA || isAndroidApp || isChromeCustomTab
 }
 
 export const registerServiceWorker = (): void => {

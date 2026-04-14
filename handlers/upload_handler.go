@@ -82,54 +82,48 @@ func (h *UploadHandler) UploadImage(c *fiber.Ctx) error {
 		err = services.ErrCloudinaryDisabled
 	}
 
+	// Fallback to local storage if Cloudinary failed (any error)
 	if err != nil {
-		if err == services.ErrCloudinaryDisabled {
-			// Fallback: save locally
-			uploadsDir := filepath.Join(".", "uploads", folder)
-			fmt.Printf("📂 [Upload] Creating/checking directory: %s\n", uploadsDir)
-			if mkErr := os.MkdirAll(uploadsDir, 0755); mkErr != nil {
-				fmt.Printf("❌ [Upload] Failed to create directory: %v\n", mkErr)
-				return c.Status(500).JSON(fiber.Map{
-					"success": false,
-					"error":   "Failed to create upload directory: " + mkErr.Error(),
-				})
-			}
-
-			ext := filepath.Ext(file.Filename)
-			filename := fmt.Sprintf("%d_%s%s", time.Now().UnixMilli(), uuid.New().String()[:8], ext)
-			savePath := filepath.Join(uploadsDir, filename)
-
-			fmt.Printf("📝 [Upload] Saving to: %s (filename=%s)\n", savePath, filename)
-
-			if saveErr := c.SaveFile(file, savePath); saveErr != nil {
-				fmt.Printf("❌ [Upload] Save failed: %v\n", saveErr)
-				return c.Status(500).JSON(fiber.Map{
-					"success": false,
-					"error":   "Failed to save image locally: " + saveErr.Error(),
-				})
-			}
-
-			localURL := fmt.Sprintf("/uploads/%s/%s", folder, filename)
-			fmt.Printf("✅ [Upload] SUCCESS - Saved locally: %s (folder=%s, filename=%s)\n", localURL, folder, filename)
-
-			response := fiber.Map{
-				"success": true,
-				"message": "Image uploaded successfully (local)",
-				"data": fiber.Map{
-					"url":           localURL,
-					"original_name": file.Filename,
-					"size":          file.Size,
-					"type":          uploadType,
-				},
-			}
-			fmt.Printf("📤 [Upload] Returning response: %+v\n", response)
-			return c.Status(201).JSON(response)
+		// Fallback: save locally
+		uploadsDir := filepath.Join(".", "uploads", folder)
+		fmt.Printf("📂 [Upload] Creating/checking directory: %s\n", uploadsDir)
+		if mkErr := os.MkdirAll(uploadsDir, 0755); mkErr != nil {
+			fmt.Printf("❌ [Upload] Failed to create directory: %v\n", mkErr)
+			return c.Status(500).JSON(fiber.Map{
+				"success": false,
+				"error":   "Failed to create upload directory: " + mkErr.Error(),
+			})
 		}
-		fmt.Printf("❌ [Upload] Cloudinary error: %v\n", err)
-		return c.Status(500).JSON(fiber.Map{
-			"success": false,
-			"error":   "Failed to upload image: " + err.Error(),
-		})
+
+		ext := filepath.Ext(file.Filename)
+		filename := fmt.Sprintf("%d_%s%s", time.Now().UnixMilli(), uuid.New().String()[:8], ext)
+		savePath := filepath.Join(uploadsDir, filename)
+
+		fmt.Printf("📝 [Upload] Saving to: %s (filename=%s)\n", savePath, filename)
+
+		if saveErr := c.SaveFile(file, savePath); saveErr != nil {
+			fmt.Printf("❌ [Upload] Save failed: %v\n", saveErr)
+			return c.Status(500).JSON(fiber.Map{
+				"success": false,
+				"error":   "Failed to save image locally: " + saveErr.Error(),
+			})
+		}
+
+		localURL := fmt.Sprintf("/uploads/%s/%s", folder, filename)
+		fmt.Printf("✅ [Upload] SUCCESS - Saved locally: %s (folder=%s, filename=%s)\n", localURL, folder, filename)
+
+		response := fiber.Map{
+			"success": true,
+			"message": "Image uploaded successfully (local)",
+			"data": fiber.Map{
+				"url":           localURL,
+				"original_name": file.Filename,
+				"size":          file.Size,
+				"type":          uploadType,
+			},
+		}
+		fmt.Printf("📤 [Upload] Returning response: %+v\n", response)
+		return c.Status(201).JSON(response)
 	}
 
 	// Final validation - ensure we have a valid URL
