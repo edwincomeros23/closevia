@@ -776,6 +776,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query += ` LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
+	var rows *sql.Rows
 	ctx, cancel := context.WithTimeout(c.Context(), 20*time.Second)
 	rows, err = h.db.QueryContext(ctx, query, args...)
 	cancel()
