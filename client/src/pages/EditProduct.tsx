@@ -534,63 +534,39 @@ const EditProduct: React.FC = () => {
                     </FormControl>
 
                     <FormControl>
-                      <HStack mb={2} justify="space-between">
-                        <FormLabel fontSize="sm" color="gray.600" fontWeight="600">Preferred Items</FormLabel>
-                        <Wrap spacing={1}>
-                          <WrapItem>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              colorScheme="brand"
-                              fontSize="9px"
-                              h="20px"
-                              onClick={() => handleInputChange('wants', 'Any')}
-                              _hover={{ bg: 'brand.50' }}
-                            >
-                              💫 Any
-                            </Button>
-                          </WrapItem>
-                          <WrapItem>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              colorScheme="brand"
-                              fontSize="9px"
-                              h="20px"
-                              onClick={() => handleInputChange('wants', '')}
-                              _hover={{ bg: 'red.50' }}
-                            >
-                              ✕ Clear
-                            </Button>
-                          </WrapItem>
-                        </Wrap>
-                      </HStack>
+                      <FormLabel fontSize="sm" color="gray.600" fontWeight="600" mb={2}>Preferred Items</FormLabel>
                       <Input
                         value={formData.wants || ''}
                         onChange={(e) => handleInputChange('wants', e.target.value)}
-                        placeholder="e.g., Any smartphone, mechanical keyboard, etc."
+                        placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                         size={{ base: 'md', md: 'lg' }}
                         borderColor={
                           formData.wants && formData.desired_product && 
                           (formData.wants as string).toLowerCase().trim() === (formData.desired_product as string).toLowerCase().trim() 
-                            ? 'orange.400' 
-                            : undefined
+                            ? 'orange.300' 
+                            : 'gray.200'
                         }
-                        borderWidth={
-                          formData.wants && formData.desired_product && 
-                          (formData.wants as string).toLowerCase().trim() === (formData.desired_product as string).toLowerCase().trim() 
-                            ? '2px' 
-                            : undefined
-                        }
+                        borderWidth="1px"
                       />
                       {formData.wants && formData.desired_product && 
                        (formData.wants as string).toLowerCase().trim() === (formData.desired_product as string).toLowerCase().trim() && (
-                        <HStack mt={1} spacing={1}>
-                          <Badge colorScheme="orange" fontSize="10px">⚠ Similar</Badge>
-                          <Text fontSize="9px" color="orange.600">Both fields are similar - consider making them different</Text>
+                        <Text fontSize="8px" color="orange.600" mt={1}>⚠ Same as Ideal Product</Text>
+                      )}
+                      {formData.wants === '' && (
+                        <HStack spacing={2} mt={2}>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            colorScheme="gray"
+                            fontSize="11px"
+                            fontWeight="500"
+                            onClick={() => handleInputChange('wants', 'Any')}
+                            _hover={{ color: 'brand.600' }}
+                          >
+                            Any
+                          </Button>
                         </HStack>
                       )}
-                      <FormHelperText fontSize="xs" color="gray.500">Type "Any" for flexibility or specific items you want</FormHelperText>
                     </FormControl>
                   </VStack>
                 </Box>

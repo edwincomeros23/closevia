@@ -352,45 +352,31 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
               </FormControl>
 
               <FormControl>
-                <HStack mb={1} justify="space-between" align="flex-start">
-                  <FormLabel fontSize="sm" color="gray.600" mb={0}>Preferred Items (Optional)</FormLabel>
-                  <Wrap spacing={1}>
-                    <WrapItem>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        colorScheme="brand"
-                        fontSize="8px"
-                        h="20px"
-                        onClick={() => handleChange('wants', 'Any')}
-                        _hover={{ bg: 'brand.50' }}
-                      >
-                        💫 Any
-                      </Button>
-                    </WrapItem>
-                    <WrapItem>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        colorScheme="brand"
-                        fontSize="8px"
-                        h="20px"
-                        onClick={() => handleChange('wants', '')}
-                        _hover={{ bg: 'red.50' }}
-                      >
-                        ✕ Clear
-                      </Button>
-                    </WrapItem>
-                  </Wrap>
-                </HStack>
+                <FormLabel fontSize="sm" color="gray.600" mb={2} fontWeight="600">Preferred Items (Optional)</FormLabel>
                 <Input
-                  placeholder="e.g., Any smartphone, mechanical keyboard, etc."
+                  placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                   value={details.wants}
                   onChange={(e) => handleChange('wants', e.target.value)}
                   size="sm"
                   bg="white"
                 />
-                <FormHelperText fontSize="2xs">Type "Any" for flexibility, or be specific with desired items</FormHelperText>
+                {details.wants === '' && (
+                  <HStack spacing={1.5} mt={1.5}>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      colorScheme="gray"
+                      fontSize="10px"
+                      fontWeight="500"
+                      h="20px"
+                      px={2}
+                      onClick={() => handleChange('wants', 'Any')}
+                      _hover={{ color: 'brand.600' }}
+                    >
+                      Any
+                    </Button>
+                  </HStack>
+                )}
               </FormControl>
             </VStack>
           </Box>
