@@ -3355,7 +3355,9 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           </Box>
 
                           {/* Confirm Button - Inline below time selection */}
-                          {selectedLocation && selectedDate && selectedTime && !buyerMeetupConfirmed && !sellerMeetupConfirmed ? (
+                          {selectedLocation && selectedDate && selectedTime && 
+                          !(isUserBuyer && buyerMeetupConfirmed) && 
+                          !(isUserSeller && sellerMeetupConfirmed) ? (
                             <Button
                               colorScheme="green"
                               size="lg"
