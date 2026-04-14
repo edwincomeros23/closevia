@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -725,11 +724,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	// NOTE: join users table here because WHERE can reference u.* fields
 	countQuery := "SELECT COUNT(*) FROM products p LEFT JOIN users u ON p.seller_id = u.id " + whereClause
 	var total int
-
-	// Add timeout context for count query to prevent hanging
-	ctx, cancel := context.WithTimeout(c.Context(), 10*time.Second)
-	err := h.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
-	cancel()
+	err := h.db.QueryRow(countQuery, args...).Scan(&total)
 
 	if err != nil {
 		// Enhanced debugging: print query and args
@@ -776,11 +771,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query += ` LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
-	var rows *sql.Rows
-	queryCtx, queryCancel := context.WithTimeout(c.Context(), 20*time.Second)
-	rows, err = h.db.QueryContext(queryCtx, query, args...)
-	queryCancel()
-
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		fmt.Println("❌ Products query failed!")
 		fmt.Println("Query:", query)
@@ -932,16 +923,13 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		}
 		inClause := strings.Join(placeholders, ",")
 
-		tagsCtx, tagsCancel := context.WithTimeout(c.Context(), 5*time.Second)
-		var orgRows *sql.Rows
-		orgRows, err = h.db.QueryContext(tagsCtx, fmt.Sprintf(`
+		orgRows, err := h.db.Query(fmt.Sprintf(`
 			SELECT pot.product_id, o.id, o.name, o.slug, COALESCE(o.logo_url, ''), COALESCE(o.description, '')
 			FROM product_organization_tags pot
 			JOIN organizations o ON pot.organization_id = o.id
 			WHERE pot.product_id IN (%s) AND o.is_deleted = FALSE
 			ORDER BY pot.product_id, o.name ASC
 		`, inClause), orgArgs...)
-		tagsCancel()
 
 		if err == nil {
 			defer orgRows.Close()
