@@ -3193,21 +3193,57 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </SimpleGrid>
                       </Box>
 
-                      {/* Suggest Different Times Button - Below Location Cards */}
-                      {(buyerMeetupConfirmed || sellerMeetupConfirmed) && !meetupAgreed && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          colorScheme="blue"
-                          leftIcon={<Icon as={FaLightbulb} />}
-                          onClick={() => setShowSuggestionsPanel(!showSuggestionsPanel)}
-                          w="full"
+                      {/* 1. SMART SUGGESTIONS PANEL - AT TOP */}
+                      {showSuggestionsPanel && (
+                        <Box
+                          p={3}
+                          bg="blue.50"
+                          borderRadius="md"
+                          borderLeft="4px"
+                          borderColor="blue.400"
+                          mb={4}
                         >
-                          💡 Suggest Different Times
-                        </Button>
+                          <HStack justify="space-between" mb={2}>
+                            <Text fontSize="sm" fontWeight="medium" color="blue.700">
+                              💡 Suggested Alternative Times
+                            </Text>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => setShowSuggestionsPanel(false)}
+                            >
+                              ✕
+                            </Button>
+                          </HStack>
+                          <VStack align="stretch" spacing={2}>
+                            {generateSmartSuggestions().map((suggestion, idx) => (
+                              <Button
+                                key={idx}
+                                size="sm"
+                                variant="outline"
+                                colorScheme="blue"
+                                justifyContent="flex-start"
+                                onClick={() => {
+                                  setSelectedDate(suggestion.date)
+                                  setSelectedTime(suggestion.time)
+                                  setShowSuggestionsPanel(false)
+                                  // Scroll to time picker section
+                                  setTimeout(() => {
+                                    const pickerElement = document.querySelector('[data-meetup-picker]')
+                                    if (pickerElement) {
+                                      pickerElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                    }
+                                  }, 100)
+                                }}
+                              >
+                                {suggestion.label}
+                              </Button>
+                            ))}
+                          </VStack>
+                        </Box>
                       )}
 
-                      {/* Meetup Time Selection */}
+                      {/* 2. LOCATION + TIME SELECTION */}
                       <Box>
                         <HStack justify="space-between" mb={2}>
                           <VStack align="start" spacing={0}>
@@ -3320,7 +3356,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                         </VStack>
                       </Box>
 
-                      {(buyerMeetupConfirmed || sellerMeetupConfirmed) && <>
+                      <>
                         <Box mt={4}>
                           <Box mb={4} borderTopWidth="1px" borderColor={borderColor} />
                           {/* State Badge */}
@@ -3352,45 +3388,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             </HStack>
                           </HStack>
 
-                        {/* Dispute Buttons - Only show if meeting hasn't been confirmed yet */}
-                        {!meetupAgreed && (buyerMeetupConfirmed || sellerMeetupConfirmed) && (
-                          <VStack spacing={3} mb={4} align="stretch">
-                            <Text fontSize="xs" fontWeight="medium" color="gray.600">
-                              Having issues with this schedule?
-                            </Text>
-                            
-                            {/* Raise Dispute - Destructive Action */}
-                            <Button
-                              size="sm"
-                              variant="solid"
-                              colorScheme="red"
-                              leftIcon={<Icon as={FaExclamationTriangle} />}
-                              onClick={() => setShowDisputeDialog(true)}
-                              w="full"
-                            >
-                              ⚠️ Raise Dispute
-                            </Button>
-                            
-                            {/* OR Divider */}
-                            <HStack spacing={2} mb={1}>
-                              <Divider />
-                              <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">or</Text>
-                              <Divider />
-                            </HStack>
-                            
-                            {/* Get Suggestions */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              colorScheme="blue"
-                              leftIcon={<Icon as={FaLightbulb} />}
-                              onClick={() => setShowSuggestionsPanel(!showSuggestionsPanel)}
-                              w="full"
-                            >
-                              💡 Suggest Different Times
-                            </Button>
-                          </VStack>
-                        )}
+
 
                         {/* Smart Suggestions Panel */}
                         {showSuggestionsPanel && (
@@ -3784,7 +3782,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                           )}
                         </VStack>
                         </Box>
-                      </>}
+                      </>
 
                       {/* Change Selection Button - Only show when mismatch */}
                       {buyerMeetupConfirmed && sellerMeetupConfirmed &&
@@ -3808,7 +3806,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
             </Tabs >
           </ModalBody >
 
-          {/* Modal Footer with Cancel Trade Button */}
+          {/* Modal Footer with Cancel Trade and Raise Dispute Buttons */}
           <ModalFooter pt={2} pb={4} px={[3, 4, 6]} borderTop="1px" borderTopColor="gray.200">
             <HStack spacing={3} w="full">
               <Button
@@ -3818,6 +3816,17 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
               >
                 Close
               </Button>
+              {(trade?.status === 'active' || trade?.status === 'accepted') && (
+                <Button
+                  colorScheme="orange"
+                  variant="outline"
+                  onClick={() => setShowDisputeDialog(true)}
+                  leftIcon={<Icon as={FaExclamationTriangle} />}
+                  flex={1}
+                >
+                  ⚠️ Raise Dispute
+                </Button>
+              )}
               {trade?.status === 'active' || trade?.status === 'accepted' ? (
                 <Button
                   colorScheme="red"
