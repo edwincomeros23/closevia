@@ -2250,6 +2250,11 @@ const Dashboard: React.FC = () => {
                 {product.title}
               </Heading>
               <HStack spacing={2} flexShrink={0}>
+                {product.boosted_at && ((new Date().getTime() - new Date(product.boosted_at).getTime()) / (1000 * 3600)) < 3 && (
+                  <Badge colorScheme="brand" variant="solid" fontSize="xs">
+                    Boosted
+                  </Badge>
+                )}
                 {product.premium && (
                   <Badge colorScheme="yellow" variant="solid" fontSize="xs">
                     Premium

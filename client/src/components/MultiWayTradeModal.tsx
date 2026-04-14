@@ -759,7 +759,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
         ) : (
           <>
             <Button flex={1} variant="ghost" isDisabled={loading} onClick={handleDecline} isLoading={selectedAction === 'decline' && loading} leftIcon={<FaTimes />}>Decline</Button>
-            <Button flex={1} colorScheme="green" isDisabled={loading || multiWayTrade.status !== 'active'} isLoading={selectedAction === 'accept' && loading} onClick={handleAccept} leftIcon={<FaCheck />}>Accept Trade</Button>
+            <Button flex={1} colorScheme="green" isDisabled={loading || multiWayTrade.status !== 'pending_user3'} isLoading={selectedAction === 'accept' && loading} onClick={handleAccept} leftIcon={<FaCheck />}>Accept Trade</Button>
             {canExecute && (
               <Button flex={1} colorScheme="brand" isDisabled={loading} isLoading={selectedAction === 'execute' && loading} onClick={handleExecute}>Execute Trade</Button>
             )}

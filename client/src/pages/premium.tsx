@@ -71,7 +71,13 @@ const Premium: React.FC = () => {
 
   // Use actual premium status from user context
   const isPremiumUser = user?.is_premium ?? false
-  const currentTier = (user?.premium_tier || 'free') as 'free' | 'plus' | 'pro'
+  const rawTier = (user?.premium_tier || '') as '' | 'free' | 'plus' | 'pro'
+  // If backend flagged premium but didn't set a tier (legacy rows), default to 'plus'.
+  const currentTier = (
+    rawTier && rawTier !== 'free'
+      ? rawTier
+      : isPremiumUser ? 'plus' : 'free'
+  ) as 'free' | 'plus' | 'pro'
 
   useEffect(() => {
     fetchLoops()
