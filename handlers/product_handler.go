@@ -747,7 +747,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, COALESCE(p.slug, '') as slug, p.title, COALESCE(p.description, '') as description, p.price, COALESCE(p.image_urls, '[]') as image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, COALESCE(p.location, '') as location, COALESCE(p.` + "`condition`" + `, '') as ` + "`condition`" + `, 
-		       p.suggested_value, COALESCE(p.category, 'General') as category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at, COALESCE(p.view_count, 0) as view_count,
+		       p.suggested_value, COALESCE(p.category, 'General') as category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       COALESCE(u.name, 'User') as seller_name, COALESCE(u.profile_picture, '') as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
 			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
@@ -1441,7 +1441,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.`+"`value`"+`, p.wants, p.wanted_categories, 
-			       p.price_reasoning, p.created_at, p.updated_at, p.view_count,
+			       p.price_reasoning, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
 			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 			FROM products p
@@ -1453,14 +1453,14 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
 			&wantsNull, &wantedCategoriesRaw, &priceReasoningNull,
-			&product.CreatedAt, &product.UpdatedAt, &product.ViewCount,
+			&product.CreatedAt, &product.UpdatedAt,
 			&sellerNameNull, &sellerProfilePictureNull, &product.WantCount)
 	} else {
 		err = h.db.QueryRow(`
 			SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.video_url, p.seller_id, 
 			       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.`+"condition"+`, 
 			       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.`+"`value`"+`, p.wants, p.wanted_categories, 
-			       p.price_reasoning, p.created_at, p.updated_at, p.view_count,
+			       p.price_reasoning, p.created_at, p.updated_at,
 			       u.name as seller_name, u.profile_picture as seller_profile_picture,
 			       (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count
 			FROM products p
@@ -1472,7 +1472,7 @@ func (h *ProductHandler) GetProduct(c *fiber.Ctx) error {
 			&product.Condition, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
 			&wantsNull, &wantedCategoriesRaw, &priceReasoningNull,
-			&product.CreatedAt, &product.UpdatedAt, &product.ViewCount,
+			&product.CreatedAt, &product.UpdatedAt,
 			&sellerNameNull, &sellerProfilePictureNull, &product.WantCount)
 	}
 
@@ -2232,8 +2232,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 	queryArgs := append(args, limit, offset)
 	rows, err := h.db.Query(`
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
-		       p.premium, p.status, p.allow_buying, p.barter_only, p.category, p.created_at, p.updated_at, p.boosted_at, 
-		       COALESCE(p.view_count, 0) as view_count,
+		       p.premium, p.status, p.allow_buying, p.barter_only, p.category, p.created_at, p.updated_at, p.boosted_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       (SELECT COUNT(*) FROM trades t WHERE t.target_product_id = p.id AND t.status = 'pending') as offer_count
 		FROM products p
@@ -2297,7 +2296,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 
 	totalPages := (total + limit - 1) / limit
 
-	fmt.Printf("✅ [DEBUG] GetUserProducts completed successfully. Returning %d products for user %s\n", len(products), userID)
+	fmt.Printf("✅ [DEBUG] GetUserProducts completed successfully. Returning %d products for user %d\n", len(products), userID)
 	return c.JSON(models.APIResponse{
 		Success: true,
 		Data: models.PaginatedResponse{
@@ -2845,7 +2844,7 @@ func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id,
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `,
-		       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at, COALESCE(p.view_count, 0) as view_count,
+		       p.suggested_value, p.category, p.estimated_value_min, p.estimated_value_max, p.` + "`value`" + `, p.wants, p.wanted_categories, p.latitude, p.longitude, p.created_at, p.updated_at, p.boosted_at,
 		       u.name as seller_name, u.profile_picture as seller_profile_picture,
 		       u.latitude as seller_latitude, u.longitude as seller_longitude,
 			   (SELECT COUNT(*) FROM wishlists w WHERE w.product_id = p.id) as want_count,
@@ -3048,8 +3047,7 @@ func (h *ProductHandler) IncrementViewCount(c *fiber.Ctx) error {
 
 	// Get product details to check if product exists and get seller ID
 	var sellerID int
-	var viewCount int
-	err = h.db.QueryRow("SELECT seller_id, view_count FROM products WHERE id = ?", id).Scan(&sellerID, &viewCount)
+	err = h.db.QueryRow("SELECT seller_id FROM products WHERE id = ?", id).Scan(&sellerID)
 	if err == sql.ErrNoRows {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Product not found",
@@ -3064,6 +3062,8 @@ func (h *ProductHandler) IncrementViewCount(c *fiber.Ctx) error {
 
 	// Don't increment view count for the product owner (self-views)
 	if viewerID > 0 && viewerID == sellerID {
+		var viewCount int
+		h.db.QueryRow("SELECT COUNT(*) FROM product_views WHERE product_id = ?", id).Scan(&viewCount)
 		return c.JSON(fiber.Map{
 			"success":    true,
 			"view_count": viewCount,
@@ -3079,20 +3079,14 @@ func (h *ProductHandler) IncrementViewCount(c *fiber.Ctx) error {
 		log.Printf("Error recording product view: %v", err)
 	}
 
-	// Increment the view_count column in products table
-	_, err = h.db.Exec(
-		"UPDATE products SET view_count = view_count + 1 WHERE id = ?",
-		id,
-	)
+	// Get updated view count from product_views table
+	var newViewCount int
+	err = h.db.QueryRow("SELECT COUNT(*) FROM product_views WHERE product_id = ?", id).Scan(&newViewCount)
 	if err != nil {
-		log.Printf("Error incrementing view count: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to increment view count",
-		})
+		log.Printf("Error getting view count: %v", err)
+		newViewCount = 0
 	}
 
-	// Return updated view count
-	newViewCount := viewCount + 1
 	return c.JSON(fiber.Map{
 		"success":    true,
 		"view_count": newViewCount,

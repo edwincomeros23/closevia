@@ -1366,6 +1366,7 @@ func ensureProductColumns() {
 		{"ai_analysis_generated_at", "TIMESTAMP NULL"},
 		{"boosted_at", "TIMESTAMP NULL"},
 		{"max_items_per_offer", "INT DEFAULT 0"},
+		{"view_count", "INT DEFAULT 0"},
 	}
 
 	for _, col := range columns {
