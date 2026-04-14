@@ -822,7 +822,7 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 			&conditionNull, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
 			&wantsNull, &wantedCategoriesRaw,
-			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull, &product.ViewCount,
+			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 
 		if wantsNull.Valid {
@@ -2263,7 +2263,7 @@ func (h *ProductHandler) GetUserProducts(c *fiber.Ctx) error {
 		err := rows.Scan(&product.ID, &slugNull, &product.Title, &product.Description, &priceNull,
 			&imageURLsJSONStr, &product.SellerID, &product.Premium, &product.Status,
 			&product.AllowBuying, &product.BarterOnly, &product.Category, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
-			&product.ViewCount, &product.SellerName, &sellerProfile, &product.OfferCount)
+			&product.SellerName, &sellerProfile, &product.OfferCount)
 		if slugNull.Valid {
 			product.Slug = slugNull.String
 		}
@@ -2899,7 +2899,7 @@ func (h *ProductHandler) SmartSearch(c *fiber.Ctx) error {
 			&conditionNull, &product.SuggestedValue, &product.Category,
 			&product.EstimatedValueMin, &product.EstimatedValueMax, &product.Value,
 			&wantsNull, &wantedCategoriesRaw,
-			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull, &product.ViewCount,
+			&latNull, &lonNull, &product.CreatedAt, &product.UpdatedAt, &boostedAtNull,
 			&product.SellerName, &sellerProfile, &sLatNull, &sLonNull, &product.WantCount, &product.OfferCount)
 		if err != nil {
 			log.Printf("[SmartSearch] Row scan error: %v", err)
