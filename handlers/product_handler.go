@@ -893,34 +893,25 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 
 	// Collect product IDs for batch organization tagging query
 	productIDs := make([]int, len(products))
-
-	// Limit concurrent geocoding goroutines to avoid connection pool exhaustion
-	geocodingSem := make(chan struct{}, 5) // Max 5 concurrent geocodes
-
 	for i, p := range products {
 		productIDs[i] = p.ID
-
-		// Background geocode products that have location text but no coordinates
-		if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
-			go func(productID int, loc string) {
-				geocodingSem <- struct{}{}        // Acquire
-				defer func() { <-geocodingSem }() // Release
-
-				coords, err := services.GetCoordinates(loc)
-				if err != nil {
-					return
-				}
-				_, _ = h.db.Exec(
-					"UPDATE products SET latitude = ?, longitude = ? WHERE id = ?",
-					coords.Latitude, coords.Longitude, productID,
-				)
-				fmt.Printf("📍 Geocoded product %d (%s) -> %.6f, %.6f\n", productID, loc, coords.Latitude, coords.Longitude)
-			}(p.ID, p.Location)
-		}
-	}
-
-	// Batch fetch organization tags for all products (avoid N+1 query problem)
-	if len(productIDs) > 0 {
+		
+		// Background geocoding temporarily disabled due to connection pool issues
+		// if p.Location != "" && p.Latitude == nil && p.Longitude == nil {
+		// 	go func(productID int, loc string) {
+		// 		coords, err := services.GetCoordinates(loc)
+		// 		if err != nil {
+		// 			return
+		// 		}
+		// 		_, _ = h.db.Exec(
+		// 			"UPDATE products SET latitude = ?, longitude = ? WHERE id = ?",
+		// 			coords.Latitude, coords.Longitude, productID,
+		// 		)
+		// 		fmt.Printf("📍 Geocoded product %d (%s) -> %.6f, %.6f\n", productID, loc, coords.Latitude, coords.Longitude)
+		// 	}(p.ID, p.Location)
+		// }
+// Batch fetch organization tags for all products - TEMPORARILY DISABLED
+	if false && len(productIDs) > 0 {
 		// Build placeholder string for IN clause: ?,?,?,...
 		placeholders := make([]string, len(productIDs))
 		orgArgs := make([]interface{}, len(productIDs))
