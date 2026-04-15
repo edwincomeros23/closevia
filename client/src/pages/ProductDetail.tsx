@@ -1431,6 +1431,44 @@ const ProductDetail: React.FC = () => {
 
                   <Divider borderColor={detailBorder} />
 
+                  {/* Product Info: Location, Condition, Category */}
+                  <Box
+                    p={2}
+                    borderRadius="8px"
+                    bg="transparent"
+                  >
+                    <Wrap spacing={2} align="center">
+                      {product.location && (
+                        <WrapItem>
+                          <HStack spacing={1} px={2} py={1} borderRadius="full" bg={detailSurface} borderWidth="1px" borderColor={detailBorder}>
+                            <Text fontSize="xs" fontWeight="600" color="brand.600">📍</Text>
+                            <Text fontSize="xs" color={detailText} fontWeight="500">{product.location}</Text>
+                          </HStack>
+                        </WrapItem>
+                      )}
+                      
+                      {product.condition && (
+                        <WrapItem>
+                          <HStack spacing={1} px={2} py={1} borderRadius="full" bg={detailSurface} borderWidth="1px" borderColor={detailBorder}>
+                            <Text fontSize="xs" color={detailMuted}>Condition:</Text>
+                            <Text fontSize="xs" color={detailText} fontWeight="500" textTransform="capitalize">{product.condition}</Text>
+                          </HStack>
+                        </WrapItem>
+                      )}
+                      
+                      {product.category && (
+                        <WrapItem>
+                          <HStack spacing={1} px={2} py={1} borderRadius="full" bg={detailSurface} borderWidth="1px" borderColor={detailBorder}>
+                            <Text fontSize="xs" color={detailMuted}>Category:</Text>
+                            <Text fontSize="xs" color={detailText} fontWeight="500">{product.category}</Text>
+                          </HStack>
+                        </WrapItem>
+                      )}
+                    </Wrap>
+                  </Box>
+
+                  <Divider borderColor={detailBorder} />
+
                   <Box
                     p={4}
                     borderRadius="8px"

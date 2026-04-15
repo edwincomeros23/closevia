@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, VStack, HStack, Box, Image, Text, Badge, Button, Divider, Grid, useToast, ModalFooter, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter, useDisclosure, Icon, Card, CardBody, useColorModeValue, FormControl, FormLabel, Textarea } from '@chakra-ui/react'
-import { FaMapMarkerAlt, FaTruck } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaTruck, FaHandshake } from 'react-icons/fa'
 import { formatPHP } from '../utils/currency'
 import { Trade, Product, TradeAction, TradeOption } from '../types'
 import { useProducts } from '../contexts/ProductContext'
@@ -753,10 +753,10 @@ const OfferDetailsModal: React.FC<OfferDetailsModalProps> = ({ trade, isOpen, on
             {effectiveTrade?.trade_option && (
               <Box borderRadius="md" bg="brand.50" p={2} borderWidth="1px" borderColor="brand.200">
                 <HStack spacing={2}>
-                  <Icon as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck} boxSize={3.5} color="brand.600" flexShrink={0} />
+                  <Icon as={effectiveTrade.trade_option === 'meetup' ? FaMapMarkerAlt : effectiveTrade.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={3.5} color="brand.600" flexShrink={0} />
                   <VStack align="start" spacing={0} flex={1}>
                     <Text fontWeight="semibold" fontSize="12px" color="brand.900">
-                      {effectiveTrade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                      {effectiveTrade.trade_option === 'meetup' ? 'Meetup' : effectiveTrade.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
                     </Text>
                     {effectiveTrade.trade_option === 'delivery' && effectiveTrade.delivery_address && (
                       <Text fontSize="10px" color="gray.700">{effectiveTrade.delivery_address}</Text>
