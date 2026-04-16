@@ -121,7 +121,17 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You must offer at least one item or a cash amount"})
 	}
 
-	// Validate delivery address is provided when trade option is delivery
+	// Determine if this is a peer-to-peer trade or a buyout
+	// Trades (peer-to-peer): buyer offers items (hasItems=true)
+	// Buyouts: buyer only offers cash (hasItems=false, hasCash=true)
+	isPeerToPeerTrade := hasItems
+
+	// Validate trade option based on offer type
+	if isPeerToPeerTrade && payload.TradeOption != "meetup" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Peer-to-peer trades must use the 'meetup' option. Delivery is only available for buyout offers."})
+	}
+
+	// Validate delivery address is provided when trade option is delivery (only for buyouts)
 	if payload.TradeOption == "delivery" && strings.TrimSpace(payload.DeliveryAddress) == "" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Delivery address is required when choosing delivery option"})
 	}
@@ -239,9 +249,9 @@ func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	log.Printf("Executing single-step trade insert for trade from %d to %d (seller)", userID, sellerID)
 	res, err := tx.Exec(`
 		INSERT INTO trades 
-		(buyer_id, seller_id, target_product_id, status, trade_option, delivery_address, message, offered_cash_amount, payment_method) 
-		VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
-		userID, sellerID, payload.TargetProductID, payload.TradeOption, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod)
+		(buyer_id, seller_id, target_product_id, status, trade_option, meeting_type, delivery_address, message, offered_cash_amount, payment_method) 
+		VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+		userID, sellerID, payload.TargetProductID, payload.TradeOption, payload.MeetingType, payload.DeliveryAddress, payload.Message, payload.OfferedCashAmount, payload.PaymentMethod)
 
 	if err != nil {
 		log.Printf("Trade creation failed: %v", err)

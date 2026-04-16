@@ -160,13 +160,6 @@ const ProductUploadStep2: React.FC<ProductUploadStep2Props> = ({
     )
   }, [toast])
 
-  const handleChange = (field: keyof ProductDetails, value: any) => {
-    setDetails((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
-  }
-
   const handleNext = () => {
     // Validation
     if (!details.title.trim()) {

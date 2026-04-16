@@ -38,8 +38,14 @@ import {
   Checkbox,
   Wrap,
   WrapItem,
+  Radio,
+  RadioGroup,
+  Stack,
 } from '@chakra-ui/react'
 import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOutlineIcon } from '@chakra-ui/icons'
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 export interface ProductFormData {
   title: string
@@ -55,6 +61,7 @@ export interface ProductFormData {
   bidding_type: string
   max_items_per_offer: number
   location: string
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
   latitude?: number
   longitude?: number
 
@@ -114,6 +121,39 @@ const canMakeAIRequest = (): boolean => {
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
+
+// Fix leaflet icon issues
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap()
+  useEffect(() => {
+    map.setView([lat, lng], 16, { animate: true })
+    map.invalidateSize()
+  }, [lat, lng, map])
+  return null
+}
+
+const MapClickHandler = ({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) => {
+  const map = useMap()
+  useEffect(() => {
+    const handleClick = (e: any) => {
+      const { lat, lng } = e.latlng
+      onLocationSelect(lat, lng)
+    }
+    map.on('click', handleClick)
+    return () => {
+      map.off('click', handleClick)
+    }
+  }, [map, onLocationSelect])
+  return null
+}
 
 const AddProduct: React.FC = () => {
   const navigate = useNavigate()
@@ -182,6 +222,7 @@ const AddProduct: React.FC = () => {
     allow_buying: false,
     barter_only: true,
     location: '',
+    location_type: 'no_location',
     condition: '',
     category: '',
     bidding_type: 'none',
@@ -230,6 +271,8 @@ const AddProduct: React.FC = () => {
   const [isGettingLocation, setIsGettingLocation] = useState(false)
   const [useMockLocation, setUseMockLocation] = useState(false)
   const [mockLocationText, setMockLocationText] = useState('Makati City')
+  const [showCustomPickupMap, setShowCustomPickupMap] = useState(false)
+  const [customPickupLocationSet, setCustomPickupLocationSet] = useState(false)
   const [nameFieldFocused, setNameFieldFocused] = useState(false)
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
@@ -1566,9 +1609,198 @@ const AddProduct: React.FC = () => {
         </VStack>
       </Box>
 
-      {/* Manual value field removed as per user request to use AI instead */}
+      {/* ──────── LOCATION TYPE SELECTOR ──────── */}
+      <Box bg="blue.50" p={2} borderRadius="md" borderWidth="1px" borderColor="blue.200">
+        <FormControl>
+          <FormLabel fontSize="xs" fontWeight="bold" color="blue.800" mb={1.5}>
+            📦 How would you like buyers to collect this item?
+          </FormLabel>
+          <VStack align="stretch" spacing={1.5}>
+            {/* Option 1: Use Current Location */}
+            <Box 
+              p={2} 
+              borderWidth="1px" 
+              borderRadius="md"
+              bg={formData.location_type === 'current_location' ? 'blue.100' : 'white'}
+              borderColor={formData.location_type === 'current_location' ? 'blue.500' : 'gray.200'}
+              transition="all 0.2s"
+            >
+              <HStack align="start" mb={formData.location_type === 'current_location' && locationText ? 1.5 : 0} spacing={2}>
+                <Radio 
+                  isChecked={formData.location_type === 'current_location'}
+                  onChange={() => {
+                    setFormData(prev => ({ ...prev, location_type: 'current_location' }))
+                    setCustomPickupLocationSet(false)
+                  }}
+                  colorScheme="blue"
+                  flex="0 0 auto"
+                  mt={0.5}
+                  cursor="pointer"
+                />
+                <VStack align="start" spacing={0} flex={1} cursor="pointer" onClick={() => {
+                  setFormData(prev => ({ ...prev, location_type: 'current_location' }))
+                  setCustomPickupLocationSet(false)
+                }}>
+                  <Text fontWeight="600" fontSize="xs">✓ Use My Current Location</Text>
+                  <Text fontSize="10px" color="gray.600">Buyers pick up from your detected location</Text>
+                </VStack>
+              </HStack>
+              {formData.location_type === 'current_location' && locationText && (
+                <Box pl={6} pt={1} borderTopWidth="1px" borderTopColor="blue.200">
+                  <HStack spacing={1.5} align="start">
+                    <Text fontSize="10px" fontWeight="600" color="green.700" flex="0 0 auto">✓</Text>
+                    <VStack align="start" spacing={0}>
+                      <Text fontSize="10px" color="gray.800" fontWeight="500">{locationText}</Text>
+                      {formData.latitude && formData.longitude && (
+                        <Text fontSize="8px" color="gray.500">{formData.latitude.toFixed(4)}, {formData.longitude.toFixed(4)}</Text>
+                      )}
+                    </VStack>
+                  </HStack>
+                </Box>
+              )}
+            </Box>
 
-      {/* ──────── WHAT ARE YOU LOOKING FOR? (MANDATORY) ──────── */}
+            {/* Option 2: Custom Pickup Location */}
+            <Box 
+              p={2} 
+              borderWidth="1px" 
+              borderRadius="md"
+              bg={formData.location_type === 'pickup_location' ? 'blue.100' : 'white'}
+              borderColor={formData.location_type === 'pickup_location' ? 'blue.500' : 'gray.200'}
+              transition="all 0.2s"
+            >
+              <HStack align="start" mb={formData.location_type === 'pickup_location' ? 1.5 : 0} spacing={2}>
+                <Radio 
+                  isChecked={formData.location_type === 'pickup_location'}
+                  onChange={() => {
+                    setFormData(prev => ({ ...prev, location_type: 'pickup_location' }))
+                    setShowCustomPickupMap(true)
+                  }}
+                  colorScheme="blue"
+                  flex="0 0 auto"
+                  mt={0.5}
+                  cursor="pointer"
+                />
+                <VStack align="start" spacing={0} flex={1} cursor="pointer" onClick={() => {
+                  setFormData(prev => ({ ...prev, location_type: 'pickup_location' }))
+                  setShowCustomPickupMap(true)
+                }}>
+                  <Text fontWeight="600" fontSize="xs">📍 Set a Custom Pickup Location</Text>
+                  <Text fontSize="10px" color="gray.600">Click on map to pinpoint your pickup location</Text>
+                </VStack>
+              </HStack>
+              {formData.location_type === 'pickup_location' && (
+                <Box pl={6} pt={1}>
+                  {customPickupLocationSet && formData.latitude && formData.longitude && (
+                    <HStack spacing={1.5} align="start" mb={1.5}>
+                      <Text fontSize="9px" fontWeight="600" color="green.700" flex="0 0 auto">✓</Text>
+                      <VStack align="start" spacing={0}>
+                        <Text fontSize="9px" color="gray.800" fontWeight="500">{formData.location}</Text>
+                        <Text fontSize="8px" color="gray.500">{formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}</Text>
+                      </VStack>
+                    </HStack>
+                  )}
+                  <Button 
+                    size="xs" 
+                    colorScheme="blue" 
+                    variant="outline"
+                    onClick={() => setShowCustomPickupMap(!showCustomPickupMap)}
+                    mb={showCustomPickupMap && formData.latitude && formData.longitude ? 1.5 : 0}
+                    fontSize="10px"
+                    h="24px"
+                  >
+                    {showCustomPickupMap ? 'Hide Map' : 'Show Map'}
+                  </Button>
+                  {showCustomPickupMap && formData.latitude && formData.longitude && (
+                    <Box mt={1.5}>
+                      <Text fontSize="9px" color="blue.700" mb={1} fontWeight="500">Click on map to set your pickup location</Text>
+                      <Box h="200px" borderRadius="md" overflow="hidden" borderWidth="1px" borderColor="blue.300">
+                        <MapContainer center={[formData.latitude, formData.longitude]} zoom={16} style={{ height: '100%', width: '100%' }}>
+                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
+                          <Marker position={[formData.latitude, formData.longitude]} />
+                          <MapUpdater lat={formData.latitude} lng={formData.longitude} />
+                          <MapClickHandler onLocationSelect={async (lat, lng) => {
+                            // Reverse geocode the selected location to get address name
+                            try {
+                              const res = await fetch(
+                                `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${lat}&lon=${lng}`
+                              )
+                              const data = await res.json()
+                              const addr = data.address || {}
+                              // Build address: street + barangay + city
+                              const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
+                              const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
+                              const city = addr.city || addr.town || addr.municipality || ''
+                              const parts = [street, barangay, city].filter(Boolean)
+                              const address = parts.join(', ') || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+                              setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: address }))
+                              setCustomPickupLocationSet(true)
+                            } catch {
+                              // Fallback to coordinates if geocoding fails
+                              setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }))
+                              setCustomPickupLocationSet(true)
+                            }
+                          }} />
+                        </MapContainer>
+                      </Box>
+                      {formData.latitude && formData.longitude && (
+                        <Text fontSize="8px" color="gray.600" mt={1}>📍 {formData.location || `${formData.latitude.toFixed(4)}, ${formData.longitude.toFixed(4)}`}</Text>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Box>
+
+            {/* Option 3: No Fixed Location */}
+            <Box 
+              p={2} 
+              borderWidth="1px" 
+              borderRadius="md"
+              bg={formData.location_type === 'no_location' ? 'blue.100' : 'white'}
+              borderColor={formData.location_type === 'no_location' ? 'blue.500' : 'gray.200'}
+              transition="all 0.2s"
+            >
+              <HStack align="start" mb={formData.location_type === 'no_location' ? 1.5 : 0} spacing={2}>
+                <Radio 
+                  isChecked={formData.location_type === 'no_location'}
+                  onChange={() => {
+                    setFormData(prev => ({ ...prev, location_type: 'no_location' }))
+                    setCustomPickupLocationSet(false)
+                  }}
+                  colorScheme="blue"
+                  flex="0 0 auto"
+                  mt={0.5}
+                  cursor="pointer"
+                />
+                <VStack align="start" spacing={0} flex={1} cursor="pointer" onClick={() => {
+                  setFormData(prev => ({ ...prev, location_type: 'no_location' }))
+                  setCustomPickupLocationSet(false)
+                }}>
+                  <Text fontWeight="600" fontSize="xs">🤝 No Fixed Location</Text>
+                  <Text fontSize="10px" color="gray.600">Buyers will negotiate location with you directly</Text>
+                </VStack>
+              </HStack>
+              {formData.location_type === 'no_location' && (
+                <Box pl={6} pt={1} borderTopWidth="1px" borderTopColor="blue.200">
+                  <Alert status="info" variant="subtle" borderRadius="md" py={1} px={2}>
+                    <AlertIcon boxSize={3} />
+                    <Box>
+                      <AlertTitle fontSize="9px">Negotiation Required</AlertTitle>
+                      <AlertDescription fontSize="8px" mt={0.5}>
+                        Buyers will propose a meeting location. You can accept or propose an alternative. Both must agree before confirming.
+                      </AlertDescription>
+                    </Box>
+                  </Alert>
+                </Box>
+              )}
+            </Box>
+          </VStack>
+          <FormHelperText fontSize="8px" mt={1.5} color="blue.700">
+            💡 Fixed location = "Pickup" is primary. No location = buyers must negotiate meeting place.
+          </FormHelperText>
+        </FormControl>
+      </Box>
       <Box p={4} bg="brand.50" borderRadius="lg" border="1px dashed" borderColor="brand.200">
         <HStack mb={1}>
           <Text fontSize="sm" fontWeight="bold" color="brand.700">
@@ -2143,7 +2375,7 @@ const AddProduct: React.FC = () => {
             {currentStep < TOTAL_STEPS ? (
               <Tooltip 
                 label={!canProceed() ? getDisabledReason() : 'Proceed to next step'}
-                isDisabled={canProceed()}
+                isDisabled={!canProceed()}
                 placement="top"
                 hasArrow
               >

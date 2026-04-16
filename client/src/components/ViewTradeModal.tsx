@@ -48,7 +48,7 @@ import {
 } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
 import OptimizedImage from './OptimizedImage'
-import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle, FaCheck, FaTimesCircle, FaLightbulb } from 'react-icons/fa'
+import { FaMapMarkerAlt, FaCheckCircle, FaClock, FaCalendarAlt, FaHandshake, FaPaperPlane, FaTruck, FaStar, FaStore, FaExclamationTriangle, FaCheck, FaTimesCircle, FaLightbulb } from 'react-icons/fa'
 import {
   FiMapPin,
   FiPhone,
@@ -201,7 +201,7 @@ interface DeliveryState {
 type TradeProgressStage = 'meetup_confirmed' | 'trade_in_progress' | 'completed'
 
 const PROGRESS_STEPS = [
-  { id: 'meetup_confirmed', label: 'Meetup Confirmed', icon: FaMapMarkerAlt, description: 'Location confirmed by both parties' },
+  { id: 'meetup_confirmed', label: 'Location Confirmed', icon: FaMapMarkerAlt, description: 'Location, date and time confirmed by both parties' },
   { id: 'trade_in_progress', label: 'Trade in Progress', icon: FaClock, description: 'Exchange is happening' },
   { id: 'completed', label: 'Trade Completed', icon: FaCheckCircle, description: 'Trade finished and rated' },
 ]
@@ -2606,7 +2606,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                   )}
                 </Tab>
                 <Tab>
-                  {trade?.trade_option === 'delivery' ? 'Delivery' : 'Meetup'}
+                  {trade?.trade_option === 'delivery' ? 'Delivery' : trade?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup'}
                 </Tab>
               </TabList>
 
@@ -2619,8 +2619,8 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                       <Card
                         variant="outline"
                         borderWidth="2px"
-                        borderColor={trade.trade_option === 'meetup' ? 'blue.400' : 'green.400'}
-                        bg={trade.trade_option === 'meetup' ? 'blue.50' : 'green.50'}
+                        borderColor={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.400' : 'blue.400') : 'green.400'}
+                        bg={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.50' : 'blue.50') : 'green.50'}
                       >
                         <CardBody p={4}>
                           <HStack spacing={3} align="center" justify="space-between">
@@ -2628,22 +2628,28 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               <Box
                                 p={2}
                                 borderRadius="full"
-                                bg={trade.trade_option === 'meetup' ? 'blue.500' : 'green.500'}
+                                bg={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.500' : 'blue.500') : 'green.500'}
                                 color="white"
                               >
                                 <Icon
-                                  as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : FaTruck}
+                                  as={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? FaMapMarkerAlt : FaHandshake) : FaTruck}
                                   boxSize={5}
                                 />
                               </Box>
                               <VStack align="start" spacing={1}>
-                                <Text fontWeight="bold" fontSize="md" color={trade.trade_option === 'meetup' ? 'blue.700' : 'green.700'}>
-                                  Trade Option: {trade.trade_option === 'meetup' ? 'Meetup' : 'Delivery'}
+                                <Text fontWeight="bold" fontSize="md" color={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange.700' : 'blue.700') : 'green.700'}>
+                                  Trade Option: {trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup') : 'Delivery'}
                                 </Text>
                                 {trade.trade_option === 'meetup' ? (
-                                  <Text fontSize="sm" color="gray.600">
-                                    Exchange items at a meetup location
-                                  </Text>
+                                  trade?.meeting_type === 'pickup' ? (
+                                    <Text fontSize="sm" color="gray.600">
+                                      Pickup at seller's set location
+                                    </Text>
+                                  ) : (
+                                    <Text fontSize="sm" color="gray.600">
+                                      Exchange items at a mutually agreed meetup location
+                                    </Text>
+                                  )
                                 ) : (
                                   <VStack align="start" spacing={0}>
                                     <Text fontSize="sm" color="gray.600">
@@ -2665,7 +2671,7 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                               px={3}
                               py={1}
                             >
-                              {trade.trade_option === 'meetup' ? '📍 Meetup' : '🚚 Delivery'}
+                              {trade.trade_option === 'meetup' ? '📍 Pickup' : '🚚 Delivery'}
                             </Badge>
                           </HStack>
                           {(trade.status === 'accepted' || trade.status === 'active') && (
@@ -3240,6 +3246,55 @@ const ViewTradeModal: React.FC<ViewTradeModalProps> = ({
                             Current Stage: Waiting for both parties to confirm location
                           </Text>
                         </Box>
+                      )}
+
+                      {meetupAgreed && (buyerMeetupLocation === sellerMeetupLocation) && (
+                        <Card bg="green.50" borderWidth="2px" borderColor="green.200">
+                          <CardBody>
+                            <VStack spacing={3} align="stretch">
+                              <HStack>
+                                <Icon as={FaCheckCircle} color="green.500" boxSize={5} />
+                                <Text fontWeight="semibold" fontSize="md" color="green.700">
+                                  {trade?.meeting_type === 'pickup' ? 'Pickup Confirmed' : 'Meetup Confirmed'}
+                                </Text>
+                              </HStack>
+                              
+                              <VStack spacing={2} align="start" fontSize="sm">
+                                <HStack spacing={2} w="full">
+                                  <Icon as={FaMapMarkerAlt} boxSize={4} color="green.600" />
+                                  <VStack align="start" spacing={0} flex={1}>
+                                    <Text fontWeight="semibold" color="green.900">Location</Text>
+                                    <Text color="green.800">{buyerMeetupLocation}</Text>
+                                  </VStack>
+                                </HStack>
+
+                                {buyerMeetupDate && (
+                                  <HStack spacing={2} w="full">
+                                    <Icon as={FaCalendarAlt} boxSize={4} color="green.600" />
+                                    <VStack align="start" spacing={0} flex={1}>
+                                      <Text fontWeight="semibold" color="green.900">Date</Text>
+                                      <Text color="green.800">{new Date(buyerMeetupDate).toLocaleDateString()}</Text>
+                                    </VStack>
+                                  </HStack>
+                                )}
+
+                                {buyerMeetupTime && (
+                                  <HStack spacing={2} w="full">
+                                    <Icon as={FaClock} boxSize={4} color="green.600" />
+                                    <VStack align="start" spacing={0} flex={1}>
+                                      <Text fontWeight="semibold" color="green.900">Time</Text>
+                                      <Text color="green.800">{buyerMeetupTime}</Text>
+                                    </VStack>
+                                  </HStack>
+                                )}
+                              </VStack>
+
+                              <Text fontSize="xs" color="green.700" fontStyle="italic">
+                                Please arrive on time. Review the Meetup Policy for important information about no-shows and strikes.
+                              </Text>
+                            </VStack>
+                          </CardBody>
+                        </Card>
                       )}
 
                       {/* Meetup Location Selection */}

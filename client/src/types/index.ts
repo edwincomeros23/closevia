@@ -55,6 +55,7 @@ export interface Product {
   allow_buying: boolean
   barter_only: boolean
   location?: string
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
   condition?: string
   suggested_value?: number
   category?: string
@@ -224,6 +225,7 @@ export interface Trade {
   seller_met?: boolean
   transaction_proof_url?: string
   trade_option?: TradeOption // 'meetup' or 'delivery'
+  meeting_type?: 'meetup' | 'pickup' // Type of meeting flow: 'meetup' (mutual agreement) or 'pickup' (seller-set location)
   option_change_requested?: TradeOption // Requested option change (pending approval)
   option_change_requested_by?: number // User ID who requested the change
   delivery_address?: string // Delivery address if option is 'delivery'
@@ -299,6 +301,7 @@ export interface TradeCreate {
   message?: string
   offered_cash_amount?: number
   trade_option: TradeOption // Required: 'meetup' or 'delivery'
+  meeting_type?: 'meetup' | 'pickup' // Type of meeting flow for trades
   delivery_address?: string // Required if trade_option is 'delivery'
   payment_method?: 'cod' | 'upfront' // Payment method preference for buyout offers
 }
