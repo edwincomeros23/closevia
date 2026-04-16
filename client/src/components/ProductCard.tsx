@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import {
   Box,
   Heading,
@@ -12,12 +12,13 @@ import {
   Icon,
 } from '@chakra-ui/react'
 import { StarIcon } from '@chakra-ui/icons'
-import { FaMoneyBillWave, FaHandshake } from 'react-icons/fa'
+import { FaMoneyBillWave, FaHandshake, FaExchangeAlt, FaRocket } from 'react-icons/fa'
 import { Link as RouterLink, useNavigate } from 'react-router-dom'
 import { getFirstImage, getImageUrl } from '../utils/imageUtils'
 import { getProductUrl } from '../utils/productUtils'
 import { IconButton } from '@chakra-ui/react'
 import VerifiedAvatar from './VerifiedAvatar'
+import { api } from '../services/api'
 
 interface ProductCardProps {
   product: any
@@ -45,6 +46,43 @@ const ProductCard: React.FC<ProductCardProps> = ({
   isStagnant = false,
 }) => {
   const navigate = useNavigate()
+  const [boostTimeRemaining, setBoostTimeRemaining] = useState<string | null>(null)
+  const [isBoosted, setIsBoosted] = useState(false)
+
+  // Calculate boost remaining time
+  useEffect(() => {
+    if (!product.boosted_at) {
+      setIsBoosted(false)
+      return
+    }
+
+    const calculateRemaining = () => {
+      const boostedTime = new Date(product.boosted_at).getTime()
+      const expiresAt = boostedTime + 3 * 60 * 60 * 1000 // 3 hours in ms
+      const now = new Date().getTime()
+      const remaining = expiresAt - now
+
+      if (remaining <= 0) {
+        setIsBoosted(false)
+        setBoostTimeRemaining(null)
+      } else {
+        setIsBoosted(true)
+        const hours = Math.floor(remaining / (60 * 60 * 1000))
+        const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000))
+        
+        if (hours > 0) {
+          setBoostTimeRemaining(`${hours}h ${minutes}m`)
+        } else {
+          setBoostTimeRemaining(`${minutes}m`)
+        }
+      }
+    }
+
+    calculateRemaining()
+    const interval = setInterval(calculateRemaining, 60000) // Update every minute
+
+    return () => clearInterval(interval)
+  }, [product.boosted_at])
 
   const formatDistanceCompact = (rawDistance: unknown): string => {
     if (!rawDistance) return ''
@@ -89,7 +127,15 @@ const ProductCard: React.FC<ProductCardProps> = ({
     : undefined
 
   // Memoize click handlers
-  const handleCardClick = useCallback(() => {
+  const handleCardClick = useCallback(async () => {
+    // Increment view count when user clicks on the product card
+    try {
+      await api.post(`/api/products/${product.id}/view`)
+    } catch (error) {
+      // Silently fail - don't block navigation if view tracking fails
+      console.error('Failed to track view:', error)
+    }
+    // Navigate to product details page
     navigate(getProductUrl(product))
   }, [product, navigate])
 
@@ -205,6 +251,31 @@ const ProductCard: React.FC<ProductCardProps> = ({
               >
                 <StarIcon mr={0} />
               </Badge>
+            )}
+
+            {/* Boosted indicator - Minimal and lowkey */}
+            {isBoosted && boostTimeRemaining && (
+              <Tooltip label={`Boosted for ${boostTimeRemaining} more`} placement="left" hasArrow>
+                <Badge
+                  colorScheme="orange"
+                  variant="subtle"
+                  borderRadius="md"
+                  px={1.5}
+                  py={0.5}
+                  display="flex"
+                  alignItems="center"
+                  gap={0.5}
+                  fontSize="9px"
+                  fontWeight="600"
+                  bg="orange.50"
+                  color="orange.700"
+                  borderWidth="1px"
+                  borderColor="orange.200"
+                >
+                  <Icon as={FaRocket} boxSize={2.5} />
+                  <Text fontSize="9px">{boostTimeRemaining}</Text>
+                </Badge>
+              </Tooltip>
             )}
 
             {showPriceOverlay && (
@@ -418,41 +489,106 @@ const ProductCard: React.FC<ProductCardProps> = ({
               ❤️ {product.wishlist_count} {product.wishlist_count === 1 ? 'person wants' : 'people want'}
             </Badge>
           )}
+          
+          {/* Boosted indicator - minimal at bottom */}
+          {isBoosted && (
+            <Badge
+              colorScheme="orange"
+              variant="subtle"
+              borderRadius="full"
+              px={2}
+              py={0.5}
+              fontSize="xs"
+              bg="orange.50"
+              color="orange.600"
+              ml="auto"
+              display="flex"
+              alignItems="center"
+              gap={0.5}
+            >
+              <Icon as={FaRocket} boxSize={3} />
+              Boosted
+            </Badge>
+          )}
         </Flex>
+
+        {/* Organization Tags */}
+        {product.organization_tags && product.organization_tags.length > 0 && (
+          <Flex mb={1.5} align="center" gap={1} flexWrap="wrap">
+            {product.organization_tags.map((org: any) => (
+              <Tooltip key={org.id} label={org.description || org.name} placement="top" hasArrow>
+                <Badge
+                  as="a"
+                  href={`/organizations/${org.slug}`}
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                  colorScheme="purple"
+                  variant="subtle"
+                  borderRadius="full"
+                  px={2}
+                  py={0.5}
+                  fontSize="xs"
+                  cursor="pointer"
+                  _hover={{ transform: 'scale(1.05)', boxShadow: 'sm' }}
+                  transition="all 0.2s"
+                  display="flex"
+                  alignItems="center"
+                  gap={1}
+                >
+                  {org.logo_url && (
+                    <Image
+                      src={org.logo_url}
+                      alt={org.name}
+                      boxSize="14px"
+                      borderRadius="50%"
+                      onError={(e: any) => {
+                        e.target.style.display = 'none'
+                      }}
+                    />
+                  )}
+                  <Text fontSize="10px" noOfLines={1}>
+                    {org.name}
+                  </Text>
+                </Badge>
+              </Tooltip>
+            ))}
+          </Flex>
+        )}
 
         {/* Action buttons */}
         <HStack spacing={1} mt="auto" flexWrap={{ base: 'wrap', md: 'nowrap' }}>
+          <Tooltip label="Trade" placement="top">
+            <Button
+              size="xs"
+              variant="outline"
+              colorScheme="brand"
+              leftIcon={<Icon as={FaExchangeAlt} />}
+              flex={1}
+              fontSize={{ base: '11px', md: '12px' }}
+              onClick={handleTradeClick}
+              isDisabled={product.status === 'sold'}
+              transition="all 0.2s"
+              _hover={{ transform: 'translateY(-1px)' }}
+              _active={{ transform: 'scale(0.98)' }}
+            >
+              {product.status === 'sold' ? 'Sold' : 'Trade'}
+            </Button>
+          </Tooltip>
+
           <Button
             size="xs"
             variant="outline"
-            colorScheme="brand"
+            colorScheme="orange"
+            leftIcon={<Icon as={FaMoneyBillWave} />}
             flex={1}
-            minW={{ base: '50px', md: 'auto' }}
             fontSize={{ base: '11px', md: '12px' }}
-            onClick={handleTradeClick}
-            isDisabled={product.status === 'sold'}
-            transition="all 0.2s"
             _hover={{ transform: 'translateY(-1px)' }}
             _active={{ transform: 'scale(0.98)' }}
+            onClick={handleBuyoutClick}
+            isDisabled={product.status === 'sold'}
+            transition="all 0.2s"
           >
-            {product.status === 'sold' ? 'Sold' : 'Trade'}
+            Buyout
           </Button>
-
-          <Tooltip label="Buyout offer" placement="top">
-            <IconButton
-              aria-label="Buyout offer"
-              icon={<Icon as={FaMoneyBillWave} color="orange.500" />}
-              size="xs"
-              variant="outline"
-              borderColor="orange.400"
-              _hover={{ borderColor: 'orange.500', bg: 'orange.50', transform: 'translateY(-1px)' }}
-              _active={{ transform: 'scale(0.98)' }}
-              onClick={handleBuyoutClick}
-              isDisabled={product.status === 'sold'}
-              flexShrink={0}
-              transition="all 0.2s"
-            />
-          </Tooltip>
 
           <Tooltip label="View offers" placement="top">
             <IconButton

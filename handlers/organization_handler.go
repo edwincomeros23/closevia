@@ -67,16 +67,17 @@ func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Organization not found"})
 	}
-	// Query all trade posts for this org
+	// Query all trade posts for this org (manually posted) + products tagged with this org
 	rows, err := h.db.Query(`
-		SELECT p.id, p.title, p.description, p.price, p.image_urls, p.status, p.category, p.seller_id,
-			   u.id, u.name, u.profile_picture
-		FROM organization_trade_posts otp
-		JOIN products p ON otp.product_id = p.id
-		JOIN users u ON otp.user_id = u.id
-		WHERE otp.organization_id = ?
-		ORDER BY p.id, otp.created_at DESC
-	`, orgID)
+		SELECT DISTINCT p.id, p.title, p.description, p.price, p.image_urls, p.status, p.category, p.seller_id,
+			   u.id, u.name, u.profile_picture, COALESCE(otp.created_at, NOW()) as post_time
+		FROM products p
+		JOIN users u ON u.id = p.seller_id
+		LEFT JOIN organization_trade_posts otp ON otp.product_id = p.id AND otp.organization_id = ?
+		LEFT JOIN product_organization_tags pot ON pot.product_id = p.id AND pot.organization_id = ?
+		WHERE (otp.organization_id = ? OR pot.organization_id = ?) AND p.status = 'available'
+		ORDER BY post_time DESC, p.id DESC
+	`, orgID, orgID, orgID, orgID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch trade feed"})
 	}
@@ -104,7 +105,8 @@ func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
 		var price float64
 		var sellerID, userID int
 		var userName, userPic string
-		if err := rows.Scan(&pid, &title, &desc, &price, &imageURLs, &status, &category, &sellerID, &userID, &userName, &userPic); err != nil {
+		var postTime interface{} // from COALESCE(otp.created_at, NOW())
+		if err := rows.Scan(&pid, &title, &desc, &price, &imageURLs, &status, &category, &sellerID, &userID, &userName, &userPic, &postTime); err != nil {
 			continue
 		}
 		g, ok := groups[pid]
@@ -768,10 +770,8 @@ func (h *OrganizationHandler) CreatePost(c *fiber.Ctx) error {
 	if req.Content == "" {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Post content is required"})
 	}
-	if req.CategoryTag == "" {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Category tag is required"})
-	}
-	if !strings.EqualFold(req.CategoryTag, orgCategory) {
+	// Category tag is optional - only validate if provided
+	if req.CategoryTag != "" && !strings.EqualFold(req.CategoryTag, orgCategory) {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Post category tag must match organization category"})
 	}
 
@@ -839,6 +839,47 @@ func (h *OrganizationHandler) GetFeed(c *fiber.Ctx) error {
 			"content":                content,
 			"category_tag":           category,
 			"created_at":             createdAt,
+		})
+	}
+
+	return c.JSON(models.APIResponse{Success: true, Data: items})
+}
+
+// GetUserApprovedOrganizations returns all organizations where the user is an approved member.
+// Used during product creation to allow tagging organizations.
+func (h *OrganizationHandler) GetUserApprovedOrganizations(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	rows, err := h.db.Query(`
+		SELECT o.id, o.name, o.slug, COALESCE(o.logo_url, '') as logo_url, COALESCE(o.description, '') as description
+		FROM organizations o
+		JOIN organization_memberships m ON o.id = m.organization_id
+		WHERE m.user_id = ? AND m.status = 'approved' AND o.is_deleted = FALSE
+		ORDER BY o.name ASC
+	`, userID)
+	if err != nil {
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load organizations"})
+	}
+	defer rows.Close()
+
+	items := make([]fiber.Map, 0)
+	for rows.Next() {
+		var (
+			id                               int
+			name, slug, logoURL, description string
+		)
+		if err := rows.Scan(&id, &name, &slug, &logoURL, &description); err != nil {
+			continue
+		}
+		items = append(items, fiber.Map{
+			"id":          id,
+			"name":        name,
+			"slug":        slug,
+			"logo_url":    logoURL,
+			"description": description,
 		})
 	}
 

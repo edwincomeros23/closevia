@@ -90,8 +90,8 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
       name: 'WMSU Campus',
       address: 'Normal Road, Zamboanga City',
       type: 'public',
-      lat: 6.9214,
-      lng: 122.0790,
+      lat: 6.9142,
+      lng: 122.0620,
       distance: 0.3,
       available24h: true,
     },
@@ -121,8 +121,8 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
       name: 'KCC de Zamboanga',
       address: 'Gov. Camins Ave, Zamboanga City',
       type: 'mall',
-      lat: 6.9142,
-      lng: 122.0620,
+      lat: 6.9214,
+      lng: 122.0790,
       isPartner: true,
       distance: 0.9,
       available24h: false,
@@ -130,7 +130,7 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
     {
       id: 'amethyst_eatery',
       name: 'Amethyst Eatery',
-      address: 'Zamboanga City',
+      address: 'Johnston Road, Zamboanga City',
       type: 'cafe',
       lat: 6.9125,
       lng: 122.0720,
@@ -176,68 +176,71 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
+    <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered>
       <ModalOverlay />
-      <ModalContent maxH="90vh">
-        <ModalHeader bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" color="white" borderRadius="lg 0 0 0">
+      <ModalContent maxH="75vh">
+        <ModalHeader py={3} bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" color="white" borderRadius="lg 0 0 0" fontSize="lg">
           📍 Select Meetup Location
         </ModalHeader>
         <ModalCloseButton color="white" />
 
-        <ModalBody p={4} overflowY="auto">
+        <ModalBody p={3} overflowY="auto" maxH="70vh">
           <Tabs>
             {/* Tab 1: Suggested Locations */}
             <TabList>
-              <Tab>Suggested Locations</Tab>
-              <Tab>Map View</Tab>
+              <Tab fontSize="sm">Suggested Locations</Tab>
+              <Tab fontSize="sm">Map View</Tab>
             </TabList>
 
             <TabPanels>
               {/* Suggested Locations Tab */}
-              <TabPanel>
-                <VStack spacing={4} align="stretch">
+              <TabPanel p={2}>
+                <VStack spacing={1.5} align="stretch">
                   {/* Search Input */}
-                  <InputGroup>
+                  <InputGroup size="sm">
                     <InputLeftElement pointerEvents="none">
-                      <Icon as={FiSearch} color="gray.400" />
+                      <Icon as={FiSearch} color="gray.400" boxSize={4} />
                     </InputLeftElement>
                     <Input
                       placeholder="Search locations..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       borderColor="purple.300"
+                      fontSize="sm"
                       _focus={{ borderColor: 'purple.500', boxShadow: '0 0 0 1px #764ba2' }}
                     />
                   </InputGroup>
 
                   {/* Locations List */}
-                  <VStack spacing={3} align="stretch">
+                  <VStack spacing={1} align="stretch">
                     {sortedLocations.length === 0 ? (
-                      <Box p={8} textAlign="center">
-                        <Text color="gray.500">No locations found matching your search</Text>
+                      <Box p={4} textAlign="center">
+                        <Text fontSize="sm" color="gray.500">No locations found matching your search</Text>
                       </Box>
                     ) : (
                       sortedLocations.map((location) => (
                         <Box
                           key={location.id}
-                          p={4}
-                          border="2px"
+                          py={1.5}
+                          px={2.5}
+                          border="1px"
                           borderColor={selectedLocation?.id === location.id ? 'purple.500' : 'gray.200'}
-                          borderRadius="lg"
+                          borderRadius="md"
                           cursor="pointer"
                           transition="all 0.2s"
                           _hover={{
                             borderColor: 'purple.400',
-                            shadow: 'md',
+                            shadow: 'sm',
+                            bg: 'gray.50',
                           }}
                           bg={selectedLocation?.id === location.id ? 'purple.50' : 'white'}
                           onClick={() => setSelectedLocation(location)}
                         >
-                          <HStack spacing={3} align="start" mb={2}>
-                            <Text fontSize="24px">{getLocationIcon(location.type)}</Text>
-                            <VStack align="start" spacing={0} flex={1}>
-                              <HStack spacing={2}>
-                                <Text fontWeight="bold">{location.name}</Text>
+                          <HStack spacing={2} align="start" mb={0.5}>
+                            <Text fontSize="18px" flexShrink={0}>{getLocationIcon(location.type)}</Text>
+                            <VStack align="start" spacing={0} flex={1} minW={0}>
+                              <HStack spacing={1.5}>
+                                <Text fontSize="sm" fontWeight="bold" noOfLines={1}>{location.name}</Text>
                                 {location.isPartner && (
                                   <Badge colorScheme="green" fontSize="xs">
                                     Partner
@@ -249,18 +252,18 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
                                   </Badge>
                                 )}
                               </HStack>
-                              <Text fontSize="sm" color="gray.600">
+                              <Text fontSize="xs" color="gray.600" noOfLines={1}>
                                 {location.address}
                               </Text>
                             </VStack>
                           </HStack>
 
-                          <HStack spacing={6} fontSize="sm" color="gray.500">
-                            <HStack spacing={1}>
-                              <Icon as={FaMapMarkerAlt} />
-                              <Text>{location.distance?.toFixed(1)} km away</Text>
+                          <HStack spacing={4} fontSize="xs" color="gray.500" mt={0.5}>
+                            <HStack spacing={0.5}>
+                              <Icon as={FaMapMarkerAlt} boxSize={3} />
+                              <Text>{location.distance?.toFixed(1)} km</Text>
                             </HStack>
-                            <Badge colorScheme="gray" variant="subtle">
+                            <Badge colorScheme="gray" variant="subtle" fontSize="xs">
                               {location.type.charAt(0).toUpperCase() + location.type.slice(1)}
                             </Badge>
                           </HStack>
@@ -272,11 +275,11 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
               </TabPanel>
 
               {/* Map View Tab */}
-              <TabPanel p={0} h="400px" mb={4}>
+              <TabPanel p={1} h="300px" mb={2}>
                 <MapContainer
                   center={[userLat, userLng]}
                   zoom={14}
-                  style={{ height: '100%', borderRadius: '8px', marginTop: '12px' }}
+                  style={{ height: '100%', borderRadius: '8px', marginTop: '4px' }}
                 >
                   <TileLayer
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -341,12 +344,12 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
 
           {/* Selected Location Summary */}
           {selectedLocation && (
-            <Box p={4} bg="green.50" borderRadius="lg" border="2px" borderColor="green.200" mt={4}>
-              <HStack spacing={3}>
-                <Text fontSize="24px">{getLocationIcon(selectedLocation.type)}</Text>
-                <VStack align="start" spacing={0} flex={1}>
-                  <Text fontWeight="bold">{selectedLocation.name}</Text>
-                  <Text fontSize="sm" color="gray.600">
+            <Box py={2} px={2.5} bg="green.50" borderRadius="md" border="1px" borderColor="green.200" mt={3}>
+              <HStack spacing={2}>
+                <Text fontSize="18px" flexShrink={0}>{getLocationIcon(selectedLocation.type)}</Text>
+                <VStack align="start" spacing={0} flex={1} minW={0}>
+                  <Text fontSize="sm" fontWeight="bold" noOfLines={1}>{selectedLocation.name}</Text>
+                  <Text fontSize="xs" color="gray.600" noOfLines={1}>
                     {selectedLocation.address}
                   </Text>
                 </VStack>
@@ -355,17 +358,18 @@ const MeetupLocationSelector: React.FC<MeetupLocationSelectorProps> = ({
           )}
         </ModalBody>
 
-        <ModalFooter gap={3}>
-          <Button variant="ghost" onClick={onClose}>
+        <ModalFooter gap={2} py={2}>
+          <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
           <Button
             colorScheme="purple"
+            size="sm"
             isDisabled={!selectedLocation}
             onClick={handleSelectLocation}
             leftIcon={<FiMapPin />}
           >
-            Confirm Location
+            Confirm
           </Button>
         </ModalFooter>
       </ModalContent>

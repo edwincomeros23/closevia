@@ -10,7 +10,7 @@
 //   name      = 'Performance Test User'   (clovia-performance-test.js:167)
 //   email     = 'testuser-<ms>-<rand>@test.com'  (clovia-performance-test.js:65)
 //   verified  = 0    (k6 never runs the OTP flow)
-//   role      = 'user'
+//   role      = '' OR 'user'   (k6 test doesn't send role, defaults to empty string)
 //
 // All four conditions must match — defense in depth so we don't accidentally
 // touch a real user.
@@ -95,7 +95,7 @@ func dryRun(db *sql.DB) error {
 	const targetWhere = `name = 'Performance Test User'
 		  AND email LIKE 'testuser-%@test.com'
 		  AND verified = 0
-		  AND role = 'user'`
+		  AND (role = 'user' OR role = '')`
 
 	// 1a. How many users will be targeted?
 	var willDelete int
@@ -104,14 +104,14 @@ func dryRun(db *sql.DB) error {
 	}
 	fmt.Printf("1a. will_delete_users      = %d\n", willDelete)
 
-	// 1b. Sanity check: any matching name+email row that is NOT unverified+user-role?
+	// 1b. Sanity check: any matching name+email row that IS verified? Or has role that's NOT empty/user?
 	//     If this is > 0, something matches our pattern that we did NOT expect — STOP.
 	var suspicious int
 	if err := db.QueryRow(`
 		SELECT COUNT(*) FROM users
 		WHERE name = 'Performance Test User'
 		  AND email LIKE 'testuser-%@test.com'
-		  AND (verified = 1 OR role <> 'user')
+		  AND (verified = 1 OR (role <> '' AND role <> 'user'))
 	`).Scan(&suspicious); err != nil {
 		return fmt.Errorf("1b suspicious_matches: %w", err)
 	}
@@ -119,7 +119,7 @@ func dryRun(db *sql.DB) error {
 	if suspicious > 0 {
 		fmt.Println()
 		fmt.Println("STOP: suspicious matches found.")
-		fmt.Println("A row matches name+email but is verified or has a non-user role.")
+		fmt.Println("A row matches name+email with verified=1 or role not in ('', 'user').")
 		fmt.Println("Investigate manually before re-running.")
 		os.Exit(1)
 	}
@@ -174,9 +174,7 @@ func dryRun(db *sql.DB) error {
 	return nil
 }
 
-// runCleanup performs the actual transactional delete. It always uses a
-// single connection (via *sql.Tx) so the TEMPORARY TABLE is visible across
-// every statement. On any error, or if the post-delete safety check fails,
+// runCleanup performs the actual transactional delete. On any error, or if the post-delete safety check fails,
 // it rolls back and returns an error.
 func runCleanup(db *sql.DB) error {
 	fmt.Println("============================================================")
@@ -200,40 +198,14 @@ func runCleanup(db *sql.DB) error {
 		}
 	}()
 
-	// Stage target IDs into a TEMPORARY TABLE. This both speeds up the
-	// downstream DELETEs (no re-running the WHERE on every step) and locks
-	// the working set so it can't drift mid-transaction if k6 ran again.
-	if _, err := tx.ExecContext(ctx, `DROP TEMPORARY TABLE IF EXISTS _mock_user_ids`); err != nil {
-		return fmt.Errorf("drop temp table: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `CREATE TEMPORARY TABLE _mock_user_ids (id INT PRIMARY KEY) ENGINE=MEMORY`); err != nil {
-		return fmt.Errorf("create temp table: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO _mock_user_ids (id)
-		SELECT id FROM users
-		WHERE name = 'Performance Test User'
+	// Define the WHERE clause for targeting performance test users
+	const targetWhere = `name = 'Performance Test User'
 		  AND email LIKE 'testuser-%@test.com'
 		  AND verified = 0
-		  AND role = 'user'
-	`); err != nil {
-		return fmt.Errorf("populate temp table: %w", err)
-	}
-
-	var staged int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM _mock_user_ids`).Scan(&staged); err != nil {
-		return fmt.Errorf("count staged: %w", err)
-	}
-	fmt.Printf("staged_user_ids = %d\n\n", staged)
-
-	if staged == 0 {
-		fmt.Println("Nothing to delete. Rolling back (no-op).")
-		_ = tx.Rollback()
-		finalized = true
-		return nil
-	}
+		  AND (role = 'user' OR role = '')`
 
 	// Delete order mirrors handlers/user_handler.go:1856-1865 exactly.
+	// Using direct WHERE clauses instead of temp table for better hosted MySQL compatibility.
 	steps := []struct {
 		label string
 		stmt  string
@@ -242,41 +214,42 @@ func runCleanup(db *sql.DB) error {
 			"2a. trade_items via products",
 			`DELETE ti FROM trade_items ti
 			 JOIN products p ON p.id = ti.product_id
-			 WHERE p.seller_id IN (SELECT id FROM _mock_user_ids)`,
+			 JOIN users u ON u.id = p.seller_id
+			 WHERE ` + targetWhere,
 		},
 		{
 			"2b. multiway_trades",
 			`DELETE FROM multiway_trades
-			 WHERE user1_id          IN (SELECT id FROM _mock_user_ids)
-			    OR user2_id          IN (SELECT id FROM _mock_user_ids)
-			    OR user3_id          IN (SELECT id FROM _mock_user_ids)
-			    OR initiator_user_id IN (SELECT id FROM _mock_user_ids)`,
+			 WHERE user1_id IN (SELECT id FROM users WHERE ` + targetWhere + `)
+			    OR user2_id IN (SELECT id FROM users WHERE ` + targetWhere + `)
+			    OR user3_id IN (SELECT id FROM users WHERE ` + targetWhere + `)
+			    OR initiator_user_id IN (SELECT id FROM users WHERE ` + targetWhere + `)`,
 		},
 		{
 			"2c. trade_loop_agreements",
 			`DELETE FROM trade_loop_agreements
-			 WHERE user_id IN (SELECT id FROM _mock_user_ids)`,
+			 WHERE user_id IN (SELECT id FROM users WHERE ` + targetWhere + `)`,
 		},
 		{
 			"2d. trades",
 			`DELETE FROM trades
-			 WHERE buyer_id  IN (SELECT id FROM _mock_user_ids)
-			    OR seller_id IN (SELECT id FROM _mock_user_ids)`,
+			 WHERE buyer_id IN (SELECT id FROM users WHERE ` + targetWhere + `)
+			    OR seller_id IN (SELECT id FROM users WHERE ` + targetWhere + `)`,
 		},
 		{
 			"2e. products",
 			`DELETE FROM products
-			 WHERE seller_id IN (SELECT id FROM _mock_user_ids)`,
+			 WHERE seller_id IN (SELECT id FROM users WHERE ` + targetWhere + `)`,
 		},
 		{
 			"2f. notifications",
 			`DELETE FROM notifications
-			 WHERE user_id IN (SELECT id FROM _mock_user_ids)`,
+			 WHERE user_id IN (SELECT id FROM users WHERE ` + targetWhere + `)`,
 		},
 		{
 			"2g. users",
 			`DELETE FROM users
-			 WHERE id IN (SELECT id FROM _mock_user_ids)`,
+			 WHERE ` + targetWhere,
 		},
 	}
 
@@ -303,11 +276,6 @@ func runCleanup(db *sql.DB) error {
 	}
 	fmt.Printf("remaining_mock_users = %d   (must be 0)\n", remaining)
 	fmt.Printf("total_users_after    = %d\n", totalAfter)
-
-	// Drop the temp table — non-fatal on error since the connection ends here anyway.
-	if _, err := tx.ExecContext(ctx, `DROP TEMPORARY TABLE IF EXISTS _mock_user_ids`); err != nil {
-		fmt.Printf("warn: drop temp table: %v\n", err)
-	}
 
 	if remaining != 0 {
 		fmt.Println()

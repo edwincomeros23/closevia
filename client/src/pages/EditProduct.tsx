@@ -40,6 +40,45 @@ const EditProduct: React.FC = () => {
   const [error, setError] = useState('')
   const [originalProduct, setOriginalProduct] = useState<any>(null)
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  const [detectingLocation, setDetectingLocation] = useState(false)
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast({ title: 'Geolocation unavailable', status: 'warning', duration: 3000, isClosable: true })
+      return
+    }
+    setDetectingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          )
+          const data = await res.json()
+          const addr = data.address || {}
+          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || ''
+          const city = addr.city || addr.town || ''
+          const parts = [barangay, city].filter(Boolean)
+          const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+          setFormData((prev) => ({ ...prev, location: address, latitude, longitude } as any))
+        } catch {
+          setFormData((prev) => ({
+            ...prev,
+            location: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+            latitude,
+            longitude,
+          } as any))
+        }
+        setDetectingLocation(false)
+      },
+      () => {
+        setDetectingLocation(false)
+        toast({ title: 'Could not get location', status: 'error', duration: 3000, isClosable: true })
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    )
+  }
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -228,6 +267,8 @@ const EditProduct: React.FC = () => {
       if (formData.condition) form.append('condition', formData.condition)
       if (formData.category) form.append('category', formData.category)
       if (formData.location) form.append('location', formData.location)
+      if ((formData as any).latitude !== undefined) form.append('latitude', String((formData as any).latitude))
+      if ((formData as any).longitude !== undefined) form.append('longitude', String((formData as any).longitude))
       if (formData.max_items_per_offer !== undefined) form.append('max_items_per_offer', String(formData.max_items_per_offer))
       if (formData.wants !== undefined) form.append('wants', formData.wants)
       form.append('wanted_categories', JSON.stringify(formData.wanted_categories || []))
@@ -419,12 +460,26 @@ const EditProduct: React.FC = () => {
                 {/* Location */}
                 <FormControl>
                   <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Location</FormLabel>
-                  <Input
-                    value={formData.location || ''}
-                    onChange={(e) => handleInputChange('location', e.target.value)}
-                    placeholder="e.g., Cebu City, Philippines"
-                    size={{ base: 'md', md: 'lg' }}
-                  />
+                  <HStack spacing={2} align="stretch">
+                    <Input
+                      value={formData.location || ''}
+                      onChange={(e) => handleInputChange('location', e.target.value)}
+                      placeholder="e.g., Cebu City, Philippines"
+                      size={{ base: 'md', md: 'lg' }}
+                    />
+                    <Button
+                      size={{ base: 'md', md: 'lg' }}
+                      variant="outline"
+                      onClick={useCurrentLocation}
+                      isLoading={detectingLocation}
+                      flexShrink={0}
+                    >
+                      Use current
+                    </Button>
+                  </HStack>
+                  <FormHelperText fontSize="xs" color="gray.500">
+                    Changing location updates how far this product appears to other users.
+                  </FormHelperText>
                 </FormControl>
 
                 {/* Desired Exchange */}
@@ -479,14 +534,28 @@ const EditProduct: React.FC = () => {
                     </FormControl>
 
                     <FormControl>
-                      <FormLabel fontSize="sm" color="gray.600">Specific Items (Optional)</FormLabel>
+                      <FormLabel fontSize="sm" color="gray.600" fontWeight="600" mb={2}>Preferred Items</FormLabel>
                       <Input
                         value={formData.wants || ''}
                         onChange={(e) => handleInputChange('wants', e.target.value)}
-                        placeholder="e.g., iPhone 13, mechanical keyboard, etc."
+                        placeholder="e.g. Any smartphone, mechanical keyboard, etc."
                         size={{ base: 'md', md: 'lg' }}
                       />
-                      <FormHelperText fontSize="xs" color="gray.500">Specific items you have in mind</FormHelperText>
+                      {formData.wants === '' && (
+                        <HStack spacing={2} mt={2}>
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            colorScheme="gray"
+                            fontSize="11px"
+                            fontWeight="500"
+                            onClick={() => handleInputChange('wants', 'Any')}
+                            _hover={{ color: 'brand.600' }}
+                          >
+                            Any
+                          </Button>
+                        </HStack>
+                      )}
                     </FormControl>
                   </VStack>
                 </Box>

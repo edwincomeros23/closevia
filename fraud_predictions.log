@@ -265,8 +265,8 @@
 {
   "fraud_probability": 0,
   "is_fraud": false,
-  "product_id": 269,
+  "product_id": 270,
   "risk_level": "",
-  "seller_id": 60,
-  "timestamp": "2026-04-14T02:24:34+08:00"
+  "seller_id": 55,
+  "timestamp": "2026-04-13T15:27:44-04:00"
 }

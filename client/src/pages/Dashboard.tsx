@@ -63,7 +63,7 @@ import { useRealtime } from '../contexts/RealtimeContext'
 import { Product, Order, Trade, TradeAction, TradeItem } from '../types'
 import FloatingTab from '../components/FloatingTab'
 import { api } from '../services/api'
-import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb } from 'react-icons/fa'
+import { FaCrown, FaHandshake, FaTimes, FaCheckCircle, FaClock, FaHistory, FaShoppingBag, FaExchangeAlt, FaComments, FaMapMarkerAlt, FaTruck, FaMoneyBillWave, FaArrowUp, FaRegLightbulb, FaRocket } from 'react-icons/fa'
 import { FiShoppingBag, FiRefreshCw, FiMessageCircle, FiGrid, FiList, FiSend, FiInbox, FiArchive, FiSliders } from 'react-icons/fi'
 import { formatPHP } from '../utils/currency'
 import { getFirstImage } from '../utils/imageUtils'
@@ -242,7 +242,7 @@ const Dashboard: React.FC = () => {
   const [offersViewMode, setOffersViewMode] = useState<'grid' | 'list'>('list')
   const [multiWayTradesViewMode, setMultiWayTradesViewMode] = useState<'grid' | 'list'>('grid')
   const [multiWayChainFilter, setMultiWayChainFilter] = useState<'all' | '3'>('all')
-  const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('grid')
+  const [tradeHistoryViewMode, setTradeHistoryViewMode] = useState<'grid' | 'list'>('list')
 
   // Color mode values
   const cardBg = useColorModeValue('white', 'gray.800')
@@ -467,9 +467,15 @@ const Dashboard: React.FC = () => {
 
   const getTradePartnerInfo = useCallback((trade: Trade) => {
     const isYouBuyer = trade.buyer_id === user?.id
+    // Determine if this is a buyout (no items, only cash) vs regular trade
+    const isBuyout = (!trade.items || trade.items.length === 0) && 
+                     (trade.offered_cash_amount && trade.offered_cash_amount > 0)
+    const role = isBuyout 
+      ? (isYouBuyer ? 'Seller' : 'Buyer')
+      : (isYouBuyer ? 'Trader 2' : 'Trader 1')
     return {
       name: isYouBuyer ? (trade.seller_name || 'Anonymous') : (trade.buyer_name || 'Anonymous'),
-      role: isYouBuyer ? 'Seller' : 'Buyer',
+      role,
       direction: isYouBuyer ? 'You initiated this trade' : 'They initiated this trade',
     }
   }, [user?.id])
@@ -1827,43 +1833,77 @@ const Dashboard: React.FC = () => {
   }
 
   const handleBoostProductClick = async (product: Product) => {
-    try {
-      setBoosting(true)
+    // Check if user is premium
+    if (!user?.is_premium || user?.premium_tier === 'free') {
       showPopup({
-        type: 'loading',
-        title: 'Boosting Listing...',
-        message: 'Please wait while we boost your listing.',
-        icon: FaArrowUp,
-        confirmColorScheme: 'blue'
+        type: 'warning',
+        title: '⭐ Premium Feature',
+        message: 'Boost Listing is a Premium-only feature. Upgrade now to boost your listings to the top of the feed for 3 hours!',
+        confirmText: 'Upgrade to Premium',
+        cancelText: 'Cancel',
+        onConfirm: () => {
+          closePopup()
+          navigate('/premium')
+        },
+        onCancel: () => closePopup(),
+        icon: FaCrown,
+        confirmColorScheme: 'brand'
       })
-
-      const response = await api.post(`/api/products/boost/${product.id}`)
-
-      if (response.data?.success) {
-        showPopup({
-          type: 'success',
-          title: 'Boost Successful!',
-          message: response.data.message || 'Your listing has been boosted.',
-          confirmText: 'Awesome',
-          onConfirm: () => closePopup(),
-          icon: FaCheckCircle,
-          confirmColorScheme: 'green'
-        })
-        invalidateDashboard()
-      } else {
-        throw new Error(response.data?.error || 'Failed to boost product')
-      }
-    } catch (error: any) {
-      showPopup({
-        type: 'error',
-        title: 'Boost Failed',
-        message: error.response?.data?.error || error.message || 'An error occurred while boosting the product',
-        confirmText: 'Okay',
-        onConfirm: () => closePopup(),
-        icon: FaTimes,
-        confirmColorScheme: 'red'
-      })
+      return
     }
+
+    // Show confirmation dialog with details
+    showPopup({
+      type: 'info',
+      title: `🚀 Boost "${product.title}"?`,
+      message: `Your listing will appear at the top of the feed for 3 hours and get maximum visibility to other traders. You can boost this product again in 24 hours.`,
+      confirmText: 'Boost for 3 Hours',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          setBoosting(true)
+          showPopup({
+            type: 'loading',
+            title: 'Boosting Listing...',
+            message: 'Your product is being boosted to the top of the feed.',
+            icon: FaArrowUp,
+            confirmColorScheme: 'blue'
+          })
+
+          const response = await api.post(`/api/products/boost/${product.id}`)
+
+          if (response.data?.success) {
+            showPopup({
+              type: 'success',
+              title: '🎉 Boost Successful!',
+              message: response.data.message || `"${product.title}" is now boosted! It will appear at the top of the feed for the next 3 hours.`,
+              confirmText: 'Awesome',
+              onConfirm: () => closePopup(),
+              icon: FaCheckCircle,
+              confirmColorScheme: 'green'
+            })
+            invalidateDashboard()
+          } else {
+            throw new Error(response.data?.error || 'Failed to boost product')
+          }
+        } catch (error: any) {
+          showPopup({
+            type: 'error',
+            title: 'Boost Failed',
+            message: error.response?.data?.error || error.message || 'An error occurred while boosting the product',
+            confirmText: 'Okay',
+            onConfirm: () => closePopup(),
+            icon: FaTimes,
+            confirmColorScheme: 'red'
+          })
+        } finally {
+          setBoosting(false)
+        }
+      },
+      onCancel: () => closePopup(),
+      icon: FaRocket,
+      confirmColorScheme: 'orange'
+    })
   }
 
   const handleDeleteProductClick = (product: Product) => {
@@ -2137,7 +2177,7 @@ const Dashboard: React.FC = () => {
     // Never show actions for traded/sold items
     const shouldShowActions = showActions && normalizedStatus !== 'traded' && normalizedStatus !== 'sold'
     const offersCount = React.useMemo(() => getProductOffersCount(product.id), [product.id, getProductOffersCount])
-    const viewsCount = 0 // TODO: Fetch from API when available
+    const viewsCount = product.view_count || 0
 
     const isStagnant = React.useMemo(() => {
       const daysOld = (new Date().getTime() - new Date(product.created_at).getTime()) / (1000 * 3600 * 24)
@@ -5112,6 +5152,7 @@ const Dashboard: React.FC = () => {
                                 >
                                   <ProductThumb
                                     pid={trade.target_product_id}
+                                    src={trade.product_image_url}
                                     alt={getProductTitle(trade.target_product_id, trade.product_title)}
                                     size="100%"
                                   />
@@ -5204,6 +5245,7 @@ const Dashboard: React.FC = () => {
                                 <Box w={{ base: '50px', md: '60px' }} h="60px" flexShrink={0} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
                                   <ProductThumb
                                     pid={trade.target_product_id}
+                                    src={trade.product_image_url}
                                     alt={getProductTitle(trade.target_product_id, trade.product_title)}
                                     size="full"
                                   />
@@ -5300,6 +5342,7 @@ const Dashboard: React.FC = () => {
                                     <Box w="50px" h="50px" flexShrink={0} borderRadius="md" overflow="hidden" borderWidth="1px" borderColor={borderColor}>
                                       <ProductThumb
                                         pid={trade.target_product_id}
+                                        src={trade.product_image_url}
                                         alt={getProductTitle(trade.target_product_id, trade.product_title)}
                                         size="full"
                                       />
