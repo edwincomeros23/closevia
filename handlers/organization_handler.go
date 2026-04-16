@@ -23,7 +23,10 @@ func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
-	slug := c.Params("slug")
+	slug := normalizeOrgSlug(c.Params("slug"))
+	if slug == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
+	}
 	var payload struct {
 		ProductID int `json:"product_id"`
 	}
@@ -60,7 +63,10 @@ func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
 
 // GetTradeFeed returns products posted for trade in the org, grouped by product
 func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
-	slug := c.Params("slug")
+	slug := normalizeOrgSlug(c.Params("slug"))
+	if slug == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
+	}
 	// Get org ID
 	var orgID int
 	err := h.db.QueryRow("SELECT id FROM organizations WHERE slug = ?", slug).Scan(&orgID)
@@ -854,12 +860,16 @@ func (h *OrganizationHandler) GetUserApprovedOrganizations(c *fiber.Ctx) error {
 	}
 
 	rows, err := h.db.Query(`
-		SELECT o.id, o.name, o.slug, COALESCE(o.logo_url, '') as logo_url, COALESCE(o.description, '') as description
+		SELECT DISTINCT o.id, o.name, o.slug,
+		       COALESCE(o.logo_url, '') as logo_url,
+		       COALESCE(o.description, '') as description
 		FROM organizations o
-		JOIN organization_memberships m ON o.id = m.organization_id
-		WHERE m.user_id = ? AND m.status = 'approved' AND o.is_deleted = FALSE
+		LEFT JOIN organization_memberships m
+		  ON o.id = m.organization_id AND m.user_id = ?
+		WHERE o.is_deleted = FALSE
+		  AND (o.creator_user_id = ? OR m.status = 'approved')
 		ORDER BY o.name ASC
-	`, userID)
+	`, userID, userID)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load organizations"})
 	}

@@ -561,35 +561,55 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	// ========================================================================
 
 	// ==================== TAG ORGANIZATIONS ====================
-	// If user provided organization IDs, validate membership and tag product
+	// If user provided organization IDs, validate membership/ownership and tag product
 	if len(organizationIDs) > 0 {
 		log.Printf("📦 [ORG-TAG] User %d is tagging product %d with %d organizations", userID, productID, len(organizationIDs))
 
 		for _, orgID := range organizationIDs {
-			// Validate user is an approved member of this organization
+			// Allow tagging if user is an approved member OR the org creator.
+			// Note: organization_memberships.status does NOT include a 'creator' value.
 			var memberStatus string
 			err := h.db.QueryRow(`
-				SELECT status FROM organization_memberships 
+				SELECT status
+				FROM organization_memberships
 				WHERE organization_id = ? AND user_id = ?
+				LIMIT 1
 			`, orgID, userID).Scan(&memberStatus)
 
+			isCreator := false
 			if err == sql.ErrNoRows {
-				log.Printf("⚠️  [ORG-TAG] User %d is not a member of org %d, skipping tag", userID, orgID)
-				continue
+				// Membership row might not exist for legacy orgs; allow if user is the creator.
+				var creatorID int
+				creatorErr := h.db.QueryRow(`SELECT creator_user_id FROM organizations WHERE id = ? LIMIT 1`, orgID).Scan(&creatorID)
+				if creatorErr == nil && creatorID == userID {
+					isCreator = true
+				}
 			} else if err != nil {
 				log.Printf("❌ [ORG-TAG] Database error checking membership: %v", err)
 				continue
+			} else if memberStatus == "approved" {
+				// ok
+			} else {
+				// Not approved via membership; still allow if creator.
+				var creatorID int
+				creatorErr := h.db.QueryRow(`SELECT creator_user_id FROM organizations WHERE id = ? LIMIT 1`, orgID).Scan(&creatorID)
+				if creatorErr == nil && creatorID == userID {
+					isCreator = true
+				}
+				if !isCreator {
+					log.Printf("⚠️  [ORG-TAG] User %d has status '%s' in org %d (not approved), skipping", userID, memberStatus, orgID)
+					continue
+				}
 			}
 
-			// Only allow tagging if user is approved or creator
-			if memberStatus != "approved" && memberStatus != "creator" {
-				log.Printf("⚠️  [ORG-TAG] User %d has status '%s' in org %d (not approved), skipping", userID, memberStatus, orgID)
+			if memberStatus != "approved" && !isCreator {
+				log.Printf("⚠️  [ORG-TAG] User %d is not approved/creator for org %d, skipping tag", userID, orgID)
 				continue
 			}
 
 			// Insert into product_organization_tags
 			_, err = h.db.Exec(`
-				INSERT IGNORE INTO product_organization_tags (product_id, organization_id) 
+				INSERT IGNORE INTO product_organization_tags (product_id, organization_id)
 				VALUES (?, ?)
 			`, productID, orgID)
 
@@ -1314,18 +1334,68 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product ID"})
 	}
 
-	// 1. Get the target product details
+	// 1. Get the target product details (including trade preferences)
 	var pCategory, pWants string
+	var wantedCategoriesRaw sql.NullString
 	var pPrice float64
 	var pSellerID int
 
-	err = h.db.QueryRow("SELECT category, IFNULL(wants, ''), IFNULL(price, 0), seller_id FROM products WHERE id = ?", productID).Scan(&pCategory, &pWants, &pPrice, &pSellerID)
+	err = h.db.QueryRow(
+		"SELECT COALESCE(category, ''), IFNULL(wants, ''), CAST(wanted_categories AS CHAR), IFNULL(price, 0), seller_id FROM products WHERE id = ?",
+		productID,
+	).Scan(&pCategory, &pWants, &wantedCategoriesRaw, &pPrice, &pSellerID)
 	if err == sql.ErrNoRows {
 		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Product not found"})
 	} else if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database error"})
 	}
 
+	wantedCategoriesStr := ""
+	if wantedCategoriesRaw.Valid {
+		wantedCategoriesStr = wantedCategoriesRaw.String
+	}
+
+	desiredCategories := []string{}
+	wantedCategoriesStr = strings.TrimSpace(wantedCategoriesStr)
+	if wantedCategoriesStr != "" && strings.ToLower(wantedCategoriesStr) != "null" {
+		for _, v := range parseWantedCategories(wantedCategoriesStr) {
+			clean := strings.ToLower(strings.TrimSpace(v))
+			if clean == "others" {
+				clean = "other"
+			}
+			if clean != "" {
+				desiredCategories = append(desiredCategories, clean)
+			}
+		}
+	}
+
+	// If preferences weren't provided, fall back to the listing's category.
+	if len(desiredCategories) == 0 {
+		fallback := strings.ToLower(strings.TrimSpace(pCategory))
+		if fallback != "" {
+			if fallback == "others" {
+				fallback = "other"
+			}
+			desiredCategories = []string{fallback}
+		}
+	}
+
+	// Backwards-compat for legacy "Others" category values in DB.
+	hasOther := false
+	for _, cat := range desiredCategories {
+		if cat == "other" {
+			hasOther = true
+			break
+		}
+	}
+	if hasOther {
+		desiredCategories = append(desiredCategories, "others")
+	}
+
+	priceMin := pPrice * 0.8
+	priceMax := pPrice * 1.2
+
+	// When the user provided desired categories ("What I'm looking for"), only show matches in those categories.
 	query := `
 		SELECT p.id, p.slug, p.title, p.description, p.price, p.image_urls, p.seller_id, 
 		       p.premium, p.status, p.allow_buying, p.barter_only, p.location, p.` + "`condition`" + `, 
@@ -1337,17 +1407,35 @@ func (h *ProductHandler) GetSuggestedTrades(c *fiber.Ctx) error {
 		FROM products p
 		JOIN users u ON p.seller_id = u.id
 		WHERE p.status = 'available' AND p.seller_id != ?
-		ORDER BY (
-			(CASE WHEN p.category = ? THEN 10 ELSE 0 END) +
-			(CASE WHEN p.price BETWEEN ? AND ? THEN 10 ELSE 0 END)
-		) DESC, p.created_at DESC
-		LIMIT 10
 	`
 
-	priceMin := pPrice * 0.8
-	priceMax := pPrice * 1.2
+	args := []interface{}{pSellerID}
 
-	rows, err := h.db.Query(query, pSellerID, pCategory, priceMin, priceMax)
+	if len(desiredCategories) > 0 {
+		placeholders := make([]string, len(desiredCategories))
+		for i, cat := range desiredCategories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		query += fmt.Sprintf(" AND LOWER(COALESCE(p.category, '')) IN (%s)\n", strings.Join(placeholders, ","))
+	}
+
+	scoreParts := []string{
+		"(CASE WHEN p.category = ? THEN 10 ELSE 0 END)",
+		"(CASE WHEN p.price BETWEEN ? AND ? THEN 10 ELSE 0 END)",
+	}
+	args = append(args, pCategory, priceMin, priceMax)
+
+	wantsClean := strings.ToLower(strings.TrimSpace(pWants))
+	if wantsClean != "" && wantsClean != "any" {
+		pattern := "%" + wantsClean + "%"
+		scoreParts = append(scoreParts, "(CASE WHEN LOWER(p.title) LIKE ? OR LOWER(p.description) LIKE ? THEN 5 ELSE 0 END)")
+		args = append(args, pattern, pattern)
+	}
+
+	query += fmt.Sprintf("ORDER BY (%s) DESC, p.created_at DESC\nLIMIT 10\n", strings.Join(scoreParts, " + "))
+
+	rows, err := h.db.Query(query, args...)
 	if err != nil {
 		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Error fetching suggestions"})
 	}

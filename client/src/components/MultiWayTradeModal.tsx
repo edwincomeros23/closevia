@@ -81,10 +81,11 @@ function formatTimeLeft(expiresAt: string): string {
 /** Human-readable label for raw DB status strings */
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
+    pending: 'Pending',
+    confirmed: 'Confirmed',
     user3_accepted: 'Accepted',
     active: 'Active',
     pending_user3: 'Awaiting 3rd Party',
-    pending: 'Pending',
     accepted: 'Accepted',
     declined: 'Declined',
     completed: 'Completed',
@@ -99,6 +100,9 @@ function statusLabel(status: string): string {
 function statusColorScheme(status: string): string {
   switch (status) {
     case 'pending':
+      return 'yellow'
+    case 'confirmed':
+      return 'green'
     case 'pending_user3':
     case 'pending_initiator_upgrade':
       return 'yellow'
@@ -128,7 +132,7 @@ const MultiWayTradeModal: React.FC<MultiWayTradeModalProps> = ({
   currentUserId,
 }) => {
   const isActiveChain =
-    multiWayTrade.status === 'active' || multiWayTrade.status === 'user3_accepted'
+    multiWayTrade.status === 'confirmed'
 
   const [loading, setLoading] = useState(false)
   const [selectedAction, setSelectedAction] = useState<

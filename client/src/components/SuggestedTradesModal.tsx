@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
     Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody,
-    VStack, HStack, Text, Image, Button, Spinner, Center, Box, Icon, Badge
+    VStack, HStack, Text, Image, Button, Spinner, Center, Box, Icon, Badge, useToast
 } from '@chakra-ui/react';
-import { FaExchangeAlt, FaRegLightbulb } from 'react-icons/fa';
+import { FaExchangeAlt, FaRegLightbulb, FaHeart } from 'react-icons/fa';
 import { api } from '../services/api';
 import { Product } from '../types';
 import { getFirstImage } from '../utils/imageUtils';
@@ -15,12 +15,16 @@ interface SuggestedTradesModalProps {
     onTradeClick: (targetProduct: Product) => void;
 }
 
-export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOpen, onClose, product, onTradeClick }) => {
+export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOpen, onClose, product, onTradeClick: _onTradeClick }) => {
     const [suggestions, setSuggestions] = useState<Product[]>([]);
     const [loading, setLoading] = useState(false);
+    const [likingId, setLikingId] = useState<number | null>(null);
+    const [likedIds, setLikedIds] = useState<Set<number>>(new Set());
+    const toast = useToast();
 
     useEffect(() => {
         if (isOpen && product) {
+            setLikedIds(new Set());
             fetchSuggestions();
         }
     }, [isOpen, product]);
@@ -28,14 +32,113 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
     const fetchSuggestions = async () => {
         try {
             setLoading(true);
+
+            const normalizeCategory = (value?: string): string => {
+                const v = (value || '').trim().toLowerCase();
+                if (!v) return '';
+                return v === 'others' ? 'other' : v;
+            };
+
+            // Load full product details so we can reliably read wanted_categories (dashboard listing payload may omit it)
+            let desiredCategories: string[] = [];
+            try {
+                const detailsRes = await api.get(`/api/products/${product!.id}`);
+                const raw = detailsRes.data;
+                const productData = raw?.data?.product || raw?.data || raw?.product || null;
+
+                const wanted = productData?.wanted_categories;
+                if (Array.isArray(wanted)) {
+                    desiredCategories = wanted;
+                } else if (typeof wanted === 'string' && wanted.trim()) {
+                    try {
+                        const parsed = JSON.parse(wanted);
+                        if (Array.isArray(parsed)) desiredCategories = parsed;
+                    } catch {
+                        desiredCategories = wanted.split(',').map((s: string) => s.trim()).filter(Boolean);
+                    }
+                }
+
+                // Fallback to the product's own category when preferences are empty
+                if (desiredCategories.length === 0) {
+                    const fallback = productData?.category || product?.category;
+                    if (fallback) desiredCategories = [fallback];
+                }
+            } catch {
+                // If details request fails, just proceed without client-side filtering
+            }
+
+            const desiredSet = new Set(desiredCategories.map(normalizeCategory).filter(Boolean));
+
             const res = await api.get(`/api/products/${product!.id}/suggested-trades`);
             if (res.data?.success) {
-                setSuggestions(res.data.data || []);
+                const incoming: Product[] = Array.isArray(res.data.data) ? res.data.data : [];
+
+                const filtered = desiredSet.size
+                    ? incoming.filter((s) => {
+                          // Treat empty category as "Other" only when "Other" is desired.
+                          const cat = normalizeCategory(s.category);
+                          const effective = cat || (desiredSet.has('other') ? 'other' : '');
+                          return effective !== '' && desiredSet.has(effective);
+                      })
+                    : incoming;
+
+                setSuggestions(filtered);
             }
         } catch (err) {
             console.error('Failed to fetch suggested trades', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleLike = async (target: Product) => {
+        if (!product?.id) return;
+        try {
+            setLikingId(target.id);
+            const res = await api.post('/api/trades/likes', {
+                liked_product_id: target.id,
+                offered_product_id: product.id,
+            });
+            if (res?.data?.data?.already_liked) {
+                setLikedIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(target.id);
+                    return next;
+                });
+                toast({
+                    id: `like-${target.id}`,
+                    title: 'Already liked',
+                    description: 'You already liked this item for your offer.',
+                    status: 'info',
+                    duration: 3000,
+                    isClosable: true,
+                });
+                return;
+            }
+            setLikedIds((prev) => {
+                const next = new Set(prev);
+                next.add(target.id);
+                return next;
+            });
+            toast({
+                id: `like-${target.id}`,
+                title: 'Liked!',
+                description: 'We notified the owner. If they like your item back, a trade loop will be created.',
+                status: 'success',
+                duration: 3000,
+                isClosable: true,
+            });
+        } catch (err: any) {
+            toast({
+                id: `like-error-${target.id}`,
+                title: 'Failed to like',
+                description: err?.response?.data?.error || 'Please try again.',
+                status: 'error',
+                duration: 3000,
+                isClosable: true,
+            });
+        } finally {
+            setLikingId(null);
         }
     };
 
@@ -82,14 +185,14 @@ export const SuggestedTradesModal: React.FC<SuggestedTradesModalProps> = ({ isOp
                                         </VStack>
                                         <Button
                                             size="sm"
-                                            colorScheme="brand"
-                                            leftIcon={<FaExchangeAlt />}
-                                            onClick={() => {
-                                                onClose();
-                                                onTradeClick(s);
-                                            }}
+                                            colorScheme="pink"
+                                            leftIcon={<FaHeart />}
+                                            onClick={() => handleLike(s)}
+                                            isLoading={likingId === s.id}
+                                            loadingText="Liking"
+                                            isDisabled={likedIds.has(s.id)}
                                         >
-                                            Offer
+                                            {likedIds.has(s.id) ? 'Liked' : 'Like'}
                                         </Button>
                                     </HStack>
                                 </Box>
