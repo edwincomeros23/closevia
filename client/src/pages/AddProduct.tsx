@@ -87,6 +87,7 @@ export interface ProductFormData {
 import { useAuth } from '../contexts/AuthContext'
 import { useProducts } from '../contexts/ProductContext'
 import { api } from '../services/api'
+import { DASHBOARD_QUERY_KEYS } from '../hooks/useDashboard'
 import FloatingTab from '../components/FloatingTab'
 import { prepareImageForUpload } from '../utils/imageConverter'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
@@ -902,7 +903,24 @@ const AddProduct: React.FC = () => {
 
       console.log('📤 [AddProduct] Submitting product with organizations:', selectedOrganizationIds.length > 0 ? selectedOrganizationIds : 'none')
       await createProduct(fd)
-      await queryClient.invalidateQueries({ queryKey: ['dashboard', 'products'] })
+
+      // Ensure the dashboard shows the new listing immediately after redirect.
+      // Invalidate + prefetch so even if the dashboard query wasn't mounted yet,
+      // the cache is already warm when we navigate.
+      await queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEYS.products })
+      if (user?.id) {
+        await queryClient.prefetchQuery({
+          queryKey: [...DASHBOARD_QUERY_KEYS.products, user.id],
+          queryFn: async () => {
+            const response = await api.get(`/api/products/user/${user.id}`)
+            const paginatedResponse = response.data?.data
+            if (paginatedResponse && Array.isArray(paginatedResponse.data)) return paginatedResponse.data
+            if (Array.isArray(response.data?.data)) return response.data.data
+            if (Array.isArray(response.data)) return response.data
+            return []
+          },
+        })
+      }
       toast({
         id: "addproduct-product-posted", title: 'All set! 🎉', description: 'Your item is now live and visible to others.', status: 'success', position: 'top', duration: 3000, isClosable: true })
       navigate('/dashboard')

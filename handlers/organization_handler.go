@@ -28,7 +28,10 @@ func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
-	slug := c.Params("slug")
+	slug := normalizeOrgSlug(c.Params("slug"))
+	if slug == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
+	}
 	var payload struct {
 		ProductID int `json:"product_id"`
 	}
@@ -65,7 +68,10 @@ func (h *OrganizationHandler) PostProductForTrade(c *fiber.Ctx) error {
 
 // GetTradeFeed returns products posted for trade in the org, grouped by product
 func (h *OrganizationHandler) GetTradeFeed(c *fiber.Ctx) error {
-	slug := c.Params("slug")
+	slug := normalizeOrgSlug(c.Params("slug"))
+	if slug == "" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Organization slug is required"})
+	}
 	// Get org ID
 	var orgID int
 	err := h.db.QueryRow("SELECT id FROM organizations WHERE slug = ?", slug).Scan(&orgID)
@@ -954,7 +960,9 @@ func (h *OrganizationHandler) GetUserApprovedOrganizations(c *fiber.Ctx) error {
 
 	// Include both: organizations where user is approved member OR organizations where user is creator
 	rows, err := h.db.Query(`
-		SELECT o.id, o.name, o.slug, COALESCE(o.logo_url, '') as logo_url, COALESCE(o.description, '') as description
+		SELECT DISTINCT o.id, o.name, o.slug,
+		       COALESCE(o.logo_url, '') as logo_url,
+		       COALESCE(o.description, '') as description
 		FROM organizations o
 		WHERE (
 			-- User is the creator

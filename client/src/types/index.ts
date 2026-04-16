@@ -286,7 +286,7 @@ export interface MultiWayTrade {
   participants: MultiWayTradeParticipant[]
   edges: TradeEdge[]
   total_value?: number
-  status: 'active' | 'completed' | 'cancelled' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
+  status: 'pending' | 'confirmed' | 'cancelled' | 'active' | 'completed' | 'user3_accepted' | 'pending_user3' | 'multiway_active'
   created_at?: string
   expires_at?: string
 }
@@ -421,6 +421,7 @@ export interface Delivery {
   updated_at: string
   // Denormalized fields
   user_name?: string
+  receiver_name?: string
   rider_name?: string
   rider_phone?: string
   rider_vehicle?: string

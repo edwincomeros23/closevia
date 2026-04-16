@@ -1766,11 +1766,15 @@ func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
 			d.claimed_at, d.picked_up_at, d.in_transit_at, d.delivered_at,
 			d.created_at, d.updated_at,
 			u.name AS user_name,
+			COALESCE(u2.name, '') AS receiver_name,
 			COALESCE(d.batch_id, '') AS batch_id,
 			d.batch_window_expires_at
 		FROM deliveries d
 		JOIN users u ON d.user_id = u.id
+		LEFT JOIN trades t ON d.trade_id = t.id
+		LEFT JOIN users u2 ON u2.id = (CASE WHEN t.buyer_id = d.user_id THEN t.seller_id ELSE t.buyer_id END)
 		WHERE d.status = 'pending' AND d.rider_id IS NULL
+		  AND (d.trade_id IS NULL OR t.id IS NULL OR d.user_id = t.seller_id)
 		ORDER BY d.created_at DESC
 	`)
 	if err != nil {
@@ -1793,6 +1797,7 @@ func (h *DeliveryHandler) GetAvailableDeliveries(c *fiber.Ctx) error {
 			&d.ClaimedAt, &d.PickedUpAt, &d.InTransitAt, &d.DeliveredAt,
 			&d.CreatedAt, &d.UpdatedAt,
 			&d.UserName,
+			&d.ReceiverName,
 			&batchID,
 			&batchWindowExpiresAt,
 		)
@@ -1912,9 +1917,12 @@ func (h *DeliveryHandler) GetRiderDeliveries(c *fiber.Ctx) error {
 			COALESCE(d.special_instructions, ''), d.total_cost, d.estimated_eta, d.item_count, d.is_fragile,
 			d.claimed_at, d.picked_up_at, d.in_transit_at, d.delivered_at,
 			d.created_at, d.updated_at,
-			u.name AS user_name
+			u.name AS user_name,
+			COALESCE(u2.name, '') AS receiver_name
 		FROM deliveries d
 		JOIN users u ON d.user_id = u.id
+		LEFT JOIN trades t ON d.trade_id = t.id
+		LEFT JOIN users u2 ON u2.id = (CASE WHEN t.buyer_id = d.user_id THEN t.seller_id ELSE t.buyer_id END)
 		WHERE d.rider_id = ?`
 
 	args := []interface{}{riderID}
@@ -1953,6 +1961,7 @@ func (h *DeliveryHandler) GetRiderDeliveries(c *fiber.Ctx) error {
 			&d.ClaimedAt, &d.PickedUpAt, &d.InTransitAt, &d.DeliveredAt,
 			&d.CreatedAt, &d.UpdatedAt,
 			&d.UserName,
+			&d.ReceiverName,
 		)
 		if err != nil {
 			log.Printf("Error scanning rider delivery: %v", err)

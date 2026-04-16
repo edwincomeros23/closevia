@@ -35,6 +35,7 @@ const OrganizationProfile: React.FC = () => {
   const [org, setOrg] = useState<User | null>(null)
   const [communityOrg, setCommunityOrg] = useState<any | null>(null)
   const [feedPosts, setFeedPosts] = useState<any[]>([])
+  const [tradeFeed, setTradeFeed] = useState<any[]>([])
   const [joinRequests, setJoinRequests] = useState<any[]>([])
   const [members, setMembers] = useState<any[]>([])
   const [joinLoading, setJoinLoading] = useState(false)
@@ -87,16 +88,22 @@ const OrganizationProfile: React.FC = () => {
 
   const fetchTradeFeed = useCallback(async () => {
     if (!handle || !communityOrg) return
+    const ms = communityOrg?.membership_status
+    const canView = ms === 'approved' || (user && Number(user.id) === Number(communityOrg.creator_user_id))
+    if (!canView) return
     setTradeFeedLoading(true)
     try {
       const res = await api.get(`/api/organizations/${handle}/trade-feed`)
-      setTradeFeedProducts(Array.isArray(res.data?.data) ? res.data.data : [])
+      const data = Array.isArray(res.data?.data) ? res.data.data : []
+      setTradeFeed(data)
+      setTradeFeedProducts(data)
     } catch {
+      setTradeFeed([])
       setTradeFeedProducts([])
     } finally {
       setTradeFeedLoading(false)
     }
-  }, [handle, communityOrg])
+  }, [handle, communityOrg, user])
 
   const fetchAdminData = useCallback(async () => {
     if (!handle || !communityOrg || !user || communityOrg.creator_user_id !== user.id) return
@@ -335,6 +342,34 @@ const OrganizationProfile: React.FC = () => {
             <Heading size={{ base: 'sm', md: 'lg' }} mb={{ base: 3, md: 5 }} color="gray.900">Organization Feed</Heading>
             {(membershipStatus === 'approved' || isCreator) ? (
               <VStack align="stretch" spacing={{ base: 3, md: 4 }}>
+                {/* Trade feed: tagged products */}
+                <Box borderWidth="1px" borderColor="gray.200" borderRadius={{ base: 'md', md: 'lg' }} p={{ base: 3, md: 5 }} bg="white" boxShadow={{ base: 'none', md: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                  <Text fontSize={{ base: 'xs', md: 'md' }} fontWeight="700" color="gray.900" mb={2}>Tagged Trade Posts</Text>
+                  {tradeFeed.length === 0 ? (
+                    <Text color="gray.500" fontSize={{ base: 'xs', md: 'sm' }}>No tagged products yet.</Text>
+                  ) : (
+                    <VStack align="stretch" spacing={3}>
+                      {tradeFeed.map((g: any) => (
+                        <Box key={g.product_id} borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+                          <HStack justify="space-between" spacing={3} wrap="wrap">
+                            <VStack align="start" spacing={0} minW={0} flex={1}>
+                              <Text fontSize={{ base: 'sm', md: 'md' }} fontWeight="700" noOfLines={1}>{g.title || 'Untitled Product'}</Text>
+                              <Text fontSize={{ base: 'xs', md: 'sm' }} color="gray.600" noOfLines={2}>{g.description || ''}</Text>
+                              {g.category ? <Badge mt={1} colorScheme="teal" fontSize={{ base: '9px', md: 'xs' }}>{g.category}</Badge> : null}
+                            </VStack>
+                            <HStack spacing={2}>
+                              {Array.isArray(g.members) && g.members.length > 0 ? (
+                                <Avatar size="sm" src={g.members[0]?.profile_picture ? getImageUrl(g.members[0].profile_picture) : undefined} name={g.members[0]?.name || 'Member'} />
+                              ) : null}
+                              <Button as={RouterLink} to={`/products/${g.product_id}`} size="sm" variant="outline">View</Button>
+                            </HStack>
+                          </HStack>
+                        </Box>
+                      ))}
+                    </VStack>
+                  )}
+                </Box>
+
                 <Box borderWidth="1px" borderColor="gray.200" borderRadius={{ base: 'md', md: 'lg' }} p={{ base: 3, md: 5 }} bg="gray.50" boxShadow={{ base: 'none', md: '0 1px 2px rgba(0,0,0,0.05)' }}>
                   <VStack align="stretch" spacing={{ base: 3, md: 4 }}>
                     <Text fontSize={{ base: 'xs', md: 'md' }} fontWeight="700" color="gray.900">✨ Create a post</Text>

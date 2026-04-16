@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -10,21 +11,84 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/gofiber/fiber/v2"
 	"github.com/xashathebest/clovia/database"
 	"github.com/xashathebest/clovia/middleware"
 	"github.com/xashathebest/clovia/models"
 	"github.com/xashathebest/clovia/services"
-	"golang.org/x/sync/singleflight"
 )
-
-// loopBuildGroup coalesces concurrent buildLoopSuggestionsForUser calls for
-// the same user so two in-flight requests don't each run the O(N³)
-// product-based loop finder.
-var loopBuildGroup singleflight.Group
 
 type TradeHandler struct {
 	db *sql.DB
+}
+
+type likeEdge struct {
+	FromUser         int
+	ToUser           int
+	OfferedProductID int
+	WantedProductID  int
+	FromUserName     string
+	ToUserName       string
+	OfferedTitle     string
+	WantedTitle      string
+	OfferedImage     string
+	WantedImage      string
+}
+
+type likeParticipant struct {
+	UserID           int
+	UserName         string
+	UserSlug         string
+	OfferedProductID int
+	OfferedTitle     string
+	OfferedSlug      string
+	OfferedImage     string
+	WantedProductID  int
+	WantedTitle      string
+	WantedSlug       string
+	Position         int
+	Status           string
+}
+
+func buildLikeLoopKey(participants []likeParticipant) string {
+	userIDs := make([]int, 0, len(participants))
+	offeredIDs := make([]int, 0, len(participants))
+	wantedIDs := make([]int, 0, len(participants))
+	for _, p := range participants {
+		userIDs = append(userIDs, p.UserID)
+		offeredIDs = append(offeredIDs, p.OfferedProductID)
+		wantedIDs = append(wantedIDs, p.WantedProductID)
+	}
+	sort.Ints(userIDs)
+	sort.Ints(offeredIDs)
+	sort.Ints(wantedIDs)
+	return fmt.Sprintf("u:%v|o:%v|w:%v", userIDs, offeredIDs, wantedIDs)
+}
+
+func loopIDFromLikeLoopID(loopID int) string {
+	return fmt.Sprintf("like_loop_%d", loopID)
+}
+
+func parseLikeLoopID(loopID string) (int, bool) {
+	clean := strings.TrimSpace(strings.Trim(loopID, "/"))
+	if !strings.HasPrefix(clean, "like_loop") {
+		return 0, false
+	}
+	raw := strings.TrimPrefix(clean, "like_loop")
+	raw = strings.TrimPrefix(raw, "_")
+	end := 0
+	for end < len(raw) && raw[end] >= '0' && raw[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	val, err := strconv.Atoi(raw[:end])
+	if err != nil || val <= 0 {
+		return 0, false
+	}
+	return val, true
 }
 
 // extractFirstImage returns the first element from a JSON/text array string of image URLs.
@@ -98,7 +162,351 @@ func (h *TradeHandler) applyCancellationPenalty(userID int, wasActive bool) {
 	}
 }
 
-// CreateTrade creates a new trade proposal
+func (h *TradeHandler) AddTradeLike(c *fiber.Ctx) error {
+	userID, ok := middleware.GetUserIDFromContext(c)
+	if !ok {
+		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
+	}
+
+	var payload struct {
+		LikedProductID   int `json:"liked_product_id"`
+		OfferedProductID int `json:"offered_product_id"`
+	}
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid request body"})
+	}
+	if payload.LikedProductID <= 0 || payload.OfferedProductID <= 0 {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Missing product IDs"})
+	}
+
+	// Validate offered product ownership and availability.
+	var offeredOwnerID int
+	var offeredStatus string
+	if err := h.db.QueryRow("SELECT seller_id, status FROM products WHERE id = ?", payload.OfferedProductID).
+		Scan(&offeredOwnerID, &offeredStatus); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Offered product not found"})
+	}
+	if offeredOwnerID != userID {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You can only offer your own product"})
+	}
+	if offeredStatus != "available" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Offered product is not available"})
+	}
+
+	// Validate liked product.
+	var likedOwnerID int
+	var likedStatus, likedTitle string
+	if err := h.db.QueryRow("SELECT seller_id, status, title FROM products WHERE id = ?", payload.LikedProductID).
+		Scan(&likedOwnerID, &likedStatus, &likedTitle); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Liked product not found"})
+	}
+	if likedOwnerID == userID {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "You cannot like your own product"})
+	}
+	if likedStatus != "available" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Liked product is not available"})
+	}
+
+	// Idempotency: if the like already exists for this offer, return success.
+	var existingLikeID int
+	if err := h.db.QueryRow(`
+		SELECT id FROM trade_likes
+		WHERE liker_id = ? AND liked_product_id = ? AND offered_product_id = ?
+	`, userID, payload.LikedProductID, payload.OfferedProductID).Scan(&existingLikeID); err == nil {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+			"already_liked": true,
+		}})
+	}
+
+	insertLike := func() (sql.Result, error) {
+		return h.db.Exec(`
+			INSERT IGNORE INTO trade_likes (liker_id, liked_product_id, offered_product_id)
+			VALUES (?, ?, ?)
+		`, userID, payload.LikedProductID, payload.OfferedProductID)
+	}
+
+	res, err := insertLike()
+	if err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1146 {
+			if createErr := database.CreateTables(); createErr == nil {
+				res, err = insertLike()
+			}
+		}
+	}
+	if err != nil {
+		log.Printf("AddTradeLike: insert failed: %v", err)
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to like item"})
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+			"already_liked": true,
+		}})
+	}
+
+	// Notify owner of liked product.
+	likerName := "Someone"
+	_ = h.db.QueryRow("SELECT name FROM users WHERE id = ?", userID).Scan(&likerName)
+	msg := fmt.Sprintf("%s is interested in your %s", likerName, likedTitle)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", likedOwnerID, msg)
+	publishNotification(likedOwnerID, msg)
+
+	createdLoops := h.evaluateLikeLoops(userID)
+
+	return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+		"created_loops": createdLoops,
+	}})
+}
+
+func (h *TradeHandler) evaluateLikeLoops(userID int) []string {
+	loopsCreated := []string{}
+
+	edges, err := h.loadLikeEdges()
+	if err != nil {
+		log.Printf("evaluateLikeLoops: load edges failed: %v", err)
+		return loopsCreated
+	}
+	byUser := map[int][]likeEdge{}
+	for _, edge := range edges {
+		byUser[edge.FromUser] = append(byUser[edge.FromUser], edge)
+	}
+
+	// Detect mutual likes for 2-person loops.
+	loopsCreated = append(loopsCreated, h.createMutualLikeLoops(byUser, userID)...)
+
+	// Detect 3-5 cycles from the current user.
+	loopsCreated = append(loopsCreated, h.createLikeCycles(byUser, userID, 5)...)
+
+	return loopsCreated
+}
+
+func (h *TradeHandler) loadLikeEdges() ([]likeEdge, error) {
+	rows, err := h.db.Query(`
+		SELECT l.liker_id, p.seller_id, l.offered_product_id, l.liked_product_id,
+		       u1.name, u2.name,
+		       op.title, op.image_url, p.title, p.image_url
+		FROM trade_likes l
+		JOIN products p ON p.id = l.liked_product_id
+		JOIN products op ON op.id = l.offered_product_id
+		JOIN users u1 ON u1.id = l.liker_id
+		JOIN users u2 ON u2.id = p.seller_id
+		WHERE p.status = 'available'
+		  AND op.status = 'available'
+		  AND op.seller_id = l.liker_id
+		  AND p.seller_id != l.liker_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var edges []likeEdge
+	for rows.Next() {
+		var edge likeEdge
+		var offeredImage, wantedImage sql.NullString
+		if err := rows.Scan(&edge.FromUser, &edge.ToUser, &edge.OfferedProductID, &edge.WantedProductID,
+			&edge.FromUserName, &edge.ToUserName, &edge.OfferedTitle, &offeredImage, &edge.WantedTitle, &wantedImage); err != nil {
+			continue
+		}
+		if offeredImage.Valid {
+			edge.OfferedImage = offeredImage.String
+		}
+		if wantedImage.Valid {
+			edge.WantedImage = wantedImage.String
+		}
+		edges = append(edges, edge)
+	}
+
+	return edges, nil
+}
+
+func (h *TradeHandler) createMutualLikeLoops(byUser map[int][]likeEdge, userID int) []string {
+	created := []string{}
+	for _, edge := range byUser[userID] {
+		for _, back := range byUser[edge.ToUser] {
+			if back.ToUser != userID {
+				continue
+			}
+			if back.OfferedProductID != edge.WantedProductID || back.WantedProductID != edge.OfferedProductID {
+				continue
+			}
+
+			participants := []likeParticipant{
+				{UserID: edge.FromUser, UserName: edge.FromUserName, OfferedProductID: edge.OfferedProductID, OfferedTitle: edge.OfferedTitle, OfferedImage: edge.OfferedImage, WantedProductID: edge.WantedProductID, WantedTitle: edge.WantedTitle, Position: 0, Status: "pending"},
+				{UserID: edge.ToUser, UserName: edge.ToUserName, OfferedProductID: back.OfferedProductID, OfferedTitle: back.OfferedTitle, OfferedImage: back.OfferedImage, WantedProductID: back.WantedProductID, WantedTitle: back.WantedTitle, Position: 1, Status: "pending"},
+			}
+
+			loopID, createdLoop := h.createLikeLoop(participants)
+			if createdLoop {
+				created = append(created, loopIDFromLikeLoopID(loopID))
+				h.notifyLikeLoopParticipants(participants, "A mutual like created a pending trade. Confirm to proceed.")
+			}
+		}
+	}
+	return created
+}
+
+func (h *TradeHandler) createLikeCycles(byUser map[int][]likeEdge, userID int, maxLen int) []string {
+	created := []string{}
+	visitedUsers := map[int]bool{userID: true}
+	usedOffers := map[int]bool{}
+	usedWants := map[int]bool{}
+	var path []likeEdge
+
+	var dfs func(current int)
+	dfs = func(current int) {
+		if len(path) >= maxLen {
+			return
+		}
+		for _, edge := range byUser[current] {
+			if usedOffers[edge.OfferedProductID] || usedWants[edge.WantedProductID] {
+				continue
+			}
+			if edge.ToUser == userID {
+				if len(path) >= 1 {
+					cycle := append(append([]likeEdge{}, path...), edge)
+					if len(cycle) >= 3 && len(cycle) <= 5 {
+						participants := make([]likeParticipant, 0, len(cycle))
+						for idx, c := range cycle {
+							participants = append(participants, likeParticipant{
+								UserID:           c.FromUser,
+								UserName:         c.FromUserName,
+								OfferedProductID: c.OfferedProductID,
+								OfferedTitle:     c.OfferedTitle,
+								OfferedImage:     c.OfferedImage,
+								WantedProductID:  c.WantedProductID,
+								WantedTitle:      c.WantedTitle,
+								Position:         idx,
+								Status:           "pending",
+							})
+						}
+
+						loopID, createdLoop := h.createLikeLoop(participants)
+						if createdLoop {
+							created = append(created, loopIDFromLikeLoopID(loopID))
+							h.notifyLikeLoopParticipants(participants, "A trade loop was found. Confirm to proceed.")
+						}
+					}
+				}
+				continue
+			}
+			if visitedUsers[edge.ToUser] {
+				continue
+			}
+			visitedUsers[edge.ToUser] = true
+			usedOffers[edge.OfferedProductID] = true
+			usedWants[edge.WantedProductID] = true
+			path = append(path, edge)
+			dfs(edge.ToUser)
+			path = path[:len(path)-1]
+			delete(visitedUsers, edge.ToUser)
+			delete(usedOffers, edge.OfferedProductID)
+			delete(usedWants, edge.WantedProductID)
+		}
+	}
+
+	for _, edge := range byUser[userID] {
+		visitedUsers[edge.ToUser] = true
+		usedOffers[edge.OfferedProductID] = true
+		usedWants[edge.WantedProductID] = true
+		path = append(path, edge)
+		dfs(edge.ToUser)
+		path = path[:len(path)-1]
+		delete(visitedUsers, edge.ToUser)
+		delete(usedOffers, edge.OfferedProductID)
+		delete(usedWants, edge.WantedProductID)
+	}
+
+	return created
+}
+
+func (h *TradeHandler) createLikeLoop(participants []likeParticipant) (int, bool) {
+	if len(participants) < 2 || len(participants) > 5 {
+		return 0, false
+	}
+
+	loopKey := buildLikeLoopKey(participants)
+	var existingID int
+	if err := h.db.QueryRow("SELECT id FROM trade_like_loops WHERE loop_key = ?", loopKey).Scan(&existingID); err == nil {
+		return existingID, false
+	}
+
+	tx, err := h.db.Begin()
+	if err != nil {
+		return 0, false
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec("INSERT INTO trade_like_loops (loop_key, status) VALUES (?, 'pending')", loopKey)
+	if err != nil {
+		return 0, false
+	}
+	loopID64, _ := res.LastInsertId()
+	loopID := int(loopID64)
+
+	for _, p := range participants {
+		if _, err := tx.Exec(`
+			INSERT INTO trade_like_loop_participants
+			(loop_id, user_id, offered_product_id, wanted_product_id, position_in_loop, status)
+			VALUES (?, ?, ?, ?, ?, 'pending')
+		`, loopID, p.UserID, p.OfferedProductID, p.WantedProductID, p.Position); err != nil {
+			return 0, false
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, false
+	}
+
+	h.cancelSmallerLikeLoops(loopID)
+	return loopID, true
+}
+
+func (h *TradeHandler) cancelSmallerLikeLoops(loopID int) {
+	rows, err := h.db.Query(`
+		SELECT user_id FROM trade_like_loop_participants WHERE loop_id = ?
+	`, loopID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	userIDs := []int{}
+	for rows.Next() {
+		var uid int
+		if err := rows.Scan(&uid); err == nil {
+			userIDs = append(userIDs, uid)
+		}
+	}
+	if len(userIDs) == 0 {
+		return
+	}
+
+	placeholders := make([]string, len(userIDs))
+	args := make([]interface{}, 0, len(userIDs)+1)
+	args = append(args, loopID)
+	for i, uid := range userIDs {
+		placeholders[i] = "?"
+		args = append(args, uid)
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE trade_like_loops l
+		JOIN trade_like_loop_participants p ON p.loop_id = l.id
+		SET l.status = 'cancelled'
+		WHERE l.id <> ?
+		  AND l.status = 'pending'
+		  AND p.user_id IN (%s)
+	`, strings.Join(placeholders, ","))
+	_, _ = h.db.Exec(query, args...)
+}
+
+func (h *TradeHandler) notifyLikeLoopParticipants(participants []likeParticipant, message string) {
+	for _, p := range participants {
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", p.UserID, message)
+		publishNotification(p.UserID, message)
+	}
+}
 func (h *TradeHandler) CreateTrade(c *fiber.Ctx) error {
 	userID, ok := middleware.GetUserIDFromContext(c)
 	if !ok {
@@ -1811,11 +2219,11 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 
 			if bLoc == sLoc && bTime == sTime {
 				// Selections match! Update trade status to active and set the final meetup details
-				_, err = h.db.Exec(`
+				_, activateErr := h.db.Exec(`
 					UPDATE trades
 					SET status='active', meetup_location=?, meetup_time=?, updated_at=CURRENT_TIMESTAMP
 					WHERE id = ?`, buyerLocation.String, buyerTime.String, tradeID)
-				if err == nil {
+				if activateErr == nil {
 					log.Printf("Both parties agreed on meetup for trade %d (location: %s, time: %s), status updated to active",
 						tradeID, buyerLocation.String, buyerTime.String)
 					publishToUser(buyerID, sseEvent{Type: "trade_updated", Data: fiber.Map{"trade_id": tradeID, "status": "active", "meetup_agreed": true}})
@@ -1826,6 +2234,10 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 						buyerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
 					_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_update', ?, FALSE)",
 						sellerID, fmt.Sprintf("Meetup agreed! %s at %s. Trade is now active.", buyerLocation.String, buyerTime.String))
+				} else {
+					// Important: do not fail the whole request here.
+					// The user's selection has already been stored above; activation may race with the other party's request.
+					log.Printf("Warning: failed to auto-activate trade %d after meetup agreement: %v", tradeID, activateErr)
 				}
 			} else {
 				// Selections don't match - notify both parties
@@ -2082,6 +2494,33 @@ func (h *TradeHandler) UpdateTrade(c *fiber.Ctx) error {
 		// Log how many rows were affected
 		rowsAffected, _ := result.RowsAffected()
 		log.Printf("Delivery state update successful, affected %d rows", rowsAffected)
+
+		// If delivery type was updated on the trade, propagate it to any pending/unclaimed delivery jobs
+		// created for this trade. Rider pages read from `deliveries.delivery_type`.
+		if deliveryPayload.DeliveryType != "" {
+			newType := strings.ToLower(strings.TrimSpace(deliveryPayload.DeliveryType))
+			if newType != "standard" && newType != "express" {
+				return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid delivery_type. Must be 'standard' or 'express'"})
+			}
+
+			newCost := 30.0
+			if newType == "express" {
+				newCost = 60.0
+			}
+
+			res2, err2 := h.db.Exec(
+				"UPDATE deliveries SET delivery_type = ?, total_cost = ?, updated_at = CURRENT_TIMESTAMP WHERE trade_id = ? AND status = 'pending' AND rider_id IS NULL",
+				newType,
+				newCost,
+				tradeID,
+			)
+			if err2 != nil {
+				log.Printf("Warning: failed to propagate delivery_type to deliveries for trade %d: %v", tradeID, err2)
+			} else {
+				updatedDeliveries, _ := res2.RowsAffected()
+				log.Printf("Propagated delivery_type=%s to %d pending/unclaimed deliveries for trade %d", newType, updatedDeliveries, tradeID)
+			}
+		}
 
 		// Notify other party of the update
 		var otherUserID int
@@ -3754,77 +4193,6 @@ func productMatchScore(productTitle, productCategory, desires string) int {
 	return bestScore
 }
 
-// productMatchesDesires checks if a product (title/category) matches a user's desires (wants, wanted_categories, desired_product).
-// Returns true if there's a meaningful match.
-func productMatchesDesires(productTitle, productCategory, desires string) bool {
-	if desires == "" {
-		return false
-	}
-	ptLower := strings.ToLower(strings.TrimSpace(productTitle))
-	pcLower := strings.ToLower(strings.TrimSpace(productCategory))
-	dLower := strings.ToLower(strings.TrimSpace(desires))
-
-	// Direct substring checks
-	if ptLower != "" && (strings.Contains(dLower, ptLower) || strings.Contains(ptLower, dLower)) {
-		return true
-	}
-	if pcLower != "" && strings.Contains(dLower, pcLower) {
-		return true
-	}
-
-	// Check individual desire tokens against product title keywords
-	// Uses word-boundary matching so "phone" won't match "headphone".
-	desireTokens := strings.FieldsFunc(dLower, func(r rune) bool {
-		return r == ',' || r == '"' || r == '[' || r == ']' || r == ' '
-	})
-	titleTokens := strings.Fields(ptLower)
-
-	for _, dt := range desireTokens {
-		dt = strings.TrimSpace(dt)
-		if len(dt) < 3 {
-			continue
-		}
-		// Whole-word match: desire token equals a title word
-		for _, tw := range titleTokens {
-			if tw == dt {
-				return true
-			}
-		}
-		// Multi-word desire phrase in title
-		if len(strings.Fields(dt)) > 1 && strings.Contains(ptLower, dt) {
-			return true
-		}
-		// Semantic match
-		if services.SemanticMatcher(dt, ptLower) {
-			return true
-		}
-	}
-
-	// Check category against desire tokens (word-boundary aware)
-	if pcLower != "" {
-		catTokens := strings.Fields(pcLower)
-		for _, dt := range desireTokens {
-			dt = strings.TrimSpace(dt)
-			if len(dt) < 3 {
-				continue
-			}
-			for _, ct := range catTokens {
-				if ct == dt {
-					return true
-				}
-			}
-			if strings.Contains(pcLower, dt) || strings.Contains(dt, pcLower) {
-				return true
-			}
-			if services.SemanticMatcher(dt, pcLower) {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // findProductBasedMultiwayLoops detects 3-way trading opportunities based purely on
 // product desires (wanted_categories, desired_product, wants) without requiring existing trades.
 // It finds cycles where: UserA wants what UserB has, UserB wants what UserC has, UserC wants what UserA has.
@@ -4109,150 +4477,121 @@ func (h *TradeHandler) GetTradeLoops(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
-	// Try cache first — return immediately if fresh cache exists.
-	// Cache is per-user and explicitly invalidated on every state change
-	// (product add, trade create/accept/decline, etc.), so it's safe to
-	// serve to all users, not just premium. This keeps the O(N³) product-
-	// match loop finder off the hot path for free users too.
-	if cached, cacheErr := h.getCachedLoopsForUser(userID); cacheErr == nil && len(cached) > 0 {
-		return c.JSON(models.APIResponse{Success: true, Data: cached})
-	}
-
-	// Unified loop discovery — same code path as the cache warmer so the
-	// frontend sees the same loop_type values whether the data came from a
-	// warm cache or a fresh build. Coalesce concurrent builds for the same
-	// user so two in-flight requests don't each run the O(N³) finder.
-	sfKey := fmt.Sprintf("loops_%d", userID)
-	built, err, _ := loopBuildGroup.Do(sfKey, func() (interface{}, error) {
-		return h.buildLoopSuggestionsForUser(userID)
-	})
-	if err != nil {
-		log.Printf("Error building loop suggestions: %v", err)
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to load trade graph"})
-	}
-	userLoops, _ := built.([]map[string]interface{})
-
-	// 5. Also fetch matches from multiway_trades table where user is participant (user3)
 	rows, err := h.db.Query(`
-		SELECT m.chain_id, m.original_trade_id, m.user3_id, m.user3_product_id, m.status, m.initiator_user_id,
-		       DATE_FORMAT(DATE_ADD(m.created_at, INTERVAL 48 HOUR), '%Y-%m-%d %H:%i:%s') as expires_at,
-		       t.buyer_id as user1_id, t.seller_id as user2_id, t.target_product_id as user2_product_id,
-		       u1.name as user1_name, u2.name as user2_name, u3.name as user3_name, ui.name as initiator_name,
-		       COALESCE(p1.title, '') as user3_wanted_product_title, p2.title as user2_product_title, p3.title as user3_product_title
-		FROM multiway_trades m
-		JOIN trades t ON m.original_trade_id = t.id
-		JOIN users u1 ON t.buyer_id = u1.id
-		JOIN users u2 ON t.seller_id = u2.id
-		JOIN users u3 ON m.user3_id = u3.id
-		JOIN users ui ON m.initiator_user_id = ui.id
-		JOIN products p2 ON t.target_product_id = p2.id
-		JOIN products p3 ON m.user3_product_id = p3.id
-		LEFT JOIN trade_items ti ON t.id = ti.trade_id AND ti.offered_by = 'buyer'
-		LEFT JOIN products p1 ON ti.product_id = p1.id
-		WHERE (m.user3_id = ? OR t.buyer_id = ? OR t.seller_id = ?) AND m.status IN ('pending_user3', 'pending_initiator_upgrade', 'user3_accepted', 'active')
-	`, userID, userID, userID)
-
+		SELECT l.id, l.status
+		FROM trade_like_loops l
+		JOIN trade_like_loop_participants p ON p.loop_id = l.id
+		WHERE p.user_id = ? AND l.status IN ('pending', 'confirmed')
+		ORDER BY l.updated_at DESC
+	`, userID)
 	if err != nil {
-		log.Printf("[GetTradeLoops] ERROR querying multiway_trades for user %d: %v", userID, err)
-	}
-	if err == nil {
-		defer rows.Close()
-		seenChainIDs := map[string]bool{}
-		for rows.Next() {
-			var chainID, mStatus, expiresAt, u1Name, u2Name, u3Name, initiatorName, u3WantedTitle, u2Title, u3Title string
-			var tradeID, u3ID, u3PID, initiatorUserID, u1ID, u2ID, u2PID int
-			err = rows.Scan(&chainID, &tradeID, &u3ID, &u3PID, &mStatus, &initiatorUserID, &expiresAt, &u1ID, &u2ID, &u2PID, &u1Name, &u2Name, &u3Name, &initiatorName, &u3WantedTitle, &u2Title, &u3Title)
-			if err != nil {
-				log.Printf("[GetTradeLoops] ERROR scanning multiway row for user %d: %v", userID, err)
-				continue
-			}
-			{
-				// Deduplicate: LEFT JOIN on trade_items can produce multiple rows per chain if buyer offered multiple products
-				if seenChainIDs[chainID] {
-					continue
-				}
-				seenChainIDs[chainID] = true
-
-				if mStatus == "pending_initiator_upgrade" && userID != initiatorUserID {
-					continue
-				}
-
-				// Show to all 3 parties (u1, u2, u3). Hide only if user has no relation to this chain.
-				if mStatus == "pending_user3" && userID != u1ID && userID != u2ID && userID != u3ID {
-					continue
-				}
-
-				user3Status := "pending"
-				switch mStatus {
-				case "user3_accepted", "active":
-					user3Status = "joined"
-				case "user3_declined":
-					user3Status = "declined"
-				case "pending_initiator_upgrade":
-					user3Status = "waiting_initiator_upgrade"
-				}
-
-				baseParticipantStatus := "pending"
-				if user3Status == "joined" {
-					baseParticipantStatus = "joined"
-				}
-
-				// Both original trade parties (u1, u2) see this as initiator view (status card, no hop-in)
-				isInitiatorView := userID == u1ID || userID == u2ID
-				canJoin := userID == u3ID && mStatus == "pending_user3"
-				canDecline := userID == u3ID && mStatus == "pending_user3"
-
-				userLoops = append(userLoops, map[string]interface{}{
-					"id":                chainID,
-					"loop_id":           chainID,
-					"chain_id":          chainID,
-					"is_chain":          true,
-					"loop_type":         "invited_chain",
-					"status":            mStatus,
-					"loop_length":       3,
-					"score":             80,
-					"match_score":       80,
-					"initiator_user_id": initiatorUserID,
-					"initiator_name":    initiatorName,
-					"initiator_view":    isInitiatorView,
-					"can_join":          canJoin,
-					"can_decline":       canDecline,
-					"expires_at":        expiresAt,
-					"participants": []map[string]interface{}{
-						{"id": u1ID, "user_name": u1Name, "product_title": u3WantedTitle, "status": baseParticipantStatus},
-						{"id": u2ID, "user_name": u2Name, "product_title": u2Title, "status": baseParticipantStatus},
-						{"id": u3ID, "user_name": u3Name, "product_title": u3Title, "status": user3Status},
-					},
-				})
-			}
+		if strings.Contains(err.Error(), "doesn't exist") || strings.Contains(err.Error(), "Error 1146") {
+			log.Printf("GetTradeLoops: missing like-loop tables: %v", err)
+			return c.JSON(models.APIResponse{Success: true, Data: []map[string]interface{}{}})
 		}
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to fetch trade loops"})
 	}
+	defer rows.Close()
 
-	log.Printf("[GetTradeLoops] user=%d found %d raw loops (before best-per-product filter)", userID, len(userLoops))
-	for i, l := range userLoops {
-		log.Printf("[GetTradeLoops]   [%d] type=%v id=%v status=%v", i, l["loop_type"], l["loop_id"], l["status"])
-	}
+	loops := []map[string]interface{}{}
+	for rows.Next() {
+		var loopID int
+		var status string
+		if err := rows.Scan(&loopID, &status); err != nil {
+			continue
+		}
 
-	// Filter to keep only the best loop per product
-	bestLoops := selectBestLoopsPerProduct(h.db, userID, userLoops)
+		participants, edges, canJoin, canDecline := h.getLikeLoopParticipants(loopID, userID)
+		if len(participants) == 0 {
+			continue
+		}
 
-	// Sort loops by score (highest first) but show all of them
-	if len(bestLoops) > 1 {
-		sort.Slice(bestLoops, func(i, j int) bool {
-			return getLoopScore(bestLoops[i]) > getLoopScore(bestLoops[j])
+		loops = append(loops, map[string]interface{}{
+			"id":           loopID,
+			"loop_id":      loopIDFromLikeLoopID(loopID),
+			"loop_type":    "like_loop",
+			"status":       status,
+			"loop_length":  len(participants),
+			"can_join":     canJoin,
+			"can_decline":  canDecline,
+			"participants": participants,
+			"edges":        edges,
 		})
 	}
 
-	log.Printf("[GetTradeLoops] user=%d returning %d loops after best-per-product filter", userID, len(bestLoops))
+	if loops == nil {
+		loops = []map[string]interface{}{}
+	}
 
-	// Cache for all users, not just premium — see comment on the cache-read
-	// path above.
-	_ = h.saveLoopCacheForUser(userID, bestLoops)
+	return c.JSON(models.APIResponse{Success: true, Data: loops})
+}
 
-	return c.JSON(models.APIResponse{
-		Success: true,
-		Data:    bestLoops,
-	})
+func (h *TradeHandler) getLikeLoopParticipants(loopID int, userID int) ([]map[string]interface{}, []map[string]interface{}, bool, bool) {
+	rows, err := h.db.Query(`
+		SELECT p.user_id, u.name, COALESCE(u.slug, ''), p.offered_product_id, p.wanted_product_id,
+		       p.position_in_loop, p.status,
+		       COALESCE(op.title, ''), COALESCE(op.slug, ''), COALESCE(op.image_url, ''), COALESCE(op.image_urls, ''),
+		       COALESCE(wp.title, ''), COALESCE(wp.slug, '')
+		FROM trade_like_loop_participants p
+		JOIN users u ON u.id = p.user_id
+		JOIN products op ON op.id = p.offered_product_id
+		JOIN products wp ON wp.id = p.wanted_product_id
+		WHERE p.loop_id = ?
+		ORDER BY p.position_in_loop ASC
+	`, loopID)
+	if err != nil {
+		return nil, nil, false, false
+	}
+	defer rows.Close()
+
+	participants := []map[string]interface{}{}
+	canJoin := false
+	canDecline := false
+	for rows.Next() {
+		var uid, offeredID, wantedID, position int
+		var userName, userSlug, offeredTitle, offeredSlug, offeredImage, offeredImages, wantedTitle, wantedSlug, status string
+		if err := rows.Scan(&uid, &userName, &userSlug, &offeredID, &wantedID, &position, &status, &offeredTitle, &offeredSlug, &offeredImage, &offeredImages, &wantedTitle, &wantedSlug); err != nil {
+			continue
+		}
+		participants = append(participants, map[string]interface{}{
+			"id":                 uid,
+			"user_id":            uid,
+			"user_name":          userName,
+			"user_slug":          userSlug,
+			"product_id":         offeredID,
+			"product_title":      offeredTitle,
+			"product_slug":       offeredSlug,
+			"product_image_url":  offeredImage,
+			"product_image_urls": offeredImages,
+			"wanted_product_id":  wantedID,
+			"wanted_title":       wantedTitle,
+			"wanted_slug":        wantedSlug,
+			"position_in_loop":   position,
+			"status":             status,
+			"trade_status":       status,
+		})
+		if uid == userID && status == "pending" {
+			canJoin = true
+			canDecline = true
+		}
+	}
+
+	edges := []map[string]interface{}{}
+	if len(participants) > 1 {
+		for i, p := range participants {
+			next := participants[(i+1)%len(participants)]
+			edges = append(edges, map[string]interface{}{
+				"from_user":      p["user_id"],
+				"from_user_name": p["user_name"],
+				"to_user":        next["user_id"],
+				"to_user_name":   next["user_name"],
+				"product_title":  next["product_title"],
+				"status":         p["status"],
+			})
+		}
+	}
+
+	return participants, edges, canJoin, canDecline
 }
 
 func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
@@ -4263,6 +4602,29 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 
 	loopID := c.Params("id") // Format: loop_tradeid1_tradeid2_tradeid3
 	log.Printf("[GetTradeLoop] userID=%d raw loopID=%q", userID, loopID)
+
+	if likeLoopID, ok := parseLikeLoopID(loopID); ok {
+		participants, edges, canJoin, canDecline := h.getLikeLoopParticipants(likeLoopID, userID)
+		if len(participants) == 0 {
+			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade loop not found"})
+		}
+
+		var status string
+		_ = h.db.QueryRow("SELECT status FROM trade_like_loops WHERE id = ?", likeLoopID).Scan(&status)
+		if status == "" {
+			status = "pending"
+		}
+
+		return c.JSON(models.APIResponse{Success: true, Data: fiber.Map{
+			"loop_id":      loopID,
+			"loop_type":    "like_loop",
+			"participants": participants,
+			"edges":        edges,
+			"status":       status,
+			"can_join":     canJoin,
+			"can_decline":  canDecline,
+		}})
+	}
 
 	// Handle new multiway chain format (chain_ID)
 	if strings.HasPrefix(loopID, "chain_") {
@@ -4663,32 +5025,12 @@ func (h *TradeHandler) GetTradeLoop(c *fiber.Ctx) error {
 
 // AcceptTradeLoop
 func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
-	loopID := c.Params("id") // Format: loop_tradeid1_tradeid2_tradeid3
+	loopID := c.Params("id")
 	log.Printf("[AcceptTradeLoop] raw loopID=%q", loopID)
 
-	// Backward-compatible support for cached auto suggestions: auto_{tradeID}_{user3ID}
-	// IMPORTANT: parse this upfront so later loop_id guards never treat `auto_*` as invalid.
-	isAutoInvite := strings.HasPrefix(loopID, "auto_")
-	var autoTradeID int
-	var autoSuggestedUser3ID int
-
-	if isAutoInvite {
-		parts := strings.Split(loopID, "_")
-		if len(parts) != 3 {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID format"})
-		}
-
-		tradeID, err := strconv.Atoi(parts[1])
-		if err != nil || tradeID <= 0 {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID: bad trade reference"})
-		}
-		suggestedUser3ID, err := strconv.Atoi(parts[2])
-		if err != nil || suggestedUser3ID <= 0 {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID: bad participant reference"})
-		}
-
-		autoTradeID = tradeID
-		autoSuggestedUser3ID = suggestedUser3ID
+	loopNumericID, ok := parseLikeLoopID(loopID)
+	if !ok {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID"})
 	}
 
 	userID, ok := middleware.GetUserIDFromContext(c)
@@ -4696,344 +5038,74 @@ func (h *TradeHandler) AcceptTradeLoop(c *fiber.Ctx) error {
 		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "User not authenticated"})
 	}
 
-	// Determine subscription tier for access + quota enforcement.
-	var isPremium bool
-	if err := h.db.QueryRow("SELECT is_premium FROM users WHERE id = ?", userID).Scan(&isPremium); err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify subscription tier"})
+	var loopStatus string
+	if err := h.db.QueryRow("SELECT status FROM trade_like_loops WHERE id = ?", loopNumericID).Scan(&loopStatus); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade loop not found"})
+	}
+	if loopStatus != "pending" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Trade loop is not pending"})
 	}
 
-	// Handle product-based loop accept: product_loop_{prodA}_{prodB}_{prodC}
-	if strings.HasPrefix(loopID, "product_loop_") {
-		log.Printf("[AcceptTradeLoop:product] userID=%d loopID=%s", userID, loopID)
-		parts := strings.Split(loopID, "_")
-		if len(parts) != 5 {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product loop ID format"})
-		}
-		prodAID, _ := strconv.Atoi(parts[2])
-		prodBID, _ := strconv.Atoi(parts[3])
-		prodCID, _ := strconv.Atoi(parts[4])
-		if prodAID <= 0 || prodBID <= 0 || prodCID <= 0 {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid product IDs in loop"})
-		}
-
-		// Fetch product info and verify all still available
-		type pInfo struct {
-			id       int
-			sellerID int
-			title    string
-			status   string
-		}
-		fetchP := func(pid int) (pInfo, error) {
-			var p pInfo
-			p.id = pid
-			err := h.db.QueryRow("SELECT seller_id, title, status FROM products WHERE id = ?", pid).Scan(&p.sellerID, &p.title, &p.status)
-			return p, err
-		}
-		pA, errA := fetchP(prodAID)
-		pB, errB := fetchP(prodBID)
-		pC, errC := fetchP(prodCID)
-		if errA != nil || errB != nil || errC != nil {
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "One or more products no longer exist"})
-		}
-		if pA.status != "available" || pB.status != "available" || pC.status != "available" {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "One or more products are no longer available for trade"})
-		}
-
-		// Verify the current user is one of the participants
-		if userID != pA.sellerID && userID != pB.sellerID && userID != pC.sellerID {
-			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this loop"})
-		}
-
-		// Create a trade: user1 (pA.seller) offers pA to user2 (pB.seller) for pB
-		tx, err := h.db.Begin()
-		if err != nil {
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Database error"})
-		}
-		defer tx.Rollback()
-
-		// Trade: pA.seller (buyer/initiator) → pB.seller for pB
-		res, err := tx.Exec(`
-			INSERT INTO trades (buyer_id, seller_id, target_product_id, status, trade_option, message)
-			VALUES (?, ?, ?, 'pending_multiway', 'item_trade', 'Auto-created from product-based 3-way match')
-		`, pA.sellerID, pB.sellerID, pB.id)
-		if err != nil {
-			log.Printf("[AcceptTradeLoop:product] Failed to create trade: %v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade"})
-		}
-		tradeID, _ := res.LastInsertId()
-
-		// Trade item: pA.seller offers pA
-		_, err = tx.Exec("INSERT INTO trade_items (trade_id, product_id, offered_by) VALUES (?, ?, 'buyer')", tradeID, pA.id)
-		if err != nil {
-			log.Printf("[AcceptTradeLoop:product] Failed to create trade item: %v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create trade item"})
-		}
-
-		// Create the multiway_trades row
-		chainID := fmt.Sprintf("chain_%d_%d_%d_%d", tradeID, pA.sellerID, pB.sellerID, pC.sellerID)
-		_, err = tx.Exec(`
-			INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, user3_trade_id, user3_product_id, status, expires_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_user3', DATE_ADD(NOW(), INTERVAL 48 HOUR))
-			ON DUPLICATE KEY UPDATE status='pending_user3', user3_product_id=?, user3_trade_id=?, updated_at=NOW()
-		`, chainID, tradeID, userID, pA.sellerID, pB.sellerID, pC.sellerID, pC.id, pC.id, pC.id, pC.id)
-		if err != nil {
-			log.Printf("[AcceptTradeLoop:product] Failed to create multiway_trades row: %v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create multi-way trade"})
-		}
-
-		// Lock the products
-		for _, pid := range []int{pA.id, pB.id, pC.id} {
-			_, _ = tx.Exec("UPDATE products SET status = 'locked' WHERE id = ? AND status = 'available'", pid)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to finalize trade"})
-		}
-
-		log.Printf("[AcceptTradeLoop:product] ✅ Created chain %s from product loop %s", chainID, loopID)
-
-		// Notify all participants
-		for _, uid := range []int{pA.sellerID, pB.sellerID, pC.sellerID} {
-			if uid == userID {
-				continue
-			}
-			msg := "A 3-way trade loop has been initiated with your item! Check the Multi-Way tab to review."
-			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", uid, msg)
-			publishNotification(uid, msg)
-		}
-
-		// Clear caches
-		for _, uid := range []int{pA.sellerID, pB.sellerID, pC.sellerID} {
-			_, _ = h.db.Exec("DELETE FROM trade_loop_cache WHERE user_id = ?", uid)
-		}
-
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Data: fiber.Map{
-				"message":  "Product-based 3-way trade initiated successfully!",
-				"chain_id": chainID,
-				"loop_id":  chainID,
-			},
-		})
-	}
-
-	if isAutoInvite {
-		log.Printf("[AcceptTradeLoop:auto] initiatorUserID=%d tradeID=%d suggestedUser3ID=%d", userID, autoTradeID, autoSuggestedUser3ID)
-
-		// Free users cannot manually initiate loops (auto_*).
-		if !isPremium {
-			return c.Status(403).JSON(models.APIResponse{
-				Success: false,
-				Error:   "You're a great match to start a loop here — Pro members can initiate. Upgrade to unlock.",
-			})
-		}
-
-		var buyerID, sellerID int
-		var tradeStatus string
-		tradeQuery := "SELECT buyer_id, seller_id, status FROM trades WHERE id = ?"
-		log.Printf("[AcceptTradeLoop:auto] query=%s args=[%d]", tradeQuery, autoTradeID)
-		err := h.db.QueryRow(tradeQuery, autoTradeID).Scan(&buyerID, &sellerID, &tradeStatus)
-		if err != nil {
-			log.Printf("[AcceptTradeLoop:auto] trades lookup failed tradeID=%d err=%v", autoTradeID, err)
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Loop no longer exists. Please refresh your dashboard."})
-		}
-		log.Printf("[AcceptTradeLoop:auto] trades row: buyerID=%d sellerID=%d status=%s", buyerID, sellerID, tradeStatus)
-
-		if userID != buyerID && userID != sellerID {
-			log.Printf("[AcceptTradeLoop:auto] unauthorized: initiatorUserID=%d buyerID=%d sellerID=%d", userID, buyerID, sellerID)
-			return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not allowed to join this loop."})
-		}
-
-		if tradeStatus != "pending" && tradeStatus != "pending_multiway" {
-			log.Printf("[AcceptTradeLoop:auto] invalid trade status: %s", tradeStatus)
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop is no longer active."})
-		}
-
-		matches, err := services.FindMultiwayMatch(h.db, buyerID, sellerID, autoTradeID, []int{})
-		if err != nil {
-			log.Printf("[AcceptTradeLoop:auto] FindMultiwayMatch failed err=%v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate loop participants"})
-		}
-
-		var selected *services.MultiwayMatch
-		for i := range matches {
-			if matches[i].User3ID == autoSuggestedUser3ID {
-				selected = &matches[i]
-				break
-			}
-		}
-
-		if selected == nil {
-			log.Printf("[AcceptTradeLoop:auto] no matching User3 found user3ID=%d tradeID=%d buyerID=%d sellerID=%d", autoSuggestedUser3ID, autoTradeID, buyerID, sellerID)
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: "This loop invite is no longer available. Please refresh and try another match."})
-		}
-
-		chainID := fmt.Sprintf("chain_%d_%d_%d_%d", autoTradeID, buyerID, sellerID, selected.User3ID)
-		log.Printf("[AcceptTradeLoop:auto] computed chainID=%s (user3_product_id=%d)", chainID, selected.User3ProductID)
-
-		// Move original trade into multi-way matching state.
-		updateQuery := "UPDATE trades SET status='pending_multiway', updated_at=CURRENT_TIMESTAMP WHERE id = ?"
-		log.Printf("[AcceptTradeLoop:auto] query=%s args=[%d]", updateQuery, autoTradeID)
-		if res, err := h.db.Exec(updateQuery, autoTradeID); err != nil {
-			log.Printf("[AcceptTradeLoop:auto] update trades failed err=%v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to activate multi-way loop"})
-		} else {
-			ra, _ := res.RowsAffected()
-			log.Printf("[AcceptTradeLoop:auto] update trades rows_affected=%d", ra)
-		}
-
-		var existing int
-		countQuery := "SELECT COUNT(*) FROM multiway_trades WHERE chain_id = ?"
-		log.Printf("[AcceptTradeLoop:auto] query=%s args=[%s]", countQuery, chainID)
-		if err := h.db.QueryRow(countQuery, chainID).Scan(&existing); err != nil {
-			log.Printf("[AcceptTradeLoop:auto] count multiway_trades failed err=%v", err)
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to validate multi-way invitation"})
-		}
-		log.Printf("[AcceptTradeLoop:auto] existing multiway_trades for chain_id=%s => %d", chainID, existing)
-
-		if existing == 0 {
-			insertQuery := `
-				INSERT INTO multiway_trades (chain_id, original_trade_id, initiator_user_id, user1_id, user2_id, user3_id, status)
-				VALUES (?, ?, ?, ?, ?, ?, 'pending_user3')
-			`
-			log.Printf("[AcceptTradeLoop:auto] query=%s args=[chain_id=%s original_trade_id=%d initiator_user_id=%d user1_id=%d user2_id=%d user3_id=%d]",
-				strings.TrimSpace(insertQuery), chainID, autoTradeID, userID, buyerID, sellerID, selected.User3ID)
-
-			if _, err := h.db.Exec(insertQuery, chainID, autoTradeID, userID, buyerID, sellerID, selected.User3ID); err != nil {
-				log.Printf("[AcceptTradeLoop:auto] insert multiway_trades failed err=%v", err)
-				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to create loop invitation"})
-			}
-
-			notifMsg := fmt.Sprintf("Someone wants your %s and has something you like! Check your multi-way opportunities.", selected.User3ProductTitle)
-			_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", selected.User3ID, notifMsg)
-			publishNotification(selected.User3ID, notifMsg)
-			publishToUser(selected.User3ID, sseEvent{Type: "multiway_opportunity", Data: fiber.Map{"chain_id": chainID}})
-		}
-
-		go h.rebuildTradeLoopCacheForUsers([]int{buyerID, sellerID, selected.User3ID})
-
-		return c.JSON(models.APIResponse{
-			Success: true,
-			Message: "Loop invite sent. Waiting for participant to hop in.",
-			Data: fiber.Map{
-				"loop_id":  chainID,
-				"chain_id": chainID,
-				"status":   "pending_user3",
-			},
-		})
-	}
-
-	// 1. Verify loop exists and user is part of it
-	parts := strings.Split(loopID, "_")
-	if len(parts) < 3 || parts[0] != "loop" {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID"})
-	}
-
-	tradeIDs := []int{}
-	participantIDs := make(map[int]bool)
-	involvesUser := false
-
-	for i := 1; i < len(parts); i++ {
-		tid, _ := strconv.Atoi(parts[i])
-		tradeIDs = append(tradeIDs, tid)
-
-		var bID, sID int
-		err := h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tid).Scan(&bID, &sID)
-		if err != nil {
-			return c.Status(404).JSON(models.APIResponse{Success: false, Error: fmt.Sprintf("Trade %d not found", tid)})
-		}
-		participantIDs[bID] = true
-		participantIDs[sID] = true
-		if bID == userID || sID == userID {
-			involvesUser = true
-		}
-	}
-
-	if !involvesUser {
-		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this loop"})
-	}
-
-	// If the loop has been cancelled, prevent further participation changes.
-	var cancelledBy int
-	if err := h.db.QueryRow("SELECT cancelled_by FROM trade_loop_cancellations WHERE loop_id = ? LIMIT 1", loopID).Scan(&cancelledBy); err == nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop has been cancelled."})
-	} else if err != sql.ErrNoRows {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify loop cancellation state"})
-	}
-
-	// Free tier: enforce monthly quota for auto-match loop participations.
-	// Pro users have unlimited participation.
-	if !isPremium {
-		// If already accepted this loop, don't burn quota again.
-		var existingStatus string
-		_ = h.db.QueryRow("SELECT status FROM trade_loop_agreements WHERE loop_id = ? AND user_id = ?", loopID, userID).Scan(&existingStatus)
-		if existingStatus != "accepted" {
-			period := time.Now().Format("2006-01")
-			limit := 2
-
-			_, _ = h.db.Exec(`
-				INSERT INTO loop_quota_usage (user_id, period, used, `+"`limit`"+`)
-				VALUES (?, ?, 0, ?)
-				ON DUPLICATE KEY UPDATE `+"`limit`"+` = `+"`limit`"+`
-			`, userID, period, limit)
-
-			res, qErr := h.db.Exec(`
-				UPDATE loop_quota_usage
-				SET used = used + 1
-				WHERE user_id = ? AND period = ? AND used < `+"`limit`"+`
-			`, userID, period)
-			if qErr != nil {
-				return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to enforce loop quota"})
-			}
-
-			ra, _ := res.RowsAffected()
-			if ra == 0 {
-				return c.Status(403).JSON(models.APIResponse{
-					Success: false,
-					Error:   "You've used your free loop matches this month — upgrade to Pro for unlimited.",
-				})
-			}
-		}
-	}
-
-	// 2. Record acceptance
-	_, err := h.db.Exec(`
-		INSERT INTO trade_loop_agreements (loop_id, user_id, status)
-		VALUES (?, ?, 'accepted')
-		ON DUPLICATE KEY UPDATE status = 'accepted'
-	`, loopID, userID)
+	res, err := h.db.Exec(`
+		UPDATE trade_like_loop_participants
+		SET status = 'confirmed', confirmed_at = CURRENT_TIMESTAMP
+		WHERE loop_id = ? AND user_id = ?
+	`, loopNumericID, userID)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to record agreement"})
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to confirm trade loop"})
+	}
+	ra, _ := res.RowsAffected()
+	if ra == 0 {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
 	}
 
-	// 3. Check if all participants accepted
-	var acceptedCount int
-	err = h.db.QueryRow("SELECT COUNT(*) FROM trade_loop_agreements WHERE loop_id = ? AND status = 'accepted'", loopID).Scan(&acceptedCount)
+	var totalCount, confirmedCount int
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID).Scan(&totalCount)
+	_ = h.db.QueryRow("SELECT COUNT(*) FROM trade_like_loop_participants WHERE loop_id = ? AND status = 'confirmed'", loopNumericID).Scan(&confirmedCount)
 
-	if acceptedCount >= len(participantIDs) {
-		// All accepted! Execute.
-		go h.rebuildTradeLoopCacheForUsers(mapKeysToSlice(participantIDs))
-		return h.ExecuteTradeLoop(c)
-	}
-
-	for pid := range participantIDs {
-		if pid == userID {
-			continue
+	if totalCount > 0 && confirmedCount == totalCount {
+		_, _ = h.db.Exec("UPDATE trade_like_loops SET status = 'confirmed', confirmed_at = CURRENT_TIMESTAMP WHERE id = ?", loopNumericID)
+		rows, _ := h.db.Query("SELECT offered_product_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+		for rows.Next() {
+			var pid int
+			if err := rows.Scan(&pid); err == nil {
+				_, _ = h.db.Exec("UPDATE products SET status = 'traded' WHERE id = ?", pid)
+			}
 		}
-		msg := "A participant accepted the trade loop. Waiting for all confirmations."
-		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) VALUES (?, 'trade_loop', ?, FALSE)", pid, msg)
-		publishNotification(pid, msg)
-	}
-	go h.rebuildTradeLoopCacheForUsers(mapKeysToSlice(participantIDs))
+		rows.Close()
 
-	return c.JSON(models.APIResponse{
-		Success: true,
-		Message: "You have accepted the trade loop. Waiting for other participants.",
-		Data: fiber.Map{
-			"accepted_count": acceptedCount,
-			"target_count":   len(participantIDs),
-		},
-	})
+		participantRows, _ := h.db.Query("SELECT user_id FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+		userIDs := []int{}
+		for participantRows.Next() {
+			var uid int
+			if err := participantRows.Scan(&uid); err == nil {
+				userIDs = append(userIDs, uid)
+			}
+		}
+		participantRows.Close()
+		if len(userIDs) > 0 {
+			placeholders := make([]string, len(userIDs))
+			args := make([]interface{}, 0, len(userIDs)+1)
+			args = append(args, loopNumericID)
+			for i, uid := range userIDs {
+				placeholders[i] = "?"
+				args = append(args, uid)
+			}
+			q := fmt.Sprintf(`
+				UPDATE trade_like_loops l
+				JOIN trade_like_loop_participants p ON p.loop_id = l.id
+				SET l.status = 'cancelled'
+				WHERE l.id <> ? AND l.status = 'pending' AND p.user_id IN (%s)
+			`, strings.Join(placeholders, ","))
+			_, _ = h.db.Exec(q, args...)
+		}
+
+		_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'Trade loop confirmed! Your items are now marked as traded.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
+		return c.JSON(models.APIResponse{Success: true, Message: "Trade loop confirmed"})
+	}
+
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'A participant confirmed the trade. Waiting for everyone to confirm.', FALSE FROM trade_like_loop_participants WHERE loop_id = ? AND user_id <> ?", loopNumericID, userID)
+	return c.JSON(models.APIResponse{Success: true, Message: "Confirmation saved. Waiting for others."})
 }
 
 // DeclineTradeLoop
@@ -5044,25 +5116,26 @@ func (h *TradeHandler) DeclineTradeLoop(c *fiber.Ctx) error {
 	}
 
 	loopID := c.Params("id")
-	log.Printf("[DeclineTradeLoop] userID=%d raw loopID=%q", userID, loopID)
-
-	// Prevent declining/collaborating on cancelled loops.
-	var cancelledBy int
-	if err := h.db.QueryRow("SELECT cancelled_by FROM trade_loop_cancellations WHERE loop_id = ? LIMIT 1", loopID).Scan(&cancelledBy); err == nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop has been cancelled."})
-	} else if err != sql.ErrNoRows {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify loop cancellation state"})
+	loopNumericID, ok := parseLikeLoopID(loopID)
+	if !ok {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID"})
 	}
 
-	_, err := h.db.Exec(`
-		INSERT INTO trade_loop_agreements (loop_id, user_id, status)
-		VALUES (?, ?, 'declined')
-		ON DUPLICATE KEY UPDATE status = 'declined'
-	`, loopID, userID)
+	res, err := h.db.Exec(`
+		UPDATE trade_like_loop_participants
+		SET status = 'declined'
+		WHERE loop_id = ? AND user_id = ?
+	`, loopNumericID, userID)
 	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to record decline"})
+		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to decline trade loop"})
 	}
-	go h.rebuildTradeLoopCacheForUsers([]int{userID})
+	ra, _ := res.RowsAffected()
+	if ra == 0 {
+		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
+	}
+
+	_, _ = h.db.Exec("UPDATE trade_like_loops SET status = 'cancelled' WHERE id = ?", loopNumericID)
+	_, _ = h.db.Exec("INSERT INTO notifications (user_id, type, message, is_read) SELECT user_id, 'trade_loop', 'A participant declined the trade loop.', FALSE FROM trade_like_loop_participants WHERE loop_id = ?", loopNumericID)
 
 	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop declined"})
 }
@@ -5303,108 +5376,20 @@ func (h *TradeHandler) CleanupExpiredPendingInitiatorUpgrades() {
 // ExecuteTradeLoop
 func (h *TradeHandler) ExecuteTradeLoop(c *fiber.Ctx) error {
 	loopID := c.Params("id")
-	parts := strings.Split(loopID, "_")
-
-	// Validate loop ID format: must have at least "loop_<tradeID>"
-	if len(parts) < 2 {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID format"})
-	}
-
-	// Get calling user for authorization
-	callerID, ok := middleware.GetUserIDFromContext(c)
+	loopNumericID, ok := parseLikeLoopID(loopID)
 	if !ok {
-		return c.Status(401).JSON(models.APIResponse{Success: false, Error: "Unauthorized"})
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid loop ID"})
 	}
 
-	// Prevent executing cancelled loops.
-	var cancelledBy int
-	if err := h.db.QueryRow("SELECT cancelled_by FROM trade_loop_cancellations WHERE loop_id = ? LIMIT 1", loopID).Scan(&cancelledBy); err == nil {
-		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "This loop has been cancelled."})
-	} else if err != sql.ErrNoRows {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to verify loop cancellation state"})
+	var status string
+	if err := h.db.QueryRow("SELECT status FROM trade_like_loops WHERE id = ?", loopNumericID).Scan(&status); err != nil {
+		return c.Status(404).JSON(models.APIResponse{Success: false, Error: "Trade loop not found"})
+	}
+	if status != "confirmed" {
+		return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Trade loop is not confirmed"})
 	}
 
-	// Parse and validate all trade IDs first
-	tradeIDs := []int{}
-	for i := 1; i < len(parts); i++ {
-		tid, err := strconv.Atoi(parts[i])
-		if err != nil || tid <= 0 {
-			return c.Status(400).JSON(models.APIResponse{Success: false, Error: "Invalid trade ID in loop"})
-		}
-		tradeIDs = append(tradeIDs, tid)
-	}
-
-	// Authorization: verify the calling user is a participant in at least one trade in this loop
-	isParticipant := false
-	for _, tid := range tradeIDs {
-		var count int
-		if err := h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE id = ? AND (buyer_id = ? OR seller_id = ?)", tid, callerID, callerID).Scan(&count); err == nil && count > 0 {
-			isParticipant = true
-			break
-		}
-	}
-	if !isParticipant {
-		return c.Status(403).JSON(models.APIResponse{Success: false, Error: "You are not a participant in this trade loop"})
-	}
-
-	// Start transaction
-	tx, err := h.db.Begin()
-	if err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to start transaction"})
-	}
-	defer tx.Rollback()
-
-	// If this is a chain_ or auto_ loop, update the multiway_trades status to 'active'
-	if strings.HasPrefix(loopID, "chain_") || strings.HasPrefix(loopID, "auto_") {
-		_, err = tx.Exec("UPDATE multiway_trades SET status = 'active' WHERE chain_id = ? OR loop_id = ?", loopID, loopID)
-		if err != nil {
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update multiway chain status"})
-		}
-	}
-
-	for _, tid := range tradeIDs {
-		// 1. Update trade status to 'active' (since it's now a multi-way commitment)
-		_, err = tx.Exec("UPDATE trades SET status = 'active' WHERE id = ?", tid)
-		if err != nil {
-			return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to update trade status"})
-		}
-
-		// 2. Lock the target product
-		var targetProductID int
-		err = tx.QueryRow("SELECT target_product_id FROM trades WHERE id = ?", tid).Scan(&targetProductID)
-		if err == nil {
-			tx.Exec("UPDATE products SET status = 'locked' WHERE id = ?", targetProductID)
-		}
-
-		// 3. Lock offered products
-		rows, _ := tx.Query("SELECT product_id FROM trade_items WHERE trade_id = ?", tid)
-		for rows.Next() {
-			var pid int
-			rows.Scan(&pid)
-			tx.Exec("UPDATE products SET status = 'locked' WHERE id = ?", pid)
-		}
-		rows.Close()
-	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return c.Status(500).JSON(models.APIResponse{Success: false, Error: "Failed to commit transaction"})
-	}
-
-	participantIDs := map[int]bool{}
-	for _, tid := range tradeIDs {
-		var bID, sID int
-		if err := h.db.QueryRow("SELECT buyer_id, seller_id FROM trades WHERE id = ?", tid).Scan(&bID, &sID); err == nil {
-			participantIDs[bID] = true
-			participantIDs[sID] = true
-		}
-	}
-	go h.rebuildTradeLoopCacheForUsers(mapKeysToSlice(participantIDs))
-
-	return c.JSON(models.APIResponse{
-		Success: true,
-		Message: "Multi-way trade loop executed successfully! All trades are now active.",
-	})
+	return c.JSON(models.APIResponse{Success: true, Message: "Trade loop already confirmed"})
 }
 
 // GetTradeLoopNotifications returns notifications specifically related to trade loops

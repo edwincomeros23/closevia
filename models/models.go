@@ -622,6 +622,7 @@ type Delivery struct {
 	UpdatedAt           time.Time  `json:"updated_at"`
 	// Denormalized fields for display
 	UserName       string   `json:"user_name,omitempty"`
+	ReceiverName   string   `json:"receiver_name,omitempty"`
 	RiderName      string   `json:"rider_name,omitempty"`
 	RiderPhone     string   `json:"rider_phone,omitempty"`
 	RiderVehicle   string   `json:"rider_vehicle,omitempty"`
