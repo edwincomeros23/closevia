@@ -46,6 +46,8 @@ import { AddIcon, CloseIcon, ArrowForwardIcon, ArrowBackIcon, CheckIcon, InfoOut
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { useCustomLocations } from '../hooks/useCustomLocations'
+import { SavedLocationsUI } from '../components/SavedLocationsUI'
 
 export interface ProductFormData {
   title: string
@@ -162,6 +164,9 @@ const AddProduct: React.FC = () => {
   const toast = useToast()
   const aiTriggeredRef = useRef(false)
 
+  // Custom locations
+  const { locations, addLocation, deleteLocation, updateLocation } = useCustomLocations()
+
   // Webcam state for desktop camera capture
   const [isCameraOpen, setIsCameraOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -276,6 +281,12 @@ const AddProduct: React.FC = () => {
   const [descriptionFieldFocused, setDescriptionFieldFocused] = useState(false)
   const [expandProductDetails, setExpandProductDetails] = useState(false)
 
+  // Pickup location search state
+  const [pickupSearchQuery, setPickupSearchQuery] = useState('')
+  const [pickupSearchResults, setPickupSearchResults] = useState<Array<{ name: string; address: string; lat: number; lng: number }>>([])
+  const [isSearchingPickupLocation, setIsSearchingPickupLocation] = useState(false)
+  const [showPickupSearchDropdown, setShowPickupSearchDropdown] = useState(false)
+
   // Organization tagging state
   interface Organization {
     id: number
@@ -367,6 +378,48 @@ const AddProduct: React.FC = () => {
       setManualLocationSaving(false)
     }
   }, [manualLocationInput, toast])
+
+  // Search for pickup locations
+  const searchPickupLocations = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setPickupSearchResults([])
+      return
+    }
+    setIsSearchingPickupLocation(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`
+      )
+      const results = await response.json()
+      const formatted = results.map((r: any) => ({
+        name: r.name || r.display_name.split(',')[0],
+        address: r.display_name,
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+      }))
+      setPickupSearchResults(formatted)
+      setShowPickupSearchDropdown(true)
+    } catch (err) {
+      console.error('Error searching locations:', err)
+      setPickupSearchResults([])
+    } finally {
+      setIsSearchingPickupLocation(false)
+    }
+  }, [])
+
+  // Handle pickup location selection from search
+  const selectPickupLocation = useCallback((result: { name: string; address: string; lat: number; lng: number }) => {
+    setFormData(prev => ({
+      ...prev,
+      latitude: result.lat,
+      longitude: result.lng,
+      location: result.address,
+    }))
+    setCustomPickupLocationSet(true)
+    setPickupSearchQuery('')
+    setPickupSearchResults([])
+    setShowPickupSearchDropdown(false)
+  }, [])
 
   useEffect(() => {
     detectLocation()
@@ -1672,44 +1725,161 @@ const AddProduct: React.FC = () => {
                 </VStack>
               </HStack>
               {formData.location_type === 'pickup_location' && (
-                <Box pl={6} pt={1}>
-                  {customPickupLocationSet && formData.latitude && formData.longitude && (
-                    <HStack spacing={1.5} align="start" mb={1.5}>
-                      <Text fontSize="9px" fontWeight="600" color="green.700" flex="0 0 auto">✓</Text>
-                      <VStack align="start" spacing={0}>
-                        <Text fontSize="9px" color="gray.800" fontWeight="500">{formData.location}</Text>
-                        <Text fontSize="8px" color="gray.500">{formData.latitude.toFixed(6)}, {formData.longitude.toFixed(6)}</Text>
-                      </VStack>
-                    </HStack>
+                <Box pl={{ base: 4, md: 6 }} pt={1}>
+                  {customPickupLocationSet && formData.latitude && formData.longitude ? (
+                    <VStack align="start" spacing={1} mb={1.5}>
+                      <HStack spacing={1.5} align="start" w="full">
+                        <Text fontSize={{ base: '8px', md: '9px' }} fontWeight="600" color="green.700" flex="0 0 auto" mt={0.5}>✓</Text>
+                        <VStack align="start" spacing={0} flex={1} minW={0}>
+                          <Text 
+                            fontSize={{ base: '8px', md: '9px' }} 
+                            color="gray.800" 
+                            fontWeight="500"
+                            noOfLines={2}
+                            cursor="pointer"
+                            _hover={{ textDecoration: 'underline', color: 'blue.600' }}
+                            onClick={() => {
+                              setPickupSearchQuery('')
+                              setShowCustomPickupMap(false)
+                              setShowPickupSearchDropdown(false)
+                            }}
+                          >
+                            {formData.location}
+                          </Text>
+                        </VStack>
+                        <Button 
+                          size="xs"
+                          variant="ghost"
+                          fontSize={{ base: '7px', md: '8px' }}
+                          h="20px"
+                          px={1.5}
+                          onClick={() => {
+                            setPickupSearchQuery('')
+                            setShowPickupSearchDropdown(false)
+                            setShowCustomPickupMap(!showCustomPickupMap)
+                          }}
+                        >
+                          {showCustomPickupMap ? 'Hide' : 'Edit'}
+                        </Button>
+                      </HStack>
+                    </VStack>
+                  ) : (
+                    <Text fontSize={{ base: '8px', md: '9px' }} color="gray.500" mb={1}>Pick a location or search below</Text>
                   )}
-                  <Button 
-                    size="xs" 
-                    colorScheme="blue" 
-                    variant="outline"
-                    onClick={() => setShowCustomPickupMap(!showCustomPickupMap)}
-                    mb={showCustomPickupMap && formData.latitude && formData.longitude ? 1.5 : 0}
-                    fontSize="10px"
-                    h="24px"
-                  >
-                    {showCustomPickupMap ? 'Hide Map' : 'Show Map'}
-                  </Button>
+                  
+                  {/* Saved Locations */}
+                  <SavedLocationsUI
+                    locations={locations}
+                    onSelectLocation={(loc) => {
+                      setFormData(prev => ({
+                        ...prev,
+                        location: loc.address,
+                        latitude: loc.latitude,
+                        longitude: loc.longitude,
+                      } as any))
+                      setCustomPickupLocationSet(true)
+                    }}
+                    onAddLocation={(name, address, lat, lng) => {
+                      addLocation({ name, address, latitude: lat, longitude: lng })
+                    }}
+                    onDeleteLocation={deleteLocation}
+                    onRenameLocation={updateLocation}
+                    currentLocation={
+                      formData.location && formData.latitude && formData.longitude
+                        ? {
+                            address: formData.location,
+                            lat: formData.latitude,
+                            lng: formData.longitude,
+                          }
+                        : undefined
+                    }
+                    onAddNew={() => {}}
+                  />
+                  
+                  {/* Search Location Section - Compact */}
+                  <Box mb={1} position="relative">
+                    <Text fontSize={{ base: '8px', md: '9px' }} fontWeight="600" color="blue.700" mb={0.5}>Search</Text>
+                    <Box position="relative">
+                      <Input
+                        placeholder="Search location..."
+                        value={pickupSearchQuery}
+                        onChange={(e) => {
+                          setPickupSearchQuery(e.target.value)
+                          searchPickupLocations(e.target.value)
+                        }}
+                        onFocus={() => pickupSearchQuery && setShowPickupSearchDropdown(true)}
+                        size="sm"
+                        fontSize={{ base: '8px', md: '9px' }}
+                        h={{ base: '24px', md: '28px' }}
+                        py={1}
+                      />
+                      {isSearchingPickupLocation && (
+                        <Spinner 
+                          size="xs" 
+                          position="absolute" 
+                          right={1.5} 
+                          top={1}
+                        />
+                      )}
+                      {/* Search Results Dropdown */}
+                      {showPickupSearchDropdown && pickupSearchResults.length > 0 && (
+                        <Box
+                          position="absolute"
+                          top="100%"
+                          left={0}
+                          right={0}
+                          bg="white"
+                          borderWidth="1px"
+                          borderColor="blue.300"
+                          borderTop="none"
+                          borderRadius="0 0 md md"
+                          zIndex={10}
+                          maxH={{ base: '120px', md: '150px' }}
+                          overflowY="auto"
+                          boxShadow="md"
+                        >
+                          {pickupSearchResults.map((result, idx) => (
+                            <Box
+                              key={idx}
+                              p={{ base: 1, md: 1.5 }}
+                              fontSize={{ base: '8px', md: '9px' }}
+                              borderBottom={idx < pickupSearchResults.length - 1 ? "1px" : "none"}
+                              borderColor="gray.200"
+                              cursor="pointer"
+                              _hover={{ bg: 'blue.50' }}
+                              onClick={() => selectPickupLocation(result)}
+                            >
+                              <Text fontWeight="500" color="gray.800">{result.name}</Text>
+                              <Text fontSize={{ base: '7px', md: '8px' }} color="gray.600" noOfLines={1}>{result.address}</Text>
+                            </Box>
+                          ))}
+                        </Box>
+                      )}
+                    </Box>
+                  </Box>
+                  
+                  {/* Map Section - Compact & Responsive */}
                   {showCustomPickupMap && formData.latitude && formData.longitude && (
-                    <Box mt={1.5}>
-                      <Text fontSize="9px" color="blue.700" mb={1} fontWeight="500">Click on map to set your pickup location</Text>
-                      <Box h="200px" borderRadius="md" overflow="hidden" borderWidth="1px" borderColor="blue.300">
+                    <Box mt={1}>
+                      <Text fontSize={{ base: '8px', md: '9px' }} color="blue.700" mb={0.5} fontWeight="500">Click map to adjust</Text>
+                      <Box 
+                        h={{ base: '150px', sm: '180px', md: '200px' }} 
+                        borderRadius="md" 
+                        overflow="hidden" 
+                        borderWidth="1px" 
+                        borderColor="blue.300"
+                      >
                         <MapContainer center={[formData.latitude, formData.longitude]} zoom={16} style={{ height: '100%', width: '100%' }}>
                           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
                           <Marker position={[formData.latitude, formData.longitude]} />
                           <MapUpdater lat={formData.latitude} lng={formData.longitude} />
                           <MapClickHandler onLocationSelect={async (lat, lng) => {
-                            // Reverse geocode the selected location to get address name
                             try {
                               const res = await fetch(
                                 `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${lat}&lon=${lng}`
                               )
                               const data = await res.json()
                               const addr = data.address || {}
-                              // Build address: street + barangay + city
                               const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
                               const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
                               const city = addr.city || addr.town || addr.municipality || ''
@@ -1718,16 +1888,12 @@ const AddProduct: React.FC = () => {
                               setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: address }))
                               setCustomPickupLocationSet(true)
                             } catch {
-                              // Fallback to coordinates if geocoding fails
                               setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }))
                               setCustomPickupLocationSet(true)
                             }
                           }} />
                         </MapContainer>
                       </Box>
-                      {formData.latitude && formData.longitude && (
-                        <Text fontSize="8px" color="gray.600" mt={1}>📍 {formData.location || `${formData.latitude.toFixed(4)}, ${formData.longitude.toFixed(4)}`}</Text>
-                      )}
                     </Box>
                   )}
                 </Box>

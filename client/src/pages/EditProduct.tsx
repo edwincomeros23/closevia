@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -25,11 +25,50 @@ import {
   Badge,
   Wrap,
   WrapItem,
+  Radio,
 } from '@chakra-ui/react'
 import { CloseIcon } from '@chakra-ui/icons'
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { ProductUpdate } from '../types'
 import { api } from '../services/api'
+import { useCustomLocations } from '../hooks/useCustomLocations'
+import { SavedLocationsUI } from '../components/SavedLocationsUI'
 import { PRODUCT_CATEGORIES } from '../utils/categories'
+
+// Fix leaflet icon issues
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+})
+
+const MapUpdater = ({ lat, lng }: { lat: number; lng: number }) => {
+  const map = useMap()
+  useEffect(() => {
+    map.setView([lat, lng], 16, { animate: true })
+    map.invalidateSize()
+  }, [lat, lng, map])
+  return null
+}
+
+const MapClickHandler = ({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) => {
+  const map = useMap()
+  useEffect(() => {
+    const handleClick = (e: any) => {
+      const { lat, lng } = e.latlng
+      onLocationSelect(lat, lng)
+    }
+    map.on('click', handleClick)
+    return () => {
+      map.off('click', handleClick)
+    }
+  }, [map, onLocationSelect])
+  return null
+}
 
 const EditProduct: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -41,6 +80,18 @@ const EditProduct: React.FC = () => {
   const [originalProduct, setOriginalProduct] = useState<any>(null)
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [detectingLocation, setDetectingLocation] = useState(false)
+  
+  // Custom locations
+  const { locations, addLocation, deleteLocation, updateLocation } = useCustomLocations()
+  
+  // Location search and map state
+  const [pickupSearchQuery, setPickupSearchQuery] = useState('')
+  const [pickupSearchResults, setPickupSearchResults] = useState<Array<{ name: string; address: string; lat: number; lng: number }>>([])
+  const [isSearchingPickupLocation, setIsSearchingPickupLocation] = useState(false)
+  const [showPickupSearchDropdown, setShowPickupSearchDropdown] = useState(false)
+  const [showLocationMap, setShowLocationMap] = useState(false)
+  const [locationSet, setLocationSet] = useState(false)
+  const [locationTypeSelected, setLocationTypeSelected] = useState<'current_location' | 'pickup_location' | 'no_location'>('no_location')
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -53,15 +104,17 @@ const EditProduct: React.FC = () => {
         const { latitude, longitude } = pos.coords
         try {
           const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+            `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${latitude}&lon=${longitude}`
           )
           const data = await res.json()
           const addr = data.address || {}
-          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || ''
-          const city = addr.city || addr.town || ''
-          const parts = [barangay, city].filter(Boolean)
+          const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
+          const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
+          const city = addr.city || addr.town || addr.municipality || ''
+          const parts = [street, barangay, city].filter(Boolean)
           const address = parts.join(', ') || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
           setFormData((prev) => ({ ...prev, location: address, latitude, longitude } as any))
+          setLocationSet(true)
         } catch {
           setFormData((prev) => ({
             ...prev,
@@ -69,6 +122,7 @@ const EditProduct: React.FC = () => {
             latitude,
             longitude,
           } as any))
+          setLocationSet(true)
         }
         setDetectingLocation(false)
       },
@@ -79,6 +133,48 @@ const EditProduct: React.FC = () => {
       { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     )
   }
+
+  // Search for pickup locations
+  const searchPickupLocations = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setPickupSearchResults([])
+      return
+    }
+    setIsSearchingPickupLocation(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`
+      )
+      const results = await response.json()
+      const formatted = results.map((r: any) => ({
+        name: r.name || r.display_name.split(',')[0],
+        address: r.display_name,
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+      }))
+      setPickupSearchResults(formatted)
+      setShowPickupSearchDropdown(true)
+    } catch (err) {
+      console.error('Error searching locations:', err)
+      setPickupSearchResults([])
+    } finally {
+      setIsSearchingPickupLocation(false)
+    }
+  }, [])
+
+  // Handle location selection from search
+  const selectLocation = useCallback((result: { name: string; address: string; lat: number; lng: number }) => {
+    setFormData(prev => ({
+      ...prev,
+      latitude: result.lat,
+      longitude: result.lng,
+      location: result.address,
+    } as any))
+    setLocationSet(true)
+    setPickupSearchQuery('')
+    setPickupSearchResults([])
+    setShowPickupSearchDropdown(false)
+  }, [])
 
   const navigate = useNavigate()
   const toast = useToast()
@@ -135,7 +231,13 @@ const EditProduct: React.FC = () => {
         max_items_per_offer: product.max_items_per_offer ?? 0,
         wants: product.wants || '',
         wanted_categories: parsedWantedCats,
+        latitude: product.latitude,
+        longitude: product.longitude,
+        location_type: product.location_type || 'no_location',
       })
+
+      // Set location type selector
+      setLocationTypeSelected(product.location_type || 'no_location')
 
       // Load persisted previews for this product
       try {
@@ -357,21 +459,27 @@ const EditProduct: React.FC = () => {
   }
 
   return (
-    <Box minH="100vh" bg={pageBg} py={{ base: 4, md: 8 }}>
-      <Container maxW="container.md" px={{ base: 3, md: 6 }}>
-        <VStack spacing={{ base: 4, md: 8 }}>
-          <Box textAlign="center">
-            <Heading size={{ base: 'lg', md: 'xl' }} color="brand.500" mb={1}>
+    <Box w="full" minH="100vh" bg="#FFFDF1" pb={24}>
+      {/* Header */}
+      <Box bg="white" borderBottomWidth="1px" borderColor="gray.200" position="sticky" top={0} zIndex={10}>
+        <VStack spacing={0} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }}>
+          <HStack w="full" justify="space-between" mb={3}>
+            <Text fontSize="sm" fontWeight="600" color="gray.600">
               Edit Product
-            </Heading>
-            <Text color="gray.600" fontSize={{ base: 'sm', md: 'md' }}>
-              Update your product listing
             </Text>
-          </Box>
+            <Text fontSize="sm" color="gray.500">
+              Update your listing
+            </Text>
+          </HStack>
+        </VStack>
+      </Box>
 
-          <Box bg="white" p={{ base: 4, md: 8 }} rounded="lg" shadow="sm" w="full">
-            <form onSubmit={handleSubmit}>
-              <VStack spacing={{ base: 4, md: 6 }}>
+      {/* Main Content */}
+      <VStack spacing={6} maxW="container.md" mx="auto" p={{ base: 4, md: 6 }} align="stretch">
+        {/* White Card Container */}
+        <Box bg="white" p={{ base: 4, md: 6 }} rounded="lg" shadow="sm">
+          <form onSubmit={handleSubmit}>
+            <VStack spacing={6} align="stretch">
                 {error && (
                   <Alert status="error" fontSize="sm" rounded="md">
                     <AlertIcon />
@@ -426,12 +534,11 @@ const EditProduct: React.FC = () => {
                 {/* Category & Condition */}
                 <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={{ base: 3, md: 4 }} w="full">
                   <FormControl>
-                    <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Category</FormLabel>
+                    <FormLabel fontWeight="600">Category</FormLabel>
                     <Select
                       value={formData.category || ''}
                       onChange={(e) => handleInputChange('category', e.target.value)}
-                      placeholder="Select category"
-                      size={{ base: 'md', md: 'lg' }}
+                      size="lg"
                     >
                       {PRODUCT_CATEGORIES.map((cat) => (
                         <option key={cat.value} value={cat.value}>
@@ -441,13 +548,12 @@ const EditProduct: React.FC = () => {
                     </Select>
                   </FormControl>
 
-                  <FormControl>
-                    <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Condition</FormLabel>
+                  <FormControl isRequired>
+                    <FormLabel fontWeight="600">Condition</FormLabel>
                     <Select
                       value={formData.condition || ''}
                       onChange={(e) => handleInputChange('condition', e.target.value)}
-                      placeholder="Select condition"
-                      size={{ base: 'md', md: 'lg' }}
+                      size="lg"
                     >
                       <option value="New">New</option>
                       <option value="Like-New">Like-New</option>
@@ -457,40 +563,321 @@ const EditProduct: React.FC = () => {
                   </FormControl>
                 </Grid>
 
-                {/* Location */}
-                <FormControl>
-                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Location</FormLabel>
-                  <HStack spacing={2} align="stretch">
-                    <Input
-                      value={formData.location || ''}
-                      onChange={(e) => handleInputChange('location', e.target.value)}
-                      placeholder="e.g., Cebu City, Philippines"
-                      size={{ base: 'md', md: 'lg' }}
-                    />
-                    <Button
-                      size={{ base: 'md', md: 'lg' }}
-                      variant="outline"
-                      onClick={useCurrentLocation}
-                      isLoading={detectingLocation}
-                      flexShrink={0}
-                    >
-                      Use current
-                    </Button>
-                  </HStack>
-                  <FormHelperText fontSize="xs" color="gray.500">
-                    Changing location updates how far this product appears to other users.
-                  </FormHelperText>
-                </FormControl>
+                {/* Location Type Selector */}
+                <Box bg="yellow.50" p={3} borderRadius="md" borderWidth="1px" borderColor="yellow.200">
+                  <FormControl>
+                    <FormLabel fontSize="xs" fontWeight="bold" color="yellow.800" mb={2}>
+                      📦 How would you like buyers to collect this item?
+                    </FormLabel>
+                    <VStack align="stretch" spacing={2}>
+                      {/* Option 1: Use Current Location */}
+                      <Box 
+                        p={2.5} 
+                        borderWidth="1px" 
+                        borderRadius="md"
+                        bg={locationTypeSelected === 'current_location' ? 'yellow.100' : 'white'}
+                        borderColor={locationTypeSelected === 'current_location' ? 'yellow.400' : 'gray.200'}
+                        transition="all 0.2s"
+                        cursor="pointer"
+                        _hover={{ borderColor: 'yellow.300' }}
+                      >
+                        <HStack align="start" spacing={2}>
+                          <Radio 
+                            isChecked={locationTypeSelected === 'current_location'}
+                            onChange={() => {
+                              setLocationTypeSelected('current_location')
+                              setFormData(prev => ({ ...prev, location_type: 'current_location' }))
+                              useCurrentLocation()
+                            }}
+                            colorScheme="yellow"
+                            flex="0 0 auto"
+                            mt={0.5}
+                            cursor="pointer"
+                          />
+                          <VStack align="start" spacing={0.5} flex={1} cursor="pointer" onClick={() => {
+                            setLocationTypeSelected('current_location')
+                            setFormData(prev => ({ ...prev, location_type: 'current_location' }))
+                            useCurrentLocation()
+                          }}>
+                            <Text fontWeight="600" fontSize="xs">✓ Use My Current Location</Text>
+                            <Text fontSize="9px" color="gray.600">Buyers pick up from your detected location</Text>
+                          </VStack>
+                          {detectingLocation && <Spinner size="sm" />}
+                        </HStack>
+                        
+                        {locationTypeSelected === 'current_location' && formData.location && formData.latitude && (
+                          <HStack spacing={1.5} align="start" w="full" p={1.5} bg="green.50" borderRadius="md" borderWidth="1px" borderColor="green.200" mt={2}>
+                            <Text fontSize="8px" fontWeight="600" color="green.700" flex="0 0 auto" mt={0.5}>✓</Text>
+                            <VStack align="start" spacing={0} flex={1} minW={0}>
+                              <Text 
+                                fontSize="8px" 
+                                color="gray.800" 
+                                fontWeight="500"
+                                noOfLines={2}
+                              >
+                                {formData.location}
+                              </Text>
+                              <Text fontSize="7px" color="gray.600">
+                                {formData.latitude?.toFixed(4)}, {formData.longitude?.toFixed(4)}
+                              </Text>
+                            </VStack>
+                          </HStack>
+                        )}
+                      </Box>
+
+                      {/* Option 2: Custom Pickup Location */}
+                      <Box 
+                        p={2.5} 
+                        borderWidth="1px" 
+                        borderRadius="md"
+                        bg={locationTypeSelected === 'pickup_location' ? 'yellow.100' : 'white'}
+                        borderColor={locationTypeSelected === 'pickup_location' ? 'yellow.400' : 'gray.200'}
+                        transition="all 0.2s"
+                        cursor="pointer"
+                        _hover={{ borderColor: 'yellow.300' }}
+                      >
+                        <HStack align="start" spacing={2} mb={locationTypeSelected === 'pickup_location' ? 1.5 : 0}>
+                          <Radio 
+                            isChecked={locationTypeSelected === 'pickup_location'}
+                            onChange={() => {
+                              setLocationTypeSelected('pickup_location')
+                              setFormData(prev => ({ ...prev, location_type: 'pickup_location' }))
+                            }}
+                            colorScheme="yellow"
+                            flex="0 0 auto"
+                            mt={0.5}
+                            cursor="pointer"
+                          />
+                          <VStack align="start" spacing={0.5} flex={1} cursor="pointer" onClick={() => {
+                            setLocationTypeSelected('pickup_location')
+                            setFormData(prev => ({ ...prev, location_type: 'pickup_location' }))
+                          }}>
+                            <Text fontWeight="600" fontSize="xs">📍 Set a Custom Pickup Location</Text>
+                            <Text fontSize="9px" color="gray.600">Click on map to pinpoint your pickup location</Text>
+                          </VStack>
+                        </HStack>
+                        
+                        {locationTypeSelected === 'pickup_location' && (
+                          <VStack align="stretch" spacing={1.5} pl={6}>
+                            {/* Current Location Display */}
+                            {formData.location && (locationSet || formData.latitude) ? (
+                              <HStack spacing={1.5} align="start" w="full" p={1.5} bg="green.50" borderRadius="md" borderWidth="1px" borderColor="green.200">
+                                <Text fontSize="8px" fontWeight="600" color="green.700" flex="0 0 auto" mt={0.5}>✓</Text>
+                                <VStack align="start" spacing={0} flex={1} minW={0}>
+                                  <Text 
+                                    fontSize="8px" 
+                                    color="gray.800" 
+                                    fontWeight="500"
+                                    noOfLines={2}
+                                  >
+                                    {formData.location}
+                                  </Text>
+                                </VStack>
+                              </HStack>
+                            ) : (
+                              <Text fontSize="8px" color="gray.500">Pick a location using search or map below</Text>
+                            )}
+
+                            {/* Saved Locations */}
+                            <SavedLocationsUI
+                              locations={locations}
+                              onSelectLocation={(loc) => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  location: loc.address,
+                                  latitude: loc.latitude,
+                                  longitude: loc.longitude,
+                                } as any))
+                                setLocationSet(true)
+                              }}
+                              onAddLocation={(name, address, lat, lng) => {
+                                addLocation({ name, address, latitude: lat, longitude: lng })
+                              }}
+                              onDeleteLocation={deleteLocation}
+                              onRenameLocation={updateLocation}
+                              currentLocation={
+                                formData.location && formData.latitude && formData.longitude
+                                  ? {
+                                      address: formData.location,
+                                      lat: formData.latitude,
+                                      lng: formData.longitude,
+                                    }
+                                  : undefined
+                              }
+                              onAddNew={() => {}}
+                            />
+                            
+                            {/* Search Location Section */}
+                            <Box position="relative">
+                              <Text fontSize="8px" fontWeight="600" color="yellow.700" mb={0.5}>Search</Text>
+                              <Box position="relative">
+                                <Input
+                                  placeholder="Search location..."
+                                  value={pickupSearchQuery}
+                                  onChange={(e) => {
+                                    setPickupSearchQuery(e.target.value)
+                                    searchPickupLocations(e.target.value)
+                                  }}
+                                  onFocus={() => pickupSearchQuery && setShowPickupSearchDropdown(true)}
+                                  size="sm"
+                                  fontSize="8px"
+                                  h="24px"
+                                  py={1}
+                                />
+                                {isSearchingPickupLocation && (
+                                  <Spinner 
+                                    size="xs" 
+                                    position="absolute" 
+                                    right={1.5} 
+                                    top={1}
+                                  />
+                                )}
+                                {/* Search Results Dropdown */}
+                                {showPickupSearchDropdown && pickupSearchResults.length > 0 && (
+                                  <Box
+                                    position="absolute"
+                                    top="100%"
+                                    left={0}
+                                    right={0}
+                                    bg="white"
+                                    borderWidth="1px"
+                                    borderColor="yellow.300"
+                                    borderTop="none"
+                                    borderRadius="0 0 md md"
+                                    zIndex={10}
+                                    maxH="120px"
+                                    overflowY="auto"
+                                    boxShadow="md"
+                                  >
+                                    {pickupSearchResults.map((result, idx) => (
+                                      <Box
+                                        key={idx}
+                                        p={1}
+                                        fontSize="8px"
+                                        borderBottom={idx < pickupSearchResults.length - 1 ? "1px" : "none"}
+                                        borderColor="gray.200"
+                                        cursor="pointer"
+                                        _hover={{ bg: 'yellow.50' }}
+                                        onClick={() => selectLocation(result)}
+                                      >
+                                        <Text fontWeight="500" color="gray.800">{result.name}</Text>
+                                        <Text fontSize="7px" color="gray.600" noOfLines={1}>{result.address}</Text>
+                                      </Box>
+                                    ))}
+                                  </Box>
+                                )}
+                              </Box>
+                            </Box>
+
+                            {/* Use Current Location Button */}
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={useCurrentLocation}
+                              isLoading={detectingLocation}
+                              fontSize="8px"
+                              h="24px"
+                              w="full"
+                              colorScheme="yellow"
+                            >
+                              Use Current Location
+                            </Button>
+
+                            {/* Map Section */}
+                            {(formData.latitude || 0) > 0 && (formData.longitude || 0) > 0 && (
+                              <Box mt={1}>
+                                <Text fontSize="8px" color="yellow.700" mb={1} fontWeight="600">Click to adjust location</Text>
+                                <Box 
+                                  h="160px"
+                                  borderRadius="md" 
+                                  overflow="hidden" 
+                                  borderWidth="1.5px" 
+                                  borderColor="yellow.300"
+                                  shadow="sm"
+                                >
+                                  <MapContainer center={[formData.latitude || 0, formData.longitude || 0]} zoom={16} style={{ height: '100%', width: '100%' }}>
+                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
+                                    <Marker position={[formData.latitude || 0, formData.longitude || 0]} />
+                                    <MapUpdater lat={formData.latitude || 0} lng={formData.longitude || 0} />
+                                    <MapClickHandler onLocationSelect={async (lat, lng) => {
+                                      try {
+                                        const res = await fetch(
+                                          `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${lat}&lon=${lng}`
+                                        )
+                                        const data = await res.json()
+                                        const addr = data.address || {}
+                                        const street = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ')
+                                        const barangay = addr.hamlet || addr.village || addr.suburb || addr.neighborhood || addr.quarter || ''
+                                        const city = addr.city || addr.town || addr.municipality || ''
+                                        const parts = [street, barangay, city].filter(Boolean)
+                                        const address = parts.join(', ') || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+                                        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: address } as any))
+                                        setLocationSet(true)
+                                      } catch {
+                                        const fallback = `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+                                        setFormData(prev => ({ ...prev, latitude: lat, longitude: lng, location: fallback } as any))
+                                        setLocationSet(true)
+                                      }
+                                    }} />
+                                  </MapContainer>
+                                </Box>
+                              </Box>
+                            )}
+                          </VStack>
+                        )}
+                      </Box>
+
+                      {/* Option 3: No Fixed Location */}
+                      <Box 
+                        p={2.5} 
+                        borderWidth="1px" 
+                        borderRadius="md"
+                        bg={locationTypeSelected === 'no_location' ? 'yellow.100' : 'white'}
+                        borderColor={locationTypeSelected === 'no_location' ? 'yellow.400' : 'gray.200'}
+                        transition="all 0.2s"
+                        cursor="pointer"
+                        _hover={{ borderColor: 'yellow.300' }}
+                      >
+                        <HStack align="start" spacing={2}>
+                          <Radio 
+                            isChecked={locationTypeSelected === 'no_location'}
+                            onChange={() => {
+                              setLocationTypeSelected('no_location')
+                              setFormData(prev => ({ ...prev, location_type: 'no_location' }))
+                            }}
+                            colorScheme="yellow"
+                            flex="0 0 auto"
+                            mt={0.5}
+                            cursor="pointer"
+                          />
+                          <VStack align="start" spacing={0.5} flex={1} cursor="pointer" onClick={() => {
+                            setLocationTypeSelected('no_location')
+                            setFormData(prev => ({ ...prev, location_type: 'no_location' }))
+                          }}>
+                            <Text fontWeight="600" fontSize="xs">🤝 No Fixed Location</Text>
+                            <Text fontSize="9px" color="gray.600">Buyers will negotiate location with you directly</Text>
+                          </VStack>
+                        </HStack>
+                      </Box>
+                    </VStack>
+                    
+                    {/* Helper text */}
+                    <Alert status="info" mt={2} py={2} px={2.5} borderRadius="md" fontSize="8px" color="yellow.700">
+                      <AlertIcon boxSize="14px" />
+                      📌 Fixed location = "Pickup" is primary. No location = buyers must negotiate meeting place.
+                    </Alert>
+                  </FormControl>
+                </Box>
 
                 {/* Desired Exchange */}
-                <Box borderTopWidth="1px" borderColor="green.200" pt={4}>
-                  <Text fontWeight="600" fontSize={{ base: 'sm', md: 'md' }} mb={3}>
+                <Box borderTopWidth="1px" borderColor="green.200" pt={2}>
+                  <Text fontWeight="600" fontSize={{ base: 'xs', md: 'sm' }} mb={1.5}>
                     What are you looking for? (Optional)
                   </Text>
-                  <VStack spacing={4} align="stretch">
+                  <VStack spacing={2} align="stretch">
                     <FormControl>
-                      <FormLabel fontSize="sm" color="gray.600">Desired Item Categories</FormLabel>
-                      <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={2}>
+                      <FormLabel fontSize="xs" color="gray.600">Desired Item Categories</FormLabel>
+                      <SimpleGrid columns={{ base: 2, sm: 3 }} spacing={1}>
                         {PRODUCT_CATEGORIES.map((cat) => {
                           const isSelected = (formData.wanted_categories || []).includes(cat.value)
                           return (
@@ -528,61 +915,27 @@ const EditProduct: React.FC = () => {
                           })}
                         </Wrap>
                       )}
-                      <FormHelperText fontSize="xs" color="gray.500">
+                      <FormHelperText fontSize="7px" color="gray.500">
                         Select categories you'd be interested in trading for
                       </FormHelperText>
                     </FormControl>
 
                     <FormControl>
-                      <FormLabel fontSize="sm" color="gray.600" fontWeight="600" mb={2}>Preferred Items</FormLabel>
+                      <FormLabel fontSize="xs" color="gray.600" fontWeight="600" mb={1}>Preferred Items</FormLabel>
                       <Input
                         value={formData.wants || ''}
                         onChange={(e) => handleInputChange('wants', e.target.value)}
                         placeholder="e.g. Any smartphone, mechanical keyboard, etc."
-                        size={{ base: 'md', md: 'lg' }}
+                        size={{ base: 'sm', md: 'md' }}
+                        h={{ base: '28px', md: '32px' }}
                       />
-                      {formData.wants === '' && (
-                        <HStack spacing={2} mt={2}>
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            colorScheme="gray"
-                            fontSize="11px"
-                            fontWeight="500"
-                            onClick={() => handleInputChange('wants', 'Any')}
-                            _hover={{ color: 'brand.600' }}
-                          >
-                            Any
-                          </Button>
-                        </HStack>
-                      )}
                     </FormControl>
                   </VStack>
                 </Box>
 
-                {/* Offer Item Limit */}
-                <FormControl>
-                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Offer Item Limit</FormLabel>
-                  <Select
-                    value={formData.max_items_per_offer ?? 0}
-                    onChange={(e) => handleInputChange('max_items_per_offer', parseInt(e.target.value) || 0)}
-                    size={{ base: 'md', md: 'lg' }}
-                  >
-                    <option value={0}>Unlimited Items</option>
-                    <option value={1}>1 Item Only</option>
-                    <option value={2}>Up to 2 Items</option>
-                    <option value={3}>Up to 3 Items</option>
-                    <option value={5}>Up to 5 Items</option>
-                    <option value={10}>Up to 10 Items</option>
-                  </Select>
-                  <FormHelperText fontSize="xs" color="gray.500">
-                    Maximum items a buyer can offer for this product.
-                  </FormHelperText>
-                </FormControl>
-
                 {/* Upload Images */}
                 <FormControl>
-                  <FormLabel fontWeight="600" fontSize={{ base: 'sm', md: 'md' }}>Images</FormLabel>
+                  <FormLabel fontWeight="600" fontSize={{ base: 'xs', md: 'sm' }}>Images</FormLabel>
                   <input
                     id="edit-image-input"
                     type="file"
@@ -592,28 +945,42 @@ const EditProduct: React.FC = () => {
                     onChange={(e) => handleAddImageFiles(e.target.files)}
                   />
                   <Button
-                    size={{ base: 'sm', md: 'md' }}
+                    size={{ base: 'xs', md: 'sm' }}
+                    h={{ base: '24px', md: '28px' }}
+                    fontSize={{ base: '11px', md: '12px' }}
                     onClick={() => document.getElementById('edit-image-input')?.click()}
                   >
                     Add image
                   </Button>
-                  <Text fontSize="xs" color="gray.500" mt={1}>
+                  <Text fontSize="7px" color="gray.500" mt={0.5}>
                     You can add multiple images.
                   </Text>
 
                   {imagePreviews.length > 0 && (
-                    <VStack align="stretch" spacing={2} mt={3}>
+                    <VStack align="stretch" spacing={1.5} mt={2}>
                       {imagePreviews.map((url, idx) => (
-                        <HStack key={idx} spacing={2} align="center">
-                          <ChakraImage
-                            src={url}
-                            alt={`Preview ${idx + 1}`}
-                            boxSize={{ base: '56px', md: '80px' }}
-                            minW={{ base: '56px', md: '80px' }}
-                            objectFit="cover"
-                            borderRadius="6px"
-                          />
-                          <Text fontSize="xs" color="gray.600" noOfLines={1} flex={1} minW={0}>
+                        <HStack key={idx} spacing={1.5} align="center">
+                          <Box
+                            boxSize={{ base: '48px', md: '64px' }}
+                            minW={{ base: '48px', md: '64px' }}
+                            borderRadius="4px"
+                            bg="gray.100"
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            overflow="hidden"
+                          >
+                            <ChakraImage
+                              src={url}
+                              alt={`Preview ${idx + 1}`}
+                              boxSize="100%"
+                              objectFit="cover"
+                              onError={(e: any) => {
+                                e.target.style.display = 'none'
+                              }}
+                            />
+                          </Box>
+                          <Text fontSize="7px" color="gray.600" noOfLines={1} flex={1} minW={0}>
                             {url.startsWith('data:') ? 'New image' : 'Uploaded image'}
                           </Text>
                           <Button
@@ -621,6 +988,8 @@ const EditProduct: React.FC = () => {
                             colorScheme="red"
                             variant="ghost"
                             flexShrink={0}
+                            h="20px"
+                            fontSize="7px"
                             onClick={() => removeImageAt(idx)}
                           >
                             Remove
@@ -634,10 +1003,12 @@ const EditProduct: React.FC = () => {
                 <Button
                   type="submit"
                   colorScheme="brand"
-                  size={{ base: 'md', md: 'lg' }}
+                  size={{ base: 'sm', md: 'md' }}
+                  h={{ base: '32px', md: '36px' }}
                   w="full"
                   isLoading={loading}
                   loadingText="Updating..."
+                  fontSize={{ base: '12px', md: '14px' }}
                 >
                   Update Product
                 </Button>
@@ -645,8 +1016,7 @@ const EditProduct: React.FC = () => {
             </form>
           </Box>
         </VStack>
-      </Container>
-    </Box>
+      </Box>
   )
 }
 

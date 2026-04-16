@@ -134,6 +134,9 @@ export interface ProductUpdate {
   max_items_per_offer?: number
   wants?: string
   wanted_categories?: string[]
+  latitude?: number
+  longitude?: number
+  location_type?: 'current_location' | 'pickup_location' | 'no_location'
 }
 
 export interface OrderCreate {
