@@ -173,10 +173,12 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	organizationIDsStr := c.FormValue("organization_ids")
 	var organizationIDs []int
 	if organizationIDsStr != "" {
+		log.Printf("📦 [CreateProduct] Parsing organization_ids: %s", organizationIDsStr)
 		// Try JSON array first: [1,2,3]
 		var jsonIDs []int
 		if err := json.Unmarshal([]byte(organizationIDsStr), &jsonIDs); err == nil {
 			organizationIDs = jsonIDs
+			log.Printf("✅ [CreateProduct] Parsed as JSON: %v", jsonIDs)
 		} else {
 			// Try comma-separated: 1,2,3
 			parts := strings.Split(organizationIDsStr, ",")
@@ -185,7 +187,10 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 					organizationIDs = append(organizationIDs, id)
 				}
 			}
+			log.Printf("✅ [CreateProduct] Parsed as CSV: %v", organizationIDs)
 		}
+	} else {
+		log.Printf("ℹ️  [CreateProduct] No organization_ids provided")
 	}
 
 	// AI Generated fields
@@ -566,46 +571,32 @@ func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 		log.Printf("📦 [ORG-TAG] User %d is tagging product %d with %d organizations", userID, productID, len(organizationIDs))
 
 		for _, orgID := range organizationIDs {
-			// Allow tagging if user is an approved member OR the org creator.
-			// Note: organization_memberships.status does NOT include a 'creator' value.
-			var memberStatus string
+			// Check if user is the creator OR an approved member of this organization
+			var creatorID int
+			var memberStatus sql.NullString
 			err := h.db.QueryRow(`
-				SELECT status
-				FROM organization_memberships
-				WHERE organization_id = ? AND user_id = ?
-				LIMIT 1
-			`, orgID, userID).Scan(&memberStatus)
-
-			isCreator := false
+				SELECT o.creator_user_id, COALESCE(m.status, '') as member_status
+				FROM organizations o
+				LEFT JOIN organization_memberships m ON o.id = m.organization_id AND m.user_id = ?
+				WHERE o.id = ?
+			`, userID, orgID).Scan(&creatorID, &memberStatus)
 			if err == sql.ErrNoRows {
-				// Membership row might not exist for legacy orgs; allow if user is the creator.
-				var creatorID int
-				creatorErr := h.db.QueryRow(`SELECT creator_user_id FROM organizations WHERE id = ? LIMIT 1`, orgID).Scan(&creatorID)
-				if creatorErr == nil && creatorID == userID {
-					isCreator = true
-				}
-			} else if err != nil {
-				log.Printf("❌ [ORG-TAG] Database error checking membership: %v", err)
+				log.Printf("⚠️  [ORG-TAG] Organization %d does not exist, skipping tag", orgID)
 				continue
-			} else if memberStatus == "approved" {
-				// ok
-			} else {
-				// Not approved via membership; still allow if creator.
-				var creatorID int
-				creatorErr := h.db.QueryRow(`SELECT creator_user_id FROM organizations WHERE id = ? LIMIT 1`, orgID).Scan(&creatorID)
-				if creatorErr == nil && creatorID == userID {
-					isCreator = true
-				}
-				if !isCreator {
-					log.Printf("⚠️  [ORG-TAG] User %d has status '%s' in org %d (not approved), skipping", userID, memberStatus, orgID)
-					continue
-				}
+			}
+			if err != nil {
+				log.Printf("❌ [ORG-TAG] Database error checking organization %d: %v", orgID, err)
+				continue
 			}
 
-			if memberStatus != "approved" && !isCreator {
-				log.Printf("⚠️  [ORG-TAG] User %d is not approved/creator for org %d, skipping tag", userID, orgID)
+			isCreator := creatorID == userID
+			isApprovedMember := memberStatus.Valid && memberStatus.String == "approved"
+			if !isCreator && !isApprovedMember {
+				log.Printf("⚠️  [ORG-TAG] User %d is neither creator nor approved member of org %d, skipping tag", userID, orgID)
 				continue
 			}
+
+			log.Printf("✅ [ORG-TAG] Tagging product %d with org %d (creator=%v, approved_member=%v)", productID, orgID, isCreator, isApprovedMember)
 
 			// Insert into product_organization_tags
 			_, err = h.db.Exec(`

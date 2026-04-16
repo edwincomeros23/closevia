@@ -83,10 +83,12 @@ export const SavedLocationsUI: React.FC<SavedLocationsUIProps> = ({
                 borderColor="yellow.200"
                 borderRadius="md"
                 spacing={1}
-                _hover={{ borderColor: 'yellow.400', shadow: 'sm' }}
+                _hover={{ borderColor: 'yellow.400', shadow: 'md', bg: 'yellow.50' }}
                 transition="all 0.2s"
+                cursor="pointer"
+                onClick={() => onSelectLocation(loc)}
               >
-                <VStack align="start" spacing={0} flex={1} minW={0}>
+                <VStack align="start" spacing={0.5} flex={1} minW={0} onClick={() => onSelectLocation(loc)}>
                   {editingId === loc.id ? (
                     <Input
                       size="xs"
@@ -96,21 +98,19 @@ export const SavedLocationsUI: React.FC<SavedLocationsUIProps> = ({
                       fontSize="8px"
                       h="20px"
                       autoFocus
+                      onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
                     <>
                       <Text
-                        fontSize="8px"
-                        fontWeight="600"
+                        fontSize="9px"
+                        fontWeight="700"
                         color="gray.800"
                         noOfLines={1}
-                        cursor="pointer"
-                        _hover={{ color: 'blue.600' }}
-                        onClick={() => onSelectLocation(loc)}
                       >
                         {loc.name}
                       </Text>
-                      <Text fontSize="7px" color="gray.500" noOfLines={1}>
+                      <Text fontSize="8px" color="gray.600" noOfLines={2}>
                         {loc.address}
                       </Text>
                     </>
@@ -123,7 +123,10 @@ export const SavedLocationsUI: React.FC<SavedLocationsUIProps> = ({
                       h="18px"
                       fontSize="7px"
                       colorScheme="green"
-                      onClick={() => handleSaveEdit(loc.id)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleSaveEdit(loc.id)
+                      }}
                     >
                       Save
                     </Button>
@@ -137,7 +140,8 @@ export const SavedLocationsUI: React.FC<SavedLocationsUIProps> = ({
                         h="18px"
                         w="18px"
                         fontSize="7px"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation()
                           setEditingId(loc.id)
                           setEditingName(loc.name)
                         }}
@@ -151,7 +155,10 @@ export const SavedLocationsUI: React.FC<SavedLocationsUIProps> = ({
                         h="18px"
                         w="18px"
                         fontSize="7px"
-                        onClick={() => onDeleteLocation(loc.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDeleteLocation(loc.id)
+                        }}
                       />
                     </>
                   )}
@@ -163,18 +170,26 @@ export const SavedLocationsUI: React.FC<SavedLocationsUIProps> = ({
       )}
 
       {/* Add New Location Button */}
-      <Button
-        size="xs"
-        leftIcon={<AddIcon />}
-        w="full"
-        h="24px"
-        fontSize="8px"
-        colorScheme="yellow"
-        onClick={onOpen}
-        mb={2}
-      >
-        Save Current Location
-      </Button>
+      {locations.length < 6 && (
+        <Button
+          size="xs"
+          leftIcon={<AddIcon />}
+          w="full"
+          h="24px"
+          fontSize="8px"
+          colorScheme="yellow"
+          onClick={onOpen}
+          mb={2}
+        >
+          Save Current Location
+        </Button>
+      )}
+      {locations.length >= 6 && (
+        <Alert status="warning" borderRadius="md" fontSize="8px" mb={2}>
+          <AlertIcon boxSize="12px" />
+          You've reached the maximum of 6 saved locations. Delete one to save a new location.
+        </Alert>
+      )}
 
       {/* Save Location Modal */}
       <Modal isOpen={isOpen} onClose={onClose} size="sm">
