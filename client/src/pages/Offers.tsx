@@ -631,7 +631,7 @@ const Offers: React.FC = () => {
               {/* Trade Option Badge */}
               {trade.trade_option && (
                 <Badge 
-                  colorScheme={trade.trade_option === 'meetup' ? 'blue' : trade.trade_option === 'delivery' ? 'green' : 'purple'}
+                  colorScheme={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'orange' : 'blue') : trade.trade_option === 'delivery' ? 'green' : 'purple'}
                   variant="outline"
                   fontSize="10px"
                   px={2}
@@ -640,8 +640,8 @@ const Offers: React.FC = () => {
                   alignItems="center"
                   gap={1}
                 >
-                  <Icon as={trade.trade_option === 'meetup' ? FaMapMarkerAlt : trade.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={3} />
-                  {trade.trade_option === 'meetup' ? 'Meetup' : trade.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
+                  <Icon as={trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? FaMapMarkerAlt : FaHandshake) : trade.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={3} />
+                  {trade.trade_option === 'meetup' ? (trade?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup') : trade.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
                 </Badge>
               )}
 
@@ -969,7 +969,7 @@ const Offers: React.FC = () => {
                       <Text fontWeight="semibold" fontSize="sm" noOfLines={2} color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
                       {t.trade_option && (
                         <Badge 
-                          colorScheme={t.trade_option === 'meetup' ? 'blue' : t.trade_option === 'delivery' ? 'green' : 'purple'}
+                          colorScheme={t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? 'orange' : 'blue') : t.trade_option === 'delivery' ? 'green' : 'purple'}
                           variant="subtle"
                           fontSize="8px"
                           display="flex"
@@ -978,8 +978,8 @@ const Offers: React.FC = () => {
                           px={1}
                           py={0}
                         >
-                          <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : t.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={2.5} />
-                          {t.trade_option === 'meetup' ? 'Meetup' : t.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
+                          <Icon as={t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? FaMapMarkerAlt : FaHandshake) : t.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={2.5} />
+                          {t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup') : t.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
                         </Badge>
                       )}
                       <Text fontSize="10px" color="gray.600" noOfLines={1}>From: <Text as="span" fontWeight="medium">{(t.buyer_name || 'User').substring(0, 20)}</Text></Text>
@@ -1108,8 +1108,8 @@ const Offers: React.FC = () => {
                             px={1}
                             py={0}
                           >
-                            <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : t.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={2.5} />
-                            {t.trade_option === 'meetup' ? 'Meetup' : t.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
+                            <Icon as={t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? FaMapMarkerAlt : FaHandshake) : t.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={2.5} />
+                            {t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup') : t.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
                           </Badge>
                         )}
                         <Text fontSize="10px" color="gray.600" noOfLines={1}>To: <Text as="span" fontWeight="medium">{(t.seller_name || 'User').substring(0, 20)}</Text></Text>
@@ -1217,7 +1217,7 @@ const Offers: React.FC = () => {
                         <Text fontWeight="semibold" fontSize="sm" noOfLines={2} color="gray.800">{getProductTitle(t.target_product_id, t.product_title)}</Text>
                         {t.trade_option && (
                           <Badge 
-                            colorScheme={t.trade_option === 'meetup' ? 'blue' : t.trade_option === 'delivery' ? 'green' : 'purple'}
+                            colorScheme={t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? 'orange' : 'blue') : t.trade_option === 'delivery' ? 'green' : 'purple'}
                             variant="subtle"
                             fontSize="8px"
                             display="flex"
@@ -1226,8 +1226,8 @@ const Offers: React.FC = () => {
                             px={1}
                             py={0}
                           >
-                            <Icon as={t.trade_option === 'meetup' ? FaMapMarkerAlt : t.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={2.5} />
-                            {t.trade_option === 'meetup' ? 'Meetup' : t.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
+                            <Icon as={t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? FaMapMarkerAlt : FaHandshake) : t.trade_option === 'delivery' ? FaTruck : FaHandshake} boxSize={2.5} />
+                            {t.trade_option === 'meetup' ? (t?.meeting_type === 'pickup' ? 'Pickup' : 'Meetup') : t.trade_option === 'delivery' ? 'Delivery' : 'Buyout'}
                           </Badge>
                         )}
                         <Text fontSize="10px" color="gray.600" noOfLines={1}><Text as="span" fontWeight="medium">{(t.buyer_name || 'Buyer').substring(0, 12)}</Text> ↔ <Text as="span" fontWeight="medium">{(t.seller_name || 'Seller').substring(0, 12)}</Text></Text>
